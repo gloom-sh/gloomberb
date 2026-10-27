@@ -1,6 +1,7 @@
-import { METRIC_CHOICES, metricWizardFields } from "./metric-command";
+import { METRIC_CHOICES, benchmarkKey, metricWizardFields, parseMetricAlert } from "./metric-command";
 import { metricReadings } from "./metric-data";
-import { metricTrigger, isDailyMetric, type MetricReading } from "./metric-model";
+import { closeBasis, isRelativeMetric, metricReadingText, metricTrigger, validMetricRule, type MetricReading } from "./metric-model";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { startCatalystAlerts } from "./catalysts";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
 import { createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
@@ -186,23 +187,47 @@ export const alertsPlugin: GloomPlugin = {
         ...metricWizardFields,
       ],
       async execute(values) {
-        const input = parseAlertCommandValues(values);
+        let input = parseAlertCommandValues(values);
         if (!input) throw new Error("Use a symbol, condition, and target price.");
         // 7203:TSE, typed or from a link, is the venue its symbol trades on, as `alerts add` reads it.
-        const symbol = (await settleTypedListingKey(input.symbol, { store: ctx.tickerRepository, dataProvider: ctx.marketData })).toUpperCase();
-
-        const quote = await resolveAlertQuote(ctx.marketData, symbol);
+        const quoteFor = async (typed: string) => {
+          const key = (await settleTypedListingKey(typed, { store: ctx.tickerRepository, dataProvider: ctx.marketData })).toUpperCase();
+          return { key, quote: await resolveAlertQuote(ctx.marketData, key) };
+        };
+        let resolved: Awaited<ReturnType<typeof quoteFor>>;
+        try {
+          resolved = await quoteFor(input.symbol);
+        } catch (error) {
+          // XLK/SPY is a listing first (BRK/B); one that quotes nothing is the ratio of the two, as `alerts add` reads it.
+          const pair = !input.metric && /^[^/\s]+\/[^/\s]+$/.test(input.symbol) ? parseMetricAlert(`${input.symbol} ratio ${input.condition} ${input.price}`) : null;
+          if (!pair) throw error;
+          input = pair;
+          resolved = await quoteFor(pair.symbol);
+        }
+        const { key: symbol, quote } = resolved;
+        let metric = input.metric;
+        if (metric && isRelativeMetric(metric)) {
+          const reference = (await quoteFor(benchmarkKey(metric))).quote;
+          const benchmarkExchange = canonicalExchange(reference.listingExchangeName || reference.exchangeName || "");
+          const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName || "");
+          const benchmark = reference.symbol || metric.benchmark;
+          if (benchmark === (quote.symbol || symbol) && benchmarkExchange === exchange) throw new Error(`Compare ${benchmark} with another listing.`);
+          metric = { ...metric, benchmark, ...(benchmarkExchange ? { benchmarkExchange } : {}) };
+          // Never save a rule its own list would refuse to read back.
+          if (!validMetricRule({ metric, condition: input.condition, targetPrice: input.price })) throw new Error(`${benchmark} cannot be a benchmark: relative strength alerts compare two US listings.`);
+        }
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
         const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
         if (!input.metric && far) throw new Error(far);
 
         const alert = {
           ...createAlert(quote.symbol || symbol, input.condition, input.price),
-          ...(!input.metric ? quoteAlertFields(quote) : { metric: input.metric, exchange: quote.listingExchangeName || quote.exchangeName }),
+          ...(!metric ? quoteAlertFields(quote) : { metric, exchange: quote.listingExchangeName || quote.exchangeName }),
         };
-        if (input.metric) {
+        if (metric) {
           const reading = await metricReadings(ctx.marketData)(alert);
-          Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at });
+          Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at,
+            ...(reading.day ? { lastDailyClose: reading.day } : {}) });
         }
         const existing = loadAlerts(ctx);
         existing.push(alert);
@@ -335,11 +360,14 @@ export const alertsPlugin: GloomPlugin = {
               const firedAt = Date.now();
               alert.status = "triggered"; alert.triggeredAt = firedAt;
               const description = formatAlertDescription(alert);
+              const readingText = metricReadingText(alert.metric, reading);
               recordFired({ kind: alert.metric.kind, ruleId: alert.id, rule: description, firedAt, value: reading.value,
                 unit: alert.metric.kind === "pe" || alert.metric.kind === "ps" ? "x" : undefined,
-                quoteAt: firedAlertTime(reading.at), source: isDailyMetric(alert.metric) ? "daily close" : null,
+                // An RRG quadrant is two readings; the figure is strength, the detail says both.
+                ...(alert.metric.kind === "rrg" ? { detail: readingText } : {}),
+                quoteAt: firedAlertTime(reading.at), source: closeBasis(alert.metric),
                 symbol: alert.symbol, exchange: alert.exchange });
-              ctx.notify({ body: `${description} triggered at ${Number(reading.value.toFixed(4))}`, type: "success",
+              ctx.notify({ body: alert.metric.kind === "rrg" ? `${description} triggered: ${readingText}` : `${description} triggered at ${readingText}`, type: "success",
                 refId: `price:${alert.id}`, desktop: "always", persistent: true, sound: "Glass",
                 action: { label: "Open", onClick: () => ctx.showPane("alerts") } });
             }

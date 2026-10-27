@@ -1,5 +1,5 @@
-import { metricDescription } from "./metric-model";
-import { parseMetricAlert, type MetricAlertInput } from "./metric-command";
+import { closeBasis, isRelativeMetric, metricDescription, metricReadingText, validMetricRule, type MetricReading } from "./metric-model";
+import { benchmarkKey, parseMetricAlert, type MetricAlertInput } from "./metric-command";
 import { metricReadings } from "./metric-data";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
@@ -14,6 +14,7 @@ import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange } from "../../../utils/exchanges";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import { meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
 import { fetchEconCalendarFrom } from "../econ/calendar-source";
@@ -74,11 +75,19 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <calendar event> [--country <code>] [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
+const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol>/<benchmark> <above|below|crosses> <ratio>, alerts add <symbol> rrg <quadrant> [--benchmark <symbol>], alerts add <symbol> earnings [--days <n> | results], alerts add <calendar event> [--country <code>] [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
 /** The event form every refusal of `alerts add` names: any release in the economic calendar, CPI and FOMC among them. */
 const EVENT_FORM = `a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)`;
 const COUNTRY_RULE = "--country is for an alert on a calendar event, such as alerts add PMI --country CN.";
+const BENCHMARK_RULE = "--benchmark takes the listing an RRG alert is measured against (SPY by default, as in RRG),";
+/** `XLK/SPY`, `XLK:NYSEARCA/SPY`: two listings, or one written with a slash (BRK/B, EUR/USD). */
+const PAIR_SHAPE = /^[^/\s]+\/[^/\s]+$/;
+/** A listing check that hands back its refusal instead of ending the command, so a pair can be read as a ratio. */
+class ListingRefusal extends Error {
+  constructor(message: string, readonly details?: string) { super(message); }
+}
+const PROBE = { fail: (message: string, details?: string): never => { throw new ListingRefusal(message, details); } };
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
 export type AlertAddRequest =
@@ -152,13 +161,17 @@ export function parseAlertAddArgs(
   days: string | null | undefined,
   exchange?: string | null,
   country?: string | null,
+  benchmark?: string | null,
 ): AlertAddRequest {
   const [first, second, third, ...rest] = args;
   if (!first) throw new Error(ADD_USAGE);
   const countryFilter = readCountryOption(country);
-  const metric = parseMetricAlert(args.join(" "));
+  if (benchmark === null) throw new Error(`${BENCHMARK_RULE} such as alerts add XLE rrg leading --benchmark QQQ.`);
+  const metric = parseMetricAlert(benchmark !== undefined && second?.toLowerCase() === "rrg" && !/^(vs\.?|versus|against)$/i.test(args[3] ?? "")
+    ? [...args, "vs", benchmark].join(" ") : args.join(" "));
+  if (benchmark !== undefined && metric?.metric.kind !== "rrg") throw new Error(`${BENCHMARK_RULE} such as alerts add XLE rrg leading --benchmark QQQ; a ratio names both listings, as in alerts add XLK/SPY above 0.25.`);
   if (metric) {
-    if (days !== undefined || country !== undefined) throw new Error("Valuation and daily technical alerts take neither --days nor --country.");
+    if (days !== undefined || country !== undefined) throw new Error(`${isRelativeMetric(metric.metric) ? "Relative strength" : "Valuation and daily technical"} alerts take neither --days nor --country.`);
     return { kind: "metric", ...metric };
   }
   const research = parseResearchAddArgs(args);
@@ -191,7 +204,7 @@ export function parseAlertAddArgs(
   if (!CONDITIONS.includes(condition)) {
     // Words with no price after them name a release (CN PMI, Industrial Profits); a price ends a mistyped price alert.
     if (parseAlertPrice(args.at(-1)!).kind === "invalid") return releaseRequest(args, countryFilter, leadDays());
-    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, iv spike on an OCC contract, or ${EVENT_FORM}.`);
+    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price (or a ratio after XLK/SPY), rrg with a quadrant, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, iv spike on an OCC contract, or ${EVENT_FORM}.`);
   }
   if (country !== undefined) throw new Error(COUNTRY_RULE);
   if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
@@ -348,6 +361,18 @@ export function thousandsDotMessage(
   return `${dot.text} could be ${dot.thousands} (thousands) or ${dot.decimal} (decimal point), and ${listing.toUpperCase()} last traded at ${Number(last!.toFixed(2))}; type ${retype(dot.thousands)} or ${retype(dot.decimal)}`;
 }
 
+/** What a rule saves of a measure's reading, as the app's checks save it. */
+function readingFields(reading: MetricReading): Partial<AlertRule> {
+  return { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at,
+    lastCheckedAt: Date.now(), ...(reading.day ? { lastDailyClose: reading.day } : {}) };
+}
+
+/** "0.2434 at the 2026-10-26 daily close", "Lagging (strength 98.12, momentum 99.40) at the 2026-10-23 weekly close". */
+function readingWords(metric: NonNullable<AlertRule["metric"]>, reading: Pick<MetricReading, "value" | "target" | "day">): string {
+  const basis = closeBasis(metric);
+  return `${metricReadingText(metric, reading)}${basis && reading.day ? ` at the ${reading.day} ${basis}` : ""}`;
+}
+
 /** One row of `alerts list`: a price alert as stored, or an event alert with its next date. */
 type AlertListRow = Record<string, unknown> & {
   id: string;
@@ -356,7 +381,11 @@ type AlertListRow = Record<string, unknown> & {
 };
 
 function priceRow(alert: AlertRule): AlertListRow {
-  return { ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined, target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
+  // A measure's last reading in words, and the close it is from.
+  const read = alert.metric && !alert.lastCheckError && alert.lastCheckedPrice != null;
+  return { ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined, target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol,
+    ...(read ? { reading: metricReadingText(alert.metric!, { value: alert.lastCheckedPrice!, target: alert.lastCheckedTarget ?? alert.targetPrice }) } : {}),
+    ...(read && alert.lastDailyClose ? { asOf: alert.lastDailyClose } : {}) };
 }
 
 function eventRow(rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
@@ -397,7 +426,8 @@ function textRow(row: AlertListRow): Record<string, unknown> {
         : ""),
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
     status: row.status,
-    lastCheckedPrice: row.lastCheckedPrice,
+    lastCheckedPrice: row.reading ?? row.lastCheckedPrice,
+    asOf: row.asOf,
     triggeredAt: row.triggeredAt,
   };
 }
@@ -533,7 +563,7 @@ async function requireEventDate(
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
-  description: "List, add, and remove price, valuation and daily technical alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
+  description: "List, add, and remove price, valuation, daily technical and relative strength alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
@@ -542,6 +572,8 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>",
       "alerts add <symbol> ma(50) crosses <above|below> ma(200)",
       "alerts add <symbol> closes <above|below> ma(200)",
+      "alerts add <symbol>/<benchmark> <above|below|crosses> <ratio>",
+      "alerts add <symbol> rrg <leading|weakening|lagging|improving> [--benchmark <symbol>]",
       "alerts add <symbol> earnings [--days <n> | results]",
       "alerts add <calendar event> [--country <code>] [--days <n>]",
       "alerts add [symbol] news <keyword>",
@@ -555,6 +587,7 @@ export const alertsCliCommand: CliCommandDef = {
       EXCHANGE_OPTION,
       { flags: "--days <n>", description: `Days before the event the alert goes off, 1 to ${MAX_LEAD_DAYS} (default 1); earnings and calendar event alerts` },
       { flags: "--country <code>", description: "The country of a calendar event, as econ --country takes it (CN, US, DE); a code before the name does the same (alerts add CN PMI)" },
+      { flags: "--benchmark <symbol>", description: "The listing an RRG alert is measured against; SPY by default, as in RRG" },
     ],
     examples: [
       "alerts",
@@ -564,6 +597,9 @@ export const alertsCliCommand: CliCommandDef = {
       'alerts add NVDA "rsi(14)" under 30',
       'alerts add SPY "ma(50)" crosses above "ma(200)"',
       'alerts add TSLA closes below "ma(200)"',
+      "alerts add XLK/SPY above 0.25",
+      "alerts add XLE rrg leading",
+      "alerts add SMH rrg weakening --benchmark QQQ",
       "alerts add SAN:EPA below 70",
       "alerts add CRWV earnings --days 3",
       "alerts add CRWV earnings results",
@@ -585,24 +621,45 @@ export const alertsCliCommand: CliCommandDef = {
     const countryFlag = rawArgs.some((arg) => arg === "--country" || arg.startsWith("--country="));
     const countryValue = takeOption(args, "--country");
     const country = countryFlag && countryValue === undefined ? null : countryValue;
+    const benchmarkFlag = rawArgs.some((arg) => arg === "--benchmark" || arg.startsWith("--benchmark="));
+    const benchmarkValue = takeOption(args, "--benchmark");
+    const benchmark = benchmarkFlag && benchmarkValue === undefined ? null : benchmarkValue;
     const action = args[0] ?? "list";
     const now = Date.now();
     const today = newYorkToday(new Date(now));
+    const failWith = (error: unknown): never => ctx.fail(error instanceof Error ? error.message : String(error));
 
     const parseAdd = (): AlertAddRequest => {
       try {
-        return parseAlertAddArgs(args.slice(1), days, exchangeOption, country);
+        return parseAlertAddArgs(args.slice(1), days, exchangeOption, country, benchmark);
       } catch (error) {
-        return ctx.fail(error instanceof Error ? error.message : String(error));
+        return failWith(error);
       }
     };
-    const request = action === "add" ? parseAdd() : null;
+    const typedRequest = action === "add" ? parseAdd() : null;
+    // XLK/SPY is first a listing written with a slash (BRK/B, EUR/USD); one that quotes nothing is the ratio of the two.
+    const pairListing = typedRequest?.kind === "price" && PAIR_SHAPE.test(typedRequest.symbol)
+      ? await withMarketData(ctx, (market) => requireQuotedListing(typedRequest.symbol, exchangeOption, market, PROBE, "alerts add")).catch((error: unknown) => {
+        if (!(error instanceof ListingRefusal)) throw error;
+        if (!notATickerSymbol(error.message)) return ctx.fail(error.message, error.details);
+        return null;
+      })
+      : undefined;
+    let request: AlertAddRequest | null = typedRequest;
+    if (typedRequest?.kind === "price" && pairListing === null) {
+      if (exchangeOption) ctx.fail("A ratio alert names each listing, such as alerts add XLK:NYSEARCA/SPY above 0.25, and takes no --exchange.");
+      try {
+        request = { kind: "metric", ...parseMetricAlert(`${typedRequest.symbol} ratio ${typedRequest.condition} ${typedRequest.price}`)! };
+      } catch (error) {
+        failWith(error);
+      }
+    }
     const research = request && isResearchRequest(request) ? request : null;
     const listedSymbol = (request?.kind === "price" || request?.kind === "metric") ? request.symbol
       : research && research.kind !== "iv_spike" ? research.symbol : null;
     // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing;
     // a news, flow or IV rule on a symbol follows that listing too, and only in the US, where their data is.
-    const priced = listedSymbol
+    const priced = pairListing ? pairListing : listedSymbol
       ? await withMarketData(ctx, async (market) => {
         const quoted = await requireQuotedListing(listedSymbol, exchangeOption, market, ctx, "alerts add");
         if (research) {
@@ -621,10 +678,26 @@ export const alertsCliCommand: CliCommandDef = {
     // A bare coin ticker read as another listing (SOL, a stale company; BTC, the Grayscale trust) gets `quote`'s note
     // naming the coin's pair, before a metric alert names the venue it was read on.
     const coinNote = priced ? coinListingNotes(priced.listing, priced.quote)[0] ?? null : null;
+    // The measure as it reads now, from the same completed closes the alert is judged on.
+    let metricReading: MetricReading | null = null;
+    const benchmarkNotes: string[] = [];
     if (request?.kind === "metric" && priced) {
       const exchange = canonicalExchange(priced.listing.exchange || priced.quote.listingExchangeName || priced.quote.exchangeName);
+      const typedMetric = request.metric;
+      if (isRelativeMetric(typedMetric)) {
+        // The benchmark is held to a listing that quotes, as the symbol is.
+        const reference = await withMarketData(ctx, (market) => requireQuotedListing(benchmarkKey(typedMetric), null, market, ctx, "alerts add"));
+        const benchmarkExchange = canonicalExchange(reference.listing.exchange || reference.quote.listingExchangeName || reference.quote.exchangeName);
+        if (reference.listing.symbol === priced.listing.symbol && benchmarkExchange === exchange) {
+          ctx.fail(`${typedMetric.kind === "rrg" ? "An RRG alert" : "A ratio alert"} compares two listings; ${priced.listing.symbol} is on both sides.`);
+        }
+        request.metric = { ...typedMetric, benchmark: reference.listing.symbol, ...(benchmarkExchange ? { benchmarkExchange } : {}) };
+        // Never save a rule its own list would refuse to read back.
+        if (!validMetricRule({ ...request, targetPrice: request.price })) ctx.fail(`${reference.listing.key} cannot be a benchmark: relative strength alerts compare two US listings.`);
+        benchmarkNotes.push(...reference.notes);
+      }
       const preview = { ...createAlert(priced.listing.symbol, request.condition, request.price, exchange), metric: request.metric };
-      await withMarketData(ctx, market => metricReadings(market.dataProvider)(preview)).catch(error => ctx.fail(error instanceof Error ? error.message : String(error)));
+      metricReading = await withMarketData(ctx, market => metricReadings(market.dataProvider, now)(preview)).catch(failWith);
       priced.listing.exchange = exchange;
     }
     if (request?.kind === "price" && request.thousandsDot && priced) {
@@ -638,7 +711,7 @@ export const alertsCliCommand: CliCommandDef = {
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
-    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : []];
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...benchmarkNotes];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
     if (research) {
@@ -742,7 +815,8 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "trigger", header: "Trigger" },
           { key: "eventDate", header: "Event Date" },
           { key: "status", header: "Status" },
-          { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
+          { key: "lastCheckedPrice", header: "Last", align: "right", optional: true },
+          { key: "asOf", header: "As Of", optional: true },
           { key: "triggeredAt", header: "Triggered", optional: true },
         ],
         empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
@@ -779,11 +853,13 @@ export const alertsCliCommand: CliCommandDef = {
       if (request?.kind === "price" || request?.kind === "metric") {
         const { condition, price } = request;
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
-        const alert = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}) };
+        const alert: AlertRule = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}) };
+        // Its reading so far, which cannot fire it: only a close after arming can.
+        if (alert.metric && metricReading) Object.assign(alert, readingFields(metricReading));
         await save({ alerts: [...alerts, alert] });
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
-          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert) : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
+          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? `${metricDescription(data.alert)}${metricReading ? `, now ${readingWords(data.alert.metric, metricReading)}` : ""}` : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }

@@ -36,6 +36,7 @@ import {
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedRotation, loadRotation } from "./client";
 import {
+  DEFAULT_ROTATION_BENCHMARK,
   ROTATION_LIMIT,
   rotationId,
   rotationTrailWeeks,
@@ -140,13 +141,13 @@ function RotationDetail({
 export function RelativeRotationPane(props: PaneProps) {
   const [scope] = usePaneSettingValue("scope", "sectors");
   const [symbols] = usePaneSettingValue("symbols", "");
-  const [benchmarkText] = usePaneSettingValue("benchmark", "SPY:NYSEARCA");
+  const [benchmarkText] = usePaneSettingValue("benchmark", DEFAULT_ROTATION_BENCHMARK);
   const [trailText] = usePaneSettingValue("trail", "6");
   const { collectionId } = usePaneCollection();
   const tickers = useTickers();
   const context = useMemo(() => {
     try {
-      const references = rotationInstruments(benchmarkText || "SPY:NYSEARCA");
+      const references = rotationInstruments(benchmarkText || DEFAULT_ROTATION_BENCHMARK);
       if (references.length !== 1)
         throw new Error("Choose one benchmark in pane settings.");
       const instruments =

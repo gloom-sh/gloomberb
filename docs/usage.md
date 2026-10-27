@@ -877,9 +877,25 @@ P/E uses the research panes' trailing P/E and regular-session price basis. A zer
 
 Daily technical alerts use the standard one-year daily history. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 30-minute allowance after the close for the closing auction and late prints to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation. The row shows **Blocked** with **Bar gap** or **US only**, and its detail explains the reason. Settled calculations are reused until the next close; a failed history read retries after five minutes.
 
-Technical rows say **on daily close**. Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
+Technical rows say **on daily close** until their first reading, then the session it is from (**Oct 26 close**). Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
 
 Delivery and access follow price alerts: the running app notifies locally; Cloud sync and a verified account enable existing email and registered-phone delivery, with the same cadence, settings and shared delivery limits. No separate technical-alert subscription is needed.
+
+### Relative strength alerts
+
+Two rules compare a listing with a benchmark on settled closes. In **Add Alert** they are **Ratio to benchmark** and **RRG quadrant**; from the shell:
+
+```bash
+gloom alerts add XLK/SPY above 0.25
+gloom alerts add XLK/SPY crosses 0.25
+gloom alerts add XLE rrg leading
+gloom alerts add SMH rrg weakening --benchmark QQQ
+```
+
+- A **ratio** divides the first listing's daily close by the second's on the same session: the latest ratio `GR XLK,SPY` shows. `above` and `below` fire on a settled close beyond the level, `crosses` when two consecutive sessions fall either side of it. Name a listing's venue inside the pair (`XLK:NYSEARCA/SPY`). A symbol written with a slash that is itself a listing (`BRK/B`, `EUR/USD`) stays a price alert.
+- An **RRG** rule fires when the listing's weekly quadrant against the benchmark changes to the one named: `leading`, `weakening`, `lagging` or `improving`, from the strength and momentum `RRG` computes ([research data](research-data.md#relative-rotation-rrg--grr)). A week counts once its last session (Friday, or Thursday before a Friday holiday) has settled; a week still trading is not judged. It needs 18 contiguous weekly closes. The benchmark is SPY, as in `RRG`, unless `--benchmark` names another.
+
+Both follow the daily technical rules above: US listings on the published calendar, both listings' own closes on each session with none bridged, no forming session, nothing from before the rule was added or re-armed, and one alert until re-armed. **Levels** shows the reading (the ratio, or the quadrant) and the close it is from (**Oct 26 close**, **Oct 23 weekly**); the detail adds strength and momentum for an RRG rule. `gloom alerts list` shows them under **Last** and **As Of**, and `gloom fn ALRT --csv` adds a **Reading** column beside the close's time in **Quote**. Editing keeps the listings; another pair is a new alert. Delivery is as for price alerts.
 
 ### Alerts before earnings and economic releases
 

@@ -13,6 +13,7 @@ import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { alertsCliCommand, parseAlertAddArgs } from "./cli";
 import { farTargetMessage } from "./quotes";
 import { readAlertStores } from "./storage";
+import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 
 const dataDirs: string[] = [];
 
@@ -273,4 +274,52 @@ test("the FOMC's calendar row by name is the FOMC alert, and a release already o
   const pmi = await addAlert(["NBS", "Manufacturing", "PMI"]);
   expect(pmi.events[0]!.eventDate).toBeUndefined();
   expect(pmi.printed!.options!.text!(pmi.printed!.result.data)).toContain("the app alerts once the calendar lists its next date");
+});
+
+test("XLK/SPY quoting nothing is the two listings' ratio, kept apart from older apps' lists with its dated reading", async () => {
+  setSystemTime(new Date("2026-10-27T12:00:00Z"));
+  const etf = (symbol: string) => createTestQuote({ symbol, name: symbol, price: 100, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" });
+  const quotes: Record<string, Quote> = { XLK: etf("XLK"), SPY: etf("SPY"), XLE: etf("XLE") };
+  const days: string[] = [];
+  for (let time = Date.parse("2026-05-01"); time <= Date.parse("2026-10-26"); time += 86_400_000) {
+    const day = new Date(time).toISOString().slice(0, 10);
+    if (getPublishedUsEquitySession("ARCA", day)?.kind === "session") days.push(day);
+  }
+  const close = (symbol: string, day: string) => symbol === "XLK" ? (day === "2026-10-26" ? 24.34 : 24) : symbol === "XLE" ? 50 : 100;
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => {
+      const quote = quotes[target.symbol.split(":")[0]!];
+      return quote ? { target, quote } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` };
+    }),
+    getDetailedPriceHistory: async (symbol: string) => days.map((day) => ({ date: new Date(day), open: 1, high: 1, low: 1, close: close(symbol, day), volume: 1 })),
+  });
+  const add = async (args: string[]) => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-relative-"));
+    dataDirs.push(dataDir);
+    const config = createDefaultConfig(dataDir);
+    await saveConfig(config);
+    const cli = createTestCliContext({ config, dataProvider });
+    const error = await Promise.resolve(alertsCliCommand.execute(["add", ...args], cli.context)).then(() => null, (thrown: Error) => thrown.message);
+    const saved = await loadConfig(dataDir);
+    const printed = cli.printed[0];
+    return { error, stored: readAlertStores(saved).alerts, pluginState: saved.pluginConfig.alerts ?? {}, text: printed?.options?.text?.(printed.result.data) };
+  };
+
+  const ratio = await add(["XLK/SPY", "above", "0.25"]);
+  expect(ratio.error).toBeNull();
+  expect(ratio.stored).toMatchObject([{ symbol: "XLK", exchange: "ARCA", condition: "above", targetPrice: 0.25, lastCheckedPrice: 0.2434, lastDailyClose: "2026-10-26",
+    metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "ARCA" } }]);
+  expect(JSON.parse(String(ratio.pluginState.relativeAlerts))).toHaveLength(1);
+  expect(JSON.parse(String(ratio.pluginState.metricAlerts ?? "[]"))).toEqual([]);
+  expect(ratio.text).toContain("XLK ratio to SPY above 0.25 · on daily close, now 0.2434 at the 2026-10-26 daily close (the app alerts while it is running;");
+
+  const rrg = await add(["XLE", "rrg", "leading"]);
+  expect(rrg.error).toBeNull();
+  expect(rrg.stored).toMatchObject([{ symbol: "XLE", condition: "crosses", targetPrice: 0, lastDailyClose: "2026-10-23",
+    metric: { kind: "rrg", quadrant: "leading", benchmark: "SPY", benchmarkExchange: "ARCA" } }]);
+  expect(rrg.text).toContain("XLE RRG vs SPY enters Leading · on weekly close, now Neutral (strength 100.00, momentum 100.00) at the 2026-10-23 weekly close");
+
+  expect((await add(["XLE", "rs", "above", "100"])).error).toContain("alerts add XLK/SPY above 0.25, or alerts add XLE rrg leading");
+  expect((await add(["XLK/SPY", "above", "0.25", "--benchmark", "QQQ"])).error).toContain("--benchmark takes the listing an RRG alert is measured against");
+  expect((await add(["XLK/ZZZQQ9", "above", "0.25"])).error).toContain("Not a ticker: ZZZQQ9.");
 });

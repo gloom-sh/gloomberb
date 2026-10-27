@@ -13,14 +13,15 @@ test("daily reads share a settled window across polls, then refresh at the next 
   const provider = createTestDataProvider({
     getTickerFinancials: async () => { throw new Error("Daily rules must not load financials"); },
     getPriceHistory: async () => { throw new Error("Daily rules must not request a forming window"); },
-    getDetailedPriceHistory: async (_symbol, _exchange, _start, end) => { ends.push(end.toISOString().slice(0, 10)); return bars; },
+    // Gloom Cloud serves daily bars as "1d"; any other spelling was refused and left every rule waiting.
+    getDetailedPriceHistory: async (_symbol, _exchange, _start, end, barSize) => { ends.push(`${end.toISOString().slice(0, 10)} ${barSize}`); return bars; },
   });
   const read = (time: string, r = rule) => metricReadings(provider, Date.parse(time))(r);
   const first = await read("2026-10-23T20:30Z");
   expect(await read("2026-10-23T20:31Z")).toBe(first);
   expect(await read("2026-10-26T20:15Z")).toBe(first);
   expect((await read("2026-10-26T20:30Z")).day).toBe("2026-10-26");
-  expect(ends).toEqual(["2026-10-23", "2026-10-26"]);
+  expect(ends).toEqual(["2026-10-23 1d", "2026-10-26 1d"]);
   await read("2026-10-26T20:31Z", { ...rule, armedAt: 2 });
   expect(ends).toHaveLength(3);
 });

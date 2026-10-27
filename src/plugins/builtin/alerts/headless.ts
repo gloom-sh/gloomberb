@@ -1,4 +1,4 @@
-import { isDailyMetric, metricName } from "./metric-model";
+import { closeBasis, metricName, metricReadingText } from "./metric-model";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
@@ -54,15 +54,17 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "awayPercent", header: "Away", align: "right", format: percent, textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
   { key: "condition", header: "Trigger", format: (value, row) => {
     const metric = asAlert(row).metric;
-    return metric?.kind === "ma_cross" ? `Cross ${metric.direction}` : conditionLabel(value as AlertRule["condition"]);
+    return metric?.kind === "ma_cross" ? `Cross ${metric.direction}` : metric?.kind === "rrg" ? "Enters" : conditionLabel(value as AlertRule["condition"]);
   } },
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
+  // A measure's last reading in words: an RRG quadrant with the strength and momentum that place it.
+  { key: "reading", header: "Reading" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
   { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
-const PRICE_TEXT_COLUMNS = PRICE_COLUMNS.filter((column) => column.key !== "quoteSource" && column.key !== "lastCheckedAt");
+const PRICE_TEXT_COLUMNS = PRICE_COLUMNS.filter((column) => column.key !== "quoteSource" && column.key !== "lastCheckedAt" && column.key !== "reading");
 
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
@@ -98,13 +100,15 @@ const HISTORY_TEXT_COLUMNS = HISTORY_COLUMNS.filter((column) => column.key !== "
 function priceRow(alert: AlertRule): HeadlessPaneRow {
   const { lastQuoteProviderId: _provider, ...stored } = alert;
   const price = alert.lastCheckError ? null : alert.lastCheckedPrice;
-  const away = price == null || !Number.isFinite(price) || price === 0 ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
+  const away = price == null || !Number.isFinite(price) || price === 0 || alert.metric?.kind === "rrg" ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
   const quoted = !alert.lastCheckError;
+  const target = alert.lastCheckedTarget ?? alert.targetPrice;
   return {
     ...stored,
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
-    quoteSource: quoted ? alert.metric && isDailyMetric(alert.metric) ? "daily close" : quoteSourceWords(alert.lastQuoteSource) : null,
+    quoteSource: quoted ? alert.metric && closeBasis(alert.metric) || quoteSourceWords(alert.lastQuoteSource) : null,
+    reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target }) : null,
   };
 }
 

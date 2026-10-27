@@ -38,7 +38,7 @@ export interface AlertHistory {
 const KIND_LABELS: Record<string, string> = {
   catalyst: "Catalyst",
   price: "Price",
-  pe: "P/E", ps: "P/S", rsi: "RSI", ma_cross: "MA crossover", close_ma: "Close vs MA",
+  pe: "P/E", ps: "P/S", rsi: "RSI", ma_cross: "MA crossover", close_ma: "Close vs MA", rs_ratio: "Ratio", rrg: "RRG quadrant",
   breaking_news: "Breaking news",
   earnings: "Earnings",
   chat: "Chat",

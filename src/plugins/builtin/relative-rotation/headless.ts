@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRotation } from "./client";
-import { rotationInstruments, sectorRotationInstruments } from "./model";
+import { DEFAULT_ROTATION_BENCHMARK, rotationInstruments, sectorRotationInstruments } from "./model";
 
 /** Same rounding as the pane: ratios to 2 decimals, percentiles whole. */
 const fixed = (value: unknown, digits: number) =>
@@ -21,7 +21,7 @@ export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
       key: "benchmark",
       type: "string",
       description: "Benchmark listing.",
-      defaultValue: "SPY:NYSEARCA",
+      defaultValue: DEFAULT_ROTATION_BENCHMARK,
     },
     {
       key: "trail",
@@ -44,7 +44,7 @@ export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
   },
   async load(args, ctx) {
     const references = rotationInstruments(
-      String(args.options.benchmark ?? "SPY:NYSEARCA"),
+      String(args.options.benchmark ?? DEFAULT_ROTATION_BENCHMARK),
     );
     if (references.length !== 1) throw new Error("Choose one benchmark.");
     const instruments = args.symbols.length

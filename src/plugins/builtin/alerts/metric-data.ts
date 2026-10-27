@@ -5,7 +5,8 @@ import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { barSessionDay } from "../../../market-data/market/period-return";
-import { dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, type MetricReading } from "./metric-model";
+import { getPricePointTimestamp } from "../../../utils/price-history";
+import { dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, isRelativeMetric, type MetricReading } from "./metric-model";
 import type { AlertRule } from "./types";
 
 // Keep valuation fixtures in step with the delivery evaluator and the research panes.
@@ -21,10 +22,14 @@ export function valuationAlertValue(kind: "pe" | "ps", data: TickerFinancials): 
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-export function metricAvailabilityError(rule: AlertRule): string | null {
+const US_CALENDAR = "Daily technical alerts need a published US listing calendar; delivery is unavailable for this listing.";
+/** Why a rule's listings cannot be judged on settled closes: a benchmark is held to the same US calendar as the listing. */
+export function metricAvailabilityError(rule: AlertRule, now = Date.now()): string | null {
   if (!rule.metric || !isDailyMetric(rule.metric)) return null;
-  return getPublishedUsEquitySession(canonicalExchange(rule.exchange ?? ""), new Date().toISOString().slice(0, 10))
-    ? null : "Daily technical alerts need a published US listing calendar; delivery is unavailable for this listing.";
+  const today = new Date(now).toISOString().slice(0, 10);
+  if (!getPublishedUsEquitySession(canonicalExchange(rule.exchange ?? ""), today)) return US_CALENDAR;
+  return isRelativeMetric(rule.metric) && !getPublishedUsEquitySession(canonicalExchange(rule.metric.benchmarkExchange ?? ""), today)
+    ? `Relative strength alerts compare two US listings; ${rule.metric.benchmark} has no published US listing calendar here.` : null;
 }
 
 const dailyCaches = new WeakMap<AssetDataProvider, DailyMetricCache>();
@@ -48,23 +53,30 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
     }
     const exchange = canonicalExchange(rule.exchange ?? "");
     const session = (day: string) => getPublishedUsEquitySession(exchange, day);
-    if (!session(new Date(now).toISOString().slice(0, 10))) throw new Error("Daily technical alerts need a published US listing calendar; delivery is unavailable for this listing.");
+    const unavailable = metricAvailabilityError(rule, now);
+    if (unavailable) throw new Error(unavailable);
     const latest = latestSettledClose(now, session);
     const ruleKey = JSON.stringify([rule.id, rule.armedAt ?? rule.createdAt, key, rule.condition, rule.targetPrice, m]);
     return daily.read(ruleKey, latest.day, now, async () => {
-      const load = async () => {
+      const load = async (symbol: string, venue: string) => {
         // An explicit end at the settled session avoids today's forming-bar quote read.
         const end = new Date(`${latest.day}T23:59:59Z`);
         const start = new Date(Date.parse(latest.day) - 366 * 86_400_000);
-        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(rule.symbol, exchange, start, end, "1 day", { cacheMode: "current" })).points;
-        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(rule.symbol, exchange, start, end, "1 day", { cacheMode: "current" });
+        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(symbol, venue, start, end, "1d", { cacheMode: "current" })).points;
+        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(symbol, venue, start, end, "1d", { cacheMode: "current" });
         throw new Error("Completed daily history is unavailable from this connection.");
       };
-      const request = history.get(key) ?? load();
-      history.set(key, request);
-      const points = await request;
-      const bars = points.filter(point => !point.partial).map(point => ({ date: barSessionDay(point.date.getTime(), exchange), close: point.close }));
-      return dailyMetricReading(rule, bars, now, session);
+      const completed = async (symbol: string, venue: string) => {
+        const listing = `${symbol}|${venue}`;
+        const request = history.get(listing) ?? load(symbol, venue);
+        history.set(listing, request);
+        // A saved copy carries its dates as text.
+        return (await request).filter(point => !point.partial).map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
+      };
+      const bars = await completed(rule.symbol, exchange);
+      // RS ratios and RRG quadrants read the benchmark's own completed bars, never a quote.
+      const benchmark = isRelativeMetric(m) ? await completed(m.benchmark, canonicalExchange(m.benchmarkExchange ?? "")) : undefined;
+      return dailyMetricReading(rule, bars, now, session, benchmark);
     });
   };
 }

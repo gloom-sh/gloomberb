@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { dailyMetricReading, metricTrigger, type AlertMetric, type MetricRule } from "./metric-model";
+import { dailyMetricReading, metricTrigger, rotationQuadrant, rotationSeries, settledWeekCloses, ROTATION_ALERT_WEEKS, type AlertMetric, type MetricRule } from "./metric-model";
+import { buildRotation } from "../relative-rotation/model";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { valuationAlertValue } from "./metric-data";
 import { parseAlertAddArgs } from "./cli";
@@ -101,6 +102,7 @@ test("CLI and form parse the trader examples identically and isolate their stora
   for (const [text, kind] of [
     ["AAPL P/E below 25", "pe"], ["AAPL P/S above 8", "ps"], ["NVDA RSI(14) under 30", "rsi"],
     ["SPY 50-day MA crosses above the 200-day", "ma_cross"], ["TSLA closes below its 200-day", "close_ma"],
+    ["XLK/SPY ratio crosses 0.25", "rs_ratio"], ["XLE rrg leading", "rrg"],
   ] as const) {
     const parsed = parseAlertAddArgs(text!.split(" "), undefined);
     expect(parsed.kind).toBe("metric");
@@ -112,7 +114,8 @@ test("CLI and form parse the trader examples identically and isolate their stora
     expect(saved.alerts).toBe("[]");
     expect(readLevelAlertStores(key => saved[key]).alerts[0]?.metric).toEqual(parsed.metric);
   }
-  for (const text of ["AAPL pe below -25", "NVDA rsi(1) below 30", "NVDA rsi(14) below 101", "SPY ma(200) crosses above ma(50)", "SPY ma(50) above ma(200)", "TSLA closes below ma(201)"]) {
+  for (const text of ["AAPL pe below -25", "NVDA rsi(1) below 30", "NVDA rsi(14) below 101", "SPY ma(200) crosses above ma(50)", "SPY ma(50) above ma(200)", "TSLA closes below ma(201)",
+    "XLK/XLK ratio above 1", "XLK/SPY ratio above -1", "XLE rrg sideways", "SPY rrg leading", "XLE/SPY rrg leading"]) {
     expect(() => parseAlertAddArgs(text.split(" "), undefined)).toThrow();
   }
 });
@@ -144,4 +147,84 @@ test("metric model and valuation fixtures preserve delivery parity", async () =>
     expect(valuationAlertValue(kind, fixture.data as unknown as TickerFinancials), `${fixture.name} ${kind}`).toBe(fixture[kind]);
   }
   for (const fixture of parity.barDays) expect(barSessionDay(Date.parse(fixture.stamp), fixture.exchange)).toBe(fixture.day);
+});
+
+const pairRule = (condition: AlertRule["condition"], targetPrice: number): AlertRule => ({ id: "pair", symbol: "XLK", exchange: "ARCA", condition, targetPrice,
+  metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "ARCA" }, status: "active", createdAt: Date.parse("2026-01-01") });
+
+test("a ratio divides both listings' own closes on each session, never bridges a benchmark gap, and a crossing fires once", () => {
+  const own = bars([24, 24.5, 26]), spy = bars([100, 100, 100]);
+  const day = own.at(-1)!.date, now = after(day);
+  const crosses = pairRule("crosses", 0.25);
+  const cross = dailyMetricReading(crosses, own, now, calendar, spy);
+  expect(cross).toMatchObject({ value: 0.26, previousValue: 0.245, target: 0.25, day });
+  expect(metricTrigger(crosses, cross)).toBe("up");
+  expect(metricTrigger({ ...crosses, lastDailyClose: day }, cross)).toBeNull();
+  expect(metricTrigger({ ...crosses, armedAt: cross.at }, cross)).toBeNull();
+  expect(metricTrigger(crosses, dailyMetricReading(crosses, bars([24, 26, 24]), now, calendar, spy))).toBe("down");
+  expect(metricTrigger(crosses, dailyMetricReading(crosses, bars([24, 26, 27]), now, calendar, spy))).toBeNull();
+  expect(metricTrigger(pairRule("above", 0.25), cross)).toBe("above");
+  expect(metricTrigger(pairRule("below", 0.25), cross)).toBeNull();
+  // The benchmark's missing session is not filled from the day before, and its latest close is waited for.
+  expect(() => dailyMetricReading(crosses, own, now, calendar, spy.filter((_, i) => i !== 1))).toThrow(`Daily history is missing ${own[1]!.date} for SPY.`);
+  expect(() => dailyMetricReading(crosses, own, now, calendar, spy.slice(0, -1))).toThrow(`Waiting for the ${day} daily close of SPY.`);
+  expect(() => dailyMetricReading(crosses, own, now, calendar)).toThrow("SPY");
+});
+
+test("an RRG alert reads RRG's own weekly strength and momentum, judges only settled weeks, and fires on entering the quadrant", () => {
+  // A ratio that rotates through every quadrant: constant within each week, on every published session.
+  const days: string[] = [];
+  for (let time = Date.parse("2026-01-05"); time <= Date.parse("2026-09-30"); time += 86_400_000) {
+    const date = new Date(time).toISOString().slice(0, 10);
+    if (calendar(date)?.kind === "session") days.push(date);
+  }
+  const week = (date: string) => Math.floor((Date.parse(date) - Date.parse("2026-01-05")) / (7 * 86_400_000));
+  const ratio = (date: string) => 1 + 0.05 * Math.sin((2 * Math.PI * week(date)) / 20);
+  const spy = days.map((date) => ({ date, close: 100 }));
+  const xle = days.map((date) => ({ date, close: 100 * ratio(date) }));
+  // The first week after the warm-up that enters Leading, found on the weekly series RRG plots.
+  const fridays = [...new Set(days.map((date) => week(date)))].map((index) => new Date(Date.parse("2026-01-09") + index * 7 * 86_400_000).toISOString().slice(0, 10));
+  const series = rotationSeries(fridays.map((friday) => 1 + 0.05 * Math.sin((2 * Math.PI * week(friday)) / 20)));
+  const quadrants = series.map(({ strength, momentum }) => rotationQuadrant(strength, momentum));
+  const entered = quadrants.findIndex((quadrant, index) => index >= ROTATION_ALERT_WEEKS && quadrant === "Leading" && quadrants[index - 1] !== "Leading");
+  expect(entered).toBeGreaterThan(0);
+  const friday = fridays[entered]!;
+  const session = calendar(friday);
+  if (session?.kind !== "session") throw new Error("fixture needs a Friday session");
+  const r: AlertRule = { id: "rrg", symbol: "XLE", exchange: "ARCA", condition: "crosses", targetPrice: 0, status: "active", createdAt: Date.parse("2026-01-01"),
+    metric: { kind: "rrg", quadrant: "leading", benchmark: "SPY", benchmarkExchange: "ARCA" } };
+  // RRG on the Saturday sees the same completed week.
+  const saturday = new Date(Date.parse(friday) + 86_400_000 + 12 * 3_600_000);
+  const point = (rows: { date: string; close: number }[]) => rows.map(({ date, close }) => ({ date, close }));
+  const rotation = buildRotation(
+    { instrument: { symbol: "SPY", exchange: "NYSEARCA", label: "SPY" }, currency: "USD", points: point(spy), asOf: null, stale: false, error: null },
+    [{ instrument: { symbol: "XLE", exchange: "NYSEARCA", label: "XLE" }, currency: "USD", points: point(xle), asOf: null, stale: false, error: null }],
+    6, saturday,
+  ).rows[0]!;
+  const reading = dailyMetricReading(r, xle, saturday.getTime(), calendar, spy);
+  expect(reading).toMatchObject({ day: friday, at: session.close, value: rotation.strength!, target: rotation.momentum! });
+  expect(rotation.quadrant).toBe("Leading");
+  expect(metricTrigger(r, reading)).toBe("up");
+  // The Friday close counts only once settled; until then the week before is the latest, and it was not yet Leading.
+  const forming = dailyMetricReading(r, xle, session.close + 29 * 60_000, calendar, spy);
+  expect(forming.day).toBe(settledWeekCloses(session.close - 86_400_000, calendar, 1)[0]!.day);
+  expect(metricTrigger(r, forming)).toBeNull();
+  expect(dailyMetricReading(r, xle, session.close + 30 * 60_000, calendar, spy).day).toBe(friday);
+  // A week already inside the quadrant, an arming after the close, and another quadrant do not fire.
+  const next = dailyMetricReading(r, xle, saturday.getTime() + 7 * 86_400_000, calendar, spy);
+  expect(rotationQuadrant(next.value, next.target)).toBe("Leading");
+  expect(metricTrigger(r, next)).toBeNull();
+  expect(metricTrigger({ ...r, armedAt: session.close + 60_000 }, reading)).toBeNull();
+  expect(metricTrigger({ ...r, metric: { ...r.metric as Extract<AlertMetric, { kind: "rrg" }>, quadrant: "lagging" } }, reading)).toBeNull();
+  // A missing weekly close breaks the reading instead of borrowing Thursday's.
+  expect(() => dailyMetricReading(r, xle.filter((bar) => bar.date !== friday), saturday.getTime(), calendar, spy)).toThrow(`Waiting for the ${friday} weekly close.`);
+  const earlier = fridays[entered - 3]!;
+  expect(() => dailyMetricReading(r, xle, saturday.getTime(), calendar, spy.filter((bar) => bar.date !== earlier))).toThrow(`Daily history is missing ${earlier} for SPY.`);
+});
+
+test("relative rules keep a list of their own, so clients that read metricAlerts never meet a measure they cannot read", () => {
+  const saved = writeLevelAlertStores([pairRule("above", 0.25), rule({ kind: "rsi", period: 14 })]);
+  expect(JSON.parse(saved.metricAlerts!).map((alert: AlertRule) => alert.id)).toEqual(["fixture"]);
+  expect(JSON.parse(saved.relativeAlerts!).map((alert: AlertRule) => alert.id)).toEqual(["pair"]);
+  expect(readLevelAlertStores((key) => key === "metricAlerts" ? saved.relativeAlerts : saved[key]).errors.metricAlerts).toContain("wrong list");
 });

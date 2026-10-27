@@ -1247,6 +1247,7 @@ are bounded to four concurrent calls; the app caches the assembled result for
 30 minutes. Three years of daily closes support the warmup and one-year ranks.
 
 This is a transparent relative-strength model, not the proprietary JdK indices.
+RRG alerts (`alerts add XLE rrg leading`) read the same strength and momentum on the latest settled weekly close.
 At each completed week, let R be the asset close divided by the benchmark close.
 Strength is `100 * R / SMA13(R)`; momentum is `100 * strength / strength[4 weeks ago]`.
 The 100/100 intersection defines Leading (both above), Weakening (strength above,

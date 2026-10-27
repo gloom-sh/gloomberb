@@ -1,4 +1,4 @@
-import { METRIC_ALERTS_KEY } from "./metric-model";
+import { METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, metricAlertsKey } from "./metric-model";
 import type { AppConfig } from "../../../types/config";
 import type { GloomPluginContext } from "../../../types/plugin";
 import {
@@ -21,8 +21,9 @@ export async function saveAlerts(
   scope: "all" | "price" | "metric" = "all",
 ): Promise<void> {
   const stores = readLevelAlertStores((key) => ctx.configState.get<unknown>(key));
-  const entries = Object.entries(writeLevelAlertStores(alerts)).filter(([key]) => scope === "all"
-    || key === (scope === "price" ? ALERTS_KEY : METRIC_ALERTS_KEY));
+  // An unreadable list is never written over; one that has nothing to write does not hold up the others.
+  const entries = Object.entries(writeLevelAlertStores(alerts)).filter(([key, value]) => (scope === "all"
+    || (scope === "price" ? key === ALERTS_KEY : key !== ALERTS_KEY)) && !(stores.errors[key] && value === "[]"));
   for (const [key] of entries) if (stores.errors[key]) throw new Error(stores.errors[key]!);
   for (const [key, value] of entries) {
     if (ctx.configState.get<unknown>(key) !== value) await ctx.configState.set(key, value);
@@ -46,17 +47,20 @@ export function readAlertStores(config: AppConfig) {
 export function readLevelAlertStores(get: (key: string) => unknown): { alerts: AlertRule[]; error: string | null; errors: Record<string, string | null> } {
   const alerts: AlertRule[] = [];
   const errors: Record<string, string | null> = {};
-  for (const key of [ALERTS_KEY, METRIC_ALERTS_KEY]) {
+  for (const key of LEVEL_ALERT_KEYS) {
     const raw = get(key);
     let error = readAlertsStoreError(raw);
     const rows = error ? [] : deserializeAlerts(raw);
-    if (rows.some(a => Boolean(a.metric) !== (key === METRIC_ALERTS_KEY))) error = "Saved alerts contain a rule in the wrong list. Original data has been kept.";
-    errors[key] = key === METRIC_ALERTS_KEY ? error?.replaceAll("price alerts", "valuation and technical alerts") ?? null : error;
+    if (rows.some(a => levelAlertStoreKey(a) !== key)) error = "Saved alerts contain a rule in the wrong list. Original data has been kept.";
+    errors[key] = key === METRIC_ALERTS_KEY ? error?.replaceAll("price alerts", "valuation and technical alerts") ?? null
+      : key === RELATIVE_ALERTS_KEY ? error?.replaceAll("price alerts", "relative strength alerts") ?? null : error;
     if (!error) alerts.push(...rows);
   }
   return { alerts, errors, error: Object.values(errors).filter(Boolean).join(" ") || null };
 }
 export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, string> {
-  return { [ALERTS_KEY]: serializeAlerts(alerts.filter(a => !a.metric)),
-    [METRIC_ALERTS_KEY]: serializeAlerts(alerts.filter(a => a.metric)) };
+  return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key))]));
 }
+/** Price, valuation/technical and relative strength rules each keep their own synced list. */
+const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY] as const;
+export const levelAlertStoreKey = (alert: Pick<AlertRule, "metric">): string => alert.metric ? metricAlertsKey(alert.metric) : ALERTS_KEY;

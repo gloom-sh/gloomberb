@@ -47,7 +47,7 @@ function sameAlert(entry: FiredAlert, item: AlertHistoryItem): boolean {
   if (item.kind !== entry.kind) return false;
   const apart = Math.abs(Date.parse(item.deliveredAt) - Date.parse(entry.firedAt));
   if (!Number.isFinite(apart)) return false;
-  if (entry.kind === "price" || ["pe", "ps", "rsi", "ma_cross", "close_ma"].includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
+  if (entry.kind === "price" || ["pe", "ps", "rsi", "ma_cross", "close_ma", "rs_ratio", "rrg"].includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
   const symbol = upper(item.data?.symbol);
   return !!symbol && symbol === upper(entry.symbol) && apart <= EVENT_MATCH_MS;
 }

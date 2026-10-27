@@ -3,6 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import { rotationCache } from "./client";
 import { rotationHeadless } from "./headless";
 import { RelativeRotationPane } from "./pane";
+import { DEFAULT_ROTATION_BENCHMARK } from "./model";
 
 export const relativeRotationModule: PluginModule = {
   panes: [
@@ -41,7 +42,7 @@ export const relativeRotationModule: PluginModule = {
             key: "benchmark",
             label: "Benchmark",
             type: "text",
-            placeholder: "SPY:NYSEARCA",
+            placeholder: DEFAULT_ROTATION_BENCHMARK,
           },
           {
             key: "trail",
