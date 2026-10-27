@@ -35,6 +35,25 @@ describe("history freshness follows bar cadence", () => {
   });
 });
 
+describe("history freshness across a midday break", () => {
+  // 2026-09-09 is a Wednesday; SSE pauses 03:30-05:00 UTC (11:30-13:00 in
+  // Shanghai). The last 5-minute bar prints at 03:30Z and no bar follows
+  // until the afternoon opens.
+  const points = (dates: string[]) => dates.map((date) => ({ date: new Date(date), close: 12.5 }));
+  const fiveMinute = { exchange: "SSE", intervalMs: priceHistoryIntervalMs("5min") };
+
+  test("holds the morning's last bar current through the break and its reopening margin", () => {
+    const morningLast = points(["2026-09-09T02:00:00Z", "2026-09-09T03:30:00Z"]);
+    expect(isPriceHistoryStaleForCurrentWindow(morningLast, Date.parse("2026-09-09T04:15:00Z"), fiveMinute)).toBe(false);
+    expect(isPriceHistoryStaleForCurrentWindow(morningLast, Date.parse("2026-09-09T05:04:00Z"), fiveMinute)).toBe(false);
+  });
+
+  test("still rejects a bar the morning stopped before, and the morning's last once trading resumes", () => {
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T02:00:00Z"]), Date.parse("2026-09-09T04:15:00Z"), fiveMinute)).toBe(true);
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T03:30:00Z"]), Date.parse("2026-09-09T06:30:00Z"), fiveMinute)).toBe(true);
+  });
+});
+
 describe("normalizePriceHistory", () => {
   test("drops poisoned cached history when every timestamp collapses to the same value", () => {
     const history = normalizePriceHistory([
