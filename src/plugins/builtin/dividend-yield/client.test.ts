@@ -7,6 +7,7 @@ import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 afterEach(() => setHttpFetchTransport(null));
 
@@ -87,6 +88,62 @@ describe("cash distribution calculations", () => {
     expect(url.pathname).toBe("/market/dividends");
     expect(url.searchParams.get("symbol")).toBe("SAP:XFRA");
     expect(url.searchParams.get("exchange")).toBe("NASDAQ");
+  });
+
+  test("an exchange-qualified listing reads that listing's history, as quote and events read it", async () => {
+    const requested: URL[] = [];
+    setHttpFetchTransport(async (url) => {
+      const request = new URL(url);
+      requested.push(request);
+      return Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+        symbol: request.searchParams.get("symbol"), currency: request.searchParams.get("exchange") === "LSE" ? "GBp" : "USD",
+        coverage: { dividends: "available" }, dividends: [{ exDate: "2026-08-06", amount: 39.82 }], splits: [], earnings: [],
+      } } });
+    });
+    const quotes: string[] = [];
+    const context = {
+      // As `fn` resolves a typed key: `ULVR:LSE` is ULVR on LSE.
+      resolveInstrument: async (key: string) => parsePublicTickerKey(key),
+      marketData: { getQuote: async (symbol: string, exchange: string) => {
+        quotes.push(`${symbol}|${exchange}`);
+        throw new Error("Fixture quote unavailable");
+      } },
+    } as unknown as HeadlessPaneContext;
+    const definition = createDividendYieldHeadless();
+    const london = await definition.load({ rawArgument: "ULVR:LSE", argument: "ULVR:LSE", symbols: ["ULVR:LSE"], options: {} }, context);
+    await definition.load({ rawArgument: "AAPL:NASDAQ", argument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options: {} }, context);
+    expect(requested.map((url) => [url.searchParams.get("symbol"), url.searchParams.get("exchange")]))
+      .toEqual([["ULVR", "LSE"], ["AAPL", "NASDAQ"]]);
+    // The reference quote and the bond-fund check both read the listing.
+    expect(new Set(quotes)).toEqual(new Set(["ULVR|LSE", "AAPL|NASDAQ"]));
+    // The pence history is read in pounds.
+    expect(london.sections.find((section) => section.title === "Dividend history")?.rows)
+      .toMatchObject([{ exDate: "2026-08-06", amount: 0.3982, currency: "GBP" }]);
+  });
+
+  test("growth compares only years that hold every payment the cadence pays", () => {
+    const late = new Date("2026-10-26T12:00:00Z");
+    // AZN: semi-annual, a larger second interim in February, and no August 2026 interim in the source.
+    const azn = ["2022-02-24", "2022-08-11", "2023-02-23", "2023-08-10", "2024-02-22", "2024-08-09", "2025-02-21", "2025-08-08", "2026-02-19"]
+      .map((date) => payment(date, date.slice(5, 7) === "02" ? 2 : 1));
+    const missingInterim = buildDividendMetrics(azn, null, 100, { now: late });
+    expect(missingInterim).toMatchObject({
+      growth1Y: null, growth1YPayments: { counted: 1, expected: 2, cadence: "semi-annual" },
+      growth3Y: null, growth3YPayments: { counted: 1, expected: 2, cadence: "semi-annual" },
+    });
+    const result = projectDividendYieldHeadless({ payments: azn, metrics: missingInterim, price: 100, currency: "USD" },
+      { rawArgument: "AZN", argument: "AZN", symbols: ["AZN"], options: {} });
+    expect(result.sections[0]?.entries?.find((entry) => entry.label === "1Y Cash Growth"))
+      .toMatchObject({ value: null, formatted: "n/a: 1 of 2 payments" });
+
+    // With the interim, both years are whole and the growth is measured.
+    const whole = buildDividendMetrics([...azn, payment("2026-08-07", 1)], null, 100, { now: late });
+    expect(whole.growth1Y).toBeCloseTo(0, 12);
+    expect(whole.growth1YPayments).toBeUndefined();
+    // A hole a year earlier is named by the year it ends.
+    const earlierHole = buildDividendMetrics([...azn.filter((entry) => entry.exDate.toISOString().slice(0, 10) !== "2025-08-08"), payment("2026-08-07", 1)],
+      null, 100, { now: late });
+    expect(earlierHole).toMatchObject({ growth1Y: null, growth1YPayments: { counted: 1, expected: 2, yearTo: "2025-10-26" } });
   });
 
   test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {

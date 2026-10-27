@@ -11,6 +11,12 @@ export interface DividendPayment {
   type: "cash" | "special" | "stock" | "unknown";
 }
 
+/** A short year a growth figure would compare: its payments, and the day it ends (absent for the trailing year). */
+export interface GrowthPayments extends TrailingPayments {
+  /** YYYY-MM-DD; absent when the short year is the trailing one. */
+  yearTo?: string;
+}
+
 export interface DividendMetrics {
   trailingYield: number | null;
   forwardYield: number | null;
@@ -27,6 +33,10 @@ export interface DividendMetrics {
   trailingPayments?: TrailingPayments | null;
   growth1Y: number | null;
   growth3Y: number | null;
+  /** Set when one of the two years 1Y growth compares holds fewer payments than the cadence pays: no growth, and how many it holds. */
+  growth1YPayments?: GrowthPayments | null;
+  /** The same for the two years the 3Y rate compares. */
+  growth3YPayments?: GrowthPayments | null;
   paymentFrequency: DistributionCadence | null;
   lastExDividendDate: Date | null;
   /** Announced ex-date after now, from the summary or a future-dated history record. */

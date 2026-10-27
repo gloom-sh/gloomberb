@@ -6,8 +6,8 @@ import type {
 } from "../../../types/plugin";
 import { fetchDividendData, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
-import type { DividendPayment } from "./types";
-import { formatDividendYield, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText } from "./view";
+import type { DividendPayment, GrowthPayments } from "./types";
+import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { forwardDividendBasis, noCurrentDividend, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
@@ -59,10 +59,12 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
     let currentPrice: number | null = null;
     let currentPriceCurrency: string | undefined;
     let referenceQuote: Quote | undefined;
+    // `ULVR:LSE` is ULVR on LSE, as quote and events read it: the history is asked for that listing, not for a symbol `ULVR:LSE`.
     const instrument = await context.resolveInstrument?.(symbol);
+    const listingSymbol = instrument?.symbol ?? symbol;
     const exchange = instrument?.exchange ?? "";
     try {
-      const quote = await context.marketData.getQuote(symbol, exchange);
+      const quote = await context.marketData.getQuote(listingSymbol, exchange);
       // The regular session's price: after the close, the close rather than an after-hours print.
       currentPrice = regularSessionValuationPrice(quote);
       currentPriceCurrency = quote.currency;
@@ -71,7 +73,7 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
       logFailure("dividend-yield.headless", "Read dividend reference quote failed")(error);
       currentPrice = null;
     }
-    const data = await fetchDividendData(symbol, currentPrice, exchange, currentPriceCurrency);
+    const data = await fetchDividendData(listingSymbol, currentPrice, exchange, currentPriceCurrency);
     if (referenceQuote && dividendReferencePrice(currentPrice, currentPriceCurrency, data.currency ?? "") != null) {
       Object.assign(data, dividendQuotePriceMetadata(referenceQuote));
     }
@@ -80,7 +82,7 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadBond(symbol, context) {
     const instrument = await context.resolveInstrument?.(symbol);
     const exchange = instrument?.exchange ?? "";
-    const quote = await context.marketData.getQuote(symbol, exchange)
+    const quote = await context.marketData.getQuote(instrument?.symbol ?? symbol, exchange)
       .catch((error) => {
         logFailure("dividend-yield.headless", "Read bond fund classification quote failed")(error);
         throw new BondClassificationError("Bond fund quote check failed");
@@ -91,6 +93,11 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
   },
   loadTreasury: (context) => loadTreasuryTenors(context.apiClient),
 };
+
+/** A growth figure, or what its short year holds: "n/a: 1 of 2 payments". */
+function growthText(growth: number | null, payments: GrowthPayments | null | undefined): string {
+  return growth == null && payments ? growthPaymentsText(payments) : formatPercent(growth ?? undefined);
+}
 
 function dateEntry(label: string, date: Date | null) {
   return { label, value: date, formatted: date ? date.toISOString().slice(0, 10) : "—" };
@@ -165,8 +172,8 @@ export function projectDividendYieldHeadless(
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
           { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
           { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
-          { label: "1Y Cash Growth", value: roundedRatio(metrics.growth1Y), formatted: formatPercent(metrics.growth1Y ?? undefined) },
-          { label: "3Y Cash CAGR", value: roundedRatio(metrics.growth3Y), formatted: formatPercent(metrics.growth3Y ?? undefined) },
+          { label: "1Y Cash Growth", value: roundedRatio(metrics.growth1Y), formatted: growthText(metrics.growth1Y, metrics.growth1YPayments) },
+          { label: "3Y Cash CAGR", value: roundedRatio(metrics.growth3Y), formatted: growthText(metrics.growth3Y, metrics.growth3YPayments) },
           { label: "Frequency", value: metrics.paymentFrequency },
           dateEntry("Last ex-dividend", metrics.lastExDividendDate),
           dateEntry("Next ex-dividend", metrics.nextExDividendDate),
@@ -205,6 +212,9 @@ export function projectDividendYieldHeadless(
       yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
       // Set when a regular payer's year holds fewer payments than its cadence pays (a gap in its history): the yield counts only these.
       trailingPayments: metrics.trailingPayments ?? null,
+      // Set when a year a growth figure compares holds fewer payments than the cadence pays: that figure is null.
+      growth1YPayments: metrics.growth1YPayments ?? null,
+      growth3YPayments: metrics.growth3YPayments ?? null,
       forwardRateAsOf: metrics.forwardRateAsOf,
       // Declared and unpaid, apart from the paid history the table and every figure read.
       declaredDividends: data.declared ?? [],

@@ -1,4 +1,4 @@
-import type { DividendPayment } from "./types";
+import type { DividendPayment, GrowthPayments } from "./types";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
@@ -16,6 +16,16 @@ export const PAYOUT_NOT_MEANINGFUL = formatPriceEarnings(NOT_MEANINGFUL);
 /** How many payments a trailing yield counts, for a regular payer whose year holds fewer than its cadence pays: "9 of 12 payments". */
 export function trailingPaymentsText(payments: TrailingPayments | null | undefined, { cadence = false }: { cadence?: boolean } = {}): string | null {
   return payments ? `${payments.counted} of ${payments.expected} ${cadence ? `${payments.cadence} ` : ""}payments` : null;
+}
+
+/** How many payments a growth figure's short year holds: "1 of 2 payments", naming an earlier year by its end. */
+export function growthPaymentsDetail(payments: GrowthPayments): string {
+  return `${payments.counted} of ${payments.expected} payments${payments.yearTo ? ` in the year to ${payments.yearTo}` : ""}`;
+}
+
+/** What a growth figure reads when one of its years is short: "n/a: 1 of 2 payments". */
+export function growthPaymentsText(payments: GrowthPayments): string {
+  return `n/a: ${growthPaymentsDetail(payments)}`;
 }
 
 /** Cash history does not contain historical share prices, so cannot establish historical yields. */

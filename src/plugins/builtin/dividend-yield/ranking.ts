@@ -1,7 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { formatPercent } from "../../../utils/format";
 import type { DividendData } from "./client";
-import { formatDividendYield, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
+import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
 
@@ -99,6 +99,9 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         payoutNotMeaningful: metrics.payoutNotMeaningful === true,
         growth1Y: roundedRatio(metrics.growth1Y),
         growth3Y: roundedRatio(metrics.growth3Y),
+        // Set when a year the figure compares is short of the cadence's payments: the figure is then n/a.
+        ...metrics.growth1YPayments ? { growth1YPayments: growthPaymentsDetail(metrics.growth1YPayments) } : {},
+        ...metrics.growth3YPayments ? { growth3YPayments: growthPaymentsDetail(metrics.growth3YPayments) } : {},
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
@@ -119,7 +122,9 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
 }
 
 const ratio = (value: unknown) => formatDividendYield(typeof value === "number" ? value : null);
-const growth = (value: unknown) => formatPercent(typeof value === "number" ? value : undefined);
+/** A growth figure, or n/a when one of its years is short (the row's `<key>Payments`). */
+const growth = (key: "growth1Y" | "growth3Y") => (value: unknown, row: Record<string, unknown>) =>
+  typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
 const day = (value: unknown) => typeof value === "string" && value ? value : "—";
 
 const RANKING_COLUMNS: HeadlessPaneColumn[] = [
@@ -133,10 +138,10 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL.toLowerCase() : ratio(value),
     textFormat: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
     description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS; N/M when that EPS is zero or negative." },
-  { key: "growth1Y", header: "1Y growth", align: "right", format: growth,
-    description: "Trailing twelve-month cash per share against a year earlier." },
-  { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth,
-    description: "Compound annual growth of trailing twelve-month cash per share over three years." },
+  { key: "growth1Y", header: "1Y growth", align: "right", format: growth("growth1Y"),
+    description: "Trailing twelve-month cash per share against a year earlier; n/a when either year holds fewer payments than the cadence pays." },
+  { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"),
+    description: "Compound annual growth of trailing twelve-month cash per share over three years; n/a when either year holds fewer payments than the cadence pays." },
   { key: "lastExDate", header: "Last ex", format: day, shrink: false },
   { key: "payDate", header: "Pay date", format: day, shrink: false, stackPriority: 2,
     description: "Pay date of the next declared distribution; past distributions carry ex-dates only." },

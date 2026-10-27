@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { DividendSummary } from "../../../api-client/market-discovery";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
-import type { DividendMetrics, DividendPayment } from "./types";
+import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { cashDistribution, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate, trailingPaymentShortfall } from "../../../utils/trailing-dividend";
@@ -155,9 +155,6 @@ export function buildDividendMetrics(
   const statedRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
   const statedAsOf = statedRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
     ? quoteFields!.forwardRateAsOf! : null;
-  const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
-  const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
-
   // A reported ex-date can be the latest one or an announced one; keep them apart.
   const reportedExDate = reportedDividendDate(quoteFields?.exDividendDate ?? null);
   const pastExDates = payments.filter((payment) => payment.exDate <= now).map((payment) => payment.exDate.getTime());
@@ -181,6 +178,8 @@ export function buildDividendMetrics(
       .filter((day): day is string => !!day).sort().at(-1), { exDates: null, declared }, now);
   const forwardRate = lapse ? null : statedRate;
   const forwardRateAsOf = lapse ? null : statedAsOf;
+  const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
+  const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
 
   // A payout over zero or negative earnings (ECC's 2000% beside an EPS of -1.30) is not a payout, whatever the source states.
   const payoutNotMeaningful = typeof quoteFields?.trailingEps === "number" && Number.isFinite(quoteFields.trailingEps) && quoteFields.trailingEps <= 0;
@@ -197,8 +196,10 @@ export function buildDividendMetrics(
     payoutRatio: payoutNotMeaningful ? null : quoteFields?.payoutRatio ?? null,
     payoutNotMeaningful,
     trailingPayments,
-    growth1Y,
-    growth3Y,
+    growth1Y: growth1Y?.growth ?? null,
+    growth3Y: growth3Y?.growth ?? null,
+    ...(growth1Y?.shortfall ? { growth1YPayments: growth1Y.shortfall } : {}),
+    ...(growth3Y?.shortfall ? { growth3YPayments: growth3Y.shortfall } : {}),
     paymentFrequency: options.historyAvailable !== false ? inferFrequency(eligible, now) : null,
     lastExDividendDate,
     nextExDividendDate,
@@ -214,14 +215,27 @@ export function repriceDividendMetrics(metrics: DividendMetrics, price: number |
   };
 }
 
-function computeGrowth(payments: DividendPayment[], years: number, now: Date): number | null {
+/**
+ * Cash growth between the trailing year and the one `years` before it, only
+ * when each holds every payment the cadence pays: a year with a hole in its
+ * history (AZN's missing August interim) measures the hole, not a cut, so it
+ * has no growth and says how many payments it holds. A year with none is a
+ * suspension, which still reads as a full decline.
+ */
+function computeGrowth(payments: DividendPayment[], years: number, now: Date): { growth: number | null; shortfall?: GrowthPayments } | null {
   const priorEnd = calendarMonthsBefore(now, 12 * years);
   const priorStart = calendarMonthsBefore(priorEnd, 12);
   // A new fund's partial first year is not a full-year growth baseline.
   if (!payments.some((payment) => payment.exDate <= priorStart)) return null;
+  for (const end of [now, priorEnd]) {
+    const short = trailingPaymentShortfall(payments, end);
+    if (short && short.counted > 0) {
+      return { growth: null, shortfall: { ...short, ...end === now ? {} : { yearTo: end.toISOString().slice(0, 10) } } };
+    }
+  }
   const recent = trailingCashAt(payments, now);
   const prior = trailingCashAt(payments, priorEnd);
-  return prior > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
+  return { growth: prior > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null };
 }
 
 function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {

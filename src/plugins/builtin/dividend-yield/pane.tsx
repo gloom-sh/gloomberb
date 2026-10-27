@@ -22,6 +22,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { forwardDividendNote, lastPaidNote, NO_CURRENT_DIVIDEND } from "../../../utils/forward-dividend";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
@@ -30,7 +31,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -39,7 +40,7 @@ import {
   type DividendColumnId,
   type DividendSortPreference,
 } from "./model";
-import type { DividendMetrics } from "./types";
+import type { DividendMetrics, GrowthPayments } from "./types";
 import { dividendPriceStatus, dividendPriceTime, dividendQuotePriceMetadata } from "./reference-price";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
@@ -55,6 +56,14 @@ function formatRate(value: number | null, currency: string): string {
 function formatGrowth(value: number | null): string {
   if (value == null) return "—";
   return formatPercentRaw(value * 100);
+}
+
+/** A growth figure, or "n/a" with how many payments its short year holds. */
+function growthItem(id: string, label: string, growth: number | null, payments: GrowthPayments | null | undefined): StatItem {
+  if (growth == null && payments) {
+    return { id, label, value: "n/a", detail: growthPaymentsDetail(payments) };
+  }
+  return { id, label, value: formatGrowth(growth), color: priceColor(growth ?? 0) };
 }
 
 function formatDate(date: Date | null): string {
@@ -108,8 +117,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
     { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
-    { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
-    { id: "cagr-3y", label: "3Y CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
+    growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments),
+    growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments),
     { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
     { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
@@ -163,7 +172,11 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const fundSymbol = ticker && resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
   const bond = useFundFacts(fundSymbol).data?.payload?.bond ?? null;
   const quoteCurrency = financials?.quote?.currency;
-  const exchange = ticker?.metadata.exchange ?? "";
+  // The listing's own symbol beside its venue: a `ULVR:LSE` key is ULVR on LSE, never a symbol of that name.
+  const listingKey = ticker?.metadata.ticker ?? symbol;
+  const parsedListing = listingKey ? parsePublicTickerKey(listingKey) : null;
+  const listingSymbol = parsedListing?.symbol ?? null;
+  const exchange = parsedListing?.exchange ?? ticker?.metadata.exchange ?? "";
   // The regular session's price: after the close, the close rather than an after-hours print.
   const quotePrice = regularSessionValuationPrice(financials?.quote);
 
@@ -175,8 +188,8 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
   quoteRef.current = { price: quotePrice, currency: quoteCurrency };
 
-  const request = useCallback(() => loadData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, symbol, cloudSession.requestKey]);
-  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null);
+  const request = useCallback(() => loadData(listingSymbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, listingSymbol, cloudSession.requestKey]);
+  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null);
   // An integrity response may contain no usable rows. Retain only historical
   // rows from this resource; its new unavailable metrics remain authoritative.
   const lastHistory = useRef<{ request: typeof request; data: DividendData } | null>(null);
