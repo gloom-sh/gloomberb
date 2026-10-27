@@ -1000,11 +1000,12 @@ function marketsText(markets: readonly VenueMarket[], now: number, short: boolea
   const opensAt = (market: VenueMarket) => market.reopensAt ? Date.parse(market.reopensAt) : Number.POSITIVE_INFINITY;
   const rank = (market: VenueMarket) => market.state === "open" ? 0 : market.state === "closed" ? 2 : 1;
   const ordered = [...markets].sort((left, right) => rank(left) - rank(right) || opensAt(left) - opensAt(right));
-  // `LSE opens 08:00 UTC · US 13:30 UTC`: the verb is said once for the opens that follow each other.
-  let opening = false;
+  // `LSE opens 08:00 UTC · US 13:30 UTC`: a verb is said once for the timed opens that follow each other
+  // with it; a week's first trade after a session's open says its own (`reopens 22:00 UTC`).
+  let previousVerb: string | null = null;
   const parts = ordered.map((market) => {
     const reopen = reopenText(market, now, local);
-    const timed = market.state === "closed" && !!reopen?.time;
+    const verb = market.state === "closed" && reopen?.time ? market.firstTrade ? "reopens" : "opens" : null;
     const said = (() => {
       switch (market.state) {
         case "open":
@@ -1016,14 +1017,14 @@ function marketsText(markets: readonly VenueMarket[], now: number, short: boolea
         case "closed":
           if (!reopen) return `${market.market} closed`;
           if (!reopen.time) return `${market.market} closed until ${reopen.text}`;
-          return `${market.market} ${opening ? "" : market.firstTrade ? "reopens " : "opens "}${reopen.text}`;
+          return `${market.market} ${verb === previousVerb ? "" : `${verb} `}${reopen.text}`;
         default: {
           const _exhaustive: never = market.state;
           return _exhaustive;
         }
       }
     })();
-    opening = timed;
+    previousVerb = verb;
     return said;
   });
   return ordered.every((market) => market.state === "closed") && !short ? ["markets closed", ...parts].join(" · ") : parts.join(" · ");

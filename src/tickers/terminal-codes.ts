@@ -408,20 +408,33 @@ export function bloombergCodeOf(symbol: string, exchange: string): string | null
 /** A symbol typed nearly as a listing's: what was typed and the working form it reads as. */
 export interface NearMissListing {
   typed: string;
-  /** The working spelling: 0700.HK, 6758.T, BRK-B, or a listing's key (BP:LSE). */
+  /** The working spelling: 0700.HK, 6758.T, BRK-B. */
   symbol: string;
+}
+
+/**
+ * `BP.`, `RR.`: London's code for a company with a two-letter symbol, which
+ * the exchange writes with a dot to make three. No other venue writes a
+ * trailing dot, though one can trail a US ticker by slip (`GE.`).
+ */
+const LONDON_DOTTED = /^([A-Z]{2})\.$/;
+
+/**
+ * A two-letter symbol written with London's trailing dot (`BP.`): what was
+ * typed and the symbol (BP). Whether it is London's line (BP:LSE) or a US
+ * ticker with a stray dot (`GE.`) is for where London lists it to say
+ * (`resolveCliListing`). Null for anything else.
+ */
+export function readLondonDottedSymbol(raw: string): NearMissListing | null {
+  const typed = raw.trim();
+  const london = LONDON_DOTTED.exec(typed.toUpperCase());
+  return london ? { typed, symbol: london[1]! } : null;
 }
 
 /** `BRK/B`: a US share class after a slash, as a broker writes it. One letter before the slash is a ratio or an abbreviation (P/E, N/A). */
 const SLASH_CLASS = /^([A-Z]{2,5})\/([A-Z])$/;
 /** `700.HK`: a Hong Kong code without its leading zeros. */
 const SHORT_HONG_KONG = /^(\d{1,3})\.HK$/;
-/**
- * `BP.`, `RR.`: London's code for a company with a two-letter symbol, which
- * the exchange writes with a dot to make three. No other venue writes a
- * trailing dot.
- */
-const LONDON_DOTTED = /^([A-Z]{2})\.$/;
 /** `6758.JP`, `MC.FP`: a symbol with a Bloomberg market code where a listing suffix goes. */
 const MARKET_SUFFIX = /^([A-Z0-9]{1,10})\.([A-Z]{2})$/;
 /**
@@ -438,8 +451,7 @@ const MARKET_SUFFIX_CODES: ReadonlySet<string> = new Set([
  * A symbol written nearly as a listing is (`700.HK`, `6758.JP`, `BRK/B`),
  * read as the working form (`0700.HK`, `6758.T`, `BRK-B`). A Bloomberg market
  * code after the dot is that market's listing suffix (`MC.FP` is `MC.PA`),
- * `MARKET_SUFFIX_CODES` only, so `600519.SS` stays Shanghai. London's code
- * for a two-letter symbol (`BP.`) is its London listing (`BP:LSE`). Null for
+ * `MARKET_SUFFIX_CODES` only, so `600519.SS` stays Shanghai. Null for
  * anything else.
  */
 export function readNearMissListing(raw: string): NearMissListing | null {
@@ -447,8 +459,6 @@ export function readNearMissListing(raw: string): NearMissListing | null {
   const upper = typed.toUpperCase();
   const slash = SLASH_CLASS.exec(upper);
   if (slash) return { typed, symbol: `${slash[1]}-${slash[2]}` };
-  const london = LONDON_DOTTED.exec(upper);
-  if (london) return { typed, symbol: `${london[1]}:LSE` };
   const hongKong = SHORT_HONG_KONG.exec(upper);
   if (hongKong) return { typed, symbol: `${hongKong[1]!.padStart(4, "0")}.HK` };
   const suffixed = MARKET_SUFFIX.exec(upper);

@@ -111,9 +111,6 @@ test.each([
   ["6758.JP", "6758.T"],
   ["BRK/B", "BRK-B"],
   ["MC.FP", "MC.PA"],
-  // London writes a two-letter symbol with a dot (`BP.`): its London line, never the US ADR the bare symbol is.
-  ["BP.", "BP:LSE"],
-  ["rr.", "RR:LSE"],
 ])("%s, written nearly as a listing, reads as %s", (typed, symbol) => {
   expect(readNearMissListing(typed)?.symbol).toBe(symbol);
   expect(parseListingArg(typed)).toMatchObject({ key: symbol, readAs: `Read ${typed} as ${symbol}.` });
@@ -122,7 +119,7 @@ test.each([
 
 // A listing suffix already (Shanghai's .SS), a Canadian unit (.UN) and a code another country writes (.IT) stay as typed.
 // A slash after one letter is a ratio or an abbreviation, never a share class.
-test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "BT.A", "BARC.", "EUR/USD", "BTC/USD", "P/E", "N/A", "Y/Y", "q/q", "P/B"])("%s is no near miss", (typed) => {
+test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "EUR/USD", "BTC/USD", "P/E", "N/A", "Y/Y", "q/q", "P/B"])("%s is no near miss", (typed) => {
   expect(readNearMissListing(typed)).toBeNull();
   expect(normalizeTickerInput(null, typed)).toBe(typed.toUpperCase());
 });

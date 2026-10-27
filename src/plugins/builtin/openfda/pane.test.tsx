@@ -24,8 +24,11 @@ const VACCINE_REPORT = {
   },
 };
 
+const asked: string[] = [];
 const provider = createTestDataProvider({
   getQuote: async (symbol: string) => {
+    asked.push(symbol);
+    if (symbol === "CAT") return createTestQuote({ symbol, name: "Caterpillar Inc.", instrumentType: "EQUITY" });
     if (symbol !== "AZN") throw new Error(`No quote for ${symbol}`);
     return createTestQuote({ symbol, name: "AstraZeneca PLC", instrumentType: "EQUITY" });
   },
@@ -62,6 +65,14 @@ test("a ticker that matches nothing is searched as its company's name; a term th
   await settleFrame(tui.setup(), 12);
   expect(tui.frame()).toContain("ASTRAZENECA COVID-19 VACCINE");
   expect(searched.map((search) => /AstraZeneca/.test(search) ? "AstraZeneca" : /AZN/.test(search) ? "AZN" : search)).toEqual(["AZN", "AstraZeneca"]);
+
+  // A word in lower case is a search, never a ticker: `cat` is not Caterpillar, and the search box keeps it.
+  searched.length = 0;
+  await act(async () => { await tui.render(<Harness query="cat" />, { width: 110, height: 10 }); });
+  await settleFrame(tui.setup(), 12);
+  expect(searched).toHaveLength(1);
+  expect(tui.frame()).toContain("No drug reports match cat.");
+  expect(asked).not.toContain("CAT");
 
   // No company trades as ZZZZ: the empty table points to what the search reads, not to a key.
   await act(async () => { await tui.render(<Harness query="ZZZZ" />, { width: 110, height: 10 }); });

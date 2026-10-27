@@ -628,9 +628,13 @@ function currencyMarks(currency: string, normalizedCurrency: string, code = fals
   return code ? { prefix: "", suffix: ` ${normalizedCurrency}` } : { prefix: getCurrencySymbol(normalizedCurrency), suffix: "" };
 }
 
-/** A London line: shown in pounds, served in the pence it trades in. */
-function isPenceQuotedLine(quote: Pick<Quote, "currency" | "providerPriceDivisor"> | null | undefined): boolean {
-  return quote?.currency?.trim().toUpperCase() === "GBP" && quote.providerPriceDivisor === 100;
+/**
+ * A London line shown in pounds and served in the pence it trades in. The
+ * code is compared in its own case: `GBp` (and `GBX`) is a price already in
+ * pence, which says so itself (630.8p) and needs no pence figure beside it.
+ */
+export function isPenceQuotedLine(quote: Pick<Quote, "currency" | "providerPriceDivisor"> | null | undefined): boolean {
+  return quote?.currency?.trim() === "GBP" && quote.providerPriceDivisor === 100;
 }
 
 /**

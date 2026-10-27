@@ -49,10 +49,12 @@ import {
   bloombergMarketHint,
   endsInLegalForm,
   isSearchOnlyVenue,
+  readLondonDottedSymbol,
   readNearMissListing,
   readTerminalListingCode,
   terminalCodeReadAs,
   unknownBloombergMarket,
+  type NearMissListing,
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
@@ -1154,7 +1156,9 @@ export async function resolveCliListing(
   const terminal = named ? null : read;
   // "AAPL GP" is written as a code, with a market code no venue answers to and no company's name: one entry, never AAPL and GP.
   if (!terminal && !named) await refuseUnknownMarketCode(typed, deps);
-  let parsed = named ?? parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal });
+  // `BP.` is London's code for BP: its London line where London lists it, and `GE.` a US ticker with a stray dot.
+  const dotted = terminal || named || exchangeOption?.trim() ? null : readLondonDottedSymbol(typed);
+  let parsed = named ?? (dotted ? await londonDottedListing(dotted, deps) : parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal }));
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
@@ -1196,6 +1200,21 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/**
+ * A two-letter symbol written with London's trailing dot (`BP.`, `RR.`) as its
+ * London line, said as "Read BP. as BP:LSE.", where search lists it on LSE or
+ * its quote there says it trades. Elsewhere the dot was a slip after the
+ * ticker, dropped as a stray edge is (`GE.` is GE).
+ */
+async function londonDottedListing(dotted: NearMissListing, deps: ListingDeps): Promise<ListingArg> {
+  const london = { symbol: dotted.symbol, exchange: "LSE" };
+  const venues = await listingVenues(dotted.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  const listed = venues.some((venue) => venue.exchange === london.exchange) || await quotedOnVenue(london, deps);
+  if (!listed) return parseListingArg(dotted.symbol);
+  const key = `${london.symbol}:${london.exchange}`;
+  return { ...parseListingArg(key), readAs: `Read ${dotted.typed} as ${key}.` };
 }
 
 /**

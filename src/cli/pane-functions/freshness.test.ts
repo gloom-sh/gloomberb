@@ -231,9 +231,24 @@ describe("report freshness", () => {
       quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-27T10:00:00Z", "REGULAR"),
     ] }, Date.parse("2026-10-27T10:15:00Z"));
     expect(formatFreshnessLine(morning)).toMatch(/ · LSE open · US pre-market, opens 13:30 UTC$/);
-    // A market the line cannot name (an index publisher it has no calendar for) leaves the line as it was.
+    // A market whose open the line cannot name (an index publisher it has no calendar for, a futures venue)
+    // keeps each venue's dating and the one market state, as before.
     const index = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("FTSE INDEX", "2026-10-26T16:35:00Z")] }, TUE);
-    expect([index.markets, index.venueSessions]).toEqual([undefined, undefined]);
+    expect(index.markets).toBeUndefined();
+    expect(index.venueSessions?.map(({ market, date }) => `${market} ${date}`)).toEqual(["US 2026-10-26", "FTSE INDEX 2026-10-26"]);
+    const futures = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [
+      quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("CME", "2026-10-27T01:55:00Z", "REGULAR"),
+    ] }, TUE);
+    expect(futures.markets).toBeUndefined();
+    expect(futures.venueSessions?.map(({ market, date }) => `${market} ${date}`)).toEqual(["US 2026-10-26", "CME 2026-10-27"]);
+    // A week's first trade after a session's open keeps its own verb: it is no session's open.
+    const closed = (market: string, at: string, firstTrade = false) => ({
+      market, state: "closed" as const, reopensAt: at, reopensOn: at.slice(0, 10), ...firstTrade ? { firstTrade: true as const } : {},
+    });
+    const tuesday = deriveHeadlessFreshness(rows({ datesEachVenue: true }), mixed, TUE);
+    expect(formatStatusLine({ ...tuesday, markets: [
+      closed("LSE", "2026-10-27T08:00:00.000Z"), closed("CME", "2026-10-27T22:00:00.000Z", true), closed("US", "2026-10-27T13:30:00.000Z"),
+    ] })).toMatch(/ · markets closed · LSE opens 08:00 UTC · US 13:30 UTC · CME reopens 22:00 UTC$/);
     // Both closed for the weekend reads as one line, as it did.
     const SAT = Date.parse("2026-10-31T12:00:00Z");
     const weekend = { rows: [quote("NASDAQ", "2026-10-30T23:31:00Z"), quote("LSE", "2026-10-30T16:35:00Z")] };

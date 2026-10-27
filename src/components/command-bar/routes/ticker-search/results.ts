@@ -262,10 +262,10 @@ export function readRootTickerQuery(query: string): RootTickerReading | null {
   if (unknown) return { search: unknown.symbol, names: () => false, meant: ofSymbol(unknown.symbol) };
   const nearMiss = readNearMissListing(trimmed);
   if (!nearMiss) return null;
-  // 0700.HK is listed as 0700 on HKEX: the row of the symbol before its suffix. BP:LSE names its venue.
-  const { symbol, exchange } = parsePublicTickerKey(nearMiss.symbol);
+  // 0700.HK is listed as 0700 on HKEX: the row of the symbol before its suffix.
+  const { symbol } = parsePublicTickerKey(nearMiss.symbol);
   const root = tickerHasListingSuffix(symbol) ? symbol.slice(0, symbol.indexOf(".")) : symbol;
-  const suffixVenue = exchange ?? listingSuffixExchange(symbol);
+  const suffixVenue = listingSuffixExchange(symbol);
   const meant = (item: ResultItem) => (ofSymbol(root)(item) && (!suffixVenue || rowListing(item).exchange === suffixVenue))
     || (isInstrument(item) && isExactTickerResultMatch(item, nearMiss.symbol));
   return { search: nearMiss.symbol, names: () => false, meant };

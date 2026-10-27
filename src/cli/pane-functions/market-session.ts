@@ -164,7 +164,8 @@ function closeMarketOf(exchange: string, session: VenueSession): string | null {
  * index publisher's sessions dated in New York), `FX` for currency pairs, the
  * venue's code for any other the app has a calendar of (`LSE`). Null for one
  * known only by the state its source stamps (an index publisher dated
- * elsewhere, a futures venue), which such a report cannot name.
+ * elsewhere, a futures venue), whose open a report cannot name: its sessions
+ * are still dated by venue (`reportVenueSessionDates`), as they always were.
  */
 function sessionMarketOf(exchange: string, session: VenueSession): string | null {
   if (exchange === FX_VENUE) return "FX";
@@ -187,8 +188,7 @@ export interface VenueSessionDate {
  * Each market's session, for a report whose rows trade on more than one
  * (a US line beside Xetra and Paris ones): the newest row of each, dated in
  * its venue's own day, in the order the markets first appear. Empty when the
- * rows share one market, fewer than two can be placed, or one is a market the
- * report cannot name (`sessionMarketOf`): the newest row then dates them all.
+ * rows share one market, or fewer than two can be placed.
  */
 export function reportVenueSessionDates(observations: readonly SessionObservation[], now: number): VenueSessionDate[] {
   const newestByMarket = new Map<string, { observation: SessionObservation & { time: ReportTime }; session: VenueSession }>();
@@ -196,10 +196,9 @@ export function reportVenueSessionDates(observations: readonly SessionObservatio
     const exchange = canonicalExchange(observation.exchange);
     const time = observation.time;
     if (!exchange || !time) continue;
-    const session = venueSession(exchange, observation.marketState, now, observation.calendar);
+    const session = venueSession(exchange, observation.marketState, now);
     if (!session || session.state === "always") continue;
-    const market = sessionMarketOf(exchange, session);
-    if (!market) return [];
+    const market = exchange === FX_VENUE ? "FX" : isUsListingExchange(exchange) ? "US" : exchange;
     const current = newestByMarket.get(market);
     if (!current || time.time > current.observation.time.time) newestByMarket.set(market, { observation: { ...observation, time }, session });
   }

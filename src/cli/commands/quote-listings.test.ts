@@ -665,18 +665,38 @@ test("Bloomberg codes are each one listing: a file's lines, a quoted code, and a
   });
 });
 
-test("700.HK, 6758.JP, BRK/B and London's BP. are quoted in the form that works", async () => {
+test("700.HK, 6758.JP and BRK/B are quoted in the form that works", async () => {
   const source = venueSource("X", [], {
-    "BP:LSE": createTestQuote({ symbol: "BP:LSE", currency: "GBP" }),
     "0700.HK": createTestQuote({ symbol: "0700.HK" }),
     "6758.T": createTestQuote({ symbol: "6758.T" }),
     "BRK-B": createTestQuote({ symbol: "BRK-B" }),
   });
-  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"], ["BP.", "BP:LSE"]]) {
+  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"]]) {
     const { failure, rows } = await runQuote([typed!], source);
     expect(failure).toBeNull();
     expect(rows.map((row) => row.target.symbol)).toEqual([symbol!]);
   }
+});
+
+test("London's BP. is its London line where London lists it; a stray dot after a US ticker (GE.) is the ticker", async () => {
+  // Search lists BP on NYSE and LSE, GE on NYSE only.
+  const listing = (symbol: string, exchange: string) => ({ providerId: "test", symbol, name: `${symbol} plc`, exchange, type: "Common Stock", currency: "USD" });
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query: string) => query.toUpperCase().startsWith("BP") ? [listing("BP", "NYSE"), listing("BP", "LSE")] : [listing("GE", "NYSE")],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => {
+      asked.push(target.symbol);
+      return { target, quote: createTestQuote({ symbol: target.symbol }) };
+    }),
+  });
+  const source = { dataProvider, batches: [], searches: () => 0 };
+  const london = await runQuote(["BP."], source);
+  expect(london.rows.map((row) => row.target.symbol)).toEqual(["BP:LSE"]);
+  expect(london.warnings).toContain("Read BP. as BP:LSE.");
+  const us = await runQuote(["GE."], source);
+  expect(us.failure).toBeNull();
+  expect(us.rows.map((row) => row.target.symbol)).toEqual(["GE"]);
+  expect(asked).not.toContain("GE:LSE");
 });
 
 test("a file's line that is a company's name before its legal form is the company, beside codes on the lines around it", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
+  barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote,
 } from "./history-rows";
@@ -286,6 +286,10 @@ describe("history rows", () => {
     expect(cleanBarPrice(Math.fround(0.1234) / 100, 100)).toBe(0.001234);
     // A price served in its own currency is cleaned as before.
     expect(cleanBarPrice(Math.fround(340.33), 1)).toBe(340.33);
+    // Pounds served in pence are cleaned in pence; a quote in pence itself (GBp) is cleaned as it is.
+    expect(quotedPriceDivisor({ currency: "GBP", providerPriceDivisor: 100 })).toBe(100);
+    expect(quotedPriceDivisor({ currency: "GBp", providerPriceDivisor: 100 })).toBe(1);
+    expect(quotedPriceDivisor({ currency: "USD" })).toBe(1);
   });
 
   test("a London share under £10 shows a tenth of a penny (6.385 for 638.5p), as no other equity does", () => {

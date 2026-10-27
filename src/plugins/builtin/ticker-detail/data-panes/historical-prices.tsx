@@ -19,7 +19,7 @@ import { colors, priceColor } from "../../../../theme/colors";
 import { displayWidth, formatCompact, formatPercent } from "../../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
-import { penceFigure, quoteFormatOptions } from "../../../../market-data/market/format";
+import { isPenceQuotedLine, penceFigure, quoteFormatOptions } from "../../../../market-data/market/format";
 import {
   barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
@@ -272,12 +272,13 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const priceDivisor = quotedPriceDivisor(quote);
   const priceDecimals = useMemo(() => historicalPriceDecimals(rows, assetCategory, priceDivisor), [assetCategory, priceDivisor, rows]);
   // A London line's close reads in pence too (6.385 638.5p): the close column asks for room for the widest.
-  const closeWidth = useMemo(() => rows.reduce((widest, row) => {
+  const pence = isPenceQuotedLine(quote);
+  const closeWidth = useMemo(() => !pence ? 0 : rows.reduce((widest, row) => {
     const close = row.point.close;
     const pence = penceFigure(exportPrice(close, priceDecimals), quote, priceDecimals);
     // A cell more than the text, so the close never runs into the low before it.
     return pence ? Math.max(widest, displayWidth(` ${formatMaybePrice(close, priceDecimals, Infinity)} ${pence}`)) : widest;
-  }, 0), [priceDecimals, quote, rows]);
+  }, 0), [pence, priceDecimals, quote, rows]);
   const columns = useMemo(
     () => buildHistoryColumns(width, intraday, size, newestRowDate, closeWidth),
     [closeWidth, intraday, newestRowDate, size, width],

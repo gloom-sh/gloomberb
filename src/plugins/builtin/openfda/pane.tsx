@@ -78,6 +78,9 @@ const formatDate = (date: Date | null): string => (date ? date.toISOString().sli
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** A search written as a ticker is, in capitals (`AZN`, `BRK.B`); `cat` or `azn` is a word to search for. */
+const writtenAsTicker = (term: string): boolean => looksLikeTicker(term) && term === term.toUpperCase();
+
 /** What a search that matched nothing points to, by what each dataset is searched on. */
 const EMPTY_SEARCH_HINTS: Record<OpenFdaDataset, string> = {
   drug: "Try the drug's brand or generic name…",
@@ -297,16 +300,18 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
 
   // `FDA AZN`: FDA records name the firm and its products, never a symbol, so a
   // ticker that finds nothing is searched as its company's name (AstraZeneca),
-  // as TRIAL reads one, and the search box then shows it. Each term is looked up once.
+  // as TRIAL reads one, and the search box then shows it. Only a term written in
+  // capitals, as a ticker is (the search box or `fn FDA AZN`): a word such as
+  // "cat" stays the search it is. Each term is looked up once.
   const [looked, setLooked] = useState<ReadonlySet<string>>(() => new Set());
   const resolvingTicker = records.status === "loaded" && rows.length === 0 && !records.error
-    && looksLikeTicker(term) && !looked.has(term.toUpperCase());
+    && writtenAsTicker(term) && !looked.has(term);
   useEffect(() => {
     if (!resolvingTicker) return;
     let live = true;
     void tickerCompanyName(dataProvider, term).catch(() => null).then((name) => {
       if (!live) return;
-      setLooked((current) => new Set([...current, term.toUpperCase()]));
+      setLooked((current) => new Set([...current, term]));
       if (name) updateQuery(name);
     });
     return () => { live = false; };

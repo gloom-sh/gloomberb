@@ -374,6 +374,9 @@ test("a London line's price reads in the pence it trades in, to the decimals its
   expect(penceFigure(6.308, london, 3)).toBe("630.8p");
   expect(penceFigure(49.23, london, 2)).toBe("4,923p");
   expect(penceFigure(4.1875, london, 4)).toBe("418.75p");
+  // A price already in pence (GBp, GBX) says so itself: no figure a hundred times it (630.8 is never 63,080p).
+  expect(penceFigure(630.8, { currency: "GBp", providerPriceDivisor: 100 }, 1)).toBeNull();
+  expect(penceFigure(630.8, { currency: "GBX", providerPriceDivisor: 100 }, 1)).toBeNull();
   // A pound price not quoted in pence (a fund priced in pounds) and other currencies have none.
   expect(penceFigure(6.308, { currency: "GBP" }, 3)).toBeNull();
   expect(penceFigure(6.308, { currency: "USD", providerPriceDivisor: 100 }, 3)).toBeNull();

@@ -12,7 +12,7 @@ import {
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
-import { currencyUnitLabel } from "../utils/currency-units";
+import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
@@ -136,10 +136,12 @@ export function cleanBarPrice(value: number, divisor = 1): number {
 /**
  * How many of the unit a quote's prices were served in make one of the
  * currency it shows them in: 100 for a London line priced in pence and shown
- * in pounds, 1 for any other.
+ * in pounds, 1 for any other. A quote in a sub-unit itself (`GBp`) shows the
+ * prices as served: they are cleaned as they are.
  */
-export function quotedPriceDivisor(quote: { providerPriceDivisor?: number } | null | undefined): number {
+export function quotedPriceDivisor(quote: { currency?: string; providerPriceDivisor?: number } | null | undefined): number {
   const divisor = quote?.providerPriceDivisor;
+  if (resolveCurrencyUnit(quote?.currency).divisor > 1) return 1;
   return divisor != null && Number.isFinite(divisor) && divisor > 1 ? divisor : 1;
 }
 
