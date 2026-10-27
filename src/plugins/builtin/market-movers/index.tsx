@@ -1,7 +1,7 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, QueryBar, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -41,6 +41,7 @@ import { loadMarketMoverTab, marketMoverQuoteError } from "./client";
 import { summaryFooterSegments } from "./footer";
 import { isSessionTab, resolveActiveTab, usSessionAt, type UsSession } from "./session";
 import { SessionMoversBody } from "./session-body";
+import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares } from "./min-float";
 import { marketMoversHeadless } from "./headless";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
 import type { ExtendedSession } from "../../../market-data/market/status";
@@ -152,16 +153,21 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
 }) {
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
+  const [minFloatValue, setMinFloatValue] = usePluginPaneState<string>("minFloat", ANY_FLOAT);
+  // Trending carries no float, so the minimum is not offered there.
+  const floatFiltered = activeTab !== "trending";
+  const minFloat = floatFiltered ? minFloatShares(minFloatValue) : null;
+  const listKey = `${activeTab}:${minFloat ?? ""}`;
   const [quotes, setQuotes] = useState<MoverQuote[]>([]);
-  const [loadedTab, setLoadedTab] = useState<TabId | null>(null);
-  const visibleQuotes = loadedTab === activeTab ? quotes : NO_QUOTES;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const visibleQuotes = loadedKey === listKey ? quotes : NO_QUOTES;
   // The first load starts before the effect runs; an empty board is not "no data".
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<MarketMoverSortPreference>(DEFAULT_SORT_PREFERENCE);
   const [moversStale, setMoversStale] = useState(false);
-  const [lastSuccess, setLastSuccess] = useState<{ tab: ScreenerTabId; at: number } | null>(null);
+  const [lastSuccess, setLastSuccess] = useState<{ key: string; at: number } | null>(null);
 
   const fetchGenRef = useRef(0);
 
@@ -192,8 +198,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   // A pre-market or after-hours column only while a row has such a print.
   const extendedSessionsKey = moverExtendedSessions(rankedRows).join(",");
   const columns = useMemo(
-    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
-    [extendedSessionsKey, width],
+    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], { float: minFloat != null }),
+    [extendedSessionsKey, minFloat, width],
   );
   const rows = useMemo(() => sortRows(rankedRows, sortPreference), [rankedRows, sortPreference]);
   const selectedIdx = selectedSymbol
@@ -223,6 +229,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     try {
       const result = await loadMarketMoverTab(tab, dataProvider, {
         forceRefresh: options?.forceRefresh,
+        minFloat,
       });
       if (fetchGenRef.current !== gen) return;
 
@@ -230,12 +237,12 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
       // A partial list shows only its current rows; a total failure keeps this list's prior rows.
       if (!quoteError || result.quotes.length > 0) {
         setQuotes(result.quotes);
-        setLoadedTab(tab);
+        setLoadedKey(`${tab}:${minFloat ?? ""}`);
         if (!options?.background) setSelectedSymbol(null);
       }
       setMoversStale(result.stale);
       setLoadError(quoteError);
-      if (!quoteError && !result.stale) setLastSuccess({ tab, at: Date.now() });
+      if (!quoteError && !result.stale) setLastSuccess({ key: `${tab}:${minFloat ?? ""}`, at: Date.now() });
     } catch {
       if (fetchGenRef.current !== gen) return;
       setMoversStale(true);
@@ -244,7 +251,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     finally {
       if (fetchGenRef.current === gen && !options?.background) setLoading(false);
     }
-  }, [dataProvider]);
+  }, [dataProvider, minFloat]);
 
   useEffect(() => {
     setSelectedSymbol(null);
@@ -254,7 +261,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   const backgroundRefresh = useCallback(() => {
     void loadTab(activeTab, { background: true });
   }, [activeTab, loadTab]);
-  useAutoRefresh(lastSuccess?.tab === activeTab ? lastSuccess.at : null, backgroundRefresh);
+  useAutoRefresh(lastSuccess?.key === listKey ? lastSuccess.at : null, backgroundRefresh);
 
   const openSymbol = useCallback((row: MarketMoverRow) => {
     pinTicker(moverKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });
@@ -281,16 +288,19 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         id: "feed",
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
-      ...(moversStale && loadedTab === activeTab ? [{
+      ...(moversStale && loadedKey === listKey ? [{
         id: "stale",
         parts: [{ text: "stale", tone: "muted" as const }],
       }] : []),
     ],
-  }), [activeTab, feedStatus, loadedTab, loadError, loading, moversStale, summaryQuotes]);
+  }), [feedStatus, listKey, loadedKey, loadError, loading, moversStale, summaryQuotes]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>
       focused={focused}
+      rootBefore={floatFiltered ? (
+        <QueryBar width={Math.max(1, width - 2)} filters={[minFloatFilter(minFloatValue, setMinFloatValue)]} />
+      ) : undefined}
       selection={{
         kind: "id",
         selectedId: selectedSymbol,
@@ -298,7 +308,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         onChange: (symbol) => setSelectedSymbol(symbol),
       }}
       onRootKeyDown={handleTableKeyDown}
-      resetScrollKey={activeTab}
+      resetScrollKey={listKey}
       sortable
       columns={columns}
       items={rows}
@@ -309,7 +319,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
       onActivate={openSymbol}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No movers returned."}
+      emptyStateTitle={loading ? "Loading movers..." : loadError ?? (minFloat != null ? minFloatEmptyTitle(minFloatValue) : "No movers returned.")}
       emptyContent={loadError ? (
         <Box paddingX={1} paddingY={1}>
           <EmptyState title={loadError} message="Try again in a moment." />

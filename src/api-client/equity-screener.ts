@@ -18,6 +18,11 @@ export const TECHNICAL_FIELDS = [
  * 52-week rank; listed only when asked (`include=option-volatility`), and omitted by a server from before them.
  */
 export const OPTION_VOLATILITY_FIELDS = ["iv30Percent", "ivPercentile", "iv30Change1d", "iv30Change5d", "hv20Percent", "hvRank"] as const;
+/**
+ * Shares outstanding, float, short % of float and 13F institutional ownership, each with the day it describes;
+ * listed only when asked (`include=ownership`), and omitted by a server from before them.
+ */
+export const OWNERSHIP_FIELDS = ["sharesOutstanding", "floatShares", "shortPercentOfFloat", "institutionalOwnershipPercent"] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -67,6 +72,7 @@ export const NUMERIC_FIELDS = [
   "ivRank",
   "ivToHv",
   ...OPTION_VOLATILITY_FIELDS,
+  ...OWNERSHIP_FIELDS,
   "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
   "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;

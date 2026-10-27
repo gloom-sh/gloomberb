@@ -21,9 +21,10 @@ const VOLUME_LABEL: Record<CloudSessionMoversCategory, string> = {
  * Pre-market and after hours: last, change from the reference close, session
  * volume, relative volume, float and the catalyst. Gaps add the gap and the
  * distance from VWAP. The name gives way first, then the columns a narrow pane
- * can do without (the day's volume, then the float).
+ * can do without (the day's volume, then the float, which stays while a
+ * minimum float is set: `float`).
  */
-export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width: number): SessionMoverColumn[] {
+export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width: number, options: { float?: boolean } = {}): SessionMoverColumn[] {
   const columns: SessionMoverColumn[] = [
     { id: "rank", label: "#", width: 3, align: "left" },
     { id: "symbol", label: "TICKER", width: 8, align: "left" },
@@ -37,7 +38,7 @@ export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width
     { id: "floatShares", label: "FLOAT", width: 7, align: "right" },
     { id: "catalyst", label: "EVENT", width: 6, align: "left" },
   ];
-  const optional: SessionMoverColumnId[] = view === "gaps" ? ["volume", "floatShares"] : ["floatShares"];
+  const optional: SessionMoverColumnId[] = [...(view === "gaps" ? ["volume" as const] : []), ...(options.float ? [] : ["floatShares" as const])];
   // Measured the way the table draws it: a header widens its column, and a
   // left-aligned column after a right-aligned one gets a lead gap. The name
   // sits between left-aligned columns, so it adds only its width and a gutter.

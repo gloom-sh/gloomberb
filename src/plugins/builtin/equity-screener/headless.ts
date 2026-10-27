@@ -153,6 +153,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       "IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
       "IV percentile is the share of the past 52 weeks' options closes with IV30 below the latest; IV30 changes are in volatility points (25% to 27% is +2). IV fields with no close in five days are unavailable. HV20 is 20-session realized volatility, annualized, and HV rank places it between its 52-week low and high.",
       "Technical fields (RSI, moving averages, MACD and golden crosses, new highs and lows, Bollinger width) read US listings' completed daily sessions: they describe the last close, not the session in progress. A days-since field counts trading days, 0 at the last session.",
+      "Shares outstanding, float, short % of float and institutional ownership cover US filers, each as of its own date: the 10-K or 10-Q cover count, the count the float was stated beside, the FINRA settlement, the 13F quarter. An undated, stale or inconsistent input leaves the field unavailable with its reason. Institutional ownership sums 13F filers' shares and can pass 100%.",
     ],
   },
   async load(args, ctx) {

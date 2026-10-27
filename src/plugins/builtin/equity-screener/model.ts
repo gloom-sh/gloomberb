@@ -5,6 +5,7 @@ import {
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
   OPTION_VOLATILITY_FIELDS,
+  OWNERSHIP_FIELDS,
   RESEARCH_FIELDS,
   KPI_FIELDS,
   SOCIAL_FIELDS,
@@ -120,6 +121,10 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   iv30Change5d: "IV30 CHG 5D",
   hv20Percent: "HV20%",
   hvRank: "HV RANK",
+  sharesOutstanding: "SHARES OUT",
+  floatShares: "FLOAT",
+  shortPercentOfFloat: "SI % FLOAT",
+  institutionalOwnershipPercent: "INST OWN%",
   hiringOpenRoles: "OPEN ROLES",
   hiringNetAddsWeek: "NET ROLES/WK",
   hiringRemotePercent: "REMOTE%",
@@ -129,7 +134,7 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   appRatingDrift7d: "RATING 7D",
   appRatingCountGrowth7d: "RATINGS 7D",
 };
-const COMPACT = new Set<NumericField>(["kpiArr", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiStores", "kpiBacklog", "marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
+const COMPACT = new Set<NumericField>(["kpiArr", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiStores", "kpiBacklog", "marketCap", "volume", "averageVolume20d", "shortInterestShares", "sharesOutstanding", "floatShares"]);
 /** Daily counts: whole numbers below a thousand, compact above. */
 const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
 const RATIOS = new Set<NumericField>(["kpiBookToBill", "xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
@@ -342,6 +347,10 @@ export const screenLabel = (field: string) =>
     iv30Change5d: "IV30 change 5D, vol pts",
     hv20Percent: "HV20 %",
     hvRank: "HV rank",
+    sharesOutstanding: "Shares outstanding",
+    floatShares: "Float",
+    shortPercentOfFloat: "Short interest % of float",
+    institutionalOwnershipPercent: "Institutional ownership % (13F)",
     hiringOpenRoles: "Hiring open roles",
     hiringNetAddsWeek: "Net open roles per week",
     hiringRemotePercent: "Remote roles %",
@@ -640,9 +649,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility, dividend, technical or option volatility fields omits them;
-      // they read as unavailable. A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research, volatility, dividend, technical, option volatility or ownership fields
+      // omits them; they read as unavailable. A Pro field it left out was held back from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

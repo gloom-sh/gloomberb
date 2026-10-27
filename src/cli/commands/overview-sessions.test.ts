@@ -154,3 +154,25 @@ test("after the close movers ranks Gainers by the regular-session move it shows,
     movers.mockRestore();
   }
 });
+
+test("movers --min-float keeps the rows whose stored float is at least the minimum, with a Float column", async () => {
+  const row = (symbol: string, changePercent: number, floatShares?: number) => ({
+    symbol, name: `${symbol} Inc.`, price: 10, change: changePercent / 10, changePercent, volume: 2_000_000, currency: "USD", exchange: "NASDAQ",
+    lastUpdated: Date.parse("2026-10-09T17:00:00Z"), ...(floatShares == null ? {} : { floatShares }),
+  });
+  const movers = spyOn(apiClient, "getMarketMovers").mockResolvedValue({ status: "success", data: { source: "gloom", stale: false,
+    asOf: "2026-10-09T17:00:00Z", quotes: [row("TINY", 40, 2e6), row("NONE", 30), row("MID", 20, 15e6)] } } as never);
+  try {
+    const filtered = await run("movers", ["active", "--min-float", "10m"], []);
+    expect(filtered.rows.map((entry) => entry.symbol)).toEqual(["MID"]);
+    expect(filtered.text).toMatch(/Float/);
+    expect(filtered.line("MID")).toMatch(/15M$/);
+    // Most active reads as many candidates as the price lists once a minimum drops rows.
+    expect(movers.mock.calls.at(-1)?.[1]).toBe(50);
+    const all = await run("movers", ["active"], []);
+    expect(all.rows).toHaveLength(3);
+    expect(all.text).not.toMatch(/Float/);
+  } finally {
+    movers.mockRestore();
+  }
+});

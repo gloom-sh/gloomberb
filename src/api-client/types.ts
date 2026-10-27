@@ -1761,6 +1761,8 @@ export interface CloudMarketScreenerItem extends CloudMoverSessionFields {
   exchange: string;
   lastUpdated: number;
   dataSource: "live";
+  /** The listing's stored float, never above its share count; absent where none is stored. */
+  floatShares?: number;
 }
 
 export interface CloudMarketScreenerPayload {

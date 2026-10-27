@@ -220,6 +220,12 @@ function parseScreenerSessions(row: Record<string, unknown>): CloudMoverSessionF
   return sessions;
 }
 
+/** A positive float, or nothing: a row without one fails any minimum. */
+function floatOf(value: unknown): { floatShares?: number } {
+  const shares = screenerNumber(value);
+  return shares != null && shares > 0 ? { floatShares: shares } : {};
+}
+
 /** Validate numeric fields at the API boundary so absent values stay unavailable. */
 export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
   if (!data || typeof data !== "object" || !("quotes" in data) || !Array.isArray(data.quotes)) {
@@ -239,6 +245,7 @@ export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
       previousClose: screenerNumber(q.previousClose) ?? undefined, exchange: typeof q.exchange === "string" ? q.exchange : "",
       lastUpdated: typeof q.lastUpdated === "number" && Number.isFinite(q.lastUpdated) && q.lastUpdated > 0 ? q.lastUpdated : undefined,
       sessions: parseScreenerSessions(q),
+      ...floatOf(q.floatShares),
     }];
   });
 }
@@ -325,6 +332,7 @@ function mergeCloudScreenerItem(
     lastUpdated: item.lastUpdated,
     previousClose: screenerNumber(item.previousClose) ?? undefined,
     sessions: parseScreenerSessions(item as unknown as Record<string, unknown>),
+    ...floatOf(item.floatShares ?? metadata?.floatShares),
   };
 }
 

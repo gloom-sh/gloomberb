@@ -20,6 +20,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { loadSessionMovers, SessionMoversAccessError } from "./client";
+import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares } from "./min-float";
 import { summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
 import {
@@ -104,7 +105,9 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const { pinTicker } = usePluginTickerActions();
   const [savedSide, setSavedSide] = usePluginPaneState<CloudSessionMoversSide>("sessionSide", "up");
   const side = resolveSide(view, savedSide);
-  const listKey = `${view}:${side}`;
+  const [minFloatValue, setMinFloatValue] = usePluginPaneState<string>("minFloat", ANY_FLOAT);
+  const minFloat = minFloatShares(minFloatValue);
+  const listKey = `${view}:${side}:${minFloat ?? ""}`;
   const [loaded, setLoaded] = useState<LoadedList | null>(null);
   // The first frame would otherwise claim an empty list.
   const [loading, setLoading] = useState(true);
@@ -132,9 +135,9 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       setLoadError(null);
     }
     try {
-      const next = await loadSessionMovers(view, side, options);
+      const next = await loadSessionMovers(view, side, { ...options, minFloat });
       if (fetchGenRef.current !== gen) return;
-      setLoaded({ key: `${view}:${side}`, payload: next });
+      setLoaded({ key: `${view}:${side}:${minFloat ?? ""}`, payload: next });
       setLoadError(null);
       setLastLoadedAt(Date.now());
     } catch (error) {
@@ -147,7 +150,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     } finally {
       if (fetchGenRef.current === gen && !options?.background) setLoading(false);
     }
-  }, [onDenied, side, view]);
+  }, [minFloat, onDenied, side, view]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -167,7 +170,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     freshnessScopeKey: `market-movers:${listKey}`,
     liveStreaming,
   });
-  const columns = useMemo(() => buildSessionMoverColumns(view, width), [view, width]);
+  const columns = useMemo(() => buildSessionMoverColumns(view, width, { float: minFloat != null }), [minFloat, view, width]);
   // The sort survives a change of list, but not onto a column this list or width does not show.
   const sort = columns.some((column) => column.id === sortPreference.columnId) ? sortPreference : DEFAULT_SORT;
   const rows = useMemo(
@@ -217,7 +220,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const sides = sessionSides(view);
   // Until this list's first answer the table is loading, including the frame
   // between a change of list and its request going out.
-  const emptyTitle = payload ? "No movers yet." : loadError ?? "Loading movers...";
+  const emptyTitle = payload ? (minFloat != null ? minFloatEmptyTitle(minFloatValue) : "No movers yet.") : loadError ?? "Loading movers...";
   return (
     <DataTableView<SessionMoverRow, SessionMoverColumn>
       focused={focused}
@@ -231,7 +234,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
             value: side,
             options: sides,
             onChange: (value: CloudSessionMoversSide) => setSavedSide(value),
-          }]}
+          }, minFloatFilter(minFloatValue, setMinFloatValue)]}
         />
       )}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: setSelectedId }}

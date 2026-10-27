@@ -23,6 +23,7 @@ import {
   type MoverRankBasis,
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
+import { meetsMinFloat, minFloatShares, normalizeMinFloat } from "../../plugins/builtin/market-movers/min-float";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
 import { computedFredSeriesNote, seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
@@ -141,7 +142,7 @@ const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
   "most-active": "most_actives",
   trending: "trending",
 };
-const MOVERS_USAGE = "movers [gainers|losers|active|trending] [--session regular|extended]";
+const MOVERS_USAGE = "movers [gainers|losers|active|trending] [--session regular|extended] [--min-float <shares>]";
 /** The most rows the movers list serves in one request. */
 const MOVER_REQUEST_CAP = 100;
 /** A one-shot list waits this long for its rows' average volumes and sizes, as `fn MOST` does. */
@@ -152,6 +153,16 @@ function moverRankBasis(value: string | undefined, ctx: Parameters<CliCommandDef
   const basis = MOVER_RANK_BASES.find((candidate) => candidate === value.trim().toLowerCase());
   if (!basis) ctx.fail(`Unknown --session "${value}".`, "Use regular or extended.");
   return basis;
+}
+
+/** `--min-float` in shares, null for none; fails on a value that is not a share count. */
+function moverMinFloat(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): number | null {
+  if (value == null) return null;
+  try {
+    return minFloatShares(normalizeMinFloat(value));
+  } catch (error) {
+    ctx.fail(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function screenerCategory(args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): ScreenerCategory | "trending" {
@@ -199,12 +210,14 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   const args = [...rawArgs];
   const sessionOption = takeOption(args, "--session");
   const basis = moverRankBasis(sessionOption, ctx);
+  const minFloat = moverMinFloat(takeOption(args, "--min-float"), ctx);
   const category = screenerCategory(args, ctx);
   const limit = ctx.cliOptions.limit ?? 25;
   if (sessionOption != null && (category === "trending" || category === "most_actives")) {
     ctx.fail("--session ranks Gainers and Losers.", category === "trending"
       ? "Trending keeps its source's order." : "Most active ranks by volume.");
   }
+  if (minFloat != null && category === "trending") ctx.fail("--min-float filters Gainers, Losers and Most active.", "Trending carries no float.");
   if (category === "trending") {
     await withCliServices(ctx, async (services) => {
       const trending = await fetchTrending(limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
@@ -220,8 +233,8 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   }
 
   // After the close a price list keeps only the rows moving its way on the basis
-  // asked for, so it reads more candidates than it shows.
-  const count = category === "most_actives" ? limit : Math.min(MOVER_REQUEST_CAP, Math.max(limit, MOVER_CANDIDATES));
+  // asked for, and a minimum float drops rows, so they read more candidates than they show.
+  const count = category === "most_actives" && minFloat == null ? limit : Math.min(MOVER_REQUEST_CAP, Math.max(limit, MOVER_CANDIDATES));
   // With the saved session, as MOST reads it: a Pro account gets the real-time lists, anyone else the delayed ones.
   const movers = await withMarketData(ctx, () =>
     fetchPreferredMarketMovers(category, count, { forceRefresh: ctx.cliOptions.refresh, session: basis, metadataWaitMs: MOVER_METADATA_WAIT_MS }));
@@ -230,7 +243,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // the regular session's move (its close's after the close), or with
   // --session extended by the extended print's move from that close.
   const { quotes, rankedBy } = rankMoverQuotes(category, movers.quotes.map(moverRegularSession), basis);
-  const rows = quotes.slice(0, limit).map((quote) => {
+  const rows = quotes.filter((quote) => meetsMinFloat(quote.floatShares, minFloat)).slice(0, limit).map((quote) => {
     const { extended, ...row } = quote;
     return {
       ...row,
@@ -244,7 +257,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // As the MOST report reads it: real-time for a Pro account, delayed otherwise, each row dated by its own last price.
   ctx.printResult({
     data: rows,
-    metadata: { category, rankedBy },
+    metadata: { category, rankedBy, ...(minFloat != null ? { minFloat } : {}) },
     ...(fellBack ? { warnings: ["No pre-market or after-hours prints now, so the list is ranked by the regular-session move."] } : {}),
     freshness: rowsFreshness(rows, { status: movers.source === "cloud" ? "live" : "delayed" }, { stale: movers.stale }),
   }, {
@@ -254,6 +267,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
       ...EXTENDED_COLUMNS,
       { key: "volume", header: "Volume", align: "right", value: (row) => formatCompact(Number(row.volume)) },
       { ...MARKET_CAP_CELL, value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
+      ...(minFloat != null ? [{ key: "floatShares", header: "Float", align: "right" as const, value: (row: Record<string, unknown>) => formatCompact(Number(row.floatShares)) }] : []),
     ],
   });
 }
@@ -857,8 +871,11 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [{
         flags: "--session <basis>",
         description: "Rank gainers and losers by the regular-session move (regular, the default) or by the pre-market or after-hours move from the close (extended)",
+      }, {
+        flags: "--min-float <shares>",
+        description: "Keep the gainers, losers or most active whose stored float is at least this many shares, such as 10M or 500k; a row with no stored float is left out",
       }],
-      examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers trending"],
+      examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers gainers --min-float 10M", "movers trending"],
     },
     execute: runMoverCommand,
   },

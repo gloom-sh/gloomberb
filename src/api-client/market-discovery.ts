@@ -21,6 +21,8 @@ export interface ScreenerQuote {
   previousClose?: number;
   /** The quote's sessions beside the live print the server ranked the row by, when the server sends them. */
   sessions?: CloudMoverSessionFields;
+  /** The listing's stored float, never above its share count; absent where the server stores none or predates it. */
+  floatShares?: number;
 }
 
 

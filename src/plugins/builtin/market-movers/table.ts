@@ -26,15 +26,20 @@ function fiftyTwoWeekPosition(price: number | null, low: number | undefined, hig
 }
 
 const EXTENDED_COLUMN_WIDTH = 9;
-/** With an extended column, a narrow pane drops MCAP, then 52W%, before the name gets narrower than this. */
+/** With an extended or float column, a narrow pane drops MCAP, then 52W%, before the name gets narrower than this. */
 const EXTENDED_MIN_NAME_WIDTH = 12;
 
 /**
  * The list's columns at `width`. A pre-market or after-hours column follows
- * CHG% for each session in `extendedSessions`; to make room for it a narrow
- * pane gives up MCAP, then 52W%, before it cuts the names short.
+ * CHG% for each session in `extendedSessions`, and FLOAT ends the row while a
+ * minimum float is set (`float`); to make room for them a narrow pane gives up
+ * MCAP, then 52W%, before it cuts the names short.
  */
-export function buildMarketMoverColumns(width: number, extendedSessions: readonly ExtendedSession[] = []): MarketMoverColumn[] {
+export function buildMarketMoverColumns(
+  width: number,
+  extendedSessions: readonly ExtendedSession[] = [],
+  options: { float?: boolean } = {},
+): MarketMoverColumn[] {
   const lead: MarketMoverColumn[] = [
     { id: "rank", label: "#", width: 3, align: "left" },
     { id: "symbol", label: "TICKER", width: 8, align: "left" },
@@ -55,12 +60,13 @@ export function buildMarketMoverColumns(width: number, extendedSessions: readonl
     { id: "volumeRatio", label: "V/AVG", width: 6, align: "right" },
     { id: "range", label: "52W%", width: 6, align: "right" },
     { id: "marketCap", label: "MCAP", width: 8, align: "right" },
+    ...(options.float ? [{ id: "floatShares" as const, label: "FLOAT", width: 7, align: "right" as const }] : []),
   ];
   // Measured the way the table draws them (a header and its sort mark widen a
   // column, gaps between them); the name adds its own width and a gap.
   const nameRoom = () => width - getTableWidth([...lead, ...quote, ...trailing]) - 1;
   for (const id of ["marketCap", "range"] as const) {
-    if (extendedSessions.length === 0 || nameRoom() >= EXTENDED_MIN_NAME_WIDTH) break;
+    if ((extendedSessions.length === 0 && !options.float) || nameRoom() >= EXTENDED_MIN_NAME_WIDTH) break;
     trailing.splice(trailing.findIndex((column) => column.id === id), 1);
   }
   return [...lead, { id: "name", label: "NAME", width: Math.max(6, nameRoom()), align: "left" }, ...quote, ...trailing];
@@ -119,6 +125,12 @@ export function renderMarketMoverCell(
       return {
         text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : "—",
         value: row.marketCap,
+        color: colors.textDim,
+      };
+    case "floatShares":
+      return {
+        text: row.floatShares != null ? formatCompact(row.floatShares, { fixedDecimals: true }) : "—",
+        value: row.floatShares ?? null,
         color: colors.textDim,
       };
   }

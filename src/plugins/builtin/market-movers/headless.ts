@@ -14,6 +14,7 @@ import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, MOVER_RANKIN
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
+import { minFloatShares, normalizeMinFloat } from "./min-float";
 
 const rowPrice = (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow));
 
@@ -69,15 +70,19 @@ function sessionColumns(view: CloudSessionMoversCategory) {
   ];
 }
 
+const FLOAT_COLUMN: HeadlessPaneColumn = { key: "floatShares", header: "Float", align: "right", format: compact };
+
 export interface MarketMoversHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     tab: ScreenerTabId,
     provider: DataProvider,
+    minFloat: number | null,
   ): Promise<MarketMoverTabResult>;
   loadSession(
     view: CloudSessionMoversCategory,
     side: CloudSessionMoversSide,
+    minFloat: number | null,
   ): Promise<CloudSessionMoversPayload>;
 }
 
@@ -89,8 +94,8 @@ export interface MarketMoversHeadlessDependencies {
 const ONE_SHOT_METADATA_WAIT_MS = 10_000;
 
 const defaultDependencies: MarketMoversHeadlessDependencies = {
-  load: (_args, tab, provider) => loadMarketMoverTab(tab, provider, { metadataWaitMs: ONE_SHOT_METADATA_WAIT_MS }),
-  loadSession: (view, side) => loadSessionMovers(view, side),
+  load: (_args, tab, provider, minFloat) => loadMarketMoverTab(tab, provider, { metadataWaitMs: ONE_SHOT_METADATA_WAIT_MS, minFloat }),
+  loadSession: (view, side, minFloat) => loadSessionMovers(view, side, { minFloat }),
 };
 
 export function createMarketMoversHeadless(
@@ -128,6 +133,14 @@ export function createMarketMoversHeadless(
       ],
       defaultValue: "up",
       pluginState: { pluginId: "market-overview", key: "sessionSide" },
+    }, {
+      key: "min-float",
+      description: "Keep the rows whose stored float is at least this many shares, such as 10M or 500k; any lifts it. A row with no stored float is left out. Trending carries no float and ignores it.",
+      type: "string",
+      placeholder: "shares",
+      example: "--min-float 10M",
+      normalize: normalizeMinFloat,
+      pluginState: { pluginId: "market-overview", key: "minFloat" },
     }],
     columns: COLUMNS,
     describe: (args) => isSessionTab(String(args.options.list))
@@ -135,21 +148,25 @@ export function createMarketMoversHeadless(
       : `Market Movers | ${String(args.options.list)}`,
     async load(args, ctx) {
       const tab = args.options.list as TabId;
+      const minFloatValue = typeof args.options["min-float"] === "string" ? args.options["min-float"] : null;
+      const minFloat = minFloatShares(minFloatValue);
       if (isSessionTab(tab)) {
         const side = resolveSide(tab, String(args.options.side));
-        const payload = await dependencies.loadSession(tab, side);
+        const payload = await dependencies.loadSession(tab, side, minFloat);
         return {
           columns: sessionColumns(tab),
           rows: payload.items.map((item) => ({
             ...item,
             events: item.catalysts.map((catalyst) => CATALYST_LABEL[catalyst] ?? catalyst).join(" "),
           })),
-          metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true },
+          metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true, minFloat },
           // A Pro account's list is the live board; the free one says it is delayed.
           ...(payload.access === "delayed" ? {} : { freshness: { status: "live" as const } }),
         };
       }
-      const result = await dependencies.load(args, tab, ctx.marketData);
+      // Trending carries no float, so a minimum does not apply to it.
+      const floatFiltered = minFloat != null && tab !== "trending";
+      const result = await dependencies.load(args, tab, ctx.marketData, floatFiltered ? minFloat : null);
       const ranked = createRows(result.quotes);
       // Last and Change % are the regular session; an extended print is a column of its own.
       const extendedSessions = moverExtendedSessions(ranked);
@@ -168,16 +185,17 @@ export function createMarketMoversHeadless(
       // Beside an extended column, say which move the order follows.
       const rankedBy = result.rankedBy ?? null;
       const quoteError = marketMoverQuoteError(result);
+      const columns = [...COLUMNS.slice(0, 5), ...extendedSessions.map(extendedColumn), ...COLUMNS.slice(5), ...(floatFiltered ? [FLOAT_COLUMN] : [])];
+      const notes = [
+        ...(rankedBy && rankedBy !== "volume" && extendedSessions.length > 0 ? [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] : []),
+        ...(minFloat != null && !floatFiltered ? ["Trending carries no float, so --min-float does not apply to it."] : []),
+      ];
       return {
-        ...(extendedSessions.length > 0
-          ? { columns: [...COLUMNS.slice(0, 5), ...extendedSessions.map(extendedColumn), ...COLUMNS.slice(5)] }
-          : {}),
+        ...(columns.length !== COLUMNS.length ? { columns } : {}),
         rows,
         ...(quoteError ? { complete: false, unavailableSymbols: result.unavailableSymbols, errors: [quoteError] } : {}),
-        ...(rankedBy && rankedBy !== "volume" && extendedSessions.length > 0
-          ? { notes: [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] }
-          : {}),
-        metadata: { list: tab, source: result.source, stale: result.stale, rankedBy },
+        ...(notes.length > 0 ? { notes } : {}),
+        metadata: { list: tab, source: result.source, stale: result.stale, rankedBy, minFloat: floatFiltered ? minFloat : null },
         // A Pro account's Gainers, Losers and Most Active are the real-time lists.
         ...(result.source === "cloud" ? { freshness: { status: "live" as const } } : {}),
       };

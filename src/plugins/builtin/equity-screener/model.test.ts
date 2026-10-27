@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -153,12 +153,13 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.atrPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.ivPercentile).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.floatShares).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
@@ -236,4 +237,11 @@ test("option volatility fields: IV30 and HV20 in percent, percentile and rank wh
     .toEqual(["28.0", "91", "+2.3", "-0.8", "20.0", "33"]);
   expect(SIGN_COLORED.has("iv30Change1d")).toBe(false);
   for (const field of OPTION_VOLATILITY_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+});
+
+test("ownership fields: share counts compact, short % of float and institutional ownership one decimal", () => {
+  expect([formatScreenValue("sharesOutstanding", 504_500_990), formatScreenValue("floatShares", 461_240_000),
+    formatScreenValue("shortPercentOfFloat", 10.637), formatScreenValue("institutionalOwnershipPercent", 125.4)])
+    .toEqual(["504.50M", "461.24M", "10.6", "125.4"]);
+  for (const field of OWNERSHIP_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
 });

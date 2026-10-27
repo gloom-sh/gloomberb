@@ -50,7 +50,8 @@ type MarketMoverColumnId =
   | "volume"
   | "volumeRatio"
   | "range"
-  | "marketCap";
+  | "marketCap"
+  | "floatShares";
 export type MarketMoverColumn = DataTableColumn & { id: MarketMoverColumnId };
 /**
  * A list row. Price and change are the regular session's, as `ticker` reads
@@ -123,6 +124,8 @@ function getSortValue(
       return fiftyTwoWeekPositionPercent(row.price, row.fiftyTwoWeekLow, row.fiftyTwoWeekHigh);
     case "marketCap":
       return row.marketCap ?? null;
+    case "floatShares":
+      return row.floatShares ?? null;
   }
 }
 

@@ -24,6 +24,7 @@ import {
   type PreferredMoversOptions,
   type TrendingSymbol,
 } from "./screener";
+import { meetsMinFloat } from "./min-float";
 
 export interface MarketMoverTabResult extends MarketMoversResult {
   tab: ScreenerTabId;
@@ -100,10 +101,14 @@ export function marketMoverQuoteError(result: Pick<MarketMoverTabResult, "unavai
 export async function loadMarketMoverTab(
   tab: ScreenerTabId,
   provider: DataProvider | null,
-  options?: Pick<PreferredMoversOptions, "forceRefresh" | "metadataWaitMs"> & { basis?: MoverRankBasis },
+  options?: Pick<PreferredMoversOptions, "forceRefresh" | "metadataWaitMs"> & {
+    basis?: MoverRankBasis;
+    /** Keep the rows with a float of at least this many shares. Trending carries no float and ignores it. */
+    minFloat?: number | null;
+  },
   dependencies: MarketMoverTabDependencies = defaultDependencies,
 ): Promise<MarketMoverTabResult> {
-  const { basis, ...fetchOptions } = options ?? {};
+  const { basis, minFloat = null, ...fetchOptions } = options ?? {};
   if (tab === "trending") {
     const trending = await dependencies.fetchTrending(LIST_ROWS, fetchOptions);
     const hydrated = await hydrateTrending(trending.data, provider);
@@ -116,13 +121,15 @@ export async function loadMarketMoverTab(
   }
   const category = CATEGORY_MAP[tab];
   // The server picks the candidates on the basis the list ranks by, so after the close they are the session's movers.
-  const result = await dependencies.fetchPreferred(category, category === "most_actives" ? LIST_ROWS : MOVER_CANDIDATES, {
+  // A minimum float drops rows, so Most Active then reads as many candidates as the price lists.
+  const result = await dependencies.fetchPreferred(category, category === "most_actives" && minFloat == null ? LIST_ROWS : MOVER_CANDIDATES, {
     ...fetchOptions,
     session: basis ?? "regular",
   });
   // Each row read as `ticker` reads it, then ranked by the move its Chg% shows.
   const { quotes, rankedBy } = rankMoverQuotes(category, result.quotes.map(moverRegularSession), basis);
-  return { ...result, quotes: quotes.slice(0, LIST_ROWS), rankedBy, tab };
+  const kept = quotes.filter((quote) => meetsMinFloat(quote.floatShares, minFloat));
+  return { ...result, quotes: kept.slice(0, LIST_ROWS), rankedBy, tab };
 }
 
 /** The server refused the list for the account's plan (gaps, without Pro). */
@@ -136,12 +143,23 @@ export class SessionMoversAccessError extends Error {
 export async function loadSessionMovers(
   view: CloudSessionMoversCategory,
   side: CloudSessionMoversSide,
-  options?: { forceRefresh?: boolean },
+  options?: { forceRefresh?: boolean; minFloat?: number | null },
 ): Promise<CloudSessionMoversPayload> {
-  const response = await apiClient.getCloudMarketScreener(view, 25, options?.forceRefresh ? "refresh" : "cache-first", side);
+  const minFloat = options?.minFloat ?? null;
+  // A minimum float drops rows, so it reads the most the server lists.
+  const response = await apiClient.getCloudMarketScreener(view, minFloat == null ? LIST_ROWS : MOVER_CANDIDATES, options?.forceRefresh ? "refresh" : "cache-first", side);
   if (response.reasonCode === "PRO_REQUIRED") throw new SessionMoversAccessError();
   if ((response.status === "success" || response.status === "partial") && response.data) {
-    return response.stale ? { ...response.data, stale: true } : response.data;
+    const payload = response.stale ? { ...response.data, stale: true } : response.data;
+    return minFloat == null ? payload : { ...payload, items: withMinFloat(payload.items, minFloat) };
   }
   throw new Error("Session movers temporarily unavailable");
+}
+
+/** The rows with a float of at least `minFloat`, the first LIST_ROWS of them, ranked again from 1. */
+export function withMinFloat<T extends { rank: number; floatShares: number | null }>(items: readonly T[], minFloat: number): T[] {
+  return items
+    .filter((item) => meetsMinFloat(item.floatShares, minFloat))
+    .slice(0, LIST_ROWS)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
 }
