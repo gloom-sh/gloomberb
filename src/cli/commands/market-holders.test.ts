@@ -8,6 +8,10 @@ import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import { createHoldersHeadless } from "../../plugins/builtin/holders/headless";
 import { createTestHeadlessContext } from "../../test-support/headless";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createProviderMiss } from "../../sources/provider-errors";
+import { apiClient } from "../../api-client";
+import { isCliFailure } from "../errors";
 
 const holders = marketDataCliCommands.find((command) => command.name === "holders")!;
 const insider = marketDataCliCommands.find((command) => command.name === "insider")!;
@@ -167,6 +171,42 @@ test("holders on a US line lists the 13F index's filers past the source's few, a
   const tailed = tail.printed[0]!.result;
   expect(tailed.metadata).toMatchObject({ shown: 3, reported: 25, total: 567 });
   expect(tailed.warnings).toEqual(["--tail 3 is the last 3 of the largest 25 loaded, not the smallest of all 567 holders."]);
+});
+
+test("a fund no source has holders of says it is a fund and what reads it instead, as no data, in holders, 13f and fn HDS", async () => {
+  // The service's covered funds for fn MEMB, trimmed: XLE is one, EWJ is not.
+  setHttpFetchTransport(async (url) => new URL(url).pathname === "/cloud/members"
+    ? Response.json({ funds: [{ ticker: "XLE", name: "Energy", aliases: [], changes: "none", asOf: null }] })
+    : noIndex());
+  const fund = (symbol: string, listingExchangeName: string) => ({
+    getHolders: async () => { throw createProviderMiss("NO_DATA"); },
+    getQuote: async () => createTestQuote({ symbol, instrumentType: "ETF", listingExchangeName }),
+  });
+  const failure = async (command: string, symbol: string, market: Record<string, unknown>) => {
+    const cli = createTestCliContext({ dataProvider: createTestDataProvider(market) });
+    return marketDataCliCommands.find((entry) => entry.name === command)!.execute([symbol], cli.context).then(() => null, (error) => error);
+  };
+  for (const command of ["holders", "13f"]) {
+    const xle = await failure(command, "XLE", fund("XLE", "ARCA"));
+    expect(isCliFailure(xle) && xle.code).toBe("no_data");
+    expect(xle.message).toBe("XLE is a fund: there is no ownership breakdown for funds.");
+    expect(xle.details).toBe("13F filers that hold it: gloom fn 13F XLE\nWhat it holds: gloom fn MEMB XLE\nFund facts: gloom fn ETF XLE");
+  }
+  // fn MEMB is named only for a fund it covers, and none of the US commands for a fund listed abroad.
+  expect((await failure("holders", "EWJ", fund("EWJ", "ARCA"))).details).toBe("13F filers that hold it: gloom fn 13F EWJ\nFund facts: gloom fn ETF EWJ");
+  expect((await failure("holders", "SXR8", fund("SXR8", "XETRA"))).details).toBeUndefined();
+  // A company the source has nothing for keeps the source's answer.
+  const stock = await failure("holders", "ZZZQ", { ...fund("ZZZQ", "NASDAQ"), getQuote: async () => createTestQuote({ symbol: "ZZZQ", instrumentType: "EQUITY" }) });
+  expect(isCliFailure(stock)).toBe(false);
+
+  const hds = await createHoldersHeadless({ loadSnapshot: async () => { throw createProviderMiss("NO_DATA"); } }).load({
+    rawArgument: "XLE", argument: "XLE", symbols: ["XLE"], options: { sort: "value", order: "desc", limit: 25 },
+  }, createTestHeadlessContext({ marketData: createTestDataProvider(fund("XLE", "ARCA")), apiClient }));
+  expect(hds).toMatchObject({
+    rows: [],
+    unavailableSymbols: ["XLE"],
+    empty: "XLE is a fund: there is no ownership breakdown for funds.\n13F filers that hold it: gloom fn 13F XLE\nWhat it holds: gloom fn MEMB XLE\nFund facts: gloom fn ETF XLE",
+  });
 });
 
 test("insider leads with INS's Form 4 summary, not a 13F list that names no insider, and dates the report by the newest filing", async () => {

@@ -192,3 +192,38 @@ test("calendar gaps, canonical aliases and screenshot trail settings stay consis
   ).toBe(true);
   expect(mismatched.strengthRank.samples).toBe(0);
 });
+
+test("a benchmark typed without its exchange is read on its quote's listing, and a benchmark it cannot use is one error", async () => {
+  const reference = history("ACWI", Array(90).fill(1)),
+    asset = history("EWJ", Array(90).fill(2));
+  const asked: string[] = [];
+  const bare = { symbol: "ACWI", exchange: "", label: "ACWI" };
+  const client = (listingExchangeName: string | undefined) => ({
+    getCloudQuotesBatch: async () => ({
+      status: "success" as const,
+      data: {
+        items: [bare, asset.instrument].map((row) => ({
+          symbol: row.symbol,
+          exchange: row.exchange,
+          status: "success" as const,
+          data: { currency: "USD", ...(row === bare ? { listingExchangeName } : {}) } as any,
+        })),
+      },
+    }),
+    getCloudHistory: async (symbol: string, exchange?: string) => {
+      asked.push(`${symbol}:${exchange ?? ""}`);
+      return { status: "success" as const, currency: "USD", data: symbol === "ACWI" ? reference.points : asset.points };
+    },
+  });
+  const data = await fetchRotation(bare, [asset.instrument], 6, client("NASDAQ"), new Date("2026-09-22"));
+  expect(asked).toContain("ACWI:NASDAQ");
+  expect(data.benchmark.exchange).toBe("NASDAQ");
+  expect(data.gaps).toEqual([]);
+  expect(data.rows[0]!.strength).toBe(100);
+
+  // No venue to date its weeks by: the benchmark's error, once, and nothing blamed on the rows.
+  const unplaced = await fetchRotation(bare, [asset.instrument], 6, client(undefined), new Date("2026-09-22"));
+  expect(unplaced.gaps).toEqual(["Benchmark market calendar is outside published coverage."]);
+  expect(unplaced.rows[0]!.strength).toBeNull();
+  expect(unplaced.rows[0]!.gaps).toEqual([]);
+});

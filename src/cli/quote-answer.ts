@@ -86,7 +86,7 @@ export async function answerQuote(
   const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
     ? [indexRootAlsoLine(root, request.command)] : [];
   if (result.quote) {
-    // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
+    // "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
     const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
     // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.

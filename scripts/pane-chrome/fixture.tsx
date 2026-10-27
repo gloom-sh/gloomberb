@@ -1376,7 +1376,8 @@ function chartComposerLayout(): LayoutConfig {
   }
   return {
     dockRoot: leaf(instanceId),
-    instances: [{ ...instance(instanceId), settings: { chartSpec: spec } }],
+    // `&candles=change` draws rising candles in the theme's gain colour.
+    instances: [{ ...instance(instanceId), settings: { chartSpec: spec, ...(params.get("candles") ? { chartCandleColours: params.get("candles") } : {}) } }],
     floating: [],
     detached: [],
   };

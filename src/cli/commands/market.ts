@@ -156,7 +156,7 @@ import {
   symbolListNotes,
   type HistoryListRow,
 } from "../history-export";
-import { isCliFailure } from "../errors";
+import { fail, isCliFailure, NO_DATA_CODE } from "../errors";
 import { mapWithConcurrency } from "../../utils/concurrency";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
@@ -307,6 +307,7 @@ import {
   unvaluedHoldersNote,
 } from "../../plugins/builtin/holders/report-rows";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
+import { fundHoldersAnswer } from "../../plugins/builtin/holders/fund-holders";
 import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesAsOf, classSharesToday } from "../../plugins/builtin/holders/client";
 import {
@@ -2415,14 +2416,20 @@ async function runHolders(
     // --tail counts back from the end of the rows loaded, so it loads at least as many as it asks for.
     const tail = ctx.cliOptions.tail;
     const indexLimit = Math.min(ctx.cliOptions.limit ?? Math.max(tail ?? 0, HOLDERS_DEFAULT_ROWS), HOLDER_ROWS_MAX);
+    const quoted = loadListingQuote(market.dataProvider, listing);
     const [source, quote, form4, index] = await Promise.all([
       loadForListing(
         listing, market, ctx,
         () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
         (found) => found.holders.length === 0,
         { command: commandName, noun: "holder data" },
-      ),
-      loadListingQuote(market.dataProvider, listing),
+      ).catch(async (error: unknown) => {
+        // A fund has no ownership breakdown: say so, and what reads it, rather than the source's NO_DATA.
+        const fund = await fundHoldersAnswer(listing.symbol, error, await quoted, apiClient);
+        if (fund) fail(fund.message, fund.details.join("\n") || undefined, NO_DATA_CODE);
+        throw error;
+      }),
+      quoted,
       insiderCommand ? loadForm4Report(market, listing) : null,
       indexTicker ? loadIndexedHolders(indexTicker, indexLimit).catch(logFailure("cli.commands-market", "Read the 13F holder index failed", null)) : null,
     ]);

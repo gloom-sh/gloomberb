@@ -129,6 +129,20 @@ export const CHART_SETTING_KEYS = {
   realizedVolEstimator: "chartRealizedVolEstimator",
 } as const;
 
+/**
+ * Whether rising candles take their series' colour or the theme's gain colour.
+ * Kept beside the spec in the pane's settings, so a build without it opens the
+ * chart unchanged; it is not one of CHART_SETTING_KEYS, which a spec edit
+ * clears as derived from the spec.
+ */
+export const CHART_CANDLE_COLOURS_SETTING_KEY = "chartCandleColours";
+
+export type ChartCandleColours = "series" | "change";
+
+export function chartCandleColours(value: unknown): ChartCandleColours {
+  return value === "change" ? "change" : "series";
+}
+
 function fallbackSpec(symbol: string | null | undefined): ChartSpec {
   return symbol ? buildPriceChartPreset(symbol) : buildEmptyChartPreset();
 }
@@ -417,6 +431,7 @@ export function buildChartComposerPaneSettingsDef(
       [CHART_SETTING_KEYS.range]: spec.viewport.range,
       [CHART_SETTING_KEYS.resolution]: spec.viewport.resolution,
       [CHART_SETTING_KEYS.mode]: inlineStyleTarget?.style ?? "",
+      [CHART_CANDLE_COLOURS_SETTING_KEY]: chartCandleColours(settings[CHART_CANDLE_COLOURS_SETTING_KEY]),
       ...(realizedVol ? {
         [CHART_SETTING_KEYS.realizedVolWindow]: String(realizedVol.parameters.window ?? 30),
         [CHART_SETTING_KEYS.realizedVolEstimator]: realizedVol.parameters.estimator ?? "close-to-close",
@@ -492,6 +507,18 @@ export function buildChartComposerPaneSettingsDef(
           description: `Choose how ${chartSeriesLabel(inlineStyleTarget)} is drawn.`,
           type: "select" as const,
           options: modes.map((mode) => ({ value: mode, label: mode.toUpperCase() })),
+        }]
+        : []),
+      ...(spec.series.some((series) => isOhlcSeriesStyle(series.style))
+        ? [{
+          key: CHART_CANDLE_COLOURS_SETTING_KEY,
+          label: "Candle Colours",
+          description: "Draw rising candles in their series' colour, or in the theme's gain colour against its loss colour.",
+          type: "select" as const,
+          options: [
+            { value: "series", label: "Series colour" },
+            { value: "change", label: "Gains & losses" },
+          ],
         }]
         : []),
     ],

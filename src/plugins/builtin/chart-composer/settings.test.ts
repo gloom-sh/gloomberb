@@ -12,6 +12,7 @@ import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
 import {
   applyChartComposerPaneSetting,
   buildChartComposerPaneSettingsDef,
+  CHART_CANDLE_COLOURS_SETTING_KEY,
   CHART_SETTING_KEYS,
   getChartInlineStyleTarget,
 } from "./settings";
@@ -201,4 +202,21 @@ describe("chart composer pane settings", () => {
       "columns",
     )).toThrow("not compatible");
   });
+});
+
+test("candle colours survive spec edits, and are offered only while a series draws candles", () => {
+  let settings: Record<string, unknown> = { chartSpec: buildPriceChartPreset("AAPL") };
+  const apply = (key: string, value: unknown) => {
+    settings = applyChartComposerPaneSetting(settings, field(key, "select"), value);
+  };
+  expect(buildChartComposerPaneSettingsDef(settings).values?.[CHART_CANDLE_COLOURS_SETTING_KEY]).toBe("series");
+  apply(CHART_CANDLE_COLOURS_SETTING_KEY, "change");
+  // A spec edit clears the settings derived from the spec; this one is not derived from it.
+  apply(CHART_SETTING_KEYS.range, "6M");
+  const definition = buildChartComposerPaneSettingsDef(JSON.parse(JSON.stringify(settings)));
+  expect(definition.values?.[CHART_CANDLE_COLOURS_SETTING_KEY]).toBe("change");
+  expect(definition.fields.some((entry) => entry.key === CHART_CANDLE_COLOURS_SETTING_KEY)).toBe(true);
+
+  apply(CHART_SETTING_KEYS.mode, "line");
+  expect(buildChartComposerPaneSettingsDef(settings).fields.some((entry) => entry.key === CHART_CANDLE_COLOURS_SETTING_KEY)).toBe(false);
 });

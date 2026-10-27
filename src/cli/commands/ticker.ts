@@ -1106,7 +1106,7 @@ export async function buildTickerReport({
   notes?: string;
   /** Why there is no quote, when a source said; "Quote unavailable." otherwise. */
   quoteNote?: string;
-  /** "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)", for a bare symbol several companies list. */
+  /** "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)", for a bare symbol several companies list. */
   listingNote?: string;
   recentNews?: NewsArticle[];
   recentSecFilings?: SecFilingItem[];

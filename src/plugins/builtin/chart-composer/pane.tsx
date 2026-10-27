@@ -55,7 +55,8 @@ import {
 import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-catalog";
-import { isDatasetChart } from "../../../time-series/spec";
+import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
+import { useThemeColors } from "../../../theme/theme-context";
 import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
@@ -118,6 +119,8 @@ import {
   CHART_BAR_SIZE_PRESETS,
   CHART_RANGES as RANGES,
   CHART_RESOLUTIONS,
+  CHART_CANDLE_COLOURS_SETTING_KEY,
+  chartCandleColours,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
   chartStudySettingLabel,
@@ -343,6 +346,14 @@ function ChartComposerSurface({
   // plausible time is dropped without pinning. This handle only sets the
   // pin; the chart it opens on is what shows and keeps it.
   const [pinnedMoment, setPinnedMoment] = usePaneSettingValue<unknown>(CHART_PINNED_MOMENT_SETTING_KEY, null);
+  const [candleColoursSetting] = usePaneSettingValue<unknown>(CHART_CANDLE_COLOURS_SETTING_KEY, null);
+  const gainColour = useThemeColors().positive;
+  // Rising candles in the gain colour; falling ones already take the loss colour.
+  const candleColour = useCallback((list: ResolvedSeries[]) => (
+    chartCandleColours(candleColoursSetting) === "change"
+      ? list.map((entry) => isOhlcSeriesStyle(entry.style) ? { ...entry, color: gainColour } : entry)
+      : list
+  ), [candleColoursSetting, gainColour]);
   const momentLink = useTabCursorLink(paneId ? `${paneId}:moment` : null, { viewer: false });
   useEffect(() => {
     if (pinnedMoment == null || !momentLink?.pin) return;
@@ -476,9 +487,9 @@ function ChartComposerSurface({
     });
     const resolvedIds = new Set(resolved.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
-    if (missing.length === 0) return resolved;
+    if (missing.length === 0) return candleColour(resolved);
     const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
-    return [
+    return candleColour([
       ...resolved,
       ...missing.map((entry): ResolvedSeries => ({
         id: entry.id,
@@ -496,15 +507,15 @@ function ChartComposerSurface({
         hidden: true,
         points: [],
       })),
-    ].sort((a, b) => (bySpecOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (bySpecOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER));
-  }, [listings.names, nameSeries, resolution.legendSeries, spec.series]);
+    ].sort((a, b) => (bySpecOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (bySpecOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)));
+  }, [candleColour, listings.names, nameSeries, resolution.legendSeries, spec.series]);
   const plottedSeries = useMemo(
-    () => projectVisibleChartSeries(
+    () => candleColour(projectVisibleChartSeries(
       spec,
       resolution.bufferedSeries ?? resolution.series,
       resolution.legendSeries,
-    ),
-    [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
+    )),
+    [candleColour, resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
   const { notify } = usePluginAppActions();
   const { runtime } = usePluginRenderContext();

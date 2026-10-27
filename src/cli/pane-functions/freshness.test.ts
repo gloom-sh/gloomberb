@@ -206,7 +206,7 @@ describe("report freshness", () => {
     const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
     // Each market opens at its own time, which the line gives each, the soonest first.
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
-      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 06:00 UTC · EPA 07:00 UTC · US 13:30 UTC");
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 07:00 UTC · EPA 07:00 UTC · US 13:30 UTC");
     // A venue whose newest row is a day older says so beside the others.
     const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))

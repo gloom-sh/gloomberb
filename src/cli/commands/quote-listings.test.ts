@@ -280,7 +280,7 @@ test("a bare symbol several companies list names, in one line, the company it wa
 
   const bare = await runQuote(["CAR"], source);
   expect(bare.rows.map((row) => row.target.symbol)).toEqual(["CAR"]);
-  expect(bare.warnings).toEqual(["CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)"]);
+  expect(bare.warnings).toEqual(["CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)"]);
   // A named venue is the user's choice: nothing to say, and no search.
   const searched = source.searches();
   expect((await runQuote(["CAR:ASX"], source)).warnings).toEqual([]);

@@ -250,6 +250,32 @@ test("listings of one company, however each venue spells its name, still go to t
   expect(failure.details).toContain("SAN:XETRA (try: gloom history SAN:XETRA --range 5Y)");
 });
 
+// As search listed them on 2026-10-27. One fund's venues word its name differently; other companies use the symbol abroad.
+test("the line naming a bare symbol's listing names only other companies' venues, never the same fund's or a receipt it cannot place", () => {
+  const ewg = [
+    { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" },
+    { exchange: "BMV", name: "iShares MSCI Germany ETF" },
+    { exchange: "CSE", name: "Eat Well Investment Group Inc." },
+    { exchange: "LSE", name: "W.A.G Payment Solutions plc" },
+  ];
+  expect(listingChoiceNote("EWG", { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" }, ewg))
+    .toBe("EWG = iShares MSCI Germany Index Fund, ARCA (different companies on CSE, LSE)");
+  // Another issuer's fund under the symbol is another company's.
+  expect(listingChoiceNote("INDA", { exchange: "BATS", name: "iShares MSCI India ETF" }, [
+    { exchange: "BATS", name: "iShares MSCI India ETF" },
+    { exchange: "XETRA", name: "Amundi STOXX Europe 600 Banks UCITS ETF Acc" },
+  ])).toBe("INDA = iShares MSCI India ETF, BATS (a different company on XETRA)");
+  // A US fund's receipt in Buenos Aires is the fund, however it is named, so a symbol that means one thing says nothing.
+  const xlk = { exchange: "ARCA", name: "State Street Technology Select Sector SPDR ETF" };
+  expect(listingChoiceNote("XLK", xlk, [xlk, { exchange: "BYMA", name: "Technology Select Sector SPDR Fund" }])).toBeNull();
+  const spy = { exchange: "ARCA", name: "State Street SPDR S&P 500 ETF Trust" };
+  expect(listingChoiceNote("SPY", spy, [spy, { exchange: "BYMA", name: "SS SPDR S&P 500 ETF Trust - CEDEAR" }])).toBeNull();
+  // A listing nothing names is not guessed to be another company's, nor is the one the symbol was read as.
+  expect(listingChoiceNote("EWG", { exchange: "ARCA" }, [{ exchange: "ARCA", name: "" }, ...ewg.slice(2)])).toBeNull();
+  expect(listingChoiceNote("EWG", { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" }, [...ewg.slice(0, 2), { exchange: "CSE", name: "" }]))
+    .toBeNull();
+});
+
 // CAR as search listed it on 2026-10-11 in its first rows: Avis and Carrefour, but not CAR Group's ASX line.
 const CAR_ROWS = [
   { providerId: "test", symbol: "CAR", name: "Carrefour SA", exchange: "XETRA", currency: "EUR", type: "Common Stock" },
@@ -289,7 +315,7 @@ test("every command agrees with quote on where a symbol trades: a venue search l
   // The one line naming which company a bare CAR went to, and the companies it did not.
   const venues = await listingVenues("CAR", deps);
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, [...venues, { exchange: "ASX", name: "CAR Group Limited" }]))
-    .toBe("CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)");
+    .toBe("CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)");
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
     .toBeNull();
 });
