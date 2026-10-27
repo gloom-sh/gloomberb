@@ -73,6 +73,7 @@ function slashSpellsListing(symbol: string): boolean {
   try {
     return parseListingArg(symbol).key !== symbol.toUpperCase();
   } catch {
+    // Intentional ignore: text the listing reader refuses is no pair to divide, so the quote's own error stands.
     return true;
   }
 }
