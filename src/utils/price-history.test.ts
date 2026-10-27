@@ -48,6 +48,14 @@ describe("history freshness across a midday break", () => {
     expect(isPriceHistoryStaleForCurrentWindow(morningLast, Date.parse("2026-09-09T05:04:00Z"), fiveMinute)).toBe(false);
   });
 
+  test("judges an hourly bar by when it ends, so the bar that closes at the break stays current", () => {
+    const hourly = { exchange: "SSE", intervalMs: priceHistoryIntervalMs("1h") };
+    // 10:30-11:30 Shanghai is the morning's last hourly bar; 12:50 is past its plain bar lag.
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T01:30:00Z", "2026-09-09T02:30:00Z"]), Date.parse("2026-09-09T04:50:00Z"), hourly)).toBe(false);
+    // An hourly bar that ended at 10:30 means the feed stopped before the break.
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T01:30:00Z"]), Date.parse("2026-09-09T04:50:00Z"), hourly)).toBe(true);
+  });
+
   test("still rejects a bar the morning stopped before, and the morning's last once trading resumes", () => {
     expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T02:00:00Z"]), Date.parse("2026-09-09T04:15:00Z"), fiveMinute)).toBe(true);
     expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-09T03:30:00Z"]), Date.parse("2026-09-09T06:30:00Z"), fiveMinute)).toBe(true);

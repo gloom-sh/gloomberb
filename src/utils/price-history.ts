@@ -235,8 +235,11 @@ export function isPriceHistoryStaleForCurrentWindow(
   const allowedLag = allowedBarLagMs(intervalMs);
   if (age <= allowedLag) return false;
   // A venue paused at midday (SSE/SZSE/BSE, TKO, ...) holds the morning's last
-  // bar current through the break, as the quote freshness rule does.
-  if (isMiddayBreakPrint(latestTime, options.exchange, now, 0)) return false;
+  // bar current through the break, as the quote freshness rule does. A bar is
+  // labelled by its start, so an hourly bar ending at the break is judged by
+  // when it ends.
+  const latestBarEnd = intervalMs != null ? Math.min(latestTime + intervalMs, now) : latestTime;
+  if (isMiddayBreakPrint(latestBarEnd, options.exchange, now, 0)) return false;
   const sessions = listingSessionsAt(now, options);
   if (!sessions) return age > UNSCHEDULED_HISTORY_MAX_AGE_MS;
   const fetchedAt = options.fetchedAt ?? Number.NEGATIVE_INFINITY;
