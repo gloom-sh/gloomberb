@@ -23,7 +23,7 @@
  * `narrow` (floating panes either side of the width a header keeps Ask Gloom
  * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx),
  * `cmp` (one chart composer pane on invented 30-minute bars, see
- * createInventedChartSource: `&chart=readout` three listings on two venues,
+ * createInventedChartSource (`&style=` an OHLC style for its price): `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
  * whose bars start 150 sessions back, `percent` three listings rebased;
  * `&linked=1` adds a daily chart composer under it, `&linked=mixed` IV
@@ -1151,6 +1151,9 @@ function chartComposerSpec(kind: string): ChartSpec {
     spec = appendChartSeries(spec, { kind: "security", symbol: "CHRL", exchange: "XETR", fieldId: "market.close" }).spec;
     spec = setBuiltinStudies(spec, ["volume", "sma20", "rsi14"]);
   }
+  // `&style=hollow` (or any OHLC style) draws the price series that way.
+  const style = params.get("style") as ChartSpec["series"][number]["style"] | null;
+  if (style) spec = { ...spec, series: spec.series.map((entry, index) => index === 0 ? { ...entry, style } : entry) };
   return { ...spec, viewport: { ...spec.viewport, range: "3M", resolution: "30m" } };
 }
 

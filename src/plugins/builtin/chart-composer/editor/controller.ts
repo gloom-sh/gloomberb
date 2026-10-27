@@ -10,7 +10,7 @@ import type {
   SeriesTimestampMode,
   SeriesTransform,
 } from "../../../../time-series/types";
-import { hasStudyInputCount, validateChartSpec } from "../../../../time-series/spec";
+import { hasStudyInputCount, isOhlcSeriesStyle, validateChartSpec } from "../../../../time-series/spec";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { getSharedRegistry } from "../../../registry";
 import {
@@ -415,7 +415,7 @@ export function useSeriesEditorController({
         : current.panels,
       series: replaceAt(current.series, selectedIndex, (() => {
         const currentSeries = current.series[selectedIndex]!;
-        const ohlcStyle = currentSeries.style === "candles" || currentSeries.style === "ohlc" || currentSeries.style === "hlc";
+        const ohlcStyle = isOhlcSeriesStyle(currentSeries.style);
         return {
           ...currentSeries,
           style: transform !== "raw" && ohlcStyle

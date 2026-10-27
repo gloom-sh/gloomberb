@@ -32,7 +32,7 @@ const FIELDS = [
     unit: "currency",
     unitGroup: "price",
     nativeFrequency: "daily",
-    styles: ["candles", "ohlc", "hlc", "line", "area"],
+    styles: ["candles", "hollow", "heikin-ashi", "ohlc", "hlc", "line", "area"],
     defaultStyle: "candles",
     transforms: MARKET_TRANSFORMS,
     defaultInterpolation: "none",

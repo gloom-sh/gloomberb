@@ -136,3 +136,14 @@ export function withSessionBar(
   }
   return points;
 }
+
+/**
+ * The daily bars `history` shows as final, which alerts on a daily close read
+ * too: the bars as served, less the bar of a session still trading
+ * (withSessionBar, which `history` rebuilds from the quote and marks partial)
+ * and any bar the source marks partial. A close `history` prints without
+ * `partial` is final here, and one it prints with it is not.
+ */
+export function finalDailyBars(points: PricePoint[], options: SessionBarOptions): PricePoint[] {
+  return withSessionBar(points, null, options).filter((point) => !point.partial);
+}

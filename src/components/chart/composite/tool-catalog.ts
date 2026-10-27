@@ -5,6 +5,9 @@ const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
 const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 const LINE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.2 12.8 12.8 3.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.2" cy="12.8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><circle cx="12.8" cy="3.2" r="2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
 const LEVEL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1.6 8h4.2M10.2 8h4.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="2.2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
+const RAY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="3.4" cy="8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5.4 8h9" stroke="#000" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const RECT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="2.2" y="3.6" width="11.6" height="8.8" rx="0.8" fill="#000" fill-opacity="0.18" stroke="#000" stroke-width="1.4"/></svg>`;
+const FIB_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 3h12M2 6.4h12M2 9h12M2 13h12" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 export const CHART_TOOLS: ReadonlyArray<{
@@ -57,6 +60,30 @@ export const CHART_TOOLS: ReadonlyArray<{
     icon: PEN_ICON,
   },
   {
+    kind: "ray",
+    label: "Horizontal ray",
+    shortcut: "Shift+J",
+    hint: "Click a price to run a line from it to the right edge, Backspace deletes",
+    glyph: "\u21a6",
+    icon: RAY_ICON,
+  },
+  {
+    kind: "rect",
+    label: "Rectangle",
+    shortcut: "Shift+B",
+    hint: "Drag a box over a range, grab a corner to reshape it, Backspace deletes",
+    glyph: "\u25ad",
+    icon: RECT_ICON,
+  },
+  {
+    kind: "fib",
+    label: "Fib retracement",
+    shortcut: "Shift+F",
+    hint: "Drag from a swing to its end for the 23.6 to 78.6% levels, Backspace deletes",
+    glyph: "\u2261",
+    icon: FIB_ICON,
+  },
+  {
     kind: "level",
     label: "Price level",
     shortcut: "Shift+H",
@@ -72,6 +99,9 @@ export const CHART_TOOL_MENU: ReadonlyArray<{ kind: ChartToolKind; label: string
   { kind: "zoom", label: "Zoom to Range", accelerator: "Shift+Z" },
   { kind: "line", label: "Trend Line", accelerator: "Shift+D" },
   { kind: "pencil", label: "Freehand", accelerator: "Shift+P" },
+  { kind: "ray", label: "Horizontal Ray", accelerator: "Shift+J" },
+  { kind: "rect", label: "Rectangle", accelerator: "Shift+B" },
+  { kind: "fib", label: "Fib Retracement", accelerator: "Shift+F" },
   { kind: "level", label: "Price Level", accelerator: "Shift+H" },
 ];
 
@@ -86,6 +116,9 @@ export const KEYBOARD_TOOL_HINTS: Record<ChartToolKind, {
   zoom: { start: "select", startTitle: "Select Range", finish: "zoom", finishTitle: "Zoom to Range" },
   line: { start: "draw", startTitle: "Draw Line", finish: "place", finishTitle: "Place Line" },
   pencil: { start: "draw", startTitle: "Draw Freehand", finish: "place", finishTitle: "Place Drawing" },
+  ray: { start: "draw", startTitle: "Draw Ray", finish: "place", finishTitle: "Place Ray" },
+  rect: { start: "draw", startTitle: "Draw Rectangle", finish: "place", finishTitle: "Place Rectangle" },
+  fib: { start: "draw", startTitle: "Draw Retracement", finish: "place", finishTitle: "Place Retracement" },
   level: { start: "add level", startTitle: "Add Level", finish: "add level", finishTitle: "Add Level" },
 };
 
@@ -94,5 +127,8 @@ export const ARMED_TOOL_BY_INTERACTION = {
   "arm-zoom": "zoom",
   "arm-line": "line",
   "arm-pencil": "pencil",
+  "arm-ray": "ray",
+  "arm-rect": "rect",
+  "arm-fib": "fib",
   "arm-level": "level",
 } as const satisfies Record<string, ChartToolKind>;

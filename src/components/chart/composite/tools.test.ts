@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   buildChartToolVectors,
   CHART_DRAWING_COLORS,
+  chartDrawingShape,
+  parseChartDrawings,
   countMeasureBars,
   drawChartToolOverlay,
   hitTestDrawings,
@@ -248,6 +250,58 @@ describe("chart drawings", () => {
       draw: "#ffcc00",
     }, "up", { scene: zoomed, panel, items: [drawing] });
     expect(rezoomed.pixels[(5 * 21 + 10) * 4 + 3]!).toBeGreaterThan(0);
+  });
+});
+
+describe("shaped drawings", () => {
+  const panel: CompositePanelScene = {
+    id: "main",
+    height: 10,
+    scale: "linear",
+    axes: { left: { ...domain, side: "left" } },
+    series: [{ source: { id: "a", axis: "left" } as never, points: [] }],
+  };
+  const scene = calendarScene(10 * DAY);
+  const drag = (kind: "fib" | "ray" | "rect", endXRatio = 0.6) => ({
+    kind, startXRatio: 0.2, startYRatio: 0.75, endXRatio, endYRatio: 0.25, path: [],
+  });
+
+  it("saves the shape in the id, so a build without it keeps the pane's drawings and draws a line", () => {
+    const fib = resolveDrawingFromDrag(scene, panel, drag("fib"), "#ffcc00", "d1")!;
+    expect(fib.id).toBe("fib:d1");
+    // The saved keys are the ones every build accepts.
+    expect(parseChartDrawings(JSON.parse(JSON.stringify([fib])))).toEqual([fib]);
+    expect(chartDrawingShape(fib)).toBe("fib");
+    expect(chartDrawingShape({ id: "fib:d1", points: [fib.points[0]!, fib.points[1]!, fib.points[0]!] })).toBe("line");
+    expect(chartDrawingShape({ id: "d1", points: fib.points })).toBe("line");
+  });
+
+  it("places a ray with a click and keeps its end level with its price", () => {
+    const ray = resolveDrawingFromDrag(scene, panel, drag("ray", 0.2), "#ffcc00", "d2")!;
+    expect(ray.points[1]!.value).toBe(ray.points[0]!.value);
+    // It runs to the right edge: grabbing it far right of where it was placed still finds it.
+    expect(hitTestDrawings([ray], scene, panel, { xRatio: 0.95, yRatio: 0.75 })?.drawing.id).toBe("ray:d2");
+  });
+
+  it("draws the retracement levels between the swing's prices, labelled from its end", () => {
+    const fib = resolveDrawingFromDrag(scene, panel, drag("fib"), "#ffcc00", "d3")!;
+    const vectors = buildChartToolVectors({
+      scene, panel, drawings: [fib], selectedId: null, drag: null,
+      colors: { positive: "#00ff00", negative: "#ff0000", zoom: "#8888ff", draw: "#ffcc00" }, direction: "up",
+    });
+    // From 50 at the start to 150 at the end: 0 sits on the end, 1 on the start, 0.618 at 88.2.
+    expect(vectors.map((vector) => vector.label)).toEqual([
+      "0 $150", "0.236 $126.4", "0.382 $111.8", "0.5 $100", "0.618 $88.2", "0.786 $71.4", "1 $50",
+    ]);
+    expect(vectors[4]!.points[0]!.y).toBeCloseTo(1 - 88.2 / 200, 6);
+    // A rectangle is a filled box with its four edges.
+    const rect = resolveDrawingFromDrag(scene, panel, drag("rect"), "#ffcc00", "d4")!;
+    const painted = buildChartToolVectors({
+      scene, panel, drawings: [rect], selectedId: null, drag: null,
+      colors: { positive: "#00ff00", negative: "#ff0000", zoom: "#8888ff", draw: "#ffcc00" }, direction: "up",
+    });
+    expect(painted.filter((vector) => vector.box)).toHaveLength(1);
+    expect(painted.filter((vector) => !vector.box)).toHaveLength(4);
   });
 });
 

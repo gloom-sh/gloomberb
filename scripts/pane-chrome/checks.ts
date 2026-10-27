@@ -522,8 +522,9 @@ const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
     scenario: "nested",
     async run(cdp: Cdp) {
       await crosshairUnder(cdp, paneId, (plot) => ({ x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 }));
-      // Clear of the chart's drawing toolbar at the plot's top left.
-      await crosshairUnder(cdp, paneId, (plot) => ({ x: plot.x + plot.width * 0.5, y: plot.y + 3 }));
+      // Clear of the chart's drawing toolbar at the plot's top left, which reaches
+      // past the middle of a narrow pane.
+      await crosshairUnder(cdp, paneId, (plot) => ({ x: plot.x + plot.width * 0.72, y: plot.y + 3 }));
     },
   },
   {

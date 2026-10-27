@@ -1,8 +1,8 @@
 import { formatPercentRaw } from "../../../utils/format";
 import type { ChartVectorShape } from "../../../ui/host";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { drawCircle, drawLine, fillRect, parseHex } from "../native/raster/primitives";
-import { formatCompositeAxisValue, formatCompositeCursorDate } from "./format";
+import { drawCircle, drawLine, fillRect, parseHex, type RgbaColor } from "../native/raster/primitives";
+import { formatCompositeAxisValue, formatCompositeCursorDate, formatCompositeCursorValue } from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
 import type {
@@ -13,7 +13,14 @@ import type {
 import { clamp } from "../../../utils/math";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
-export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level";
+export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level" | "rect" | "fib" | "ray";
+
+/** How a saved drawing is drawn from its points. */
+export type ChartDrawingShape = "line" | "rect" | "fib" | "ray";
+const SHAPED_TOOLS = ["rect", "fib", "ray"] as const;
+
+/** Retracement ratios, measured back from the drag's end toward its start. */
+const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as const;
 
 export interface ChartDrawingPoint {
   time: number;
@@ -77,6 +84,18 @@ export function parseChartDrawings(value: unknown): ChartDrawing[] {
   return drawings;
 }
 
+/**
+ * The shape rides in the id (`fib:3`) rather than a field of its own: an older
+ * build refuses a saved drawing with a key it does not know and would drop every
+ * drawing of the pane, while an id it does not know still draws as a line.
+ */
+export function chartDrawingShape(drawing: Pick<ChartDrawing, "id" | "points">): ChartDrawingShape {
+  const prefix = drawing.id.slice(0, Math.max(0, drawing.id.indexOf(":")));
+  return drawing.points.length === 2 && (SHAPED_TOOLS as readonly string[]).includes(prefix)
+    ? prefix as ChartDrawingShape
+    : "line";
+}
+
 export interface ChartDrawingHit {
   drawing: ChartDrawing;
   /** Grabbed endpoint, or null when the whole shape was grabbed. */
@@ -119,7 +138,7 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 function drawingPointFrom(
-  scene: CompositeChartScene,
+  scene: Pick<CompositeChartScene, "timeScale">,
   domain: CompositeAxisDomain,
   xRatio: number,
   yRatio: number,
@@ -132,14 +151,23 @@ function drawingPointFrom(
 
 /** Data anchors for a finished drag, so a drawing survives pan and zoom. */
 export function resolveDrawingFromDrag(
-  scene: CompositeChartScene,
+  scene: Pick<CompositeChartScene, "timeScale">,
   panel: CompositePanelScene,
   drag: ChartToolDrag,
   color: string,
   id: string,
 ): ChartDrawing | null {
   const domain = resolveMeasureAxisDomain(panel);
-  if (!domain || !isMeaningfulToolDrag(drag)) return null;
+  // A ray needs only its price, so a click places one.
+  if (!domain || (drag.kind !== "ray" && !isMeaningfulToolDrag(drag))) return null;
+  if (isShapedTool(drag.kind)) {
+    // A ray holds its first price, so its stored end is level with it and an
+    // older build draws the same horizontal run.
+    const endYRatio = drag.kind === "ray" ? drag.startYRatio : drag.endYRatio;
+    const start = drawingPointFrom(scene, domain, drag.startXRatio, drag.startYRatio);
+    const end = drawingPointFrom(scene, domain, drag.endXRatio, endYRatio);
+    return start && end ? { id: shapedDrawingId(drag.kind, id), panelId: panel.id, points: [start, end], color } : null;
+  }
   const source = drag.kind === "pencil" && drag.path.length > 1
     ? drag.path
     : [
@@ -152,11 +180,74 @@ export function resolveDrawingFromDrag(
   return points.length < 2 ? null : { id, panelId: panel.id, points, color };
 }
 
+function isShapedTool(kind: ChartToolKind): kind is typeof SHAPED_TOOLS[number] {
+  return (SHAPED_TOOLS as readonly string[]).includes(kind);
+}
+
+/** The id a drawing of this tool is saved under, see `chartDrawingShape`. */
+export function shapedDrawingId(kind: ChartToolKind, id: string): string {
+  return isShapedTool(kind) ? `${kind}:${id}` : id;
+}
+
+type RatioPoint = { xRatio: number; yRatio: number };
+
+interface DrawingGeometry {
+  segments: Array<[RatioPoint, RatioPoint]>;
+  /** Corners of a filled box under the segments. */
+  box: [RatioPoint, RatioPoint] | null;
+  /** The points that can be grabbed and reshaped. */
+  anchors: RatioPoint[];
+  labels: Array<{ at: RatioPoint; text: string }>;
+}
+
+/** What a drawing paints, in plot ratios: shared by the bitmap, the vectors and the hit test. */
+function drawingGeometry(
+  scene: Pick<CompositeChartScene, "timeScale">,
+  panel: CompositePanelScene,
+  drawing: ChartDrawing,
+): DrawingGeometry | null {
+  const projected = projectDrawing(scene, panel, drawing);
+  if (!projected) return null;
+  const shape = chartDrawingShape(drawing);
+  if (shape === "line") {
+    return {
+      segments: projected.slice(1).map((point, index) => [projected[index]!, point]),
+      box: null,
+      anchors: projected.length === 2 ? projected : [],
+      labels: [],
+    };
+  }
+  const [start, end] = projected as [RatioPoint, RatioPoint];
+  if (shape === "ray") {
+    return { segments: [[start, { xRatio: 1, yRatio: start.yRatio }]], box: null, anchors: [start], labels: [] };
+  }
+  if (shape === "rect") {
+    const corner = (xRatio: number, yRatio: number) => ({ xRatio, yRatio });
+    const a = corner(start.xRatio, end.yRatio);
+    const b = corner(end.xRatio, start.yRatio);
+    return { segments: [[start, a], [a, end], [end, b], [b, start]], box: [start, end], anchors: [start, end], labels: [] };
+  }
+  const domain = resolveMeasureAxisDomain(panel)!;
+  const left = Math.min(start.xRatio, end.xRatio);
+  const right = Math.max(start.xRatio, end.xRatio);
+  const [from, to] = drawing.points as [ChartDrawingPoint, ChartDrawingPoint];
+  const segments: DrawingGeometry["segments"] = [];
+  const labels: DrawingGeometry["labels"] = [];
+  for (const level of FIB_LEVELS) {
+    const value = to.value + (from.value - to.value) * level;
+    const yRatio = projectCompositeValue(value, domain);
+    if (yRatio === null) continue;
+    segments.push([{ xRatio: left, yRatio }, { xRatio: right, yRatio }]);
+    labels.push({ at: { xRatio: left, yRatio }, text: `${level} ${formatCompositeCursorValue(value, domain)}` });
+  }
+  return { segments, box: null, anchors: [start, end], labels };
+}
+
 function projectDrawing(
   scene: Pick<CompositeChartScene, "timeScale">,
   panel: CompositePanelScene,
   drawing: ChartDrawing,
-): Array<{ xRatio: number; yRatio: number }> | null {
+): RatioPoint[] | null {
   const domain = resolveMeasureAxisDomain(panel);
   if (!domain) return null;
   const projected: Array<{ xRatio: number; yRatio: number }> = [];
@@ -198,22 +289,21 @@ export function hitTestDrawings(
   let best: { hit: ChartDrawingHit; distance: number; endpoint: boolean } | null = null;
   const scale = Math.max(aspect, Number.EPSILON);
   const target = { x: pointer.xRatio * scale, y: pointer.yRatio };
+  const toPlot = (point: RatioPoint) => ({ x: point.xRatio * scale, y: point.yRatio });
   for (const drawing of drawings) {
     if (drawing.panelId !== panel.id) continue;
-    const projected = projectDrawing(scene, panel, drawing);
-    if (!projected) continue;
-    const shape = projected.map((point) => ({ x: point.xRatio * scale, y: point.yRatio }));
-    if (drawing.points.length === 2) {
-      for (const [index, point] of shape.entries()) {
-        const distance = Math.hypot(target.x - point.x, target.y - point.y);
-        if (distance > DRAWING_GRAB_RATIO) continue;
-        if (!best?.endpoint || best.distance > distance) {
-          best = { hit: { drawing, pointIndex: index }, distance, endpoint: true };
-        }
+    const geometry = drawingGeometry(scene, panel, drawing);
+    if (!geometry) continue;
+    for (const [index, anchor] of geometry.anchors.entries()) {
+      const point = toPlot(anchor);
+      const distance = Math.hypot(target.x - point.x, target.y - point.y);
+      if (distance > DRAWING_GRAB_RATIO) continue;
+      if (!best?.endpoint || best.distance > distance) {
+        best = { hit: { drawing, pointIndex: index }, distance, endpoint: true };
       }
     }
-    for (let index = 1; index < shape.length; index += 1) {
-      const distance = distanceToSegment(target, shape[index - 1]!, shape[index]!);
+    for (const [from, to] of geometry.segments) {
+      const distance = distanceToSegment(target, toPlot(from), toPlot(to));
       if (distance > DRAWING_GRAB_RATIO || best?.endpoint) continue;
       if (!best || best.distance > distance) {
         best = { hit: { drawing, pointIndex: null }, distance, endpoint: false };
@@ -235,19 +325,18 @@ export function shiftDrawing(
   const domain = resolveMeasureAxisDomain(panel);
   const projected = projectDrawing(scene, panel, drawing);
   if (!domain || !projected) return drawing;
-  return {
-    ...drawing,
-    points: drawing.points.map((point, index) => {
-      if (pointIndex !== null && index !== pointIndex) return point;
-      const source = projected[index]!;
-      return drawingPointFrom(
-        scene,
-        domain,
-        clamp(source.xRatio + deltaXRatio, 0, 1),
-        clamp(source.yRatio + deltaYRatio, 0, 1),
-      ) ?? point;
-    }),
-  };
+  const points = drawing.points.map((point, index) => {
+    if (pointIndex !== null && index !== pointIndex) return point;
+    const source = projected[index]!;
+    return drawingPointFrom(
+      scene,
+      domain,
+      clamp(source.xRatio + deltaXRatio, 0, 1),
+      clamp(source.yRatio + deltaYRatio, 0, 1),
+    ) ?? point;
+  });
+  if (chartDrawingShape(drawing) === "ray") points[1] = { ...points[1]!, value: points[0]!.value };
+  return { ...drawing, points };
 }
 
 export function nextDrawingColor(color: string): string {
@@ -268,7 +357,7 @@ export function resolveChartToolKind(modifiers: {
 }
 
 export function isDrawingTool(tool: ChartToolKind | null): boolean {
-  return tool === "line" || tool === "pencil";
+  return tool === "line" || tool === "pencil" || (tool !== null && isShapedTool(tool));
 }
 
 function isMeaningfulToolDrag(drag: ChartToolDrag): boolean {
@@ -458,20 +547,29 @@ export function buildChartToolVectors(input: {
 }): ChartVectorShape[] {
   const shapes: ChartVectorShape[] = [];
   for (const drawing of input.drawings) {
-    const projected = projectDrawing(input.scene, input.panel, drawing);
-    if (!projected) continue;
     const selected = input.selectedId === drawing.id;
-    shapes.push({
-      id: drawing.id,
-      points: projected.map((point) => ({ x: point.xRatio, y: point.yRatio })),
-      color: drawing.color,
-      strokeWidth: selected ? 2.4 : 1.6,
-      handles: selected && drawing.points.length === 2,
-    });
+    if (chartDrawingShape(drawing) === "line") {
+      const projected = projectDrawing(input.scene, input.panel, drawing);
+      if (!projected) continue;
+      shapes.push({
+        id: drawing.id,
+        points: projected.map((point) => ({ x: point.xRatio, y: point.yRatio })),
+        color: drawing.color,
+        strokeWidth: selected ? 2.4 : 1.6,
+        handles: selected && drawing.points.length === 2,
+      });
+      continue;
+    }
+    shapes.push(...shapedDrawingVectors(input.scene, input.panel, drawing, selected));
   }
 
   const drag = input.drag;
   if (!drag) return shapes;
+  if (isShapedTool(drag.kind)) {
+    const preview = resolveDrawingFromDrag(input.scene, input.panel, drag, input.colors.draw, "tool:draw");
+    if (preview) shapes.push(...shapedDrawingVectors(input.scene, input.panel, preview, false));
+    return shapes;
+  }
   const start = { x: drag.startXRatio, y: drag.startYRatio };
   const end = { x: drag.endXRatio, y: drag.endYRatio };
   if (drag.kind === "zoom") {
@@ -505,6 +603,55 @@ export function buildChartToolVectors(input: {
   return shapes;
 }
 
+function shapedDrawingVectors(
+  scene: Pick<CompositeChartScene, "timeScale">,
+  panel: CompositePanelScene,
+  drawing: ChartDrawing,
+  selected: boolean,
+): ChartVectorShape[] {
+  const geometry = drawingGeometry(scene, panel, drawing);
+  if (!geometry) return [];
+  const toVector = (point: RatioPoint) => ({ x: point.xRatio, y: point.yRatio });
+  const shapes: ChartVectorShape[] = [];
+  if (geometry.box) {
+    shapes.push({ id: `${drawing.id}:box`, points: geometry.box.map(toVector), color: drawing.color, box: true, fillOpacity: 0.12, strokeWidth: 0 });
+  }
+  geometry.segments.forEach((segment, index) => shapes.push({
+    id: `${drawing.id}:${index}`,
+    points: segment.map(toVector),
+    color: drawing.color,
+    strokeWidth: selected ? 2 : 1.3,
+    ...(geometry.labels[index] ? { label: geometry.labels[index]!.text } : {}),
+  }));
+  if (selected) {
+    shapes.push({ id: `${drawing.id}:anchors`, points: geometry.anchors.map(toVector), color: drawing.color, opacity: 0, handles: true });
+  }
+  return shapes;
+}
+
+/** Paints a shaped drawing's segments, box and handles onto a raster. */
+function paintShapedDrawing(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  geometry: DrawingGeometry,
+  color: RgbaColor,
+  selected: boolean,
+): void {
+  const maxX = Math.max(width - 1, 0);
+  const maxY = Math.max(height - 1, 0);
+  if (geometry.box) {
+    const [a, b] = geometry.box;
+    fillRect(data, width, height, Math.min(a.xRatio, b.xRatio) * maxX, Math.min(a.yRatio, b.yRatio) * maxY,
+      Math.max(a.xRatio, b.xRatio) * maxX, Math.max(a.yRatio, b.yRatio) * maxY, color, 0.12);
+  }
+  for (const [from, to] of geometry.segments) {
+    drawLine(data, width, height, from.xRatio * maxX, from.yRatio * maxY, to.xRatio * maxX, to.yRatio * maxY, color, selected ? 2.2 : 1.4);
+  }
+  if (!selected) return;
+  for (const anchor of geometry.anchors) drawCircle(data, width, height, anchor.xRatio * maxX, anchor.yRatio * maxY, 3.2, color);
+}
+
 /**
  * Paints drawings and the active tool on a copy of the panel raster. Copying
  * keeps the cached plot bitmap intact and keeps a single bitmap layer, which is
@@ -529,10 +676,15 @@ export function drawChartToolOverlay(
   const maxY = Math.max(height - 1, 0);
 
   for (const drawing of drawings?.items ?? []) {
-    const shape = projectDrawing(drawings!.scene, drawings!.panel, drawing);
-    if (!shape) continue;
     const selected = drawings!.selectedId === drawing.id;
     const color = parseHex(drawing.color);
+    if (chartDrawingShape(drawing) !== "line") {
+      const geometry = drawingGeometry(drawings!.scene, drawings!.panel, drawing);
+      if (geometry) paintShapedDrawing(data, width, height, geometry, color, selected);
+      continue;
+    }
+    const shape = projectDrawing(drawings!.scene, drawings!.panel, drawing);
+    if (!shape) continue;
     for (let index = 1; index < shape.length; index += 1) {
       drawLine(
         data,
@@ -559,6 +711,13 @@ export function drawChartToolOverlay(
   const y1 = drag.endYRatio * maxY;
   const left = Math.min(x0, x1);
   const right = Math.max(x0, x1);
+
+  if (isShapedTool(drag.kind)) {
+    const preview = drawings && resolveDrawingFromDrag(drawings.scene, drawings.panel, drag, colors.draw, "tool:draw");
+    const geometry = preview && drawingGeometry(drawings.scene, drawings.panel, preview);
+    if (geometry) paintShapedDrawing(data, width, height, geometry, parseHex(colors.draw), false);
+    return { width, height, pixels: data };
+  }
 
   if (drag.kind === "line" || drag.kind === "pencil") {
     const color = parseHex(colors.draw);

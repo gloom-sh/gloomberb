@@ -44,7 +44,8 @@ const upper = (value: unknown) => (typeof value === "string" && value ? value.to
  * symbol, within the time the two take to send it.
  */
 function sameAlert(entry: FiredAlert, item: AlertHistoryItem): boolean {
-  if (item.kind !== entry.kind) return false;
+  // A rule created, re-armed or deleted here is no delivery.
+  if (entry.action || item.kind !== entry.kind) return false;
   const apart = Math.abs(Date.parse(item.deliveredAt) - Date.parse(entry.firedAt));
   if (!Number.isFinite(apart)) return false;
   if (entry.kind === "price" || ["pe", "ps", "rsi", "ma_cross", "close_ma", "rs_ratio", "rrg"].includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;

@@ -5,8 +5,9 @@ import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { barSessionDay } from "../../../market-data/market/period-return";
+import { finalDailyBars } from "../../../time-series/session-bar";
 import { getPricePointTimestamp } from "../../../utils/price-history";
-import { dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, isRelativeMetric, type MetricReading } from "./metric-model";
+import { DAILY_CLOSE_SETTLE_MS, dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, isRelativeMetric, type MetricReading } from "./metric-model";
 import type { AlertRule } from "./types";
 
 // Keep valuation fixtures in step with the delivery evaluator and the research panes.
@@ -31,6 +32,33 @@ export function metricAvailabilityError(rule: AlertRule, now = Date.now()): stri
   return isRelativeMetric(rule.metric) && !getPublishedUsEquitySession(canonicalExchange(rule.metric.benchmarkExchange ?? ""), today)
     ? `Relative strength alerts compare two US listings; ${rule.metric.benchmark} has no published US listing calendar here.` : null;
 }
+
+/**
+ * The first close a daily technical rule set at `now` is judged on, and when:
+ * the next session to close after it, read once the close has settled
+ * (DAILY_CLOSE_SETTLE_MS). `weekly` (an RRG quadrant) waits for the last
+ * session of that Monday-Friday week, its weekly close. Null when the listing
+ * has no published calendar.
+ */
+export function firstDailyCheck(exchange: string | undefined, now = Date.now(), weekly = false): { day: string; at: number } | null {
+  const venue = canonicalExchange(exchange ?? "");
+  let first: { day: string; close: number } | null = null;
+  for (let offset = 0; offset < 15; offset++) {
+    const time = now + offset * 86_400_000;
+    const day = new Date(time).toISOString().slice(0, 10);
+    // The weekly close is the last session before the weekend after the first close.
+    if (first && new Date(time).getUTCDay() === 6) break;
+    const session = getPublishedUsEquitySession(venue, day);
+    if (!session) return null;
+    if (session.kind !== "session" || session.close <= now) continue;
+    first = { day, close: session.close };
+    if (!weekly) break;
+  }
+  return first ? { day: first.day, at: first.close + DAILY_CLOSE_SETTLE_MS } : null;
+}
+
+/** The bar size the daily rules read, the one `history` and the charts ask for. */
+const DAILY_BARS = "1d";
 
 const dailyCaches = new WeakMap<AssetDataProvider, DailyMetricCache>();
 
@@ -62,16 +90,17 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
         // An explicit end at the settled session avoids today's forming-bar quote read.
         const end = new Date(`${latest.day}T23:59:59Z`);
         const start = new Date(Date.parse(latest.day) - 366 * 86_400_000);
-        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(symbol, venue, start, end, "1d", { cacheMode: "current" })).points;
-        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(symbol, venue, start, end, "1d", { cacheMode: "current" });
+        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(symbol, venue, start, end, DAILY_BARS, { cacheMode: "current" })).points;
+        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(symbol, venue, start, end, DAILY_BARS, { cacheMode: "current" });
         throw new Error("Completed daily history is unavailable from this connection.");
       };
       const completed = async (symbol: string, venue: string) => {
         const listing = `${symbol}|${venue}`;
         const request = history.get(listing) ?? load(symbol, venue);
         history.set(listing, request);
-        // A saved copy carries its dates as text.
-        return (await request).filter(point => !point.partial).map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
+        // Final as `history` shows it: a close it prints without `partial` is one the rule may judge.
+        // Bars read back from the saved cache carry their dates as text.
+        return finalDailyBars(await request, { now, venue }).map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
       };
       const bars = await completed(rule.symbol, exchange);
       // RS ratios and RRG quadrants read the benchmark's own completed bars, never a quote.

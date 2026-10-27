@@ -1,8 +1,11 @@
-import { closeBasis, rotationQuadrant } from "./metric-model";
+import { closeBasis, metricReadingText, rotationQuadrant } from "./metric-model";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
 import type { AlertCondition, AlertRule } from "./types";
+
+/** What a list says of an alert no check has read yet. */
+export const NOT_CHECKED_YET = "not checked yet";
 
 export function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -75,7 +78,60 @@ export function formatQuoteChecked(alert: AlertRule): string {
     });
   }
   if (alert.lastCheckedAt) return relativeTime(alert.lastCheckedAt);
-  return "-";
+  return NOT_CHECKED_YET;
+}
+
+/** A time as lists and exports give it: ISO 8601 in UTC, to the second (2026-10-27T06:35:12Z); empty for none. */
+export function isoUtc(value: number | null | undefined): string {
+  return value != null && Number.isFinite(value) && value > 0 ? new Date(value).toISOString().replace(/\.\d{3}Z$/, "Z") : "";
+}
+
+/**
+ * The listing an alert is checked on: `EWG:ARCA`, its own exchange, or the
+ * venue its last quote came from for a rule set by symbol alone; the symbol
+ * until it has been checked.
+ */
+export function alertListing(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): string {
+  const venue = alert.exchange || alert.lastQuoteExchange;
+  return venue && !alert.symbol.includes(":") ? `${alert.symbol}:${venue}` : alert.symbol;
+}
+
+/** A listing with the currency its prices are in: `EWG:ARCA (USD)`; the listing alone until a quote has said it. */
+export function listingWithCurrency(listing: string, currency: string | null | undefined): string {
+  return currency ? `${listing} (${currency})` : listing;
+}
+
+/** The unit of an alert's reading: the listing's currency for a price or an average, `x` for a multiple, none for RSI. */
+function readingUnit(alert: AlertRule): string {
+  const kind = alert.metric?.kind;
+  if (kind === "pe" || kind === "ps") return "x";
+  if (kind === "rsi" || kind === "rs_ratio" || kind === "rrg") return "";
+  return alert.lastQuoteCurrency ?? "";
+}
+
+/** When the last reading is from: the quote's own time, or the daily close's; null with none. */
+export function alertReadingAt(alert: AlertRule): number | null {
+  if (alert.lastCheckError || alert.lastCheckedPrice == null) return null;
+  return alert.lastQuoteUpdatedAt ?? alert.lastCheckedAt ?? null;
+}
+
+/**
+ * The last reading an alert was checked on, with its unit and when it is
+ * from: `37.12 USD as of 2026-10-27T14:31Z`, `61.23 on the 2026-10-26 close`
+ * for a daily rule, why the last check read nothing, or `not checked yet`.
+ */
+export function alertReadingText(alert: AlertRule): string {
+  if (alert.lastCheckError) return `no reading: ${alert.lastCheckError.replace(/\.$/, "")}`;
+  const value = alert.lastCheckedPrice;
+  if (value == null || !Number.isFinite(value)) return NOT_CHECKED_YET;
+  const unit = readingUnit(alert);
+  const figure = alert.metric?.kind === "rrg" ? metricReadingText(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
+    : alert.metric?.kind === "rs_ratio" ? formatRatio(value)
+    : `${alert.metric ? value.toFixed(2) : String(value)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}`;
+  const basis = alert.metric ? closeBasis(alert.metric) : null;
+  if (basis && alert.lastDailyClose) return `${figure} on the ${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
+  const at = alertReadingAt(alert);
+  return at ? `${figure} as of ${isoUtc(at).replace(/:\d{2}Z$/, "Z")}` : figure;
 }
 
 export function conditionLabel(condition: AlertCondition): string {

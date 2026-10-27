@@ -69,9 +69,14 @@ import {
   COMPOSITE_PANEL_ROLE,
   isVerticalWheelDirection,
   manualValueAxes,
+  PAN_COAST_START_SPEED,
+  PAN_COAST_STOP_SPEED,
+  panCoastStep,
+  panReleaseVelocity,
   startPanGesture,
   releaseEditableFocus,
   type PanGesture,
+  type PanSample,
   type PendingAxisWheel,
   type PendingWheel,
   type ValueAxisStart,
@@ -733,6 +738,7 @@ export function CompositePanelSurface({
     }
     if (!updateCursor(event)) return;
     const values = manualValueAxes(panel);
+    panSamplesRef.current = [{ at: performance.now(), x: getGlobalMouseX(event, renderer) }];
     dragRef.current = {
       ...startPanGesture(
         frame,
@@ -815,6 +821,8 @@ export function CompositePanelSurface({
       return;
     }
     const globalX = getGlobalMouseX(event, renderer);
+    panSamplesRef.current.push({ at: performance.now(), x: globalX });
+    if (panSamplesRef.current.length > 12) panSamplesRef.current.shift();
     if (drag.frame !== frame) {
       // Data refreshed mid-drag. The new frame maps positions differently, so
       // continue from where the plot is now instead of replaying the drag.
@@ -847,6 +855,43 @@ export function CompositePanelSurface({
     updateCursor,
     viewport,
   ]);
+  // A pan let go while still moving keeps going and slows down, on the
+  // desktop and web only: in a terminal every frame would upload the plot again.
+  const panSamplesRef = useRef<PanSample[]>([]);
+  const coastFrameRef = useRef<number | null>(null);
+  const coastPanRef = useRef(onPanViewport);
+  coastPanRef.current = onPanViewport;
+  const stopCoast = useCallback(() => {
+    if (coastFrameRef.current === null) return;
+    webFrame.cancelAnimationFrame?.(coastFrameRef.current);
+    coastFrameRef.current = null;
+    globalThis.removeEventListener?.("pointerdown", stopCoast, true);
+    globalThis.removeEventListener?.("keydown", stopCoast, true);
+  }, []);
+  const startCoast = useCallback((velocity: number, positionsPerCell: number) => {
+    stopCoast();
+    const requestFrame = webFrame.requestAnimationFrame;
+    const widthCells = Math.max(plotSize.width, 1);
+    const plotWidthsPerSecond = (speed: number) => Math.abs(speed) * 1000 / widthCells;
+    if (!isDesktopWeb || !requestFrame || plotWidthsPerSecond(velocity) < PAN_COAST_START_SPEED) return;
+    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    let speed = velocity;
+    let last = performance.now();
+    const step = () => {
+      const now = performance.now();
+      const next = panCoastStep(speed, now - last);
+      last = now;
+      speed = next.velocity;
+      coastPanRef.current(next.cells * positionsPerCell);
+      if (plotWidthsPerSecond(speed) < PAN_COAST_STOP_SPEED) stopCoast();
+      else coastFrameRef.current = requestFrame(step);
+    };
+    coastFrameRef.current = requestFrame(step);
+    // Any press or key anywhere, a range button or a reset, takes the view back from the coast.
+    globalThis.addEventListener?.("pointerdown", stopCoast, true);
+    globalThis.addEventListener?.("keydown", stopCoast, true);
+  }, [isDesktopWeb, plotSize.width, stopCoast]);
+  useEffect(() => stopCoast, [stopCoast]);
   const finishToolDrag = useCallback(() => {
     const drag = dragRef.current;
     if (!drag || drag.kind === "pan") return;
@@ -869,12 +914,14 @@ export function CompositePanelSurface({
     if (range) onSetViewport(range);
   }, [drawColor, frame.minimumSpanMs, levels, onDraw, onSetViewport, panel, scene]);
   const resetDrag = useCallback(() => {
-    if (dragRef.current?.kind === "pan") {
+    const drag = dragRef.current;
+    if (drag?.kind === "pan") {
       dragRef.current = null;
+      startCoast(panReleaseVelocity(panSamplesRef.current, performance.now()), drag.positionsPerCell);
       return;
     }
     finishToolDrag();
-  }, [finishToolDrag]);
+  }, [finishToolDrag, startCoast]);
   // Said once per change, so a pointer move costs the chart nothing.
   const reportedDragRef = useRef(false);
   const reportDrag = useCallback((dragging: boolean) => {
@@ -883,10 +930,11 @@ export function CompositePanelSurface({
     onDragActiveChange?.(dragging);
   }, [onDragActiveChange]);
   const pressPlot = useCallback((event: ChartMouseEvent) => {
+    stopCoast();
     const before = dragRef.current;
     startDrag(event);
     if (dragRef.current !== null && dragRef.current !== before) reportDrag(true);
-  }, [reportDrag, startDrag]);
+  }, [reportDrag, startDrag, stopCoast]);
   const releasePlot = useCallback(() => {
     resetDrag();
     reportDrag(false);
@@ -929,6 +977,7 @@ export function CompositePanelSurface({
   const panFromWheel = useCallback((event: ChartMouseEvent) => {
     const scroll = event.scroll;
     if (!scroll) return;
+    stopCoast();
     onActivate?.();
     consumeChartMouseEvent(event);
     const pointer = plotPointer(event);

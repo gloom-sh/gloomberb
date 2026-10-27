@@ -26,6 +26,7 @@ import {
   resolveZoomTimeRange,
   isDrawingTool,
   nextDrawingColor,
+  shapedDrawingId,
   type ChartDrawing,
   type ChartDrawingPoint,
   type ChartToolDrag,
@@ -301,7 +302,7 @@ export function useCompositeChartKeyboard({
     const placement = keyboardPlacement;
     setKeyboardPlacement(null);
     // A placement that never left its anchor spans nothing, like a click.
-    if (!placement || placement.start.time === placement.end.time) return;
+    if (!placement || (placement.start.time === placement.end.time && placement.kind !== "ray")) return;
     if (placement.kind === "zoom") {
       if (!navigationFrame) return;
       const range = resolveZoomTimeRange(placement.start.time, placement.end.time, navigationFrame.minimumSpanMs);
@@ -313,9 +314,9 @@ export function useCompositeChartKeyboard({
       ? placement.path.filter((point, index, path) => (
         index === 0 || point.time !== path[index - 1]!.time || point.value !== path[index - 1]!.value
       ))
-      : [placement.start, placement.end];
+      : [placement.start, placement.kind === "ray" ? { ...placement.end, value: placement.start.value } : placement.end];
     if (points.length < 2) return;
-    addDrawing({ id: nextDrawingId(), panelId: placement.panelId, points, color: drawColor });
+    addDrawing({ id: shapedDrawingId(placement.kind, nextDrawingId()), panelId: placement.panelId, points, color: drawColor });
   };
   const stepLegend = (direction: -1 | 1) => {
     onActivate?.();
@@ -566,7 +567,10 @@ export function useCompositeChartKeyboard({
       || ((interaction === "arm-measure"
         || interaction === "arm-zoom"
         || interaction === "arm-line"
-        || interaction === "arm-pencil") && !scene)
+        || interaction === "arm-pencil"
+        || interaction === "arm-ray"
+        || interaction === "arm-rect"
+        || interaction === "arm-fib") && !scene)
       || (interaction === "arm-level" && !levelsEditable)
       || (interaction === "delete-drawing" && !canDeleteDrawing)
       || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
@@ -586,6 +590,9 @@ export function useCompositeChartKeyboard({
       case "arm-zoom":
       case "arm-line":
       case "arm-pencil":
+      case "arm-ray":
+      case "arm-rect":
+      case "arm-fib":
       case "arm-level":
         onActivate?.();
         armTool(ARMED_TOOL_BY_INTERACTION[interaction]);

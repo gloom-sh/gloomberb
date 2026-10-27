@@ -51,7 +51,8 @@ const SECTION_VIEWS: Record<FixedIncomeSection, { defaultView: string; views: Vi
     defaultView: "documents",
     views: [
       { value: "documents", label: "Documents", paneType: "credit-documents", component: ResearchCreditDocumentsPane },
-      { value: "maturities", label: "Maturities", paneType: "debt-maturities", component: ResearchDebtMaturitiesPane },
+      // CRDOC's own Maturities tab is the contractual calendar-year wall; this is the filed fiscal-bucket schedule.
+      { value: "maturities", label: "Debt Schedule", paneType: "debt-maturities", component: ResearchDebtMaturitiesPane },
     ],
   },
   bonds: {

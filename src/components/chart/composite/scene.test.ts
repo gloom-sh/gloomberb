@@ -4,6 +4,7 @@ import {
   allocateCompositePanelHeights,
   applyCompositeChartCursor,
   buildCompositeChartScene,
+  heikinAshiPoints,
   projectCompositeValue,
   resizeCompositePanel,
   resolveCompositeCursorDate,
@@ -835,4 +836,32 @@ test("opening step observations replace the older anchor before scaling and carr
     expect(points.every((point) => point.value !== 999)).toBe(true);
     expect(points[0]!.timestamp).toBe(new Date(value === null ? "2026-08-20" : "2026-08-10").getTime());
   }
+});
+
+test("Heikin Ashi chains each open off the bar before, and the last price stays the traded close", () => {
+  const bar = (date: string, open: number, high: number, low: number, close: number): TimeSeriesPoint => ({
+    ...point(date, close), open, high, low, close,
+  });
+  const bars = [bar("2026-01-05", 10, 14, 9, 12), bar("2026-01-06", 12, 13, 8, 9)];
+  const [first, second] = heikinAshiPoints(bars);
+  expect(first).toMatchObject({ open: 11, close: 11.25, high: 14, low: 9 });
+  // Open halfway along the first body (11 + 11.25) / 2; the high reaches it, above the bar's own 13.
+  expect(second).toMatchObject({ open: 11.125, close: 10.5, high: 13, low: 8 });
+  expect(heikinAshiPoints([bar("2026-01-05", 10, 10, 6, 6), bar("2026-01-06", 20, 21, 20, 21)])[1]!.low).toBe(8);
+  // A superseded copy of a bar and out-of-order input chain as the drawn bars do.
+  const revised = heikinAshiPoints([
+    bar("2026-01-06", 12, 13, 8, 9),
+    bar("2026-01-05", 100, 100, 100, 100),
+    bar("2026-01-05", 10, 14, 9, 12),
+  ]);
+  expect(revised).toHaveLength(2);
+  expect(revised[1]).toMatchObject({ open: 11.125, close: 10.5 });
+
+  const scene = buildCompositeChartScene([series({
+    id: "price", style: "heikin-ashi", unitGroup: "price:USD", points: bars,
+    timeBasis: { kind: "market", timeZone: "America/New_York" } as const,
+  })], [{ id: "main" }], {
+    width: 100, height: 20,
+  });
+  expect(scene?.panels[0]?.lastPrice?.value).toBe(9);
 });

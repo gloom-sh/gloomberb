@@ -264,6 +264,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("zoom-tool", ["Shift+Z", "Shift+Drag"], "Pick the zoom tool, then drag a time range."),
         entry("ruler", ["Shift+M", "Alt+Drag"], "Pick the ruler, then drag to measure a move."),
         entry("draw", ["Shift+D", "Shift+P"], "Draw a trend line or a freehand shape."),
+        entry("shapes", ["Shift+J", "Shift+B", "Shift+F"], "Draw a horizontal ray, a rectangle or a Fib retracement."),
         entry("place", ["Enter", "Arrows"], "With a tool picked, Enter starts it at the cursor, the arrows move its end, and Enter finishes it."),
         entry("drawings", ["[", "]"], "With a drawing tool picked, pick a drawing."),
         entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the picked drawing (the last one while a drawing tool is picked)."),

@@ -82,6 +82,8 @@ export interface ChartVectorShape {
   gradient?: readonly string[];
   /** Opacity of the whole shape, so others can recede behind a highlighted one. */
   opacity?: number;
+  /** Text set just above the shape's first point, such as a retracement level's ratio and price. */
+  label?: string;
 }
 
 interface TextEditBuffer {

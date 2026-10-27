@@ -400,15 +400,21 @@ function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: strin
   // No bar has volume to plot (spot FX quotes 0 for every bar; a coin's window
   // can miss every bar's), so the study adds no panel rather than an empty one.
   if (input.points.length > 0 && !input.points.some((point) => isFiniteNumber(point.volume) && point.volume !== 0)) return [];
+  // Left to its own colour, volume follows the candles: the price's colour for
+  // a bar that rose, the falling colour for one that fell. A colour picked for it stays flat.
+  const directional = !spec.color;
   const points = [...input.points]
     .sort((left, right) => left.date.getTime() - right.date.getTime())
     .flatMap((point) => isFiniteNumber(point.volume)
-      ? [derivedPoint({ point, value: point.volume }, point.volume)]
+      ? [{
+        ...derivedPoint({ point, value: point.volume }, point.volume),
+        ...(directional && isFiniteNumber(point.open) && isFiniteNumber(point.close) && point.close < point.open ? { fell: true } : {}),
+      }]
       : []);
   return [outputSeries(spec, input, {
     label: nameInput ? `Volume ${input.label}` : "Volume",
     points,
-    color,
+    color: directional ? input.color : color,
     unit: input.volumeUnit ?? "",
     unitGroup: "volume",
     style: "columns",

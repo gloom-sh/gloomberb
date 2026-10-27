@@ -37,7 +37,7 @@ import { isLeverageFactor } from "./leverage";
 const RANGE_SET = new Set<TimeRange>(TIME_RANGES);
 const PERIODS = new Set<SeriesPeriod>(["auto", "daily", "weekly", "monthly", "quarterly", "annual", "ttm"]);
 // `band` only stays on a capability series: a field's styles and an economic series' leave it out.
-const STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points", "candles", "ohlc", "hlc", "band"]);
+const STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points", "candles", "hollow", "heikin-ashi", "ohlc", "hlc", "band"]);
 const ECONOMIC_STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points"]);
 const TRANSFORMS = new Set<SeriesTransform>(["raw", "percent", "index100", "yoy", "qoq", "log"]);
 const AXES = new Set<SeriesAxis>(["auto", "left", "right"]);
@@ -71,7 +71,7 @@ export function isDatasetChart(spec: Pick<ChartSpec, "series">): boolean {
 }
 
 export function isOhlcSeriesStyle(style: SeriesStyle): boolean {
-  return style === "candles" || style === "ohlc" || style === "hlc";
+  return style === "candles" || style === "hollow" || style === "heikin-ashi" || style === "ohlc" || style === "hlc";
 }
 
 export function coerceSeriesTransformForStyle(

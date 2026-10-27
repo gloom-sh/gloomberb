@@ -46,7 +46,7 @@ function isStrictlyOrdered(points: readonly TimeSeriesPoint[]): boolean {
 }
 
 /** Callers only read the result, so ordered input (every market series) is returned as is. */
-function sortedUniquePoints(points: readonly TimeSeriesPoint[]): readonly TimeSeriesPoint[] {
+export function sortedUniquePoints(points: readonly TimeSeriesPoint[]): readonly TimeSeriesPoint[] {
   // Live charts re-resolve on every quote; skip the keyed sort when nothing needs it.
   if (isStrictlyOrdered(points)) return points;
   const byObservation = new Map<string, TimeSeriesPoint>();

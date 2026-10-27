@@ -4,7 +4,7 @@ import { relativeAlertText } from "./metric-command";
 import { levelAlertStoreKey, readLevelAlertStores } from "./storage";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
-import { usePluginPaneState } from "../../runtime";
+import { usePluginPaneState, usePluginState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
@@ -34,13 +34,18 @@ import {
 import { parseAlertEdit } from "./command";
 import { ALERT_TABS, ALERTS_KEY } from "./constants";
 import {
+  alertListing,
   conditionLabel,
   formatAlertDistance,
   formatAlertTargetPrice,
   formatCurrentPrice,
   formatQuoteChecked,
+  isoUtc,
+  listingWithCurrency,
   relativeTime,
 } from "./format";
+import { FIRED_LOG_KEY } from "./fired-log";
+import { withAlertChange } from "./alert-log";
 import type { AlertRule } from "./types";
 import { useQuoteEntries } from "../../../market-data/hooks";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -58,7 +63,8 @@ type AlertColumnId =
   | "away"
   | "condition"
   | "quote"
-  | "triggered";
+  | "triggered"
+  | "created";
 
 type AlertColumn = DataTableColumn & { id: AlertColumnId };
 
@@ -70,8 +76,11 @@ const ALERT_COLUMNS: AlertColumn[] = [
   { id: "target", label: "Target", width: 11, align: "right" },
   { id: "away", label: "Away", width: 8, align: "right" },
   { id: "condition", label: "Trigger", width: 12, align: "left" },
-  { id: "quote", label: "Quote", width: 14, align: "left" },
+  // Wide enough to say "not checked yet" for an alert no check has read.
+  { id: "quote", label: "Quote", width: 15, align: "left" },
   { id: "triggered", label: "Alerted", width: 8, align: "left" },
+  // The day the alert was made (UTC), as Events lists its rules; the detail gives the instant.
+  { id: "created", label: "Since", width: 10, align: "left" },
 ];
 
 const DETAIL_ROW = { labelWidth: 10, emphasis: false } as const;
@@ -96,6 +105,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
       <Box flexDirection="column">
         {reason ? <Box paddingBottom={1}><Notice tone="warning">{reason}</Notice></Box> : null}
         <KeyValueRow {...DETAIL_ROW} label="State" value={alert.status === "triggered" ? "Triggered" : "Active"} tone={alert.status === "triggered" ? "positive" : "muted"} />
+        <KeyValueRow {...DETAIL_ROW} label="Listing" value={listingWithCurrency(alertListing(alert), alert.lastQuoteCurrency)} />
         {/* With no quote the reason above says why; the price and its distance wait for one. */}
         {basis ? <KeyValueRow {...DETAIL_ROW} label="Close date" value={alert.lastDailyClose ?? `Awaiting ${basis}`} /> : null}
         {reason ? null : <KeyValueRow {...DETAIL_ROW} label="Current" value={formatCurrentPrice(alert, 24)} />}
@@ -110,6 +120,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
           : <KeyValueRow {...DETAIL_ROW} label="Quote" value={formatQuoteChecked(alert)} tone="muted" />}
         {alert.triggeredAt ? <KeyValueRow {...DETAIL_ROW} label="Alerted" value={relativeTime(alert.triggeredAt)} /> : null}
         <KeyValueRow {...DETAIL_ROW} label="Armed" value={relativeTime(alert.armedAt ?? alert.createdAt)} tone="muted" />
+        <KeyValueRow {...DETAIL_ROW} label="Created" value={isoUtc(alert.createdAt)} tone="muted" />
       </Box>
     </DetailScrollBody>
   );
@@ -153,6 +164,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [metricsJson, setMetricsJson] = usePluginConfigState<unknown>(METRIC_ALERTS_KEY, "[]");
   const [relativeJson, setRelativeJson] = usePluginConfigState<unknown>(RELATIVE_ALERTS_KEY, "[]");
   const { openPluginCommandWorkflow, notify } = usePluginAppActions();
+  // Deleting or re-arming a rule goes in this device's alert log, beside the alerts that fired.
+  const [, setAlertLog] = usePluginState<unknown>(FIRED_LOG_KEY, []);
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -160,7 +173,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const detailAlertId = useRef<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   // Keep the rule and daily-close basis visible in a narrow pane; the detail keeps all figures.
-  const columns = width < 106 ? ALERT_COLUMNS.filter(column => column.id !== "away" && column.id !== "triggered") : ALERT_COLUMNS;
+  const columns = width < 106 ? ALERT_COLUMNS.filter(column => column.id !== "away" && column.id !== "triggered" && column.id !== "created")
+    : width < 118 ? ALERT_COLUMNS.filter(column => column.id !== "created") : ALERT_COLUMNS;
   const showHorizontalScrollbar = columns.reduce((sum, column) => sum + column.width + 1, 2) > width;
   const stores = useMemo(() => readLevelAlertStores(key => key === ALERTS_KEY ? alertsJson : key === METRIC_ALERTS_KEY ? metricsJson : relativeJson),
     [alertsJson, metricsJson, relativeJson]);
@@ -240,15 +254,24 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       notify({ body: error, type: "error" });
       return;
     }
+    setAlertLog((saved: unknown) => withAlertChange(saved, "deleted", alert));
     setSelectedIdx((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
-  }, [alerts, dialog, notify, rows.length, savePaneAlerts]);
+  }, [alerts, dialog, notify, rows.length, savePaneAlerts, setAlertLog]);
 
   const rearmAlert = useCallback((id: string) => {
-    const error = savePaneAlerts(id,
-      (current) => current.map((a) => (a.id === id ? rebuildAlert(a) : a)),
-    );
-    if (error) notify({ body: error, type: "error" });
-  }, [notify, savePaneAlerts]);
+    // Only an alert that went off is re-armed, as the store reads at the write: one still waiting is left, and not logged.
+    const rearmed: AlertRule[] = [];
+    const error = savePaneAlerts(id, (current) => current.map((a) => {
+      if (a.id !== id || a.status !== "triggered") return a;
+      rearmed.push(a);
+      return rebuildAlert(a);
+    }));
+    if (error) {
+      notify({ body: error, type: "error" });
+      return;
+    }
+    for (const alert of rearmed) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", alert));
+  }, [notify, savePaneAlerts, setAlertLog]);
 
   const startAddAlert = useCallback(() => {
     openPluginCommandWorkflow("set-alert");
@@ -416,6 +439,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
           text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : "-",
           color: colors.textDim,
         };
+      case "created":
+        return { text: isoUtc(alert.createdAt).slice(0, 10), color: colors.textDim };
     }
   }, []);
 

@@ -137,6 +137,68 @@ function securityClass(row: CreditInstrument): "secured" | "unsecured" | null {
   const text = ["ranking", "security"].map((field) => { const fact = instrumentFact(row, field); return fact ? creditValue(fact.value).toLowerCase() : ""; }).join(" ");
   return /\bunsecured\b/.test(text) ? "unsecured" : /\bsecured\b/.test(text) ? "secured" : null;
 }
+const reasonKey = (text: string) => text.trim().replace(/\.$/, "").toLowerCase();
+/**
+ * The phrases the headroom check gives for a covenant it cannot compute, in plain
+ * words. The payload carries the phrase and no code, so each is matched whole.
+ * An empty line says nothing more than the missing figure, which comes first.
+ */
+const PLAIN_REASONS: Record<string, string | ((limit: string) => string)> = {
+  "covenant boundary inclusivity is not established": (limit) => `The filing doesn't say if exactly ${limit} passes.`,
+  "springing test; activation conditions require review": "Only tested once a trigger is met; the filing's trigger needs a read.",
+  "covenant adjustments are not fully disclosed": "The filing does not spell out how the ratio is adjusted.",
+  "no reported value for this covenant definition": "",
+  "reported metric units or currency do not match the covenant": "The reported figure is in other units than the limit.",
+  "reported metric definition or borrower scope does not match the covenant": "The reported figure is defined differently from the covenant's ratio.",
+  "latest comparable financials are more than 190 days old": "The latest comparable financials are over 190 days old.",
+  "financial period is in the future": "The comparable financials are dated in the future.",
+  "financial period does not match the covenant test date": "The reported period is not the covenant's test date.",
+  "a positive threshold is required to express percentage headroom": "Percentage headroom needs a limit above zero.",
+};
+/**
+ * Why a covenant has no headroom, in a few plain words, or null when it has a
+ * figure or no reason. The missing reported figure comes first when the
+ * instrument's facts hold none for this covenant's metric; then what the
+ * covenant's own terms or the check say. A step-up in the filing's adjustment
+ * text is named with its limit. A phrase not known here is the payload's own,
+ * as it came.
+ */
+export function covenantReason(row: Pick<CreditHeadroom, "id" | "status" | "reason" | "metric" | "threshold">, facts: readonly CreditFact[]): string | null {
+  const raw = row.status === "compliant" || row.status === "breach" ? null : row.reason?.trim();
+  if (!raw) return null;
+  const fact = facts.find((entry) => entry.id === row.id);
+  const limit = covenantNumber(row.threshold, fact);
+  const known = PLAIN_REASONS[reasonKey(raw)];
+  const reported = facts.some((entry) => entry.field === "reported_metric" && reasonKey(reportedMetricName(entry)) === reasonKey(row.metric));
+  // Said only with the instrument's facts in hand: with none loaded, there is nothing to show it has no figure.
+  const lead = known === "" || (facts.length > 0 && !reported) ? `No reported ${row.metric.trim()} to compare yet.` : null;
+  const stepUp = /step[- ]?up to ([\d.]+)/i.exec(raw);
+  let why: string | null;
+  if (typeof known === "function") why = known(limit);
+  else if (known !== undefined) why = known || null;
+  else if (stepUp) why = `The ${limit} limit can step up to ${covenantNumber(Number(stepUp[1]), fact)}${/acquisition/i.test(raw) ? " after permitted acquisitions" : " under conditions in the filing"}.`;
+  else why = `${sentence(raw)}${/[.!?]$/.test(raw) ? "" : "."}`;
+  return [lead, why].filter(Boolean).join(" ");
+}
+/** The metric a reported-figure fact is for, from its structured value. */
+function reportedMetricName(fact: CreditFact): string {
+  return words(fields(fact.value)?.metric) ?? "";
+}
+/** What an issuer with no rows at all lacks: the issuer itself, or a debt instrument read from its filings. */
+type CreditEmptyCause = "issuer" | "instruments";
+/**
+ * Why a payload has nothing to show in any section. Null when a section has a
+ * row, or Pro holds some back: a preview that is partly locked is not empty.
+ */
+export function creditEmptyCause(data: Pick<CreditDocumentsPayload, "issuer" | "instruments" | "covenants" | "maturities" | "changeOfControl" | "lockedRows">): CreditEmptyCause | null {
+  const rows = data.instruments.length + data.covenants.length + data.maturities.length + data.changeOfControl.length;
+  return rows > 0 || data.lockedRows > 0 ? null : data.issuer ? "instruments" : "issuer";
+}
+/** The pane's line for an empty payload; the CLI says the same with the issuer's name. */
+export const CREDIT_EMPTY_TITLE: Record<CreditEmptyCause, string> = {
+  instruments: "No debt instrument has been read from this issuer's filings yet.",
+  issuer: "This is not an issuer the credit documents cover.",
+};
 /** The maintenance covenant fact a headroom row was computed from, which says its unit. */
 export const covenantFact = (data: Pick<CreditDocumentsPayload, "instruments">, row: Pick<CreditHeadroom, "id" | "instrumentId">): CreditFact | undefined =>
   data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id);

@@ -36,6 +36,8 @@ import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
 import { checkIvLevelAlertsNow, IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert } from "./iv-level";
 import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
+import { FIRED_LOG_KEY } from "./fired-log";
+import { withAlertChange } from "./alert-log";
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },
@@ -59,6 +61,8 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   );
   // Their readings stay on this device.
   const [savedChecks] = usePluginState<unknown>(IV_LEVEL_CHECKS_KEY, {});
+  // Deleting or re-arming a rule goes in this device's alert log, beside the alerts that fired.
+  const [, setAlertLog] = usePluginState<unknown>(FIRED_LOG_KEY, []);
   const checks = useMemo(() => readIvLevelChecks(savedChecks), [savedChecks]);
   /** Changes one rule in the list it is kept in, leaving what that list holds of kinds this version does not know. */
   const updateRules = useCallback(
@@ -123,11 +127,20 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     (rule: EventAlertRule | undefined) => {
       if (!rule) return;
       const ivLevel = rule.kind === "iv_level";
-      updateRules(rule, (rules) => rules.map((entry) => (entry.id === rule.id ? ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry) : entry)));
+      const now = Date.now();
+      // Only a rule that went off is re-armed, as the list reads at the write: one still waiting is left, and not logged.
+      const rearmed: EventAlertRule[] = [];
+      updateRules(rule, (rules) => rules.map((entry) => {
+        if (entry.id !== rule.id || ruleState(entry, now) !== "Alerted") return entry;
+        rearmed.push(entry);
+        return ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry);
+      }));
+      if (!rearmed.length) return;
+      for (const entry of rearmed) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", entry));
       // Once the write has landed, so it alerts now rather than at the next 15-minute check.
       setTimeout(ivLevel ? checkIvLevelAlertsNow : checkScheduledEventAlertsNow, 1_000);
     },
-    [updateRules],
+    [setAlertLog, updateRules],
   );
   const remove = useCallback(async () => {
     if (!selectedRule) return;
@@ -137,8 +150,10 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       body: [eventAlertTarget(rule)],
       confirmLabel: "Delete",
     });
-    if (confirmed) updateRules(rule, (rules) => rules.filter((entry) => entry.id !== rule.id));
-  }, [dialog, selectedRule, updateRules]);
+    if (!confirmed) return;
+    updateRules(rule, (rules) => rules.filter((entry) => entry.id !== rule.id));
+    setAlertLog((saved: unknown) => withAlertChange(saved, "deleted", rule));
+  }, [dialog, selectedRule, setAlertLog, updateRules]);
   const status =
     error ??
     (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??

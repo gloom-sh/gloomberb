@@ -66,6 +66,24 @@ describe("mergeCatalog", () => {
     expect(entry?.section).toBe("builtin");
   });
 
+  // Built-ins write sentences and registry plugins write labels; a row must not tell them apart.
+  test("a row's line has no closing period and the detail's paragraph has one, whoever wrote them", () => {
+    const entries = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "notes", bundled: true, tier: "official", tagline: "Notes on tickers.", description: "Markdown notes on tickers" }),
+        registryPlugin({ id: "polls", tagline: "Political polls from VoteHub", description: "Browse polls. Filter by type" }),
+        registryPlugin({ id: "more", tagline: "Wait for it...", description: "Ends in an ellipsis..." }),
+      ],
+      installed: [],
+      target: "tui",
+    });
+    const read = (id: string) => ({ line: entries.find((entry) => entry.id === id)?.tagline, paragraph: entries.find((entry) => entry.id === id)?.description });
+
+    expect(read("notes")).toEqual({ line: "Notes on tickers", paragraph: "Markdown notes on tickers." });
+    expect(read("polls")).toEqual({ line: "Political polls from VoteHub", paragraph: "Browse polls. Filter by type." });
+    expect(read("more")).toEqual({ line: "Wait for it...", paragraph: "Ends in an ellipsis..." });
+  });
+
   // The feed is built from the published catalog and can trail this build. A
   // row for Macro would toggle an id that is now only an alias for three plugins.
   test("drops a built-in this build split, which an older feed still lists", () => {

@@ -474,7 +474,7 @@ date,value
 
 #### Series and panels
 
-Open **Series** to add, remove, reorder or hide series and choose each one's field, chart style, transform, axis, panel, period and panel scale. Price data supports candles, OHLC, HLC, line and area. Rising candles take their series' colour; Candle Colours in pane settings (`Ctrl+,`) switches them to Gains & losses, the theme's gain colour against its loss colour (green and red, or blue and vermillion in the Colorblind themes). Scalar data supports line, area, step, column and point. Panels can use independent left/right axes and linear or logarithmic scales.
+Open **Series** to add, remove, reorder or hide series and choose each one's field, chart style, transform, axis, panel, period and panel scale. Price data supports candles, hollow candles, Heikin Ashi, OHLC, HLC, line and area. Heikin Ashi bars average each bar with the one before, so its legend reads those averages while the last price marker keeps the traded close. Rising candles take their series' colour; Candle Colours in pane settings (`Ctrl+,`) switches them to Gains & losses, the theme's gain colour against its loss colour (green and red, or blue and vermillion in the Colorblind themes). Scalar data supports line, area, step, column and point. Panels can use independent left/right axes and linear or logarithmic scales.
 
 #### Financial periods
 
@@ -521,7 +521,7 @@ Charts with an x axis of their own (curves, smiles, scatter plots), the overview
 
 #### Pan and zoom
 
-Dragging the plot, the scroll wheel or trackpad, and `a`/`d` or Shift with the arrow keys pan the chart, loading older bars as it moves. Where a listing's bars at the chosen interval run out, the pan stops at the first one and the footer says where they start. Choosing the range already selected, by its number key or a click, returns a panned or zoomed chart to that range, as `0` does.
+Dragging the plot, the scroll wheel or trackpad, and `a`/`d` or Shift with the arrow keys pan the chart, loading older bars as it moves. On desktop and web a flick keeps gliding after the release and slows to a stop, while an ordinary drag stays where it was let go; any press, key or scroll stops the glide, and there is none when the system asks for reduced motion. Where a listing's bars at the chosen interval run out, the pan stops at the first one and the footer says where they start. Choosing the range already selected, by its number key or a click, returns a panned or zoomed chart to that range, as `0` does.
 
 Ctrl with the scroll wheel and a trackpad pinch on desktop and web zoom time around the pointer. `+`/`-` zoom from the newest bar in view. Dragging the time axis zooms the same way (left in, right out, double-click to fit).
 
@@ -533,6 +533,7 @@ Ctrl with the scroll wheel and a trackpad pinch on desktop and web zoom time aro
 - **Resize:** on desktop and web, drag the line between two panels (a double-click restores the split). On a focused chart, `Shift+Up` and `Shift+Down` make the top panel a row taller or shorter (the terminal too), and the pane menu has Reset Panel Heights.
 - **One panel full size:** a double-click on a panel's plot gives it the whole chart (two quick presses in the terminal). A double-click again, or the `All panels` button, shows the rest.
 - **Drawing tools:** `Shift+T`, Hide Drawing Tools in the pane menu, or the chevron at the end of the tool bar folds the bar to one button.
+- **Shapes:** besides the trend line (`Shift+D`) and freehand (`Shift+P`), `Shift+J` places a horizontal ray from a clicked price to the right edge, `Shift+B` drags a rectangle, and `Shift+F` drags a Fib retracement whose 0, 23.6, 38.2, 50, 61.8, 78.6 and 100% levels are labelled with their prices on desktop and web. Each is anchored to prices and times like the other drawings, and a build from before these tools shows them as plain lines.
 - **Legend:** `Shift+L`, Collapse Legend in the pane menu, or the chevron in the legend's left margin folds it to the first series and a count (`+5`). A folded series still draws.
 
 These are kept with the pane.
@@ -545,6 +546,7 @@ On intraday charts, bars outside the venue's regular session (pre-market, after-
 
 In the Indicators dialog (`i`), the highlighted study's setting sits beside Done: Period (`p`) for SMA, EMA, Bollinger, RSI and ATR, Bands (`b`) for VWAP, Rows (`n`) for the volume profile and Anchors (`a`) for anchored VWAP.
 
+- **Volume** bars take the price's colour where the bar rose and the falling colour where it fell, like the candles. Picking a colour for the volume study draws every bar in it instead.
 - **VWAP** is the volume-weighted average of the typical price, (high + low + close) / 3, from each session open. It needs intraday bars, and Bands add and subtract a whole number of volume-weighted standard deviations.
   - It restarts at the venue's open: 09:30 New York for US listings, 17:00 Central the evening before for CME Group and Cboe VIX futures, and each ICE U.S. contract's published open (Coffee 04:15, Sugar 03:30, Cocoa 04:45, Orange Juice 08:00 New York, Cotton 21:00 and the dollar index 20:00 the evening before).
   - A venue without known hours restarts at local midnight, or at midnight UTC for crypto.
@@ -818,7 +820,7 @@ An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or 30-day
 - The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloom alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
 - Readings stay on the device and only a rule going off or changing is synced. Gloom Cloud does not check these, so they reach no phone.
 
-From the shell, `gloom alerts add` takes the same rules:
+From the shell, `gloom alerts add` takes every rule **Add Event Alert** offers:
 
 ```bash
 gloom alerts add IBIT iv above 50%         # 30-day ATM IV above 50%; the unit is optional
@@ -826,9 +828,20 @@ gloom alerts add SPY rr below -5.5 pts     # 30-day 25D risk reversal below -5.5
 gloom alerts add AAPL271217C00300000 iv spike 5
 gloom alerts add AAPL news buyback         # alerts add news "rate cut": any company
 gloom alerts add NVDA flow 5m calls sweeps # flow alone: your portfolios and watchlists, $1M and up
+gloom alerts add XLE 52-week high          # or 52-week low
+gloom alerts add NVDA unusual volume 3x    # times the prior 20-session average, 2x when left out
+gloom alerts add AAPL filing 10-Q          # 8-K when left out; 13D, 13G and their /A amendments too
+gloom alerts add TSLA insider sell         # insider alone: buys or sells
+gloom alerts add GME short interest increase 20%
+gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
+gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
+gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium; the market id keeps its case (kPEPE)
+gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
+gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
+gloom alerts add 13f 1067983               # a fund by its SEC CIK
 ```
 
-A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog.
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere. `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -857,7 +870,10 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
 - A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
-- On **Levels**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
+- On **Levels**, Enter opens an alert in full: its state, the listing it is checked on with its currency, the price and how far it is from the level, when its quote was checked, and when it was created (ISO, UTC). An alert that could not get a quote shows that in red on its row, and its detail says why. An alert no check has read yet says `not checked yet`. A pane wide enough for every column adds **Since**, the day each alert was made, as **Events** lists its rules. `m` re-arms an alert that went off.
+- `gloom alerts add` saves an alert with the price it read, so **Levels** and `alerts list` show it before the app has run. Adding the same rule on the same listing again names the existing alert and adds nothing; `gloom alerts rearm` on an alert that has not gone off says it is already active.
+- `gloom alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`), and when it was created, in ISO 8601 UTC to the second (`2026-10-27T09:41:27Z`, as the pane's detail and `fn ALRT --csv` write it). `--csv` keeps the columns it has always had in their order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. `gloom fn ALRT --csv` adds `Created`, `Listing` and `Currency` after its own.
+- Creating, re-arming and deleting an alert, from the app or `gloom alerts`, goes in this device's alert log beside the alerts that fired: **History** and `gloom fn ALRT --tab history` list each with `Created`, `Re-armed` or `Deleted`. Re-arming an alert that is already active changes nothing and logs nothing. The log keeps the last 200 of these changes apart from the last 1,000 fired alerts, so changes never push a fired alert out.
 
 ### Valuation and daily technical alerts
 
@@ -875,9 +891,9 @@ Quote parentheses in shells that interpret them. `rsi 14`, `50-day MA crosses ab
 
 P/E uses the research panes' trailing P/E and regular-session price basis. A zero or negative trailing EPS is not meaningful and never triggers. If EPS is missing, a meaningful served trailing P/E remains usable, as in the research panes; no multiple is invented from missing earnings. P/S divides capitalization on that same regular-session basis by trailing revenue, only when their currencies agree. Missing or stale valuation inputs leave the alert active with the reason in its detail.
 
-Daily technical alerts use the standard one-year daily history. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 30-minute allowance after the close for the closing auction and late prints to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation. The row shows **Blocked** with **Bar gap** or **US only**, and its detail explains the reason. Settled calculations are reused until the next close; a failed history read retries after five minutes.
+Daily technical alerts read the same daily bars as `history`, and a close `history` shows as final (without `partial`) is final for them too. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 30-minute allowance after the close for the closing auction and late prints to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation. The row shows **Blocked** with **Bar gap** or **US only**, and its detail explains the reason. Settled calculations are reused until the next close; a failed history read retries after five minutes.
 
-Technical rows say **on daily close** until their first reading, then the session it is from (**Oct 26 close**). Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
+Technical rows say **on daily close** until their first reading, then the session it is from (**Oct 26 close**). Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A daily rule is always saved: `alerts add` says what it reads on the latest final close, or why it could not read it yet, and when it is first checked (`First checked on the 2026-10-27 close, from 20:30 UTC.`). A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
 
 Delivery and access follow price alerts: the running app notifies locally; Cloud sync and a verified account enable existing email and registered-phone delivery, with the same cadence, settings and shared delivery limits. No separate technical-alert subscription is needed.
 
@@ -895,7 +911,7 @@ gloom alerts add SMH rrg weakening --benchmark QQQ
 - A **ratio** divides the first listing's daily close by the second's on the same session: the latest ratio `GR XLK,SPY` shows. `above` and `below` fire on a settled close beyond the level, `crosses` when two consecutive sessions fall either side of it. Name a listing's venue inside the pair (`XLK:NYSEARCA/SPY`). A symbol written with a slash that is itself a listing (`BRK/B`, `EUR/USD`) stays a price alert.
 - An **RRG** rule fires when the listing's weekly quadrant against the benchmark changes to the one named: `leading`, `weakening`, `lagging` or `improving`, from the strength and momentum `RRG` computes ([research data](research-data.md#relative-rotation-rrg--grr)). A week counts once its last session (Friday, or Thursday before a Friday holiday) has settled; a week still trading is not judged. It needs 18 contiguous weekly closes. The benchmark is SPY, as in `RRG`, unless `--benchmark` names another.
 
-Both follow the daily technical rules above: US listings on the published calendar, both listings' own closes on each session with none bridged, no forming session, nothing from before the rule was added or re-armed, and one alert until re-armed. **Levels** shows the reading (the ratio, or the quadrant) and the close it is from (**Oct 26 close**, **Oct 23 weekly**); the detail adds strength and momentum for an RRG rule. `gloom alerts list` shows them under **Last Price**, with the close they are from in **As Of**, its last column, and `gloom fn ALRT --csv` adds a **Reading** column beside the close's time in **Quote**. Editing keeps the listings; another pair, or a change to or from a valuation or technical measure, is a new alert. Delivery is as for price alerts.
+Both follow the daily technical rules above: US listings on the published calendar, both listings' own closes on each session with none bridged, no forming session, nothing from before the rule was added or re-armed, and one alert until re-armed. **Levels** shows the reading (the ratio, or the quadrant) and the close it is from (**Oct 26 close**, **Oct 23 weekly**); the detail adds strength and momentum for an RRG rule. `gloom alerts list` shows the reading under **Last Reading** with the close it is from (`0.2434 on the 2026-10-26 close`, `Leading (strength 110.06, momentum 108.88) on the 2026-10-23 weekly close`), and `gloom fn ALRT --csv` adds a **Reading** column, its last. `alerts add` says what the rule reads now and when it is first checked; an RRG rule is first checked on that week's last session. Editing keeps the listings; another pair, or a change to or from a valuation or technical measure, is a new alert. Delivery is as for price alerts.
 
 ### Alerts before earnings and economic releases
 

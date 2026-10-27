@@ -13,6 +13,8 @@ import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { ruleState } from "./event-rows";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
+  alertListing,
+  isoUtc,
   conditionLabel,
   formatAlertDistance,
   formatAlertTargetPrice,
@@ -58,13 +60,22 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   } },
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
-  // A measure's last reading in words: an RRG quadrant with the strength and momentum that place it.
-  { key: "reading", header: "Reading" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
   { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
+  // After the columns exports have always had: when the rule was made, and the currency of its listing.
+  // To the second, as `alerts list` and the pane's detail write it: exports draw a stored millisecond time to the millisecond.
+  { key: "created", header: "Created" },
+  { key: "listing", header: "Listing" },
+  { key: "currency", header: "Currency" },
+  // A measure's last reading in words, last so the columns before it keep their places: an RRG quadrant with the strength and momentum that place it.
+  { key: "reading", header: "Reading" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
-const PRICE_TEXT_COLUMNS = PRICE_COLUMNS.filter((column) => column.key !== "quoteSource" && column.key !== "lastCheckedAt" && column.key !== "reading");
+const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "created", "listing", "currency", "reading"].includes(column.key)),
+  // The day it was made, as the Events table lists its rules.
+  { key: "createdAt", header: "Since", textFormat: (value) => (typeof value === "number" ? isoUtc(value).slice(0, 10) : "") },
+];
 
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
@@ -108,6 +119,9 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
     quoteSource: quoted ? alert.metric && closeBasis(alert.metric) || quoteSourceWords(alert.lastQuoteSource) : null,
+    created: isoUtc(alert.createdAt) || null,
+    listing: alertListing(alert),
+    currency: alert.lastQuoteCurrency ?? null,
     reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target }) : null,
   };
 }
@@ -238,7 +252,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: {
     screenshotReadiness: "live-dom",
     dataRequirements: ["Your saved alerts and this device's log of fired alerts; History adds Gloom Cloud's deliveries when signed in"],
-    limitations: ["Current price and quote time are what the app saved at its last check, blank until it has checked the alert."],
+    limitations: ["Current price and quote time are what the app or `gloom alerts add` saved at the last check; an alert neither has read says not checked yet."],
   },
   describe: (args) => `Alerts | ${String(args.options.tab ?? "prices")}`,
   async load(args, ctx) {

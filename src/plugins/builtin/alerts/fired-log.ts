@@ -5,11 +5,19 @@ import { ALERTS_PLUGIN_ID } from "./constants";
 /**
  * The alerts this device's app fired, kept on the device (plugin resume
  * state, never synced): `fn ALRT --tab history` and the History tab read it
- * signed out, and merge Gloom Cloud's deliveries in when signed in.
+ * signed out, and merge Gloom Cloud's deliveries in when signed in. Beside
+ * them it keeps when a rule was created, re-armed or deleted here, from the
+ * app or `gloom alerts` (`action`).
  */
 export const FIRED_LOG_KEY = "firedLog";
-/** The newest entries kept; older ones fall off as new ones are added. */
+/** The newest fired alerts kept; older ones fall off as new ones are added. */
 export const MAX_FIRED_ALERTS = 1000;
+/**
+ * The newest rule changes (created, re-armed, deleted) kept, apart from the
+ * fired alerts: a change never counts against them, so no number of changes
+ * pushes an alert that went off out of the log.
+ */
+export const MAX_ALERT_CHANGES = 200;
 
 export interface FiredAlert {
   id: string;
@@ -32,9 +40,29 @@ export interface FiredAlert {
   source: string | null;
   symbol?: string;
   exchange?: string;
+  /** A change to the rule rather than the alert going off: created, re-armed or deleted. */
+  action?: AlertLogAction;
 }
 
 export type FiredAlertInput = Omit<FiredAlert, "id" | "firedAt"> & { firedAt: number };
+
+const ALERT_LOG_ACTIONS = ["created", "rearmed", "deleted"] as const;
+export type AlertLogAction = (typeof ALERT_LOG_ACTIONS)[number];
+/** What History says of a change, in its Value column. */
+const ALERT_LOG_ACTION_TEXT: Record<AlertLogAction, string> = { created: "Created", rearmed: "Re-armed", deleted: "Deleted" };
+
+/** A change to a rule as the log keeps it: when, what was done, and the rule as it read. */
+export function alertChangeEntry(
+  action: AlertLogAction,
+  rule: { kind: string; ruleId: string; rule: string; symbol?: string; exchange?: string },
+  at = Date.now(),
+): FiredAlertInput {
+  return {
+    kind: rule.kind, ruleId: rule.ruleId, rule: rule.rule, firedAt: at, value: null, quoteAt: null, source: null, action,
+    detail: ALERT_LOG_ACTION_TEXT[action],
+    ...(rule.symbol ? { symbol: rule.symbol } : {}), ...(rule.exchange ? { exchange: rule.exchange } : {}),
+  };
+}
 
 /** How current a quote was, in the words reports use. */
 export function quoteSourceWords(source: QuoteDataSource | undefined): string | null {
@@ -57,7 +85,8 @@ export function readFiredAlerts(value: unknown): FiredAlert[] {
     && isText(entry.firedAt) && Number.isFinite(Date.parse(entry.firedAt))
     && (entry.value === null || Number.isFinite(entry.value))
     && (entry.quoteAt === null || isText(entry.quoteAt)) && (entry.source === null || isText(entry.source))
-    && optionalText(entry.unit) && optionalText(entry.detail) && optionalText(entry.symbol) && optionalText(entry.exchange));
+    && optionalText(entry.unit) && optionalText(entry.detail) && optionalText(entry.symbol) && optionalText(entry.exchange)
+    && (entry.action === undefined || ALERT_LOG_ACTIONS.includes(entry.action)));
 }
 
 function firedAlertEntry(input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert {
@@ -65,19 +94,39 @@ function firedAlertEntry(input: FiredAlertInput, id: string = crypto.randomUUID(
   return { id, firedAt: firedAlertTime(firedAt) ?? new Date().toISOString(), ...rest };
 }
 
-/** `entries` with one more at the end, the oldest dropped past the cap. */
-export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert[] {
-  return [...entries, firedAlertEntry(input, id)].slice(-MAX_FIRED_ALERTS);
+/**
+ * The log within its caps, oldest first: the newest MAX_FIRED_ALERTS fired
+ * alerts and, counted apart, the newest MAX_ALERT_CHANGES rule changes. Each
+ * kind of entry only ever drops its own oldest.
+ */
+function capAlertLog(entries: readonly FiredAlert[]): FiredAlert[] {
+  let changes = entries.reduce((count, entry) => count + (entry.action ? 1 : 0), 0);
+  let fired = entries.length - changes;
+  changes -= MAX_ALERT_CHANGES;
+  fired -= MAX_FIRED_ALERTS;
+  if (changes <= 0 && fired <= 0) return [...entries];
+  return entries.filter((entry) => {
+    if (entry.action ? changes <= 0 : fired <= 0) return true;
+    if (entry.action) changes -= 1;
+    else fired -= 1;
+    return false;
+  });
 }
 
-/** `entries` keeping only the newest `max` of each kind in `kinds`; other kinds are untouched. */
+/** `entries` with one more at the end, the oldest of its kind (fired alert or rule change) dropped past its cap. */
+export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert[] {
+  return capAlertLog([...entries, firedAlertEntry(input, id)]);
+}
+
+/** `entries` keeping only the newest `max` fired alerts of each kind in `kinds`; other kinds and rule changes are untouched. */
 function capFiredAlertKinds(entries: readonly FiredAlert[], kinds: ReadonlySet<string>, max: number): FiredAlert[] {
+  const counted = (entry: FiredAlert) => !entry.action && kinds.has(entry.kind);
   const over = new Map<string, number>();
-  for (const entry of entries) if (kinds.has(entry.kind)) over.set(entry.kind, (over.get(entry.kind) ?? 0) + 1);
+  for (const entry of entries) if (counted(entry)) over.set(entry.kind, (over.get(entry.kind) ?? 0) + 1);
   for (const [kind, count] of over) over.set(kind, count - max);
   // Oldest first: the first entries of a kind over its cap are the ones to drop.
   return entries.filter((entry) => {
-    const extra = over.get(entry.kind) ?? 0;
+    const extra = counted(entry) ? over.get(entry.kind) ?? 0 : 0;
     if (extra <= 0) return true;
     over.set(entry.kind, extra - 1);
     return false;
@@ -101,10 +150,25 @@ export function recordFiredAlertFor(
     let entries = [...readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY)), ...inputs.map((input) => firedAlertEntry(input))];
     // The source's own oldest entries go first, before the log's cap reaches anyone else's.
     if (keepAtMost != null) entries = capFiredAlertKinds(entries, new Set(inputs.map((input) => input.kind)), keepAtMost);
-    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, entries.slice(-MAX_FIRED_ALERTS));
+    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, capAlertLog(entries));
   } catch (error) {
     onError(error);
   }
+}
+
+/**
+ * Adds entries to the device's log through the plugin's saved state as the
+ * shell reads and writes it (`gloom alerts`), where there is no running
+ * plugin to record them.
+ */
+export function appendAlertLog(
+  state: { get(key: string): unknown; set(key: string, value: unknown): void },
+  inputs: readonly FiredAlertInput[],
+): void {
+  if (!inputs.length) return;
+  let entries = readFiredAlerts(state.get(FIRED_LOG_KEY));
+  for (const input of inputs) entries = appendFiredAlert(entries, input);
+  state.set(FIRED_LOG_KEY, entries);
 }
 
 /** Records a fired alert in the device's log. A log that cannot be written never stops the alert itself. */

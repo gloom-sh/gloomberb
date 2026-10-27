@@ -78,9 +78,23 @@ test("uncomputable covenants and an empty current screen never invent a ratio or
   const frame = await tui.waitForFrameToContain("Uncomputable");
   expect(frame).toContain("HEADROOM");
   expect(frame).not.toContain("0.0%");
+  // The selected row says why: the missing reported figure first, then the payload's reason as it came (the fixture's is not one the pane knows).
+  expect(frame).toContain("No reported consolidated leverage ratio to compare yet.");
+  expect(frame).toContain("Contract definition and permitted-acquisition step-up");
   await tui.emitKeypress({ name: "return" });
   expect(await tui.waitForFrameToContain("definition")).toContain("definition");
   await tui.destroy();
   await mount(80, 20, "screen");
   expect(await tui.waitForFrameToContain("No supported credit signals")).toContain("Headroom below");
+});
+
+test("an issuer with no debt instrument on file says so in every tab, not that the documents are unavailable", async () => {
+  const empty = { ...structuredClone(fixture), instruments: [], covenants: [], maturities: [], changeOfControl: [], warnings: [] } as unknown as CreditDocumentsPayload;
+  for (const tab of ["capital", "covenants", "maturities"]) {
+    await mount(100, 20, tab, empty);
+    const frame = await tui.waitForFrameToContain("No debt instrument has been read");
+    expect(frame).toContain("filings yet.");
+    expect(frame).not.toContain("not available");
+    await tui.destroy();
+  }
 });

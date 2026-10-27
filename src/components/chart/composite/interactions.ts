@@ -17,6 +17,9 @@ export type CompositeChartInteraction =
   | "arm-line"
   | "arm-measure"
   | "arm-pencil"
+  | "arm-ray"
+  | "arm-rect"
+  | "arm-fib"
   | "arm-zoom"
   | "cycle-colour"
   | "clear-cursor"
@@ -366,6 +369,9 @@ export function resolveCompositeChartInteraction(event: {
   if (shifted && key === "z") return "arm-zoom";
   if (shifted && key === "d") return "arm-line";
   if (shifted && key === "p") return "arm-pencil";
+  if (shifted && key === "j") return "arm-ray";
+  if (shifted && key === "b") return "arm-rect";
+  if (shifted && key === "f") return "arm-fib";
   if (shifted && key === "h") return "arm-level";
   // Delete is the same act on a keyboard that has the key, or on a Mac with fn.
   if (key === "backspace" || key === "delete") return "delete-drawing";

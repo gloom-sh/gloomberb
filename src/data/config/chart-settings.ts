@@ -20,7 +20,7 @@ import {
 import { recordOrNull } from "../../utils/guards";
 
 const CHART_RANGES = new Set<TimeRange>(TIME_RANGES);
-const PRICE_RENDER_MODES = new Set<SeriesStyle>(["area", "line", "candles", "ohlc", "hlc"]);
+const PRICE_RENDER_MODES = new Set<SeriesStyle>(["area", "line", "candles", "hollow", "heikin-ashi", "ohlc", "hlc"]);
 const LEGACY_INDICATOR_IDS = new Set<LegacyChartIndicatorId>([
   "volume",
   "sma20",

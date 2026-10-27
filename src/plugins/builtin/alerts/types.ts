@@ -23,5 +23,9 @@ export interface AlertRule {
   lastQuoteUpdatedAt?: number;
   lastQuoteSource?: QuoteDataSource;
   lastQuoteProviderId?: string;
+  /** The currency of the quote the alert was last checked on (USD): its listing's, which lists show beside it. */
+  lastQuoteCurrency?: string;
+  /** The venue that quote was from (ARCA), which names the listing of a rule set by symbol alone. */
+  lastQuoteExchange?: string;
   message?: string;
 }

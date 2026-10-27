@@ -106,8 +106,8 @@ test("alerts add reads price, earnings and calendar event forms and names what i
   expect(parseAlertAddArgs(["US", "CPI"], undefined)).toEqual({ kind: "macro", event: "cpi", leadDays: 1 });
   expect(parseAlertAddArgs(["FOMC"], undefined, undefined, "US")).toEqual({ kind: "macro", event: "fomc", leadDays: 1 });
   expect(parseAlertAddArgs(["CPI"], undefined, undefined, "CN")).toEqual({ kind: "release", query: "CPI", country: "CN", leadDays: 1 });
-  // A mistyped condition with a price is a price alert gone wrong, and the refusal names the event form too.
-  expect(() => parseAlertAddArgs(["AAPL", "abve", "250"], undefined)).toThrow('alerts add "NBS Manufacturing PMI" --country CN');
+  // A mistyped condition with a price is a price alert gone wrong, and the refusal names every kind there is.
+  expect(() => parseAlertAddArgs(["AAPL", "abve", "250"], undefined)).toThrow("economic calendar release (CPI, FOMC, NBS PMI), news keyword");
   expect(() => parseAlertAddArgs(["AAPL", "above", "250"], undefined, undefined, "CN")).toThrow("--country is for an alert on a calendar event");
   expect(() => parseAlertAddArgs(["PMI"], undefined, undefined, "XQ")).toThrow('Unknown country "XQ"');
   expect(() => parseAlertAddArgs(["CRWV", "earnings"], "0")).toThrow("1 to 14");

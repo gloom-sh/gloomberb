@@ -1,6 +1,7 @@
 import type { ResolvedSeries, SeriesTransform, TimeSeriesPoint } from "./types";
 import { calendarMonthsBefore } from "../utils/calendar-date";
 import { isFiniteNumber } from "../utils/guards";
+import { isOhlcSeriesStyle } from "./spec";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 // Volume is separate supporting data, not another price. A volume series has
@@ -166,9 +167,7 @@ export function applyResolvedSeriesTransform(
     unit: percent ? "%" : transform === "index100" ? "index" : "log",
     unitGroup: percent ? "percent" : transform === "index100" ? "index" : "log",
     dataShape: "scalar",
-    style: series.style === "candles" || series.style === "ohlc" || series.style === "hlc"
-      ? "line"
-      : series.style,
+    style: isOhlcSeriesStyle(series.style) ? "line" : series.style,
     points: applySeriesTransform(series.points, transform, options),
   };
 }

@@ -168,6 +168,27 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
           />
         ))
         : [])}
+      {vectors.map((shape) => shape.label && shape.points[0]
+        ? (
+          <div
+            key={`${shape.id}:label`}
+            style={{
+              position: "absolute",
+              left: `${shape.points[0].x * 100}%`,
+              top: `${shape.points[0].y * 100}%`,
+              transform: "translate(2px, -100%)",
+              color: shape.color,
+              fontSize: "var(--gloom-type-caption)",
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          >
+            {shape.label}
+          </div>
+        )
+        : null)}
     </>
   );
 });
