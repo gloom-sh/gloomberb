@@ -16,12 +16,12 @@ import { TIME_RANGES, type TimeRange } from "../../../../time-series/range";
 import type { PaneProps } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
-import { formatCompact, formatPercent } from "../../../../utils/format";
+import { displayWidth, formatCompact, formatPercent } from "../../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
-import { quoteFormatOptions } from "../../../../market-data/market/format";
+import { penceFigure, quoteFormatOptions } from "../../../../market-data/market/format";
 import {
-  barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote,
+  barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
@@ -89,8 +89,8 @@ function formatMaybePrice(value: number | null | undefined, decimals: number, wi
 }
 
 /** The decimals the table's prices need: the one rule `history` and `fn HP` print by (barPriceDecimals). */
-function historicalPriceDecimals(rows: readonly HistoricalPriceRow[], assetCategory?: string): number {
-  return barPriceDecimals(rows.map(({ point }) => point), assetCategory);
+function historicalPriceDecimals(rows: readonly HistoricalPriceRow[], assetCategory?: string, priceDivisor = 1): number {
+  return barPriceDecimals(rows.map(({ point }) => point), assetCategory, priceDivisor);
 }
 
 /** The exported price: the digits the table shows, without the width limit. */
@@ -178,19 +178,27 @@ const HISTORY_NUMERIC_IDS = ["open", "high", "low", "close", "change", "changePe
 /**
  * Fixed date and volume columns; the price columns take the rest of the pane
  * evenly, and give up cells down to a floor when it is narrow, so the volume
- * stays on screen.
+ * stays on screen. A close with a note beside it (a London line's pence) asks
+ * for `closeWidth`, the widest close and note: the other columns give way to
+ * it first, down to their minimum, before it gives up its note.
  */
-function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarSize, newestDate: string): HistoryColumn[] {
+function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarSize, newestDate: string, closeWidth = 0): HistoryColumn[] {
   // A month reads as `2026-10`; the newest bar, when its week or month runs on, adds `MTD` or `WTD`.
   const dateWidth = Math.max(intraday ? 16 : size === "1mo" ? 7 : 10, newestDate.length);
-  const numeric: number[] = HISTORY_NUMERIC_IDS.map((id) => id === "changePercent" ? HISTORY_PERCENT_WIDTH : HISTORY_PRICE_WIDTH);
+  const numeric: number[] = HISTORY_NUMERIC_IDS.map((id) => id === "changePercent" ? HISTORY_PERCENT_WIDTH
+    : id === "close" ? Math.max(HISTORY_PRICE_WIDTH, closeWidth) : HISTORY_PRICE_WIDTH);
   // One gap per column plus the table's inset on both sides.
   const available = width - dateWidth - HISTORY_VOLUME_WIDTH - 8 - 2;
   let spare = available - numeric.reduce((sum, value) => sum + value, 0);
-  for (let index = 0; spare < 0 && numeric.some((value) => value > HISTORY_NUMERIC_MIN_WIDTH); index = (index + 1) % numeric.length) {
-    if (numeric[index]! > HISTORY_NUMERIC_MIN_WIDTH) {
-      numeric[index]! -= 1;
-      spare += 1;
+  // The close keeps the width its note asks for while another column can give way, then gives it up too.
+  const closeAt = HISTORY_NUMERIC_IDS.indexOf("close");
+  for (const closeFloor of [Math.max(HISTORY_NUMERIC_MIN_WIDTH, closeWidth), HISTORY_NUMERIC_MIN_WIDTH]) {
+    const floor = (index: number) => index === closeAt ? closeFloor : HISTORY_NUMERIC_MIN_WIDTH;
+    for (let index = 0; spare < 0 && numeric.some((value, at) => value > floor(at)); index = (index + 1) % numeric.length) {
+      if (numeric[index]! > floor(index)) {
+        numeric[index]! -= 1;
+        spare += 1;
+      }
     }
   }
   if (spare > 0) {
@@ -256,13 +264,24 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // Daily and longer bars are dates; only intraday bars carry a time.
   const intraday = rows.length > 0 ? rows.some((row) => row.timed) : range === "1D" || range === "1W";
   const newestRowDate = rows[0]?.date ?? "";
-  const columns = useMemo(() => buildHistoryColumns(width, intraday, size, newestRowDate), [intraday, newestRowDate, size, width]);
   const assetCategory = quoteFormatOptions(
     financials?.quote,
     ticker?.metadata.assetCategory,
     financials?.quoteMetadata?.instrumentType,
   ).assetCategory;
-  const priceDecimals = useMemo(() => historicalPriceDecimals(rows, assetCategory), [assetCategory, rows]);
+  const priceDivisor = quotedPriceDivisor(quote);
+  const priceDecimals = useMemo(() => historicalPriceDecimals(rows, assetCategory, priceDivisor), [assetCategory, priceDivisor, rows]);
+  // A London line's close reads in pence too (6.385 638.5p): the close column asks for room for the widest.
+  const closeWidth = useMemo(() => rows.reduce((widest, row) => {
+    const close = row.point.close;
+    const pence = penceFigure(exportPrice(close, priceDecimals), quote, priceDecimals);
+    // A cell more than the text, so the close never runs into the low before it.
+    return pence ? Math.max(widest, displayWidth(` ${formatMaybePrice(close, priceDecimals, Infinity)} ${pence}`)) : widest;
+  }, 0), [priceDecimals, quote, rows]);
+  const columns = useMemo(
+    () => buildHistoryColumns(width, intraday, size, newestRowDate, closeWidth),
+    [closeWidth, intraday, newestRowDate, size, width],
+  );
   const boundedSelectedIdx = rows.length > 0 ? Math.min(selectedIdx, rows.length - 1) : -1;
   const cycleRange = useCallback(() => setRange((current) => nextHistoryRange(current)), [setRange]);
 
@@ -296,12 +315,17 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       case "open":
       case "high":
       case "low":
-      case "close":
+      case "close": {
+        const value = row.point[column.id];
+        // A London line's close also reads in the pence it trades in, where the column has room: 6.385 638.5p.
+        const pence = column.id === "close" ? penceFigure(exportPrice(value, priceDecimals), quote, priceDecimals) : null;
         return {
-          text: formatMaybePrice(row.point[column.id], priceDecimals, column.width),
-          value: exportPrice(row.point[column.id], priceDecimals),
+          text: formatMaybePrice(value, priceDecimals, column.width),
+          value: exportPrice(value, priceDecimals),
+          ...(pence ? { note: pence } : {}),
           ...(column.id === "close" ? { color: colors.textBright, attributes: TextAttributes.BOLD } : { color: colors.text }),
         };
+      }
       case "change":
         return { text: spanMark(formatMaybePrice(row.change, priceDecimals, column.width - (row.changeSpansGap ? 1 : 0)), row, row.change),
           value: exportPrice(row.change, priceDecimals), color: priceColor(row.change ?? 0) };
@@ -311,7 +335,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       case "volume":
         return { text: formatVolume(row.point.volume, volumeMissing > 0), value: row.point.volume ?? null, color: colors.textDim };
     }
-  }, [priceDecimals, volumeMissing]);
+  }, [priceDecimals, quote, volumeMissing]);
 
   // ALL starts where the source's bars do, when that is well inside the window (BTC-USD's in 2014-09).
   const oldestDate = rows.at(-1)?.exportDate;

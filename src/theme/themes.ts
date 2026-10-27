@@ -745,6 +745,16 @@ const THEME_TRAITS: Readonly<Record<string, readonly ThemeTrait[]>> = {
   "high-contrast": ["high-contrast", "colorblind-safe"],
 };
 
+/**
+ * Whether a theme's gains and losses are told apart by something other than
+ * the red and green everyone reads: a color-blind safe theme's blue and
+ * vermillion, which a chart keys (`▲▼` beside a candle series) so a reader
+ * knows which is which.
+ */
+export function themeKeysDirection(id: string): boolean {
+  return (THEME_TRAITS[id] ?? []).includes("colorblind-safe");
+}
+
 export interface ThemeSummary {
   id: string;
   name: string;

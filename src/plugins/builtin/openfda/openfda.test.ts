@@ -8,7 +8,7 @@ import {
   parseDrugReport,
   parseOpenFdaPage,
 } from "./client";
-import { activeFilters } from "./model";
+import { activeFilters, termsCellText } from "./model";
 
 const savedKey = process.env.OPENFDA_API_KEY;
 afterEach(() => {
@@ -135,6 +135,17 @@ describe("openFDA records", () => {
     // A role asked for names a drug in that role, and drops a report whose matched drug plays another part.
     expect(parseDrugReport(DRUG_REPORT, "metformin", "suspect")).toBeNull();
     expect(parseDrugReport(DRUG_REPORT, "", "concomitant")).toMatchObject({ product: "AMLODIPINE BESYLATE", labelers: 2 });
+  });
+
+  test("a report codes each reaction once, and a row names the first three and counts the rest", () => {
+    // A vaccine report codes the same reaction once per dose, in either case.
+    const reaction = (names: string[]) => names.map((reactionmeddrapt) => ({ reactionmeddrapt }));
+    const report = parseDrugReport({ ...DRUG_REPORT, patient: { ...DRUG_REPORT.patient, reaction: reaction([
+      "Headache", "Pyrexia", "HEADACHE", "Thrombosis", "Pyrexia", "Fatigue", "Nausea",
+    ]) } }, "metformin");
+    expect(report?.reactions).toEqual(["Headache", "Pyrexia", "Thrombosis", "Fatigue", "Nausea"]);
+    expect(termsCellText(report!.reactions)).toBe("Headache, Pyrexia, Thrombosis +2 more");
+    expect(termsCellText(["Headache", "Pyrexia"])).toBe("Headache, Pyrexia");
   });
 
   test("a device report names the matched device, and recalls without a number stay apart", () => {

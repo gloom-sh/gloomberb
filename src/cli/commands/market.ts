@@ -12,7 +12,7 @@ import type {
   Quote,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, penceFigure, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import { changeBasisJson, changeBasisLabel, changeBasisNote, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
@@ -141,6 +141,7 @@ import {
   historyPriceDecimals,
   historyRows,
   historyUnit,
+  quotedPriceDivisor,
   historyVolume,
   historyVolumeText,
   type HistoryRow,
@@ -468,7 +469,8 @@ const QUOTE_LEAD_COLUMNS = [
       row.error && !row.price
         // A typo is not an outage: say what is wrong with the symbol itself.
         ? isNotATickerMessage(row.error) ? cliStyles.warning("not a ticker") : cliStyles.danger("unavailable")
-        : yieldLevelCell(row.price, row)
+        // A London line adds the pence it trades in, as the exchange and RNS write it, muted as a table cell's note is: £6.308 630.8p.
+        : `${yieldLevelCell(row.price, row)}${row.pence ? ` ${cliStyles.muted(row.pence)}` : ""}`
     ),
   },
   {
@@ -732,10 +734,12 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     // A price in cents says what it is per, as the contract terms word it: 314.95¢/lb.
     const per = display.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
     const previousClose = display.price != null && display.change != null ? display.price - display.change : quote?.previousClose;
+    const last = price(display.price);
     return {
       symbol: result.target.symbol,
       name: quote?.name || result.listing?.name || "",
-      price: `${price(display.price)}${per}`,
+      price: `${last}${per}`,
+      pence: penceFigure(display.price, quote, /\.(\d+)/.exec(last)?.[1]?.length ?? 0),
       rawPrice: display.price,
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
@@ -1120,7 +1124,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // close does not read as a contradiction of DGS10 or GC for the same day.
       // Dated by the quotes as served, which say whether one is the saved copy.
       freshness: withSavedCopy(
-        quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
+        // A table across markets (US and London lines) dates each market's session and says when each opens.
+        quotesFreshness(data.map((row) => row.quote), { datesEachVenue: true, ...yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : {} }),
         answers.map(({ result }) => result.quote),
       ),
     }, {
@@ -1404,7 +1409,9 @@ async function loadListingHistory(
   const volume = historyVolume(unit, traded);
   // Spot FX has no exchange to count its trades: a source's 0 is no volume, printed as missing.
   const pair = quote?.instrumentType === "CURRENCY" || isCurrencyPairListing(symbol, exchange);
-  const rows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume);
+  // A London line's bars were priced in pence: cleaned there, and printed to the pence decimals `quote` shows.
+  const priceDivisor = quotedPriceDivisor(quote);
+  const rows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume, priceDivisor);
   // Bars stop arriving on the listing's own trading days, not New York's.
   const venue = quote?.listingExchangeName || exchange || undefined;
   const served = range === "YTD" && !window ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;
@@ -1455,7 +1462,7 @@ async function loadListingHistory(
   ].flat();
   return {
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
-    decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory),
+    decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
 }
 

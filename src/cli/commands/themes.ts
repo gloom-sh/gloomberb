@@ -16,14 +16,23 @@ function themeChoicesText(): string {
   return `Themes: ${choices}. gloom config themes lists them with notes.`;
 }
 
+/** `Light themes: paper (Paper), github-light (GitHub Light), ...`, for `light` or `dark` typed as a theme; null for anything else. */
+function appearanceHint(input: string): string | null {
+  const appearance = input.trim().toLowerCase();
+  if (appearance !== "light" && appearance !== "dark") return null;
+  const matching = listThemes().filter((theme) => theme.appearance === appearance).map(({ id, name }) => `${id} (${name})`);
+  return matching.length > 0 ? ` ${appearance === "light" ? "Light" : "Dark"} themes: ${matching.join(", ")}.` : null;
+}
+
 /**
  * The id `input` names, by id or display name in any case. Anything else
- * fails with the closest id when there is one, and every id with its name.
+ * fails with the closest id when there is one, and every id with its name;
+ * `light` or `dark` with the themes of that look.
  */
 export function requireThemeId(input: string): string {
   const lookup = resolveThemeId(input);
   if (lookup.ok) return lookup.id;
-  const hint = lookup.suggestion ? ` Did you mean ${describeThemeId(lookup.suggestion)}?` : "";
+  const hint = appearanceHint(input) ?? (lookup.suggestion ? ` Did you mean ${describeThemeId(lookup.suggestion)}?` : "");
   return fail(`Unknown theme "${input.trim()}".${hint}`, themeChoicesText());
 }
 

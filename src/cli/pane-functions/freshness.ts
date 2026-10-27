@@ -11,7 +11,15 @@ import type {
 import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
-import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
+import {
+  reportMarketSession,
+  reportVenueMarkets,
+  reportVenueSessionDates,
+  type ReportMarket,
+  type SessionObservation,
+  type VenueMarket,
+  type VenueSessionDate,
+} from "./market-session";
 import { savedCopyShownAt } from "../../data/saved-copies";
 import { releasedText } from "../../utils/release-date";
 
@@ -77,6 +85,13 @@ export interface ReportFreshness {
   tradingDayMarket?: string;
   /** Where the venues of a quote report stand now, from their session calendars. */
   market?: ReportMarket;
+  /**
+   * With a declared `datesEachVenue`, when the rows trade on two or three
+   * markets that do not all stand alike: where each stands and when it opens,
+   * which the status line gives in place of `market` (`LSE opens 08:00 UTC ·
+   * US 13:30 UTC`).
+   */
+  markets?: VenueMarket[];
   /**
    * With a declared `datesEachVenue`, when the rows trade on more than one
    * market: each market's session date, which the status line gives in place
@@ -534,6 +549,9 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   }
   const { market, closeDate, closeMarket } = reportMarketSession(signals.sessions, now);
   const venueSessions = declared.datesEachVenue && !declaredAsOf ? reportVenueSessionDates(signals.sessions, now) : [];
+  // Each market's own state and open, when they are not all one: `LSE opens 08:00 UTC · US 13:30 UTC`.
+  const venueMarkets = declared.datesEachVenue ? reportVenueMarkets(signals.sessions, now) : [];
+  const markets = venueMarkets.length > 0 && !sameMarketText(venueMarkets, now) ? venueMarkets : [];
   // The close wording dates the newest observation, so only when that is what `asOf` is.
   const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
   const tradingDayMarket = asOfClose ? closeMarket
@@ -584,6 +602,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(asOfClose ? { asOfClose } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
+    ...(markets.length > 0 ? { markets } : {}),
     ...(venueSessions.length > 0 ? { venueSessions } : {}),
     ...(lagDays != null ? { lagDays } : {}),
     ...(observation ? { observation } : {}),
@@ -964,6 +983,52 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
   }
 }
 
+/** Whether every market of a mixed report reads the same (`markets closed until Mon`): one line then says it for all. */
+function sameMarketText(markets: readonly VenueMarket[], now: number): boolean {
+  return new Set(markets.map((market) => marketText(market, now, false, false))).size === 1;
+}
+
+/**
+ * Where each market of a report that mixes them stands, one after another:
+ * the open ones first, then those in an extended session, then the closed ones
+ * by when they open. `markets closed · LSE opens 08:00 UTC · US 13:30 UTC`
+ * while all are closed, else each its own (`LSE open · US pre-market, opens
+ * 13:30 UTC`). A time is the regular session's open, as `marketText` says it;
+ * `short` leaves out `markets closed`.
+ */
+function marketsText(markets: readonly VenueMarket[], now: number, short: boolean, local: boolean): string {
+  const opensAt = (market: VenueMarket) => market.reopensAt ? Date.parse(market.reopensAt) : Number.POSITIVE_INFINITY;
+  const rank = (market: VenueMarket) => market.state === "open" ? 0 : market.state === "closed" ? 2 : 1;
+  const ordered = [...markets].sort((left, right) => rank(left) - rank(right) || opensAt(left) - opensAt(right));
+  // `LSE opens 08:00 UTC · US 13:30 UTC`: the verb is said once for the opens that follow each other.
+  let opening = false;
+  const parts = ordered.map((market) => {
+    const reopen = reopenText(market, now, local);
+    const timed = market.state === "closed" && !!reopen?.time;
+    const said = (() => {
+      switch (market.state) {
+        case "open":
+          return `${market.market} open`;
+        case "after-hours":
+          return `${market.market} after hours`;
+        case "pre-market":
+          return reopen?.time ? `${market.market} pre-market, opens ${reopen.text}` : `${market.market} pre-market`;
+        case "closed":
+          if (!reopen) return `${market.market} closed`;
+          if (!reopen.time) return `${market.market} closed until ${reopen.text}`;
+          return `${market.market} ${opening ? "" : market.firstTrade ? "reopens " : "opens "}${reopen.text}`;
+        default: {
+          const _exhaustive: never = market.state;
+          return _exhaustive;
+        }
+      }
+    })();
+    opening = timed;
+    return said;
+  });
+  return ordered.every((market) => market.state === "closed") && !short ? ["markets closed", ...parts].join(" · ") : parts.join(" · ");
+}
+
 interface StatusLineDetail {
   /** Leave out the oldest observation. */
   asOf?: "short";
@@ -1002,7 +1067,9 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
     ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, local)]
       : [statusText(detail.basis === "none" ? { ...freshness, basis: undefined } : freshness, detail.status === "short")].filter(Boolean)),
-    ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
+    ...(detail.market === "none" ? []
+      : freshness.markets?.length ? [marketsText(freshness.markets, now, detail.market === "short", local)]
+      : freshness.market ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
     ...(freshness.note && detail.note !== "none" ? [typeof detail.note === "number" ? freshness.noteVariants?.[detail.note] ?? freshness.note : freshness.note] : []),
   ];
 }

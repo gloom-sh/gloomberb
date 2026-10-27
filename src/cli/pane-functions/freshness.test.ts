@@ -204,8 +204,9 @@ describe("report freshness", () => {
       dataSource: "delayed", delayMinutes: 15, sessionExchange, marketState: "CLOSED", lastUpdated: Date.parse(lastUpdated),
     });
     const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
+    // Each market opens at its own time, which the line gives each, the soonest first.
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
-      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · regular session opens 06:00 UTC");
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 06:00 UTC · EPA 07:00 UTC · US 13:30 UTC");
     // A venue whose newest row is a day older says so beside the others.
     const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
@@ -214,6 +215,29 @@ describe("report freshness", () => {
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), airlines, WED))).toContain("· US trading day Tue 13 Oct 2026 close ·");
     expect(deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NYSE", "2026-10-13T23:45:00Z")] }, WED).venueSessions)
       .toBeUndefined();
+  });
+
+  test("a quote across US and London names each market's state and open, never one market's day with another's open", () => {
+    const quote = (sessionExchange: string, lastUpdated: string, marketState = "CLOSED") => ({
+      dataSource: "delayed", delayMinutes: 15, sessionExchange, marketState, lastUpdated: Date.parse(lastUpdated),
+    });
+    // `quote AZN ULVR HSBA RIO` overnight: both closed, London opening first.
+    const TUE = Date.parse("2026-10-27T02:00:00Z");
+    const mixed = { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-26T16:48:00Z"), quote("LSE", "2026-10-26T16:35:00Z")] };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), mixed, TUE)))
+      .toBe("Source: Gloom Cloud · US and LSE Mon 26 Oct 2026 close · 15 min delayed · markets closed · LSE opens 08:00 UTC · US 13:30 UTC");
+    // London trading, the US yet to open: each says its own.
+    const morning = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [
+      quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-27T10:00:00Z", "REGULAR"),
+    ] }, Date.parse("2026-10-27T10:15:00Z"));
+    expect(formatFreshnessLine(morning)).toMatch(/ · LSE open · US pre-market, opens 13:30 UTC$/);
+    // A market the line cannot name (an index publisher it has no calendar for) leaves the line as it was.
+    const index = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("FTSE INDEX", "2026-10-26T16:35:00Z")] }, TUE);
+    expect([index.markets, index.venueSessions]).toEqual([undefined, undefined]);
+    // Both closed for the weekend reads as one line, as it did.
+    const SAT = Date.parse("2026-10-31T12:00:00Z");
+    const weekend = { rows: [quote("NASDAQ", "2026-10-30T23:31:00Z"), quote("LSE", "2026-10-30T16:35:00Z")] };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), weekend, SAT))).toMatch(/ · markets closed until Mon$/);
   });
 
   test("a capture of a pane whose quotes trade on several markets dates each, and says its note's shorter forms before leaving it out", () => {

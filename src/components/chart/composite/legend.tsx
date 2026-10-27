@@ -13,7 +13,7 @@ import {
   seriesPriceReference,
 } from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
-import { seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
+import { DIRECTION_MARKER, seriesColorsDirection, seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 import { DisclosureMarker } from "../../ui/disclosure-marker";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
@@ -120,12 +120,35 @@ function packLegendLines(widths: readonly number[], available: number, maxLines 
   return lines;
 }
 
-/** The legend's marker for a series on the desktop: its line as the plot strokes it, or a dot. */
-function CompositeSeriesSwatch({ series, cue, filled = true }: {
+/** A triangle pointing up or down, as the desktop legend keys a bar's direction. */
+const DIRECTION_TRIANGLES = {
+  up: "polygon(50% 0, 100% 100%, 0 100%)",
+  down: "polygon(0 0, 100% 0, 50% 100%)",
+} as const;
+
+/** The legend's marker for a series on the desktop: its line as the plot strokes it, its up and down colors, or a dot. */
+function CompositeSeriesSwatch({ series, cue, downColor = null, filled = true }: {
   series: ResolvedSeries;
   cue: SeriesLineCue | null;
+  /** The down color, for a series keyed by direction: an up triangle in its color, then a down one in this. */
+  downColor?: string | null;
   filled?: boolean;
 }) {
+  if (downColor) {
+    return (
+      <Box
+        flexShrink={0}
+        flexDirection="row"
+        style={{ gap: 2, marginInlineEnd: 6, opacity: filled ? 1 : 0.35 }}
+        data-gloom-role="composite-chart-legend-marker"
+        data-gloom-cue="direction"
+      >
+        {([["up", series.color], ["down", downColor]] as const).map(([direction, color]) => (
+          <Box key={direction} flexShrink={0} style={{ width: 7, height: 7, backgroundColor: color, clipPath: DIRECTION_TRIANGLES[direction] }} />
+        ))}
+      </Box>
+    );
+  }
   return cue ? (
     // The line as the plot strokes it: solid, dashed, dotted or heavy.
     <Box
@@ -162,6 +185,7 @@ export function CompositeLegend({
   visibleSeriesIds,
   lineCues = NO_LINE_CUES,
   cellPlot = false,
+  directionDownColor = null,
   width,
   accessory,
   accessoryWidth,
@@ -183,6 +207,12 @@ export function CompositeLegend({
   lineCues?: ReadonlyMap<string, SeriesLineCue>;
   /** The plot is cell text, so a line's cue is its mark rather than its dash. */
   cellPlot?: boolean;
+  /**
+   * The color bars that closed down are drawn in, where the theme's up and
+   * down are not the familiar green and red: a candle series' marker then keys
+   * both (`▲▼`). Null keeps its dot.
+   */
+  directionDownColor?: string | null;
   width: number;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
@@ -212,8 +242,9 @@ export function CompositeLegend({
   const valueDates = legendValueDates(series, scene, cursorValueById);
   const buildEntries = (withFiscalPeriods: boolean) => series.map((entry) => {
     const cue = lineCues.get(entry.id) ?? null;
-    const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : DOT_MARKER;
-    const markerWidth = isDesktopWeb ? cue ? DOM_LINE_CELLS : DOM_DOT_CELLS : displayWidth(marker);
+    const downColor = !cue && directionDownColor && seriesColorsDirection(entry) ? directionDownColor : null;
+    const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : downColor ? DIRECTION_MARKER.text : DOT_MARKER;
+    const markerWidth = isDesktopWeb ? cue || downColor ? DOM_LINE_CELLS : DOM_DOT_CELLS : displayWidth(marker);
     const toggleable = !!onToggleSeries && (isSeriesToggleable?.(entry) ?? true);
     const cursorValue = cursorValueById.get(entry.id);
     // A stacked layer reads its own amount, not the top of the stack it is drawn to.
@@ -253,6 +284,7 @@ export function CompositeLegend({
     return {
       entry,
       cue,
+      downColor,
       marker,
       markerWidth,
       label,
@@ -414,7 +446,7 @@ export function CompositeLegend({
     scrollBox.scrollTo({ x: nextLeft, y: scrollBox.scrollTop });
   };
   const renderEntry = (
-    { entry, cue, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }: LegendEntry,
+    { entry, cue, downColor, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }: LegendEntry,
     index: number,
   ) => {
     const entryVisible = visibleSeriesIds.has(entry.id);
@@ -446,7 +478,13 @@ export function CompositeLegend({
         title={isDesktopWeb ? tooltip : undefined}
       >
         {isDesktopWeb ? (
-          <CompositeSeriesSwatch series={entry} cue={cue} filled={entryVisible} />
+          <CompositeSeriesSwatch series={entry} cue={cue} downColor={downColor} filled={entryVisible} />
+        ) : downColor && entryVisible ? (
+          <Text>
+            <Span fg={entry.color}>{DIRECTION_MARKER.up}</Span>
+            <Span fg={downColor}>{DIRECTION_MARKER.down}</Span>
+            {" "}
+          </Text>
         ) : (
           <Text fg={entryVisible ? entry.color : themeColors.textMuted}>{marker}</Text>
         )}

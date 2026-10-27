@@ -41,7 +41,6 @@ import {
   SPONSOR_FILTER_OPTIONS,
   STATUS_FILTER_OPTIONS,
   keepsToneWhenSelected,
-  looksLikeTicker,
   normalizeTrialFilters,
   sponsorClassLabel,
   trialFiltersNarrow,
@@ -57,7 +56,7 @@ import {
   type TrialFilters,
 } from "./model";
 import { useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
-import { tickerSponsorName } from "./ticker-sponsor";
+import { looksLikeTicker, tickerCompanyName } from "../shared/ticker-company";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -244,7 +243,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   useEffect(() => {
     if (!resolvingTicker) return;
     let live = true;
-    void tickerSponsorName(dataProvider, term).catch(() => null).then((name) => {
+    void tickerCompanyName(dataProvider, term).catch(() => null).then((name) => {
       if (!live) return;
       setLooked((current) => new Set([...current, term.toUpperCase()]));
       if (name) updateQuery(`"${name}"`);

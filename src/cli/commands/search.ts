@@ -133,7 +133,7 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    return withQuotedNames(symbol, withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote)), quote)
+    return withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote)
       .slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
@@ -297,6 +297,26 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
   const rest = candidates.filter((candidate) => candidate !== home);
   const at = rest.indexOf(primary);
   return [...rest.slice(0, at), { ...home, category: "Primary Listing" as const }, { ...primary, category: "Other Listings" as const }, ...rest.slice(at + 1)];
+}
+
+/**
+ * A company whose primary listing is abroad lists the US line of the same
+ * symbol right after it: the line `quote SHEL` reads (a bare symbol is its US
+ * listing), which a name search ("shell") would otherwise rank below the
+ * company's lines on other venues and cut. Any other list keeps its order.
+ */
+function withUsLineOfPrimary(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+  const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
+  if (!primary || primary.kind !== "search" || isUsListingExchange(candidateExchange(primary))) return candidates;
+  const symbol = primary.symbol.toUpperCase();
+  const company = resolveSearchName(primary);
+  const us = candidates.find((candidate) => candidate !== primary && candidate.kind === "search" && !candidate.contractKey
+    && candidate.category !== "Funds & Derivatives" && candidate.symbol.toUpperCase() === symbol
+    && isUsListingExchange(candidateExchange(candidate)) && sameCompany(resolveSearchName(candidate), company));
+  if (!us) return candidates;
+  const rest = candidates.filter((candidate) => candidate !== us);
+  const at = rest.indexOf(primary) + 1;
+  return [...rest.slice(0, at), { ...us, category: "Other Listings" as const }, ...rest.slice(at)];
 }
 
 /** The candidate on the venue the quote prices; the US exchanges share one symbol, so a quote on any of them is its one US line. */

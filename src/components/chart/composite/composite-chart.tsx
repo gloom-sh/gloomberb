@@ -27,6 +27,7 @@ import { usePaneFocused } from "../../../state/app/activity";
 import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
+import { themeKeysDirection } from "../../../theme/themes";
 import { assignSeriesLineCues } from "./series-cues";
 import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
 import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
@@ -210,6 +211,7 @@ function ThemedCompositeChart({
   onChartLayoutChange,
 }: CompositeChartProps & { chartLayout: ChartLayoutPrefs; onChartLayoutChange: ChartLayoutUpdate }) {
   const activeThemeColors = useThemeColors();
+  const keysDirection = themeKeysDirection(useThemeId());
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const showTextFallback = useShowChartTextFallback();
@@ -1034,6 +1036,8 @@ function ThemedCompositeChart({
           visibleSeriesIds={visibleSeriesIds}
           lineCues={lineCues}
           cellPlot={showTextFallback && !isDesktopWeb}
+          // A color-blind safe theme's blue and vermillion are no convention: a candle series keys them.
+          directionDownColor={keysDirection ? resolvedColors.negative : null}
           width={totalWidth}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}

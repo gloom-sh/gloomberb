@@ -69,3 +69,17 @@ export function seriesCueCssBackground(cue: SeriesLineCue, color: string): strin
   });
   return `repeating-linear-gradient(to right, ${stops.join(", ")})`;
 }
+
+/** The OHLC family: one series drawn in the up color for a bar that closed up and the down color for one that closed down. */
+const DIRECTION_STYLES = new Set<SeriesStyle>(["candles", "ohlc", "hlc"]);
+
+/**
+ * Whether a series colors each bar by its direction, so its legend entry can
+ * key the two colors (`▲▼`) where the theme's are not the familiar green and red.
+ */
+export function seriesColorsDirection(series: Pick<ResolvedSeries, "style">): boolean {
+  return DIRECTION_STYLES.has(series.style);
+}
+
+/** The legend marker that keys up and down: the up color's triangle, then the down color's. */
+export const DIRECTION_MARKER = { up: "▲", down: "▼", text: "▲▼ " } as const;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
+  barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote,
 } from "./history-rows";
@@ -270,6 +270,32 @@ describe("history rows", () => {
     expect(historyPriceDecimals(daily(shib.map((bar) => bar.map(Math.fround))))).toBe(8);
     // A known kind applies the app's price rules: an equity shows cents even with sub-penny prints.
     expect(historyPriceDecimals(daily([[334.5795, 335.48, 333.1697, 334.225], [334.26, 334.1216, 332.8706, 333.8972]]), "STK")).toBe(2);
+  });
+
+  // BP.L's bars as the cloud served them: float32 pence, divided into pounds (623.6p as 6.2359998).
+  const BP_L_BARS = [[6.2300000, 6.2610002, 6.1190002, 6.1190002], [6.2359998, 6.3853802, 6.1920000, 6.3850002], [6.3529999, 6.3790002, 6.2259998, 6.3080001]];
+
+  test("a London line's prices are the pence they were quoted in, to the venue's finest tick, with no float noise", () => {
+    const rows = historyRows(BP_L_BARS.map(([open, high, low, close], index) => ({
+      date: new Date(Date.UTC(2026, 9, 22 + index)), open, high, low, close: close!,
+    })), "1d", "GBP", null, null, 100);
+    expect(rows.map(({ open, high, low, close }) => [open, high, low, close])).toEqual([
+      [6.23, 6.261, 6.119, 6.119], [6.236, 6.38538, 6.192, 6.385], [6.353, 6.379, 6.226, 6.308],
+    ]);
+    // A sub-penny tick survives, to a ten-thousandth of a penny: 0.1234p.
+    expect(cleanBarPrice(Math.fround(0.1234) / 100, 100)).toBe(0.001234);
+    // A price served in its own currency is cleaned as before.
+    expect(cleanBarPrice(Math.fround(340.33), 1)).toBe(340.33);
+  });
+
+  test("a London share under £10 shows a tenth of a penny (6.385 for 638.5p), as no other equity does", () => {
+    const bars = BP_L_BARS.map(([open, high, low, close]) => ({ open, high, low, close }));
+    expect(barPriceDecimals(bars, "EQUITY", 100)).toBe(3);
+    // Saved with no kind, a line priced in pence is still a share.
+    expect(barPriceDecimals(bars, undefined, 100)).toBe(3);
+    // Over £10 a penny is the second decimal already: 49.23 for 4,923p.
+    expect(barPriceDecimals([{ open: 49.23, high: 49.5, low: 48.9, close: 49.23 }], "EQUITY", 100)).toBe(2);
+    expect(barPriceDecimals(bars, "EQUITY")).toBe(2);
   });
 });
 

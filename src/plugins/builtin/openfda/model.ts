@@ -65,6 +65,15 @@ const TONES: Partial<Record<ColumnId, Record<string, StateTone>>> = {
   status: { Ongoing: "warning", Completed: "text", Terminated: "muted" },
 };
 
+/** The most terms a row's list cell names before counting the rest; the record names them all. */
+const MAX_CELL_TERMS = 3;
+
+/** A report's coded terms as a row shows them: the first few, then how many more (`Nausea, Rash, Fatigue +9 more`). */
+export function termsCellText(terms: readonly string[]): string {
+  const more = terms.length - MAX_CELL_TERMS;
+  return `${terms.slice(0, MAX_CELL_TERMS).join(", ")}${more > 0 ? ` +${more} more` : ""}`;
+}
+
 export function recordTone(column: ColumnId, text: string): StateTone {
   return TONES[column]?.[text] ?? "text";
 }

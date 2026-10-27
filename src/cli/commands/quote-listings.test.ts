@@ -101,10 +101,29 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   expect((await runQuote(["CSPX"], quotedBare)).warnings).toEqual([]);
   expect(quotedBare.batches).toEqual([["CSPX"]]);
 
-  // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
+  // With no quote anywhere, the listings just asked are named as having none, never offered as one to try.
   const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
   expect(unquoted.failure?.message).toBe("CSPX resolved to CSPX Fund (XETRA), which has no quote.");
-  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloom quote CSPX:LSE)");
+  expect(unquoted.failure?.details).toBe("No quote on its other listings either: CSPX:LSE.");
+});
+
+test("a listing whose quote request failed, rather than found none, is still one to try, under the symbol search lists it by", async () => {
+  // `BARC.` is London's way to write BARC: search lists it as BARC on each venue.
+  const listing = (exchange: string) => ({ providerId: "test", symbol: "BARC", name: "Barclays PLC", exchange, type: "Common Stock", currency: "GBP" });
+  const source = (answer: (symbol: string) => QuoteBatchResult["quote"] | "timeout") => createTestDataProvider({
+    search: async () => [listing("LSE"), listing("XETRA")],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => {
+      const quote = answer(target.symbol);
+      if (quote === "timeout") return { target, quote: null, error: "Request timed out" };
+      return quote ? { target, quote } : { target, quote: null, error: `No quote provider available for ${target.symbol}` };
+    }),
+  });
+  const failed = await runQuote(["BARC."], { dataProvider: source((symbol) => symbol === "BARC:XETRA" ? "timeout" : null), batches: [], searches: () => 0 });
+  expect(failed.failure?.details).toBe("Other listings: BARC:XETRA Barclays PLC (try: gloom quote BARC:XETRA)");
+
+  const quote = createTestQuote({ symbol: "BARC:LSE", currency: "GBP" });
+  const quoted = await runQuote(["BARC."], { dataProvider: source((symbol) => symbol === "BARC:LSE" ? quote : null), batches: [], searches: () => 0 });
+  expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["BARC:LSE"]);
 });
 
 test("a code several companies list is never quoted on one of them: it asks for an exchange, and only its row fails", async () => {
@@ -646,13 +665,14 @@ test("Bloomberg codes are each one listing: a file's lines, a quoted code, and a
   });
 });
 
-test("700.HK, 6758.JP and BRK/B are quoted in the form that works", async () => {
+test("700.HK, 6758.JP, BRK/B and London's BP. are quoted in the form that works", async () => {
   const source = venueSource("X", [], {
+    "BP:LSE": createTestQuote({ symbol: "BP:LSE", currency: "GBP" }),
     "0700.HK": createTestQuote({ symbol: "0700.HK" }),
     "6758.T": createTestQuote({ symbol: "6758.T" }),
     "BRK-B": createTestQuote({ symbol: "BRK-B" }),
   });
-  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"]]) {
+  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"], ["BP.", "BP:LSE"]]) {
     const { failure, rows } = await runQuote([typed!], source);
     expect(failure).toBeNull();
     expect(rows.map((row) => row.target.symbol)).toEqual([symbol!]);

@@ -547,6 +547,33 @@ describe("CLI search helpers", () => {
     expect(marked[0]).toMatchObject({ label: "DBK", category: "Primary Listing", result: { exchange: "XETRA" } });
   });
 
+  test("a company whose home is abroad lists its US line of the same symbol right after it, the one a bare symbol quotes", async () => {
+    // `search shell` as the service answers it: the London home line, the NYSE ADR, then Shell's lines on a dozen venues.
+    const line = (symbol: string, exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+      ({ providerId: "gloom", symbol, name, exchange, type: "Common Stock", currency: "EUR", ...extra });
+    const search = async () => [
+      line("SHEL", "LSE", "Shell plc", { currency: "GBp", homeListing: true, popularity: 20562 }),
+      line("SHEL", "NYSE", "Shell PLC ADR", { type: "American Depositary Receipt", currency: "USD", popularity: 25607 }),
+      line("SHELL", "AMS", "Shell plc", { popularity: 20697 }),
+      line("RYDAF", "OTC", "Shell plc", { currency: "USD", popularity: 20070 }),
+      ...["XETRA", "FWB2", "XSTU", "MUNICH", "HANOVER", "XDUS"].map((exchange) => line("R6C0", exchange, "Shell plc")),
+      line("SHELL", "PSE", "Shell plc", { currency: "CZK" }),
+      line("SHELL", "CBOE", "Shell plc", { currency: "GBX" }),
+      line("SHELN", "BMV", "Shell plc", { currency: "MXN" }),
+      line("SHEL", "PSX", "Shell Pakistan Ltd.", { currency: "PKR" }),
+    ];
+    const candidates = await searchCandidatesForCli({ query: "shell", tickers: [], dataProvider: createTestDataProvider({ search }) });
+    expect(candidates.slice(0, 2).map((candidate) => [candidate.label, candidate.category, candidate.result?.exchange])).toEqual([
+      ["SHEL", "Primary Listing", "LSE"],
+      ["SHEL", "Other Listings", "NYSE"],
+    ]);
+    // Another company's SHEL is no line of Shell's.
+    const pakistan = await searchCandidatesForCli({ query: "shell", tickers: [], dataProvider: createTestDataProvider({
+      search: async () => (await search()).filter((row) => row.exchange !== "NYSE"),
+    }) });
+    expect(pakistan[1]?.result?.exchange).not.toBe("PSX");
+  });
+
   test("renders an empty state when no search results match", () => {
     const report = buildSearchReport({
       query: "zzzz",

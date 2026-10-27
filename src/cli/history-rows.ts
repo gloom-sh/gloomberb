@@ -109,6 +109,40 @@ export function cleanFloat32Price(value: number): number {
   return value;
 }
 
+/**
+ * The finest step a venue that quotes in a sub-unit prices in, in decimals of
+ * that unit: a ten-thousandth of a penny, the smallest tick London's tick
+ * tables use (for its lowest-priced shares).
+ */
+const SUB_UNIT_TICK_DECIMALS = 4;
+/** The decimals of that sub-unit a table of bars shows: a tenth of a penny, 638.5p as 6.385. */
+const SUB_UNIT_SHOWN_DECIMALS = 1;
+
+/**
+ * A bar's price as the decimal it is (`cleanFloat32Price`). A price served in
+ * a sub-unit and divided into its currency (`divisor` 100: a London line's
+ * pence, as pounds) carries the float32 noise of the pence it was quoted in
+ * (623.59998p is 6.2359998), so it is cleaned in pence, kept to the venue's
+ * finest tick there, then divided: 6.236.
+ */
+export function cleanBarPrice(value: number, divisor = 1): number {
+  if (!(divisor > 1) || !Number.isFinite(divisor) || !Number.isFinite(value) || value === 0) return cleanFloat32Price(value);
+  const subUnit = cleanFloat32Price(value * divisor);
+  const places = Math.min(SUB_UNIT_TICK_DECIMALS, decimalPlaces(subUnit));
+  const unitPlaces = Math.round(Math.log10(divisor));
+  return Number((Number(subUnit.toFixed(places)) / divisor).toFixed(places + unitPlaces));
+}
+
+/**
+ * How many of the unit a quote's prices were served in make one of the
+ * currency it shows them in: 100 for a London line priced in pence and shown
+ * in pounds, 1 for any other.
+ */
+export function quotedPriceDivisor(quote: { providerPriceDivisor?: number } | null | undefined): number {
+  const divisor = quote?.providerPriceDivisor;
+  return divisor != null && Number.isFinite(divisor) && divisor > 1 ? divisor : 1;
+}
+
 function isUtcMidnight(time: number): boolean {
   return new Date(time).toISOString().endsWith("T00:00:00.000Z");
 }
@@ -229,6 +263,8 @@ export function historyRows(
   currency: string | null = null,
   unit: string | null = null,
   volume: HistoryVolume | null = null,
+  /** The listing's `quotedPriceDivisor`: prices served in pence are cleaned in pence. */
+  priceDivisor = 1,
 ): HistoryRow[] {
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
@@ -240,7 +276,7 @@ export function historyRows(
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
     const values = pricePointValues(point);
     const flags = pricePointIntegrityFlags(point);
-    const price = (value: number | null) => value == null ? null : cleanFloat32Price(value);
+    const price = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     return {
       date: intraday ? iso.replace(".000Z", "Z") : iso.slice(0, 10),
       open: price(values.open),
@@ -440,8 +476,14 @@ function neededDecimals(value: number, cap: number): number {
  * row. A known asset kind caps it with the app's price display rules; without
  * one, the largest price sets a seven significant digit ceiling (BTC keeps
  * cents, FX keeps pips, sub-cent coins keep their digits). Cents at least above 1.
+ * Prices served in a sub-unit (`priceDivisor` 100, a London line's pence) may
+ * keep a tenth of it too: 6.385 for 638.5p. Finer ticks stay in the export.
  */
-export function historyPriceDecimals(rows: readonly Pick<HistoryRow, typeof PRICE_KEYS[number]>[], assetCategory?: string): number {
+export function historyPriceDecimals(
+  rows: readonly Pick<HistoryRow, typeof PRICE_KEYS[number]>[],
+  assetCategory?: string,
+  priceDivisor = 1,
+): number {
   const values = rows.flatMap((row) => PRICE_KEYS.flatMap((key) => {
     const value = row[key];
     return value != null && Number.isFinite(value) && value !== 0 ? [Math.abs(value)] : [];
@@ -450,9 +492,12 @@ export function historyPriceDecimals(rows: readonly Pick<HistoryRow, typeof PRIC
   const largest = values.reduce((max, value) => Math.max(max, value), 0);
   const magnitude = Math.floor(Math.log10(largest));
   const significantCap = largest >= 1 ? Math.max(2, 6 - magnitude) : 6 - magnitude;
-  const cap = resolveAssetDisplayKind({ assetCategory }) === "other"
+  // A line priced in pence is a share or a fund on its exchange, whatever kind its row was saved as.
+  const subUnit = priceDivisor > 1;
+  const kind = subUnit && resolveAssetDisplayKind({ assetCategory }) === "other" ? "EQUITY" : assetCategory;
+  const cap = resolveAssetDisplayKind({ assetCategory: kind }) === "other"
     ? significantCap
-    : Math.min(significantCap, marketPriceFractionDigitCeiling(largest, { assetCategory }));
+    : Math.min(significantCap, marketPriceFractionDigitCeiling(largest, { assetCategory: kind }) + (subUnit ? SUB_UNIT_SHOWN_DECIMALS : 0));
   const needed = values.map((value) => neededDecimals(value, cap)).sort((left, right) => left - right);
   const decimals = needed[Math.floor(0.9 * (needed.length - 1))]!;
   return largest >= 1 ? Math.max(2, decimals) : decimals;
@@ -470,13 +515,14 @@ interface BarPrices {
  * The decimals one table of bars prints its prices with (`history`, HP's pane
  * and `fn HP`): historyPriceDecimals over the float32-cleaned prices, so a
  * feed's 4013.39990234 reads as the 4013.4 it is and the count follows the
- * asset's display rules (two for gold, three for silver, cents for a US equity).
+ * asset's display rules (two for gold, three for silver, cents for a US equity,
+ * and a London line's pence: 6.385 for 638.5p, with `priceDivisor` 100).
  */
-export function barPriceDecimals(bars: readonly BarPrices[], assetCategory?: string): number {
-  const clean = (value: number | null | undefined) => value == null ? null : cleanFloat32Price(value);
+export function barPriceDecimals(bars: readonly BarPrices[], assetCategory?: string, priceDivisor = 1): number {
+  const clean = (value: number | null | undefined) => value == null ? null : cleanBarPrice(value, priceDivisor);
   return historyPriceDecimals(bars.flatMap((bar) => bar.close == null ? [] : [{
     date: "", open: clean(bar.open), high: clean(bar.high), low: clean(bar.low), close: clean(bar.close)!, volume: null,
-  }]), assetCategory);
+  }]), assetCategory, priceDivisor);
 }
 
 /** A price at the table's decimal count (barPriceDecimals), within `maxWidth` when the pane gives one. */

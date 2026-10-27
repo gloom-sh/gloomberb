@@ -158,6 +158,21 @@ function closeMarketOf(exchange: string, session: VenueSession): string | null {
   return isUsListingExchange(exchange) ? "US" : exchange;
 }
 
+/**
+ * The market a venue's sessions belong to, as a report that mixes markets
+ * names it: `US` for the US listing venues, which share one calendar (and an
+ * index publisher's sessions dated in New York), `FX` for currency pairs, the
+ * venue's code for any other the app has a calendar of (`LSE`). Null for one
+ * known only by the state its source stamps (an index publisher dated
+ * elsewhere, a futures venue), which such a report cannot name.
+ */
+function sessionMarketOf(exchange: string, session: VenueSession): string | null {
+  if (exchange === FX_VENUE) return "FX";
+  if (session.quoted) return session.timeZone === US_EXCHANGE_TIME_ZONE ? "US" : null;
+  if (!session.timeZone) return null;
+  return isUsListingExchange(exchange) ? "US" : exchange;
+}
+
 /** One market's session behind a report that mixes markets: its local date, and whether that session has closed. */
 export interface VenueSessionDate {
   /** `US` for the US listing venues, which share one calendar, the venue's code elsewhere (`XETRA`, `EPA`). */
@@ -172,7 +187,8 @@ export interface VenueSessionDate {
  * Each market's session, for a report whose rows trade on more than one
  * (a US line beside Xetra and Paris ones): the newest row of each, dated in
  * its venue's own day, in the order the markets first appear. Empty when the
- * rows share one market, or fewer than two can be placed.
+ * rows share one market, fewer than two can be placed, or one is a market the
+ * report cannot name (`sessionMarketOf`): the newest row then dates them all.
  */
 export function reportVenueSessionDates(observations: readonly SessionObservation[], now: number): VenueSessionDate[] {
   const newestByMarket = new Map<string, { observation: SessionObservation & { time: ReportTime }; session: VenueSession }>();
@@ -180,9 +196,10 @@ export function reportVenueSessionDates(observations: readonly SessionObservatio
     const exchange = canonicalExchange(observation.exchange);
     const time = observation.time;
     if (!exchange || !time) continue;
-    const session = venueSession(exchange, observation.marketState, now);
+    const session = venueSession(exchange, observation.marketState, now, observation.calendar);
     if (!session || session.state === "always") continue;
-    const market = exchange === FX_VENUE ? "FX" : isUsListingExchange(exchange) ? "US" : exchange;
+    const market = sessionMarketOf(exchange, session);
+    if (!market) return [];
     const current = newestByMarket.get(market);
     if (!current || time.time > current.observation.time.time) newestByMarket.set(market, { observation: { ...observation, time }, session });
   }
@@ -197,6 +214,45 @@ export function reportVenueSessionDates(observations: readonly SessionObservatio
       ?? (session.timeZone ? zonedDateKey(observation.time.time, session.timeZone) : new Date(observation.time.time).toISOString().slice(0, 10));
     return { market, date, close: closeDate != null };
   });
+}
+
+/** One market behind a report that mixes markets, and where it stands now (`reportVenueMarkets`). */
+export interface VenueMarket extends ReportMarket {
+  /** The market as `sessionMarketOf` names it: `US`, `FX`, or the venue's code (`LSE`). */
+  market: string;
+}
+
+/** The fewest and most markets a report names one by one; past that a line of them would not be read. */
+const MIN_NAMED_MARKETS = 2;
+const MAX_NAMED_MARKETS = 3;
+
+/**
+ * Where each market behind a report that mixes two or three stands now, each
+ * with its own next open (`LSE` opens 08:00 UTC, `US` 13:30 UTC), in the
+ * order the markets first appear. Empty for one market, more than three, or
+ * any that cannot be placed or named (one trading around the clock among them,
+ * an index publisher with no calendar).
+ */
+export function reportVenueMarkets(observations: readonly SessionObservation[], now: number): VenueMarket[] {
+  const markets = new Map<string, VenueSession>();
+  for (const observation of observations) {
+    const exchange = canonicalExchange(observation.exchange);
+    if (!exchange) continue;
+    const session = venueSession(exchange, observation.marketState, now, observation.calendar);
+    const market = session && session.state !== "always" ? sessionMarketOf(exchange, session) : null;
+    if (!session || !market) return [];
+    if (!markets.has(market)) markets.set(market, session);
+  }
+  if (markets.size < MIN_NAMED_MARKETS || markets.size > MAX_NAMED_MARKETS) return [];
+  return [...markets].map(([market, session]) => ({
+    market,
+    state: session.state as ReportMarketState,
+    ...(session.next && session.state !== "open" && session.state !== "after-hours" ? {
+      reopensAt: new Date(session.next.open).toISOString(),
+      reopensOn: session.next.date,
+      ...(session.next.firstTrade ? { firstTrade: true as const } : {}),
+    } : {}),
+  }));
 }
 
 /**

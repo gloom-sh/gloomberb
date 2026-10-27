@@ -251,6 +251,28 @@ describe("CompositeChart", () => {
     expect(Array.from(bitmap.pixels.slice(0, 3))).toEqual(expectedRgb);
   });
 
+  // A color-blind safe theme draws gains blue and losses vermillion, which no reader assumes as they do green and red.
+  test("a candle series keys its up and down colors in a color-blind safe theme, and keeps its dot in any other", async () => {
+    const legendLine = async (themeId: string) => {
+      await tui.render(
+        <ThemeProvider themeId={themeId}>
+          <CompositeChart width={60} height={12} series={[twoSessionCandles()]} panels={[{ id: "main" }]} />
+        </ThemeProvider>,
+        { width: 62, height: 14 },
+      );
+      await act(async () => {
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n").find((row) => row.includes("ACME Price")) ?? "";
+    };
+    expect(await legendLine("colorblind-light")).toContain("▲▼ ACME Price");
+    expect(await legendLine("colorblind")).toContain("▲▼ ACME Price");
+    const plain = await legendLine(DEFAULT_THEME);
+    expect(plain).toContain("● ACME Price");
+    expect(plain).not.toContain("▲");
+  });
+
   // A live tick edits the last bar of the series in place, so the scene is
   // rebuilt from the bar's own values, not from the series object's identity.
   test("a live tick that moves the last close redraws the legend and the plot", async () => {

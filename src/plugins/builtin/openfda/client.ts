@@ -68,6 +68,17 @@ export function parseOpenFdaDate(value: unknown): Date | null {
 
 const normalizeWords = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** Each term once, in the order first coded, whatever its case: `Nausea` and `NAUSEA` are one. */
+function uniqueTerms(terms: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return terms.filter((term) => {
+    const key = normalizeWords(term);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** The search's words appear together in one of the fields, as openFDA matches a phrase. */
 function fieldsMatch(fields: Array<string | undefined>, query: string): boolean {
   const words = normalizeWords(query);
@@ -230,9 +241,10 @@ export function parseDrugReport(raw: unknown, query = "", role: DrugRole | null 
     product: shown?.name ?? "Unnamed drug",
     role: shown?.role ?? null,
     drugs: drugs.map(({ name, role }) => ({ name, role })),
-    reactions: (Array.isArray(patient.reaction) ? patient.reaction : [])
+    // A report can code one reaction more than once (once per drug, or in another case): each is listed once.
+    reactions: uniqueTerms((Array.isArray(patient.reaction) ? patient.reaction : [])
       .map((entry) => asString(asRecord(entry).reactionmeddrapt))
-      .filter((entry): entry is string => !!entry),
+      .filter((entry): entry is string => !!entry)),
     outcome,
     outcomes,
     manufacturer: shown && shown.manufacturers.length === 1 ? shown.manufacturers[0]! : null,

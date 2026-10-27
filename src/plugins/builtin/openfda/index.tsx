@@ -3,8 +3,9 @@ import { OpenFdaPane } from "./pane";
 import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
 
 const createOpenFdaPaneInstance = (options?: PaneTemplateCreateOptions) => {
-  // A search of product and firm names, never a ticker: FDA records name the
-  // firm as it filed, not a symbol, so a ticker would match unrelated text.
+  // A search of product and firm names: FDA records name the firm as it filed,
+  // not a symbol. A ticker that matches nothing is searched as its company's
+  // name, which the pane looks up (`FDA AZN` is AstraZeneca's reports).
   const query = (options?.arg ?? options?.values?.query ?? "").trim();
   const encoded = encodeURIComponent(query).replace(/%/g, "~");
   return {

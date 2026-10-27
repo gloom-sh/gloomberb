@@ -586,31 +586,43 @@ export function futuresTryLine(symbol: string, request: ListingDataRequest): str
   return `${future.symbol} ${future.name} future${retry ? ` (try: ${retry})` : ""}`;
 }
 
+/** A venue's listing as its key names it: under its own symbol there (BP:LSE for `BP.`), else the one asked for. */
+function venueKey(symbol: string, venue: Pick<ListingVenue, "exchange" | "symbol">): string {
+  return `${venue.symbol ?? symbol}:${venue.exchange}`;
+}
+
 function describeOtherListings(
   listing: BareListing,
   { exchange, resolved, others, choose }: BareListingVenues,
   request: ListingDataRequest,
+  /** Listings just asked that had none: named as having none, never offered to try. */
+  without: readonly ListingVenue[] = [],
 ): OtherListingsMessage | null {
   const future = futuresTryLine(listing.symbol, request);
-  if (others.length === 0 && !future) return null;
+  const offered = others.filter((venue) => !without.includes(venue));
+  if (offered.length === 0 && !future && without.length === 0) return null;
   const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
-  const lines = others.slice(0, MAX_OTHER_LISTINGS).map((venue) => {
-    const key = `${listing.symbol}:${venue.exchange}`;
+  const lines = offered.slice(0, MAX_OTHER_LISTINGS).map((venue) => {
+    const key = venueKey(listing.symbol, venue);
     const retry = retryCommand(request, key);
     return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry})` : ""}`;
   });
-  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloom search ${listing.symbol}`);
+  if (offered.length > MAX_OTHER_LISTINGS) lines.push(`and ${offered.length - MAX_OTHER_LISTINGS} more: gloom search ${listing.symbol}`);
   if (future) lines.push(future);
-  const heading = choose ? "Listings" : "Other listings";
+  // Every other listing was asked and had nothing: they are named as such, with nothing to try.
+  const heading = choose ? "Listings" : lines.length === 0 ? `No ${request.noun} on its other listings either` : "Other listings";
+  const named = lines.length === 0 ? without : offered;
+  const details = lines.length === 0 ? `${heading}: ${without.map((venue) => venueKey(listing.symbol, venue)).join(", ")}.`
+    : lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n");
   return {
     // The symbol went to no venue, so none of them is said to lack the data.
     message: choose
       ? `Choose an exchange for ${listing.symbol}.`
       : `${listing.symbol} resolved to ${name ? `${name} (${exchange})` : exchange}, which has no ${request.noun}.`,
-    details: lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n"),
+    details,
     heading,
-    listings: [...others.map((venue) => `${listing.symbol}:${venue.exchange}`), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
-    choices: others.slice(0, MAX_OTHER_LISTINGS).map((venue) => ({ key: `${listing.symbol}:${venue.exchange}`, name: venue.name || null })),
+    listings: [...named.map((venue) => venueKey(listing.symbol, venue)), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
+    choices: offered.slice(0, MAX_OTHER_LISTINGS).map((venue) => ({ key: venueKey(listing.symbol, venue), name: venue.name || null })),
     choose,
   };
 }
@@ -635,30 +647,44 @@ async function otherListingsMessage(
   return venues && describeOtherListings(listing, venues, request);
 }
 
-/** The listing on one venue, as `SYM:EXCH` names it. */
-function namedListing(listing: CliListing, exchange: string): CliListing {
-  const key = `${listing.symbol}:${exchange}`;
+/** The listing on one venue, as `SYM:EXCH` names it, under the venue's own symbol when search lists one. */
+function namedListing(listing: CliListing, venue: Pick<ListingVenue, "exchange" | "symbol">): CliListing {
+  const { exchange } = venue;
+  const symbol = venue.symbol ?? listing.symbol;
+  const key = `${symbol}:${exchange}`;
   const saved = canonicalExchange(listing.saved?.metadata.exchange) === exchange ? listing.saved : null;
-  return { symbol: listing.symbol, exchange, key, saved, request: { symbol: key, exchange } };
+  return { symbol, exchange, key, saved, request: { symbol: key, exchange } };
 }
 
+/**
+ * Each listing's quote, null where it has none; `undefined` where the request
+ * itself failed, which says nothing of whether it has one.
+ */
 async function quoteListings(
   dataProvider: DataProvider,
   listings: readonly CliListing[],
   refresh: boolean,
   datesChangeBasis = false,
-): Promise<Array<Quote | null>> {
+): Promise<Array<Quote | null | undefined>> {
   if (listings.length === 0) return [];
   const targets = listings.map((listing) => listing.request);
   if (dataProvider.getQuotesBatch) {
     const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh, ...(datesChangeBasis ? { datesChangeBasis } : {}) })
-      .catch(logFailure("cli.listing-arg", "Read listing quote batch failed", []));
-    return targets.map((target, index) => (results.find((result) => result.target === target) ?? results[index])?.quote ?? null);
+      .catch(logFailure("cli.listing-arg", "Read listing quote batch failed", null));
+    if (!results) return targets.map(() => undefined);
+    return targets.map((target, index) => {
+      const result = results.find((entry) => entry.target === target) ?? results[index];
+      // No source quotes it, which is an answer; any other failure is none.
+      return result?.quote ?? (result && (result.error == null || isNoProviderError(result.error)) ? null : undefined);
+    });
   }
   return Promise.all(targets.map((target) => dataProvider.getQuote(target.symbol, target.exchange, {
     cacheMode: refresh ? "refresh" : "default",
     ...(datesChangeBasis ? { datesChangeBasis } : {}),
-  }).catch(logFailure("cli.listing-arg", "Read listing quote failed", null))));
+  }).catch((error: unknown) => {
+    logFailure("cli.listing-arg", "Read listing quote failed")(error);
+    return isNoProviderError(error) ? null : undefined;
+  })));
 }
 
 export type BareListingQuote =
@@ -697,8 +723,8 @@ export async function quoteBareListing(
     const other = describeOtherListings(listing, venues, request);
     return other && { kind: "missing", ...other };
   }
-  const first = [namedListing(listing, venues.exchange)];
-  const rest = venues.others.map((venue) => namedListing(listing, venue.exchange));
+  const first = [namedListing(listing, venues.resolved ?? { exchange: venues.exchange })];
+  const rest = venues.others.map((venue) => namedListing(listing, venue));
   let tried = first;
   let quotes = await quoteListings(deps.dataProvider, first, refresh, datesChangeBasis);
   if (!quotes[0] && rest.length > 0) {
@@ -707,7 +733,9 @@ export async function quoteBareListing(
   }
   const found = quotes.findIndex(Boolean);
   if (found < 0) {
-    const other = describeOtherListings(listing, venues, request);
+    // A listing just asked that had no quote is no listing to try.
+    const without = venues.others.filter((_venue, index) => quotes[index + 1] === null);
+    const other = describeOtherListings(listing, venues, request, without);
     return other && { kind: "missing", ...other };
   }
   const answer = tried[found]!;
@@ -720,7 +748,8 @@ export async function quoteBareListing(
     kind: "quoted",
     listing: answer,
     quote: quotes[found]!,
-    note: chosenListingNote(listing.symbol, answer.exchange, others, without),
+    // Under the venue's own symbol (BP:LSE for `BP.`), the note names the listing, not only its venue.
+    note: chosenListingNote(listing.symbol, answer.symbol === listing.symbol ? answer.exchange : answer.key, others, without),
   };
 }
 

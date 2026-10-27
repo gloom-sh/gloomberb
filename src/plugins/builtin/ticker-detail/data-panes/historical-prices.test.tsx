@@ -154,6 +154,20 @@ test("a move that rounds to nothing reads 0.00, never -0.00", async () => {
   expect(frame).toContain("0.00");
 });
 
+test("a London share under £10 reads to a tenth of a penny with its close in pence, in the table and its export", async () => {
+  setSystemTime(new Date("2026-10-27T02:00:00Z"));
+  // BP.L as the cloud serves it: float32 pence, divided into pounds.
+  const quote = createTestQuote({ symbol: "AAPL", currency: "GBP", providerPriceDivisor: 100, instrumentType: "EQUITY", price: 6.308 });
+  const { frame, csv } = await mountHistory([
+    { date: new Date("2026-10-22"), open: 6.23, high: 6.2610002, low: 6.1190002, close: 6.1190002 },
+    { date: new Date("2026-10-23"), open: 6.2359998, high: 6.3853802, low: 6.192, close: 6.3850002 },
+  ], "1M", quote);
+  expect(frame).toContain("6.385 638.5p");
+  expect(frame).toContain("6.236");
+  expect(csv).toContain("2026-10-23,6.236,6.385,6.192,6.385,");
+  expect(csv).not.toContain("638.5p");
+});
+
 test("a coin's hourly bars ending with the latest trade have no missing-volume warning in the footer or export", async () => {
   setSystemTime(new Date("2026-10-18T16:00:00Z"));
   const bar = (date: string, volume?: number) => ({ date: new Date(date), open: 81_000, high: 81_100, low: 80_900, close: 81_050, volume });

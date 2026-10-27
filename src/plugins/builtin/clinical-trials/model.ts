@@ -267,12 +267,3 @@ export function trialLayout(width: number): TrialLayout {
   const statusAt = fixed.findIndex((column) => column.id === "status") + 1;
   return { compact, showVenue: wide, columns: [...fixed.slice(0, statusAt), title, ...fixed.slice(statusAt)] };
 }
-
-/**
- * A search typed as a ticker (`TRIAL VKTX`): one to five letters, with a
- * share class. The registry knows sponsors by name, so a symbol no study
- * mentions is looked up as its company.
- */
-export function looksLikeTicker(term: string): boolean {
-  return /^[A-Za-z]{1,5}(?:[.-][A-Za-z])?$/.test(term.trim());
-}

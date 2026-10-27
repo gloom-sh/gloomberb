@@ -38,6 +38,14 @@ test("config set theme refuses an unknown theme, naming the near miss and every 
   expect(details).toContain("white (White Phosphor)");
   // Nothing was written.
   expect((await loadConfig(dataDir)).theme).toBe(DEFAULT_THEME);
+  // `light` or `dark` is a look, not a theme: the themes of that look are named.
+  const light = await runConfig(["set", "theme", "light"], dataDir).catch((error: unknown) => error);
+  expect((light as Error).message).toStartWith("Unknown theme \"light\". Light themes: paper (Paper), github-light (GitHub Light),");
+  expect((light as Error).message).toContain("colorblind-light (Colorblind Light).");
+  expect((light as Error).message).not.toContain("amber");
+  const dark = await runConfig(["set", "theme", "Dark"], dataDir).catch((error: unknown) => error);
+  expect((dark as Error).message).toStartWith("Unknown theme \"Dark\". Dark themes: amber (Amber),");
+  expect((dark as Error).message).not.toContain("paper");
 });
 
 test("config set theme saves the id for an id or a display name, and get reads it back with its name", async () => {

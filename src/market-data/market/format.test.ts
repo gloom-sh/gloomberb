@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  penceFigure,
   quoteFormatOptions,
   withCurrencyMinorDigits,
   formatMarketChangeWithCurrency,
@@ -366,4 +367,15 @@ describe("live quote precision", () => {
     expect(formatMarketChangeWithCurrency(-0.004, "USD", options)).toBe("$0.00");
     expect(formatMarketPriceWithCurrency(-0.001, "USD", options)).toBe("$0.00");
   });
+});
+
+test("a London line's price reads in the pence it trades in, to the decimals its pounds show beyond the penny", () => {
+  const london = { currency: "GBP", providerPriceDivisor: 100 };
+  expect(penceFigure(6.308, london, 3)).toBe("630.8p");
+  expect(penceFigure(49.23, london, 2)).toBe("4,923p");
+  expect(penceFigure(4.1875, london, 4)).toBe("418.75p");
+  // A pound price not quoted in pence (a fund priced in pounds) and other currencies have none.
+  expect(penceFigure(6.308, { currency: "GBP" }, 3)).toBeNull();
+  expect(penceFigure(6.308, { currency: "USD", providerPriceDivisor: 100 }, 3)).toBeNull();
+  expect(penceFigure(null, london, 3)).toBeNull();
 });

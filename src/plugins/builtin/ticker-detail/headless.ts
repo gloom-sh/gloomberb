@@ -4,7 +4,7 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
 } from "../../../utils/price-history-integrity";
@@ -36,7 +36,8 @@ import {
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 import {
-  BAR_INTERVAL_LABELS, barPriceDecimals, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
+  BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
+  quotedPriceDivisor,
 } from "../../../cli/history-rows";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { maxDrawdown, maxDrawdownText } from "../../../utils/max-drawdown";
@@ -339,12 +340,16 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
  * report declares before it has bars keep every digit the source sent. A bar without
  * volume in a history that reports it (`volumeMissing`) prints it as missing, never as 0.
  */
-const historyPriceColumns = (volumeMissing: boolean, decimals?: number): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
+const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
-  format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : "-"
-    : key === "volume" ? formatNumber(Number(value), 0)
-    : decimals == null ? formatPriceObservation(Number(value), { minimumFractionDigits: 2 })
-    : formatBarPrice(Number(value), decimals),
+  format: (value: unknown) => {
+    if (value == null || !Number.isFinite(Number(value))) return key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : "-";
+    if (key === "volume") return formatNumber(Number(value), 0);
+    if (decimals == null) return formatPriceObservation(Number(value), { minimumFractionDigits: 2 });
+    // A London line's close also reads in pence, as the pane's close notes it: 6.385 638.5p.
+    const note = key === "close" ? pence?.(Number(value)) : null;
+    return `${formatBarPrice(Number(value), decimals)}${note ? ` ${note}` : ""}`;
+  },
 }));
 
 /**
@@ -353,7 +358,14 @@ const historyPriceColumns = (volumeMissing: boolean, decimals?: number): Headles
  * whose period runs on (`2026-10 MTD`); the export keeps each bar's own date
  * and adds a `Partial` column when one is.
  */
-function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, volumeMissing = false, decimals?: number): HeadlessPaneColumn[] {
+function historyColumns(
+  size: HistoryBarSize,
+  partial: boolean,
+  text: boolean,
+  volumeMissing = false,
+  decimals?: number,
+  pence?: (close: number) => string | null,
+): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
     key: "date",
@@ -365,7 +377,7 @@ function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, v
   const marked: HeadlessPaneColumn[] = partial && !text
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
-  return [date, ...historyPriceColumns(volumeMissing, decimals), ...marked];
+  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined), ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -392,8 +404,10 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const venue = exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
     const now = Date.now();
     const points = withSessionBar(loaded, quote, { now, venue });
-    // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does.
-    const clean = (value: number | null) => value == null ? null : cleanFloat32Price(value);
+    // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does,
+    // a London line's cleaned in the pence it was priced in.
+    const priceDivisor = quotedPriceDivisor(quote);
+    const clean = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     const rows = points.map((point) => {
       const date = new Date(point.date);
       const values = pricePointValues(point);
@@ -417,7 +431,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       && quote.lastUpdated >= Date.parse(`${rows.at(-1)!.date.slice(0, 10)}T00:00:00Z`) ? new Date(quote.lastUpdated).toISOString() : null;
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     // One decimal count for the table, by the instrument's display rules when the quote names its kind.
-    const decimals = barPriceDecimals(rows, quoteFormatOptions(quote).assetCategory);
+    const decimals = barPriceDecimals(rows, quoteFormatOptions(quote).assetCategory, priceDivisor);
     const marked = shown.some((row) => row.partial === true);
     const volumeMissing = missingVolumeCount(shown);
     const volumeNote = missingVolumeNotice(volumeMissing, shown.length);
@@ -443,7 +457,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows: shown,
       columns: historyColumns(size, marked, false, false, decimals),
-      textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals),
+      textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals,
+        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals)),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),

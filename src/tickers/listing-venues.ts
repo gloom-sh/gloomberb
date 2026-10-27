@@ -28,6 +28,17 @@ export interface ListingVenue {
   /** Canonical code. */
   exchange: string;
   name: string;
+  /**
+   * The listing's own symbol there, when search lists it under another
+   * spelling than the one asked for: BP for `BP.` (London's code for it).
+   */
+  symbol?: string;
+}
+
+/** The venue's own symbol, when it is not `asked` (ignoring case). */
+function ownSymbol(listed: string | undefined, asked: string): { symbol: string } | Record<string, never> {
+  const symbol = listed?.trim().toUpperCase();
+  return symbol && symbol !== asked.trim().toUpperCase() ? { symbol } : {};
 }
 
 /**
@@ -50,14 +61,15 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
       : {
         exchange: resolved.result.exchange === "SMART" ? resolved.result.primaryExchange ?? "" : resolved.result.exchange || resolved.result.primaryExchange || "",
         name: resolved.result.name,
+        ...ownSymbol(parsePublicTickerKey(resolved.result.symbol).symbol, symbol),
       };
-    venues = only?.exchange ? [{ exchange: canonicalExchange(only.exchange), name: only.name }] : [];
+    venues = only?.exchange ? [{ ...only, exchange: canonicalExchange(only.exchange) }] : [];
   } catch (error) {
     // One listing settles the picker; several are its choices.
     if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError) return [];
     venues = error.listings.flatMap((listing) => {
-      const exchange = parsePublicTickerKey(listing).exchange;
-      return exchange ? [{ exchange, name: error.listingNames[listing] ?? "" }] : [];
+      const key = parsePublicTickerKey(listing);
+      return key.exchange ? [{ exchange: key.exchange, name: error.listingNames[listing] ?? "", ...ownSymbol(key.symbol, symbol) }] : [];
     });
   }
   return venues.filter((venue, index) => venues.findIndex((other) => other.exchange === venue.exchange) === index);
