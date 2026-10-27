@@ -1,4 +1,4 @@
-import { readdir, rm } from "fs/promises";
+import { open, readdir, rm } from "fs/promises";
 import { basename, dirname, join } from "path";
 import type Electrobun from "electrobun/bun";
 import type { UpdateStatusEntry } from "electrobun/bun";
@@ -146,23 +146,100 @@ export function firstTarPath(bytes: Uint8Array): string | null {
 }
 
 /**
+ * An octal number field of a tar header, read as tar readers do: the digits
+ * after any leading spaces, up to the first other character. The checksum is
+ * what tells a header from noise.
+ */
+function tarOctal(header: Uint8Array, start: number, length: number): number {
+  const digits = /^[\0 ]*([0-7]*)/.exec(new TextDecoder().decode(header.subarray(start, start + length)))?.[1];
+  return digits ? Number.parseInt(digits, 8) : 0;
+}
+
+/** Whether a header's checksum matches it: its bytes summed with the checksum field as spaces. */
+function tarHeaderChecksumMatches(header: Uint8Array): boolean {
+  const stored = tarOctal(header, 148, 8);
+  let unsigned = 0;
+  let signed = 0;
+  for (let index = 0; index < TAR_BLOCK; index += 1) {
+    const byte = index >= 148 && index < 156 ? 0x20 : header[index]!;
+    unsigned += byte;
+    signed += byte > 127 ? byte - 256 : byte;
+  }
+  return stored === unsigned || stored === signed;
+}
+
+/**
+ * Whether the file at `path` is a whole tar: every header from the first
+ * matches its checksum, and the entries reach the end-of-archive block before
+ * the file ends. A tar cut off partway (a decompress that failed, an app that
+ * quit while writing it) or no tar at all is not. It reads the headers only,
+ * so it says nothing about the files' contents.
+ */
+export async function isWholeTar(path: string): Promise<boolean> {
+  const file = await open(path, "r").catch(() => null);
+  if (!file) return false;
+  try {
+    const { size } = await file.stat();
+    const header = new Uint8Array(TAR_BLOCK);
+    for (let offset = 0; offset + TAR_BLOCK <= size;) {
+      const { bytesRead } = await file.read(header, 0, TAR_BLOCK, offset);
+      if (bytesRead < TAR_BLOCK) return false;
+      if (header.every((byte) => byte === 0)) return offset > 0;
+      if (!tarHeaderChecksumMatches(header)) return false;
+      // Octal: the base-256 sizes past 8 GB are not in an app's archive.
+      const entrySize = tarOctal(header, 124, 12);
+      offset += TAR_BLOCK + Math.ceil(entrySize / TAR_BLOCK) * TAR_BLOCK;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    await file.close().catch(() => {});
+  }
+}
+
+/** Whether `path` holds a file that is not a whole tar. A missing one is not damaged. */
+async function isDamagedTar(path: string): Promise<boolean> {
+  return await Bun.file(path).exists() && !(await isWholeTar(path));
+}
+
+/** Where Electrobun keeps the update with build hash `hash` once it is downloaded. */
+function stagedArchivePath(extractionFolder: string, hash: string | undefined): string | null {
+  return hash ? join(extractionFolder, `${hash}.tar`) : null;
+}
+
+async function removeStagedArchive(path: string): Promise<void> {
+  await rm(path, { force: true }).catch(logFailure("desktop-update", "Could not remove a damaged update archive"));
+}
+
+/**
  * Removes the unpacked update archives in Electrobun's `self-extraction`
- * folder whose app carries its name from before the rename. The one that
- * matters is the Windows archive an install from then updated from: it is
- * packed again with the folder renamed (scripts/write-legacy-desktop-files.ts),
- * so its bytes are not those of the archive the next release's patch is made
- * from, and bspatch would turn it into a broken build. Without it the updater
+ * folder it must not build on. Electrobun takes `<hash>.tar` there as the
+ * update already downloaded without reading it, and a damaged one (part of a
+ * tar, from a decompress that failed) then failed to unpack at every install:
+ * without it, the download fetches a fresh copy. Also removed are the ones
+ * whose app carries its name from before the rename. The one that matters is
+ * the Windows archive an install from then updated from: it is packed again
+ * with the folder renamed (scripts/write-legacy-desktop-files.ts), so its
+ * bytes are not those of the archive the next release's patch is made from,
+ * and bspatch would turn it into a broken build. Without it the updater
  * downloads the full archive instead. Resolves to the paths it removed.
  */
-async function removeLegacyUpdateArchives(folder: string): Promise<string[]> {
+async function removeUnusableUpdateArchives(folder: string): Promise<string[]> {
   const removed: string[] = [];
   for (const entry of await readdir(folder).catch(() => [] as string[])) {
     if (!entry.endsWith(".tar")) continue;
     const path = join(folder, entry);
-    const head = await Bun.file(path).slice(0, 64 * 1024).bytes().catch(() => null);
-    const top = head ? firstTarPath(head)?.replace(/^\.\//, "").split("/")[0] : undefined;
-    if (top !== LEGACY_DESKTOP_APP_NAME && top !== `${LEGACY_DESKTOP_APP_NAME}.app`) continue;
-    const done = await rm(path, { force: true }).then(() => true, logFailure("desktop-update", "Could not remove an update archive from before the rename", false));
+    let reason: string;
+    if (!(await isWholeTar(path))) {
+      reason = "Could not remove a damaged update archive";
+    } else {
+      const head = await Bun.file(path).slice(0, 64 * 1024).bytes().catch(() => null);
+      const top = head ? firstTarPath(head)?.replace(/^\.\//, "").split("/")[0] : undefined;
+      if (top !== LEGACY_DESKTOP_APP_NAME && top !== `${LEGACY_DESKTOP_APP_NAME}.app`) continue;
+      reason = "Could not remove an update archive from before the rename";
+    }
+    const done = await rm(path, { force: true }).then(() => true, logFailure("desktop-update", reason, false));
     if (done) removed.push(path);
   }
   return removed;
@@ -342,6 +419,12 @@ export function createElectrobunDesktopUpdater(
   let readyRelease: ReleaseInfo | null = null;
   /** An apply is under way, or finished and the app is quitting. */
   let applyInProgress = false;
+
+  /** Electrobun's `self-extraction` folder, where the download leaves the update as `<hash>.tar`. */
+  async function extractionFolder(): Promise<string | null> {
+    const appData = await updater.appDataFolder?.().catch(() => null);
+    return appData ? join(appData, "self-extraction") : null;
+  }
 
   /** The error progress for a failed step, reported to error tracking on the way. */
   function failed(failure: UpdateFailure, error: string, release?: { version?: string; channel?: UpdateChannel } | null): UpdateProgress {
@@ -529,8 +612,8 @@ export function createElectrobunDesktopUpdater(
       }
       target = result.release;
 
-      const appData = await updater.appDataFolder?.().catch(() => null);
-      if (appData) await removeLegacyUpdateArchives(join(appData, "self-extraction"));
+      const extraction = await extractionFolder();
+      if (extraction) await removeUnusableUpdateArchives(extraction);
       await updater.downloadUpdate();
       const updateInfo = updater.updateInfo();
       if (updateInfo?.error) {
@@ -539,6 +622,15 @@ export function createElectrobunDesktopUpdater(
       }
       if (!updateInfo?.updateReady) {
         onProgress(failed({ phase: "download", code: "interrupted" }, "Desktop update did not finish downloading.", result.release));
+        return;
+      }
+      // However Electrobun came by it (a patch, the full download), an archive
+      // that is not whole is never offered for a restart. It goes, so the retry
+      // downloads it again.
+      const staged = extraction ? stagedArchivePath(extraction, updateInfo.hash) : null;
+      if (staged && await isDamagedTar(staged)) {
+        await removeStagedArchive(staged);
+        onProgress(failed({ phase: "verify", code: "corrupt" }, "The downloaded update is damaged.", result.release));
         return;
       }
 
@@ -570,9 +662,12 @@ export function createElectrobunDesktopUpdater(
     }
 
     const target = readyRelease;
+    const stagedHash = updater.updateInfo()?.hash;
     applyInProgress = true;
     let relaunching = false;
     let reportedError = false;
+    /** The install failed on the archive itself: it does not unpack. */
+    let damaged = false;
     const report = (progress: UpdateProgress) => {
       if (progress.phase === "error") reportedError = true;
       onProgress(progress);
@@ -580,6 +675,7 @@ export function createElectrobunDesktopUpdater(
     const installFailed = (error: unknown, message: string) => {
       // Electrobun names the system error in its message ("Failed to replace app: EACCES: ...").
       const code = installFailureCode(classifyUpdateError(error), installKind);
+      if (code === "corrupt") damaged = true;
       report(failed({ phase: relaunching ? "relaunch" : "apply", code }, message, target));
     };
     // Kept before Electrobun quits the app, so the next launch can tell whether it took.
@@ -610,9 +706,14 @@ export function createElectrobunDesktopUpdater(
     }
 
     // Past this point the app is quitting, so the guard stays up. A failed apply
-    // drops the staged release: the retry starts from the download again.
+    // drops the staged release: the retry starts from the download again. An
+    // archive that does not unpack goes too, or that download would take it as
+    // done once more and the install would fail on it again.
     if (!relaunching) {
       readyRelease = null;
+      const extraction = damaged ? await extractionFolder() : null;
+      const staged = extraction ? stagedArchivePath(extraction, stagedHash) : null;
+      if (staged) await removeStagedArchive(staged);
       applyInProgress = false;
     }
   }

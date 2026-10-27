@@ -74,7 +74,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..3839e5232742c2467180c344f51a30f1
  
  // Encrypt function
 diff --git a/dist/api/bun/core/Updater.ts b/dist/api/bun/core/Updater.ts
-index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc977909a3 100644
+index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd700879a5db 100644
 --- a/dist/api/bun/core/Updater.ts
 +++ b/dist/api/bun/core/Updater.ts
 @@ -132,6 +132,19 @@ let updateInfo: {
@@ -193,7 +193,52 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  				emitStatus(
  					"fetching-patch",
  					`Checking for patch: ${currentHash.slice(0, 8)}`,
-@@ -612,12 +679,12 @@ const Updater = {
+@@ -498,11 +565,25 @@ const Updater = {
+ 				// - macOS/Windows: Resources/version.json (inside the app bundle directory)
+ 				// - Linux: metadata.json (alongside the app bundle)
+ 				const resourcesDir = "Resources";
+-				const patchedTarBytes = await Bun.file(
+-					tmpPatchedTarFilePath,
+-				).arrayBuffer();
+-				const patchedArchive = new Bun.Archive(patchedTarBytes);
+-				const patchedFiles = await patchedArchive.files();
++				let patchedFiles: Map<string, File>;
++				try {
++					const patchedTarBytes = await Bun.file(
++						tmpPatchedTarFilePath,
++					).arrayBuffer();
++					const patchedArchive = new Bun.Archive(patchedTarBytes);
++					patchedFiles = await patchedArchive.files();
++				} catch (error) {
++					// bspatch does not check what it patches: from a damaged tar it
++					// makes one that does not read, and would at every retry. The
++					// full download replaces both.
++					const message = error instanceof Error ? error.message : String(error);
++					emitStatus("patch-failed", `Patched tar does not read: ${message}`, {
++						currentHash,
++						errorMessage: message,
++					});
++					console.error("patched tar does not read", error);
++					break;
++				}
+ 
+ 				for (const [filePath] of patchedFiles) {
+ 					if (
+@@ -528,8 +609,11 @@ const Updater = {
+ 				}
+ 
+ 				const hashFile = patchedFiles.get(hashFilePath);
+-				const hashFileJson = JSON.parse(await hashFile!.text());
+-				const nextHash = hashFileJson.hash;
++				// Unreadable, it has no hash below and the full download follows.
++				const nextHash: string = await hashFile!
++					.text()
++					.then((text) => JSON.parse(text)?.hash)
++					.catch(() => "");
+ 
+ 				if (seenHashes.includes(nextHash)) {
+ 					emitStatus(
+@@ -612,12 +696,12 @@ const Updater = {
  
  				const cacheBuster = Math.random().toString(36).substring(7);
  				const platformPrefix = getPlatformPrefix(
@@ -208,7 +253,65 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  				const prevVersionCompressedTarballPath = join(
  					appDataFolder,
  					"self-extraction",
-@@ -760,7 +827,12 @@ const Updater = {
+@@ -689,6 +773,13 @@ const Updater = {
+ 					emitStatus("error", updateInfo.error, { zstdPath });
+ 					console.error("zig-zstd not found:", zstdPath);
+ 				} else {
++					// Into a name of its own, renamed once whole: zig-zstd writes as
++					// it goes, and a run that failed (a download cut short) or never
++					// finished (the app quit) left part of a tar under the update's
++					// own name, which every later download took as done and every
++					// install then failed to unpack.
++					const partialTarPath = `${latestTarPath}.partial`;
++					rmSync(partialTarPath, { force: true });
+ 					const decompressResult = Bun.spawnSync(
+ 						[
+ 							zstdPath,
+@@ -696,7 +787,7 @@ const Updater = {
+ 							"-i",
+ 							prevVersionCompressedTarballPath,
+ 							"-o",
+-							latestTarPath,
++							partialTarPath,
+ 							"--no-timing",
+ 						],
+ 						{
+@@ -706,6 +797,7 @@ const Updater = {
+ 						},
+ 					);
+ 					if (!decompressResult.success) {
++						rmSync(partialTarPath, { force: true });
+ 						updateInfo.error = `zig-zstd failed with exit code ${decompressResult.exitCode}`;
+ 						emitStatus("error", updateInfo.error, {
+ 							zstdPath,
+@@ -716,6 +808,7 @@ const Updater = {
+ 							zstdPath,
+ 						});
+ 					} else {
++						renameSync(partialTarPath, latestTarPath);
+ 						emitStatus("decompressing", "Decompression complete");
+ 					}
+ 				}
+@@ -731,6 +824,8 @@ const Updater = {
+ 			// check for patch from that tar and apply it, until it matches the latest version
+ 			// as a fallback it should just download and unpack the latest version
+ 			updateInfo.updateReady = true;
++			// What failed on the way (a patch that did not apply) was recovered from.
++			updateInfo.error = "";
+ 			emitStatus(
+ 				"download-complete",
+ 				`Update ready to install (used ${usedPatchPath ? "patch" : "full download"} path)`,
+@@ -741,7 +836,8 @@ const Updater = {
+ 				},
+ 			);
+ 		} else {
+-			updateInfo.error = "Failed to download latest version";
++			// Why it failed (zig-zstd's exit), when that is known.
++			if (!updateInfo.error) updateInfo.error = "Failed to download latest version";
+ 			emitStatus("error", "Failed to download latest version", { latestHash });
+ 		}
+ 
+@@ -760,7 +856,12 @@ const Updater = {
  				mkdirSync(extractionFolder, { recursive: true });
  			}
  
@@ -222,7 +325,37 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  			const latestTarPath = join(extractionFolder, `${latestHash}.tar`);
  
  			let appBundleSubpath: string = "";
-@@ -894,14 +966,7 @@ const Updater = {
+@@ -782,9 +883,26 @@ const Updater = {
+ 					mkdirSync(extractionDir, { recursive: true });
+ 				}
+ 
+-				const latestTarBytes = await Bun.file(latestTarPath).arrayBuffer();
+-				const latestArchive = new Bun.Archive(latestTarBytes);
+-				await latestArchive.extract(extractionDir);
++				try {
++					const latestTarBytes = await Bun.file(latestTarPath).arrayBuffer();
++					const latestArchive = new Bun.Archive(latestTarBytes);
++					await latestArchive.extract(extractionDir);
++				} catch (error) {
++					// The tar goes, with what it unpacked: left in place, every later
++					// download took it as the update again and every install failed
++					// here the same way. The next download fetches a fresh copy.
++					const message = `Failed to extract update: ${error instanceof Error ? error.message : String(error)}`;
++					try {
++						rmSync(latestTarPath, { force: true });
++					} catch (e) {
++						// Best effort, like the cleanup below.
++					}
++					cleanupExtractionFolder(extractionFolder, latestHash);
++					updateInfo.updateReady = false;
++					emitStatus("error", message, { errorMessage: message });
++					console.error("Failed to extract update", error);
++					return;
++				}
+ 
+ 				if (currentOS === "macos") {
+ 					// Find the .app bundle by scanning extracted directory
+@@ -894,14 +1012,7 @@ const Updater = {
  					emitStatus("replacing-app", "Removing old version...");
  
  					if (currentOS === "macos") {
@@ -238,7 +371,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  
  						// Remove quarantine extended attributes to prevent "damaged" error
  						// The inner bundle is already signed/notarized, but macOS applies
-@@ -918,14 +983,7 @@ const Updater = {
+@@ -918,14 +1029,7 @@ const Updater = {
  						// On Linux, we now have directory bundles instead of AppImage files
  						// The app is stored in {appDataFolder}/app/
  						const appBundleDir = join(appDataFolder, "app");
@@ -254,7 +387,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  
  						// Ensure launcher binary is executable
  						const launcherPath = join(appBundleDir, "bin", "launcher");
-@@ -1071,14 +1129,18 @@ del "%~f0"
+@@ -1071,14 +1175,18 @@ del "%~f0"
  					// current process has exited first. The detached shell survives our
  					// exit and polls until the process is gone.
  					const pid = process.pid;
@@ -275,7 +408,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..65677cd1d642ef832cf4f90a315d3ffc
  							detached: true,
  							stdio: ["ignore", "ignore", "ignore"],
  						} as any,
-@@ -1087,7 +1149,8 @@ del "%~f0"
+@@ -1087,7 +1195,8 @@ del "%~f0"
  					// On Linux, launch the launcher binary inside the app directory
  					const launcherPath = join(runningAppBundlePath, "bin", "launcher");
  					// eslint-disable-next-line @typescript-eslint/no-explicit-any

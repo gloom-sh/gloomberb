@@ -24,7 +24,7 @@ const UPDATE_FAILURE_CODES = [
   "no_build",
   /** The download stopped before the whole file arrived. */
   "interrupted",
-  /** The file arrived whole but does not match its checksum, or does not unpack. */
+  /** The download does not match its checksum, or does not unpack (part of it is missing or damaged). */
   "corrupt",
   "permission_denied",
   /** The macOS app runs from where it cannot be replaced: a disk image, App Translocation, another volume. */
@@ -112,6 +112,9 @@ export function classifyUpdateError(error: unknown): UpdateFailureCode {
   if (status) return httpStatusFailureCode(Number(status));
   if (/checksum mismatch|hash mismatch/i.test(message)) return "corrupt";
   if (/zstd|decompress|gunzip|incorrect header|unexpected end of (?:file|data)/i.test(message)) return "corrupt";
+  // Bun.Archive on a tar that does not read: cut off, damaged, or none at all.
+  // Unpacking says only "ReadError", whatever stopped it.
+  if (/\bReadError\b|truncated tar|damaged tar|unrecognized archive format/i.test(message)) return "corrupt";
   if (/timed? ?out/i.test(message)) return "timeout";
   if (/rate limit/i.test(message)) return "rate_limited";
   if (/read-only file system/i.test(message)) return "read_only";
