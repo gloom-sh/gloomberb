@@ -7,9 +7,9 @@ import type {
 import { fetchDividendData, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
-import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText } from "./view";
+import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
-import { forwardDividendBasis, noCurrentDividend, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
+import { forwardDividendBasis, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -42,6 +42,11 @@ const PAYMENT_COLUMNS = [
   { key: "currency", header: "CCY" },
   { key: "type", header: "Type" },
 ];
+
+/** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
+const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
+  format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
+    ? formatDistributionAmount(value, row.declaredCurrency) : "-" };
 
 export interface DividendYieldHeadlessDependencies {
   loadData(symbol: string, context: HeadlessPaneContext): Promise<DividendData>;
@@ -136,8 +141,11 @@ export function projectDividendYieldHeadless(
       paymentDate: payment?.paymentDate?.toISOString() ?? null,
       declarationDate: payment?.declarationDate?.toISOString() ?? null,
       type: payment?.type ?? null,
+      ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
     };
   });
+  const declaredColumns = rows.some((row) => row.declared)
+    ? [...PAYMENT_COLUMNS.slice(0, 2), DECLARED_COLUMN, ...PAYMENT_COLUMNS.slice(2)] : PAYMENT_COLUMNS;
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
@@ -152,7 +160,7 @@ export function projectDividendYieldHeadless(
         title: "Dividend metrics",
         entries: [
           { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, { minimumFractionDigits: currencyPriceMinDigits(currency) }) } : {}) },
-          ...(data.stale ? [{ label: "History status", value: "Stale cash history; recent distributions may be missing." }] : []),
+          ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
           ...(priceStatus ? [{ label: "Price status", value: priceStatus === "stale"
             ? "Stale reference price; cash yield may be out of date."
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
@@ -162,8 +170,8 @@ export function projectDividendYieldHeadless(
           { label: bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield", value: roundedRatio(metrics.forwardYield),
             formatted: metrics.lapse ? noCurrentDividend(metrics.lapse)
             : metrics.forwardYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf,
-              { payDate: forwardPayDate(metrics), declared: data.declared, currency })})` },
+            : `${formatDividendYield(metrics.forwardYield)} (${metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS
+              : forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics), declared: data.declared, currency })})` },
           ...(bond ? bondFigures(bond).map((figure) => ({
             label: figure.key === "secYield" ? "30-day SEC yield" : figure.label,
             value: figure.value,
@@ -188,7 +196,7 @@ export function projectDividendYieldHeadless(
       }] : []),
       {
         title: "Dividend history",
-        columns: PAYMENT_COLUMNS,
+        columns: declaredColumns,
         rows,
         // Each amount is in its own row's currency.
         rowUnitKey: "currency",
@@ -216,9 +224,11 @@ export function projectDividendYieldHeadless(
       growth1YPayments: metrics.growth1YPayments ?? null,
       growth3YPayments: metrics.growth3YPayments ?? null,
       forwardRateAsOf: metrics.forwardRateAsOf,
+      // "uneven": the year's regular payments differ too widely for one to be annualized, so the forward rate is their total.
+      forwardBasis: metrics.forwardBasis ?? null,
       // Declared and unpaid, apart from the paid history the table and every figure read.
       declaredDividends: data.declared ?? [],
-      forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). Only when its currency units are comparable with the share price.",
+      forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). When the trailing year's regular payments differ widely (the largest over 1.5 times the smallest; forwardBasis: uneven), their total instead, dated by the latest. Only when its currency units are comparable with the share price.",
       payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it; N/M (not meaningful) when that EPS is zero or negative.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
       // A bond fund's sponsor figures, each dated; its distribution yields above are not its SEC yield.

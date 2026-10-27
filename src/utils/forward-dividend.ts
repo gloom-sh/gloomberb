@@ -14,6 +14,8 @@ import { formatDistributionAmount } from "./format";
  * the rate divided back.
  */
 export const LATEST_DISTRIBUTION = "latest distribution annualized";
+/** The basis of a forward rate that is the year's regular payments, which differ too widely for one to be annualized (unevenRegularPayments). */
+export const UNEVEN_REGULAR_PAYMENTS = "trailing regular payments: uneven interims";
 
 /**
  * What a trailing dividend yield is everywhere it shows (DVD, a fund's in

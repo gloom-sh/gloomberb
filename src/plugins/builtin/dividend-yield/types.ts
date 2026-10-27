@@ -9,6 +9,8 @@ export interface DividendPayment {
   amount: number;
   currency: string;
   type: "cash" | "special" | "stock" | "unknown";
+  /** The amount as the company declared it, in another currency than `currency` (BP's dollars beside the pence its London line paid). */
+  declared?: { amount: number; currency: string };
 }
 
 /** A short year a growth figure would compare: its payments, and the day it ends (absent for the trailing year). */
@@ -22,8 +24,10 @@ export interface DividendMetrics {
   forwardYield: number | null;
   trailingRate: number | null;
   forwardRate: number | null;
-  /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD. */
+  /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD; with `forwardBasis`, the latest of the year's payments. */
   forwardRateAsOf: string | null;
+  /** `uneven`: the year's regular payments differ widely, so the forward rate is their total rather than one annualized (unevenRegularPayments). */
+  forwardBasis?: "uneven" | null;
   /** Set once the dividend has stopped (lapsedDividend), when there is no forward rate or yield. */
   lapse?: DividendLapse | null;
   payoutRatio: number | null;

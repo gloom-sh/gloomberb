@@ -23,7 +23,7 @@ import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { forwardDividendNote, lastPaidNote, NO_CURRENT_DIVIDEND } from "../../../utils/forward-dividend";
+import { forwardDividendNote, lastPaidNote, NO_CURRENT_DIVIDEND, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -31,7 +31,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -95,7 +95,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
   const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
-    : metrics.forwardYield != null ? forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }) : null;
+    : metrics.forwardYield == null ? null
+    : metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency });
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = notSec(dated);
@@ -153,6 +154,8 @@ function renderCell(
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
+    case "declared":
+      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
   }
@@ -225,7 +228,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   }, [authWall, currentPrice, historyData?.fetchedAt, data?.historyError, data?.summaryError, error, loading, priceAsOf, priceStatus, width]);
 
   const sourceWarnings = [
-    ...(data?.stale ? ["Stale cash history; recent distributions may be missing."] : []),
+    ...(data?.stale ? [staleHistoryText(data.fetchedAt)] : []),
   ];
   usePaneNoticeFooter({
     registrationId: "dividend-yield-notices",

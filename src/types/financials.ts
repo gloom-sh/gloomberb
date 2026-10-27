@@ -568,8 +568,22 @@ export interface CorporateActionsData {
   dividends: DividendAction[];
   /** Declared and unpaid, for the listings Gloom Cloud has them for; absent elsewhere and from older servers. */
   declaredDividends?: DeclaredDividendAction[];
+  /**
+   * What each paid row was declared as when the company declares in another
+   * currency than the listing pays (BP's dollars beside its London pence), per
+   * ordinary share, keyed by the paid row's ex-date. Absent elsewhere and from older servers.
+   */
+  declaredCash?: DeclaredCash;
+  /** Set when `dividends` is the last good history standing in for a refresh that could not read it: when that history was read. */
+  dividendsAsOf?: string;
   splits: SplitAction[];
   earnings: EarningsAction[];
+}
+
+/** Paid rows as their company declared them, in `currency` (its major unit). */
+export interface DeclaredCash {
+  currency: string;
+  rows: DividendAction[];
 }
 
 export interface CompanyProfile {

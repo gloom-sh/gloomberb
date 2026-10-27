@@ -146,6 +146,48 @@ describe("cash distribution calculations", () => {
     expect(earlierHole).toMatchObject({ growth1Y: null, growth1YPayments: { counted: 1, expected: 2, yearTo: "2025-10-26" } });
   });
 
+  test("a year of widely uneven regular payments forwards their total, not the latest annualized", () => {
+    const late = new Date("2026-10-27T12:00:00Z");
+    // HSBA in pounds: three interims and a final four and a half times their size; the source annualizes the latest interim.
+    const hsba = [["2025-08-14", 0.073562], ["2025-11-06", 0.075079], ["2026-03-12", 0.333016], ["2026-05-14", 0.074489], ["2026-08-13", 0.074134]]
+      .map(([date, amount]) => payment(date as string, amount as number, "GBP"));
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "GBP", forwardAnnualDividendRate: 0.296536, forwardRateAsOf: "2026-08-13" };
+    const metrics = buildDividendMetrics(hsba, stated, 13.654, { now: late });
+    expect(metrics).toMatchObject({ forwardRate: 0.556718, forwardRateAsOf: "2026-08-13", forwardBasis: "uneven", trailingRate: 0.556718 });
+    expect(metrics.forwardYield).toBeCloseTo(0.0408, 4);
+    const entries = projectDividendYieldHeadless({ payments: hsba, metrics, price: 13.654, currency: "GBP" },
+      { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: {} }).sections[0]!.entries!;
+    expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("4.08% (trailing regular payments: uneven interims)");
+
+    // Even quarters, and a year with a hole in it, keep the stated rate.
+    const even = hsba.map((entry) => ({ ...entry, amount: 0.075 }));
+    expect(buildDividendMetrics(even, stated, 13.654, { now: late })).toMatchObject({ forwardRate: 0.296536, forwardRateAsOf: "2026-08-13" });
+    expect(buildDividendMetrics(even, stated, 13.654, { now: late }).forwardBasis).toBeUndefined();
+    expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
+  });
+
+  test("a London line of a dollar payer shows each declared amount beside its pence, and a kept history is dated", async () => {
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "BP", currency: "GBp", stale: true, fetchedAt: "2026-10-27T03:00:00.000Z", dividendsAsOf: "2026-10-20T02:31:00.000Z",
+      coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-05-14", amount: 6.1844 }, { exDate: "2026-08-13", amount: 6.4059 }],
+      declaredCash: { currency: "USD", rows: [{ exDate: "2026-08-13", amount: 0.0867 }] },
+    } } }));
+    const data = await fetchDividendData("BP", null, "LSE");
+    expect(data.payments.map((row) => [row.amount, row.currency, row.declared])).toEqual([
+      [0.064059, "GBP", { amount: 0.0867, currency: "USD" }],
+      [0.061844, "GBP", undefined],
+    ]);
+    expect(data.fetchedAt).toBe("2026-10-20T02:31:00.000Z");
+    const result = projectDividendYieldHeadless(data, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} });
+    expect(result.sections[0]?.entries?.find((entry) => entry.label === "History status")?.value)
+      .toBe("Stale cash history as of 2026-10-20; recent distributions may be missing.");
+    const history = result.sections.find((section) => section.title === "Dividend history")!;
+    expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);
+    expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
+  });
+
   test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {
     const quarterly = Array.from({ length: 8 }, (_, quarter) => payment(
       new Date(Date.UTC(2024, 8 + quarter * 3, 25)).toISOString().slice(0, 10),

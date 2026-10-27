@@ -28,6 +28,12 @@ export function growthPaymentsText(payments: GrowthPayments): string {
   return `n/a: ${growthPaymentsDetail(payments)}`;
 }
 
+/** A history served stale, dated by its read when the source gave it. */
+export function staleHistoryText(fetchedAt: string | undefined): string {
+  const day = fetchedAt && /^\d{4}-\d{2}-\d{2}/.test(fetchedAt) ? fetchedAt.slice(0, 10) : null;
+  return `Stale cash history${day ? ` as of ${day}` : ""}; recent distributions may be missing.`;
+}
+
 /** Cash history does not contain historical share prices, so cannot establish historical yields. */
 export function buildTrailingCashChartPoints(payments: DividendPayment[], now = new Date()): ProjectedChartPoint[] {
   const sorted = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0)
@@ -71,6 +77,8 @@ export interface DividendRow {
   exDate: string;
   amount: number;
   currency: string;
+  /** The amount as the company declared it, in another currency (DividendPayment.declared). */
+  declared?: { amount: number; currency: string };
 }
 
 export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
@@ -79,5 +87,6 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     exDate: payment.exDate.toISOString().slice(0, 10),
     amount: payment.amount,
     currency: payment.currency,
+    ...(payment.declared ? { declared: payment.declared } : {}),
   }));
 }

@@ -123,6 +123,29 @@ export function trailingPaymentShortfall(payments: readonly CashDistribution[], 
   return perYear != null && cadence && counted.length < perYear ? { counted: counted.length, expected: perYear, cadence } : null;
 }
 
+/** Over this ratio between a regular payer's largest and smallest payment of a year, no one payment stands for the year. */
+const UNEVEN_PAYMENT_RATIO = 1.5;
+
+/**
+ * A regular payer's payments of the trailing year when they differ widely:
+ * exactly as many as its cadence pays, the largest more than 1.5 times the
+ * smallest (HSBC's final beside its interims, AstraZeneca's interim beside its
+ * final). Their total is the year's cash, where the latest one annualized is
+ * not (HSBA's interim read as 2.17% a year beside the 4.08% it paid). Null for
+ * an even year, one with a hole or an extra payment, an annual payer and an
+ * irregular one. `latest` is the newest payment's ex-date.
+ */
+export function unevenRegularPayments(payments: readonly CashDistribution[], asOf: Date): { total: number; latest: Date } | null {
+  const { counted, perYear } = trailingPayments(payments, asOf);
+  if (perYear == null || perYear < 2 || counted.length !== perYear) return null;
+  const amounts = counted.map((payment) => payment.amount);
+  if (Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts)) return null;
+  return {
+    total: atSourcePrecision(amounts.reduce((sum, amount) => sum + amount, 0)),
+    latest: new Date(Math.max(...counted.map((payment) => payment.exDate.getTime()))),
+  };
+}
+
 /** A history row as a paid distribution; null when its date is not a calendar day or its amount is no cash. */
 export function cashDistribution(exDate: string, amount: number): CashDistribution | null {
   if (!Number.isFinite(amount) || amount <= 0) return null;
