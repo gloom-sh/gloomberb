@@ -3,6 +3,7 @@ import { quoteTradingExchange } from "../../../market-data/quotes/metadata";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { isFundType } from "../../../utils/sec";
 import { isNoSourceAnswer } from "../../../sources/provider-errors";
+import { logFailure } from "../../../utils/log-failure";
 import { fetchFunds } from "../members/client";
 import { coveredFund } from "../members/model";
 
@@ -33,7 +34,10 @@ export async function fundHoldersAnswer(
   const fund = symbol.split(":")[0]!.trim().toUpperCase();
   const message = `${fund} is a fund: there is no ownership breakdown for funds.`;
   if (!isUsListingExchange(quoteTradingExchange(quote))) return { message, details: [] };
-  const covered = await fetchFunds(client).then((payload) => !!coveredFund(payload.funds, fund), () => false);
+  // A covered-fund list that cannot be read names no fn MEMB, which may not run for this fund.
+  const funds = await fetchFunds(client).then((payload) => payload.funds)
+    .catch(logFailure("holders.fund-holders", "Read the funds fn MEMB covers failed", null));
+  const covered = !!funds && !!coveredFund(funds, fund);
   // Shares of an exchange-traded fund are 13F securities; a mutual fund's are not.
   const traded = !/MUTUAL/i.test(quote.instrumentType ?? "");
   return {
