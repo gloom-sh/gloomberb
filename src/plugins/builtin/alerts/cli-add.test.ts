@@ -284,6 +284,8 @@ test("the FOMC's calendar row by name is the FOMC alert, and a release already o
 
 /** One profile across several `alerts` commands, with the device state the alert log lives in. */
 async function profile() {
+  // Tue 27 Oct 2026, 03:30 in New York: between sessions, AAPL's after-hours print is its latest price.
+  setSystemTime(new Date("2026-10-27T07:30:00Z"));
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-desk-"));
   dataDirs.push(dataDir);
   await saveConfig(createDefaultConfig(dataDir));
@@ -412,8 +414,8 @@ test("a daily technical alert is saved while its close cannot be read yet, and s
   // This connection serves no daily history: the rule is kept, unread, rather than refused.
   const added = await desk.run(["add", "AAPL", "rsi(14)", "above", "70"]);
   expect(added.error).toBeNull();
-  expect(added.output).toMatch(/Not read yet: .+\. First checked on the \d{4}-\d{2}-\d{2} close, from \d{2}:\d{2} UTC\./);
-  expect(added.printed!.result.data).toMatchObject({ unread: expect.any(String), firstCheck: { close: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) } });
+  expect(added.output).toMatch(/Not read yet: .+\. First checked on the 2026-10-27 close, from 20:30 UTC\./);
+  expect(added.printed!.result.data).toMatchObject({ unread: expect.any(String), firstCheck: { close: "2026-10-27", at: "2026-10-27T20:30:00Z" } });
   const [saved] = (await desk.stored()).alerts;
   expect(saved).toMatchObject({ symbol: "AAPL", metric: { kind: "rsi", period: 14 }, status: "active", lastQuoteCurrency: "USD" });
   expect(saved!.lastCheckedPrice).toBeUndefined();
