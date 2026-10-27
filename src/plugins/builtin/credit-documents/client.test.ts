@@ -4,7 +4,7 @@ import fixture from "./fico.fixture.json";
 import { creditIssuerSymbol, fetchCreditInstrument, validateCreditDocuments, validateCreditInstrument, validateCreditScreen } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { creditEmptyReason } from "./headless";
-import { capitalColumns, capitalFigures, covenantColumns, creditMaturityRows, factValue, maturitySeries } from "./model";
+import { capitalColumns, capitalFigures, covenantColumns, covenantReason, creditMaturityRows, factValue, maturitySeries } from "./model";
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 
 describe("credit evidence boundary", () => {
@@ -95,5 +95,34 @@ describe("credit evidence boundary", () => {
       for (const columns of [capitalColumns(payload(), width), covenantColumns(width)]) expect(getTableWidth(columns) + 1).toBeLessThanOrEqual(width);
     }
     expect(capitalColumns(payload(), 72).map((column) => column.id)).toEqual(expect.arrayContaining(["name", "principal"]));
+  });
+});
+
+describe("why a covenant has no headroom", () => {
+  const instrument = payload().instruments[0]!;
+  const rule = { ...instrument.facts.find((entry) => entry.field === "maintenance_covenant")!, unit: "ratio" };
+  const facts = [rule];
+  const row = (status: "uncomputable" | "stale" | "conditional" | "compliant", reason: string | null) =>
+    ({ id: rule.id, status, reason, metric: "consolidated leverage ratio", threshold: 3.5 });
+  const reported = { ...rule, id: "reported", field: "reported_metric", value: { metric: "Consolidated leverage ratio", value: 3.1, periodEnd: "2026-03-31" } };
+
+  test("the missing reported figure comes first, then the check's phrase in plain words", () => {
+    expect(covenantReason(row("uncomputable", "Covenant boundary inclusivity is not established"), facts))
+      .toBe("No reported consolidated leverage ratio to compare yet. The filing doesn't say if exactly 3.5x passes.");
+    expect(covenantReason(row("uncomputable", "No reported value for this covenant definition"), facts))
+      .toBe("No reported consolidated leverage ratio to compare yet.");
+  });
+  test("a step-up in the filing's own words names the limit it steps up to", () => {
+    expect(covenantReason(row("uncomputable", "subject to a step up to 4.0 to 1.0 following certain permitted acquisitions and subject to certain conditions"), facts))
+      .toBe("No reported consolidated leverage ratio to compare yet. The 3.5x limit can step up to 4x after permitted acquisitions.");
+  });
+  test("a figure on file is not called missing, and an unknown reason is the payload's own", () => {
+    expect(covenantReason(row("stale", "Latest comparable financials are more than 190 days old"), [rule, reported]))
+      .toBe("The latest comparable financials are over 190 days old.");
+    expect(covenantReason(row("uncomputable", "the lenders have not agreed a definition"), [rule, reported])).toBe("The lenders have not agreed a definition.");
+    // Facts not loaded: nothing shows the figure is missing.
+    expect(covenantReason(row("uncomputable", "Covenant boundary inclusivity is not established"), []))
+      .toBe("The filing doesn't say if exactly 3.5 passes.");
+    expect(covenantReason(row("compliant", "anything"), facts)).toBeNull();
   });
 });

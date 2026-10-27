@@ -83,7 +83,7 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
   const columns = useMemo(() => factColumns(view, width), [view, width]);
   const query = <QueryBar width={width} view={{ value: view, options: [{ value: "terms", label: "Current terms" }, { value: "history", label: "Amendment history" }], onChange: (value) => { setView(value); setOpen(null); } }} />;
   // Why headroom is missing stays beside the figures it explains.
-  const reason = covenant ? covenantReason(covenant) : null;
+  const reason = covenant ? covenantReason(covenant, data.facts) : null;
   const header = covenant ? <Box flexDirection="column">
     <ChartTableHeader width={width} height={height - (reason ? 2 : 0)} tableRows={rows.length} tableColumns={columns} query={query} figures={covenantFigures(covenant, data.facts.find((fact) => fact.id === covenant.id))} />
     {reason ? <Box paddingX={1} width={width}><Notice tone="muted">{reason}</Notice></Box> : null}

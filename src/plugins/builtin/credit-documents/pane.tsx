@@ -86,7 +86,8 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   }),[unsortedRows,sort]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   // The status says Uncomputable; the selected row says why, on the row, as the detail does.
-  const whyNoHeadroom = tab === "covenants" && selected?.covenant ? covenantReason(selected.covenant) : null;
+  const selectedCovenant = tab === "covenants" ? selected?.covenant : undefined;
+  const whyNoHeadroom = selectedCovenant ? covenantReason(selectedCovenant, data?.instruments.find((row) => row.id === selectedCovenant.instrumentId)?.facts ?? []) : null;
   const screenOpen = rows.find((row) => row.id === openId)?.screen;
   const openInstrument = data?.instruments.find((row) => row.id === openId) ?? (screenOpen ? { id: screenOpen.instrumentId, key: screenOpen.instrumentId, name: screenOpen.instrumentName, currency: screenOpen.currency, facilityType: null, principal: null, commitment: null, drawn: null, maturity: null, facts: screenOpen.evidence } : null);
   const [initialFact] = usePaneSettingValue<string | null>("fact", null);

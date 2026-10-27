@@ -78,8 +78,9 @@ test("uncomputable covenants and an empty current screen never invent a ratio or
   const frame = await tui.waitForFrameToContain("Uncomputable");
   expect(frame).toContain("HEADROOM");
   expect(frame).not.toContain("0.0%");
-  // The selected row says why, from the reason the payload carries.
-  expect(frame).toContain("Contract definition and permitted-acquisition step-up conditions are not disclosed in this debt note.");
+  // The selected row says why: the missing reported figure first, then the payload's reason as it came (the fixture's is not one the pane knows).
+  expect(frame).toContain("No reported consolidated leverage ratio to compare yet.");
+  expect(frame).toContain("Contract definition and permitted-acquisition step-up");
   await tui.emitKeypress({ name: "return" });
   expect(await tui.waitForFrameToContain("definition")).toContain("definition");
   await tui.destroy();
