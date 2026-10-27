@@ -6,6 +6,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { barSessionDay } from "../../../market-data/market/period-return";
 import { finalDailyBars } from "../../../time-series/session-bar";
+import { getPricePointTimestamp } from "../../../utils/price-history";
 import { DAILY_CLOSE_SETTLE_MS, dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, type MetricReading } from "./metric-model";
 import type { AlertRule } from "./types";
 
@@ -84,7 +85,8 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
       history.set(key, request);
       const points = await request;
       // Final as `history` shows it: a close it prints without `partial` is one the rule may judge.
-      const bars = finalDailyBars(points, { now, venue: exchange }).map(point => ({ date: barSessionDay(point.date.getTime(), exchange), close: point.close }));
+      // Bars read back from the saved cache carry their dates as text.
+      const bars = finalDailyBars(points, { now, venue: exchange }).map(point => ({ date: barSessionDay(getPricePointTimestamp(point), exchange), close: point.close }));
       return dailyMetricReading(rule, bars, now, session);
     });
   };

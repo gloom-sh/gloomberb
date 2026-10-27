@@ -49,7 +49,7 @@ test("a daily rule judges the closes history shows as final, read in history's b
     const provider = createTestDataProvider({
       getDetailedPriceHistory: async (_symbol, _exchange, _start, end, size) => {
         sizes.push(size);
-        return size === "1d" ? served.filter((bar) => bar.date.getTime() <= end.getTime()) : [];
+        return size === "1d" ? served.filter((bar) => new Date(bar.date).getTime() <= end.getTime()) : [];
       },
     });
     const reading = await metricReadings(provider, now)(rsi).then((value) => value.day, (error: Error) => error.message);
@@ -60,6 +60,9 @@ test("a daily rule judges the closes history shows as final, read in history's b
   const tuesday = Date.parse("2026-10-27T06:35:00Z");
   expect(historyFinal(bars(), tuesday)).toBe("2026-10-26");
   expect(await read(bars(), tuesday)).toEqual({ reading: "2026-10-26", sizes: ["1d"] });
+  // The app's saved cache gives the same bars back with their dates as text.
+  const cached = bars().map((bar) => ({ ...bar, date: bar.date.toISOString() as unknown as Date }));
+  expect((await read(cached, tuesday)).reading).toBe("2026-10-26");
   // A close the source still marks partial is partial in history too, and the rule waits for it.
   const unsettled = bars({ "2026-10-26": { partial: true } });
   expect(historyFinal(unsettled, tuesday)).toBe("2026-10-23");
