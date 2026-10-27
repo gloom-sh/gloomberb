@@ -17,6 +17,7 @@ import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capab
 import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
 import { nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
+import type { StallEvent } from "../../../utils/main-thread-stall";
 
 type BackendMessages = ElectrobunDesktopRpcSchema["webview"]["messages"];
 type BackendMessageName = keyof BackendMessages;
@@ -151,6 +152,11 @@ export async function initElectrobunBackend(payload?: { kind?: "main" | "detache
 
 export function requestElectrobunRestart(message: DesktopRestartMessage = {}): void {
   rpc.send["host.restart"](message);
+}
+
+/** The Bun process keeps the stall log and sends its report. */
+export function sendElectrobunStall(event: StallEvent): void {
+  rpc.send["runtime.stall"](event);
 }
 
 export function getElectrobunBackendInitSnapshot(): ElectrobunBackendInit | null {

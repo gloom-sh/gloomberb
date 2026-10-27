@@ -5,12 +5,14 @@ import { App } from "../../../app";
 import { applyLanguageFromConfig } from "../../../i18n";
 import { debugLog } from "../../../utils/debug-log";
 import { capturePaneImage } from "../../../utils/dom-screenshot";
+import { setStallSink } from "../../../utils/main-thread-stall";
 import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
   initElectrobunBackend,
   onBackendMessage,
   replaceElectrobunCapabilityManifests,
+  sendElectrobunStall,
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
 import { installElectrobunCapabilityStreamClient } from "./capability-stream-client";
@@ -156,6 +158,8 @@ async function boot() {
     officialPluginIds: loadOfficialPluginIds,
   });
   installAttentionCounter(() => !init.telemetry.optedOut && !browserDoNotTrack() && attentionCountsEnabled(currentTelemetryConfig(init.config)));
+  // Desktop has no Debug Log: this window's freezes go to the Bun process, which keeps the stall log.
+  setStallSink(sendElectrobunStall);
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();

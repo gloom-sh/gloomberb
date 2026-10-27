@@ -16,11 +16,14 @@ import { startRemoteControlServer, type RemoteControlServer } from "../../../../
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
 import { installCrashReporter } from "../../../../telemetry/crash-reports";
 import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports-node";
+import { installStallReporter, parseStallEvent, recordStall } from "../../../../telemetry/stall-reports";
+import { createNodeStallReporterHost } from "../../../../telemetry/stall-reports-node";
 import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
 import { createNodeUpdateFailureHost } from "../../../../telemetry/update-failures-node";
 import type { AppConfig } from "../../../../types/config";
 import { linkDesktopCommands } from "../../../../updater/command-names";
 import { debugLog } from "../../../../utils/debug-log";
+import { setStallSink, startMainThreadStallMonitor } from "../../../../utils/main-thread-stall";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import type {
   ContextMenuSelectMessage,
@@ -156,6 +159,10 @@ export class DesktopBackend {
       }));
       reviewLastUpdateAttempt();
       void removeUpdateAsides();
+      // Desktop has no Debug Log: freezes of this process and of its windows go to the stall log in the data folder.
+      installStallReporter(createNodeStallReporterHost({ getDataDir: () => this.config?.dataDir ?? null }));
+      setStallSink((event) => recordStall("app", event));
+      startMainThreadStallMonitor();
     }
     // The native menu shows the same accelerators the keys use, so a rebind
     // rebuilds it.
@@ -258,6 +265,10 @@ export class DesktopBackend {
         messages: {
           "host.restart": (message) => {
             this.restart(message);
+          },
+          "runtime.stall": (message) => {
+            const event = parseStallEvent(message);
+            if (event) recordStall("window", event);
           },
         },
       },

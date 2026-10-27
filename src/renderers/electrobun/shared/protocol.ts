@@ -10,6 +10,7 @@ import type { CapabilityManifest } from "../../../capabilities";
 import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
+import type { StallEvent } from "../../../utils/main-thread-stall";
 import type { BootFrame } from "../../dom/boot-frame-page";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
@@ -337,6 +338,8 @@ export interface ElectrobunDesktopRpcSchema {
     };
     messages: {
       "host.restart": DesktopRestartMessage;
+      /** A window froze; the Bun process keeps the stall log and its report. */
+      "runtime.stall": StallEvent;
     };
   };
   webview: {

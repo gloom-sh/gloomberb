@@ -9,13 +9,43 @@ const SAMPLE_INTERVAL_MS = 250;
  */
 const STALL_THRESHOLD_MS = 400;
 
+export interface StallEvent {
+  blockedMs: number;
+  /** The last measured section before the stall (perf-marks), if any. */
+  lastMeasured?: string;
+  /** How long before the stall was noticed that section ended. */
+  lastMeasuredEndedMsAgo?: number;
+}
+
+let stallSink: ((event: StallEvent) => void) | null = null;
+
+/**
+ * Where this process's stalls go besides the Debug Log: the stall log and its
+ * report (telemetry/stall-reports.ts), or, in the desktop window, the Bun
+ * process that keeps them.
+ */
+export function setStallSink(next: ((event: StallEvent) => void) | null): () => void {
+  stallSink = next;
+  return () => {
+    if (stallSink === next) stallSink = null;
+  };
+}
+
+function noteStall(event: StallEvent): void {
+  try {
+    stallSink?.(event);
+  } catch {
+    // Intentional ignore: reporting a freeze must never become one.
+  }
+}
+
 export interface MainThreadStallMonitorOptions {
   intervalMs?: number;
   thresholdMs?: number;
   now?: () => number;
   schedule?: (callback: () => void, delayMs: number) => unknown;
   cancel?: (handle: unknown) => void;
-  report?: (blockedMs: number, context: Record<string, unknown>) => void;
+  report?: (blockedMs: number, context: Omit<StallEvent, "blockedMs">) => void;
 }
 
 function defaultNow(): number {
@@ -41,7 +71,10 @@ export function startMainThreadStallMonitor(
   const schedule = options.schedule ?? ((callback, delayMs) => setInterval(callback, delayMs));
   const cancel = options.cancel ?? ((handle) => clearInterval(handle as ReturnType<typeof setInterval>));
   const report = options.report
-    ?? ((blockedMs, context) => recordPerfSample("runtime.stall", blockedMs, context));
+    ?? ((blockedMs, context) => {
+      recordPerfSample("runtime.stall", blockedMs, context);
+      noteStall({ blockedMs, ...context });
+    });
 
   let previous = now();
   const handle = schedule(() => {
