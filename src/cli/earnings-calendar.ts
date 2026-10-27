@@ -43,7 +43,7 @@ export async function noListingCalendarNote(
 }
 
 /**
- * "SAN = Banco Santander, NYSE (also EPA, LSE)" for a bare symbol whose
+ * "SAN = Banco Santander, NYSE (different companies on EPA, LSE)" for a bare symbol whose
  * calendar date is its US line's, when several companies list the symbol:
  * the event names the company the date is for.
  */

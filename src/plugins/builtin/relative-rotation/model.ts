@@ -219,10 +219,12 @@ export function buildRotation(
   const benchmarkUsable = !!benchmark.currency && !!asOf;
   const rows = instruments.map((source): RotationRow => {
     const closes = rotationCloses(source.points, through);
+    // A benchmark with no usable weeks says so once in `gaps`; its rows are not to blame for it.
     const gaps = [
       source.error,
       source.stale ? "History is stale." : null,
-      source.currency !== benchmark.currency || !source.currency
+      benchmarkUsable &&
+      (source.currency !== benchmark.currency || !source.currency)
         ? "Price currency does not match the benchmark."
         : null,
     ].filter((x): x is string => !!x);
@@ -284,7 +286,10 @@ export function buildRotation(
       Number.isFinite(latest.strength) &&
       latest.momentum != null &&
       Number.isFinite(latest.momentum);
-    if (!latest || latest.strength == null || latest.momentum == null)
+    if (
+      benchmarkUsable &&
+      (!latest || latest.strength == null || latest.momentum == null)
+    )
       gaps.push(
         "At least 17 contiguous matched weekly closes are required; a missing week breaks the trail.",
       );

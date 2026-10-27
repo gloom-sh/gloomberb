@@ -20,7 +20,7 @@ import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from
 import { loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
-import { groupByCompany, sameCompany, shortCompanyName } from "../tickers/company-name";
+import { groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
   exchangeCodeVenues,
@@ -370,33 +370,42 @@ function listsSeveralCompanies(venues: readonly ListingVenue[]): boolean {
   return groupByCompany(venues, (venue) => venue.name).length > 1;
 }
 
-/** Every other company that lists the symbol once, at its first venue in search order. */
+/**
+ * Every other company or fund that lists the symbol, once, at its first venue
+ * in search order. A venue is another's only when its name says so: one with
+ * no name, or a depositary receipt named unlike the company (a CEDEAR's short
+ * form of its fund's name), is left out rather than guessed at, and one
+ * fund's venues are one fund however each words it (`sameListedName`).
+ */
 function otherCompanies(venues: readonly ListingVenue[], company: string): ListingVenue[] {
-  return groupByCompany(venues, (venue) => venue.name)
-    .filter((group) => !group.some((venue) => sameCompany(venue.name, company)))
+  if (!company.trim()) return [];
+  const known = venues.filter((venue) => !namesDepositaryReceipt(venue.name) || sameListedName(venue.name, company));
+  return groupByCompany(known, (venue) => venue.name, sameListedName)
+    .filter((group) => !group.some((venue) => sameListedName(venue.name, company)))
     .map((group) => group[0]!);
 }
 
 /**
- * "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)": the listing a bare
- * symbol several companies list was read on, and where the others list it.
- * Null when one company lists it, so a symbol that means one thing says
- * nothing.
+ * "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)": the
+ * listing a bare symbol several companies list was read on, and where the
+ * others list it. Null when no other company is known to list it, so a symbol
+ * that means one thing (XLK, and its receipt in Buenos Aires) says nothing.
  */
 export function listingChoiceNote(
   symbol: string,
   chosen: { exchange: string; name?: string | null },
   venues: readonly ListingVenue[],
 ): string | null {
-  if (!chosen.exchange || !listsSeveralCompanies(venues)) return null;
+  if (!chosen.exchange) return null;
   const chosenVenue = venues.find((venue) => venue.exchange === chosen.exchange);
   const name = chosen.name?.trim() || chosenVenue?.name || "";
   const others = otherCompanies(venues, chosenVenue?.name || name).map((venue) => venue.exchange)
     .filter((exchange) => exchange !== chosen.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
-  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
-  return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (also ${also})`;
+  const named = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
+  const which = others.length === 1 ? "a different company" : "different companies";
+  return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (${which} on ${named})`;
 }
 
 // Quotes of these never name a company's listing, so they are never a choice between companies.

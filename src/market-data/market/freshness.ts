@@ -32,7 +32,8 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   TSXV: 9 * 60 + 30,
   CSE: 9 * 60 + 30,
   FWB2: 8 * 60,
-  XETRA: 8 * 60,
+  // Continuous trading opens at 09:00 Berlin time, after the opening auction; before it is pre-trading.
+  XETRA: 9 * 60,
   LSE: 8 * 60,
   EPA: 9 * 60,
   AMS: 9 * 60,

@@ -99,12 +99,53 @@ export function companyNameMatch(typed: string, name: string | null | undefined)
   return { extra: words.size - matched.size, abbreviated };
 }
 
-/** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
-export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
+// Words one fund's venues name it with or without: "iShares MSCI Japan Index Fund" in New York is "iShares MSCI Japan ETF" in Mexico.
+const FUND_NOISE = new Set(["etf", "etfs", "fund", "funds", "index", "trust", "ucits"]);
+
+function instrumentWords(name: string | null | undefined): Set<string> {
+  return new Set([...companyWords(name)].filter((word) => !FUND_NOISE.has(word)));
+}
+
+/**
+ * Whether two venues' names can be one instrument's: one company's
+ * (`sameCompany`), or one fund's however a venue words it, with or without
+ * "ETF", "Index Fund" or "Trust" ("Technology Select Sector SPDR Fund" in
+ * Buenos Aires is State Street's ETF in New York). Two names that are not are
+ * another company's or another fund's ("W.A.G Payment Solutions" is not the
+ * iShares fund, nor "UBS MSCI India" iShares' India fund). An empty name
+ * matches none.
+ */
+export function sameListedName(left: string | null | undefined, right: string | null | undefined): boolean {
+  if (sameCompany(left, right)) return true;
+  const a = instrumentWords(left);
+  const b = instrumentWords(right);
+  if (a.size === 0 || b.size === 0) return false;
+  const [fewer, more] = a.size <= b.size ? [a, b] : [b, a];
+  return [...fewer].every((word) => more.has(word));
+}
+
+/**
+ * Whether a venue names its line a depositary receipt ("Toyota Motor
+ * Corporation CEDEAR", "SS SPDR S&P 500 ETF Trust - CEDEAR"): a receipt of a
+ * line elsewhere, whose short form of that line's name says little of whose it is.
+ */
+export function namesDepositaryReceipt(name: string | null | undefined): boolean {
+  return /\b(?:cedears?|adrs?|ads|cdrs?|cdis?|depositary)\b/i.test(name ?? "");
+}
+
+/**
+ * Items grouped by the company their names are (`same`, `sameCompany` unless
+ * given), in the order each company first appears. Unnamed items are left out.
+ */
+export function groupByCompany<T>(
+  items: readonly T[],
+  nameOf: (item: T) => string | null | undefined,
+  same: (left: string | null | undefined, right: string | null | undefined) => boolean = sameCompany,
+): T[][] {
   const groups: T[][] = [];
   for (const item of items) {
     if (companyWords(nameOf(item)).size === 0) continue;
-    const group = groups.find((members) => members.some((member) => sameCompany(nameOf(member), nameOf(item))));
+    const group = groups.find((members) => members.some((member) => same(nameOf(member), nameOf(item))));
     if (group) group.push(item);
     else groups.push([item]);
   }

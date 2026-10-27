@@ -7,6 +7,7 @@ import type {
 } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { isAccessDenied } from "../../../api-client/errors";
+import { quoteTradingExchange } from "../../../market-data/quotes/metadata";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 import {
   buildRotation,
@@ -75,6 +76,10 @@ export function validateRotationHistory(
     throw new Error("Invalid daily history.");
   return response.data;
 }
+/** The venue a quote is for, as `quote` names it; empty when it names none. */
+function listingVenue(quote: CloudQuotePayload | undefined): string {
+  return quote ? quoteTradingExchange(quote) : "";
+}
 export async function fetchRotation(
   benchmark: RotationInstrument,
   instruments: RotationInstrument[],
@@ -106,6 +111,16 @@ export async function fetchRotation(
     if (isAccessDenied(error)) throw error;
     quoteError = "Listing currencies unavailable.";
   }
+  // A benchmark typed without its exchange (ACWI) is the listing its quote is for (ACWI:NASDAQ), as `quote`
+  // reads it: that venue's calendar picks the weekly closes.
+  const venue = benchmark.exchange
+    ? ""
+    : listingVenue(quotes.get(rotationId(benchmark)));
+  const reference = venue ? { ...benchmark, exchange: venue } : benchmark;
+  const requested = unique.map((row) => ({
+    id: rotationId(row),
+    instrument: rotationId(row) === rotationId(benchmark) ? reference : row,
+  }));
   const start = new Date(now);
   start.setUTCFullYear(start.getUTCFullYear() - 3);
   start.setUTCDate(1);
@@ -115,10 +130,9 @@ export async function fetchRotation(
   let next = 0;
   // Bound Cloud history requests; shared server caches batch upstream demand.
   await Promise.all(
-    Array.from({ length: Math.min(4, unique.length) }, async () => {
-      while (next < unique.length) {
-        const instrument = unique[next++]!,
-          id = rotationId(instrument),
+    Array.from({ length: Math.min(4, requested.length) }, async () => {
+      while (next < requested.length) {
+        const { id, instrument } = requested[next++]!,
           currency = quotes.get(id)?.currency ?? null;
         try {
           const response = await client.getCloudHistory(

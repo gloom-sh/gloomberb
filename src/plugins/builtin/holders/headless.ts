@@ -33,6 +33,7 @@ import {
   holderReportUnits,
 } from "./report-rows";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { fundHoldersAnswer } from "./fund-holders";
 import {
   HOLDER_ROWS_MAX,
   indexedHoldersPartialNote,
@@ -224,11 +225,27 @@ export function createHoldersHeadless(
         .catch(logFailure("holders.headless", "Resolve the listing's venue for the 13F holder index failed", null)))?.exchange ?? "";
       const indexTicker = indexHolderTicker(symbol, exchange);
       const [snapshot, index] = await Promise.all([
-        dependencies.loadSnapshot(symbol, args, ctx),
+        dependencies.loadSnapshot(symbol, args, ctx).catch(async (error: unknown) => {
+          const quote = await ctx.marketData.getQuote(symbol)
+            .catch(logFailure("holders.headless", "Read the quote of a listing with no holders failed", null));
+          const fund = await fundHoldersAnswer(symbol, error, quote, ctx.apiClient);
+          if (fund) return fund;
+          throw error;
+        }),
         indexTicker
           ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch(logFailure("holders.headless", "Load 13F holder index failed", null))
           : null,
       ]);
+      // A fund has no ownership breakdown: the report says so in place of rows, with what reads it, and fails as no data.
+      if ("message" in snapshot) {
+        return {
+          columns: HOLDER_REPORT_COLUMNS,
+          rows: [],
+          empty: [snapshot.message, ...snapshot.details].join("\n"),
+          unavailableSymbols: [symbol],
+          metadata: { symbol },
+        };
+      }
       const { marketCap } = snapshot;
       const indexed = !!index?.rows.length && indexHolderTicker(symbol, exchange, snapshot.data) != null;
       const partialNote = indexed ? indexedHoldersPartialNote(index, limit) : null;

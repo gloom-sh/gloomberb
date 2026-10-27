@@ -19,6 +19,14 @@ test("TASE's Friday session closes at 13:50, the other weekdays at 17:30, whatev
   expect(iso(latestRegularSessionClose("EPA", at("2026-10-09T20:00:00Z"))?.close)).toBe("2026-10-09T15:40:00.000Z");
 });
 
+test("Xetra's regular session opens at 09:00 Berlin time on either side of the clock change", () => {
+  // Summer time (UTC+2) to Sunday 25 October, then UTC+1. 08:00 local is pre-trading.
+  expect(iso(nextRegularSessionOpen("XETRA", at("2026-10-23T05:31:00Z"))?.open)).toBe("2026-10-23T07:00:00.000Z");
+  expect(iso(nextRegularSessionOpen("XETRA", at("2026-10-27T06:31:00Z"))?.open)).toBe("2026-10-27T08:00:00.000Z");
+  expect(isRegularSessionTime("XETRA", at("2026-10-27T07:30:00Z"))).toBe(false);
+  expect(isRegularSessionTime("XETRA", at("2026-10-27T08:00:00Z"))).toBe(true);
+});
+
 test("TASE's session state follows its Friday close", () => {
   // Friday opens at 09:59 (06:59Z) and ends at 10:50Z; Thursday ends at 14:30Z.
   expect(isRegularSessionTime("TASE", at("2026-10-09T06:58:00Z"))).toBe(false);
