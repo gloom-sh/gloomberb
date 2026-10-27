@@ -6,7 +6,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { quoteBlockStyle } from "../../../components/ui/quote";
 import { fetchCreditInstrument } from "./client";
-import { comparatorSymbol, covenantNumber, covenantTerms, creditPercent, factColumns, factValue, fieldLabel, hasAmendments, headroomTone, NO_VALUE, sentence, structuredFields } from "./model";
+import { comparatorSymbol, covenantNumber, covenantReason, covenantTerms, creditPercent, factColumns, factValue, fieldLabel, hasAmendments, headroomTone, NO_VALUE, sentence, structuredFields } from "./model";
 
 const LABEL_WIDTH = 16;
 const MATCH = { exact: "Exact", whitespace: "Whitespace normalized", nfkc_whitespace: "Unicode and whitespace normalized" } as Record<string, string>;
@@ -83,7 +83,7 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
   const columns = useMemo(() => factColumns(view, width), [view, width]);
   const query = <QueryBar width={width} view={{ value: view, options: [{ value: "terms", label: "Current terms" }, { value: "history", label: "Amendment history" }], onChange: (value) => { setView(value); setOpen(null); } }} />;
   // Why headroom is missing stays beside the figures it explains.
-  const reason = covenant?.reason && covenant.status !== "compliant" && covenant.status !== "breach" ? covenant.reason : null;
+  const reason = covenant ? covenantReason(covenant) : null;
   const header = covenant ? <Box flexDirection="column">
     <ChartTableHeader width={width} height={height - (reason ? 2 : 0)} tableRows={rows.length} tableColumns={columns} query={query} figures={covenantFigures(covenant, data.facts.find((fact) => fact.id === covenant.id))} />
     {reason ? <Box paddingX={1} width={width}><Notice tone="muted">{reason}</Notice></Box> : null}

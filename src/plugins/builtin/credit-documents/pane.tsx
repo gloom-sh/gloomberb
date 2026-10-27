@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
-import { ChartTableHeader, DataTableView, EmptyState, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, EmptyState, Notice, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -19,7 +19,7 @@ import { cachedCredit, creditIssuerSymbol, CREDIT_UNAVAILABLE, fetchCreditScreen
 import { CreditInstrumentDetail } from "./detail";
 import { useCreditEvidence } from "./evidence";
 import { HeadroomGauge } from "./gauge";
-import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantUsage, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
+import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantReason, covenantUsage, CREDIT_EMPTY_TITLE, creditEmptyCause, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
 
 type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean; closed?: boolean };
 const rowId = (row: Row) => row.id;
@@ -85,11 +85,16 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
       : left === right ? a.id.localeCompare(b.id) : (left < right ? -1 : 1)*(sort.direction === "asc" ? 1 : -1);
   }),[unsortedRows,sort]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
+  // The status says Uncomputable; the selected row says why, on the row, as the detail does.
+  const whyNoHeadroom = tab === "covenants" && selected?.covenant ? covenantReason(selected.covenant) : null;
   const screenOpen = rows.find((row) => row.id === openId)?.screen;
   const openInstrument = data?.instruments.find((row) => row.id === openId) ?? (screenOpen ? { id: screenOpen.instrumentId, key: screenOpen.instrumentId, name: screenOpen.instrumentName, currency: screenOpen.currency, facilityType: null, principal: null, commitment: null, drawn: null, maturity: null, facts: screenOpen.evidence } : null);
   const [initialFact] = usePaneSettingValue<string | null>("fact", null);
   const [openFactId, setOpenFact] = usePluginPaneState<string | null>(`credit:fact:open:${openInstrument?.id ?? "none"}`, initialFact);
   const activeSymbol = screenOpen?.symbol ?? symbol;
+  // An issuer with nothing in any section says why once, in each tab, instead of a different empty line per tab.
+  const emptyCause = data ? creditEmptyCause(data) : null;
+  const nothingOnFile = emptyCause ? CREDIT_EMPTY_TITLE[emptyCause] : null;
   const activeCovenant = tab === "covenants" ? data?.covenants.find((row) => row.id === selected?.id && row.instrumentId === openInstrument?.id) ?? null : null;
   const locked = tab === "screen" ? screenData?.lockedRows ?? 0 : data?.lockedRows ?? 0;
   const items = useMemo<Row[]>(() => [...rows, ...Array.from({ length: Math.min(3, locked) }, (_, index) => ({ id: `locked:${index}`, values: {}, locked: true }))], [rows, locked]);
@@ -180,7 +185,8 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
           getItemKey={rowId} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }}
           onActivate={(row) => row.locked ? openUpgrade() : setOpen(row.screen ? row.id : row.instrumentId ?? null)}
           renderCell={renderCell}
-          emptyStateTitle={tab === "screen" ? "No supported credit signals match these thresholds." : tab === "covenants" ? "No financial maintenance covenants documented." : tab === "maturities" ? "No supported instrument maturity amounts." : CREDIT_UNAVAILABLE}
+          emptyStateTitle={tab === "screen" ? "No supported credit signals match these thresholds." : nothingOnFile ?? (tab === "covenants" ? "No financial maintenance covenants documented." : tab === "maturities" ? "No supported instrument maturity amounts." : CREDIT_EMPTY_TITLE.instruments)}
+          rootAfter={whyNoHeadroom ? <Box paddingX={1} flexShrink={0}><Notice tone="muted">{whyNoHeadroom}</Notice></Box> : undefined}
           emptyStateHint={tab === "screen" && (headroom < 100 || months < 36) ? "Raise either threshold to widen the screen." : undefined}
           selectedTextOverridesCellColor showHorizontalScrollbar freezeFirstColumn resetScrollKey={`${symbol}:${tab}:${selectedCurrency}`}
           bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} />

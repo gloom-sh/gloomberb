@@ -186,6 +186,19 @@ function repoDirectory(repo: string | undefined): string | null {
   return name ? name.toLowerCase() : null;
 }
 
+/**
+ * Built-ins write their copy as sentences and registry plugins as labels, so a
+ * row's short line is read without its closing period, whoever wrote it, and
+ * the detail's paragraph always has one. An ellipsis stays as written.
+ */
+function rowLine(text: string | undefined): string {
+  return (text ?? "").trim().replace(/(?<!\.)\.$/, "");
+}
+function detailParagraph(text: string | undefined): string | undefined {
+  const paragraph = text?.trim();
+  return paragraph ? /[\p{L}\p{N}]$/u.test(paragraph) ? `${paragraph}.` : paragraph : undefined;
+}
+
 /** The short line a built-in's row reads: its editorial tagline, else its description. */
 function builtinTagline(local: InstalledPlugin): string {
   return BUILTIN_EDITORIAL[local.id]?.tagline ?? local.description ?? "";
@@ -257,8 +270,8 @@ export function mergeCatalog(options: {
     entries.push({
       id: plugin.id,
       name: builtin?.name ?? plugin.name,
-      tagline: builtin ? builtinTagline(builtin) : plugin.tagline,
-      description: builtin?.description ?? plugin.description,
+      tagline: rowLine(builtin ? builtinTagline(builtin) : plugin.tagline),
+      description: detailParagraph(builtin?.description ?? plugin.description),
       categories: builtin ? BUILTIN_EDITORIAL[plugin.id]?.categories ?? plugin.categories : plugin.categories,
       tier: plugin.tier,
       targets: plugin.targets,
@@ -309,10 +322,10 @@ export function mergeCatalog(options: {
     entries.push({
       id: local.id,
       name: local.name,
-      tagline: local.source === "builtin"
+      tagline: rowLine(local.source === "builtin"
         ? builtinTagline(local)
-        : local.description ?? (local.linked ? "Linked from a local checkout" : "Installed outside the registry"),
-      description: local.description,
+        : local.description ?? (local.linked ? "Linked from a local checkout" : "Installed outside the registry")),
+      description: detailParagraph(local.description),
       categories: local.source === "builtin" ? [...BUILTIN_EDITORIAL[local.id]?.categories ?? []] : ["unlisted"],
       // Shipped by Gloom like every built-in, whether or not the feed lists it.
       tier: local.source === "builtin" ? "official" : "community",

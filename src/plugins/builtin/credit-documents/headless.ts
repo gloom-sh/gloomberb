@@ -2,7 +2,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import type { CreditDocumentsPayload } from "../../../api-client/credit-documents";
 import { creditIssuerSymbol, fetchCreditDocuments, fetchCreditInstrument, fetchCreditScreen } from "./client";
 import { capitalSection, controlSection, covenantSection, instrumentSections, maturitySection, screenSection } from "./export";
-import { CREDIT_TABS } from "./model";
+import { CREDIT_TABS, creditEmptyCause } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 
 export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -55,10 +55,10 @@ export function creditEmptyReason(
   data: Pick<CreditDocumentsPayload, "symbol" | "issuer" | "instruments" | "covenants" | "maturities" | "changeOfControl" | "lockedRows">,
   requested: string,
 ): string | null {
-  const rows = data.instruments.length + data.covenants.length + data.maturities.length + data.changeOfControl.length;
-  if (rows > 0 || data.lockedRows > 0) return null;
+  const cause = creditEmptyCause(data);
+  if (!cause) return null;
   const symbol = requested.trim().toUpperCase();
-  const why = data.issuer
+  const why = cause === "instruments" && data.issuer
     ? `No credit documents on file for ${data.issuer.name} (${symbol}): no debt instrument has been read from its filings yet.`
     : `No credit documents on file for ${symbol}: it is not an issuer the credit-document set covers.`;
   const example = creditIssuerSymbol(symbol) === CREDIT_EXAMPLE_SYMBOL ? "" : ` Try \`gloom fn CRDOC ${CREDIT_EXAMPLE_SYMBOL}\` for an issuer with documents.`;

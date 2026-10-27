@@ -11,7 +11,7 @@ import {
   resetSignedInBrokerCatalog,
   subscribeSignedInBrokers,
 } from "../../../brokers/signed-in/catalog";
-import { DataTableStackView, EmptyState } from "../../../components";
+import { Button, DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
@@ -340,10 +340,14 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           sortDirection="asc"
           getItemKey={(row) => row.id}
           renderCell={renderCell}
-          // The footer's a adds one.
+          // The same add the footer's a and the command bar start; as the state's first
+          // action it also answers Enter.
           emptyContent={(
             <Box width="100%" paddingX={1} paddingY={1}>
-              <EmptyState title={t("No broker profiles.")} />
+              <EmptyState
+                title={t("No broker profiles.")}
+                actions={<Button label="Add Broker Account" onPress={startAdd} />}
+              />
             </Box>
           )}
           emptyStateTitle={t("No broker profiles.")}

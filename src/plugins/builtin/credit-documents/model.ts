@@ -137,6 +137,29 @@ function securityClass(row: CreditInstrument): "secured" | "unsecured" | null {
   const text = ["ranking", "security"].map((field) => { const fact = instrumentFact(row, field); return fact ? creditValue(fact.value).toLowerCase() : ""; }).join(" ");
   return /\bunsecured\b/.test(text) ? "unsecured" : /\bsecured\b/.test(text) ? "secured" : null;
 }
+/**
+ * Why a covenant has no headroom, as a sentence: the reason the payload carries
+ * for a status that is neither compliant nor a breach. Null when it has none.
+ */
+export function covenantReason(row: Pick<CreditHeadroom, "status" | "reason">): string | null {
+  const reason = row.status === "compliant" || row.status === "breach" ? null : row.reason?.trim();
+  return reason ? `${sentence(reason)}${/[.!?]$/.test(reason) ? "" : "."}` : null;
+}
+/** What an issuer with no rows at all lacks: the issuer itself, or a debt instrument read from its filings. */
+type CreditEmptyCause = "issuer" | "instruments";
+/**
+ * Why a payload has nothing to show in any section. Null when a section has a
+ * row, or Pro holds some back: a preview that is partly locked is not empty.
+ */
+export function creditEmptyCause(data: Pick<CreditDocumentsPayload, "issuer" | "instruments" | "covenants" | "maturities" | "changeOfControl" | "lockedRows">): CreditEmptyCause | null {
+  const rows = data.instruments.length + data.covenants.length + data.maturities.length + data.changeOfControl.length;
+  return rows > 0 || data.lockedRows > 0 ? null : data.issuer ? "instruments" : "issuer";
+}
+/** The pane's line for an empty payload; the CLI says the same with the issuer's name. */
+export const CREDIT_EMPTY_TITLE: Record<CreditEmptyCause, string> = {
+  instruments: "No debt instrument has been read from this issuer's filings yet.",
+  issuer: "This is not an issuer the credit documents cover.",
+};
 /** The maintenance covenant fact a headroom row was computed from, which says its unit. */
 export const covenantFact = (data: Pick<CreditDocumentsPayload, "instruments">, row: Pick<CreditHeadroom, "id" | "instrumentId">): CreditFact | undefined =>
   data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id);

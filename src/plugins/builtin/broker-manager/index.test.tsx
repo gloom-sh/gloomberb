@@ -520,6 +520,17 @@ describe("BrokersPane", () => {
     await settle();
     expect(frame()).toContain("No broker profiles.");
 
+    // With no profile, the state itself offers the add that a starts: pressed, or answering Enter.
+    expect(frame()).toContain("Add Broker Account");
+    await tui.clickFrameText("Add Broker Account");
+    await settle();
+    expect(frameLine("Robinhood")).toContain("Sign in");
+    await pressEscape();
+    expect(frame()).not.toContain("Robinhood");
+    await pressKey("RETURN");
+    expect(frameLine("Robinhood")).toContain("Sign in");
+    await pressEscape();
+
     await pressKey("a");
     expect(frame()).toContain("Add Broker Account");
     expect(frameLine("Robinhood")).toContain("Sign in");
@@ -527,7 +538,7 @@ describe("BrokersPane", () => {
     expect(frameLine("SimpleFIN")).toContain("On this device");
     expect(frameLine("Test Broker")).toContain("Sign in, or on this device");
     await pressEscape();
-    expect(frame()).not.toContain("Add Broker Account");
+    expect(frame()).not.toContain("Robinhood");
 
     // Offered both ways: how to connect comes first.
     await pressKey("a");
