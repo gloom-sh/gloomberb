@@ -1,0 +1,3 @@
+[test]
+# Resets process-wide test state before every test; see the file for what and why.
+preload = ["./src/test-support/preload.ts"]
