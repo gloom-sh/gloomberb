@@ -51,6 +51,7 @@ import { loadOfficialPluginIds } from "../../../plugins/marketplace/feed";
 import { setPluginSeedNotice } from "../../../plugins/seed-notice";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
+import { forwardAttendedStalls } from "../../../telemetry/stall-reports-dom";
 import { currentTelemetryConfig } from "../../../telemetry/live-config";
 import { attentionCountsEnabled, installAttentionCounter } from "../../../telemetry/attention-counts";
 import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
@@ -159,7 +160,7 @@ async function boot() {
   });
   installAttentionCounter(() => !init.telemetry.optedOut && !browserDoNotTrack() && attentionCountsEnabled(currentTelemetryConfig(init.config)));
   // Desktop has no Debug Log: this window's freezes go to the Bun process, which keeps the stall log.
-  setStallSink(sendElectrobunStall);
+  setStallSink(forwardAttendedStalls(sendElectrobunStall).sink);
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();

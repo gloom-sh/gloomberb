@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CrashReportsPayload } from "../api-client";
 import { flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "./crash-reports";
+import { forwardAttendedStalls } from "./stall-reports-dom";
 import {
   installStallReporter,
   recordStall,
@@ -84,5 +85,46 @@ describe("stall reports", () => {
       { process: "app", bucket: "1-2s", section: "unmeasured", count: 1, longestMs: 1_100 },
       { process: "window", bucket: "1-2s", section: "layout.save", count: 3, longestMs: 1_900 },
     ]);
+  });
+});
+
+describe("window stalls", () => {
+  /** A window the test moves in front of the user and away; its clock is `clock.now`. */
+  function fakeWindow() {
+    const clock = { now: 10_000 };
+    const view = { visible: true, focused: false };
+    const target = new EventTarget();
+    const doc = Object.defineProperties(new EventTarget(), {
+      visibilityState: { get: () => view.visible ? "visible" : "hidden" },
+      hasFocus: { value: () => view.focused },
+    });
+    Object.assign(target, { document: doc });
+    const set = (next: Partial<typeof view>) => {
+      Object.assign(view, next);
+      if (next.focused !== undefined) target.dispatchEvent(new Event(next.focused ? "focus" : "blur"));
+      if (next.visible !== undefined) doc.dispatchEvent(new Event("visibilitychange"));
+    };
+    return { clock, set, target: target as unknown as Window };
+  }
+
+  // A window behind others has its timers slowed to about one a second, which reads as a freeze.
+  test("only a window in front with focus since before the stall began forwards it", () => {
+    const { clock, set, target } = fakeWindow();
+    const forwarded: number[] = [];
+    const { sink } = forwardAttendedStalls((event) => { forwarded.push(event.blockedMs); }, target, () => clock.now);
+
+    sink({ blockedMs: 900 });
+    set({ focused: true });
+    clock.now += 500;
+    // Its timer was slowed in the background and came back after the focus.
+    sink({ blockedMs: 900 });
+    clock.now += 5_000;
+    sink({ blockedMs: 2_000 });
+    set({ visible: false });
+    set({ visible: true });
+    clock.now += 1_000;
+    sink({ blockedMs: 1_500 });
+
+    expect(forwarded).toEqual([2_000]);
   });
 });

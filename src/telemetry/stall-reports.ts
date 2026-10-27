@@ -9,8 +9,9 @@ import { reportCrash } from "./crash-reports";
  * The stall monitor (utils/main-thread-stall.ts) notices when a process could
  * not answer the user for a while and names the last measured section, and
  * hands the stall to its sink. The terminal app and the desktop app's Bun
- * process record their own stalls here; the desktop window sends its stalls
- * to the Bun process, which records them too. Where a host is installed, each
+ * process record their own stalls here; the desktop window sends the stalls
+ * it had in front of the user (stall-reports-dom.ts) to the Bun process,
+ * which records them too. Where a host is installed, each
  * stall:
  *
  * - goes to a plain-text stall log in the profile folder, one line each, so a
