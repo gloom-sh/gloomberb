@@ -30,6 +30,8 @@ export function listViewSources(catalog: ViewSourceCatalog): ViewSourceInfo[] {
     const pane = catalog.panes.get(template.paneId);
     if (!pane) continue;
     templated.add(pane.id);
+    // An unlisted function (`listed: false`) is not offered, nor its pane in its place.
+    if (template.listed === false) continue;
     const headless = template.headless ?? pane.headless;
     if (!headless) continue;
     sources.push({

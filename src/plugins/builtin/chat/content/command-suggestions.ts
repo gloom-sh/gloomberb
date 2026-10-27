@@ -55,6 +55,7 @@ export function filterCommandSuggestions(
   const byCode: ChatFunction[] = [];
   const byName: ChatFunction[] = [];
   for (const fn of new Set(functions.values())) {
+    if (fn.unlisted) continue;
     if (fn.code.startsWith(upper) || fn.aliases.includes(upper)) byCode.push(fn);
     else if (fn.name.toLowerCase().split(/[\s/&()-]+/).some((word) => word.startsWith(lower))) byName.push(fn);
   }

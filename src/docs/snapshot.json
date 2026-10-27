@@ -38,16 +38,6 @@
  ],
  "functions": [
   {
-   "code": "ATTN",
-   "name": "Research attention",
-   "description": "What Gloom users are researching",
-   "detail": "Which tickers opted-in Gloom users are researching, by hour, day and week, with sector and country totals and abnormal attention. Delayed at least an hour. Pro shows the full board; Free shows three rows per section.",
-   "category": "research",
-   "arg": "NVDA",
-   "access": "pro",
-   "lesson": "/academy/compare-screen-follow-money/filings-and-attention/attention"
-  },
-  {
    "code": "DES",
    "name": "Security overview",
    "description": "Quote, chart, and research tabs",
@@ -3306,7 +3296,7 @@
     },
     {
      "type": "paragraph",
-     "text": "When signed in, searches you finish in the command bar are saved to improve search, shown to no one, and deleted with your account. [Research attention](/docs/attention) is a separate opt-in, off by default."
+     "text": "When signed in, searches you finish in the command bar are saved to improve search, shown to no one, and deleted with your account. Attention Counts, the research attention contribution, is a separate opt-in, off by default."
     },
     {
      "type": "paragraph",
@@ -4048,115 +4038,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloom fn JOBS NVDA`. MCP `company.hiring`, `market.hiring_movers`, `hiring.momentum`, `apps.attention`, `apps.rank_history`. Related: [Research attention](/docs/attention)."
-    }
-   ]
-  },
-  {
-   "slug": "attention",
-   "title": "Research attention",
-   "lead": "ATTN shows which tickers other Gloom users are researching, and which are getting unusual attention",
-   "category": "Understand the data",
-   "tags": [
-    "ATTN",
-    "attention",
-    "research",
-    "privacy"
-   ],
-   "updatedAt": "2026-10-07",
-   "blocks": [
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "Open it"
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Command",
-      "Opens"
-     ],
-     "rows": [
-      [
-       "`ATTN`",
-       "The board"
-      ],
-      [
-       "`ATTN NVDA`",
-       "One ticker"
-      ],
-      [
-       "`ATTN 6758:JPX`",
-       "An international listing"
-      ]
-     ]
-    },
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "What you see"
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Tab",
-      "Shows"
-     ],
-     "rows": [
-      [
-       "Ranking",
-       "Tickers by research hours, with share, price move and relative volume"
-      ],
-      [
-       "Abnormal",
-       "Tickers well above their own usual level"
-      ],
-      [
-       "Sectors, Countries",
-       "Totals by sector and country"
-      ],
-      [
-       "History",
-       "Hourly research hours for one ticker"
-      ],
-      [
-       "Evidence",
-       "The window and rules behind each figure"
-      ]
-     ]
-    },
-    {
-     "type": "paragraph",
-     "text": "Switch the window between Now, Today and Week. Enter opens a ticker, `e` shows evidence."
-    },
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "Free and Pro"
-    },
-    {
-     "type": "paragraph",
-     "text": "Pro shows the full board and 29 days of hourly history. Free shows three rows per section and the latest point. Data lags by at least an hour."
-    },
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "Keep in mind"
-    },
-    {
-     "type": "list",
-     "items": [
-      "Counts come only from users who opted in, so they are a sample, not the market. A ticker appears only when enough people looked at it, and hidden hours are unavailable, not zero."
-     ]
-    },
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "Your choice"
-    },
-    {
-     "type": "paragraph",
-     "text": "Contributing is a separate opt-in setting, off by default. Toggle **Attention Counts** in Settings or with `gloom config set telemetry.attention true`. See the [Privacy Policy](/privacy). MCP `market.attention`."
+     "text": "CLI `gloom fn JOBS NVDA`. MCP `company.hiring`, `market.hiring_movers`, `hiring.momentum`, `apps.attention`, `apps.rank_history`."
     }
    ]
   },
@@ -7206,7 +7088,7 @@
     {
      "type": "list",
      "items": [
-      "**Alternative data:** GPU rental prices, supply chain, hiring postings and momentum, social mentions, app attention, power and grid, perpetuals, catalysts and litigation, research attention, congressional trades, operating exposure.",
+      "**Alternative data:** GPU rental prices, supply chain, hiring postings and momentum, social mentions, app attention, power and grid, perpetuals, catalysts and litigation, congressional trades, operating exposure.",
       "**Filings and company text:** KPIs and guidance, executive pay, risk factors, 8-K events, transcripts, credit documents, debt maturities, revenue breakdown, SEC filings, insiders and 13F, document search.",
       "**News:** Real-time stories, sources and topics.",
       "**Macro and positioning:** CPI, EIA inventories, COT, yield curves and macro series, central bank rates, short volume and interest, CDS, government awards.",
@@ -7785,10 +7667,10 @@
   },
   {
    "url": "/academy/compare-screen-follow-money/filings-and-attention/attention",
-   "title": "Attention: research and social buzz (ATTN, BUZZ)",
-   "summary": "ATTN ranks the tickers Gloom users are researching against each ticker's usual level, and BUZZ counts the day's posts on X naming a ticker, with the top posts and their stance.",
+   "title": "Social buzz (BUZZ)",
+   "summary": "BUZZ counts the day's posts on X naming a ticker against its usual level, with the top posts and their stance.",
    "chapter": "Compare, screen and follow the money",
-   "minutes": 4
+   "minutes": 3
   },
   {
    "url": "/academy/options-and-volatility/options-from-zero/what-is-an-option",

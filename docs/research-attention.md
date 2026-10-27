@@ -26,6 +26,10 @@ Every hourly ticker bucket must meet the distinct-contributor threshold before p
 
 Collection ships disabled on the server. The separate **Attention Counts** consent setting is off unless explicitly enabled; **Usage Counts** does not grant ticker consent. See the [privacy review](attention-privacy.md) for the proposed consent and retention wording. No historical activity or analytics events are backfilled. Until enough opted-in users produce qualified hours, the product shows a collecting state. The shipped code includes no collected dataset.
 
+## Listing
+
+Until the dataset publishes, ATTN is unlisted: command-bar search, Help, `gloom catalog` and search, the plugin directory and chat suggestions leave it out, as do the EQS field and metric pickers for its two fields. Typing `ATTN` still opens it, `gloom fn ATTN` and `gloom shot ATTN` still run, and the Attention Counts setting and collection are unchanged. To list it again, set `ATTENTION_LISTED` in `src/plugins/builtin/attention/listing.ts` to true and run `bun run docs:snapshot` once the site lists ATTN.
+
 ## Command line and REST
 
 ```sh

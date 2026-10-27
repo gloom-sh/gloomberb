@@ -203,7 +203,8 @@ export function nearFunctionCodes(
   const near = new Map<PaneTemplateDef, string>();
   for (const template of registry.paneTemplates.values()) {
     const prefix = template.shortcut?.prefix;
-    if (!prefix) continue;
+    // An unlisted function is never offered for a typo.
+    if (!prefix || template.listed === false) continue;
     const code = [prefix, ...template.shortcut?.aliases ?? []].find((candidate) => {
       const known = normalizeLookupToken(candidate);
       return (!commandWord || known[0] === wanted[0]) && typoDistance(wanted, known) === 1;
@@ -223,6 +224,7 @@ export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: stri
   const wanted = normalizeLookupToken(name);
   if (!wanted) return [];
   return [...registry.paneTemplates.values()].flatMap((template) => {
+    if (template.listed === false) return [];
     const pane = registry.panes.get(template.paneId);
     const words = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.suggestFor ?? [] : [];
     const code = template.shortcut?.prefix;
@@ -285,9 +287,15 @@ async function buildTemplateCatalogEntry(
   };
 }
 
+/**
+ * The functions `gloom catalog` and search list. An unlisted one (`listed:
+ * false`) is left out, and its pane is not listed in its place; `unlisted`
+ * keeps it, for its own help (`fn ATTN --help`).
+ */
 export async function buildPaneCatalogEntries(
   registry: PaneFunctionCatalog,
   context: MarketContext,
+  { unlisted = false }: { unlisted?: boolean } = {},
 ): Promise<PaneCatalogEntry[]> {
   const entries: PaneCatalogEntry[] = [];
   const templatedPaneIds = new Set<string>();
@@ -296,6 +304,7 @@ export async function buildPaneCatalogEntries(
     const pane = registry.panes.get(template.paneId);
     if (!pane) continue;
     templatedPaneIds.add(pane.id);
+    if (template.listed === false && !unlisted) continue;
     entries.push(await buildTemplateCatalogEntry(template, pane, context));
   }
 

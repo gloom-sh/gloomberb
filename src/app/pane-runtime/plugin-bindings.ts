@@ -513,13 +513,17 @@ export function bindAppPanePluginRegistry({
       removeExternalPlugin(pluginId, directory);
     },
     contributions: (pluginId) => {
+      // An unlisted function (`listed: false`) and a pane only it opens are left out, as of every list.
+      const registered = pluginRegistry.getPluginPaneTemplateIds(pluginId)
+        .map((id) => ({ id, template: pluginRegistry.paneTemplates.get(id) }));
+      const listedPaneIds = new Set(registered.flatMap(({ template }) => template && template.listed !== false ? [template.paneId] : []));
+      const unlistedPaneIds = new Set(registered.flatMap(({ template }) => template?.listed === false && !listedPaneIds.has(template.paneId) ? [template.paneId] : []));
       const panes = pluginRegistry.getPluginPaneIds(pluginId)
+        .filter((id) => !unlistedPaneIds.has(id))
         .map((id) => ({ id, name: pluginRegistry.panes.get(id)?.name ?? id }));
-      const templates = pluginRegistry.getPluginPaneTemplateIds(pluginId)
-        .map((id) => {
-          const template = pluginRegistry.paneTemplates.get(id);
-          return { id, label: template?.label ?? id, ...(template?.shortcut?.prefix ? { prefix: template.shortcut.prefix } : {}) };
-        });
+      const templates = registered
+        .filter(({ template }) => template?.listed !== false)
+        .map(({ id, template }) => ({ id, label: template?.label ?? id, ...(template?.shortcut?.prefix ? { prefix: template.shortcut.prefix } : {}) }));
       const commands = [...pluginRegistry.commands.entries()]
         .filter(([id]) => pluginRegistry.getCommandPluginId(id) === pluginId && !id.endsWith(":setup"))
         .map(([id, command]) => ({ id, label: command.label, ...(command.shortcut ? { shortcut: command.shortcut } : {}) }));

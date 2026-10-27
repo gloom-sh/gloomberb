@@ -36,6 +36,8 @@ export interface ChatFunction {
   arg: ChatFunctionArg;
   /** For a choice, the values it takes. */
   choices?: () => readonly string[];
+  /** Written as a chip when someone types it, but never suggested (`listed: false`). */
+  unlisted?: true;
 }
 
 /** A function named in a message, and the text the command bar runs for it. */
@@ -106,7 +108,11 @@ export function chatFunctionsFrom(source: ChatFunctionSource, core: readonly Com
     // A switched-off plugin's code opens nothing until it is turned on, and
     // leaves the code to a function that does.
     if (source.isTemplateOff?.(template.id)) continue;
-    add(upperCodes(paneTemplateShortcutPrefixes(template)), { name: getPaneTemplateDisplayLabel(template), ...templateArg(template) });
+    add(upperCodes(paneTemplateShortcutPrefixes(template)), {
+      name: getPaneTemplateDisplayLabel(template),
+      ...templateArg(template),
+      ...(template.listed === false ? { unlisted: true as const } : {}),
+    });
   }
   return byCode;
 }

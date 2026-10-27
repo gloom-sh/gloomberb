@@ -10,6 +10,7 @@
  * entry in the docs the app ships.
  */
 import { DOCS_SITE } from "../../../docs/content";
+import { ATTENTION_LISTED } from "../attention/listing";
 import type { DocsTopic } from "../../../docs/topics";
 import {
   helpFunctionForPane,
@@ -25,7 +26,10 @@ const PANE_DOCS: Readonly<Record<string, DocsTopic>> = {
   "twitter-feed": { kind: "function", code: "TWIT" },
   // One article opened from a news list.
   "news-story": { kind: "function", code: "N" },
-  "attention-trending": { kind: "page", slug: "attention" },
+  // The ATTN page while it is listed. Until then the docs have none, so both
+  // panes open the page on Attention Counts, where their numbers come from.
+  "attention-trending": ATTENTION_LISTED ? { kind: "page", slug: "attention" } : { kind: "page", slug: "cloud-and-data" },
+  ...(ATTENTION_LISTED ? {} : { attention: { kind: "page", slug: "cloud-and-data" } as const }),
   // The reader itself: its ? goes back to the index.
   docs: { kind: "home" },
 };

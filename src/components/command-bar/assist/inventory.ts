@@ -119,7 +119,8 @@ export function buildAssistCommandInventory({
       prefixes: normalizePrefixes(command.shortcut ? [command.shortcut] : []),
     })),
     ...paneTemplates.map((template) => ({
-      descriptor: describe(
+      // An unlisted function keeps its codes, so nothing else takes them, but is never suggested.
+      descriptor: template.listed === false ? null : describe(
         template.shortcut?.prefix ?? "",
         getPaneTemplateDisplayLabel(template),
         template.shortcut?.aliases?.length ? `${template.description} Also ${template.shortcut.aliases.join(", ")}.` : template.description,

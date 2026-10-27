@@ -75,7 +75,8 @@ const NATIVE_TARGETS: PluginTarget[] = ["cli", "tui", "desktop"];
  */
 function functionsOf(plugin: GloomPlugin) {
   return pluginFunctions({
-    templates: (plugin.paneTemplates ?? []).map((template) => ({
+    // An unlisted function (`listed: false`) is not published.
+    templates: (plugin.paneTemplates ?? []).filter((template) => template.listed !== false).map((template) => ({
       label: template.label,
       prefix: template.shortcut?.prefix,
       description: template.description,

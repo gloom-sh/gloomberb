@@ -260,8 +260,9 @@ export function buildPaneShortcutItems(options: {
     showShortcut?: boolean;
   }) => ResultItem;
 }): ResultItem[] {
+  // An unlisted template (`listed: false`) still opens when its code is typed, which is resolved apart from these rows.
   const items = options.templates
-    .filter((template) => template.shortcut && template.shortcut.showInBrowse !== false)
+    .filter((template) => template.shortcut && template.shortcut.showInBrowse !== false && template.listed !== false)
     .map((template) => options.createItem(template, {
       category: "Panes",
       createOptions: options.createOptions,
@@ -279,7 +280,7 @@ export function buildNonShortcutPaneTemplateItems(options: {
   createItem: (template: PaneTemplateDef, options?: { category?: string }) => ResultItem;
 }): ResultItem[] {
   const items = options.templates
-    .filter((template) => !template.shortcut)
+    .filter((template) => !template.shortcut && template.listed !== false)
     .map((template) => options.createItem(template, { category: "Panes" }));
 
   return options.filterQuery

@@ -25,7 +25,7 @@
     {
       "id": "alt-data",
       "name": "Supply Chain & Alt Data",
-      "description": "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, research attention, GPU prices, and power queues.",
+      "description": "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, GPU prices, and power queues.",
       "tagline": "Supply chains, hiring, apps, GPUs and power.",
       "categories": [
         "research",
@@ -55,12 +55,6 @@
         "capabilities": [],
         "broker": false,
         "shortcuts": [
-          {
-            "code": "ATTN",
-            "name": "Research Attention",
-            "description": "Pro research attention: rankings, abnormal activity, sectors, countries and privacy-qualified hourly history.",
-            "access": "preview"
-          },
           {
             "code": "GPU",
             "name": "GPU Rental Prices",

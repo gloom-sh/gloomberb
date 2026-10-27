@@ -25,6 +25,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { ATTENTION_LISTED } from "../attention/listing";
 import { kpiFreeLimitNote } from "../company-kpis/model";
 
 /**
@@ -594,6 +595,21 @@ const unavailableMetric = (): ScreenMetric => ({
   state: "unavailable", scope: "reported", reason: "Not provided by this server", sourceUrl: null,
   percentile: { value: null, sampleCount: 0, scope: "covered-universe" },
 });
+/**
+ * The fields the field and metric pickers offer. ATTN's two (ATTN HRS,
+ * ATTN Z) stay out until ATTN is listed again (attention/listing.ts), but for
+ * one the screen already uses, so a saved screen still shows it.
+ */
+export function pickerFields<Field extends { id: string }>(
+  fields: readonly Field[],
+  inUse: readonly string[] = [],
+  listed: boolean = ATTENTION_LISTED,
+): Field[] {
+  if (listed) return [...fields];
+  const unlisted = new Set<string>(ATTENTION_FIELDS);
+  return fields.filter((field) => !unlisted.has(field.id) || inUse.includes(field.id));
+}
+
 /** Company KPIs, guidance, hiring and app attention: the server leaves them out of a screen for a caller without Gloom Pro. */
 const PRO_FIELDS: ReadonlySet<string> = new Set([...KPI_FIELDS, ...HIRING_APP_FIELDS]);
 const withheldMetric = (): ScreenMetric => ({ ...unavailableMetric(), reason: "Needs Gloom Pro", access: "pro" });

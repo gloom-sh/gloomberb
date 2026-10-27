@@ -110,7 +110,8 @@ export function createRemoteResources({
       }));
     }
     if (resource === "app://pane-templates") {
-      return [...pluginRegistry.paneTemplates.values()].map((template) => ({
+      // An unlisted function (`listed: false`) is left out, as of every list.
+      return [...pluginRegistry.paneTemplates.values()].filter((template) => template.listed !== false).map((template) => ({
         id: template.id,
         paneId: template.paneId,
         label: template.label,

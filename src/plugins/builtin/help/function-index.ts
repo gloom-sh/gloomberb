@@ -24,6 +24,8 @@ export interface HelpFunction {
   argPlaceholder?: string;
   argOptional?: boolean;
   help: FunctionHelp | null;
+  /** Left out of `HELP <words>` matches, as of every list (`listed: false`); `HELP` with its code still answers. */
+  unlisted?: true;
 }
 
 export interface HelpFunctionSources {
@@ -97,6 +99,7 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
       argPlaceholder: template.shortcut?.argPlaceholder
         ?? (template.shortcut?.argKind === "ticker-list" ? "tickers" : template.shortcut?.argKind),
       argOptional: template.shortcut?.argOptional,
+      ...(template.listed === false ? { unlisted: true as const } : {}),
     }));
   }
 
@@ -165,7 +168,7 @@ export function parseHelpArgument(arg: string, index: HelpFunctionIndex): HelpRe
 
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matches = listHelpFunctions(index)
-    .filter((fn) => fn.code !== HELP_CODE)
+    .filter((fn) => fn.code !== HELP_CODE && !fn.unlisted)
     .map((fn) => ({ fn, score: searchScore(fn, terms) }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.fn.code.localeCompare(right.fn.code))

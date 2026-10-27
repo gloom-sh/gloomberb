@@ -18,7 +18,7 @@ export function resolveWindowTemplates(registry: SharedRegistry): HelpShortcutEn
   const allPlugins = registry.allPlugins ?? new Map<string, { name?: string }>();
 
   return [...registry.paneTemplates.values()]
-    .filter((template) => template.shortcut)
+    .filter((template) => template.shortcut && template.listed !== false)
     .filter((template) => {
       const pluginId = registry.getPaneTemplatePluginId?.(template.id);
       return !pluginId || !disabledPlugins.has(pluginId);

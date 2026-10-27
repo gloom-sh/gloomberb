@@ -71,6 +71,7 @@ import {
   formatScreenValue,
   metricDate,
   parseScreenDefinition,
+  pickerFields,
   resultFields,
   SIGN_COLORED,
   screenColumnLabel,
@@ -367,8 +368,10 @@ function EquityScreenView({
     !opened && !results.loading && !results.loadingMore && !!data?.nextCursor,
     results.loadMore,
   );
-  const metricFields =
-    fields.data?.fields.filter((field) => field.kind === "number") ?? [];
+  const metricFields = pickerFields(
+    fields.data?.fields.filter((field) => field.kind === "number") ?? [],
+    [metric],
+  );
   // AS OF earns its column only when some row's focus metric is stale; the
   // snapshot decides, so a live quote freshening a row does not reflow the table.
   const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
@@ -794,7 +797,7 @@ function EquityScreenView({
               editing !== null ? (
                 <CriterionEditor
                   key={editing}
-                  fields={fields.data.fields}
+                  fields={pickerFields(fields.data.fields, editingCriterion ? [editingCriterion.field] : [])}
                   value={editingCriterion ?? null}
                   focused={focused}
                   width={width}

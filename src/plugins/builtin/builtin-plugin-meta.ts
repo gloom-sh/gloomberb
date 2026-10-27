@@ -1,10 +1,13 @@
 // Identity of the built-in composite plugins, shared by the native catalog and
 // the browser catalog (catalog-browser.ts). Keep this file import-free so the
-// browser catalog can read it without pulling in native-only modules.
+// browser catalog can read it without pulling in native-only modules; the
+// one import, ATTN's listing flag, has none of its own.
 //
 // Screeners & Movers and Ownership & Insiders ship fewer panes on
 // the web, so each catalog gives them their own description rather than
 // advertising panes they lack.
+
+import { ATTENTION_LISTED } from "./attention/listing";
 
 export const applicationPluginMeta = {
   id: "application",
@@ -116,7 +119,8 @@ export const altDataPluginMeta = {
   stateId: "ticker-research",
   name: "Supply Chain & Alt Data",
   version: "1.0.0",
-  description: "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, research attention, GPU prices, and power queues.",
+  // Research attention joins once ATTN is listed again (attention/listing.ts).
+  description: `Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, ${ATTENTION_LISTED ? "research attention, " : ""}GPU prices, and power queues.`,
   toggleable: true,
 };
 

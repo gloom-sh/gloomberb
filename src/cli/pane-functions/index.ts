@@ -514,7 +514,8 @@ export async function runPaneFunctionHelp(command: string, args: string[], ctx: 
         const found = findPaneFunction(registry, target);
         if (!found?.pane) return undefined;
         const { template, pane } = found;
-        const entries = await buildPaneCatalogEntries(registry, context);
+        // A function typed by its code is helped even while it is unlisted.
+        const entries = await buildPaneCatalogEntries(registry, context, { unlisted: true });
         // A pane named directly, where functions open it, is helped by the first of them.
         return (template ? entries.find((candidate) => candidate.templateId === template.id) : undefined)
           ?? entries.find((candidate) => candidate.paneId === pane.id);

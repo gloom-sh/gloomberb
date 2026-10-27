@@ -142,6 +142,8 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
     const pane = registry.panes.get(template.paneId);
     if (!pane) continue;
     templatedPaneIds.add(pane.id);
+    // An unlisted function (`listed: false`) is no tool, and its pane none in its place.
+    if (template.listed === false) continue;
     const definition = definitionFor(template, pane);
     if (!definition) continue;
     const token = template.shortcut?.prefix ?? template.id;

@@ -529,6 +529,14 @@ export interface PaneTemplateDef {
   description: string;
   keywords?: string[];
   shortcut?: PaneTemplateShortcut;
+  /**
+   * False leaves the function out of every list and search of functions
+   * (command-bar browse, search and assistant, Help, `gloom catalog` and
+   * search, the plugin directory, chat suggestions) while typing its code
+   * still opens it, `fn` and `shot` still run it and its help still answers.
+   * ATTN until it publishes (attention/listing.ts).
+   */
+  listed?: boolean;
   /** Template-specific headless model. Takes precedence over the pane-level model. */
   headless?: HeadlessPaneDefinition;
   /**

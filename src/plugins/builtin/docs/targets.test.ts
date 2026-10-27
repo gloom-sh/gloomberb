@@ -53,6 +53,8 @@ test("every built-in pane and function opens an entry in the docs the app ships"
     if (!topic || !docsTopicExists(shipped, topic)) uncovered.push(`pane ${pane.id} -> ${topic ? docsTopicKey(topic) : "nothing"}`);
   }
   for (const fn of listHelpFunctions(index)) {
+    // An unlisted function (ATTN until it publishes) has no entry: DOCS ATTN says so and offers a search.
+    if (fn.unlisted) continue;
     const topic = docsTopicForFunction(fn);
     if (!docsTopicExists(shipped, topic)) uncovered.push(`function ${fn.code} -> ${docsTopicKey(topic)}`);
   }
