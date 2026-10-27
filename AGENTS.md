@@ -10,7 +10,8 @@ Use tmux to test terminal TUI changes (see the `tui-testing` skill). Always kill
 
 Shared machine: several agents often work on one host at the same time.
 - Run at most one typecheck or full `bun test` at a time. Each full run takes 1-3 GB, and parallel runs get OOM-killed.
-- Never run bare `gloomberb`, `bun start` or `bun dev` from a non-interactive shell: the TUI never exits without a TTY, so the call hangs. Use a subcommand or `--help`, prefix risky commands with `timeout 60`, and run interactive checks only in tmux.
+- Bound test and other risky commands with `timeout -k 10 <seconds> ...`. A hung `bun` ignores the plain SIGTERM from `timeout` and keeps its memory for hours. Before you finish, check that nothing of yours is still running: `pwdx $(pgrep -f 'bun test') 2>/dev/null | grep -F "$PWD"`.
+- Never run bare `gloomberb`, `bun start` or `bun dev` from a non-interactive shell: the TUI never exits without a TTY, so the call hangs. Use a subcommand or `--help`, prefix risky commands with `timeout -k 10 60`, and run interactive checks only in tmux.
 - Throwaway profiles (`GLOOMBERB_HOME`) go on disk under `~/.cache/gloom-smoke/<task>`, never under `/tmp` (one profile is ~29k files and `/tmp` is a small tmpfs). Remove the profile and kill tmux when done.
 - Never message, stop, archive or kill other agents or their processes, and never ask them to wait. If the host is busy, retry later or report it.
 - Never use `git stash`: all worktrees of a repo share one stash list, so a pop or clear can take another agent's entries. Commit work in progress to your own branch instead.
