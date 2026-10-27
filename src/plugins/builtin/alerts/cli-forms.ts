@@ -165,7 +165,10 @@ function perpsRule(words: readonly string[]): RuleAddRequest {
   if (!metric || (direction !== "above" && direction !== "below") || !NUMBER.test(threshold) || extra.length > 0) {
     throw new Error(`A perpetual alert takes its market, a figure, above or below and a level in percent: ${PERPS_USAGE}.`);
   }
-  return { kind: "rule", event: "perps_threshold", symbol: null, listing: "any", values: { marketId: market.toLowerCase(), metric, direction, threshold } };
+  // Market ids are case-sensitive past the venue (hyperliquid:default:kPEPE), as the form keeps them; the venue is lower case.
+  const [venue = "", ...names] = market.split(":");
+  const marketId = [venue.toLowerCase(), ...names].join(":");
+  return { kind: "rule", event: "perps_threshold", symbol: null, listing: "any", values: { marketId, metric, direction, threshold } };
 }
 
 /** `catalyst`, `catalyst type clinical`, `catalyst agency FDA`, `catalyst country US`: the catalysts followed with no company. */

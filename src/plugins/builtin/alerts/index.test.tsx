@@ -7,6 +7,7 @@ import type { PluginRuntimeAccess } from "../../runtime";
 import { createConfigBackedTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { deserializeAlerts, serializeAlerts } from "./alert-engine";
 import { EVENT_ALERTS_KEY, type EventAlertRule } from "./events";
+import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
 import { alertsPlugin } from "./index";
 import { AlertsPane } from "./pane";
@@ -276,6 +277,29 @@ describe("AlertsPane", () => {
     });
 
     expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl"]);
+  });
+
+  test("re-arming goes in the alert log once, and m on an alert that is already active writes nothing", async () => {
+    const runtime = makeRuntime();
+    await tui.render(<AlertsHarness alerts={[makeAlert("alert-msft", "MSFT", "below", 300, "triggered")]} runtime={runtime} />, { width: 110, height: 12 });
+    await renderSettled();
+    const pressM = async () => {
+      await act(async () => {
+        await tui.setup().mockInput.typeText("m");
+        await tui.setup().renderOnce();
+      });
+      await renderSettled();
+    };
+    // Twice before the pane has drawn the first: the second press still sees the alert as it was.
+    await act(async () => {
+      await tui.setup().mockInput.typeText("m");
+      await tui.setup().mockInput.typeText("m");
+    });
+    await renderSettled();
+    expect(storedAlerts()[0]?.status).toBe("active");
+    await pressM();
+    const log = readFiredAlerts(runtime.getResumeState("alerts", FIRED_LOG_KEY));
+    expect(log.map((entry) => [entry.action, entry.ruleId])).toEqual([["rearmed", "alert-msft"]]);
   });
 
   test("an open detail stays on its alert when re-arming moves it, and goes back to the list when it is deleted", async () => {

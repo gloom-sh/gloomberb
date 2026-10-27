@@ -249,13 +249,19 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [alerts, dialog, notify, rows.length, savePaneAlerts, setAlertLog]);
 
   const rearmAlert = useCallback((id: string) => {
-    const error = savePaneAlerts(id,
-      (current) => current.map((a) => (a.id === id ? rebuildAlert(a) : a)),
-    );
-    if (error) notify({ body: error, type: "error" });
-    const alert = alerts.find((a) => a.id === id);
-    if (!error && alert) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", alert));
-  }, [alerts, notify, savePaneAlerts, setAlertLog]);
+    // Only an alert that went off is re-armed, as the store reads at the write: one still waiting is left, and not logged.
+    const rearmed: AlertRule[] = [];
+    const error = savePaneAlerts(id, (current) => current.map((a) => {
+      if (a.id !== id || a.status !== "triggered") return a;
+      rearmed.push(a);
+      return rebuildAlert(a);
+    }));
+    if (error) {
+      notify({ body: error, type: "error" });
+      return;
+    }
+    for (const alert of rearmed) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", alert));
+  }, [notify, savePaneAlerts, setAlertLog]);
 
   const startAddAlert = useCallback(() => {
     openPluginCommandWorkflow("set-alert");

@@ -10,8 +10,14 @@ import { ALERTS_PLUGIN_ID } from "./constants";
  * app or `gloom alerts` (`action`).
  */
 export const FIRED_LOG_KEY = "firedLog";
-/** The newest entries kept; older ones fall off as new ones are added. */
+/** The newest fired alerts kept; older ones fall off as new ones are added. */
 export const MAX_FIRED_ALERTS = 1000;
+/**
+ * The newest rule changes (created, re-armed, deleted) kept, apart from the
+ * fired alerts: a change never counts against them, so no number of changes
+ * pushes an alert that went off out of the log.
+ */
+export const MAX_ALERT_CHANGES = 200;
 
 export interface FiredAlert {
   id: string;
@@ -88,19 +94,39 @@ function firedAlertEntry(input: FiredAlertInput, id: string = crypto.randomUUID(
   return { id, firedAt: firedAlertTime(firedAt) ?? new Date().toISOString(), ...rest };
 }
 
-/** `entries` with one more at the end, the oldest dropped past the cap. */
-export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert[] {
-  return [...entries, firedAlertEntry(input, id)].slice(-MAX_FIRED_ALERTS);
+/**
+ * The log within its caps, oldest first: the newest MAX_FIRED_ALERTS fired
+ * alerts and, counted apart, the newest MAX_ALERT_CHANGES rule changes. Each
+ * kind of entry only ever drops its own oldest.
+ */
+function capAlertLog(entries: readonly FiredAlert[]): FiredAlert[] {
+  let changes = entries.reduce((count, entry) => count + (entry.action ? 1 : 0), 0);
+  let fired = entries.length - changes;
+  changes -= MAX_ALERT_CHANGES;
+  fired -= MAX_FIRED_ALERTS;
+  if (changes <= 0 && fired <= 0) return [...entries];
+  return entries.filter((entry) => {
+    if (entry.action ? changes <= 0 : fired <= 0) return true;
+    if (entry.action) changes -= 1;
+    else fired -= 1;
+    return false;
+  });
 }
 
-/** `entries` keeping only the newest `max` of each kind in `kinds`; other kinds are untouched. */
+/** `entries` with one more at the end, the oldest of its kind (fired alert or rule change) dropped past its cap. */
+export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert[] {
+  return capAlertLog([...entries, firedAlertEntry(input, id)]);
+}
+
+/** `entries` keeping only the newest `max` fired alerts of each kind in `kinds`; other kinds and rule changes are untouched. */
 function capFiredAlertKinds(entries: readonly FiredAlert[], kinds: ReadonlySet<string>, max: number): FiredAlert[] {
+  const counted = (entry: FiredAlert) => !entry.action && kinds.has(entry.kind);
   const over = new Map<string, number>();
-  for (const entry of entries) if (kinds.has(entry.kind)) over.set(entry.kind, (over.get(entry.kind) ?? 0) + 1);
+  for (const entry of entries) if (counted(entry)) over.set(entry.kind, (over.get(entry.kind) ?? 0) + 1);
   for (const [kind, count] of over) over.set(kind, count - max);
   // Oldest first: the first entries of a kind over its cap are the ones to drop.
   return entries.filter((entry) => {
-    const extra = over.get(entry.kind) ?? 0;
+    const extra = counted(entry) ? over.get(entry.kind) ?? 0 : 0;
     if (extra <= 0) return true;
     over.set(entry.kind, extra - 1);
     return false;
@@ -124,7 +150,7 @@ export function recordFiredAlertFor(
     let entries = [...readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY)), ...inputs.map((input) => firedAlertEntry(input))];
     // The source's own oldest entries go first, before the log's cap reaches anyone else's.
     if (keepAtMost != null) entries = capFiredAlertKinds(entries, new Set(inputs.map((input) => input.kind)), keepAtMost);
-    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, entries.slice(-MAX_FIRED_ALERTS));
+    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, capAlertLog(entries));
   } catch (error) {
     onError(error);
   }

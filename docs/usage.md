@@ -833,7 +833,7 @@ gloom alerts add TSLA insider sell         # insider alone: buys or sells
 gloom alerts add GME short interest increase 20%
 gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
 gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
-gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium
+gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium; the market id keeps its case (kPEPE)
 gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
 gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
 gloom alerts add 13f 1067983               # a fund by its SEC CIK
@@ -870,8 +870,8 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Levels**, Enter opens an alert in full: its state, the listing it is checked on with its currency, the price and how far it is from the level, when its quote was checked, and when it was created (ISO, UTC). An alert that could not get a quote shows that in red on its row, and its detail says why. An alert no check has read yet says `not checked yet`. A pane wide enough for every column adds **Since**, the day each alert was made, as **Events** lists its rules. `m` re-arms an alert that went off.
 - `gloom alerts add` saves an alert with the price it read, so **Levels** and `alerts list` show it before the app has run. Adding the same rule on the same listing again names the existing alert and adds nothing; `gloom alerts rearm` on an alert that has not gone off says it is already active.
-- `gloom alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`), and when it was created, in ISO 8601 UTC. `--csv` keeps the columns it has always had in their order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. `gloom fn ALRT --csv` adds `createdAt`, `listing` and `currency` after its own.
-- Creating, re-arming and deleting an alert, from the app or `gloom alerts`, goes in this device's alert log beside the alerts that fired: **History** and `gloom fn ALRT --tab history` list each with `Created`, `Re-armed` or `Deleted`.
+- `gloom alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`), and when it was created, in ISO 8601 UTC to the second (`2026-10-27T09:41:27Z`, as the pane's detail and `fn ALRT --csv` write it). `--csv` keeps the columns it has always had in their order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. `gloom fn ALRT --csv` adds `Created`, `Listing` and `Currency` after its own.
+- Creating, re-arming and deleting an alert, from the app or `gloom alerts`, goes in this device's alert log beside the alerts that fired: **History** and `gloom fn ALRT --tab history` list each with `Created`, `Re-armed` or `Deleted`. Re-arming an alert that is already active changes nothing and logs nothing. The log keeps the last 200 of these changes apart from the last 1,000 fired alerts, so changes never push a fired alert out.
 
 ### Valuation and daily technical alerts
 

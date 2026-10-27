@@ -63,13 +63,14 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "lastCheckedAt", header: "Checked", format: instant },
   { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
   // After the columns exports have always had: when the rule was made, and the currency of its listing.
-  { key: "createdAt", header: "Created", format: instant },
+  // To the second, as `alerts list` and the pane's detail write it: exports draw a stored millisecond time to the millisecond.
+  { key: "created", header: "Created" },
   { key: "listing", header: "Listing" },
   { key: "currency", header: "Currency" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
 const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
-  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "createdAt", "listing", "currency"].includes(column.key)),
+  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "created", "listing", "currency"].includes(column.key)),
   // The day it was made, as the Events table lists its rules.
   { key: "createdAt", header: "Since", textFormat: (value) => (typeof value === "number" ? isoUtc(value).slice(0, 10) : "") },
 ];
@@ -115,6 +116,7 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
     quoteSource: quoted ? alert.metric && isDailyMetric(alert.metric) ? "daily close" : quoteSourceWords(alert.lastQuoteSource) : null,
+    created: isoUtc(alert.createdAt) || null,
     listing: alertListing(alert),
     currency: alert.lastQuoteCurrency ?? null,
   };

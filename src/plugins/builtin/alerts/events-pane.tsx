@@ -127,8 +127,16 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     (rule: EventAlertRule | undefined) => {
       if (!rule) return;
       const ivLevel = rule.kind === "iv_level";
-      updateRules(rule, (rules) => rules.map((entry) => (entry.id === rule.id ? ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry) : entry)));
-      setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", rule));
+      const now = Date.now();
+      // Only a rule that went off is re-armed, as the list reads at the write: one still waiting is left, and not logged.
+      const rearmed: EventAlertRule[] = [];
+      updateRules(rule, (rules) => rules.map((entry) => {
+        if (entry.id !== rule.id || ruleState(entry, now) !== "Alerted") return entry;
+        rearmed.push(entry);
+        return ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry);
+      }));
+      if (!rearmed.length) return;
+      for (const entry of rearmed) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", entry));
       // Once the write has landed, so it alerts now rather than at the next 15-minute check.
       setTimeout(ivLevel ? checkIvLevelAlertsNow : checkScheduledEventAlertsNow, 1_000);
     },

@@ -388,7 +388,10 @@ test("alerts add takes every kind Add Event Alert offers, by the words a desk ty
   expect(rule("AAPL analyst downgrade")).toMatchObject({ event: "analyst_change", values: { direction: "downgrade" } });
   expect(rule("ADYEN:AMS hiring slowing")).toMatchObject({ event: "hiring_move", listing: "any", values: { direction: "slowing" } });
   expect(rule("perps hyperliquid:default:BTC funding above 0.05%")).toMatchObject({
-    event: "perps_threshold", symbol: null, values: { marketId: "hyperliquid:default:btc", metric: "funding8h", direction: "above", threshold: "0.05" } });
+    event: "perps_threshold", symbol: null, values: { marketId: "hyperliquid:default:BTC", metric: "funding8h", direction: "above", threshold: "0.05" } });
+  // A market id keeps its case past the venue, as Add Event Alert saves it; only the venue is lowered.
+  expect(rule("perps Hyperliquid:default:kPEPE oi below -10%")).toMatchObject({ values: { marketId: "hyperliquid:default:kPEPE", metric: "oiChange24h" } });
+  expect(rule("perps hyperliquid:xyz:TSLA closed premium above 1%")).toMatchObject({ values: { marketId: "hyperliquid:xyz:TSLA", metric: "closedMarketPremium" } });
   expect(rule("PFE catalyst")).toMatchObject({ event: "catalyst-ticker", symbol: "PFE" });
   expect(rule("catalyst type clinical")).toMatchObject({ event: "catalyst-type", symbol: null, values: { value: "clinical" } });
   expect(rule("congress")).toMatchObject({ event: "congress-watched" });

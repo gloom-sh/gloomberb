@@ -71,7 +71,7 @@ test("a saved event list that does not read is reported, not shown as no alerts"
 test("Prices exports the quote's own time and feed apart from the check time, and Away in percent; the text table is the pane's", async () => {
   const quotedAt = Date.UTC(2026, 9, 22, 20, 14);
   const checkedAt = Date.UTC(2026, 9, 22, 20, 31);
-  const alert = { ...createAlert("IBIT", "above", 50), lastCheckedPrice: 46.06, lastCheckedAt: checkedAt, lastQuoteUpdatedAt: quotedAt, lastQuoteSource: "delayed" };
+  const alert = { ...createAlert("IBIT", "above", 50), createdAt: Date.UTC(2026, 9, 20, 9, 30, 5, 678), lastCheckedPrice: 46.06, lastCheckedAt: checkedAt, lastQuoteUpdatedAt: quotedAt, lastQuoteSource: "delayed" };
   const args = createTestHeadlessArgs({ options: { tab: "prices" } });
   const result = await alertsHeadless.load(args, contextWith([alert], []));
   const table = headlessReportTables(alertsHeadless, result, args, "ALRT", deriveHeadlessFreshness(alertsHeadless, result), { complete: true, unavailableSymbols: [] }).tables[0]!;
@@ -79,6 +79,8 @@ test("Prices exports the quote's own time and feed apart from the check time, an
   expect(Date.parse(String(cell("Quote")))).toBe(quotedAt);
   expect(cell("Quote source")).toBe("delayed");
   expect(Date.parse(String(cell("Checked")))).toBe(checkedAt);
+  // When it was made reads to the second, as alerts list and the pane's detail write it, not to the stored millisecond.
+  expect(cell("Created")).toBe("2026-10-20T09:30:05Z");
   expect(table.columns.find((column) => column.startsWith("Away"))).toMatch(/%/);
   expect(Number(cell(table.columns.find((column) => column.startsWith("Away"))!))).toBeCloseTo(8.55, 1);
   // The terminal keeps the pane's columns: no source or check-time column of its own.
