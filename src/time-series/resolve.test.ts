@@ -1272,6 +1272,37 @@ describe("resolveChartSpecData", () => {
     });
   });
 
+  test("a panned view whose bars ahead reach the present loads its history once across live passes", async () => {
+    // Each live quote resolves again with a later clock. Naming the window by
+    // the clock fetched and kept another full copy of the history every pass.
+    const requests: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "15m", maxRange: "1M" }, { resolution: "1d", maxRange: "5Y" }],
+      getDetailedPriceHistory: async (_symbol, _exchange, start, end) => {
+        requests.push(`${start.toISOString()}/${end.toISOString()}`);
+        return [{ date: new Date("2026-10-26T15:00:00.000Z"), close: 100 }];
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range: "3M", resolution: "auto" },
+      series: [chartSeries({ source: { kind: "security", instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" } })],
+    });
+    const now = Date.parse("2026-10-27T15:30:00.000Z");
+    // Two hours short of the present: well inside half a four-day view.
+    const view = { start: new Date(now - 4 * 86_400_000), end: new Date(now - 2 * 3_600_000) };
+    const cache = new ChartResolveCache();
+    for (let pass = 0; pass < 4; pass += 1) {
+      const result = await resolveChartSpecData(spec, {
+        dataProvider: provider, now: new Date(now + pass * 700), loadFredSeries: async () => fredLoad(),
+      }, cache, { requestViewport: view, autoViewport: view, targetPointCount: 200 });
+      expect(result.errors).toEqual([]);
+    }
+
+    expect(requests).toEqual(["2026-09-27T15:30:00.000Z/2026-10-27T15:30:00.001Z"]);
+    expect(cache.priceHistoryByRequest.size).toBe(1);
+  });
+
   test("asks for the older part of a panned window a capped source answered short, and stops where the source has nothing older", async () => {
     // Thirty-minute bars on weekdays from FIRST; one answer holds the newest 1,000 of a window.
     const FIRST = Date.parse("2025-03-03T14:30:00.000Z");

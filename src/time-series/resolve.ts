@@ -557,6 +557,12 @@ async function resolveChartSpecPass(
     const sourceResolution = dailyValuation ? "1d" : initialResolution;
     const maxRange = getSupportMaxRange(support, sourceResolution);
     const ahead = movedWindow ? barsAhead(requestVisibleBounds, maxRange, referenceNow.getTime()) : 0;
+    // Bars ahead that reach the present end wherever the clock is on this pass.
+    // Such a window is named by its start and the present, so every pass shares
+    // one acquisition and the stale-copy refresh below keeps it current. Named
+    // by the clock, each live pass fetched and kept another copy of the history.
+    const toPresent = ahead > 0 && requestVisibleBounds.end !== null
+      && requestVisibleBounds.end + ahead >= referenceNow.getTime();
     const durationEnd = rangeDurationBounds(spec, initialCalculationBounds).end;
     const historyBounds = clampHistoryBoundsToSupport(
       ahead > 0 && initialCalculationBounds.end !== null
@@ -590,7 +596,9 @@ async function resolveChartSpecPass(
       request.allowProviderDefaultFallback ? "auto" : "manual",
       isMarketFieldId(source.fieldId) ? source.period ?? "auto" : "auto",
       ...(request.explicitWindow
-        ? [request.bounds.start ?? "open", request.bounds.end ?? "open"]
+        ? toPresent
+          ? [initialCalculationBounds.start ?? "open", "present"]
+          : [request.bounds.start ?? "open", request.bounds.end ?? "open"]
         : []),
       // A moved view can chart retained bars that the same authored dates cannot.
       ...(request.explicitWindow && !request.authoredWindow && !request.allowProviderDefaultFallback ? ["moved"] : []),
