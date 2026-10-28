@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
@@ -70,7 +70,9 @@ async function install(installer: string, dir: string): Promise<void> {
  * columns), plus a floating watchlist and a research pane popped out to its
  * own window.
  */
-function seedLayout() {
+interface Frame { x: number; y: number; width: number; height: number }
+
+function seedLayout(detached: Frame) {
   const layout = {
     dockRoot: {
       kind: "split", axis: "horizontal", ratio: 0.34,
@@ -103,16 +105,22 @@ function seedLayout() {
       },
     ],
     floating: [{ instanceId: "portfolio-list:watchlist", x: 30, y: 8, width: 60, height: 16, zIndex: 60 }],
-    detached: [{ instanceId: "ticker-research:qqq", x: 900, y: 120, width: 620, height: 460 }],
+    detached: [{ instanceId: "ticker-research:qqq", ...detached }],
   };
   return layout;
 }
 
-async function seedProfile(profile: string): Promise<void> {
+/**
+ * A fresh profile whose main window and popped-out window open where the
+ * steps start from: placing them afterwards would resize them, which is
+ * itself something under test.
+ */
+async function seedProfile(profile: string, frames: { main: Frame; detached: Frame }): Promise<void> {
   await rm(profile, { recursive: true, force: true });
   const dataDir = join(profile, "data");
   await mkdir(dataDir, { recursive: true });
-  const layout = seedLayout();
+  const layout = seedLayout(frames.detached);
+  await writeFile(join(profile, "desktop-window.json"), JSON.stringify({ frame: frames.main, maximized: false, fullscreen: false }));
   await writeFile(join(profile, "config.json"), JSON.stringify({ dataDir }, null, 2));
   await writeFile(join(dataDir, "config.json"), JSON.stringify({
     dataDir,
@@ -182,6 +190,15 @@ const PAGE_HELPER = String.raw`(() => {
       const y = h.top + h.height / 2;
       for (let x = h.right - 150; x > h.left + 20; x -= 6) if (bare(header, x, y)) return { x, y };
       return null;
+    },
+    /** What a press at this point lands on, for the report. */
+    whatIsAt(x, y) {
+      const hit = document.elementFromPoint(x, y);
+      if (!hit) return "nothing";
+      const named = hit.closest("[aria-label], [data-gloom-role]");
+      if (!named) return hit.tagName.toLowerCase();
+      const label = named.getAttribute("aria-label");
+      return (named.getAttribute("data-gloom-role") || named.tagName.toLowerCase()) + (label ? ' "' + label + '"' : "");
     },
     /** A bare point on a pane's header bar, or its title. */
     paneHeaderPoint(id) {
@@ -275,9 +292,16 @@ class Shots {
       right: Math.min(screen.right, rect.right), bottom: Math.min(screen.bottom, rect.bottom),
     };
     if (clipped.right - clipped.left < 2 || clipped.bottom - clipped.top < 2) return null;
+    let bitmap: Bitmap;
+    try {
+      bitmap = win.captureScreen(clipped);
+    } catch (error) {
+      console.error(`Could not picture ${label}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
     this.count += 1;
     const name = `${String(this.count).padStart(3, "0")}-${label.replace(/[^a-z0-9-]+/gi, "-").toLowerCase()}.png`;
-    this.pending.push({ path: join(this.dir, name), bitmap: win.captureScreen(clipped) });
+    this.pending.push({ path: join(this.dir, name), bitmap });
     return name;
   }
 
@@ -356,6 +380,10 @@ class Run {
   knownWindows = new Set<number>();
   baseRect!: Rect;
   detachedRect!: Rect;
+  profile = "";
+  launches = 0;
+  /** Page errors from apps this run already closed. */
+  pastErrors: string[] = [];
 
   constructor(readonly app: string, readonly out: string, readonly only: string | undefined) {
     this.shots = new Shots(join(out, "shots"));
@@ -402,8 +430,8 @@ class Run {
         DO_NOT_TRACK: "1",
         GLOOMBERB_NO_TELEMETRY: "1",
       },
-      stdout: Bun.file(join(this.out, "app-stdout.log")),
-      stderr: Bun.file(join(this.out, "app-stderr.log")),
+      stdout: Bun.file(join(this.out, `app-stdout-${this.launches}.log`)),
+      stderr: Bun.file(join(this.out, `app-stderr-${this.launches}.log`)),
     });
     // The main window's page lays out its panes; the popped-out window follows.
     const deadline = Date.now() + 120_000;
@@ -434,9 +462,16 @@ class Run {
     }
     const mainInfo = windows.find((info) => info.title === "Gloom") ?? windows[0]!;
     const detachedInfo = windows.find((info) => info.hwnd !== mainInfo.hwnd) ?? null;
-    this.main = { hwnd: mainInfo.hwnd, title: mainInfo.title, page: mainPage, scale: await this.scaleOf(mainInfo.hwnd, mainPage) };
+    // Steps hold these objects, so a relaunch updates them in place.
+    const main: AppWindow = { hwnd: mainInfo.hwnd, title: mainInfo.title, page: mainPage, scale: await this.scaleOf(mainInfo.hwnd, mainPage) };
+    if (this.main) Object.assign(this.main, main);
+    else this.main = main;
     if (detachedInfo && detachedPage) {
-      this.detached = { hwnd: detachedInfo.hwnd, title: detachedInfo.title, page: detachedPage, scale: await this.scaleOf(detachedInfo.hwnd, detachedPage) };
+      const detached: AppWindow = { hwnd: detachedInfo.hwnd, title: detachedInfo.title, page: detachedPage, scale: await this.scaleOf(detachedInfo.hwnd, detachedPage) };
+      if (this.detached) Object.assign(this.detached, detached);
+      else this.detached = detached;
+    } else if (this.detached) {
+      this.detached.hwnd = 0;
     }
     for (const page of pages.values()) if (page !== mainPage && page !== detachedPage) page.cdp.close();
     // Let the panes load what they show.
@@ -480,16 +515,63 @@ class Run {
     }
   }
 
-  /** Puts a window back where a step starts from, without input. */
-  async reset(window: AppWindow, rect: Rect): Promise<void> {
-    if (!win.isWindow(window.hwnd)) throw new Error(`the ${window.title} window is gone`);
+  /**
+   * The frames to seed, in the app's own pixels: the release draws unaware
+   * of the display scale, so Windows multiplies what it asks for.
+   */
+  seedFrames(): { main: Frame; detached: Frame } {
+    const scale = win.primaryMonitor().dpi / 96;
+    const frame = (rect: Rect): Frame => ({
+      x: Math.round(rect.left / scale), y: Math.round(rect.top / scale),
+      width: Math.round(win.rectWidth(rect) / scale), height: Math.round(win.rectHeight(rect) / scale),
+    });
+    return { main: frame(this.baseRect), detached: frame(this.detachedRect) };
+  }
+
+  /** Closes whatever is running and starts the app on a fresh profile. */
+  async start(reason: string | null): Promise<void> {
+    await this.close();
+    this.launches += 1;
+    this.profile = join(this.out, "..", `profile-${basename(this.out)}-${this.launches}`);
+    await seedProfile(this.profile, this.seedFrames());
+    await this.launch(this.profile);
+    await this.place(this.main, this.baseRect);
+    if (this.detached?.hwnd) await this.place(this.detached, this.detachedRect);
+    if (reason) {
+      console.log(`Started the app again: ${reason}`);
+      this.record({ id: "relaunch", title: "The app was started again", status: "info", detail: reason, shots: [], ms: 0 });
+    }
+  }
+
+  /** Puts a window where a step starts from, without input, if it is not there. */
+  async place(window: AppWindow, rect: Rect): Promise<void> {
     if (win.isMaximized(window.hwnd) || win.isMinimized(window.hwnd)) {
       win.showWindow(window.hwnd, "restore");
+      await sleep(500);
+    }
+    const now = win.windowRect(window.hwnd);
+    const off = (["left", "top", "right", "bottom"] as const).some((side) => !near(now[side], rect[side], 3));
+    if (off) {
+      win.placeWindow(window.hwnd, rect);
       await sleep(400);
     }
-    win.placeWindow(window.hwnd, rect);
+  }
+
+  /** Starts the app again when a step closed it or took its popped-out window. */
+  async ensure(window: AppWindow): Promise<void> {
+    const mainGone = !win.isWindow(this.main.hwnd);
+    const windowGone = !win.isWindow(window.hwnd);
+    if (!mainGone && !windowGone) return;
+    await this.start(mainGone ? "the main window had closed" : `the ${window.title} window had gone`);
+    if (!win.isWindow(window.hwnd)) throw new Error(`the ${window.title} window did not come back`);
+  }
+
+  /** Puts a window back where a step starts from and brings it to the front. */
+  async reset(window: AppWindow, rect: Rect): Promise<void> {
+    await this.ensure(window);
+    await this.place(window, rect);
     await this.focus(window);
-    await sleep(500);
+    await sleep(400);
   }
 
   /**
@@ -533,21 +615,22 @@ class Run {
       if (desktop) shots.push(desktop);
       const lines = [];
       for (const window of [this.main, this.detached]) {
-        if (!window) continue;
+        if (!window?.hwnd || !win.isWindow(window.hwnd)) continue;
         const dpi = win.windowDpi(window.hwnd);
         const style = win.windowStyle(window.hwnd);
         lines.push(`${window.title}: ${fmt(win.windowRect(window.hwnd))}, ${dpi.awareness} at ${dpi.dpi} dpi, ${window.scale.toFixed(2)} px per CSS px, style ${style.flags.join(" ") || style.value}`);
       }
       const monitor = win.primaryMonitor();
       lines.push(`monitor ${fmt(monitor.monitor)}, work area ${fmt(monitor.work)}, ${monitor.dpi} dpi`);
-      return { status: this.detached ? "info" : "fail", detail: (this.detached ? "" : "no popped-out window; ") + lines.join("; ") };
+      const popped = !!this.detached?.hwnd && win.isWindow(this.detached.hwnd);
+      return { status: popped ? "info" : "fail", detail: (popped ? "" : "no popped-out window; ") + lines.join("; ") };
     });
 
     await this.step("dpi-awareness", "The windows draw at the display's scale", async () => {
       const lines: string[] = [];
       let blurry = false;
       for (const window of [this.main, this.detached]) {
-        if (!window) continue;
+        if (!window?.hwnd || !win.isWindow(window.hwnd)) continue;
         const dpi = win.windowDpi(window.hwnd);
         const monitorDpi = win.monitorOf(window.hwnd).dpi;
         if (dpi.awareness === "unaware" && monitorDpi > 96) blurry = true;
@@ -592,7 +675,13 @@ class Run {
       await sleep(150);
       const cursor = win.cursorShape();
       const hit = win.hitTest(point);
-      const probe = { point, cursor, hit: `${hit.code} on ${hit.window?.className ?? "nothing"}${hit.root === window.hwnd ? "" : " (another window)"}` };
+      let what = "";
+      if (hit.root === window.hwnd && hit.code === "client") {
+        const client = win.clientRect(window.hwnd);
+        const css = { x: (point.x - client.left) / window.scale, y: (point.y - client.top) / window.scale };
+        what = await evaluate<string>(window.page.cdp, `window.__winCheck.whatIsAt(${css.x}, ${css.y})`, 3_000).catch(() => "");
+      }
+      const probe = { point, cursor, hit: `${hit.code}${what ? ` on ${what}` : ` on ${hit.window?.className ?? "nothing"}`}${hit.root === window.hwnd ? "" : " (another window)"}` };
       if (cursor === RESIZE_CURSORS[edge]) return probe;
       if (!fallback && hit.root === window.hwnd) fallback = probe;
     }
@@ -619,6 +708,11 @@ class Run {
         },
       });
       await sleep(800);
+      if (!win.isWindow(window.hwnd)) {
+        const desktop = this.shots.desktop(`${name}-${edge}-closed`);
+        if (desktop) shots.push(desktop);
+        return { status: "fail", detail: `the window closed: the press at the ${edge.replace("-", " ")} landed on ${grab.hit}` };
+      }
       const after = win.visibleRect(window.hwnd);
       const expected = {
         left: before.left + (edge.includes("left") ? delta.x : 0),
@@ -657,7 +751,7 @@ class Run {
     const edges: Array<[Edge, Point]> = name === "main"
       ? [
         ["right", { x: 120, y: 0 }], ["bottom", { x: 0, y: 80 }], ["left", { x: 100, y: 0 }], ["top", { x: 0, y: 60 }],
-        ["bottom-right", { x: -150, y: -100 }], ["top-left", { x: -80, y: -60 }], ["top-right", { x: 80, y: -60 }], ["bottom-left", { x: -80, y: 60 }],
+        ["bottom-right", { x: -150, y: -100 }], ["top-left", { x: -80, y: -60 }], ["bottom-left", { x: -80, y: 60 }], ["top-right", { x: 80, y: -60 }],
       ]
       : [["right", { x: 100, y: 0 }], ["bottom-right", { x: 80, y: 60 }], ["left", { x: -80, y: 0 }]];
     for (const [edge, delta] of edges) await this.resizeEdge(window, name, edge, delta, start);
@@ -833,7 +927,7 @@ class Run {
       await sleep(1_200);
       const restored = !win.isMinimized(window.hwnd);
       const fills = restored ? await this.contentFills(window, `${name}-restored-from-minimized`, shots) : { ok: false, detail: "still minimized" };
-      const rect = win.visibleRect(window.hwnd);
+      const rect = win.windowRect(window.hwnd);
       const sameRect = (["left", "top", "right", "bottom"] as const).every((side) => near(rect[side], start[side], 12));
       return {
         status: minimized && restored && fills.ok && sameRect ? "pass" : "fail",
@@ -1012,9 +1106,74 @@ class Run {
     });
   }
 
+  /**
+   * A popped-out window docks back into the main window when its title bar
+   * comes within reach of the main window's edges. Restoring the main window
+   * must not leave the app thinking the main window is somewhere else.
+   */
+  async detachedStaysOut(): Promise<void> {
+    await this.step("detached-stays-out", "A popped-out window moved to the top of the screen stays out after the main window was maximized and restored", async (shots) => {
+      const detached = this.detached;
+      if (!detached?.hwnd) return { status: "fail", detail: "no popped-out window" };
+      await this.reset(this.main, this.baseRect);
+      await this.clickControl(this.main, "maximize");
+      await this.clickControl(this.main, "maximize");
+      const mainRect = win.visibleRect(this.main.hwnd);
+      await this.reset(detached, this.detachedRect);
+      const point = await evaluate<{ x: number; y: number } | null>(detached.page.cdp, "window.__winCheck.titleBarPoint()");
+      if (!point) return { status: "fail", detail: "no bare spot on the popped-out window's title bar" };
+      const work = win.monitorOf(detached.hwnd).work;
+      const from = this.toScreen(detached, point);
+      const now = win.windowRect(detached.hwnd);
+      // Over the left part of the main window, its title bar well above the main window's top.
+      const target = { left: mainRect.left + 80, top: work.top + 6 };
+      await win.drag(from, { x: from.x + target.left - now.left, y: from.y + target.top - now.top }, { steps: 16 });
+      await sleep(2_000);
+      const desktop = this.shots.desktop("detached-stays-out");
+      if (desktop) shots.push(desktop);
+      if (!win.isWindow(detached.hwnd)) {
+        return { status: "fail", detail: `the popped-out window docked back into the main window, whose top is ${mainRect.top - work.top - 6} px below where its title bar was dropped` };
+      }
+      return { status: "pass", detail: `still its own window at ${fmt(win.windowRect(detached.hwnd))}; the main window is at ${fmt(mainRect)}` };
+    });
+  }
+
+  /** Moves the main window, closes the app with its button, opens it again. */
+  async remembersFrame(): Promise<void> {
+    await this.step("remembers-frame", "Main window: reopens where it was left", async (shots) => {
+      await this.reset(this.main, this.baseRect);
+      const point = await evaluate<{ x: number; y: number } | null>(this.main.page.cdp, "window.__winCheck.titleBarPoint()");
+      if (!point) return { status: "fail", detail: "no bare spot on the title bar" };
+      const from = this.toScreen(this.main, point);
+      await win.drag(from, { x: from.x + 140, y: from.y + 90 }, { steps: 12 });
+      await sleep(1_000);
+      const moved = win.windowRect(this.main.hwnd);
+      await this.clickControl(this.main, "close");
+      const deadline = Date.now() + 15_000;
+      while (win.isWindow(this.main.hwnd) && Date.now() < deadline) await sleep(300);
+      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: "the Close button did not close the app" };
+      await sleep(1_500);
+      this.pastErrors.push(...this.main.page.errors);
+      const saved = await readFile(join(this.profile, "desktop-window.json"), "utf8").catch(() => "(none)");
+      for (const window of [this.main, this.detached]) window?.page.cdp.close();
+      this.launcher?.kill();
+      this.launches += 1;
+      await this.launch(this.profile);
+      await sleep(1_000);
+      const reopened = win.windowRect(this.main.hwnd);
+      const shot = this.shots.desktop("remembers-frame-reopened");
+      if (shot) shots.push(shot);
+      const same = (["left", "top", "right", "bottom"] as const).every((side) => near(reopened[side], moved[side], 4));
+      return {
+        status: same ? "pass" : "fail",
+        detail: `moved to ${fmt(moved)}, closed with its button, reopened at ${fmt(reopened)}; it saved ${saved.trim()}`,
+      };
+    });
+  }
+
   async detachedSteps(): Promise<void> {
     const window = this.detached;
-    if (!window) return;
+    if (!window?.hwnd) return;
     await this.step("detached-move", "Popped-out window: move by its title bar", async (shots) => {
       await this.reset(window, this.detachedRect);
       const point = await evaluate<{ x: number; y: number } | null>(window.page.cdp, "window.__winCheck.titleBarPoint()");
@@ -1038,26 +1197,40 @@ class Run {
 
   async finish(): Promise<void> {
     await this.step("alive", "The app is still running, with no page errors", async () => {
-      const alive = win.isWindow(this.main.hwnd) && (!this.detached || win.isWindow(this.detached.hwnd));
-      const errors = [this.main, this.detached].flatMap((window) => window ? window.page.errors.map((error) => `${window.title}: ${error}`) : []);
-      for (const window of [this.main, this.detached]) {
-        if (!window) continue;
-        const pageErrors = await evaluate<string[]>(window.page.cdp, "window.__winCheck.state.errors", 3_000).catch(() => []);
-        errors.push(...pageErrors.map((error) => `${window.title}: ${error}`));
-      }
+      const alive = win.isWindow(this.main.hwnd);
+      const errors = [...this.pastErrors, ...await this.pageErrors()];
+      this.pastErrors = errors;
       await writeFile(join(this.out, "page-errors.txt"), errors.join("\n"));
       return {
         status: alive ? (errors.length ? "info" : "pass") : "fail",
-        detail: `${alive ? "both windows are open" : "a window is gone"}; ${errors.length} page error(s)${errors.length ? `, first: ${errors[0]!.slice(0, 300)}` : ""}`,
+        detail: `${alive ? "the main window is open" : "the main window is gone"} after ${this.launches} launch(es); ${errors.length} page error(s)${errors.length ? `, first: ${errors[0]!.slice(0, 300)}` : ""}`,
       };
     });
   }
 
+  async pageErrors(): Promise<string[]> {
+    const errors: string[] = [];
+    for (const window of [this.main, this.detached]) {
+      if (!window) continue;
+      errors.push(...window.page.errors.map((error) => `${window.title}: ${error}`));
+      window.page.errors.length = 0;
+      if (!window.hwnd || !win.isWindow(window.hwnd)) continue;
+      const pageErrors = await evaluate<string[]>(window.page.cdp, "window.__winCheck.state.errors.splice(0)", 3_000).catch(() => []);
+      errors.push(...pageErrors.map((error) => `${window.title}: ${error}`));
+    }
+    return errors;
+  }
+
+  /** Stops the app this run started, if it is still running. */
   async close(): Promise<void> {
+    if (!this.launcher) return;
+    this.pastErrors.push(...await this.pageErrors());
     for (const window of [this.main, this.detached]) window?.page.cdp.close();
-    const pids = new Set(win.topLevelWindows().filter((info) => !this.knownWindows.has(info.hwnd) || info.hwnd === this.main?.hwnd || info.hwnd === this.detached?.hwnd).filter((info) => info.className === "BasicWindowClass").map((info) => info.pid));
-    this.launcher?.kill();
+    const pids = new Set(win.topLevelWindows().filter((info) => info.className === "BasicWindowClass" && (!this.knownWindows.has(info.hwnd) || info.hwnd === this.main?.hwnd || info.hwnd === this.detached?.hwnd)).map((info) => info.pid));
+    this.launcher.kill();
     for (const pid of pids) Bun.spawnSync(["taskkill", "/PID", String(pid), "/T", "/F"]);
+    this.launcher = null;
+    await sleep(1_500);
   }
 }
 
@@ -1090,37 +1263,38 @@ async function run(): Promise<void> {
   const label = option("label") ?? "app";
   await rm(out, { recursive: true, force: true });
   await mkdir(join(out, "shots"), { recursive: true });
-  const profile = join(out, "..", `profile-${label}-${Date.now()}`);
-  await seedProfile(profile);
   const display = win.primaryMonitor();
   const runner = new Run(app, out, option("only"));
+  // The windows start from the same place for every step: the main window
+  // on the left of the work area, the popped-out one clear of it on the
+  // right. The main window sits well below the top: a popped-out window
+  // whose title bar comes within 72 px of its edges docks back into it, and
+  // a popped-out window snapped or maximized has its title bar at the top.
+  const work = display.work;
+  const workWidth = win.rectWidth(work);
+  const workHeight = win.rectHeight(work);
+  const mainWidth = Math.round(workWidth * 0.56);
+  const mainTop = work.top + Math.round(workHeight * 0.17);
+  runner.baseRect = { left: work.left + 60, top: mainTop, right: work.left + 60 + mainWidth, bottom: mainTop + Math.round(workHeight * 0.7) };
+  const detachedWidth = Math.min(Math.round(workWidth * 0.3), workWidth - mainWidth - 160);
+  runner.detachedRect = {
+    left: work.right - detachedWidth - 40, top: work.top + Math.round(workHeight * 0.3),
+    right: work.right - 40, bottom: work.top + Math.round(workHeight * 0.8),
+  };
   const started = new Date().toISOString();
   let fatal: string | null = null;
   try {
-    await runner.launch(profile);
-    // The windows start from the same place for every step: the main window
-    // on the left of the work area, the popped-out one clear of it on the
-    // right. The main window sits well below the top: a popped-out window
-    // whose title bar comes within 72 px of its edges docks back into it, and
-    // a popped-out window snapped or maximized has its title bar at the top.
-    const work = display.work;
-    const workWidth = win.rectWidth(work);
-    const workHeight = win.rectHeight(work);
-    const mainWidth = Math.round(workWidth * 0.56);
-    const mainTop = work.top + Math.round(workHeight * 0.17);
-    runner.baseRect = { left: work.left + 60, top: mainTop, right: work.left + 60 + mainWidth, bottom: mainTop + Math.round(workHeight * 0.7) };
-    const detachedWidth = Math.min(Math.round(workWidth * 0.3), workWidth - mainWidth - 160);
-    runner.detachedRect = {
-      left: work.right - detachedWidth - 40, top: work.top + Math.round(workHeight * 0.3),
-      right: work.right - 40, bottom: work.top + Math.round(workHeight * 0.8),
-    };
-    await runner.reset(runner.main, runner.baseRect);
-    if (runner.detached) await runner.reset(runner.detached, runner.detachedRect);
+    // First the popped-out window, while the main window has not been resized.
+    await runner.start(null);
     await runner.calibrate();
+    await runner.detachedSteps();
+    // Then the main window, the panes and the window's memory, on a fresh app.
+    await runner.start(null);
+    await runner.detachedStaysOut();
     await runner.windowSteps(runner.main, "main", runner.baseRect);
     await runner.paneSteps();
-    await runner.detachedSteps();
     await runner.finish();
+    await runner.remembersFrame();
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);
     console.error(fatal);
@@ -1141,7 +1315,9 @@ async function run(): Promise<void> {
     fatal,
   };
   await writeFile(join(out, "results.json"), JSON.stringify(result, null, 2));
-  await rm(profile, { recursive: true, force: true }).catch(() => {});
+  for (let launch = 1; launch <= runner.launches; launch += 1) {
+    await rm(join(out, "..", `profile-${basename(out)}-${launch}`), { recursive: true, force: true }).catch(() => {});
+  }
   console.log(`${runner.results.filter((entry) => entry.status === "fail").length} of ${runner.results.length} checks failed; results in ${out}`);
 }
 

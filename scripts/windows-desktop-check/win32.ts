@@ -41,30 +41,32 @@ function load() {
     SendInput: { args: [FFIType.u32, FFIType.ptr, FFIType.i32], returns: FFIType.u32 },
     GetCursorPos: { args: [FFIType.ptr], returns: FFIType.bool },
     GetCursorInfo: { args: [FFIType.ptr], returns: FFIType.bool },
-    LoadCursorW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    LoadCursorW: { args: [FFIType.u64, FFIType.u64], returns: FFIType.u64 },
     GetSystemMetrics: { args: [FFIType.i32], returns: FFIType.i32 },
-    MonitorFromWindow: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.ptr },
-    GetMonitorInfoW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
+    MonitorFromWindow: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.u64 },
+    GetMonitorInfoW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.bool },
     GetDpiForWindow: { args: [FFIType.ptr], returns: FFIType.u32 },
-    GetWindowDpiAwarenessContext: { args: [FFIType.ptr], returns: FFIType.ptr },
-    GetAwarenessFromDpiAwarenessContext: { args: [FFIType.ptr], returns: FFIType.i32 },
-    GetDC: { args: [FFIType.ptr], returns: FFIType.ptr },
-    ReleaseDC: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    GetWindowDpiAwarenessContext: { args: [FFIType.ptr], returns: FFIType.u64 },
+    GetAwarenessFromDpiAwarenessContext: { args: [FFIType.u64], returns: FFIType.i32 },
+    GetDC: { args: [FFIType.u64], returns: FFIType.u64 },
+    ReleaseDC: { args: [FFIType.u64, FFIType.u64], returns: FFIType.i32 },
   });
+  // GDI handles are 32-bit values sign-extended to 64 bits, past what a JS
+  // number holds exactly, so they travel as 64-bit integers.
   const gdi32 = dlopen("gdi32.dll", {
-    CreateCompatibleDC: { args: [FFIType.ptr], returns: FFIType.ptr },
-    CreateCompatibleBitmap: { args: [FFIType.ptr, FFIType.i32, FFIType.i32], returns: FFIType.ptr },
-    SelectObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
-    BitBlt: { args: [FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.bool },
-    GetDIBits: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
-    DeleteObject: { args: [FFIType.ptr], returns: FFIType.bool },
-    DeleteDC: { args: [FFIType.ptr], returns: FFIType.bool },
+    CreateCompatibleDC: { args: [FFIType.u64], returns: FFIType.u64 },
+    CreateCompatibleBitmap: { args: [FFIType.u64, FFIType.i32, FFIType.i32], returns: FFIType.u64 },
+    SelectObject: { args: [FFIType.u64, FFIType.u64], returns: FFIType.u64 },
+    BitBlt: { args: [FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.bool },
+    GetDIBits: { args: [FFIType.u64, FFIType.u64, FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+    DeleteObject: { args: [FFIType.u64], returns: FFIType.bool },
+    DeleteDC: { args: [FFIType.u64], returns: FFIType.bool },
   });
   const dwmapi = dlopen("dwmapi.dll", {
     DwmGetWindowAttribute: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
   });
   const shcore = dlopen("shcore.dll", {
-    GetDpiForMonitor: { args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    GetDpiForMonitor: { args: [FFIType.u64, FFIType.i32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
   });
   return { user32: user32.symbols, gdi32: gdi32.symbols, dwmapi: dwmapi.symbols, shcore: shcore.symbols };
 }
@@ -237,14 +239,14 @@ const CURSOR_NAMES: Array<[string, number]> = [
   ["resize-nwse", 32642], ["resize-nesw", 32643], ["resize-ew", 32644], ["resize-ns", 32645],
   ["move", 32646], ["not-allowed", 32648], ["hand", 32649], ["progress", 32650],
 ];
-let cursorHandles: Map<number, string> | null = null;
+let cursorHandles: Map<bigint, string> | null = null;
 
 /** The shape of the cursor on screen now, by the system cursor it is, or its handle. */
 export function cursorShape(): string {
   if (!cursorHandles) {
     cursorHandles = new Map();
     for (const [name, id] of CURSOR_NAMES) {
-      const handle = Number(user32.LoadCursorW(null, id as never) ?? 0);
+      const handle = BigInt(user32.LoadCursorW(0n, BigInt(id)));
       if (handle) cursorHandles.set(handle, name);
     }
   }
@@ -254,7 +256,7 @@ export function cursorShape(): string {
   view.setUint32(0, 24, true);
   if (!user32.GetCursorInfo(ptr(bytes))) return "unknown";
   if ((view.getUint32(4, true) & 1) === 0) return "hidden";
-  const handle = Number(view.getBigUint64(8, true));
+  const handle = view.getBigUint64(8, true);
   return cursorHandles.get(handle) ?? `custom 0x${handle.toString(16)}`;
 }
 
@@ -418,7 +420,7 @@ export function captureScreen(rect: Rect): Bitmap {
   const width = rectWidth(rect);
   const height = rectHeight(rect);
   if (width <= 0 || height <= 0) throw new Error(`Cannot capture an empty rect: ${JSON.stringify(rect)}`);
-  const screen = user32.GetDC(null);
+  const screen = user32.GetDC(0n);
   const memory = gdi32.CreateCompatibleDC(screen);
   const bitmap = gdi32.CreateCompatibleBitmap(screen, width, height);
   const previous = gdi32.SelectObject(memory, bitmap);
@@ -436,7 +438,7 @@ export function captureScreen(rect: Rect): Bitmap {
   const lines = gdi32.GetDIBits(memory, bitmap, 0, height, ptr(data), ptr(header), 0);
   gdi32.DeleteObject(bitmap);
   gdi32.DeleteDC(memory);
-  user32.ReleaseDC(null, screen);
+  user32.ReleaseDC(0n, screen);
   if (!copied || lines !== height) throw new Error(`Screen capture failed (copied ${copied}, lines ${lines} of ${height})`);
   for (let index = 0; index < data.length; index += 4) {
     const blue = data[index]!;
