@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
-import { buildEventRows, eventSourceNotice, formatEventMetric, type EventFinancials } from "./event-model";
+import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
   const rows = buildEventRows({ symbol: "TSM", currency: "USD", dividends: [], splits: [],
@@ -114,6 +114,25 @@ test("partial and stale corporate data are not described as an empty event histo
     actions: { symbol: "RIVN", dividends: [], splits: [], earnings: [], coverage: { earnings: "unavailable", dividends: "available" }, stale: true },
   });
   expect(notice).toEqual({ text: "Unavailable: earnings   Corporate actions stale", failed: true });
+});
+
+test("a failed source reads as one short line in words, never its reason code (AIOK)", () => {
+  // Declared, payable ahead of today whenever the test runs.
+  const ahead = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const actions = { symbol: "AIOK", dividends: [], splits: [], earnings: [], coverage: { earnings: "unavailable" as const, dividends: "available" as const },
+    declaredDividends: [{ exDate: ahead(30), amount: 3.5, declarationDate: ahead(-5), recordDate: ahead(5), payDate: ahead(28) }] };
+  const state = { variant: "corporate-actions" as const, symbol: "AIOK", actionsError: null, estimates: null, actions };
+  expect(eventSourceNotice({ ...state, estimatesError: "UPSTREAM_ERROR" })).toEqual({
+    text: "Unavailable: earnings, analyst estimates (the source did not answer)", failed: true });
+  expect(eventSourceNotice({ ...state, actions: { ...actions, coverage: {} }, estimatesError: "TIMEOUT" })).toEqual({
+    text: "Analyst estimates unavailable: the source timed out", failed: true });
+  expect(eventSourceNotice({ ...state, actions: null, actionsError: "UPSTREAM_ERROR", estimatesError: null })?.text).toBe(
+    "Corporate actions unavailable: the source did not answer");
+  // A sentence stands as it is.
+  expect(sourceErrorText("Analyst source timed out")).toBe("Analyst source timed out");
+  // The declared special dividend is a row of its own while the rest failed.
+  const rows = buildEventRows(actions, null, null, "USD");
+  expect(rows).toEqual([expect.objectContaining({ id: `div-declared:${ahead(30)}`, date: ahead(30), detail: `Declared, payable ${ahead(28)}`, value: "$3.50" })]);
 });
 
 test("EE ignores dividends, adjustments and pending announcements when assessing reported earnings coverage", () => {

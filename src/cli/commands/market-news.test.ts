@@ -22,11 +22,12 @@ function story(id: string, headline: string, publishedAt: string) {
 }
 
 /** Gloom Cloud answering /news/search with the stories, best match first; every requested URL is kept. */
-function serveSearch(items: ReturnType<typeof story>[]) {
+function serveSearch(items: ReturnType<typeof story>[], match?: "all" | "closest") {
   const requests: URL[] = [];
   setCloudApiFetchTransport(async (url) => {
     requests.push(new URL(url));
-    return new Response(JSON.stringify({ items, nextCursor: null }), { headers: { "Content-Type": "application/json" } });
+    const closest = new URL(url).searchParams.get("closest") === "1";
+    return new Response(JSON.stringify({ items, nextCursor: null, ...(closest && match ? { match } : {}) }), { headers: { "Content-Type": "application/json" } });
   });
   return requests;
 }
@@ -67,6 +68,25 @@ test("several words, quoted or not, search story text in the service's order wit
   const text = render(cli.printed[0]!);
   expect(text.split("\n")[0]).toBe('Stories matching "european gas"');
   expect(text).toContain("Goldman warns TTF could hit 105 euros");
+});
+
+test("a search no story has every word of lists the closest stories, and says so under its heading", async () => {
+  const requests = serveSearch([story("two", "SpaceX lockup expiration puts buyers to the test", "2026-10-09T15:45:00.000Z")], "closest");
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
+  await news.execute(["IPO lockup expiry"], cli.context);
+
+  expect(requests[0]!.searchParams.get("closest")).toBe("1");
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ search: "IPO lockup expiry", match: "closest" });
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "IPO lockup expiry"  ·  no story has every word of "IPO lockup expiry"; the closest, most words first');
+  expect(text).toContain("SpaceX lockup expiration");
+
+  // Stories with every word read as before.
+  serveSearch(STORIES, "all");
+  const all = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
+  await news.execute(["european gas"], all.context);
+  expect(render(all.printed[0]!).split("\n")[0]).toBe('Stories matching "european gas"');
+  expect(all.printed[0]!.result.metadata).not.toHaveProperty("match");
 });
 
 test("a word no listing answers to is searched as text, and says why under its heading", async () => {

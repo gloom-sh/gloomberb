@@ -162,15 +162,35 @@ const REGION_WORDS: Partial<Record<IpoRegion, readonly string[]>> = {
 };
 
 /**
+ * Words that name a kind of deal rather than one: `lockup` (`lock-up`,
+ * `lock up`, `lockups`) lists the deals with a lock-up estimate, `spac` the
+ * SPACs' own IPOs, and `de-spac` (`despac`) those too: a SPAC's merger with
+ * its target is no IPO, so the calendar has none of its own.
+ */
+export type IpoKeyword = "lockup" | "spac" | "de-spac";
+
+export function ipoKeyword(query: string): IpoKeyword | null {
+  const word = query.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (/^lockups?$/.test(word)) return "lockup";
+  if (/^spacs?$/.test(word)) return "spac";
+  if (/^despacs?$/.test(word)) return "de-spac";
+  return null;
+}
+
+/**
  * Company in either script, symbol, venue, country code or name, and the
  * status the board shows. The word `pending` is no status of its own: it is
  * every deal not priced yet, offering and overdue ones included.
  * A region's name (`europe`, `asia`) lists the region's deals, on whichever tab is open.
+ * A kind of deal (`lockup`, `spac`, `de-spac`, see ipoKeyword) lists that kind.
  */
 function matchesIpoQuery(deal: IpoDeal, query: string, now: Date): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   if (needle === "pending") return NOT_PRICED_STATUSES.includes(deal.status);
+  const keyword = ipoKeyword(needle);
+  if (keyword === "lockup") return !!deal.lockup;
+  if (keyword) return deal.listingType === "spac";
   if (REGION_WORDS[deal.region]?.includes(needle.replace(/\s+/g, "-"))) return true;
   return [
     deal.company, deal.companyLocal, deal.symbol, deal.venue, deal.mic, deal.exchange,
@@ -343,9 +363,17 @@ function amount(value: number): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
 }
 
-/** "$18", "HK$26.20-28.50", "240-260p", "CHF 45": the offer price once set, else the range. */
-export function formatIpoPrice(deal: IpoDeal): string {
+/** What a direct listing with no price reads in a column; a report's row says why in full. */
+export const DIRECT_LISTING_PRICE = "direct listing";
+export const DIRECT_LISTING_NO_PRICE = "direct listing, no offer price";
+
+/**
+ * "$18", "HK$26.20-28.50", "240-260p", "CHF 45": the offer price once set, else the range.
+ * A direct listing sells no shares at a price: "direct listing" (`full`: "direct listing, no offer price").
+ */
+export function formatIpoPrice(deal: IpoDeal, { full = false }: { full?: boolean } = {}): string {
   const low = deal.offerPrice ?? deal.priceLow ?? deal.priceHigh;
+  if (low == null && deal.listingType === "direct") return full ? DIRECT_LISTING_NO_PRICE : DIRECT_LISTING_PRICE;
   if (low == null) return MISSING;
   const high = deal.offerPrice == null && deal.priceLow != null && deal.priceHigh != null && deal.priceHigh !== deal.priceLow
     ? deal.priceHigh
@@ -386,4 +414,60 @@ export function formatIpoDate(value: string | null, now = new Date()): string {
   return Math.abs(date.getTime() - now.getTime()) <= 183 * MS_PER_DAY
     ? `${month} ${date.getUTCDate()}`
     : `${month} ${date.getUTCFullYear()}`;
+}
+
+/** "~2026-11-02": when a deal's lock-up is estimated to end; "—" without an estimate. */
+export function formatIpoLockupEnd(endsOn: string | null | undefined): string {
+  return endsOn ? `~${endsOn}` : MISSING;
+}
+
+/** Today in UTC, YYYY-MM-DD. */
+function utcToday(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * "lockup ends ~2026-11-02 (estimate)", "lockup ended ~2026-07-28 (estimate)":
+ * a deal's lock-up estimate in words; null without one.
+ */
+export function ipoLockupText(deal: Pick<IpoDeal, "lockup">, now = new Date()): string | null {
+  if (!deal.lockup) return null;
+  const verb = deal.lockup.endsOn < utcToday(now) ? "ended" : "ends";
+  return `lockup ${verb} ~${deal.lockup.endsOn} (estimate)`;
+}
+
+/** What the estimate counts from: "180 days from the prospectus dated 2026-05-06", or the usual period from the first session. */
+export function ipoLockupBasis(deal: Pick<IpoDeal, "lockup" | "listingDate">): string | null {
+  const lockup = deal.lockup;
+  if (!lockup) return null;
+  if (lockup.basis === "prospectus" && lockup.prospectusDate) {
+    return `${lockup.days} days from the prospectus dated ${lockup.prospectusDate}`;
+  }
+  return `the usual ${lockup.days} days from the first session${deal.listingDate ? ` on ${deal.listingDate}` : ""}; the prospectus has not been read`;
+}
+
+/** A price in the deal's own currency: "$26", "HK$7.20". */
+export function formatIpoAmount(deal: Pick<IpoDeal, "currency">, value: number): string {
+  return formatIpoPrice({ offerPrice: value, priceLow: null, priceHigh: null, currency: deal.currency, listingType: "ipo" } as IpoDeal);
+}
+
+/**
+ * What a listed deal's price has done since it listed: from the offer price,
+ * else (a direct listing) from its first trade. Null without a price now or a
+ * price to measure from.
+ */
+export function ipoReturnSince(deal: IpoDeal, price: number | null | undefined): { from: number; basis: "offer" | "first trade"; returnPct: number } | null {
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  const offer = deal.offerPrice;
+  if (offer != null && offer > 0) return { from: offer, basis: "offer", returnPct: price / offer - 1 };
+  const open = deal.firstDay?.open;
+  if (deal.listingType === "direct" && open != null && open > 0) return { from: open, basis: "first trade", returnPct: price / open - 1 };
+  return null;
+}
+
+/** The lock-up stories worth listing beside a deal: on or after its listing, about its lock-up. */
+const LOCKUP_WORDS = /\block[\s-]?ups?\b/i;
+
+export function isLockupStory(title: string): boolean {
+  return LOCKUP_WORDS.test(title);
 }
