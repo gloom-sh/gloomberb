@@ -760,6 +760,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
 | `CHG` | Changelog |
+| `ROADMAP` | What is being built, planned and shipped; Pro members vote ([Roadmap](#roadmap)) |
 | `HELP` | Open shortcut and layout help |
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio. `AW` also takes a pasted list of tickers |
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
@@ -2215,6 +2216,14 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions with no thesis yet. `THESIS NVDA AMD` starts one on a basket or a pair. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.
 - Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team (teammates can challenge a pillar). Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision.
 - Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`v`), need Pro.
+
+## Roadmap
+
+`ROADMAP` (or `RMAP`) lists what is being built, what is planned and what shipped, each with a one-line summary and its votes; shipped items show the day they shipped. Enter opens an item.
+
+- Anyone can read it, signed in or not.
+- Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
+- A vote that did not go through says so on its row, and the item's detail says why.
 
 ## Localized interface
 
