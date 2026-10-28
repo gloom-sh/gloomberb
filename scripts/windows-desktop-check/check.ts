@@ -103,6 +103,25 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object 
 }
 
 /**
+ * The app's processes and the shells around them, with the session each runs
+ * in: a process in another session draws where this check cannot see.
+ */
+function appProcesses(): string {
+  const script = String.raw`
+$mine = (Get-Process -Id $PID).SessionId
+$lines = @(Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='launcher.exe' OR Name='powershell.exe'" | ForEach-Object {
+  $line = [string]$_.CommandLine
+  if ($line.Length -gt 160) { $line = $line.Substring(0, 160) + '...' }
+  "{0} {1} (parent {2}, session {3}): {4}" -f $_.Name, $_.ProcessId, $_.ParentProcessId, $_.SessionId, $line
+})
+$tasks = @(Get-ScheduledTask -TaskName 'Gloom*' -ErrorAction SilentlyContinue | ForEach-Object { "task {0}: {1}" -f $_.TaskName, $_.State })
+"this check runs in session $mine; " + (($lines + $tasks) -join '; ')
+`;
+  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], { timeout: 60_000 });
+  return child.stdout.toString().trim() || child.stderr.toString().trim();
+}
+
+/**
  * Starts the app as installed, before the check opens anything up, and lists
  * what it listens on: only this machine (127.0.0.1, ::1) may reach it. A
  * listener on every interface is what makes Windows Firewall ask on first launch.
@@ -265,6 +284,19 @@ const PAGE_HELPER = String.raw`(() => {
   addEventListener("pointermove", (e) => { state.moves += 1; state.last = { x: e.clientX, y: e.clientY, buttons: e.buttons, at: Date.now() }; }, true);
   addEventListener("pointerdown", () => { state.downs += 1; }, true);
   addEventListener("pointerup", () => { state.ups += 1; }, true);
+  // What the page was pressed with, to say what opened something it should not have.
+  const inputs = [];
+  const describe = (el) => {
+    const named = el && el.closest ? el.closest("[data-gloom-role], [aria-label]") : null;
+    if (!named) return el && el.tagName ? el.tagName.toLowerCase() : "page";
+    const label = named.getAttribute("aria-label");
+    return (named.getAttribute("data-gloom-role") || named.tagName.toLowerCase()) + (label ? ' "' + label + '"' : "");
+  };
+  const note = (e) => {
+    inputs.push({ at: Date.now(), type: e.type, x: Math.round(e.clientX || 0), y: Math.round(e.clientY || 0), detail: e.detail || 0, key: e.key || "", ctrl: !!e.ctrlKey, target: describe(e.target) });
+    if (inputs.length > 80) inputs.shift();
+  };
+  for (const type of ["mousedown", "mouseup", "keydown"]) addEventListener(type, note, true);
   addEventListener("error", (e) => { state.errors.push(String(e.message || e.error)); });
   addEventListener("unhandledrejection", (e) => { state.errors.push("unhandled rejection: " + String((e.reason && (e.reason.stack || e.reason.message)) || e.reason)); });
   const rect = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
@@ -275,6 +307,9 @@ const PAGE_HELPER = String.raw`(() => {
   };
   window.__winCheck = {
     state,
+    inputsSince(at) { return inputs.filter((entry) => entry.at >= at); },
+    /** The command prompt in the top bar holds its field while the command bar is open. */
+    commandBarOpen() { return !!q("[data-gloom-role=header-command-prompt] input, [data-gloom-role=header-command-prompt] textarea"); },
     layout() {
       const detached = q("[data-gloom-role=detached-pane-window]");
       return {
@@ -614,9 +649,36 @@ class Run {
       const shot = this.shots.desktop(`${id}-error`);
       if (shot) shots.push(shot);
     }
+    // Its own result, not on the known list even where the step is.
+    const barShots: string[] = [];
+    const opened = id === "command-bar-typing" ? null : await this.commandBarOpenedSince(started, id, barShots);
     await this.shots.flush();
     this.record({ id, title, ...outcome, shots, ms: Date.now() - started });
+    if (opened) this.record({ id: `${id}-opened-command-bar`, title: `${title}: the command bar stays closed`, status: "fail", detail: opened, shots: barShots, ms: 0 });
     return outcome.status;
+  }
+
+  /**
+   * Nothing but the command bar's own step opens it. When one did, says what
+   * the page was pressed with and closes it, so the next step starts as usual.
+   */
+  async commandBarOpenedSince(since: number, id: string, shots: string[]): Promise<string | null> {
+    const main = this.main;
+    if (!main || !win.isWindow(main.hwnd)) return null;
+    const open = await evaluate<boolean>(main.page.cdp, "window.__winCheck.commandBarOpen()", 3_000).catch(() => false);
+    if (!open) return null;
+    const inputs = await evaluate<Array<{ at: number; type: string; x: number; y: number; detail: number; key: string; ctrl: boolean; target: string }>>(
+      main.page.cdp, `window.__winCheck.inputsSince(${since})`, 3_000,
+    ).catch(() => []);
+    const shot = this.shots.take(`${id}-command-bar-open`, win.clientRect(main.hwnd));
+    if (shot) shots.push(shot);
+    await this.focus(main);
+    await win.pressKeys(win.VK.escape);
+    await sleep(300);
+    const said = inputs.slice(-12).map((entry) => entry.type === "keydown"
+      ? `+${((entry.at - since) / 1000).toFixed(2)}s key ${entry.ctrl ? "Ctrl+" : ""}${entry.key} on ${entry.target}`
+      : `+${((entry.at - since) / 1000).toFixed(2)}s ${entry.type} ${entry.detail} at ${entry.x},${entry.y} on ${entry.target}`);
+    return `the command bar opened during this step; the main page saw: ${said.length ? said.join(", ") : "no press or key"}`;
   }
 
   // --- Windows and pages ---
@@ -1607,15 +1669,12 @@ class Run {
       }
       const desktop = this.shots.desktop(opened ? "restarted" : "restart-missing");
       if (desktop) shots.push(desktop);
-      if (opened) {
-        // Not this run's launch: stopped by its window.
-        Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
-        await sleep(1_500);
-      }
-      return {
-        status: opened ? "pass" : "fail",
-        detail: opened ? `a new window opened ${((Date.now() - closing) / 1000).toFixed(1)} s after the old one closed` : "no window came back within 60 s of the old one closing",
-      };
+      if (!opened) return { status: "fail", detail: `no window came back within 60 s of the old one closing; ${appProcesses()}` };
+      const took = (Date.now() - closing) / 1000;
+      // Not this run's launch: stopped by its window.
+      Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
+      await sleep(1_500);
+      return { status: "pass", detail: `a new window opened ${took.toFixed(1)} s after the old one closed` };
     });
   }
 
