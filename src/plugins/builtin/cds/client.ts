@@ -56,12 +56,35 @@ export type CoveredIssuers = () => Promise<readonly string[]>;
 const TICKER_LIKE = /^[A-Z0-9][A-Z0-9.^:-]{0,11}$/;
 const US_PRIMARY_EXCHANGES = new Set(["AMEX", "NASDAQ", "NYSE", "NYSEAMERICAN", "NYSEARCA"]);
 
+/** The US venues besides the primary exchanges a listing can trade on: a receipt's or a delisted company's line. */
+const US_OTHER_EXCHANGES = new Set(["ARCA", "BATS", "IEX", "OTC", "OTCMKTS", "PNK"]);
+
+const listingExchange = (result: InstrumentSearchResult) => (result.primaryExchange || result.exchange).toUpperCase().replace(/[^A-Z]/g, "");
+
 function isPrimaryUsCommonStock(result: InstrumentSearchResult): boolean {
-  const exchange = (result.primaryExchange || result.exchange).toUpperCase().replace(/[^A-Z]/g, "");
   const type = result.type.toLowerCase();
   return result.currency === "USD"
-    && US_PRIMARY_EXCHANGES.has(exchange)
+    && US_PRIMARY_EXCHANGES.has(listingExchange(result))
     && (type === "stk" || type === "equity" || type.includes("common stock"));
+}
+
+/** A line on a US venue in dollars (a receipt, a line over the counter); a listing abroad is not one. */
+function isUsLine(result: InstrumentSearchResult): boolean {
+  const exchange = listingExchange(result);
+  return (!result.currency || result.currency === "USD") && (US_PRIMARY_EXCHANGES.has(exchange) || US_OTHER_EXCHANGES.has(exchange));
+}
+
+/**
+ * Whether a listing carries what was typed: the words in its name or a name
+ * search knows it by (`searchAliases`), or a ticker it had (`formerIssuer`:
+ * BRCM on Broadcom Inc.). The first US hit for a name that does not is
+ * another company.
+ */
+function carriesTyped(result: InstrumentSearchResult, typed: string): boolean {
+  const symbol = typed.toUpperCase();
+  if (result.formerIssuer?.symbol?.toUpperCase() === symbol) return true;
+  return [result.name, ...result.searchAliases ?? [], result.formerIssuer?.name]
+    .some((name) => !!name && coveredIssuerMatch(typed, [name]) != null);
 }
 
 /** The covered issuers' names, from the same request as their levels. */
@@ -99,19 +122,25 @@ interface CdsIssuerResolution {
 /**
  * The backend matches DTCC issuer names, so what was typed has to become one.
  *
- * A ticker (`WHR`) becomes its reference entity when the debt sits with
- * another entity, else the listed company's name without its share class
- * ("Alphabet Inc.", not "Alphabet Inc. Class A Common Stock"): the primary US
- * common stock where exchanges reuse the symbol, any exact listing otherwise.
- * An untracked symbol has no local metadata to expand it, and its quote name
+ * Any one-word input, whatever its case (`CHTR`, `chtr`), is first looked up
+ * among the tickers whose debt sits with another entity: CHTR is CCO
+ * Holdings, LLC.
+ *
+ * A ticker (`WHR`) becomes the listed company's name without its share class
+ * ("Alphabet Inc.", not "Alphabet Inc. Class A Common Stock"): its primary US
+ * common stock where exchanges reuse the symbol, else its US line. An
+ * untracked symbol has no local metadata to expand it, and its quote name
  * never arrives for a fixed binding, so the shared instrument search is the
  * only reliable expansion.
  *
- * A one-word or lowercase name (`goodyear`, `paramount `) matches the names of
- * the covered issuers first, then the primary US common stock it names. A
- * foreign line never wins: the first search hit for `goodyear` is Goodyear
- * India, whose name no CDS trades under. Nothing matched, the name goes to the
- * tape as typed, with the covered issuers closest to it.
+ * Then the names of the covered issuers (`goodyear`, `GOODYEAR`, `paramount `
+ * are The Goodyear Tire & Rubber Company and Paramount Global), by words of
+ * three letters or more: `f` and `ge` go to the symbol they are. Only then a
+ * listing abroad with that exact symbol, and only when it names a covered
+ * issuer: Goodyear India, the first hit for `goodyear`, is no CDS name. Last,
+ * the primary US common stock with the symbol, or the first one whose name
+ * carries what was typed. Nothing matched, the input goes to the tape as
+ * typed, with the covered issuers closest to it.
  *
  * A longer name in capitals and lowercase is already a company name and is
  * sent as written. A search outage falls back to the raw input rather than
@@ -123,23 +152,29 @@ async function resolveCdsIssuer(
   coveredIssuers: CoveredIssuers = defaultCoveredIssuers,
 ): Promise<CdsIssuerResolution> {
   const ticker = TICKER_LIKE.test(query);
-  if (!ticker && /\s/.test(query) && query !== query.toLowerCase()) return { issuer: issuerNameOf(query), unmatched: null };
+  const oneWord = !/\s/.test(query);
+  if (!oneWord && query !== query.toLowerCase()) return { issuer: issuerNameOf(query), unmatched: null };
+  const referenceEntity = oneWord ? cdsReferenceEntity(query) : null;
+  if (referenceEntity) return { issuer: referenceEntity, unmatched: null };
+  const symbol = query.toUpperCase();
   let results: InstrumentSearchResult[] | null = null;
+  let abroad: InstrumentSearchResult | undefined;
   if (ticker) {
-    const referenceEntity = cdsReferenceEntity(query);
-    if (referenceEntity) return { issuer: referenceEntity, unmatched: null };
     results = await searchOrNone(searchInstruments, query);
-    const exactMatches = results.filter((result) => result.symbol.toUpperCase() === query);
-    const name = (exactMatches.find(isPrimaryUsCommonStock) ?? exactMatches[0])?.name?.trim();
+    const exactMatches = results.filter((result) => result.symbol.toUpperCase() === symbol);
+    const name = (exactMatches.find(isPrimaryUsCommonStock) ?? exactMatches.find(isUsLine))?.name?.trim();
     if (name) return { issuer: issuerNameOf(name), unmatched: null };
+    abroad = exactMatches.find((result) => !!result.name?.trim());
   }
   const covered = await coveredOrNone(coveredIssuers);
   const named = coveredIssuerMatch(query, covered);
   if (named) return { issuer: named, unmatched: null };
+  // A line abroad never wins on its own: only as the covered issuer it names.
+  const abroadIssuer = abroad ? coveredIssuerMatch(issuerNameOf(abroad.name.trim()), covered) : null;
+  if (abroadIssuer) return { issuer: abroadIssuer, unmatched: null };
   results ??= await searchOrNone(searchInstruments, query);
-  const symbol = query.toUpperCase();
   const primary = results.filter(isPrimaryUsCommonStock);
-  const listing = (primary.find((result) => result.symbol.toUpperCase() === symbol) ?? primary[0])?.name?.trim();
+  const listing = (primary.find((result) => result.symbol.toUpperCase() === symbol) ?? primary.find((result) => carriesTyped(result, query)))?.name?.trim();
   if (listing) {
     const issuer = issuerNameOf(listing);
     const listed = coveredIssuerMatch(issuer, covered);

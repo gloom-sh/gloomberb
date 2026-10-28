@@ -149,16 +149,20 @@ export function issuerGroupKey(name: string): string {
   return (meaningful.length > 0 ? meaningful : tokens).join(" ") || name.trim().toLowerCase();
 }
 
+/** Fewer letters than this are a symbol, not words of a name: `f` is Ford's ticker, not "F&G Annuities & Life". */
+const MIN_NAME_LETTERS = 3;
+
 /**
  * The covered issuer a name stands for, by its words: the issuer of that very
  * name, else one whose name holds those words in a row (`goodyear` is "The
  * Goodyear Tire & Rubber Company"), one that starts with them first, then the
  * shortest, so `ford` is Ford Motor Company and not Ford Motor Credit. Null
- * when none does.
+ * when none does, and for fewer than three letters (`f`, `ge`), which are a
+ * symbol to look up.
  */
 export function coveredIssuerMatch(name: string, covered: readonly string[]): string | null {
   const wanted = issuerGroupKey(displayIssuerName(name));
-  if (!wanted) return null;
+  if (wanted.replace(/[^\p{L}\p{N}]/gu, "").length < MIN_NAME_LETTERS) return null;
   let best: { issuer: string; leading: boolean; words: number } | null = null;
   for (const issuer of covered) {
     const key = issuerGroupKey(displayIssuerName(issuer));

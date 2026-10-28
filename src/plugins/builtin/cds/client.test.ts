@@ -86,12 +86,34 @@ describe("loadCdsActivity", () => {
     expect(calls.requested).toEqual(["Oracle Corporation"]);
   });
 
-  test("falls back to the first primary US listing when no symbol matches exactly", async () => {
-    const calls = spy([foreign("AVGO.MX", "Broadcom Mexico", "BMV", "MXN"), primaryUs("AVGO", "Broadcom Inc.", "NASDAQ")]);
+  test("falls back to a primary US listing that carries what was typed, never just the first one", async () => {
+    // Search finds Broadcom Inc. for its former ticker and says so.
+    const broadcom = { ...primaryUs("AVGO", "Broadcom Inc.", "NASDAQ"), formerIssuer: { symbol: "BRCM", name: "Broadcom Corporation", until: "2016-02-01" } };
+    const former = spy([foreign("AVGO.MX", "Broadcom Mexico", "BMV", "MXN"), broadcom]);
+    await loadCdsActivity("BRCM", former.fetchCds, former.searchInstruments, former.coveredIssuers);
+    expect(former.requested).toEqual(["Broadcom Inc."]);
 
-    await loadCdsActivity("BRCM", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+    // The first US hit for a name is another company unless its name has the words.
+    const acme = spy([primaryUs("ACU", "Acme United Corporation", "NYSEAMERICAN")]);
+    const unmatched = await loadCdsActivity("acmewood", acme.fetchCds, acme.searchInstruments, acme.coveredIssuers);
+    expect(acme.requested).toEqual(["acmewood"]);
+    expect(unmatched.unmatched).toEqual({ nearest: [] });
+    const named = spy([primaryUs("XYZ", "Unrelated Holdings Inc."), primaryUs("ACU", "Acme United Corporation", "NYSEAMERICAN")]);
+    await loadCdsActivity("acme", named.fetchCds, named.searchInstruments, named.coveredIssuers);
+    expect(named.requested).toEqual(["Acme United Corporation"]);
+  });
 
-    expect(calls.requested).toEqual(["Broadcom Inc."]);
+  test("reads a ticker whose debt sits with another entity in any case", async () => {
+    for (const typed of ["CHTR", "chtr", "Chtr"]) {
+      const calls = spy([primaryUs("CHTR", "Charter Communications, Inc.", "NASDAQ")], ["Charter Communications, Inc."]);
+      const activity = await loadCdsActivity(typed, calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+      expect(calls.requested).toEqual(["CCO Holdings, LLC"]);
+      expect(calls.searched).toEqual([]);
+      expect(activity.unmatched ?? null).toBeNull();
+    }
+    const tmus = spy([]);
+    await loadCdsActivity("tmus", tmus.fetchCds, tmus.searchInstruments, tmus.coveredIssuers);
+    expect(tmus.requested).toEqual(["T-Mobile USA, Inc."]);
   });
 
   test("sends a company name straight through without searching", async () => {
@@ -121,6 +143,31 @@ describe("loadCdsActivity", () => {
         expect(calls.requested).toEqual([issuer]);
         expect(activity.unmatched ?? null).toBeNull();
       }
+    });
+
+    test("of fewer than three letters is a symbol, never words of a covered name", async () => {
+      const covered = [...COVERED, "F&G Annuities & Life, Inc.", "GE HealthCare Technologies Inc.", "Citizens Financial Group, Inc."];
+      for (const [typed, hits, issuer] of [
+        ["f", [primaryUs("FG", "F&G Annuities & Life, Inc."), primaryUs("F", "Ford Motor Company")], "Ford Motor Company"],
+        ["ge", [primaryUs("GEHC", "GE HealthCare Technologies Inc.", "NASDAQ"), primaryUs("GE", "GE Aerospace")], "GE Aerospace"],
+        ["c", [primaryUs("CFG", "Citizens Financial Group, Inc."), primaryUs("C", "Citigroup Inc.")], "Citigroup Inc."],
+      ] as const) {
+        const calls = spy([...hits], covered);
+        await loadCdsActivity(typed, calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+        expect(calls.requested).toEqual([issuer]);
+      }
+    });
+
+    test("in capitals is a covered issuer before a listing abroad with that symbol", async () => {
+      const calls = spy([foreign("GOODYEAR", "Goodyear India Ltd.", "NSE", "INR")], COVERED);
+      const activity = await loadCdsActivity("GOODYEAR", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+      expect(calls.requested).toEqual(["The Goodyear Tire & Rubber Company"]);
+      expect(activity.unmatched ?? null).toBeNull();
+
+      // Nothing covered: the listing abroad still does not win.
+      const uncovered = spy([foreign("GOODYEAR", "Goodyear India Ltd.", "NSE", "INR")], []);
+      await loadCdsActivity("GOODYEAR", uncovered.fetchCds, uncovered.searchInstruments, uncovered.coveredIssuers);
+      expect(uncovered.requested).toEqual(["GOODYEAR"]);
     });
 
     test("then takes the primary US common stock it names, in the covered spelling", async () => {
