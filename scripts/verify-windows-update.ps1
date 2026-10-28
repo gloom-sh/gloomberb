@@ -10,8 +10,9 @@ $ErrorActionPreference = "Stop"
 # bundle identifier. Files of the user's in the app's folder (one picked can
 # be C:\Tools, with a bin of its own) stay through updates and uninstalling.
 # On another drive than the updater's folder, a copy that fails partway
-# leaves the installed build as it was and the app where it ran, and the app
-# does not quit for a move while the gloom command runs from the folder. It
+# leaves the installed build as it was and the app where it ran, the app
+# does not quit for a move while the gloom command runs from the folder, and
+# a move cut short is put right by the next one. It
 # installs into Programs\Gloom and a folder on another drive, and writes the
 # user's shortcuts, uninstall entries and PATH, so it runs only on a CI
 # machine.
@@ -647,10 +648,16 @@ try {
     Remove-Item -LiteralPath $LockedPath -Force
     Clear-MoveTries
 
-    # 6c. Once the copy can be made, the build replaces the app's folders,
+    # 6c. A move cut short by a power cut between the two renames of bin left
+    #     the folder without it, set aside. The next move puts it back first;
+    #     once the copy can be made, the build replaces the app's folders,
     #     which hold nothing else, whole.
+    $CutShort = Join-Path $InstallDir ".gloom-previous-20260101000000-cutshort"
+    New-Item -ItemType Directory -Path $CutShort | Out-Null
+    Move-Item -LiteralPath (Join-Path $InstallDir "bin") -Destination (Join-Path $CutShort "bin")
     Start-UpdaterCopy
     Assert-OpensFromInstallerFolder -Label "other-drive" -Build $UpdateHash -Gone $UpdaterApp
+    Assert-MoveLog "other-drive" "put back $InstallDir\bin"
     Assert-MoveLog "other-drive" "replaced $InstallDir\bin"
     if (-not (Wait-Until 60 { (Get-MoveLeftovers).Count -eq 0 })) {
       throw "The move left $((Get-MoveLeftovers) -join ', ')"

@@ -80,9 +80,8 @@ function isUpdateAside(entry: string, appName: string): boolean {
  * Removes the copies of the app an install moved aside and could not remove
  * then (the Electrobun patch's `replaceAppBundle`), from beside the app this
  * process runs from: starting from it means the install that left them worked.
- * macOS keeps the app in its bundle, Linux and Windows in a folder with
- * `bin/bun` inside. On Windows the copies are the ones the move into the
- * installer's folder set aside (installer-folder.ts).
+ * macOS keeps the app in its bundle, Linux in `<app data>/app` (`bin/bun`
+ * inside it); Windows installs through its own script and leaves none.
  * Beside `Gloom.app` it also takes `Gloomberb.app.previous`: the copy the
  * update that brought the new name moved aside, under the old one.
  * Resolves to the paths it removed.
@@ -93,7 +92,7 @@ export async function removeUpdateAsides(
 ): Promise<string[]> {
   const app = platform === "darwin"
     ? /^(.*?\.app)\/Contents\/MacOS\/[^/]+$/.exec(execPath)?.[1]
-    : (platform === "linux" || platform === "win32") && basename(dirname(execPath)).toLowerCase() === "bin" ? dirname(dirname(execPath)) : undefined;
+    : platform === "linux" && basename(dirname(execPath)) === "bin" ? dirname(dirname(execPath)) : undefined;
   if (!app) return [];
   const folder = dirname(app);
   const names = platform === "darwin" && basename(app) === `${DESKTOP_APP_NAME}.app`

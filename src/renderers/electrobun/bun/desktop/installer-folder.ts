@@ -131,11 +131,19 @@ async function readInstallerFolderFromRegistry(): Promise<string | null> {
   }
 }
 
-/** The installer's folder, when it holds the app. */
+/**
+ * The installer's folder, when it holds the app. A move cut short (a power
+ * cut between its renames) can leave its launcher in what the move set aside
+ * there: the next move puts that back before anything else.
+ */
 async function installerFolder(read: () => Promise<string | null>): Promise<string | null> {
   const folder = await read().catch(() => null);
   if (!folder) return null;
-  return (await exists(win32.join(folder, LAUNCHER))) ? win32.resolve(folder) : null;
+  if (await exists(win32.join(folder, LAUNCHER))) return win32.resolve(folder);
+  for (const entry of await readdir(folder).catch(() => [] as string[])) {
+    if (/^\.gloom-previous-/i.test(entry) && await exists(win32.join(folder, entry, LAUNCHER))) return win32.resolve(folder);
+  }
+  return null;
 }
 
 async function buildChannel(appFolder: string): Promise<string> {
@@ -359,9 +367,47 @@ function Install-Build([string]$Source) {
 }
 
 # What a move that did not finish left in the installer's folder.
+# A move cut short (a power cut between the two renames of bin, or an undo
+# that failed) can leave the installed build without some of its files, in
+# what it set aside. A folder or file of the build missing from the
+# installer's folder goes back; file by file only while the launcher is
+# missing, so a file a newer build dropped is not brought back beside it.
+function Restore-SetAside([string]$Aside) {
+  try {
+    foreach ($Entry in @(Get-ChildItem -LiteralPath $Aside -Force)) {
+      $Place = Join-Path $Target $Entry.Name
+      if (-not (Test-Path -LiteralPath $Place)) {
+        Invoke-Retried { Move-Item -LiteralPath $Entry.FullName -Destination $Place } ('put back ' + $Place)
+        Write-Log ('put back ' + $Place)
+      }
+    }
+    if (Test-Path -LiteralPath (Join-Path $Target $Launcher)) { return }
+    foreach ($Relative in @(Get-Files $Aside '')) {
+      $Place = Join-Path $Target $Relative
+      if (Test-Path -LiteralPath $Place) { continue }
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Place) | Out-Null
+      Invoke-Retried { Move-Item -LiteralPath (Join-Path $Aside $Relative) -Destination $Place } ('put back ' + $Place)
+      Write-Log ('put back ' + $Place)
+    }
+  } catch { Write-Log ('could not put back what ' + $Aside + ' holds: ' + $_.Exception.Message) }
+}
+
+# What a move that did not finish left in the installer's folder: a copy of
+# a build on its way in, and what it set aside, newest first. Nothing set
+# aside goes while the installed build has no launcher: it may be the only
+# copy of it.
 function Remove-Staging {
-  foreach ($Leftover in @(Get-ChildItem -LiteralPath $Target -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '.gloom-next-*' -or $_.Name -like '.gloom-previous-*' })) {
+  $Leftovers = @(Get-ChildItem -LiteralPath $Target -Directory -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like '.gloom-next-*' -or $_.Name -like '.gloom-previous-*' } | Sort-Object Name -Descending)
+  foreach ($Leftover in $Leftovers) {
     if ((Get-RunningUnder $Leftover.FullName).Count -gt 0) { continue }
+    if ($Leftover.Name -like '.gloom-previous-*') {
+      Restore-SetAside $Leftover.FullName
+      if (-not (Test-Path -LiteralPath (Join-Path $Target $Launcher))) {
+        Write-Log ('kept ' + $Leftover.FullName + ': the installed build has no ' + $Launcher)
+        continue
+      }
+    }
     try { Remove-Tree $Leftover.FullName; Write-Log ('removed ' + $Leftover.FullName) } catch { Write-Log $_.Exception.Message }
   }
 }
@@ -479,11 +525,19 @@ try {
       [IO.Directory]::Delete($Probe, $false)
     } catch { Write-Log ('declined: cannot write in ' + $Target + ': ' + $_.Exception.Message); return }
     Write-Log ('started ' + $PID)
-    # The app and its WebView helpers, by where they run from.
-    if (-not (Wait-Until 60 { (Get-RunningUnder $Sources[0]).Count -eq 0 })) { throw 'the app did not quit' }
+    # The app and its WebView helpers, by where they run from. Having seen
+    # "started", the app quits, however long that takes: a slow quit still
+    # ends with it open again. Only one that stopped waiting for this, and
+    # wrote $Cancel, runs on, and is left so.
+    $Deadline = (Get-Date).AddMinutes(30)
+    while ((Get-RunningUnder $Sources[0]).Count -gt 0 -and -not (Test-Path -LiteralPath $Cancel) -and (Get-Date) -lt $Deadline) {
+      Start-Sleep -Milliseconds 500
+    }
     if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting; it stays where it is'; return }
+    if ((Get-RunningUnder $Sources[0]).Count -gt 0) { throw 'the app did not quit' }
     $Exited = $true
     if (-not (Wait-Until 30 { (Get-AppRunningInTarget).Count -eq 0 })) { throw ('the app runs from ' + $Target) }
+    Remove-Staging
     Install-Build $Sources[0]
     Write-Log ('moved ' + $Sources[0] + ' into ' + $Target)
     Open-App (Join-Path $Target $Launcher)

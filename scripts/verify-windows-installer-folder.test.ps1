@@ -207,7 +207,36 @@ try {
     Remove-Item -LiteralPath $OtherDriveWork -Recurse -Force
   }
 
-  # 5. While a program of the app runs from the installer's folder (the
+  # 5. A move cut short leaves the installed build in what it set aside: it
+  #    goes back before that is removed, and nothing a newer build dropped
+  #    comes back beside it.
+  $Install = New-Install (Join-Path $Work "restore")
+  $Target = $Install.Target; $Log = Join-Path $Work "restore.log"
+  $InstalledBin = Get-Snapshot (Join-Path $Target "bin")
+  # A power cut between the two renames of bin.
+  New-Item -ItemType Directory -Path (Join-Path $Target ".gloom-previous-20260101000000-a") | Out-Null
+  Move-Item -LiteralPath (Join-Path $Target "bin") -Destination (Join-Path $Target ".gloom-previous-20260101000000-a\bin")
+  Remove-Staging
+  Check "restore: bin goes back whole" ((Get-Snapshot (Join-Path $Target "bin")) -eq $InstalledBin) (Get-Snapshot $Target)
+  Check "restore: then what was set aside goes" ((Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
+  # One file at a time, cut short after the launcher was set aside.
+  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-b") @{ "bin\a.dll" = "old a" }
+  Move-Item -LiteralPath (Join-Path $Target "bin\launcher.exe") -Destination (Join-Path $Target ".gloom-previous-20260101000000-b\bin\launcher.exe")
+  [IO.File]::WriteAllText((Join-Path $Target "bin\a.dll"), "new a")
+  Remove-Staging
+  Check "restore: the launcher goes back, beside what was already replaced" ((Test-Path -LiteralPath (Join-Path $Target "bin\launcher.exe")) -and [IO.File]::ReadAllText((Join-Path $Target "bin\a.dll")) -eq "new a") (Get-Snapshot $Target)
+  Check "restore: then what was set aside goes too" ((Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
+  # A move that worked and could not remove what it replaced.
+  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-c") @{ "bin\dropped.dll" = "old"; "bin\a.dll" = "old a" }
+  Remove-Staging
+  Check "restore: nothing comes back beside a whole build" (-not (Test-Path -LiteralPath (Join-Path $Target "bin\dropped.dll")) -and (Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
+  # With no launcher anywhere, what was set aside stays.
+  Remove-Item -LiteralPath (Join-Path $Target "bin\launcher.exe")
+  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-d") @{ "bin\a.dll" = "old a" }
+  Remove-Staging
+  Check "restore: what was set aside stays while the build has no launcher" ((Get-Leftovers $Target).Count -eq 1) (Get-Snapshot $Target)
+
+  # 6. While a program of the app runs from the installer's folder (the
   #    gloom command), the script says so before the app would quit for it.
   $Install = New-Install (Join-Path $Work "busy")
   Start-Program (Join-Path $Install.Source "bin\launcher.exe")
@@ -220,7 +249,7 @@ try {
   Stop-RunningIn $Install.Target
   Stop-RunningIn $Install.Source
 
-  # 6. Once the app quits, the build moves in and the app opens from the
+  # 7. Once the app quits, the build moves in and the app opens from the
   #    installer's folder before the copy it came from goes.
   $Install = New-Install (Join-Path $Work "move")
   Start-Program (Join-Path $Install.Source "bin\launcher.exe")
@@ -235,7 +264,20 @@ try {
   Check "move: the app runs from the installer's folder" ((Wait-For 10 { (Get-RunningIn $Install.Target).Count -gt 0 }) -and -not (Test-Path -LiteralPath $Install.Source)) ""
   Stop-RunningIn $Install.Target
 
-  # 7. A move that fails after the app quit opens it again where it was.
+  # 8. An app slow to quit (past a minute) still ends up open, moved.
+  $Install = New-Install (Join-Path $Work "slow")
+  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
+  $Script = Start-MoveScript $Install
+  Check "slow: it starts" (Wait-For 30 { (Get-MoveLog $Install).Contains(" started ") }) (Get-MoveLog $Install)
+  Start-Sleep -Seconds 75
+  Stop-RunningIn $Install.Source
+  $Script.WaitForExit(120000) | Out-Null
+  $MoveLog = Get-MoveLog $Install
+  Check "slow: it waits, moves the build and opens the app" ($MoveLog.Contains(" moved ") -and $MoveLog.Contains("opened $($Install.Target)\bin\launcher.exe")) $MoveLog
+  Check "slow: the app runs from the installer's folder" (Wait-For 10 { (Get-RunningIn $Install.Target).Count -gt 0 }) ""
+  Stop-RunningIn $Install.Target
+
+  # 9. A move that fails after the app quit opens it again where it was.
   $Install = New-Install (Join-Path $Work "reopen")
   Write-Tree $Install.Target @{ "bin\b.dll\inside.txt" = "the user's" }
   $TargetBefore = Get-Snapshot $Install.Target
@@ -250,7 +292,7 @@ try {
   Check "reopen: the installed build is as it was" ((Get-Snapshot $Install.Target) -eq $TargetBefore) (Get-Snapshot $Install.Target)
   Stop-RunningIn $Install.Source
 
-  # 8. When the app stopped waiting for the script, the script leaves it be,
+  # 10. When the app stopped waiting for the script, the script leaves it be,
   #    and never opens a second one.
   $Install = New-Install (Join-Path $Work "cancel")
   Start-Program (Join-Path $Install.Source "bin\launcher.exe")
