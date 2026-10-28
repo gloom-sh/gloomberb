@@ -142,6 +142,14 @@ jobs:
         shell: pwsh
         run: bun $env:CHECK/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
 
+      # What the app listens on as installed, before the check opens DevTools.
+      - name: Check what the app listens on
+        shell: pwsh
+        run: |
+          bun $env:CHECK/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-ports" --label ${{ matrix.build }}
+          bun $env:CHECK/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
+          exit 0
+
       - name: Drive the app at each scale
         shell: pwsh
         run: |

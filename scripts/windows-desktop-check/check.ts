@@ -63,6 +63,124 @@ async function install(installer: string, dir: string): Promise<void> {
   await writeFile(versionPath, JSON.stringify({ ...version, channel: "dev", baseUrl: "" }, null, 2));
 }
 
+/**
+ * A release opens no DevTools port; the check drives the page through one,
+ * so it opens it again in its own install, after `ports` has looked at the
+ * build as shipped.
+ */
+async function enableDevtools(dir: string): Promise<void> {
+  const buildPath = join(dir, "Resources", "build.json");
+  const build = JSON.parse((await readFile(buildPath, "utf8")).replace(/^\uFEFF/, "")) as { chromiumFlags?: Record<string, unknown> };
+  const flags = { ...build.chromiumFlags };
+  delete flags["remote-debugging-port"];
+  delete flags["remote-allow-origins"];
+  if (Object.keys(flags).length) build.chromiumFlags = flags;
+  else delete build.chromiumFlags;
+  await writeFile(buildPath, JSON.stringify(build));
+  console.log(`DevTools port open for the check (Chromium flags now ${JSON.stringify(build.chromiumFlags ?? {})})`);
+}
+
+/** The TCP ports a process and everything it started listen on. */
+function listeningSockets(rootPid: number): Array<{ address: string; port: number; process: string }> {
+  const script = String.raw`
+$all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name
+$ids = @(${rootPid})
+do {
+  $added = @($all | Where-Object { $ids -contains $_.ParentProcessId -and -not ($ids -contains $_.ProcessId) } | ForEach-Object { $_.ProcessId })
+  $ids += $added
+} while ($added.Count -gt 0)
+Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } | ForEach-Object {
+  $owner = $_.OwningProcess
+  $name = ($all | Where-Object { $_.ProcessId -eq $owner } | Select-Object -First 1).Name
+  Write-Output ("{0}|{1}|{2}" -f $_.LocalAddress, $_.LocalPort, $name)
+}
+`;
+  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], { timeout: 60_000 });
+  return child.stdout.toString().split(/\r?\n/).filter(Boolean).map((line) => {
+    const [address, port, name] = line.trim().split("|");
+    return { address: address!, port: Number(port), process: name ?? "" };
+  });
+}
+
+/**
+ * Starts the app as installed, before the check opens anything up, and lists
+ * what it listens on: only this machine (127.0.0.1, ::1) may reach it. A
+ * listener on every interface is what makes Windows Firewall ask on first launch.
+ */
+async function ports(app: string, out: string, label: string): Promise<void> {
+  await rm(out, { recursive: true, force: true });
+  await mkdir(join(out, "shots"), { recursive: true });
+  const profile = join(out, "..", `profile-${basename(out)}`);
+  await seedProfile(profile, { main: { x: 60, y: 120, width: 1100, height: 720 }, detached: { x: 1200, y: 200, width: 600, height: 480 } });
+  const known = new Set(win.topLevelWindows().map((info) => info.hwnd));
+  const bin = join(app, "bin");
+  const started = new Date().toISOString();
+  const launcher = Bun.spawn([join(bin, "launcher.exe")], {
+    cwd: bin,
+    env: { ...process.env, GLOOMBERB_HOME: profile, ELECTROBUN_CONSOLE: "1", DO_NOT_TRACK: "1", GLOOMBERB_NO_TELEMETRY: "1" },
+    stdout: Bun.file(join(out, "app-stdout.log")),
+    stderr: Bun.file(join(out, "app-stderr.log")),
+  });
+  // Every server is up once the main window's page has loaded.
+  await sleep(25_000);
+  const sockets = listeningSockets(launcher.pid);
+  const newWindows = win.topLevelWindows().filter((info) => info.visible && !known.has(info.hwnd));
+  const prompts = newWindows.filter((info) => info.className !== "BasicWindowClass").map((info) => `"${info.title}" (${info.className})`);
+  const shots = new Shots(join(out, "shots"));
+  const shot = shots.desktop("as-shipped");
+  await shots.flush();
+  Bun.spawnSync(["taskkill", "/PID", String(launcher.pid), "/T", "/F"]);
+  await sleep(1_500);
+  await rm(profile, { recursive: true, force: true }).catch(() => {});
+  const loopback = (address: string) => address === "127.0.0.1" || address === "::1";
+  const open = sockets.filter((socket) => !loopback(socket.address));
+  const devtools = sockets.filter((socket) => socket.port >= 9222 && socket.port <= 9232);
+  const list = sockets.map((socket) => `${socket.address}:${socket.port} (${socket.process})`).join(", ") || "nothing";
+  const results: CheckResult[] = [
+    {
+      id: "listens-locally",
+      title: "As shipped, it listens only on this machine",
+      status: !sockets.length ? "fail" : open.length ? "fail" : "pass",
+      detail: !sockets.length ? "found no listening socket at all, so nothing was checked" : `${open.length ? `${open.length} on every interface or the network; ` : ""}listening on ${list}${prompts.length ? `; other windows: ${prompts.join(", ")}` : ""}`,
+      shots: shot ? [shot] : [],
+      ms: 25_000,
+    },
+    {
+      id: "no-devtools-port",
+      title: "As shipped, no DevTools port",
+      status: devtools.length ? "fail" : "pass",
+      detail: devtools.length ? `DevTools on ${devtools.map((socket) => `${socket.address}:${socket.port}`).join(", ")}` : "none in 9222-9232",
+      shots: [],
+      ms: 0,
+    },
+  ];
+  // The names Windows shows for the processes, in Task Manager and its prompts.
+  const named = ["bun.exe", "launcher.exe"].map((exe) => {
+    const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command",
+      `(Get-Item -LiteralPath '${join(bin, exe).replace(/'/g, "''")}').VersionInfo | Select-Object FileDescription, ProductName, CompanyName, ProductVersion | ConvertTo-Json -Compress`], { timeout: 30_000 });
+    const info = (() => { try { return JSON.parse(child.stdout.toString()) as Record<string, string | null>; } catch { return {}; } })();
+    return { exe, info };
+  });
+  results.push({
+    id: "exe-names",
+    title: "Windows names the app's processes Gloom",
+    status: named.every(({ info }) => /gloom/i.test(info.FileDescription ?? "") && !/oven/i.test(info.CompanyName ?? "")) ? "pass" : "fail",
+    detail: named.map(({ exe, info }) => `${exe}: "${info.FileDescription ?? ""}" by "${info.CompanyName ?? ""}", ${info.ProductName ?? ""} ${info.ProductVersion ?? ""}`).join("; "),
+    shots: [],
+    ms: 0,
+  });
+  const display = win.primaryMonitor();
+  const version = await readFile(join(app, "Resources", "version.json"), "utf8").then((text) => JSON.parse(text.replace(/^\uFEFF/, "")).version as string).catch(() => "unknown");
+  const result: CheckRun = {
+    label: `${label} as shipped`, version, started,
+    scale: Math.round((display.dpi * 100) / 96),
+    screen: `${win.rectWidth(display.monitor)}x${win.rectHeight(display.monitor)}`,
+    results, fatal: null,
+  };
+  await writeFile(join(out, "results.json"), JSON.stringify(result, null, 2));
+  for (const entry of results) console.log(`${entry.status.toUpperCase().padEnd(5)} ${entry.id}: ${entry.detail}`);
+}
+
 // --- Profile ---------------------------------------------------------------
 
 /**
@@ -1612,8 +1730,10 @@ async function run(): Promise<void> {
 }
 
 if (COMMAND === "install") await install(resolve(required("installer")), resolve(required("dir")));
+else if (COMMAND === "ports") await ports(resolve(required("app")), resolve(required("out")), option("label") ?? "app");
+else if (COMMAND === "enable-devtools") await enableDevtools(resolve(required("app")));
 else if (COMMAND === "run") await run();
 else {
-  console.error("Usage: check.ts install --installer <GloomSetup.exe> --dir <dir> | run --app <dir> --out <dir> [--label <name>] [--only <text>]");
+  console.error("Usage: check.ts install --installer <GloomSetup.exe> --dir <dir> | ports --app <dir> --out <dir> [--label <name>] | enable-devtools --app <dir> | run --app <dir> --out <dir> [--label <name>] [--only <text>]");
   process.exit(2);
 }
