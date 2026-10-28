@@ -189,7 +189,7 @@ import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
-import { depositaryPairText, isReceiptSide, listingDepositaryPair } from "../../market-data/depositary-pair";
+import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -1105,8 +1105,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const quiet = ended ? null : noPrintsTodayText(row.quote, now);
         return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
       }),
-      // A receipt and its home line each say the ratio, as `ticker` does.
+      // A receipt and its home line each say the ratio, as `ticker` does; a CEDEAR names itself in its own.
       ...data.flatMap((row) => {
+        const cedear = listingCedearRatio({ quote: row.quote });
+        if (cedear) return [`${cedearRatioText(cedear)}.`];
         const pair = listingDepositaryPair({ quote: row.quote });
         return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
       }),
