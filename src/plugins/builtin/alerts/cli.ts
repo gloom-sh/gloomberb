@@ -11,6 +11,9 @@ import { quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
 import { isResearchAlertKind, readResearchRule } from "./research-rules";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
+import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/cloud-session";
+import type { ConfigContext } from "../../../cli/types";
+import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
@@ -445,11 +448,13 @@ function priceRow(alert: AlertRule): AlertListRow {
 }
 
 function eventRow(
-  rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck, cloud?: CloudRuleStates,
+  rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck, cloud?: CloudRuleStates, signedIn = true,
 ): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
-    const status = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
+    const triggered = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
+    // Signed out, nothing checks a rule only a signed-in account gets checked: it waits on a sign-in, not on its event.
+    const status = triggered === "active" && !signedIn && checkedWhenSignedIn(rule) ? NEEDS_SIGN_IN : triggered;
     // An IV level is read by this app, so its last reading is this device's; Gloom Cloud reads the rest.
     const state = cloud?.states.get(rule.id);
     const reading = rule.kind === "iv_level" ? {
@@ -489,17 +494,27 @@ interface CloudRuleStates {
 
 /**
  * Gloom Cloud checks the event rules this app does not, for a signed-in account. With no session nothing has
- * read them, so they are not checked yet; with one, their readings are Cloud's.
+ * read them, so they are not checked yet; with one (`session`, the app's saved one), their readings are Cloud's.
  */
-async function cloudRuleStates(rules: readonly EventAlertRule[]): Promise<CloudRuleStates> {
+async function cloudRuleStates(rules: readonly EventAlertRule[], session: string | null): Promise<CloudRuleStates> {
   const empty = { states: new Map<string, AlertRuleState>(), failed: false };
-  if (!apiClient.getSessionToken() || !rules.some((rule) => rule.kind !== "iv_level" && !readScheduledRule(rule))) return empty;
+  if (!session || !rules.some(checkedWhenSignedIn)) return empty;
+  const previous = apiClient.getSessionToken();
+  apiClient.setSessionToken(session);
   try {
     const history = await fetchAlertHistory(0);
     return { states: new Map(history.states.map((state) => [state.ruleId, state])), failed: false };
   } catch (error) {
     return { ...empty, failed: true, warning: `Gloom Cloud's readings of event alerts could not be loaded: ${error instanceof Error ? error.message : String(error)}` };
+  } finally {
+    apiClient.setSessionToken(previous);
   }
+}
+
+/** The Gloom Cloud session the app saved after sign-in, as `fn` and market commands read with; null signed out. */
+function savedSession(config: Partial<Pick<ConfigContext, "persistence">>): string | null {
+  const persistence = config.persistence;
+  return apiClient.getSessionToken() ?? (persistence?.pluginState ? resolvePersistedCloudSessionToken({ persistence }) : null);
 }
 
 /** The listing a research rule follows (AAPL, ADYEN:AMS for a hiring rule); empty for one on no symbol. */
@@ -938,20 +953,23 @@ export const alertsCliCommand: CliCommandDef = {
 
     if (action === "list") {
       // An IV level's last reading is this device's, beside the rules.
-      const { alerts, alertsError, events, checks } = await withConfigData(ctx, (config) => ({
+      const { alerts, alertsError, events, checks, session } = await withConfigData(ctx, (config) => ({
         ...readAlertStores(config.config),
         checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
+        session: savedSession(config),
       }));
       // Earnings dates come through market data; CPI, FOMC and calendar dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today, now))
         : lookupScheduledDates(targets, scheduledEventSources(null), today, now);
-      const [{ dates, warnings }, cloud] = await Promise.all([listEventDates(events.rules, now, lookup), cloudRuleStates(events.rules)]);
+      const [{ dates, warnings }, cloud] = await Promise.all([listEventDates(events.rules, now, lookup), cloudRuleStates(events.rules, session)]);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud)),
+        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud, !!session)),
       ];
-      const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : []];
+      const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
+      const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
+        ...waiting ? [needsSignInNote(waiting)] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -1048,8 +1066,14 @@ export const alertsCliCommand: CliCommandDef = {
         await save({ events: [...rules, rule] });
         record("created", rule);
         const delivery = research ? researchDelivery(research.kind) : ruleDelivery(formRule!.event);
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${dryRunNote(data.dryRun)}`,
+        // Saved signed out, it waits on a sign-in, and `alerts list` and ALRT say so until there is one.
+        const needsSignIn = checkedWhenSignedIn(rule) && !savedSession(config);
+        const signIn = needsSignIn
+          ? " It needs sign-in: nothing checks it while you are signed out. Open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up)."
+          : "";
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule, ...needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
+          ...(read.length > 0 ? { warnings: read } : {}) }, {
+          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${signIn}${dryRunNote(data.dryRun)}`,
         });
         return;
       }

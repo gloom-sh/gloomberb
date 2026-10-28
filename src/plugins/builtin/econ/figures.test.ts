@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { colors } from "../../../theme/colors";
 import { actualColor } from "./calendar-model";
-import { econRowFigures, parseEconFigure } from "./figures";
+import { econRowFigures, parseEconFigure, withPercentUnits } from "./figures";
 
 test("a drawn figure reads back as its number, unit and scale, every digit exact", () => {
   expect(parseEconFigure("3%")).toEqual({ value: 3, unit: "%", scale: 1 });
@@ -42,4 +42,30 @@ test("a row's figures share its unit and scale, and one in another unit is not p
   // Each figure is multiplied out by its own scale, so mixed scales are still exact; `scale` is the first one's.
   expect(econRowFigures({ actual: "950K", forecast: "1.2M", prior: "1,250" })).toEqual({ actual: 950_000, forecast: 1_200_000, prior: 1250, unit: null, scale: 1000 });
   expect(econRowFigures({})).toEqual({ actual: null, forecast: null, prior: null, unit: null, scale: null });
+});
+
+test("a percent indicator's figures carry % on every row, and other indicators keep the feed's text", () => {
+  const row = (event: string, actual: string | null, forecast: string | null, prior: string | null, country = "US", indicatorId?: string) =>
+    ({ country, event, indicatorId, actual, forecast, prior });
+  const fixed = withPercentUnits([
+    // The feed dropped the sign on the prior of a month-on-month change.
+    row("Inflation Rate MoM", null, "0.3%", "0.6"),
+    // One row of a rate in %: the other row of the same indicator is in % too.
+    row("MBA 30-Year Mortgage Rate", "7.41%", null, null, "US", "mortgage-30y"),
+    row("MBA 30-Year Mortgage Rate", null, null, "7.32", "US", "mortgage-30y"),
+    // A count, an index and a unit are not percents.
+    row("Non Farm Payrolls", "130K", "45K", "-27"),
+    row("ISM Manufacturing PMI", "50.9", "49.8", "48.7"),
+    row("EIA Crude Oil Stocks Change MoM", "-4.1M bbl", null, "2"),
+  ]);
+  expect(fixed.map(({ actual, forecast, prior }) => [actual, forecast, prior])).toEqual([
+    [null, "0.3%", "0.6%"],
+    ["7.41%", null, null],
+    [null, null, "7.32%"],
+    ["130K", "45K", "-27"],
+    ["50.9", "49.8", "48.7"],
+    ["-4.1M bbl", null, "2"],
+  ]);
+  // The same name in another country is another indicator.
+  expect(withPercentUnits([row("Retail Sales", "1.2%", null, null, "GB"), row("Retail Sales", "0.4", null, null, "US")])[1]!.actual).toBe("0.4");
 });

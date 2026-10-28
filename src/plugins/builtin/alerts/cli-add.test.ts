@@ -360,7 +360,9 @@ async function profile() {
     return { error: null, printed, output: serializeCliResult(printed.result, cli.context.cliOptions, printed.options) };
   };
   const log = () => readFiredAlerts(state.get(`${ALERTS_PLUGIN_ID}:${resumeStateKey(FIRED_LOG_KEY)}`));
-  return { dataDir, run, log, stored: async () => readAlertStores(await loadConfig(dataDir)) };
+  // The session the app saves after sign-in, as the CLI reads it.
+  const signIn = () => state.set("gloomberb-cloud:session", { sessionToken: "session-token" });
+  return { dataDir, run, log, signIn, stored: async () => readAlertStores(await loadConfig(dataDir)) };
 }
 
 test("a second add of one alert names it and adds nothing, re-arming an active one leaves it, and each change is logged", async () => {
@@ -419,12 +421,40 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   expect((await desk.run(["add", "AAPL", "52-week", "high"])).error).toBeNull();
   const [, , , research] = (await desk.run(["list"], { format: "csv" })).output.split("\n");
   expect(research!.split(",").slice(1, 3)).toEqual(["52-week range", "AAPL · 52w high"]);
+  expect(research!.split(",")[5]).toBe("needs sign-in");
   expect(research!.split(",").slice(9)).toEqual(["AAPL", "", "not checked yet", ""]);
 
   const text = (await desk.run(["list"])).output;
   expect(text).toContain("AAPL:NASDAQ (USD)");
   expect(text).toContain("not checked yet");
   expect(text).toContain("2026-10-20T09:30:00Z");
+});
+
+test("an alert only a signed-in account gets checked is saved signed out and reads needs sign-in until a session is saved", async () => {
+  const desk = await profile();
+  const added = await desk.run(["add", "AAPL", "filing", "10-Q"]);
+  expect(added.error).toBeNull();
+  expect(added.printed!.result.data.status).toBe("needs sign-in");
+  expect(added.output).toContain("It needs sign-in: nothing checks it while you are signed out.");
+  // The app checks an IV level itself, signed in or not.
+  expect((await desk.run(["add", "AAPL", "iv", "above", "35%"])).output).not.toContain("needs sign-in");
+  expect((await desk.stored()).events.rules).toHaveLength(2);
+
+  const list = await desk.run(["list"], { format: "csv" });
+  expect(list.output.split("\n").slice(1).map((line) => line.split(",").slice(1, 6))).toEqual([
+    ["SEC filing", "AAPL · 10-Q", "", "", "needs sign-in"],
+    ["IV level", "AAPL · 30d ATM IV above 35%", "", "", "active"],
+  ]);
+  expect(list.printed!.result.warnings).toContain("1 event alert needs sign-in: it is checked only for a signed-in account. "
+    + "Open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up).");
+
+  desk.signIn();
+  // Cloud's readings are asked for with the saved session; here it does not answer.
+  setCloudApiFetchTransport(async () => { throw new TypeError("fetch failed"); });
+  const signedIn = await desk.run(["list"], { format: "csv" });
+  expect(signedIn.output.split("\n")[1]!.split(",")[5]).toBe("active");
+  expect(signedIn.printed!.result.warnings?.some((warning) => warning.includes("needs sign-in"))).toBe(false);
+  expect((await desk.run(["add", "AAPL", "filing", "8-K"])).output).not.toContain("needs sign-in");
 });
 
 test("alerts add takes every kind Add Event Alert offers, by the words a desk types", () => {

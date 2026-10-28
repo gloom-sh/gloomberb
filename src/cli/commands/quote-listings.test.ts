@@ -287,6 +287,34 @@ test("a bare symbol several companies list names, in one line, the company it wa
   expect(source.searches()).toBe(searched);
 });
 
+test("a company's name whose US line moved to another symbol is quoted there, never on a line abroad, and says why", async () => {
+  const name = "Getty Images Holdings, Inc.";
+  const line = (symbol: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD" });
+  const hop = { from: "GETY", to: "GETYQ", date: "2026-10-22" };
+  const quotes: Record<string, ReturnType<typeof createTestQuote>> = {
+    GETYQ: createTestQuote({ symbol: "GETYQ", name, price: 0.031, listingExchangeName: "OTC", exchangeName: "OTC" }),
+    "L2S:MUNICH": createTestQuote({ symbol: "L2S", name, price: 0.019, currency: "EUR", listingExchangeName: "MUNICH", exchangeName: "MUNICH" }),
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /getty/i.test(query) ? [line("GETY", "NYSE"), line("GETYQ", "OTC"), line("L2S", "MUNICH")] : [],
+    getQuote: async (symbol, exchange) => {
+      const quote = quotes[exchange ? `${symbol}:${exchange}` : symbol];
+      if (!quote) throw new Error(`No quote provider available for ${symbol}`);
+      return quote;
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => quotes[target.symbol]
+      ? { target, quote: quotes[target.symbol]! }
+      : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+    getTickerChanges: async (symbol) => symbol === "GETY"
+      ? { symbol, moved: { symbol: "GETYQ", name, hops: [hop] }, formerly: null, listedName: null, changes: [hop] }
+      : null,
+  });
+  const quoted = await runQuote(["getty images"], { dataProvider, batches: [], searches: () => 0 });
+  expect(quoted.failure).toBeNull();
+  expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["GETYQ"]);
+  expect(quoted.warnings).toContain(`Read "getty images" as GETYQ (${name}). GETY became GETYQ on 2026-10-22.`);
+});
+
 test("a symbol whose company moved says so in one line and in its JSON row; the symbol it moved to, one with no change or no service print nothing", async () => {
   const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", exchangeName: "BATS" });
   const meta = createTestQuote({ symbol: "META", name: "Meta Platforms, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });

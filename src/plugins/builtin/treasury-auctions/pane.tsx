@@ -161,7 +161,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
           <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: "\u2014" })}</Text>
-          {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
+          {isPendingAuction(auction) && <Text fg={colors.textDim}>results not published</Text>}
           {auction.cusip && <Text fg={colors.textDim}>{auction.cusip}</Text>}
         </Box>
         <Box height={1} />

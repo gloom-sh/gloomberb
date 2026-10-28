@@ -10,7 +10,7 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import type { PaneLock } from "../../../types/plugin";
 import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
-import { ruleState } from "./event-rows";
+import { needsSignInNote, ruleState } from "./event-rows";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
   alertListing,
@@ -141,7 +141,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
@@ -151,22 +151,26 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
     eventDate: scheduled ? rule.eventDate ?? null : null,
     leadDays: scheduled?.leadDays ?? null,
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
-    state: ruleState(rule, now),
+    state: ruleState(rule, now, signedIn),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
     // An IV level's last reading, or why there was none, on its own row.
     ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule, checks[rule.id]) } : {},
   };
 }
 
-function eventsResult(rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>): HeadlessRowsResult {
+function eventsResult(rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean): HeadlessRowsResult {
   const now = Date.now();
   const checked = rules.some((rule) => rule.kind === "iv_level");
+  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn));
+  // Signed out, the rules only a signed-in account gets checked say so on their rows, and once what to do.
+  const waiting = rows.filter((row) => row.state === "Needs sign-in").length;
   return {
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
-    rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks)),
+    rows,
     empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3, gloom alerts add CPI --days 1 or gloom alerts add CN PMI.",
     ...(error ? { errors: [error], complete: false } : {}),
+    ...(waiting ? { notes: [needsSignInNote(waiting)] } : {}),
   };
 }
 
@@ -260,7 +264,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     if (tab === "history") return historyResult(ctx);
     const { alerts, alertsError, events } = readAlertStores(ctx.config);
     return tab === "events"
-      ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)))
+      ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.())
       : pricesResult(alerts, alertsError, events.rules.length);
   },
 };

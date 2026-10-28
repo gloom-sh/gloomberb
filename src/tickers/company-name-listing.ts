@@ -1,5 +1,6 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
+import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { companyNameMatch, sameCompany, shortCompanyName } from "./company-name";
@@ -12,7 +13,7 @@ import { hasNonLatinLetters } from "../utils/typed-text";
 
 export interface CompanyNameListing {
   symbol: string;
-  /** Canonical code of its exchange. */
+  /** Canonical code of its exchange; empty for a US symbol read bare (a line its company `moved` to). */
   exchange: string;
   /** The listing's name as search gives it. */
   name: string;
@@ -22,7 +23,21 @@ export interface CompanyNameListing {
    * run together (JPM, JPMorgan Chase & Co.), which the reader is asked about.
    */
   meant?: Omit<CompanyNameListing, "meant">;
+  /**
+   * When the company's US line, which search still lists, moved to another
+   * symbol and this is the line it trades as now (GETY became GETYQ): the
+   * change in one line, "GETY became GETYQ on 2026-10-22".
+   */
+  moved?: string;
 }
+
+/**
+ * Where a listing's company trades now when it moved off the symbol (GETY
+ * became GETYQ on 2026-10-22), from the line's quote (null when it has none):
+ * the symbol it took, and the change in one line. Null when it did not move,
+ * or that cannot be told.
+ */
+export type MovedLineLookup = (listing: { symbol: string; exchange: string; quote: Quote | null }) => Promise<{ symbol: string; note: string } | null>;
 
 /** Share lines that are not the company's common stock, though search may type them as such. */
 const NOT_COMMON = /preferred|warrant|right|unit|note|bond|debenture/i;
@@ -70,7 +85,7 @@ export function isCompanyNameInput(input: string): boolean {
 export async function findListingOfCompanyName(
   dataProvider: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuote">>,
   typed: string,
-  options: { meant?: boolean; oneWord?: boolean; quoted?: boolean } = {},
+  options: { meant?: boolean; oneWord?: boolean; quoted?: boolean; movedLine?: MovedLineLookup } = {},
 ): Promise<CompanyNameListing | null> {
   const name = typed.trim();
   if (!name) return null;
@@ -110,8 +125,12 @@ export async function findListingOfCompanyName(
   const lines = ranked.filter((listing) => listing === first || (!listing.home && !otherHomes.has(plainName(listing.result.name))
     && sameCompany(first.result.name, listing.result.name)
     && listing.rank.slice(0, NAME_RANKS).every((value, index) => value === first.rank[index])));
-  const best = options.quoted ? await firstQuoted(dataProvider, lines) : first;
-  const found = { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name };
+  const quoted = options.quoted ? await firstQuoted(dataProvider, lines, options.movedLine) : { line: first, moved: null };
+  const best = quoted.line;
+  const found: CompanyNameListing = quoted.moved
+    // The line it moved to is a US symbol, read bare as `quote` reads one (GETYQ, which trades over the counter).
+    ? { symbol: quoted.moved.symbol, exchange: "", name: best.result.name, moved: quoted.moved.note }
+    : { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
   return meant ? { ...found, meant } : found;
 }
@@ -127,22 +146,41 @@ interface RankedListing {
   exchange: string;
 }
 
+/** A US exchange, or the US over-the-counter market a line moves to when it leaves one. */
+function isUsVenue(exchange: string): boolean {
+  return isUsListingExchange(exchange) || exchange.startsWith("OTC") || exchange === "PNK";
+}
+
 /**
  * The first of a company's lines, in their order, that has a quote: the first
  * itself, or when it has none, the first of the next few that does, asked
- * together. The first stands when none has a quote, when the source is too
- * busy to say, and when nothing here can ask for quotes.
+ * together. A first US line whose company moved to another symbol (GETY
+ * became GETYQ) is followed there before any other line, so a name never lands
+ * on a listing abroad that still quotes the old shares. The first stands when none has a quote,
+ * when the source is too busy to say, and when nothing here can ask for quotes.
  */
-async function firstQuoted<T extends RankedListing>(dataProvider: Partial<Pick<DataProvider, "getQuote">>, lines: readonly T[]): Promise<T> {
+async function firstQuoted<T extends RankedListing>(
+  dataProvider: Partial<Pick<DataProvider, "getQuote">>,
+  lines: readonly T[],
+  movedLine?: MovedLineLookup,
+): Promise<{ line: T; moved: { symbol: string; note: string } | null }> {
   const first = lines[0]!;
-  if (!dataProvider.getQuote) return first;
-  const quoted = ({ result, exchange }: RankedListing) => dataProvider.getQuote!(result.symbol.toUpperCase(), exchange).then(hasPrice);
+  const only = (line: T) => ({ line, moved: null });
+  if (!dataProvider.getQuote) return only(first);
+  const quoteOf = ({ result, exchange }: RankedListing) => dataProvider.getQuote!(result.symbol.toUpperCase(), exchange);
+  let quote: Quote | null = null;
   try {
-    if (await quoted(first)) return first;
+    quote = await quoteOf(first) ?? null;
   } catch (error) {
     // A busy source says nothing of the listing; any other failure is a listing with no quote.
-    if (isProviderBusy(error)) return first;
+    if (isProviderBusy(error)) return only(first);
   }
+  if (movedLine && isUsVenue(first.exchange)) {
+    const symbol = first.result.symbol.toUpperCase();
+    const moved = await movedLine({ symbol, exchange: first.exchange, quote });
+    if (moved && moved.symbol.toUpperCase() !== symbol) return { line: first, moved: { ...moved, symbol: moved.symbol.toUpperCase() } };
+  }
+  if (hasPrice(quote)) return only(first);
   const keys = new Set([listingKey(first)]);
   const next: T[] = [];
   for (const line of lines) {
@@ -151,11 +189,11 @@ async function firstQuoted<T extends RankedListing>(dataProvider: Partial<Pick<D
     keys.add(listingKey(line));
     next.push(line);
   }
-  const priced = await Promise.all(next.map((line) => quoted(line).catch(() => {
+  const priced = await Promise.all(next.map((line) => quoteOf(line).then(hasPrice).catch(() => {
     // Intentional ignore: a line whose quote fails is a line with no quote.
     return false;
   })));
-  return next.find((_, index) => priced[index]) ?? first;
+  return only(next.find((_, index) => priced[index]) ?? first);
 }
 
 /** A name as two venues may spell it alike: "SIEMENS LTD" for Siemens Ltd. */
