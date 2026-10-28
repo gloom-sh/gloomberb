@@ -307,7 +307,7 @@ function utcDateTimePart(value: unknown, part: "date" | "time", readerClock = tr
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${readerClock ? localTimeSuffix(date.getTime()) : ""}`;
 }
 
-const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--search <text>] [--from <date>] [--tz <zone>]";
+const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--search <words>] [--from <date>] [--tz <zone>]";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 /** "Sat" for 2026-10-31. */
 const weekdayOf = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]!;
@@ -917,7 +917,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--search <text>", description: "Events whose name has these words, case, spaces and hyphens aside, such as nonfarm or fed funds" },
+        { flags: "--search <words>", description: "Events whose name has these words, case, spaces and hyphens aside, such as nonfarm or fed funds" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],
