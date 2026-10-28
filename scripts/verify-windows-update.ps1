@@ -188,6 +188,45 @@ function Send-RestartKey {
   }
 }
 
+# What the page shows, for a failure's message.
+function Get-PageText {
+  foreach ($Page in Get-MainPages) {
+    try {
+      $Replies = Invoke-Cdp $Page.webSocketDebuggerUrl @(
+        @{ Method = "Runtime.evaluate"; Params = @{ returnByValue = $true; expression = "document.body.innerText.slice(0, 1500)" } }
+      )
+      return [string]$Replies[0].result.result.value
+    } catch {
+      return "(could not read the page: $($_.Exception.Message))"
+    }
+  }
+  "(no page)"
+}
+
+# Opens what $Shortcut opens, the way the shell does, with the app's console
+# output kept for the evidence.
+function Open-Shortcut {
+  param([string]$Shortcut, [string]$Label)
+
+  $Link = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut)
+  $PreviousConsole = $env:ELECTROBUN_CONSOLE
+  $env:ELECTROBUN_CONSOLE = "1"
+  try {
+    Start-Process -FilePath $Link.TargetPath -WorkingDirectory $Link.WorkingDirectory `
+      -RedirectStandardOutput (Join-Path $EvidenceDir "$Label.out.log") `
+      -RedirectStandardError (Join-Path $EvidenceDir "$Label.err.log") | Out-Null
+  } finally {
+    if ($null -eq $PreviousConsole) { Remove-Item Env:ELECTROBUN_CONSOLE -ErrorAction SilentlyContinue } else { $env:ELECTROBUN_CONSOLE = $PreviousConsole }
+  }
+}
+
+# The app is up once its main page is.
+function Wait-AppOpen {
+  param([int]$Seconds)
+
+  Wait-Until $Seconds { ((Get-ProcessesUnder $InstallDir).Count -gt 0) -and (@(Get-MainPages).Count -gt 0) }
+}
+
 function Write-SeededConfig {
   param([string]$DataDir)
 
@@ -239,7 +278,8 @@ function Write-Release {
 
   tar -cf $Tar -C $Unpacked $AppName
   if ($LASTEXITCODE -ne 0) { throw "tar could not pack $UpdateApp" }
-  & $Zstd compress -i $Tar -o (Join-Path $ReleaseDir "$Prefix-$AppName.tar.zst")
+  # Level 3: the default, 19, takes minutes on a build this size.
+  & $Zstd compress -i $Tar -o (Join-Path $ReleaseDir "$Prefix-$AppName.tar.zst") -l 3 --threads max
   if ($LASTEXITCODE -ne 0) { throw "zig-zstd could not pack $Tar" }
   Remove-Item -Force $Tar
 
@@ -337,12 +377,28 @@ try {
   # 1. Opened from the Start menu, the app finds the update and downloads it;
   #    U restarts into it.
   Save-InstallState "before-update" | Out-Null
-  Start-Process -FilePath $StartMenuShortcut
-  if (-not (Wait-Until 60 { (Get-ProcessesUnder $InstallDir).Count -gt 0 })) {
-    throw "The Start menu shortcut did not open the app from $InstallDir"
+  $Stray = @(Get-Process -Name "launcher", "bun", "bun Helper*" -ErrorAction SilentlyContinue)
+  if ($Stray.Count -gt 0) {
+    Write-Host "Stopping app processes left from earlier steps: $(($Stray | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
+    $Stray | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+  }
+  Open-Shortcut $StartMenuShortcut "first-start"
+  if (-not (Wait-AppOpen 90)) {
+    # A first start on a fresh machine can stall before its window; once more.
+    Write-Host "The app did not open its window from $InstallDir; opening it again. It runs: $((Get-ProcessesUnder $InstallDir | ForEach-Object { $_.Path }) -join ', ')"
+    Stop-ProcessesUnder @($InstallDir)
+    Open-Shortcut $StartMenuShortcut "second-start"
+    if (-not (Wait-AppOpen 90)) {
+      throw "The Start menu shortcut did not open the app from $InstallDir"
+    }
   }
   $Downloaded = Join-Path $env:LOCALAPPDATA "$($Info.identifier)\$($Info.channel)\self-extraction\$UpdateHash.tar"
   if (-not (Wait-Until 240 { Test-Path $Downloaded })) {
+    Save-InstallState "no-download" | Out-Null
+    Write-Host "The release copy was asked for:"
+    Get-Content (Join-Path $EvidenceDir "release-server.err.log") -ErrorAction SilentlyContinue
+    Write-Host "The page shows: $(Get-PageText)"
     throw "The app did not download the update into $Downloaded"
   }
   $Restarted = $false
