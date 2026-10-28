@@ -109,7 +109,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const refreshedCurrent = refreshedIv?.owner === ivLoader && refreshedIv.at > (loadedIv.updatedAt ?? 0) ? refreshedIv.data : null;
   const iv = { ...loadedIv, data: refreshedCurrent ?? loadedIv.data };
   ivDataRef.current = iv.data;
-  useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !!iv.data?.reference && !loadedIv.loading,
+  const ivRefresh = useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !!iv.data?.reference && !loadedIv.loading,
     loadedIv.updatedAt);
   const model = useMemo(() => history.data ? projectRealizedVolatility(history.data.history, {
     symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
@@ -117,7 +117,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const chartInput = useMemo(() => model ? { history: model.history, rolling: model.series, windows: model.windows,
     priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType), iv: showIv ? iv.data?.reference ?? null : null } : null,
   [model, quote?.currency, quote?.instrumentType, showIv, iv.data]);
-  const notices = [identityError, history.error, history.data?.error, iv.error, iv.data?.error,
+  const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
     ...(model?.warnings ?? []), ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
   ].filter((value): value is string => !!value);
@@ -161,7 +161,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     stale: history.data?.stale ?? false, source: history.data?.source ?? null,
     asOf: model?.asOf?.toISOString() ?? null,
     errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []),
-      ...(showIv ? [iv.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null] : []),
+      ...(showIv ? [iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null] : []),
     ].filter((value): value is string => !!value))],
     currentIv: showIv && iv.data?.reference ? { value: iv.data.reference.value * 100,
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,

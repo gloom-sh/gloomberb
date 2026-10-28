@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, createElement, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { setAppVisible } from "../../../../state/app/activity";
-import { indexCloseSettlement, useLiveSessionRefresh, usOptionsSession } from "./live-session";
+import { indexCloseSettlement, useLiveSessionRefresh, usOptionsSession, type LiveSessionRefresh } from "./live-session";
 
 const realNow = Date.now;
 const tui = createOpenTuiTestHarness({ width: 10, height: 2 });
@@ -44,7 +44,7 @@ async function renderRefresh(now: number, enabled = true) {
   let calls = 0;
   let active = false;
   function Probe() {
-    active = useLiveSessionRefresh(() => { calls += 1; }, 20, enabled);
+    active = useLiveSessionRefresh(() => { calls += 1; }, 20, enabled).live;
     return null;
   }
   await act(async () => { await tui.render(createElement(Probe)); });
@@ -96,4 +96,41 @@ test("a cycle enabled by a slow load waits an interval; returning from a long hi
   now += 5_000;
   await act(async () => setAppVisible(true));
   expect(calls).toBe(1);
+});
+
+// A live refresh that failed leaves the last data on screen: the pane has to hear why, until a tick succeeds.
+test("a failed live refresh reports why until the next tick succeeds, and a cancelled one is no failure", async () => {
+  Date.now = () => Date.parse("2026-09-23T15:00:00Z");
+  const ticks: Array<PromiseWithResolvers<void>> = [];
+  let state: LiveSessionRefresh | undefined;
+  function Probe() {
+    state = useLiveSessionRefresh(() => {
+      const tick = Promise.withResolvers<void>();
+      ticks.push(tick);
+      return tick.promise;
+    }, 20, true);
+    return null;
+  }
+  await act(async () => { await tui.render(createElement(Probe)); });
+  const tick = async (count: number) => {
+    for (let attempt = 0; attempt < 100 && ticks.length < count; attempt += 1) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    }
+    expect(ticks).toHaveLength(count);
+    return ticks[count - 1]!;
+  };
+  const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  (await tick(1)).reject(new Error("Gloom couldn't reach its data service"));
+  await settle();
+  expect(state?.error).toBe("Gloom couldn't reach its data service");
+  expect(state?.live).toBe(true);
+
+  (await tick(2)).resolve();
+  await settle();
+  expect(state?.error).toBeNull();
+
+  (await tick(3)).reject(new DOMException("The operation was aborted.", "AbortError"));
+  await settle();
+  expect(state?.error).toBeNull();
 });
