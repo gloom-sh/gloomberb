@@ -13,6 +13,7 @@ import { applyDesktopWindowControl } from "../window/controls";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
 import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
+import { saveDesktopViewIds } from "./view-ids";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 
 function normalizeText(value: unknown): string | undefined {
@@ -161,6 +162,12 @@ export async function handleDesktopHostRequest(
         mainWindow: backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY,
         session: backend.config !== null,
       });
+      return null;
+    case "host.saveViewIds":
+      // The main window's view keeps them; its popped-out panes share its storage.
+      if (backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY && backend.config) {
+        saveDesktopViewIds(backend.config.dataDir, request.payload.ids);
+      }
       return null;
     case "host.setAppBadge":
       // One badge for the app, from the main window; a popped-out pane's view

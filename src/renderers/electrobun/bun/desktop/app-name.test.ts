@@ -81,9 +81,10 @@ describe("an install from before the rename, after its updater put the new build
     expect(readdirSync(localBin).sort()).toEqual(["gloom", "gloomberb"]);
   });
 
-  test("replaces a Gloom.app of this app already there with the running build", async () => {
+  // Under either of the app's bundle identifiers: the one it has, and the one a later release moves to.
+  test.each(["com.vincelwt.gloomberb", "sh.gloom.desktop"])("replaces a Gloom.app of this app (%s) already there with the running build", async (identifier) => {
     const legacy = bundle("Gloomberb.app", { version: "0.19.1" });
-    bundle("Gloom.app", { version: "0.19.0" });
+    bundle("Gloom.app", { version: "0.19.0", identifier });
 
     const result = await renameLegacyMacApp(options(legacy));
 

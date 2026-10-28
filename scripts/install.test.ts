@@ -557,6 +557,7 @@ describe("install.sh on an Apple Silicon Mac", () => {
   // while the new one is taken.
   test.skipIf(!hasZip).each([
     ["this app's", "com.vincelwt.gloomberb", ["Gloom.app"], "Gloom.app"],
+    ["this app's, under the identifier it moves to", "sh.gloom.desktop", ["Gloom.app"], "Gloom.app"],
     ["another program's", "com.example.gloom", ["Gloom.app", "Gloomberb.app"], "Gloomberb.app"],
   ] as const)("an existing Gloom.app that is %s", async (_, identifier, apps, installedAs) => {
     const run = await runInstall(mac, {

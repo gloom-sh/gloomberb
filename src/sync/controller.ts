@@ -41,7 +41,8 @@ interface SyncRuntime {
   isLocalMarketData?: LocalMarketDataLookup;
 }
 
-const CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
+/** Kept in the view's storage; the desktop app also keeps a copy on disk (electrobun/view/view-ids.ts). */
+export const SYNC_CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
 const PUSH_DEBOUNCE_MS = 2500;
 /** How soon after a change contributors date it, so an edit made just before quitting still is. */
 const OBSERVE_DEBOUNCE_MS = 250;
@@ -60,10 +61,10 @@ function nowIso(): string {
 
 function resolveClientId(): string {
   const storage = globalThis.localStorage;
-  const existing = storage?.getItem(CLIENT_ID_STORAGE_KEY);
+  const existing = storage?.getItem(SYNC_CLIENT_ID_STORAGE_KEY);
   if (existing) return existing;
   const id = `client_${crypto.randomUUID()}`;
-  storage?.setItem(CLIENT_ID_STORAGE_KEY, id);
+  storage?.setItem(SYNC_CLIENT_ID_STORAGE_KEY, id);
   return id;
 }
 
