@@ -21,7 +21,12 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
   expect(parseListingArg("aapl")).toEqual({ symbol: "AAPL", exchange: "", key: "AAPL" });
   // A coin pair as crypto venues write it is the coin's own symbol; a currency or metal pair is not a coin.
   expect(parseListingArg("btc/usd").key).toBe("BTC-USD");
-  expect(parseListingArg("BTC/USD:BINANCE")).toEqual({ symbol: "BTC-USD", exchange: "BINANCE", key: "BTC-USD:BINANCE" });
+  // A crypto exchange's line of a pair, as search offered it, is the crypto venue's listing: no source quotes the line.
+  for (const [raw, option, key] of [["BTC/USD:BINANCE", undefined, "BTC-USD:CCC"], ["BTC/GBP:COINBASE PRO", undefined, "BTC-GBP:CCC"],
+    ["eth/eur", "KRAKEN", "ETH-EUR:CCC"]] as const) {
+    expect(parseListingArg(raw, option).key).toBe(key);
+  }
+  expect(parseListingArg("BRK/B:NYSE").key).toBe("BRK/B:NYSE");
   // A currency pair is the one listing the service has for it, on its venue by either name or by its syntax.
   for (const [raw, option] of [["EUR/USD", undefined], ["EURUSD:CCY", undefined], ["eurusd:fx", undefined], ["EURUSD", "FX"], ["EURUSD=X", "CCY"]] as const) {
     expect(parseListingArg(raw, option)).toEqual({ symbol: "EURUSD=X", exchange: "", key: "EURUSD=X" });

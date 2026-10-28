@@ -21,7 +21,8 @@ import {
 } from "../../../../tickers/ticker-changes";
 
 const QUICK_ADD_MAX_QUERY_LENGTH = 32;
-const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-\s]*$/;
+// A slash writes a pair as crypto exchanges and FX desks do: BTC/GBP, EUR/USD.
+const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-/\s]*$/;
 
 export type QuickAddCollectionKind = "portfolio" | "watchlist";
 

@@ -1,4 +1,4 @@
-import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
+import { canonicalExchange, EXCHANGE_TIME_ZONES, isKnownExchangeCode, parsePublicTickerKey } from "./exchanges";
 
 // The fiat codes a pair against USD is read as FX for, never as a coin. The
 // list Cloud reads: it serves these pairs by the same rule, so a copy judged
@@ -9,8 +9,8 @@ const FIAT_CURRENCY_CODES = new Set([
 ]);
 
 const USD_COIN_PAIR = /^([A-Z0-9]+)[-/]USD$/;
-// The other currencies and coins the crypto venue quotes a coin in (BTC-EUR, ETH-BTC).
-const QUOTED_COIN_PAIR = /^([A-Z0-9]+)[-/](?:USDT|USDC|EUR|GBP|BTC|ETH)$/;
+// The other currencies and coins the crypto venue quotes a coin in (BTC-EUR, BTC-JPY, ETH-BTC).
+const QUOTED_COIN_PAIR = /^([A-Z0-9]+)[-/](?:USDT|USDC|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|BTC|ETH)$/;
 
 /** A coin quoted in dollars (BTC-USD, ETH/USD). EUR-USD is spot FX, not a coin. */
 function isUsdCoinPair(symbol: string): boolean {
@@ -35,10 +35,18 @@ export function isRoundTheClockCoin(symbol?: string, exchange?: string): boolean
   const parsed = symbol ? parsePublicTickerKey(symbol) : null;
   const venue = canonicalExchange(parsed?.exchange ?? exchange) || canonicalExchange(exchange);
   if (venue === "CCC" || canonicalExchange(exchange) === "CCC") return true;
+  if (parsed && exchangeLineCoinListing(parsed.symbol, venue)) return true;
   return !!parsed && (isUsdCoinPair(parsed.symbol) || (!venue && isQuotedCoinPair(parsed.symbol)));
 }
 
-const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|USDT|USDC|BTC)$/;
+const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|USDT|USDC|BTC|ETH)$/;
+
+/**
+ * What the crypto venue (CCC) quotes a coin in: BTC-GBP, BTC-KRW, LINK-ETH.
+ * It has no coin in a stablecoin (BTC-USDT) or in most other currencies
+ * (BTC-TRY, BTC-BRL).
+ */
+const VENUE_QUOTE_LEGS: ReadonlySet<string> = new Set(["USD", "EUR", "GBP", "JPY", "KRW", "CAD", "INR", "CNY", "AUD", "BTC", "ETH"]);
 
 let isoCurrencyCodes: ReadonlySet<string> | null = null;
 
@@ -58,9 +66,52 @@ export function dashedCoinPair(symbol: string): string | null {
   return `${match[1]}-${match[2]}`;
 }
 
+/**
+ * A crypto exchange's own line of a coin pair (BTC/GBP on COINBASE PRO, LINK/EUR
+ * on KRAKEN, DOGE/BTC on BINANCE) as the crypto venue's listing of it, in the
+ * currency it is quoted in: BTC-GBP on CCC, in pounds. Search offers those
+ * lines, and no source quotes them. Null for a currency pair (EUR/USD), a
+ * metal (XAU/USD), a pair the venue quotes in no such currency (BTC/USDT),
+ * and a slash on a stock exchange, which is a share class (BRK/B).
+ */
+export function exchangeLineCoinListing(symbol: string, exchange?: string): { symbol: string; exchange: "CCC"; currency: string } | null {
+  const parsed = parsePublicTickerKey(symbol);
+  const match = SLASH_COIN_PAIR.exec(parsed.symbol);
+  if (!match || isIsoCurrencyCode(match[1]!) || !VENUE_QUOTE_LEGS.has(match[2]!)) return null;
+  const venue = canonicalExchange(parsed.exchange ?? exchange);
+  // The crypto venues trade around the clock; a venue the app knows that does not is a stock exchange.
+  if (venue && isKnownExchangeCode(venue) && EXCHANGE_TIME_ZONES[venue] !== "UTC") return null;
+  return { symbol: `${match[1]}-${match[2]}`, exchange: "CCC", currency: match[2]! };
+}
+
+/**
+ * Search rows with each crypto exchange's line of a coin pair (ETH/EUR on KRAKEN, COINBASE PRO, BITSTAMP and
+ * BINANCE) as the crypto venue's one listing of it, ETH-EUR on CCC in euros, where the first line stood. A pair
+ * already offered on the venue is not offered twice. Newer servers send the listing themselves.
+ */
+export function withExchangeLinesAsCoinListings<T extends { symbol: string; exchange: string; type: string; currency?: string; brokerContract?: unknown }>(rows: T[]): T[] {
+  const offered = new Set(rows.filter((row) => canonicalExchange(row.exchange) === "CCC").map((row) => row.symbol.trim().toUpperCase()));
+  let changed = false;
+  const mapped = rows.flatMap((row) => {
+    const coin = !row.brokerContract && /CRYPTO|DIGITAL|COIN/i.test(row.type) ? exchangeLineCoinListing(row.symbol, row.exchange) : null;
+    if (!coin) return [row];
+    changed = true;
+    if (offered.has(coin.symbol)) return [];
+    offered.add(coin.symbol);
+    return [{ ...row, symbol: coin.symbol, exchange: coin.exchange, currency: row.currency || coin.currency }];
+  });
+  return changed ? mapped : rows;
+}
+
+/** The currency or coin a pair on the crypto venue is quoted in: GBP for BTC-GBP; null for anything else. */
+export function coinPairQuoteCurrency(symbol: string): string | null {
+  const match = /^([A-Z0-9]{1,15})-([A-Z]{3})$/.exec(parsePublicTickerKey(symbol).symbol);
+  return match && !isIsoCurrencyCode(match[1]!) && VENUE_QUOTE_LEGS.has(match[2]!) ? match[2]! : null;
+}
+
 // A base-quote pair such as BTC-USD or SOL-EUR. Equities with a share-class dash (BRK-B) and
 // currency pairs (EURUSD=X) do not match.
-const CRYPTO_PAIR = /^[A-Z0-9]{1,15}-(?:USD|EUR|GBP|USDT|USDC|BTC)$/;
+const CRYPTO_PAIR = /^[A-Z0-9]{1,15}-(?:USD|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|USDT|USDC|BTC|ETH)$/;
 
 /**
  * Wider than isUsdCoinPair, for the hint under a pair that will not load: it
@@ -135,9 +186,10 @@ export const TOP_COIN_NAMES: ReadonlyMap<string, string> = new Map([
   ["RENDER", "render"],
 ]);
 
-const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|EUR|GBP|USDT|USDC|BTC)$/;
+const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|USDT|USDC|BTC|ETH)$/;
 // What a pair's listing name adds after the coin's: its quote currency, an id in brackets.
-const PAIR_NAME_SUFFIX = /(?:\s*\([^)]*\))+$|\s+(?:USD|EUR|GBP|USDT|USDC|BTC|US Dollars?)$/i;
+// Not ETH, which ends coins' own names (Lido Staked ETH).
+const PAIR_NAME_SUFFIX = /(?:\s*\([^)]*\))+$|\s+(?:USD|EUR|GBP|JPY|KRW|CAD|INR|CNY|AUD|USDT|USDC|BTC|US Dollars?)$/i;
 
 /**
  * The coin a crypto pair trades, as stories name it: "bitcoin" for BTC-USD
