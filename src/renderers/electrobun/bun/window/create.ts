@@ -43,6 +43,22 @@ function desktopWindowStyleMask(): DesktopWindowStyleMask {
   };
 }
 
+const APP_VIEW_URL = "views://mainview/index.html";
+
+/**
+ * Electrobun's Windows webview takes a page load that starts while Ctrl is
+ * down for a Ctrl+click on a link: it cancels the load and asks for a new
+ * window instead. A window opened from a Ctrl chord, as Ctrl+Shift+O pops a
+ * pane out, stayed blank. Its page is loaded again, which Electrobun lets
+ * through within half a second of the one it cancelled.
+ */
+function loadAgainWhenTakenForCtrlClick(window: BrowserWindow): void {
+  (window.webview as { on: (name: string, handler: (event: unknown) => void) => void }).on("new-window-open", (event) => {
+    const detail = (event as { data?: { detail?: { url?: unknown } } }).data?.detail;
+    if (detail?.url === APP_VIEW_URL) window.webview.loadURL(APP_VIEW_URL);
+  });
+}
+
 interface AppWindowOptions {
   title: string;
   /** Already normalized to at least `minSize`. */
@@ -63,7 +79,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   const window = new BrowserWindow({
     title,
     frame,
-    url: "views://mainview/index.html",
+    url: APP_VIEW_URL,
     ...(preload ? { preload } : {}),
     renderer: desktopWindowRenderer(),
     rpc,
@@ -74,6 +90,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   });
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
+  if (process.platform === "win32") loadAgainWhenTakenForCtrlClick(window);
   updateWindowFrameCache(window, frame, minSize);
   (window as any).on?.("move", (event: WindowMoveEvent) => {
     applyWindowMoveEvent(window, event);
