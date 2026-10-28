@@ -435,6 +435,7 @@ describe("old copies of the app at the next start", () => {
     ["darwin", "Gloom.app", "Gloom.app/Contents/MacOS/bun"],
     ["darwin", "Gloomberb.app", "Gloomberb.app/Contents/MacOS/bun"],
     ["linux", "app", "app/bin/bun"],
+    ["win32", "Gloom", "Gloom/bin/bun.exe"],
   ])("%s removes %s.previous and the uniquely named ones, and nothing else", async (platform, app, exec) => {
     const keep = [app, `${app}.previous.bak`, `${app}.previously`, `Other${app}.previous`, `${app}.previous-UPPER`];
     const folder = folderWith([...keep, `${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
@@ -462,10 +463,10 @@ describe("old copies of the app at the next start", () => {
   test("leaves everything alone where it cannot tell the app's folder", async () => {
     const folder = folderWith(["bun.previous", "Gloomberb.previous"]);
     try {
-      // A bundle path that is not the app's Contents/MacOS, a Linux runtime outside bin/, and Windows.
+      // A bundle path that is not the app's Contents/MacOS, and a runtime outside bin/.
       expect(await removeUpdateAsides(join(folder, "Gloomberb.app/bun"), "darwin")).toEqual([]);
       expect(await removeUpdateAsides(join(folder, "bun"), "linux")).toEqual([]);
-      expect(await removeUpdateAsides(join(folder, "Gloomberb/bin/bun.exe"), "win32")).toEqual([]);
+      expect(await removeUpdateAsides(join(folder, "Gloomberb/bun.exe"), "win32")).toEqual([]);
       expect(existsSync(join(folder, "bun.previous"))).toBe(true);
     } finally {
       rmSync(folder, { recursive: true, force: true });

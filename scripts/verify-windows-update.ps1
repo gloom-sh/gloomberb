@@ -176,7 +176,7 @@ function Send-RestartKey {
       $Replies = Invoke-Cdp $Page.webSocketDebuggerUrl @(
         @{ Method = "Runtime.evaluate"; Params = @{
           returnByValue = $true
-          expression = "(() => { const active = document.activeElement; if (active && active !== document.body) active.blur(); return (document.body.innerText.match(/[^\n]*(updat|restart)[^\n]*/gi) || []).slice(0, 6).join(' | '); })()"
+          expression = "(() => { const active = document.activeElement; if (active && active !== document.body) active.blur(); return (document.body.innerText.match(/[^\n]*(updat|restart|ready|download)[^\n]*/gi) || []).slice(0, 6).join(' | '); })()"
         } },
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyDown"; key = "u"; code = "KeyU"; text = "u"; unmodifiedText = "u"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } },
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyUp"; key = "u"; code = "KeyU"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } }
@@ -260,7 +260,7 @@ function Assert-OpensFromInstallerFolder {
   }
   $State = Save-InstallState $Label
   if (-not $Done) {
-    Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "*\*\*.log") -ErrorAction SilentlyContinue | ForEach-Object {
+    $script:UpdaterApps | ForEach-Object { Get-ChildItem -Path (Join-Path (Split-Path -Parent $_) "*.log") -ErrorAction SilentlyContinue } | ForEach-Object {
       Write-Host "--- $($_.FullName)"
       Get-Content -LiteralPath $_.FullName -Tail 40
     }
@@ -269,6 +269,8 @@ function Assert-OpensFromInstallerFolder {
 }
 
 $Server = $null
+$UpdaterShortcut = $null
+$UpdaterUninstallKey = $null
 $PreviousUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $HadConfigHome = Test-Path $ConfigHome
 $script:UpdaterApps = @()
@@ -306,6 +308,11 @@ try {
   $UpdaterApp = Join-Path $env:LOCALAPPDATA "$($Info.identifier)\$($Info.channel)\app"
   $OtherApp = Join-Path $env:LOCALAPPDATA "$(@($Identifiers | Where-Object { $_ -ne $Info.identifier })[0])\$($Info.channel)\app"
   $script:UpdaterApps = @($UpdaterApp, $OtherApp)
+  # What Electrobun's own setup makes for its folder: an uninstall entry
+  # named after the identifier, and shortcuts.
+  $UpdaterUninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($Info.identifier)"
+  $UpdaterShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom updater copy.lnk"
+  if (Test-Path $UpdaterUninstallKey) { throw "An uninstall entry for $($Info.identifier) is already recorded" }
   foreach ($Folder in $script:UpdaterApps) {
     if (Test-Path $Folder) { throw "A copy of the app is already in $Folder" }
     $AppData = Split-Path -Parent $Folder
@@ -373,7 +380,36 @@ try {
     throw "Opened from the Desktop shortcut, the app should keep running the new build from $InstallDir; it runs from $($State.runningFrom -join ', ')"
   }
 
-  # 3. A build an updater put in its folder under the app's other identifier
+  # 3. Opened from the installer's folder beside a copy an earlier update
+  #    left in the updater's folder, with the shortcut and uninstall entry
+  #    Electrobun's own setup makes for it, the app removes the copy and
+  #    points the shortcut at its own folder.
+  Stop-ProcessesUnder @($InstallDir)
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $UpdaterApp) | Out-Null
+  Copy-Item -Recurse -Path $UpdateApp -Destination $UpdaterApp
+  $Shell = New-Object -ComObject WScript.Shell
+  $Link = $Shell.CreateShortcut($UpdaterShortcut)
+  $Link.TargetPath = Join-Path $UpdaterApp "bin\launcher.exe"
+  $Link.WorkingDirectory = Join-Path $UpdaterApp "bin"
+  $Link.Save()
+  New-Item -Path $UpdaterUninstallKey -Force | Out-Null
+  New-ItemProperty -Path $UpdaterUninstallKey -Name "InstallLocation" -Value $UpdaterApp -PropertyType String -Force | Out-Null
+  New-ItemProperty -Path $UpdaterUninstallKey -Name "UninstallString" -Value "cmd.exe /c rmdir /s /q `"$UpdaterApp`"" -PropertyType String -Force | Out-Null
+  Start-Process -FilePath $StartMenuShortcut
+  $Removed = Wait-Until 120 {
+    -not (Test-Path $UpdaterApp) -and -not (Test-Path $UpdaterUninstallKey) -and
+      ((Get-ShortcutTarget $UpdaterShortcut) -eq (Join-Path $InstallDir "bin\launcher.exe"))
+  }
+  $State = Save-InstallState "updater-copy-removed"
+  if (-not $Removed) {
+    throw "Opened from $InstallDir, the app should remove the copy in $UpdaterApp ($(Test-Path $UpdaterApp)), its uninstall entry ($(Test-Path $UpdaterUninstallKey)) and point $UpdaterShortcut at its own folder (it opens $(Get-ShortcutTarget $UpdaterShortcut))"
+  }
+  if ((Get-ProcessesUnder $InstallDir).Count -eq 0) {
+    throw "The app stopped running from $InstallDir while it removed the copy in $UpdaterApp"
+  }
+  Remove-Item -Force $UpdaterShortcut
+
+  # 4. A build an updater put in its folder under the app's other identifier
   #    moves into the installer's folder too.
   Stop-ProcessesUnder @($InstallDir)
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OtherApp) | Out-Null
@@ -382,7 +418,7 @@ try {
   Start-Process -FilePath (Join-Path $OtherApp "bin\launcher.exe") -WorkingDirectory (Join-Path $OtherApp "bin")
   Assert-OpensFromInstallerFolder -Label "other-identifier" -Build $OtherIdentifierHash -Gone $OtherApp
 
-  # 4. The uninstall entry removes all of it.
+  # 5. The uninstall entry removes all of it.
   Stop-ProcessesUnder @($InstallDir)
   $UninstallLog = Join-Path $EvidenceDir "uninstall.log"
   Start-Process -FilePath ((Get-ItemProperty -Path $UninstallKey).UninstallString.Trim('"')) -Wait `
@@ -416,6 +452,8 @@ try {
   }
   Remove-Item -Recurse -Force (@($InstallDir) + $script:UpdaterApps + @(Get-ChildItem -Path "$InstallDir.previous*" -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })) -ErrorAction SilentlyContinue
   Remove-Item -Force $StartMenuShortcut, $DesktopShortcut -ErrorAction SilentlyContinue
+  if ($UpdaterShortcut) { Remove-Item -Force $UpdaterShortcut -ErrorAction SilentlyContinue }
+  if ($UpdaterUninstallKey) { Remove-Item -Path $UpdaterUninstallKey -Recurse -Force -ErrorAction SilentlyContinue }
   Remove-Item -Recurse -Force $AppDataFolders -ErrorAction SilentlyContinue
   if (-not $HadConfigHome) { Remove-Item -Recurse -Force $ConfigHome -ErrorAction SilentlyContinue }
   Remove-Item -Recurse -Force $WorkRoot -ErrorAction SilentlyContinue
