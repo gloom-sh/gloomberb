@@ -5,6 +5,9 @@ name: macOS desktop launch check
 # the command line to the app and over the app's socket to its page and back.
 
 on:
+  # A push checks the app as it is on this branch.
+  push:
+    branches: [chore/macos-desktop-launch-check]
   workflow_dispatch:
     inputs:
       app_ref:
