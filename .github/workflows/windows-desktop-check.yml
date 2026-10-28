@@ -71,7 +71,6 @@ jobs:
         build: ${{ fromJSON(inputs.builds || '["head","release"]') }}
     env:
       SCALES: ${{ inputs.scales || '100,125,150' }}
-      CHECK: scripts/windows-desktop-check
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,18 +135,18 @@ jobs:
 
       - name: Set the screen to its largest mode
         shell: pwsh
-        run: ./$env:CHECK/display.ps1 -Largest
+        run: ./scripts/windows-desktop-check/display.ps1 -Largest
 
       - name: Install
         shell: pwsh
-        run: bun $env:CHECK/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
+        run: bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
 
       # What the app listens on as installed, before the check opens DevTools.
       - name: Check what the app listens on
         shell: pwsh
         run: |
-          bun $env:CHECK/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-ports" --label ${{ matrix.build }}
-          bun $env:CHECK/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
+          bun scripts/windows-desktop-check/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-ports" --label ${{ matrix.build }}
+          bun scripts/windows-desktop-check/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
           exit 0
 
       - name: Drive the app at each scale
@@ -155,19 +154,19 @@ jobs:
         run: |
           foreach ($Scale in $env:SCALES.Split(",")) {
             $Scale = $Scale.Trim()
-            ./$env:CHECK/display.ps1 -Scale $Scale
-            bun $env:CHECK/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-$Scale" --label ${{ matrix.build }}
+            ./scripts/windows-desktop-check/display.ps1 -Scale $Scale
+            bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-$Scale" --label ${{ matrix.build }}
           }
-          ./$env:CHECK/display.ps1 -Scale 100
+          ./scripts/windows-desktop-check/display.ps1 -Scale 100
           exit 0
 
       - name: Report
         shell: pwsh
         run: |
           if ("${{ matrix.build }}" -eq "head") {
-            bun $env:CHECK/report.ts windows-desktop-check --known $env:CHECK/known-failures.json
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check --known scripts/windows-desktop-check/known-failures.json
           } else {
-            bun $env:CHECK/report.ts windows-desktop-check
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check
           }
 
       - uses: actions/upload-artifact@v4
