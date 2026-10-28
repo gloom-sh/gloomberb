@@ -89,7 +89,7 @@ async function coveredOrNone(coveredIssuers: CoveredIssuers): Promise<readonly s
   }
 }
 
-export interface CdsIssuerResolution {
+interface CdsIssuerResolution {
   /** The name the tape is asked for. */
   issuer: string;
   /** Set when a name matched no covered issuer; see `CdsActivity.unmatched`. */
@@ -117,7 +117,7 @@ export interface CdsIssuerResolution {
  * sent as written. A search outage falls back to the raw input rather than
  * taking the CDS request down with it.
  */
-export async function resolveCdsIssuer(
+async function resolveCdsIssuer(
   query: string,
   searchInstruments: InstrumentSearch,
   coveredIssuers: CoveredIssuers = defaultCoveredIssuers,
