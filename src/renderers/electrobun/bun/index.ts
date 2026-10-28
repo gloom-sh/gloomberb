@@ -176,7 +176,9 @@ backend.mainWindow = mainWindow;
 startDesktopBackend(backend).catch((error) => {
   console.error("[desktop] startup failed", error instanceof Error ? error.stack ?? error.message : String(error));
 });
-if (rememberedWindow?.fullscreen) {
+// Windows has no way into fullscreen here, and builds whose frameless window
+// Windows took for fullscreen saved every window as fullscreen.
+if (rememberedWindow?.fullscreen && process.platform !== "win32") {
   try { mainWindow.setFullScreen(true); } catch { /* the framed window is still the one they sized */ }
 } else if (rememberedWindow?.maximized) {
   try { mainWindow.maximize(); } catch { /* the framed window is still the one they sized */ }

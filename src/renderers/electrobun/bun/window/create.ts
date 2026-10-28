@@ -20,8 +20,13 @@ type DesktopWindowStyleMask = {
   FullSizeContentView?: boolean;
 };
 
+/**
+ * No native title bar: the header is the title bar. On Windows "hidden" is a
+ * bare popup with no frame to resize by, which Windows also takes for
+ * fullscreen; "hiddenInset" keeps the sizing frame and cuts out the caption.
+ */
 function desktopTitleBarStyle(): DesktopTitleBarStyle {
-  return process.platform === "darwin" ? "hiddenInset" : "hidden";
+  return process.platform === "linux" ? "hidden" : "hiddenInset";
 }
 
 function desktopWindowRenderer(): DesktopWindowRenderer {
