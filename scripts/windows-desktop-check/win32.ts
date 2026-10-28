@@ -183,10 +183,22 @@ export function windowStyle(hwnd: Hwnd): { value: string; flags: string[] } {
   };
 }
 
-/** Moves and sizes a window without input: only to put it back between steps. */
+/**
+ * Moves and sizes a window without input, only to put it back between steps,
+ * so that it shows at `rect`: a framed window's invisible resize borders lie
+ * outside what it shows.
+ */
 export function placeWindow(hwnd: Hwnd, rect: Rect): void {
+  const outer = windowRect(hwnd);
+  const shown = visibleRect(hwnd);
+  const target = {
+    left: rect.left - (shown.left - outer.left),
+    top: rect.top - (shown.top - outer.top),
+    right: rect.right + (outer.right - shown.right),
+    bottom: rect.bottom + (outer.bottom - shown.bottom),
+  };
   // SWP_NOZORDER | SWP_NOACTIVATE
-  user32.SetWindowPos(hwnd as never, null, rect.left, rect.top, rectWidth(rect), rectHeight(rect), 0x0004 | 0x0010);
+  user32.SetWindowPos(hwnd as never, null, target.left, target.top, rectWidth(target), rectHeight(target), 0x0004 | 0x0010);
 }
 
 export function showWindow(hwnd: Hwnd, command: "restore" | "minimize" | "show"): void {
@@ -390,6 +402,31 @@ export const VK = {
 } as const;
 
 /** Lets a key up, whether or not it was down. */
+export function keyDown(code: number): void {
+  keyInput(code, false);
+}
+
+/**
+ * Presses a chord as a person does: the modifiers go down first and come up
+ * `holdModifiersMs` after the key, often after what the chord opened has
+ * started to show.
+ */
+export async function pressChord(modifiers: number[], key: string, holdModifiersMs: number): Promise<void> {
+  const code = key.toUpperCase().charCodeAt(0);
+  for (const modifier of modifiers) {
+    keyInput(modifier, false);
+    await sleep(30);
+  }
+  keyInput(code, false);
+  await sleep(60);
+  keyInput(code, true);
+  await sleep(holdModifiersMs);
+  for (const modifier of [...modifiers].reverse()) {
+    keyInput(modifier, true);
+    await sleep(30);
+  }
+}
+
 export function keyUp(code: number): void {
   keyInput(code, true);
 }

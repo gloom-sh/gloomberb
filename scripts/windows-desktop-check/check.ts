@@ -164,7 +164,9 @@ async function ports(app: string, out: string, label: string): Promise<void> {
   results.push({
     id: "exe-names",
     title: "Windows names the app's processes Gloom",
-    status: named.every(({ info }) => /gloom/i.test(info.FileDescription ?? "") && !/oven/i.test(info.CompanyName ?? "")) ? "pass" : "fail",
+    // The runtime is the app's process, the one Windows names in Task Manager
+    // and its prompts; Electrobun's launcher carries no version details at all.
+    status: named.filter(({ exe }) => exe === "bun.exe").every(({ info }) => /gloom/i.test(info.FileDescription ?? "") && !/oven/i.test(info.CompanyName ?? "")) ? "pass" : "fail",
     detail: named.map(({ exe, info }) => `${exe}: "${info.FileDescription ?? ""}" by "${info.CompanyName ?? ""}", ${info.ProductName ?? ""} ${info.ProductVersion ?? ""}`).join("; "),
     shots: [],
     ms: 0,
@@ -332,6 +334,18 @@ const PAGE_HELPER = String.raw`(() => {
         if (hit && divider.el.contains(hit)) return { x, y };
       }
       return null;
+    },
+    /**
+     * The cells of the drop grid shown over a docked pane while another pane
+     * is dragged over it. They carry no name: absolute boxes, the center one
+     * stacked above the rest.
+     */
+    dropGrid() {
+      return [...document.querySelectorAll("div")]
+        .filter((el) => el.style.position === "absolute" && (el.style.zIndex === "97" || el.style.zIndex === "98"))
+        .map((el) => ({ center: el.style.zIndex === "98", r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.width > 0 && r.width < 400 && r.height < 400)
+        .map(({ center, r }) => ({ center, x: r.left, y: r.top, width: r.width, height: r.height }));
     },
     /** A bare point on a pane's header bar, or its title. */
     paneHeaderPoint(id) {
@@ -727,7 +741,7 @@ class Run {
       win.showWindow(window.hwnd, "restore");
       await sleep(500);
     }
-    const now = win.windowRect(window.hwnd);
+    const now = win.visibleRect(window.hwnd);
     const off = (["left", "top", "right", "bottom"] as const).some((side) => !near(now[side], rect[side], 3));
     if (off) {
       win.placeWindow(window.hwnd, rect);
@@ -875,12 +889,18 @@ class Run {
   }
 
   /** Drags a window's edge or corner by `delta` and checks the window followed. */
-  async resizeEdge(window: AppWindow, name: string, edge: Edge, delta: Point, start: Rect): Promise<void> {
+  async resizeEdge(window: AppWindow, name: string, edge: Edge, requested: Point, start: Rect): Promise<void> {
     await this.step(`${name}-resize-${edge}`, `${name === "main" ? "Main window" : "Popped-out window"}: resize from the ${edge.replace("-", " ")} ${edge.includes("-") ? "corner" : "edge"}`, async (shots) => {
       await this.reset(window, start);
       const before = win.visibleRect(window.hwnd);
       const grab = await this.grabPoint(window, edge);
-      const to = { x: grab.point.x + delta.x, y: grab.point.y + delta.y };
+      // The pointer stops at the screen's edge, and so does the drag.
+      const screen = win.monitorOf(window.hwnd).monitor;
+      const to = {
+        x: Math.max(screen.left + 2, Math.min(screen.right - 3, grab.point.x + requested.x)),
+        y: Math.max(screen.top + 2, Math.min(screen.bottom - 3, grab.point.y + requested.y)),
+      };
+      const delta = { x: to.x - grab.point.x, y: to.y - grab.point.y };
       let during: Rect | null = null;
       const area = {
         left: Math.min(before.left, before.left + delta.x) - 20, top: Math.min(before.top, before.top + delta.y) - 20,
@@ -986,7 +1006,9 @@ class Run {
       const right = client.left + (layout.controls.x + layout.controls.width) * window.scale;
       const topEdge = client.top + layout.controls.y * window.scale;
       facts.push(`buttons end ${Math.round(client.right - right)} px from the right edge, ${Math.round(topEdge - client.top)} px from the top`);
-      if (right > client.right + 1 || right > screen.right + 1) problems.push("the window buttons are cut off on the right");
+      // Within one CSS pixel, which is more than one device pixel when scaled.
+      const slack = Math.max(1, Math.ceil(window.scale));
+      if (right > client.right + slack || right > screen.right + slack) problems.push("the window buttons are cut off on the right");
     }
     return { problems, facts };
   }
@@ -1145,8 +1167,12 @@ class Run {
         ok &&= good;
         results.push(`${label}: ${fmt(rect)}${good ? "" : ` (not as expected${fills.ok ? "" : `; ${fills.detail}`})`}`);
       };
+      // Win+Right on a window snapped left puts it back, so each side starts
+      // from the window as placed.
       await check([win.VK.win, win.VK.left], "win-left", (rect) => near(rect.left, work.left, 3) && near(win.rectWidth(rect), halfWidth, 12) && near(win.rectHeight(rect), win.rectHeight(work), 3));
+      await this.reset(window, start);
       await check([win.VK.win, win.VK.right], "win-right", (rect) => near(rect.right, work.right, 3) && near(win.rectWidth(rect), halfWidth, 12));
+      await this.reset(window, start);
       await check([win.VK.win, win.VK.up], "win-up", () => win.isMaximized(window.hwnd));
       await check([win.VK.win, win.VK.down], "win-down", () => !win.isMaximized(window.hwnd) && !win.isMinimized(window.hwnd));
       return { status: ok ? "pass" : "fail", detail: results.join("; ") };
@@ -1277,11 +1303,34 @@ class Run {
       const point = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(before.id)})`);
       if (!point) return { status: "fail", detail: "no header on the floating pane" };
       const from = this.toScreen(main, point);
-      const move = { x: -Math.min(80, Math.round(before.rect.x - 40)), y: 40 };
-      const delta = { x: Math.round(move.x * main.scale), y: Math.round(move.y * main.scale) };
+      const page = await layoutOf(main.page);
+      const floor = page.status ? page.status.y : page.innerHeight;
+      // Within the window, clear of its edges, where a drop snaps the pane to a half.
+      const room = {
+        left: before.rect.x - 60, right: page.innerWidth - 60 - (before.rect.x + before.rect.width),
+        up: before.rect.y - 60, down: floor - 60 - (before.rect.y + before.rect.height),
+      };
+      let move = {
+        x: room.left >= 40 ? -Math.min(80, room.left) : Math.min(80, Math.max(0, room.right)),
+        y: room.down >= 30 ? Math.min(40, room.down) : -Math.min(40, Math.max(0, room.up)),
+      };
       let during: CssRect | null = null;
-      await win.drag(from, { x: from.x + delta.x, y: from.y + delta.y }, {
+      let to = { x: from.x + Math.round(move.x * main.scale), y: from.y + Math.round(move.y * main.scale) };
+      await win.drag(from, to, {
         whileHeld: async () => {
+          // A drop on the grid over a docked pane docks it: let go beside the
+          // grid, a little higher or lower, as a person would.
+          const fits = (dy: number) => before.rect.y + dy >= 30 && before.rect.y + before.rect.height + dy <= floor - 10;
+          for (const nudge of [30, -30, 60, -60, 90, -90, 0]) {
+            const at = { x: point.x + move.x, y: point.y + move.y };
+            const grid = await evaluate<CssRect[]>(main.page.cdp, "window.__winCheck.dropGrid()");
+            if (!grid.some((cell) => at.x >= cell.x - 4 && at.x <= cell.x + cell.width + 4 && at.y >= cell.y - 4 && at.y <= cell.y + cell.height + 4)) break;
+            if (!nudge || !fits(move.y + nudge)) continue;
+            move = { x: move.x, y: move.y + nudge };
+            to = { x: from.x + Math.round(move.x * main.scale), y: from.y + Math.round(move.y * main.scale) };
+            win.moveMouse(to);
+            await sleep(250);
+          }
           during = (await layoutOf(main.page)).panes.find((pane) => pane.id === before.id)?.rect ?? null;
         },
       });
@@ -1295,7 +1344,7 @@ class Run {
       const followed = !!duringRect && near(duringRect.x, before.rect.x + move.x, cell) && near(duringRect.y, before.rect.y + move.y, cell);
       return {
         status: landed && followed ? "pass" : "fail",
-        detail: `from ${Math.round(before.rect.x)},${Math.round(before.rect.y)} by ${move.x},+${move.y} CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.x)},${Math.round(duringRect.y)}` : "gone"}, after ${after ? `${Math.round(after.rect.x)},${Math.round(after.rect.y)}${after.floating ? "" : " (docked)"}` : "gone"}`,
+        detail: `from ${Math.round(before.rect.x)},${Math.round(before.rect.y)} by ${move.x},${move.y >= 0 ? "+" : ""}${move.y} CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.x)},${Math.round(duringRect.y)}` : "gone"}, after ${after ? `${Math.round(after.rect.x)},${Math.round(after.rect.y)}${after.floating ? "" : " (docked)"}` : "gone"}`,
       };
     });
 
@@ -1343,6 +1392,13 @@ class Run {
       await win.drag(this.toScreen(main, point), this.centerOf(main, target.rect), {
         steps: 20,
         whileHeld: async () => {
+          // The grid sits where the pane has room for it, not always at its middle.
+          const grid = await evaluate<Array<CssRect & { center: boolean }>>(main.page.cdp, "window.__winCheck.dropGrid()");
+          const center = grid.find((cell) => cell.center);
+          if (center) {
+            win.moveMouse(this.centerOf(main, center));
+            await sleep(400);
+          }
           const shot = this.shots.take("dock-swap-held", win.clientRect(main.hwnd));
           if (shot) shots.push(shot);
         },
@@ -1385,7 +1441,7 @@ class Run {
       // Focus it with a click on its body, then the chord.
       await win.click(this.toScreen(main, { x: pane.rect.x + pane.rect.width / 2, y: pane.rect.y + Math.min(pane.rect.height - 8, 60) }));
       await sleep(400);
-      await win.pressKeys(win.VK.control, win.VK.shift, "o");
+      await win.pressChord([win.VK.control, win.VK.shift], "o", 600);
       let opened: win.WindowInfo | undefined;
       const deadline = Date.now() + 15_000;
       while (!opened && Date.now() < deadline) {
