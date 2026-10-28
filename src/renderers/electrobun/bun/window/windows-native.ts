@@ -88,6 +88,7 @@ export function fitPageToClientArea(windowHandle: Pointer): boolean {
   if (!win32.symbols.GetClientRect(windowHandle, ptr(client))) return false;
   const size = (((client[3]! - client[1]!) & 0xffff) << 16) | ((client[2]! - client[0]!) & 0xffff);
   return win32.symbols.PostMessageW(windowHandle, WM_SIZE, 0n, BigInt(size >>> 0));
+}
 
 const WM_NCLBUTTONDOWN = 0x00a1;
 const WM_CANCELMODE = 0x001f;
