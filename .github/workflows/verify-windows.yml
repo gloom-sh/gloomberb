@@ -64,6 +64,16 @@ jobs:
         shell: pwsh
         run: ./scripts/verify-windows-desktop.ps1
 
+      - name: Verify an installed app updates in place
+        shell: pwsh
+        run: ./scripts/verify-windows-update.ps1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-x64-desktop-update-verification
+          path: artifacts/windows-update-verification
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
