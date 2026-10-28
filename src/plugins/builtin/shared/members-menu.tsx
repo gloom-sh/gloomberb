@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { ChoiceDialog, TextPromptDialog, usePaneMenuItems } from "../../../components";
 import { createFormCollectionActions } from "../../../components/form-modal/deps";
 import { t, tf } from "../../../i18n";
@@ -195,7 +196,7 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
         const choice = choices.find((item) => item.id === templateId && !item.disabled);
         // CORR and RIPL resolve `arg` like the command bar; RRG and SIW read `symbols`.
         if (choice) createPaneFromTemplate(choice.id, { symbols: choice.symbols, arg: formatTickerListInput(choice.symbols) });
-      }).catch(() => {});
+      }).catch(logFailure("shared.members-menu", "Open members in a function failed"));
     };
     const saveAsWatchlist = async (requested: string) => {
       // The writes hold the app for about a second with a hundred names; let the dialog close on screen first.
@@ -253,7 +254,7 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
           saveAsWatchlist(name).catch((error: unknown) => {
             notify({ type: "error", body: error instanceof Error ? error.message : t("The watchlist was not saved.") });
           });
-        }).catch(() => {});
+        }).catch(logFailure("shared.members-menu", "Open save members as watchlist prompt failed"));
       } },
     ];
   }, [createPaneFromTemplate, dialog, disabledPlugins, dispatch, getState, list, notify]);

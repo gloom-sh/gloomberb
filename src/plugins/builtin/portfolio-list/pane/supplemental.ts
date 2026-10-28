@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { ColumnConfig } from "../../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, TickerFinancials } from "../../../../types/financials";
@@ -171,7 +172,7 @@ function useAnalystSupplemental(
       }
     })).then((entries) => {
       if (mountedRef.current) setState((current) => setAnalystValues(current, entries));
-    }).catch(() => {});
+    }).catch(logFailure("portfolio-list.pane.supplemental", "Apply analyst research failed"));
   }, [enabled, mountedRef, provider, setState, state.analystResearch, targetsKey]);
 }
 
@@ -211,7 +212,7 @@ function useCorporateSupplemental(
       }
     })).then((entries) => {
       if (mountedRef.current) setState((current) => setCorporateValues(current, entries));
-    }).catch(() => {});
+    }).catch(logFailure("portfolio-list.pane.supplemental", "Apply corporate actions failed"));
   }, [enabled, mountedRef, provider, setState, state.corporateActions, targetsKey]);
 }
 

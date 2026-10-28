@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
@@ -129,8 +130,8 @@ export async function cloudRealtimeAccess(): Promise<boolean | null> {
   if (!apiClient.isSignedIn()) return false;
   try {
     return hasProAccess(apiClient.getCurrentUser() ?? await apiClient.getSession());
-  } catch {
-    return null;
+  } catch (error) {
+    return logFailure("shared.report-freshness", "Read Cloud plan for report freshness failed", null)(error);
   }
 }
 

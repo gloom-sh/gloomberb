@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { HiringBuildingFilter, HiringBuildingShift } from "../../../api-client/hiring";
@@ -60,7 +61,10 @@ export function HiringBuildingView({ symbol, width, height, focused, accessKey, 
     try {
       const payload = snapshotSetting ? validateBuilding(snapshotSetting) : null;
       return payload && ("filter" in payload ? !symbol : payload.symbol.toUpperCase() === symbol?.toUpperCase()) ? payload : null;
-    } catch { return null; }
+    } catch (error) {
+      logFailure("company-attention.building", "Validate hiring building snapshot failed")(error);
+      return null;
+    }
   }, [snapshotSetting, symbol]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadBuilding(symbol, accessKey, filter, force), [snapshot, symbol, accessKey, filter]);
   const resource = useAsyncResource(loader, { initialData: () => cachedBuilding(symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: true });

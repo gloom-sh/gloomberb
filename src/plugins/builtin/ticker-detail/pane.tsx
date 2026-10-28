@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { recordResearchActivity, recordResearchTabView } from "../../../api-client/research-activity";
@@ -283,7 +284,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
           choices={choices.map((item) => ({ ...item, label: t(item.label) }))} />,
       }).then((templateId) => {
         if (templateId && choices.some((item) => item.id === templateId)) createPaneFromTemplate(templateId, { symbol: companySymbol });
-      }).catch(() => {});
+      }).catch(logFailure("ticker-detail.pane", "Open company research choices failed"));
     } }];
   }, [companySymbol, createPaneFromTemplate, dialog, disabledPlugins, registry, tickerResearchTabsSnapshot]);
   usePaneMenuItems("ticker-research:go-to-tab", () => {
@@ -304,7 +305,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
           ),
         }).then((tabId) => {
           if (tabId) selectResearchTab(tabId);
-        }).catch(() => {});
+        }).catch(logFailure("ticker-detail.pane", "Open research tab choices failed"));
       },
     }];
   }, [dialog, resolvedTabId, selectResearchTab, showTabs, tabItems]);

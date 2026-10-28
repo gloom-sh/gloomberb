@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { useEffect, useMemo, useRef } from "react";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
@@ -251,8 +252,9 @@ export function usePortfolioPaneStreaming({
               ? sharedCoordinator.loadSnapshotsBatch(normalSnapshotEntries.map((entry) => entry.instrument))
               : Promise.resolve(),
           ]);
-        } catch {
+        } catch (error) {
           // Best-effort warmup for visible rows only.
+          logFailure("portfolio-list.pane.streaming", "Warm visible portfolio rows failed")(error);
         } finally {
           for (const entry of [...quoteEntries, ...forcedSnapshotEntries, ...normalSnapshotEntries]) {
             warmupInFlightRef.current.delete(entry.key);
@@ -304,8 +306,9 @@ export function usePortfolioPaneStreaming({
 
       try {
         await sharedCoordinator.loadQuotesBatch(quoteEntries.map((entry) => entry.instrument), { forceRefresh: true });
-      } catch {
+      } catch (error) {
         // Best-effort watchdog for visible rows only.
+        logFailure("portfolio-list.pane.streaming", "Refresh visible portfolio quotes failed")(error);
       } finally {
         for (const entry of quoteEntries) {
           warmupInFlightRef.current.delete(entry.key);

@@ -34,6 +34,7 @@ export function countryName(code: string | null | undefined): string | null {
   try {
     return countryNames.of(code) ?? null;
   } catch {
+    // Intentional ignore: a region code Intl cannot name is left out of the posting's place.
     return null;
   }
 }

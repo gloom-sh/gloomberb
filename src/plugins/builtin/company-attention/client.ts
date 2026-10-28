@@ -20,7 +20,10 @@ const finite = (value: unknown) => typeof value === "number" && Number.isFinite(
 const positive = (value: unknown) => finite(value) && (value as number) >= 0;
 const fraction = (value: unknown) => positive(value) && (value as number) <= 1;
 const date = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
-const url = (value: unknown) => { try { return typeof value === "string" && ["https:", "http:"].includes(new URL(value).protocol); } catch { return false; } };
+const url = (value: unknown) => { try { return typeof value === "string" && ["https:", "http:"].includes(new URL(value).protocol); } catch {
+  // Intentional ignore: malformed URLs fail this web link field validator.
+  return false;
+} };
 function numericTree(value: unknown): boolean {
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(numericTree);

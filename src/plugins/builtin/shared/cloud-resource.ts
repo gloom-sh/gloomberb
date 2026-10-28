@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
 import type { PluginCacheResult } from "../../../data/plugin-cache";
 
@@ -26,8 +27,8 @@ export function cachedCloudResource<T>(
   if (!cached) return null;
   try {
     return { payload: validate(cached.data), stale: false, refreshError: null };
-  } catch {
-    return null;
+  } catch (error) {
+    return logFailure("shared.cloud-resource", "Validate cached cloud payload failed", null)(error);
   }
 }
 

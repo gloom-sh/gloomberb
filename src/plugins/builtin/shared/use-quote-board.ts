@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer/model";
@@ -341,7 +342,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
         if (fetchGenRef.current !== gen) return;
         setSnapshots((prev) => paintCachedQuotes(prev, cached));
       })
-      .catch(() => {});
+      .catch(logFailure("shared.use-quote-board", "Paint cached board quotes failed"));
   }, [dataProvider]);
 
   /** The cache-first full load: the listed symbols' cached quotes at once, then from the network. */

@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { getSharedRegistry } from "../../../registry";
 import {
   AmbiguousContractError,
@@ -178,7 +179,8 @@ export async function resolveQuickAddValidation({
           exchangeFromResolved(resolved),
           quoteContextFromResolved(resolved),
         );
-      } catch {
+      } catch (error) {
+        logFailure("portfolio-list.quick-add.resolution", "Read quick-add quote failed")(error);
         quote = null;
       }
     }

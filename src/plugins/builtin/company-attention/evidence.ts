@@ -45,7 +45,10 @@ export function attentionScreenshotEvidence(kind: AttentionKind): PaneScreenshot
     read(value) {
       if (!isRecord(value) || value.kind !== kind || value.version !== 1 || value.complete !== true || !isRecord(value.payload)
         || !["table", "chart", "mix", "peers", "evidence", ...(kind === "hiring" ? ["moves", "expansion", "anomalies", "building"] : [])].includes(String(value.tab)) || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
-      try { if (!(kind === "apps" && Array.isArray(value.payload.rankHistory))) validateAttention(kind, value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch { return null; }
+      try { if (!(kind === "apps" && Array.isArray(value.payload.rankHistory))) validateAttention(kind, value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch {
+        // Intentional ignore: invalid captured observations are rejected as evidence by returning null.
+        return null;
+      }
     },
     mismatches(evidence, { resolved, payload }) {
       const settings = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings;

@@ -198,7 +198,7 @@ async function loadRatioReport(
   const history = oldest && tab.key === "valuation"
     ? await resolveHeadlessInstrument(ctx, symbol)
       .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
-      .catch(() => null)
+      .catch(logFailure("ticker-detail.headless", "Load valuation price history failed", null))
     : null;
   const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history) : null;
   const statementCurrency = financialStatementCurrency(financials, [
@@ -398,7 +398,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       window ? loadPriceWindowHistory(ctx.marketData, listing, exchange ?? "", window).then((result) => result.points)
         : loadHeadlessPriceHistory(ctx, symbol, range),
       pastWindow || (!window && isIntradayResolution(RANGE_HISTORY_RESOLUTION[range])) ? null
-        : ctx.marketData.getQuote(listing, exchange ?? "").catch(() => null),
+        : ctx.marketData.getQuote(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Load historical prices quote failed", null)),
     ]);
     // The venue whose sessions say whether a day, week or month is still running: the key's, or for a bare symbol its quote's.
     const venue = exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
@@ -489,7 +489,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     // --from 2007 --to 2009 measures those dates' returns in place of the range.
     const window = readReportWindow(options);
     const pastWindow = !!window && isPastPriceWindow(window);
-    const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
+    const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(logFailure("ticker-detail.headless", "Read return interval support failed", []));
     const now = Date.now();
     const series = await loadReturnSeries(ctx.marketData, {
       symbol, exchange: exchange ?? "", range, resolution: requested, support, now, forceRefresh: ctx.refresh, window,
