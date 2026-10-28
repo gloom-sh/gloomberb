@@ -14,6 +14,14 @@ function powershellQuote(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+/** A PowerShell command line for `script`, with no quoting left to get wrong. */
+function hiddenPowershell(script: string): string[] {
+  return [
+    "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+    "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64"),
+  ];
+}
+
 function findMacAppBundle(execPath: string): string | null {
   let current = dirname(execPath);
   while (current && current !== dirname(current)) {
@@ -41,6 +49,11 @@ interface RelaunchCommand {
   cwd?: string;
   /** PATH for it; unset keeps this process's. */
   pathEnv?: string;
+  /**
+   * It hands the relaunch on and exits, and this process may only exit after
+   * it has: anything this process starts dies with it.
+   */
+  waitForIt?: boolean;
 }
 
 function currentProcess(): RelaunchContext {
@@ -80,11 +93,18 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
     // the Start menu starts it, from the launcher beside the runtime.
     const bin = win32.dirname(context.execPath);
     const launcher = win32.join(bin, "launcher.exe");
+    const relaunch = hiddenPowershell(
+      `Wait-Process -Id ${context.pid} -ErrorAction SilentlyContinue; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)}`,
+    ).join(" ");
+    // Electrobun puts this process in a job that ends every process it starts
+    // when it exits, so the waiting is done by a process Windows starts for it.
     return {
-      cmd: [
-        "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
-        `Wait-Process -Id ${context.pid} -ErrorAction SilentlyContinue; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)}`,
-      ],
+      cmd: hiddenPowershell([
+        "$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+        `$created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${powershellQuote(relaunch)}; CurrentDirectory = ${powershellQuote(bin)}; ProcessStartupInformation = $startup }`,
+        "exit $created.ReturnValue",
+      ].join("; ")),
+      waitForIt: true,
     };
   }
 
@@ -96,18 +116,28 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
   };
 }
 
+const HAND_OFF_TIMEOUT_MS = 20_000;
+
 /**
  * Opens the app again once this process has exited. On a Mac, `bundle` opens
  * that bundle instead of the one this process runs from: the app's own, under
- * the name it was just given.
+ * the name it was just given. Resolves once this process may exit.
  */
-export function scheduleDesktopRelaunch(bundle?: string, context: RelaunchContext = currentProcess()): void {
-  const { cmd, cwd, pathEnv } = desktopRelaunchCommand(context, bundle);
+export async function scheduleDesktopRelaunch(bundle?: string, context: RelaunchContext = currentProcess()): Promise<void> {
+  const { cmd, cwd, pathEnv, waitForIt } = desktopRelaunchCommand(context, bundle);
   const child = Bun.spawn(cmd, {
     ...(cwd ? { cwd } : {}),
     ...(pathEnv ? { env: { ...process.env, PATH: pathEnv } } : {}),
     detached: true,
     stdio: ["ignore", "ignore", "ignore"],
   });
-  child.unref();
+  if (!waitForIt) {
+    child.unref();
+    return;
+  }
+  const code = await Promise.race([child.exited, Bun.sleep(HAND_OFF_TIMEOUT_MS).then(() => null)]);
+  if (code !== 0) {
+    child.kill();
+    throw new Error(code === null ? "the relaunch was not handed on in time" : `the relaunch was not handed on (${code})`);
+  }
 }

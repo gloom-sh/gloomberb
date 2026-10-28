@@ -47,7 +47,13 @@ describe("desktop relaunch", () => {
     }
   });
 
-  test("on Windows, starts the app from its launcher once this process has exited", () => {
+  // Electrobun's job ends whatever the app starts when it exits, so Windows
+  // starts the waiting process, from a command line inside a script.
+  test("on Windows, has Windows start the launcher once this process has exited", () => {
+    const decode = (cmd: string[]) => {
+      expect(cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand"]);
+      return Buffer.from(cmd.at(-1)!, "base64").toString("utf16le");
+    };
     const command = desktopRelaunchCommand({
       platform: "win32",
       pid: 42,
@@ -56,8 +62,12 @@ describe("desktop relaunch", () => {
       cwd: "C:\\Users\\Ann O'Neil\\Gloom\\bin",
       pathEnv: "",
     });
-    expect(command.cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"]);
-    expect(command.cmd.at(-1)).toBe(
+    expect(command.waitForIt).toBe(true);
+    const handOff = decode(command.cmd);
+    expect(handOff).toContain("Invoke-CimMethod -ClassName Win32_Process -MethodName Create");
+    expect(handOff).toContain("CurrentDirectory = 'C:\\Users\\Ann O''Neil\\Gloom\\bin'");
+    const commandLine = /CommandLine = '((?:[^']|'')*)'/.exec(handOff)![1]!.replaceAll("''", "'");
+    expect(decode(commandLine.split(" "))).toBe(
       "Wait-Process -Id 42 -ErrorAction SilentlyContinue; "
       + "Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin'",
     );
