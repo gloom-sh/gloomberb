@@ -41,6 +41,8 @@ export interface RelaunchContext {
   cwd: string;
   /** PATH as the app sees it. */
   pathEnv: string;
+  /** Where the app keeps its data when GLOOMBERB_HOME moves it. */
+  home?: string;
 }
 
 interface RelaunchCommand {
@@ -64,7 +66,13 @@ function currentProcess(): RelaunchContext {
     args: process.argv.slice(1),
     cwd: process.cwd(),
     pathEnv: process.env.PATH ?? "",
+    home: process.env.GLOOMBERB_HOME || undefined,
   };
+}
+
+/** A Windows path for a command line in double quotes, which no Windows path holds. */
+function unquotedWindowsPath(value: string): string {
+  return value.replaceAll('"', "");
 }
 
 /**
@@ -91,18 +99,39 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
     // Chromium's profile stays held until this process has exited: an app
     // started before then hands itself to this one and crashes. It starts as
     // the Start menu starts it, from the launcher beside the runtime.
-    const bin = win32.dirname(context.execPath);
+    const bin = unquotedWindowsPath(win32.dirname(context.execPath));
     const launcher = win32.join(bin, "launcher.exe");
-    const relaunch = hiddenPowershell(
-      `Wait-Process -Id ${context.pid} -ErrorAction SilentlyContinue; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)}`,
-    ).join(" ");
+    const task = `Gloom restart ${context.pid}`;
+    const relaunch = [
+      `Wait-Process -Id ${context.pid} -Timeout 300 -ErrorAction SilentlyContinue`,
+      ...(context.home ? [`$env:GLOOMBERB_HOME = ${powershellQuote(unquotedWindowsPath(context.home))}`] : []),
+      `if (-not (Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue)) { Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)} }`,
+      `$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask(${powershellQuote(task)}, 0)`,
+    ].join("; ");
     // Electrobun puts this process in a job that ends every process it starts
-    // when it exits, so the waiting is done by a process Windows starts for it.
+    // when it exits, so the waiting is done by a task: the Task Scheduler
+    // starts it in this person's session, outside the job, and it removes
+    // itself once it has started the app.
     return {
       cmd: hiddenPowershell([
-        "$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
-        `$created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${powershellQuote(relaunch)}; CurrentDirectory = ${powershellQuote(bin)}; ProcessStartupInformation = $startup }`,
-        "exit $created.ReturnValue",
+        "$ErrorActionPreference = 'Stop'",
+        "$service = New-Object -ComObject Schedule.Service",
+        "$service.Connect()",
+        "$definition = $service.NewTask(0)",
+        "$definition.RegistrationInfo.Description = 'Opens Gloom again once it has restarted.'",
+        "$definition.Settings.DisallowStartIfOnBatteries = $false",
+        "$definition.Settings.StopIfGoingOnBatteries = $false",
+        "$definition.Settings.ExecutionTimeLimit = 'PT10M'",
+        // TASK_LOGON_INTERACTIVE_TOKEN: as this person, in the session they are in.
+        "$definition.Principal.LogonType = 3",
+        "$action = $definition.Actions.Create(0)",
+        "$action.Path = 'powershell.exe'",
+        `$action.Arguments = ${powershellQuote(`-NoProfile -NonInteractive -WindowStyle Hidden -Command "${relaunch}"`)}`,
+        `$action.WorkingDirectory = ${powershellQuote(bin)}`,
+        // TASK_CREATE_OR_UPDATE, with no user or password: the one running this.
+        `$registered = $service.GetFolder('\\').RegisterTaskDefinition(${powershellQuote(task)}, $definition, 6, $null, $null, 3)`,
+        "$null = $registered.Run($null)",
+        "exit 0",
       ].join("; ")),
       waitForIt: true,
     };
