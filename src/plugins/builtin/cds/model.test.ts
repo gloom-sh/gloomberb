@@ -111,6 +111,26 @@ describe("normalizeCdsTrades", () => {
     ])).toHaveLength(0);
   });
 
+  test("reads a print without a coupon whose upfront is the quote in points as points, never a spread", () => {
+    // Whirlpool, 27 Oct 2026: 6.5 and 15.25 in the spread field beside 6.4 and 15.1 points of upfront.
+    const whirlpool = { issuerName: "Whirlpool Corp", fixedRate: null, spreadNotation: "3", notionalCapped: true };
+    const [dec28, dec29, small, coupon, bare] = normalizeCdsTrades([
+      payload({ ...whirlpool, reportedSpread: 0.00065, upfrontAmount: 319_861 }),
+      payload({ ...whirlpool, disseminationId: "2", reportedSpread: 0.001525, upfrontAmount: 757_361 }),
+      payload({ ...whirlpool, disseminationId: "3", reportedSpread: 0.00065, notionalAmount: 3_000_000, upfrontAmount: 191_917 }),
+      // With a coupon, or without an upfront that reads as the same points, the field is a spread.
+      payload({ disseminationId: "4", fixedRate: 0.01, reportedSpread: 0.0949, spreadNotation: "3", upfrontAmount: 1_232_374 }),
+      payload({ ...whirlpool, disseminationId: "5", reportedSpread: 0.0949, upfrontAmount: 1_232_374 }),
+    ]);
+    expect([dec28, dec29, small].map((trade) => [trade!.pointsUpfront, trade!.spreadBp])).toEqual([[6.5, null], [15.25, null], [6.5, null]]);
+    expect(coupon).toMatchObject({ pointsUpfront: null, couponBp: 100 });
+    expect(coupon!.spreadBp).toBeCloseTo(949, 6);
+    expect(bare!.pointsUpfront).toBeNull();
+    expect(bare!.spreadBp).toBeCloseTo(949, 6);
+    // A points print never stands in for the issuer's latest spread.
+    expect(summarizeIssuers([dec28!, dec29!])[0]!.latestSpreadBp).toBeNull();
+  });
+
   test("marks capped notionals so a floor is not read as the trade size", () => {
     expect(formatNotional({ notional: 5_000_000, notionalCapped: true })).toBe("5M+");
     expect(formatNotional({ notional: 5_000_000, notionalCapped: false })).toBe("5M");
@@ -290,9 +310,9 @@ describe("issuer aliases", () => {
     expect(normalizeCdsTrades([payload({ issuerName: "CCO Holdings;LLC" })])[0]!.issuer).toBe("CCO Holdings, LLC");
   });
 
-  test("drills down on the key so aliases open together", () => {
-    expect(tradesForIssuer(aliasTrades, "oracle").map((row) => row.issuer)).toEqual(ORACLE);
-    expect(tradesForIssuer(aliasTrades, "boeing").map((row) => row.issuer)).toEqual(BOEING);
+  test("drills down on the key so aliases open together, each print under the one spelling", () => {
+    expect(tradesForIssuer(aliasTrades, "oracle").map((row) => row.issuer)).toEqual(ORACLE.map(() => "Oracle Corporation"));
+    expect(tradesForIssuer(aliasTrades, "boeing").map((row) => row.issuer)).toEqual(BOEING.map(() => "The Boeing Company"));
   });
 });
 
