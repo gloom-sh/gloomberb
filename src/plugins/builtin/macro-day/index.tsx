@@ -16,7 +16,7 @@ export const macroDayModule: PluginModule = {
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({
     id: "macro-day-pane", paneId: "macro-day", label: "Macro-Day Reaction",
     description: "How a name moves on CPI, jobs, FOMC and Brazil IPCA days against a normal day: average move, direction, hit rate, and every release day with its actual, forecast and prior.",
-    keywords: ["mday", "macro day", "cpi day", "fomc day", "jobs day", "nfp", "payrolls", "event study", "release reaction", "ipca",
+    keywords: ["mday", "macro day", "cpi day", "fomc day", "jobs day", "jobs report", "nfp", "payrolls", "nonfarm", "event study", "release reaction", "ipca",
       "hot cpi", "cpi surprise", "release surprise"],
     shortcut: "MDAY", publicShare: true,
   }), headless: macroDayHeadless }],

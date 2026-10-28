@@ -30,12 +30,16 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } 
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
+  awaitsConsensus,
   countriesWithoutEvents,
+  econEventName,
   FILTER_CYCLE,
   loadCalendar,
   eventCountry,
   matchesCountry,
+  matchesEventSearch,
   matchesImpact,
+  NO_CONSENSUS_NOTE,
   noScheduledReleasesMessage,
   parseCountryFilter,
   shortCalendarEnd,
@@ -303,7 +307,7 @@ function utcDateTimePart(value: unknown, part: "date" | "time", readerClock = tr
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${readerClock ? localTimeSuffix(date.getTime()) : ""}`;
 }
 
-const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--from <date>] [--tz <zone>]";
+const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--search <words>] [--from <date>] [--tz <zone>]";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 /** "Sat" for 2026-10-31. */
 const weekdayOf = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]!;
@@ -470,13 +474,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const rawArgs = [...args];
   const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
+  const search = takeOption(rawArgs, "--search")?.trim() ?? null;
+  if (search === "") ctx.fail("--search needs the words of an event's name.", "Such as econ --search nonfarm.");
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   const tzOption = takeOption(rawArgs, "--tz");
   const viewerZone = tzOption == null ? null : canonicalTimeZone(tzOption);
   if (tzOption != null && !viewerZone) {
     ctx.fail(`Unknown time zone "${tzOption}".`, "Use an IANA zone name, such as America/New_York, Europe/London or Asia/Tokyo.");
   }
-  rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
+  rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country, --impact and --search.");
   await withCliServices(ctx, async () => {
     const now = Date.now();
     const todayStart = Math.floor(now / DAY_MS) * DAY_MS;
@@ -506,9 +512,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // Countries asked for that nothing in the window is for: a quiet week there, not an unknown country.
     const inWindow = events.filter((event) => event.date.getTime() >= fromTime);
     const unscheduled = countriesWithoutEvents(country, inWindow);
-    const rows = inWindow
-      .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
-      .sort((left, right) => left.date.getTime() - right.date.getTime())
+    const listed = inWindow
+      .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact) && (search == null || matchesEventSearch(event, search)))
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+    const rows = listed
       .map((event) => {
         // The viewer's clock (--tz) for a row with a time: its date and time there.
         const clock = viewerZone && !hasNoReleaseTime(event) ? zonedClock(event.date.getTime(), viewerZone) : null;
@@ -522,7 +529,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           ...(viewerZone ? { viewerDate: clock?.date ?? null, viewerTime: clock?.time ?? null } : {}),
           country: eventCountry(event),
           impact: event.impact,
-          event: event.event,
+          // As the calendar names it: the Fed's decision is the upper bound of its range.
+          event: econEventName(event),
           actual: figures.actual,
           forecast: figures.forecast,
           prior: figures.prior,
@@ -553,13 +561,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // A filter of countries only, none of which has anything in the window, says so as its empty list.
     const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
     const notes = [listedBefore, listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
-      rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null]
+      rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null,
+      // A dash under Forecast on a release still to come is a consensus not in yet, not a missing figure.
+      listed.some(awaitsConsensus) ? NO_CONSENSUS_NOTE : null]
       .filter((note): note is string => !!note);
     const footnote = notes.join("\n");
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
-      metadata: { country, impact, from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(viewerZone ? { timeZone: viewerZone } : {}) },
+      metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(viewerZone ? { timeZone: viewerZone } : {}) },
       // The calendar as read, not its rows: those are scheduled, mostly ahead.
       freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),
     }, {
@@ -907,10 +917,11 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
+        { flags: "--search <words>", description: "Events whose name has these words, case, spaces and hyphens aside, such as nonfarm or fed funds" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],
-      examples: ["econ", "econ --country US --impact high", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US",
+      examples: ["econ", "econ --country US --impact high", "econ --search nonfarm", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US",
         "econ --country BR --tz America/New_York", "econ --tail 20"],
     },
     execute: runEcon,

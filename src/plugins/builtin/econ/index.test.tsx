@@ -272,6 +272,29 @@ describe("EconCalendarPane", () => {
     expect(quiet).toContain("No scheduled releases for ZA in this window");
   });
 
+  test("names the Fed's rate for its upper bound, and explains a missing forecast on the row in hand", async () => {
+    const day = Date.UTC(2026, 7, 21);
+    const seed = (fedHour: number, fedActual: string | null) => {
+      const persistence = new MemoryPluginPersistence();
+      persistence.seedResource("calendar", "global", [
+        { id: "fed", date: new Date(day + fedHour * 3_600_000).toISOString(), time: `${fedHour}:00`, country: "US", event: "Federal Funds Rate",
+          impact: "high", actual: fedActual, forecast: "4.00%", prior: "4.00%" },
+        { id: "nfp", date: new Date(day + 3 * 86_400_000 + 12.5 * 3_600_000).toISOString(), time: "12:30", country: "US",
+          event: "Non Farm Payrolls", impact: "high", actual: null, forecast: null, prior: "29K" },
+      ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+      attachEconCalendarPersistence(persistence);
+    };
+    // It opens on the next release, the decision, whose forecast is in.
+    seed(18, null);
+    const decision = await renderPane(140, "all");
+    expect(decision).toContain("Federal Funds Rate (upper bound)");
+    expect(decision).toContain("next Federal Funds Rate (upper bound)");
+    expect(decision).not.toContain("no consensus yet");
+    // Once it is out, the pane opens on the payrolls, which have a prior and no forecast yet: the footer says what the dash is.
+    seed(10, "4.00%");
+    expect(await renderPane(140, "all")).toContain("— forecast = no consensus yet");
+  });
+
   // A plenum or an election takes its day: "All day", never 00:00 UTC or the evening before on the reader's clock.
   test("an all-day event says All day and counts to its day", async () => {
     const persistence = new MemoryPluginPersistence();

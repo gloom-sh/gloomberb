@@ -9,6 +9,7 @@ import {
   loadCalendar,
   lowerImpactHidden,
   countriesWithoutEvents,
+  econEventName,
   eventCountry,
   matchesCountry,
   matchesImpact,
@@ -166,6 +167,19 @@ describe("calendar rows", () => {
   test("puts NOW above the next day's header when nothing is left today", () => {
     const events = [at("mon-9", 28, 9), at("mon-16", 28, 16), at("tue-1", 29, 1)];
     expect(layout(events, utc(28, 20))).toEqual(["TODAY", "mon-9", "mon-16", "NOW", "TOMORROW", "tue-1"]);
+  });
+});
+
+describe("the Fed's policy rate", () => {
+  const rate = (fields: Partial<EconEvent>): EconEvent => ({ ...makeEvent("fed"), event: "Federal Funds Rate", forecast: "4.00%", prior: "4.00%", ...fields });
+
+  test("is named for the upper bound its one-level figures are, under either feed's name", () => {
+    expect(econEventName(rate({}))).toBe("Federal Funds Rate (upper bound)");
+    expect(econEventName(rate({ event: "Fed Interest Rate Decision" }))).toBe("Federal Funds Rate (upper bound)");
+    // A decision figured as the range is the range, under the feed's name; so is another country's rate and any other row.
+    expect(econEventName(rate({ event: "Fed Interest Rate Decision", forecast: null, prior: "3.75-4.00%" }))).toBe("Fed Interest Rate Decision");
+    expect(econEventName(rate({ country: "CA" }))).toBe("Federal Funds Rate");
+    expect(econEventName(makeEvent("pce"))).toBe("Core PCE Price Index");
   });
 });
 
