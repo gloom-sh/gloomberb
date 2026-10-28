@@ -12,7 +12,9 @@ import type {
   PluginPersistence,
 } from "../../types/plugin";
 import { createPluginTeamState } from "../../plugins/team-state";
+import { bindPluginContextNamespaces } from "../../plugins/registry/plugin-state";
 import type { MarketContext } from "../types";
+import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import type { PaneFunctionCatalog } from "./catalog";
 
 export interface PaneDiscoveryOptions {
@@ -183,13 +185,22 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     if (failure) throw failure;
   };
 
+  // Each plugin's caches save what a command fetches where the app keeps them, so a failed refresh answers from them.
+  const resources = context.persistence?.resources;
+  const namespaced = (stateId: string) => ({
+    persistence: createCommandPluginPersistence(resources, `plugin:${stateId}`),
+    resume: discoveryContext.resume,
+    configState: discoveryContext.configState,
+    teamState: discoveryContext.teamState,
+  });
   try {
     for (const plugin of plugins) {
       for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
       for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
       if (plugin.setup) {
         setupPlugins.push(plugin);
-        await plugin.setup(discoveryContext);
+        const stateId = plugin.stateId ?? plugin.id;
+        await plugin.setup(bindPluginContextNamespaces({ ...discoveryContext, ...namespaced(stateId) }, namespaced));
       }
     }
   } catch (error) {

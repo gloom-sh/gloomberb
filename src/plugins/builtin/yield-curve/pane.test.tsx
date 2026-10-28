@@ -8,6 +8,9 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { YieldCurvePane } from "./index";
 import { TREASURY_MATURITIES } from "./treasury-data";
+import { curveViewCache, worldCurvesCache } from "./client";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 
 const id = "yield-curve:test";
 const tui = createOpenTuiTestHarness();
@@ -76,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   registry = null;
   latestSpy?.mockRestore(); historySpy?.mockRestore(); storedSpy?.mockRestore();
+  curveViewCache.reset(); worldCurvesCache.reset();
 });
 
 test("the chart names the curve and its look-backs, and the tenors show how far each moved", async () => {
@@ -226,4 +230,29 @@ test("historical partial source failure reaches the existing footer and a valid 
   expect(tui.frame()).toContain("0.00%");
   // The inverted 2s10s is a figure now, not a footer segment.
   expect(tui.frame()).toContain("2s10s -20bp");
+});
+
+test("offline, the curve stays on screen and says when its saved copy is from, after a refresh and after a restart", async () => {
+  const store = new MemoryPluginPersistence();
+  curveViewCache.attach(store);
+  await renderLatest(90, 28);
+  expect(tui.frame()).toMatch(/1M +4\.00%/);
+  const offline = new DataServiceUnreachableError(Object.assign(new Error("Unable to connect"), { code: "ConnectionRefused" }));
+  latestSpy!.mockRejectedValue(offline);
+  storedSpy!.mockRejectedValue(offline);
+  await tui.emitKeypress({ name: "r" });
+  await settle();
+  expect(tui.frame()).toMatch(/1M +4\.00%/);
+  expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
+  expect(tui.frame()).not.toContain("unavailable");
+
+  // A restart offline paints the saved curve and keeps it once its refresh fails.
+  await tui.destroy();
+  curveViewCache.reset();
+  curveViewCache.attach(store);
+  await act(async () => { await tui.render(<Harness width={90} height={28} />, { width: 90, height: 28 }); });
+  await settle();
+  expect(tui.frame()).toMatch(/1M +4\.00%/);
+  expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
+  expect(tui.frame()).not.toContain("yield curve unavailable");
 });

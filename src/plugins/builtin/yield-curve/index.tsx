@@ -18,6 +18,7 @@ import type { PluginModule } from "../plugin-module";
 import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { savedCopyFooterSegment, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { formatPercentileRank } from "../../../utils/format";
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { CurveSeries } from "../../../components/chart/curve";
@@ -27,20 +28,28 @@ import {
   type YieldTenorRow,
 } from "./chart";
 import {
-  compareDate, curveCutoff, curveIdOf, CURVE_OPTIONS, curveSpreadFigures, curveTenorMove, loadComparePoints, loadCurveData,
+  compareDate, curveCutoff, curveIdOf, CURVE_OPTIONS, curveSpreadFigures, curveTenorMove, loadComparePoints,
   parseCompareInput, parseCurveArgument, type CurveId,
 } from "./curves";
 import { formatMoveRank, MOVE_HORIZONS } from "../shared/move-rank";
 import { forwardCurve, type CurveBasis } from "./forward";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { curveAsOf, isYieldObservationDate, type YieldPoint, yieldCurveErrors } from "./treasury-data";
-import { loadWorldRows, type WorldRow } from "./world";
+import type { WorldRow } from "./world";
 import { SwapsTab } from "./swaps";
-import { swapCurveCache } from "./client";
+import {
+  cachedCurve, cachedWorldRows, curveViewCache, loadSavedCurve, loadSavedWorldRows, swapCurveCache, worldCurvesCache,
+} from "./client";
 
 type GcTab = "curve" | "world" | "swaps";
 const TABS = [{ label: "Curve", value: "curve" }, { label: "World", value: "world" }, { label: "Swaps", value: "swaps" }];
 const EMPTY_POINTS: YieldPoint[] = [];
+
+/** A tab showing the copy an earlier read saved, its refresh having failed, says when that copy is from. */
+function useSavedCopyInfo(savedAt: number | null | undefined): PaneFooterSegment[] | undefined {
+  return useMemo(() => savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : undefined, [savedAt]);
+}
+
 /** Axis word for the loaded curve's basis. */
 const BASIS_LABEL: Record<CurveBasis, string> = {
   par: "Par yield",
@@ -165,8 +174,13 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   const compareField = useDraftField(compareInput);
   const editing = dateField.active || compareField.active;
 
-  const loadCurve = useCallback(async () => loadCurveData(curve, requestedDate), [curve, requestedDate]);
-  const { data, loading, error, updatedAt: lastUpdated, load } = useAsyncResource(loadCurve);
+  // The saved copy paints first and answers when a refresh fails; a failed refresh never empties the tab.
+  const loadCurve = useCallback(async () => loadSavedCurve(curve, requestedDate), [curve, requestedDate]);
+  const { data: answer, loading, error, updatedAt: lastUpdated, load } = useAsyncResource(loadCurve, {
+    initialData: () => cachedCurve(curve, requestedDate),
+  });
+  const data = answer?.data ?? null;
+  const savedInfo = useSavedCopyInfo(answer?.savedAt);
   // A pending curve or date change must never relabel the previous curve as the new one.
   const current = data?.curve === curve && data.requestedDate === requestedDate ? data : null;
   const points = current?.points ?? EMPTY_POINTS;
@@ -260,6 +274,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
     registrationId: "yield-curve",
     loading: loading || (compareKey != null && compareResource.loading && !comparePoints),
     error: error || sourceError || null,
+    info: savedInfo,
     hints: [
       { id: "date", key: "d", label: "ate", onPress: dateField.focus },
       { id: "compare", key: "v", label: "s", title: "Compare with a date", onPress: compareField.focus },
@@ -413,11 +428,12 @@ function WorldTab({ onOpen, focused, width, height }: {
 }) {
   const colors = useThemeColors();
   const [selected, setSelected] = usePluginPaneState<string | null>("yield-curve:market", null);
-  const loadWorld = useCallback(() => loadWorldRows(), []);
-  const { data, loading, error, updatedAt, load } = useAsyncResource(loadWorld);
+  const loadWorld = useCallback(() => loadSavedWorldRows(), []);
+  const { data: answer, loading, error, updatedAt, load } = useAsyncResource(loadWorld, { initialData: cachedWorldRows });
+  const data = answer?.data ?? null;
   useAutoRefresh(updatedAt, load);
   usePaneRefreshKey(() => void load(), { focused });
-  usePaneStatusFooter({ registrationId: "yield-curve:world", loading, error: error || null });
+  usePaneStatusFooter({ registrationId: "yield-curve:world", loading, error: error || null, info: useSavedCopyInfo(answer?.savedAt) });
   const rows = data ?? [];
   const selectedId = rows.some((row) => row.id === selected) ? selected! : rows[0]?.id ?? null;
   // Every market's latest curve, each in its own colour; the selected row is
@@ -465,8 +481,12 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
-  setup(ctx) { swapCurveCache.attach(ctx.persistence); },
-  dispose() { swapCurveCache.reset(); },
+  setup(ctx) {
+    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.attach(ctx.persistence);
+  },
+  dispose() {
+    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.reset();
+  },
   series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",

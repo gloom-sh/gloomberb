@@ -12,6 +12,8 @@ export interface CloudResource<T> {
   payload: T;
   stale: boolean;
   refreshError: string | null;
+  /** When the copy shown was saved, when it is one because its refresh failed. */
+  savedAt?: number;
 }
 
 /**
@@ -58,7 +60,10 @@ export async function loadCloudResource<T>(
   });
   if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
   if (isAccessDenied(result.error)) throw result.error;
-  return { payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null };
+  return {
+    payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
+    ...(result.refreshError ? { savedAt: result.fetchedAt } : {}),
+  };
 }
 
 /**
