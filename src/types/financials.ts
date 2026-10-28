@@ -330,7 +330,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   /** Set where Gloom Cloud checked `enterpriseValue` against market cap + total debt - cash; pairs with that value only. */
   enterpriseValueCheck?: EnterpriseValueCheck;
   /** Explicit provider retractions; omitted fields alone remain eligible for fallback. */
-  unavailableFields?: Array<"enterpriseValue" | "enterpriseToRevenue">;
+  unavailableFields?: Array<"enterpriseValue" | "enterpriseToRevenue" | "marketCap">;
+  /**
+   * Why `marketCap` is retracted, with "marketCap" in `unavailableFields`: a depositary receipt its source priced as
+   * an ordinary share (the receipt's price times the company's ordinary shares), with no ratio to convert them.
+   */
+  marketCapUnavailable?: "receipt-priced-as-ordinary";
   operatingCashFlow?: number;
   freeCashFlow?: number;
   dividendYield?: number;

@@ -229,6 +229,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
           ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
           ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
           ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
+          ...rows.flatMap((row) => row.marketCapWithheld ? [`${row.symbol}: ${row.marketCapWithheld}`] : []),
         ],
         multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",

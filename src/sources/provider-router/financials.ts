@@ -3,7 +3,7 @@ import type { AnalystResearchData, CompanyProfile, CorporateActionsData, Financi
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
-import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
+import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS, RETRACTED_FUNDAMENTALS_FIELDS } from "../../utils/fundamentals";
 import { hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
@@ -458,12 +458,21 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
   const merged = mergeDefinedObject(primary, fallback);
   if (merged) {
     const unavailable = new Set(fallback?.unavailableFields ?? []);
-    for (const field of RETRACTABLE_VALUATION_FIELDS) {
+    for (const field of RETRACTED_FUNDAMENTALS_FIELDS) {
       if (primary?.unavailableFields?.includes(field)) unavailable.add(field);
       else if (typeof primary?.[field] === "number" && Number.isFinite(primary[field])) unavailable.delete(field);
     }
     if (unavailable.size) merged.unavailableFields = [...unavailable];
     else delete merged.unavailableFields;
+    // A retracted cap is none, whatever an older observation held; its reason goes with the retraction that stands.
+    if (unavailable.has("marketCap")) {
+      delete merged.marketCap;
+      merged.marketCapUnavailable = primary?.unavailableFields?.includes("marketCap")
+        ? primary.marketCapUnavailable : fallback?.marketCapUnavailable;
+      if (!merged.marketCapUnavailable) delete merged.marketCapUnavailable;
+    } else {
+      delete merged.marketCapUnavailable;
+    }
   }
   const dividend = primary?.dividendYield != null ? primary : fallback;
   if (merged && dividend) {
@@ -557,7 +566,10 @@ export function mergeRefreshedFinancials(cached: TickerFinancials, fresh: Ticker
   const merged = mergeFinancials(cached, fresh)!;
   const statistics = redactUnavailableFundamentals(fresh?.fundamentals);
   if (!statistics) return merged;
-  const update: Fundamentals = { unavailableFields: statistics.unavailableFields };
+  const update: Fundamentals = {
+    unavailableFields: statistics.unavailableFields,
+    ...statistics.marketCapUnavailable ? { marketCapUnavailable: statistics.marketCapUnavailable } : {},
+  };
   const currencyConflict = cached.fundamentals?.financialCurrency && statistics.financialCurrency
     && cached.fundamentals.financialCurrency !== statistics.financialCurrency;
   for (const field of RETRACTABLE_VALUATION_FIELDS) {
