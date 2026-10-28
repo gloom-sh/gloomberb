@@ -10,6 +10,7 @@ import {
 import type { WindowFrame, WindowMinimumSize } from "./frame";
 import { applyWindowsCustomChrome } from "./windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./windows-icons";
+import { fitPageToClientArea } from "./windows-native";
 
 type DesktopTitleBarStyle = "default" | "hidden" | "hiddenInset";
 type DesktopWindowRenderer = "native" | "cef";
@@ -80,6 +81,12 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   });
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
+  if (process.platform === "win32") {
+    // The page exists once it has loaded; until then there is nothing to fit.
+    window.webview.on("dom-ready", () => {
+      fitPageToClientArea(window.ptr);
+    });
+  }
   updateWindowFrameCache(window, frame, minSize);
   const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
