@@ -4,7 +4,8 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { listingAbroad } from "../../../api-client/paths";
 import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
-  useChartTableSelection, useCompanyDataFooter, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
+  useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";

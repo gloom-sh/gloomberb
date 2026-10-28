@@ -3,7 +3,6 @@ import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable 
 import {
   Badge,
   DataTableView,
-  useCompanyDataFooter,
   usePagedRows,
   usePaneFooter,
   usePaneTabs,
@@ -13,6 +12,7 @@ import {
   type DataTableKeyEvent,
   type PageRequest,
 } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";

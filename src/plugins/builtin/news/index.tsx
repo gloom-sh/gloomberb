@@ -5,7 +5,8 @@ import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/h
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useCallback } from "react";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { EmptyState, PaneStatusBody, QueryBar, useCompanyDataFooter, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, PaneStatusBody, QueryBar, usePaneNoticeFooter } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { coinNewsFallbackNotice } from "../../../sources/gloomberb-cloud/news";
 import { newsMuteSettingsDef, newsMutesApplyToFeed, useNewsMuteFilter } from "./wire/mutes";
 import { newsListEmptyCopy } from "./wire/filter-articles";

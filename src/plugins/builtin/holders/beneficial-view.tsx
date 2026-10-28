@@ -5,11 +5,11 @@ import {
   EmptyState,
   PaneStatusBody,
   usePaneFooter,
-  useCompanyDataFooter,
   usePaneNoticeFooter,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";

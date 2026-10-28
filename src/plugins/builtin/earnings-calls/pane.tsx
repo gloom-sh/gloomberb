@@ -9,7 +9,6 @@ import {
   EmptyState,
   PaneStatusBody, QueryBar,
   StatGrid,
-  useCompanyDataFooter,
   usePaneFooter,
   useQueryBarSearch,
   useTableLoadMore,
@@ -20,6 +19,7 @@ import {
   type QueryBarView,
   type StatItem,
 } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { AudioPlayer, useCanPlayAudio } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";

@@ -103,7 +103,7 @@ export { usePaneTabs } from "./layout/pane/pane-tabs";
 export type { PaneTabs, PaneTabsOptions } from "./layout/pane/pane-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that
 // changes with loading/error state, and one that also carries a link.
-export { useCompanyDataFooter, usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/status-footer";
+export { usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/status-footer";
 export { usePaneNoticeFooter, type UsePaneNoticeFooterOptions } from "./use-pane-notice-footer";
 export { loadingErrorFooterInfo } from "./data-table/table-pane";
 export type { PaneFooterPressEvent, PaneFooterSegment, PaneHint } from "./layout/pane/footer";
