@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../types/financials";
-import { compareDepositaryPair, depositaryPairText, listingDepositaryPair, pairPriceInput, pesoImpliedRates, premiumText, type PairPriceInput } from "./depositary-pair";
+import { cedearRatioText, compareDepositaryPair, depositaryPairText, listingCedearRatio, listingDepositaryPair, pairPriceInput, pesoImpliedRates, premiumText, type PairPriceInput } from "./depositary-pair";
 
 const FRI_CLOSE = Date.UTC(2026, 9, 23, 20, 0);
 
@@ -49,6 +49,16 @@ test("the pair is read from the quote, else the fundamentals, and only when it i
   expect(listingDepositaryPair({ quote: quote({}), fundamentals: { depositaryPair: pair } })?.receipt).toBe("GGAL");
   expect(listingDepositaryPair({ quote: quote({ depositaryPair: { ...pair, ratio: 0 } }) })).toBeNull();
   expect(listingDepositaryPair({ quote: quote({ depositaryPair: { ...pair, ordinary: [] } }) })).toBeNull();
+});
+
+test("a CEDEAR states its ratio in its company's shares, from its quote or fundamentals when whole", () => {
+  const apple = { listing: "AAPL:BYMA", receipts: 20, shares: 1, company: "Apple Inc.", underlying: "AAPL", listedAt: "2026-09-16" };
+  expect(cedearRatioText(listingCedearRatio({ quote: quote({ cedearRatio: apple }) })!)).toBe("20 AAPL:BYMA = 1 Apple Inc. share");
+  // 9 BABA CEDEARs are one BABA receipt, which holds 8 Alibaba shares.
+  const alibaba = { ...apple, listing: "BABA:BYMA", receipts: 9, shares: 8, company: "Alibaba Group Holding Limited", underlying: "BABA" };
+  expect(cedearRatioText(listingCedearRatio({ fundamentals: { cedearRatio: alibaba } })!)).toBe("9 BABA:BYMA = 8 Alibaba Group Holding Limited shares");
+  expect(listingCedearRatio({ quote: quote({ cedearRatio: { ...apple, shares: 0 } }) })).toBeNull();
+  expect(listingCedearRatio({ quote: quote({}) })).toBeNull();
 });
 
 test("the peso's CCL comes from the receipt and the C line, its MEP from the D line, each with its formula", () => {
