@@ -45,8 +45,9 @@ export interface PaneFooterSegment {
    */
   quoteStatus?: boolean;
   /**
-   * The segment says what the rows leave out (releases a filter hides), which
-   * a picture of the rows cannot: a `gloom shot` keeps it, as it keeps a
+   * The segment says what the rows leave out (releases a filter hides), or
+   * whose they are (a receipt's company data from its home line), which a
+   * picture of the rows cannot: a `gloom shot` keeps it, as it keeps a
    * warning.
    */
   capture?: boolean;
@@ -131,6 +132,8 @@ export function companyDataFooterSegment(from: CompanyFrom | null | undefined): 
   return {
     id: "company-data",
     title: from.name ? `${text} (${from.name})` : text,
+    // A capture of the rows keeps it: the picture cannot say whose they are.
+    capture: true,
     parts: [{ text, tone: "muted" }],
     variants: [[{ text: tf("from {listing}", { listing }), tone: "muted" }]],
   };
