@@ -3,7 +3,7 @@ import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { ChartRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
-import type { OptionsChain, PricePoint } from "../../../types/financials";
+import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { createSurfaceDependencies } from "../vol-surface/client";
@@ -144,10 +144,18 @@ describe("independent current-IV loading", () => {
     expect(requests).toEqual([{ expiration: undefined, force: false }, { expiration: near, force: true }]);
     expect(refreshed.reference!.value).toBeCloseTo(0.36, 3);
     expect(refreshed.warnings).toBe(loaded.warnings);
-    // A slice that cannot price an ATM level keeps the dated reference already shown.
-    const failed = await refreshCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, loaded,
+    // A refresh that cannot price the reference's expiry is no answer: the dated reference
+    // already shown stays, and the refresh says why, so the pane can warn that it is not moving.
+    const failed = refreshCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, loaded,
       { ...dependencies, loadOptions: async () => { throw new Error("offline"); } });
-    expect(failed).toBe(loaded);
+    await expect(failed).rejects.toThrow("ATM IV 31d not refreshed: offline");
+    const unquoted = refreshCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, loaded, { ...dependencies,
+      loadOptions: async (request: { expirationDate?: number }) => {
+        const full = chain(near, volatility);
+        const noBid = (contract: OptionContract) => ({ ...contract, bid: 0, ask: 0 });
+        return ready(request.expirationDate == null ? full : { ...full, calls: full.calls.map(noBid), puts: full.puts.map(noBid) });
+      } });
+    await expect(unquoted).rejects.toThrow("ATM IV 31d not refreshed: no clean quote at the money");
   });
 
   test("option failures and missing spot leave daily history independently available", async () => {
