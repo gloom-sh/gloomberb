@@ -7,6 +7,7 @@ import {
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { FILL_REST } from "../../../components/ui/fill";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../../public/react";
@@ -43,11 +44,14 @@ export function SwapsTab({ focused, width, height }: { focused: boolean; width: 
   const rows = payload?.asOf ? payload.points : EMPTY_ROWS;
   // A new tenor keeps the curve/table in place, but never relabels the old tenor's history.
   const history = payload?.history.tenor === tenor ? payload.history : null;
-  const stale = !!payload?.asOf && (payload.stale || resource.data?.stale || false);
-  const error = resource.error || resource.data?.refreshError || null;
+  // A refresh that failed shows the copy an earlier read saved, and says when that copy is from.
+  const savedAt = resource.data?.savedAt ?? null;
+  const savedInfo = useMemo(() => savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : undefined, [savedAt]);
+  const stale = !!payload?.asOf && (payload.stale || (savedAt == null && resource.data?.stale) || false);
+  const error = resource.error || (savedAt == null ? resource.data?.refreshError : null) || null;
   useAutoRefresh(stale ? null : resource.updatedAt, resource.load);
   usePaneRefreshKey(resource.reload, { focused });
-  usePaneStatusFooter({ registrationId: "yield-curve:swaps", loading: resource.loading, error, stale });
+  usePaneStatusFooter({ registrationId: "yield-curve:swaps", loading: resource.loading, error, stale, info: savedInfo });
   usePaneNoticeFooter({
     registrationId: "yield-curve:swaps:notices", focused,
     notices: payload?.asOf ? [

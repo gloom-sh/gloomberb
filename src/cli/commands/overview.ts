@@ -2,7 +2,7 @@ import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
-import { withCliServices, withMarketData } from "../context";
+import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
 import type { CliResultColumn } from "../result";
 import { formatCompact } from "../../utils/format";
@@ -25,7 +25,13 @@ import {
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
 import { hasPartialFloat, meetsMinFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "../../plugins/builtin/market-movers/min-float";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
-import { computedFredSeriesNote, seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
+import {
+  attachFredSeriesPersistence, computedFredSeriesNote, loadCachedFredSeries, resetFredSeriesPersistence, seriesNotOnFred,
+} from "../../sources/gloomberb-cloud/fred-series";
+import type { CloudFredSeriesPayload } from "../../api-client";
+import { savedCopyMark } from "../../data/saved-copies";
+import { ratesMacroPluginMeta } from "../../plugins/builtin/builtin-plugin-meta";
+import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -493,7 +499,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       : null;
     const past = stored?.events ? stored : null;
     const unread = stored && !stored.events && stored.failure ? `The stored calendar could not be read (${stored.failure}); listing the current calendar` : null;
-    const { data: events, fetchedAt, stale } = past ? { data: past.events, fetchedAt: Date.now(), stale: false } : await loadCalendar(ctx.cliOptions.refresh);
+    const { data: events, fetchedAt, stale, refreshError } = past
+      ? { data: past.events, fetchedAt: Date.now(), stale: false, refreshError: undefined }
+      : await loadCalendar(ctx.cliOptions.refresh);
     // The calendar lists from today (UTC). --from moves the first day; --tail
     // alone keeps the newest events of the whole calendar, the past week's too.
     const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
@@ -566,12 +574,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       listed.some(awaitsConsensus) ? NO_CONSENSUS_NOTE : null]
       .filter((note): note is string => !!note);
     const footnote = notes.join("\n");
+    // The calendar as read, not its rows: those are scheduled, mostly ahead. One that could not be
+    // refreshed is the copy an earlier read saved, and says when that was.
+    const read = rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale });
+    const calendarFreshness = read && refreshError ? { ...read, savedAt: new Date(fetchedAt).toISOString() } : read;
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
       metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(viewerZone ? { timeZone: viewerZone } : {}) },
-      // The calendar as read, not its rows: those are scheduled, mostly ahead.
-      freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),
+      freshness: calendarFreshness,
     }, {
       dateKey: "date",
       defaultLimit: 50,
@@ -615,6 +626,31 @@ function isUnsupportedSeries(error: unknown): boolean {
   if (!(error instanceof ApiRequestError) || error.status !== 400) return false;
   const message = typeof error.details?.message === "string" ? error.details.message : error.message;
   return error.details?.code === "unsupported_series" || /^Unsupported FRED series\b/i.test(message);
+}
+
+/**
+ * Runs `run` with the FRED series cache saving what it fetches in the profile,
+ * where the app's rates and macro panes keep it: a refresh that fails then
+ * answers from the copy an earlier read saved, and the report says so.
+ */
+function withSavedFredSeries<T>(ctx: Parameters<CliCommandDef["execute"]>[1], run: () => Promise<T>): Promise<T> {
+  return withConfigData(ctx, async ({ persistence }) => {
+    attachFredSeriesPersistence(createCommandPluginPersistence(persistence.resources, `plugin:${ratesMacroPluginMeta.stateId}`));
+    try {
+      return await run();
+    } finally {
+      resetFredSeriesPersistence();
+    }
+  });
+}
+
+/** A FRED series from Gloom Cloud, or the copy an earlier read saved when it cannot be refreshed (marked as such). */
+async function loadFredSeries(
+  seriesId: string,
+  params: { startDate?: string; limit?: number; sortOrder: "asc" | "desc" },
+): Promise<CloudFredSeriesPayload> {
+  const result = await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params));
+  return result.data;
 }
 
 async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -662,9 +698,19 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.fail(change ? `Unknown change "${change}".` : "--change needs 1D or 1W.", "Use 1D (from the previous observation) or 1W (from a week before).");
   }
   const seriesId = requireOneArg(args, FRED_USAGE, "series", ctx).toUpperCase();
+  await withSavedFredSeries(ctx, () => printFredSeries(ctx, { seriesId, start, startDate, sortOrder, horizon }));
+}
+
+async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { seriesId, start, startDate, sortOrder, horizon }: {
+  seriesId: string;
+  start: string | undefined;
+  startDate: string;
+  sortOrder: "asc" | "desc";
+  horizon: ReturnType<typeof parseFredChange>;
+}) {
   // A change needs the observation it is measured from: the fetch reaches back before the first row shown.
   const fetchStart = horizon ? fredChangeFetchStart(startDate) : startDate;
-  const data = await apiClient.getCloudFredSeries(seriesId, { startDate: fetchStart, sortOrder }).catch((error: unknown) => {
+  const data = await loadFredSeries(seriesId, { startDate: fetchStart, sortOrder }).catch((error: unknown) => {
     if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloom fred --list`);
     throw error;
   });
@@ -678,7 +724,9 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const releasedOf = (observation: { publisher?: string; publishedAt?: string; releasedOn?: string }) =>
     observation.releasedOn ?? (observation.publisher?.trim() ? observation.publishedAt : undefined);
   // A value FRED does not list yet carries its publisher and when it published, in every export.
+  // A row from the copy an earlier read saved, the refresh having failed, carries its mark: the source line says so.
   const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string; releasedOn?: string }) => ({
+    ...savedCopyMark(data),
     date: observation.date,
     value: fredExportValue(seriesId, observation.value),
     ...(changes ? { change: changes.get(observation.date)?.change ?? null, changeFrom: changes.get(observation.date)?.changeFrom ?? null } : {}),
@@ -697,7 +745,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     computedFredSeriesNote(seriesId),
   ].filter((note): note is string => note != null);
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
-  const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
+  const latest = rows.length > 0 ? null : await loadFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
     .then((payload) => payload.observations[0] ?? null).catch(logFailure("cli.commands-overview", "Read latest economic series observation failed", null));
   // CSV and NDJSON are rows alone: an empty one would read as a series with no data, so it fails and says where the series ends.
   if (rows.length === 0 && (ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson")) {
@@ -769,10 +817,12 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   const startDate = parseStartDate(takeOption(args, "--start"), ctx);
   rejectArgs(args, "yield-curve [--start <date>]", ctx);
   const series = Object.keys(YIELD_TENORS);
-  const results = await Promise.all(series.map(async (seriesId) => {
-    const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
+  const results = await withSavedFredSeries(ctx, () => Promise.all(series.map(async (seriesId) => {
+    const data = await loadFredSeries(seriesId, { startDate, sortOrder: "desc" });
     const [latest, previous] = data.observations;
     return {
+      // A tenor from the copy an earlier read saved, the refresh having failed, says so in the source line.
+      ...savedCopyMark(data),
       seriesId,
       date: latest?.date ?? "",
       // Yields in percent, which the exports' `currency_or_unit` column says (`pct`), as `fred` does.
@@ -785,7 +835,7 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       latest,
       publishedAt: latest?.publisher ? null : fredPublicationTime(data.info, latest?.date),
     };
-  }));
+  })));
   // Tenors whose latest yield FRED does not list yet name the Treasury and when it published them.
   const ahead = fredProvenance(results.flatMap((row) => row.latest ? [row.latest] : []));
   // The curve shown was published with its last tenor: the newest of their FRED updates, when each has one.

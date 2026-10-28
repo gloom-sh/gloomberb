@@ -70,7 +70,7 @@ test("a refresh failure keeps a marked last-good board while access refusal stil
   try {
     expect(getCachedGpuBoard()).toEqual({ payload: saved, stale: false, refreshError: null });
     const fallback = await loadGpuBoard(true);
-    expect(fallback).toEqual({ payload: saved, stale: true, refreshError: "Bad gateway" });
+    expect(fallback).toEqual({ payload: saved, stale: true, refreshError: "Bad gateway", savedAt: expect.any(Number) });
     expect(saved.stale).toBe(false);
 
     const refused = new ApiRequestError("Session expired", 401);

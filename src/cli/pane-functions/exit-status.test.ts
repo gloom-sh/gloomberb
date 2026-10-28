@@ -105,7 +105,7 @@ test("partial data exits 0: a symbol without its headline figure whose tables ha
 test("a part missing because the data service could not be reached fails as retryable, whatever else the report shows", () => {
   const unreached = `PEN: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`;
   expect(reportFailure({ empty: false, rowCount: 6, symbols: ["USD", "ARS", "PEN"], unavailableSymbols: ["PEN"], errors: [unreached] }, "fn FXC"))
-    .toEqual({ code: "service_unreachable", message: `fn FXC: ${unreached}.`, retryable: true });
+    .toEqual({ code: "service_unreachable", message: `fn FXC: ${unreached}.`, details: expect.stringMatching(/^Check the internet connection/), retryable: true });
   expect(reportFailure({ empty: false, rowCount: 1, symbols: ["GGAL"], unavailableSymbols: ["GGAL"], errors: [`GGAL: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`] },
     "fn SIW GGAL", { failsWithoutData: true })?.code).toBe("service_unreachable");
 });
