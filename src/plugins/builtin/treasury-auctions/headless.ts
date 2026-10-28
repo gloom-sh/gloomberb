@@ -35,7 +35,7 @@ import {
 const formatPercent = (value: unknown) => value == null ? "" : `${Number(value).toFixed(1)}%`;
 
 /** What an announced auction's Rate reads until the source publishes its results. */
-export const RESULTS_NOT_PUBLISHED = "results not published";
+const RESULTS_NOT_PUBLISHED = "results not published";
 const pending = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction);
 
 /** Why the stop-out column is not a tail; the docs page says the same at length. */
