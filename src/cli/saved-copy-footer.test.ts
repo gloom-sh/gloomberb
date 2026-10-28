@@ -10,6 +10,7 @@ import { createTestDataProvider, createTestQuote } from "../test-support/data-pr
 import { marketDataCliCommands } from "./commands/market";
 import { overviewCliCommands } from "./commands/overview";
 import { apiClient } from "../api-client";
+import { ApiRequestError } from "../api-client/errors";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "../plugins/builtin/econ/calendar-model";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 import { DEFAULT_CLI_OPTIONS } from "./options";
@@ -201,5 +202,24 @@ test("fred, yield-curve and econ answer a failed refresh from what an earlier ru
     series.mockRestore();
     calendar.mockRestore();
     resetEconCalendarPersistence();
+  }
+});
+
+// With a copy an earlier run saved, a series Gloom Cloud stopped serving printed that copy as if it were only offline.
+test("fred says a series Gloom Cloud no longer serves, even with a copy an earlier run saved", async () => {
+  const shared = new Proxy(persistence, { get: (target, key) => key === "close" ? () => {} : Reflect.get(target, key) });
+  const series = spyOn(apiClient, "getCloudFredSeries").mockResolvedValue({ observations: [{ date: "2026-10-22", value: 4.99 }], info: null });
+  const fred = () => {
+    const cli = createTestCliContext({ persistence: shared });
+    return collectSavedCopies(() => overviewCliCommands.find((command) => command.name === "fred")!.execute(["DGS10"], cli.context));
+  };
+  try {
+    clock.mockReturnValue(at("2026-10-22T22:08:00Z"));
+    await fred();
+    series.mockRejectedValue(new ApiRequestError("Unsupported FRED series DGS10", 400, undefined, undefined, { code: "unsupported_series" }));
+    clock.mockReturnValue(at("2026-10-22T22:20:00Z"));
+    await expect(fred()).rejects.toThrow("Unsupported FRED series DGS10. List supported series with: gloom fred --list");
+  } finally {
+    series.mockRestore();
   }
 });

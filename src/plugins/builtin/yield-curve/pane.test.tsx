@@ -11,6 +11,8 @@ import { TREASURY_MATURITIES } from "./treasury-data";
 import { curveViewCache, worldCurvesCache } from "./client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { DataServiceUnreachableError } from "../../../utils/network-failure";
+import { ApiRequestError } from "../../../api-client/errors";
+import type { CloudWorldCurves } from "../../../api-client/yield-curves";
 
 const id = "yield-curve:test";
 const tui = createOpenTuiTestHarness();
@@ -25,9 +27,10 @@ function RegistryProbe() {
   return null;
 }
 
-function Harness({ width = 90, height = 30 }: { width?: number; height?: number }) {
+function Harness({ width = 90, height = 30, tab }: { width?: number; height?: number; tab?: "world" }) {
   const initial = createInitialState(createTestPaneConfig("/tmp/gloom-curve-test", { instanceId: id, paneId: "yield-curve", binding: { kind: "none" } }));
   initial.focusedPaneId = id;
+  if (tab) initial.paneState[id] = { pluginState: { macro: { "yield-curve:tab": tab } } } as never;
   const [state, dispatch] = useReducer(appReducer, initial);
   return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="macro" runtime={createTestPluginRuntime()} width={width} height={height} footerKeys>
     {(body) => <YieldCurvePane paneId={id} paneType="yield-curve" focused {...body} />}
@@ -255,4 +258,40 @@ test("offline, the curve stays on screen and says when its saved copy is from, a
   expect(tui.frame()).toMatch(/1M +4\.00%/);
   expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
   expect(tui.frame()).not.toContain("yield curve unavailable");
+});
+
+test("offline, the World tab keeps its markets and says when its saved copy is from until a refresh answers, and a refusal clears them", async () => {
+  const curve = (id: "us" | "de", label: string, ten: number) => ({
+    curve: { id, label, country: id.toUpperCase(), basis: "par" as const, couponsPerYear: 2 }, asOf: "2026-09-24", checkedAt: null,
+    points: [{ tenor: "2Y", years: 2, yield: 3.5 }, { tenor: "10Y", years: 10, yield: ten }, { tenor: "30Y", years: 30, yield: ten + 0.4 }],
+    previous: null,
+  });
+  const world: CloudWorldCurves = { curves: [curve("us", "US Treasury", 4.2), curve("de", "German Bund", 2.6)] };
+  const worldSpy = spyOn(apiClient, "getCloudWorldCurves").mockResolvedValue(world);
+  worldCurvesCache.attach(new MemoryPluginPersistence());
+  const refresh = async () => { await tui.emitKeypress({ name: "r" }); await settle(); };
+  try {
+    await act(async () => { await tui.render(<Harness width={90} height={28} tab="world" />, { width: 90, height: 28 }); });
+    await settle();
+    expect(tui.frame()).toContain("Germany");
+    expect(tui.frame()).not.toContain("saved copy");
+
+    worldSpy.mockRejectedValue(new DataServiceUnreachableError(Object.assign(new Error("Unable to connect"), { code: "ConnectionRefused" })));
+    await refresh();
+    expect(tui.frame()).toContain("Germany");
+    expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
+
+    worldSpy.mockResolvedValue(world);
+    await refresh();
+    expect(tui.frame()).toContain("Germany");
+    expect(tui.frame()).not.toContain("saved copy");
+
+    // Signed out, the saved markets are not this account's to show.
+    worldSpy.mockRejectedValue(new ApiRequestError("Sign in to view world curves", 401));
+    await refresh();
+    expect(tui.frame()).not.toContain("Germany");
+    expect(tui.frame()).toContain("Sign in to view world curves");
+  } finally {
+    worldSpy.mockRestore();
+  }
 });

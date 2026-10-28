@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
-import { ApiRequestError } from "../../api-client/errors";
+import { ApiRequestError, isPermanentClientError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
@@ -499,8 +499,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       : null;
     const past = stored?.events ? stored : null;
     const unread = stored && !stored.events && stored.failure ? `The stored calendar could not be read (${stored.failure}); listing the current calendar` : null;
-    const { data: events, fetchedAt, stale, refreshError } = past
-      ? { data: past.events, fetchedAt: Date.now(), stale: false, refreshError: undefined }
+    const { data: events, fetchedAt, stale, source } = past
+      ? { data: past.events, fetchedAt: Date.now(), stale: false, source: "network" as const }
       : await loadCalendar(ctx.cliOptions.refresh);
     // The calendar lists from today (UTC). --from moves the first day; --tail
     // alone keeps the newest events of the whole calendar, the past week's too.
@@ -577,7 +577,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // The calendar as read, not its rows: those are scheduled, mostly ahead. One that could not be
     // refreshed is the copy an earlier read saved, and says when that was.
     const read = rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale });
-    const calendarFreshness = read && refreshError ? { ...read, savedAt: new Date(fetchedAt).toISOString() } : read;
+    const calendarFreshness = read && source === "stale-fallback" ? { ...read, savedAt: new Date(fetchedAt).toISOString() } : read;
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
@@ -644,12 +644,17 @@ function withSavedFredSeries<T>(ctx: Parameters<CliCommandDef["execute"]>[1], ru
   });
 }
 
-/** A FRED series from Gloom Cloud, or the copy an earlier read saved when it cannot be refreshed (marked as such). */
+/**
+ * A FRED series from Gloom Cloud, or the copy an earlier read saved when it
+ * cannot be refreshed (marked as such). A refusal asking again will not change
+ * (a series Gloom Cloud no longer serves, access denied) is said, not covered.
+ */
 async function loadFredSeries(
   seriesId: string,
   params: { startDate?: string; limit?: number; sortOrder: "asc" | "desc" },
 ): Promise<CloudFredSeriesPayload> {
   const result = await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params));
+  if (result.source === "stale-fallback" && isPermanentClientError(result.error)) throw result.error;
   return result.data;
 }
 
