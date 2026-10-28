@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-25",
+ "updatedAt": "2026-10-28",
  "categories": [
   {
    "id": "research",
@@ -285,9 +285,9 @@
   },
   {
    "code": "CSP",
-   "name": "Cash-secured put screen",
-   "description": "Put-selling yield across a list",
-   "detail": "For each ticker, the put nearest a delta (0.30) on the expiry about 30 days out, ranked by annualised yield on cash at the bid, with distance out of the money, delta, IV rank, the bid/ask spread (wide ones flagged, never dropped), and whether earnings fall before expiry. Enter opens the put in OSA.",
+   "name": "Options strategy screen",
+   "description": "Puts, covered calls, spreads, condors, straddles and calendars across a list",
+   "detail": "One tab per strategy: cash-secured put, covered call, vertical, iron condor, straddle, strangle and calendar. For each ticker it picks the legs by delta and expiry, then shows credit or debit, max gain and loss, break-evens, probability of profit, IV rank, wide spreads and earnings before expiry. Income trades rank by yearly return, debit trades by reward to risk.",
    "category": "research",
    "arg": "JPM, GS, KO"
   },
@@ -1033,8 +1033,9 @@
    "code": "FLOW",
    "name": "Options flow",
    "description": "Unusual options activity",
-   "detail": "Sweeps, blocks, and large premium prints as they hit the tape, with ticker, strike, expiry, and premium.",
+   "detail": "Sweeps, blocks, and large premium prints, plus the session's net premium tide.",
    "category": "markets",
+   "arg": "NVDA",
    "access": "pro",
    "lesson": "/academy/options-and-volatility/positioning-and-flow/options-flow"
   },
@@ -1859,6 +1860,10 @@
     {
      "type": "paragraph",
      "text": "Installed before 0.18.4, when the command was `gloomberb`? Updating adds `gloom` beside it and `gloomberb` keeps working, with nothing to reinstall."
+    },
+    {
+     "type": "paragraph",
+     "text": "Had `Gloomberb.app`? Its next update renames it to `Gloom.app`; settings and data stay."
     },
     {
      "type": "heading",
@@ -2920,7 +2925,7 @@
     "troubleshooting",
     "diagnostics"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-10-25",
    "blocks": [
     {
      "type": "heading",
@@ -2970,7 +2975,7 @@
     {
      "type": "list",
      "items": [
-      "`Bad CPU type in executable` on macOS: an Intel Mac running the Apple Silicon app. Delete `/Applications/Gloomberb.app` and rerun `curl -fsSL gloom.sh/install | bash` for the Intel terminal build.",
+      "`Bad CPU type in executable` on macOS: an Intel Mac running the Apple Silicon app. Delete `/Applications/Gloom.app` (`Gloomberb.app` before the app was renamed) and rerun `curl -fsSL gloom.sh/install | bash` for the Intel terminal build.",
       "`gloom doctor` shows runtime errors.",
       "Update with the same method you installed with. See [Install and update](/docs/getting-started)."
      ]
@@ -4267,7 +4272,7 @@
     "perpetuals",
     "history"
    ],
-   "updatedAt": "2026-10-09",
+   "updatedAt": "2026-10-26",
    "blocks": [
     {
      "type": "heading",
@@ -4308,6 +4313,18 @@
      ],
      "rows": [
       [
+       "Compare",
+       "One asset's contracts across the venues: mark, funding, premium and when each was observed"
+      ],
+      [
+       "Liquidations",
+       "One asset's liquidated longs and shorts across the venues: 24-hour and 7-day totals, the hourly series and the largest prints"
+      ],
+      [
+       "Depth",
+       "One asset's resting bids and asks within 0.5%, 1% and 2% of mid on each venue, from each venue's order book every hour"
+      ],
+      [
        "History",
        "Funding, open interest and mark premium, with price candles and settled funding where available"
       ],
@@ -4333,6 +4350,37 @@
     {
      "type": "heading",
      "level": 2,
+     "text": "Liquidations"
+    },
+    {
+     "type": "paragraph",
+     "text": "Each venue's public liquidation stream, kept event by event with the time it arrived. A long liquidated is a forced sell, a short a forced buy, valued at the price the venue reports: the average fill on Binance and Hyperliquid, the bankruptcy price on Bybit and OKX. What the streams leave out:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Binance and OKX send at most one liquidation per contract each second, so a burst on one contract is undercounted.",
+      "Bybit sends every liquidation.",
+      "Hyperliquid publishes only the positions its liquidity vault takes over (backstop liquidations). Liquidations closed on the order book are not published venue-wide and are missing.",
+      "Venues publish no liquidation history, so time the collector was not connected is missing, not zero, and history starts at first collection."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Free shows each contract's 24-hour and 7-day totals and the three largest prints; Pro adds the hourly series and the twenty largest prints."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Order book depth"
+    },
+    {
+     "type": "paragraph",
+     "text": "The quote notional resting within 0.5%, 1% and 2% of mid, read once an hour from each venue's public order book for its 50 largest markets by open interest. Binance and Bybit return the nearest 1,000 price levels a side and OKX 5,000; on the deepest markets the book ends inside a band, which then shows at least (≥) what it holds. Hyperliquid returns 20 levels a side, so wider bands are read from its grouped book and a band's edge falls within one price group. A book not read for 2.5 hours (it left its venue's 50 largest, or the venue is failing) is marked stale and left out of the band totals; after a week it is no longer listed. Free shows the latest reading; Pro the hourly history."
+    },
+    {
+     "type": "heading",
+     "level": 2,
      "text": "Long/short ratio"
     },
     {
@@ -4347,7 +4395,7 @@
     {
      "type": "list",
      "items": [
-      "Stored readings cover Hyperliquid, Binance, Bybit and OKX.",
+      "Stored readings cover Hyperliquid, Binance, Bybit and OKX. Compare shows each venue's leading contract free; Pro lists every contract.",
       "Positive funding means longs pay shorts. Open interest in contracts and in USD differ, because a price rise adds USD open interest without new contracts.",
       "A stock perpetual's premium is blank while the stock market is closed. The live board and trading are in the Hyperliquid plugin."
      ]
@@ -4618,7 +4666,7 @@
     "call wall",
     "put wall"
    ],
-   "updatedAt": "2026-10-23",
+   "updatedAt": "2026-10-28",
    "blocks": [
     {
      "type": "heading",
@@ -4737,7 +4785,7 @@
       {
        "type": "list",
        "items": [
-        "Gamma per contract is Black-Scholes gamma with the forward at spot, times the 100-share multiplier. Time runs to 16:00 New York on the expiry date, at least one hour.",
+        "Gamma per contract is Black-Scholes gamma with the forward at spot, times the 100-share multiplier. Time runs to 16:00 New York on the expiry date, at least one hour, from now, or outside the session from the spot's time: before the open, a same-day expiry has the hours from the pre-market print to the close, with the volatility the last session's quotes imply. A cash index (SPX, XSP) outside its session is spot at that session's close.",
         "Each strike's volatility comes from its expiry's out-of-the-money quotes, linear between quoted strikes and flat beyond. An expiry without usable quotes is left out and named.",
         "GEX at a strike is gamma × 100 × spot × 1% of spot × open interest.",
         "The flip reprices net GEX from 15% below to 15% above spot in 0.25% steps, each strike keeping its volatility, and takes the sign change nearest spot.",
@@ -4835,7 +4883,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`gloom fn GEX SPY --csv` opens with a summary: spot and quote times, the open interest session, the unit, net GEX, the dealer range, the flip and both walls. Puts export negative, so call and put GEX add up to net. `--json` has the same under `metadata.gamma`."
+     "text": "`gloom fn GEX SPY --csv` opens with a summary: spot, when gamma is evaluated and when its quotes were taken (`Gamma at ..., vols from ...`), the open interest session, the unit, net GEX, the dealer range, the flip and both walls. Puts export negative, so call and put GEX add up to net. `--json` has the same under `metadata.gamma`."
     },
     {
      "type": "heading",
@@ -6812,6 +6860,10 @@
     },
     {
      "type": "paragraph",
+     "text": "Comparing news APIs? See [the best financial news APIs](/alternatives/financial-news-apis), or Gloom side by side with [NewsAPI.org](/alternatives/newsapi-org) and [newsfilter.io](/alternatives/newsfilter-io)."
+    },
+    {
+     "type": "paragraph",
      "text": "See also: [Gloom Datasets](/docs/datasets), a separate paid API for alternative signals, filings, macro, news and market data, with its own `gds_` keys."
     },
     {
@@ -7614,7 +7666,7 @@
    "title": "Screening the market (EQS)",
    "summary": "EQS keeps only the stocks in its stored universe that meet all your rules (valuation, growth, margins, liquidity, ownership and more) and ranks the matches.",
    "chapter": "Compare, screen and follow the money",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/compare-screen-follow-money/who-owns-it/holders-and-13f",
