@@ -24,11 +24,12 @@ const strikes = [
   { strike: 780, calls: 3_301_877.25, puts: 0, net: 3_301_877.25 },
 ];
 const total = { calls: 5_718_943.94, puts: 2_346_946.33, net: 3_371_997.61 };
+// Before the open: gamma at the pre-market print's time, with the last session's quotes.
 const gamma = (scope: string | null, byExpiry?: GammaPayload["byExpiry"]): GammaPayload => ({
-  version: 1, symbol: "SPY", underlying: "SPY", oiDate: "2026-10-14", spot: 764.2, spotAsOf: "2026-10-16T17:08:00Z",
+  version: 1, symbol: "SPY", underlying: "SPY", oiDate: "2026-10-14", spot: 764.2, spotAsOf: "2026-10-16T10:55:00Z",
   delayed: true, expiry: scope, expiries: [], missing: [], total,
   band: { low: -1e6, high: 4e6, shareLow: 0.25, shareHigh: 0.75 }, flip: 761.5, strikes,
-  quotesAsOf: "2026-10-16T17:04:32Z", warnings: [], ...(byExpiry ? { byExpiry } : {}),
+  quotesAsOf: "2026-10-15T20:14:59Z", gammaAsOf: "2026-10-16T10:55:00Z", warnings: [], ...(byExpiry ? { byExpiry } : {}),
 });
 const byExpiry = [
   { expiry: "2026-10-16", calls: 4e6, puts: 1.5e6, net: 2.5e6 },
@@ -36,14 +37,16 @@ const byExpiry = [
   { expiry: "2026-11-20", calls: 518_943.94, puts: 246_946.33, net: 271_997.61 },
 ];
 
-async function report(options: { expiry?: string; withByExpiry?: boolean }) {
+async function report(options: { expiry?: string; withByExpiry?: boolean; olderServer?: boolean }) {
   const definition = optionsPositioningHeadless("gex");
   const args = createTestHeadlessArgs({ symbols: ["SPY"], options: options.expiry ? { expiry: options.expiry } : {} });
   const apiClient = {
     optionsPositioning: async (path: string) => {
       if (path.startsWith("open-interest")) return openInterest;
       const scope = new URLSearchParams(path.split("?")[1]).get("expiry");
-      return gamma(scope, options.withByExpiry === false ? undefined : scope ? [byExpiry[1]!] : byExpiry);
+      const payload = gamma(scope, options.withByExpiry === false ? undefined : scope ? [byExpiry[1]!] : byExpiry);
+      if (options.olderServer) delete payload.gammaAsOf;
+      return payload;
     },
   } as never;
   const result = await definition.load(args, createTestHeadlessContext({ apiClient })) as HeadlessBundleResult;
@@ -52,7 +55,7 @@ async function report(options: { expiry?: string; withByExpiry?: boolean }) {
   return { result, tables, text: renderHeadlessPaneText(definition, result, args, "GEX", freshness), csv: renderReportCsv(tables, freshness) };
 }
 
-test("the GEX export adds up, names its unit, and opens with spot and quote times apart from the OI session", async () => {
+test("the GEX export adds up, names its unit, and opens with spot, gamma and quote times apart from the OI session", async () => {
   const { tables, text, csv } = await report({ expiry: "2026-10-30" });
   const [summary, expiries, , dealer] = tables.tables;
 
@@ -66,17 +69,18 @@ test("the GEX export adds up, names its unit, and opens with spot and quote time
   expect(gexLines.length).toBe(3);
   expect(gexLines.every((line) => line.includes(",USD per 1% move,"))).toBe(true);
 
-  // One summary block first, in the text and the CSV, dating spot and quotes apart from open interest.
+  // One summary block first, in the text and the CSV, dating spot, gamma and the quotes apart from open interest.
   expect(text.split("\n").slice(2, 6)).toEqual([
     "Summary · Oct 30 '26",
-    expect.stringMatching(/^Spot +764\.20 last Fri 16 Oct 17:08 UTC/),
-    expect.stringMatching(/^Quotes as of +2026-10-16 17:04 UTC/),
+    expect.stringMatching(/^Spot +764\.20 pre-market Fri 16 Oct 10:55 UTC/),
+    expect.stringMatching(/^Gamma at +Fri 16 Oct 10:55 UTC, vols from Thu 15 Oct 20:14 UTC$/),
     expect.stringMatching(/^Open interest as of +2026-10-14$/),
   ]);
   expect(csv.split("\n")[0]).toBe("# section: Summary · Oct 30 '26");
   const value = (label: string) => summary!.rows.find((row) => row[0] === label)?.[1];
-  expect(value("Spot as of")).toBe("2026-10-16T17:08:00Z");
-  expect(value("Quotes as of")).toBe("2026-10-16T17:04:32Z");
+  expect(value("Spot as of")).toBe("2026-10-16T10:55:00Z");
+  expect(value("Gamma at")).toBe("2026-10-16T10:55:00Z");
+  expect(value("Vols from")).toBe("2026-10-15T20:14:59Z");
   expect(value("Net GEX (USD per 1% move)")).toBe(3_371_997.61);
   expect([value("Call wall"), value("Put wall"), value("Flip")]).toEqual([780, 765, 761.5]);
   expect(text).toMatch(/Dealer range +-1\.00M to \+4\.00M, 25-75% with dealers/);
@@ -88,8 +92,9 @@ test("the GEX export adds up, names its unit, and opens with spot and quote time
   expect(nets.reduce((sum, entry) => sum + entry, 0)).toBeCloseTo(total.net, 4);
 });
 
-test("an older server without per-expiry gamma leaves the Net GEX column blank", async () => {
-  const { result, tables } = await report({ withByExpiry: false });
+test("an older server without per-expiry gamma leaves the Net GEX column blank, and dates its quotes alone", async () => {
+  const { result, tables, text } = await report({ withByExpiry: false, olderServer: true });
+  expect(text).toMatch(/\nQuotes as of +2026-10-15 20:14 UTC\n/);
   const expiries = tables.tables[1]!;
   // The header names its unit as it does with figures in it, so a script's columns do not move.
   expect(expiries.rows.map((row) => row[expiries.columns.indexOf("Net GEX $ (USD per 1% move)")])).toEqual(["", "", ""]);

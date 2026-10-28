@@ -18,6 +18,7 @@ import {
   formatCountChange,
   formatDistance,
   formatGamma,
+  formatGammaTimes,
   formatLevel,
   formatPositioningSpot,
   formatPayout,
@@ -44,15 +45,19 @@ const wall = (value: number | null, spot: number | null) =>
   value == null ? "--" : `${formatStrikeLabel(value)}, ${formatDistance(value, spot)} vs spot`;
 
 /**
- * What the report opens with: spot and the quote time gamma was priced at,
- * apart from the open interest session, then the figures the GEX tab shows.
- * Exports keep each figure whole; the text says them as the pane does.
+ * What the report opens with: spot, the instant gamma is evaluated at and
+ * when the quotes behind its volatilities were taken, apart from the open
+ * interest session, then the figures the GEX tab shows. Exports keep each
+ * figure whole; the text says them as the pane does.
  */
 function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null): { entries: HeadlessPaneEntry[]; textEntries: HeadlessPaneEntry[] } {
   // Gamma is priced at its own read of spot; the figures and their distances use that one.
   const spot = dealer?.spot ?? openInterest.spot;
   const spotAsOf = dealer ? dealer.spotAsOf : openInterest.spotAsOf;
+  const spotBasis = dealer ? dealer.spotBasis : openInterest.spotBasis;
   const venue = openInterest.venue;
+  // Older servers send no gamma time: their quote time stands alone, as it did.
+  const gammaTimes = dealer ? formatGammaTimes(dealer.gammaAsOf, dealer.quotesAsOf) : null;
   // A venue that publishes open interest live (Deribit) dates it to the read, not to a session.
   const oiAsOf = venue && openInterest.oiAsOf ? openInterest.oiAsOf : null;
   const contract = openInterest.contract;
@@ -61,15 +66,20 @@ function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null)
     ...(venue ? [{ key: "venue", label: "Venue", value: venue }] : []),
     { key: "spot", label: "Spot", value: spot },
     { key: "spotAsOf", label: "Spot as of", value: spotAsOf },
-    ...(dealer ? [{ key: "quotesAsOf", label: "Quotes as of", value: dealer.quotesAsOf }] : []),
+    // An index outside its session: spot is the close, spotAsOf its time.
+    ...(spotBasis ? [{ key: "spotBasis", label: "Spot basis", value: spotBasis }] : []),
+    ...(dealer && gammaTimes ? [{ key: "gammaAsOf", label: "Gamma at", value: dealer.gammaAsOf ?? null },
+      { key: "quotesAsOf", label: "Vols from", value: dealer.quotesAsOf }]
+      : dealer ? [{ key: "quotesAsOf", label: "Quotes as of", value: dealer.quotesAsOf }] : []),
     { key: "oiDate", label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate },
     ...(contract ? [{ key: "contract", label: "Contract", value: contract }] : []),
     ...(settles ? [{ key: "settles", label: "Expiries settle", value: settles }] : []),
   ];
   const textEntries: HeadlessPaneEntry[] = [
     ...(venue ? [{ label: "Venue", value: venue }] : []),
-    { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf, venue) },
-    ...(dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
+    { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf, venue, spotBasis) },
+    ...(dealer && gammaTimes ? [{ label: "Gamma at", value: dealer.gammaAsOf ?? null, formatted: gammaTimes }]
+      : dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
     { label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate, formatted: oiAsOf ? `${time(oiAsOf)}, live` : openInterest.oiDate ?? "--" },
     ...(contract ? [{ label: "Contract", value: contract, formatted: `${contract.size} ${contract.unit}; OI counts ${contract.unit}` }] : []),
     ...(settles ? [{ label: "Expiries settle", value: settles, formatted: `${settles}, the day each expiry names` }] : []),
@@ -227,13 +237,16 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
         previousOiDate: openInterest.previousOiDate,
         spot,
         spotAsOf: openInterest.spotAsOf,
+        ...(openInterest.spotBasis ? { spotBasis: openInterest.spotBasis } : {}),
         delayed: openInterest.delayed,
         ...(openInterest.venue ? { venue: openInterest.venue, oiAsOf: openInterest.oiAsOf ?? null, contract: openInterest.contract ?? null } : {}),
         ...(dealer instanceof Error ? {} : {
-          gamma: { expiry: dealer.expiry ?? ALL_EXPIRIES, spot: dealer.spot, spotAsOf: dealer.spotAsOf, total: dealer.total, band: dealer.band,
+          gamma: { expiry: dealer.expiry ?? ALL_EXPIRIES, spot: dealer.spot, spotAsOf: dealer.spotAsOf,
+            ...(dealer.spotBasis ? { spotBasis: dealer.spotBasis } : {}), total: dealer.total, band: dealer.band,
             bandWithBoxes: dealer.bandWithBoxes ?? null, boxes: dealer.boxes ?? [], flip: dealer.flip,
             callWall: walls?.callWall ?? null, putWall: walls?.putWall ?? null,
-            unit: "dollars of dealer delta per 1% move", assumption: "dealers long calls, short puts", quotesAsOf: dealer.quotesAsOf },
+            unit: "dollars of dealer delta per 1% move", assumption: "dealers long calls, short puts",
+            gammaAsOf: dealer.gammaAsOf ?? null, quotesAsOf: dealer.quotesAsOf },
         }),
         methodology: METHODOLOGY,
       },

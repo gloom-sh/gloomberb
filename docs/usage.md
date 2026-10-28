@@ -1126,7 +1126,7 @@ With Notifications on (off by default) the number also shows in a toast when it 
 
 ### Dates, units and time zones
 
-**Date options.** A date option takes `2026-10-01`, `1.10.2026` (day first), `Oct 1 2026`, `1 Oct 2026` or `October 1, 2026` (quote it when it has spaces: `econ --from "Oct 1 2026"`). That covers `econ --from`, `fred --start`, `fn CATL --from`, `fn KPIS --as-of`, `fn OVDV --date`, `fn GC --date`, `fn CTM --date`, `fn GIP --session`, `fn EM --period`, `--expiration`, `options --leaps --expiry-from` and a pane's date field.
+**Date options.** A date option takes `2026-10-01`, `1.10.2026` (day first), `Oct 1 2026`, `1 Oct 2026` or `October 1, 2026` (quote it when it has spaces: `econ --from "Oct 1 2026"`). That covers `econ --from`, `fred --start`, `fn CATL --from`, `fn KPIS --as-of`, `fn OVDV --date`, `fn GC --date`, `fn CTM --date`, `fn GIP --session`, `fn EM --period`, `--expiration` (`--expiry` on `options` too, as `fn GEX` and `fn OPX` spell it), `options --leaps --expiry-from` and a pane's date field.
 
 A slashed date is refused with the formats it takes and the date to type: `type --from 2026-10-14 for 14/10/2026.`
 

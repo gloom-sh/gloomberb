@@ -51,6 +51,7 @@ import {
 } from "./client";
 import {
   ALL_EXPIRIES,
+  axisRatioOfDate,
   chartWindow,
   expiryAxis,
   expiryLabel,
@@ -63,6 +64,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  gammaTimesFigure,
   positioningSpotDetail,
   formatPayout,
   formatRatio,
@@ -160,13 +162,18 @@ interface PositioningChartProps {
 
 /** Columns across a numeric axis (strikes, or expiries one slot apart), with spot and the other levels as guide lines. */
 function PositioningChart(props: PositioningChartProps) {
+  // The legend's values are one column's, under the cursor (the last column's
+  // without one), not the totals the figures above show: it names the column.
+  const column = props.formatCursor(props.selection.cursorDate ? axisRatioOfDate(props.selection.cursorDate) : 1);
+  const legendSeries = useMemo(() => column
+    ? props.series.map((entry) => ({ ...entry, label: `${entry.label} at ${column}` })) : undefined, [column, props.series]);
   const xAxis = useMemo(() => ({
     ticks: props.ticks(Math.max(1, props.width - VALUE_GUTTER)),
     markers: props.markers.flatMap((marker) => marker.ratio != null && marker.ratio >= 0 && marker.ratio <= 1
       ? [{ id: marker.id, xRatio: marker.ratio, label: marker.label, color: marker.color }] : []),
     formatCursor: props.formatCursor,
   }), [props.formatCursor, props.markers, props.ticks, props.width]);
-  return <CompositeChart series={props.series} panels={PANELS} width={props.width} height={props.height}
+  return <CompositeChart series={props.series} legendSeries={legendSeries} panels={PANELS} width={props.width} height={props.height}
     focused={false} navigable={false} showLegend showTimeAxis xAxis={xAxis}
     formatValue={(value) => props.formatValue(value)} formatAxisValue={props.formatAxisValue}
     cursorDate={props.selection.cursorDate} onCursorDateChange={props.selection.onCursorDateChange}
@@ -217,7 +224,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const data = openInterest.data;
   const spot = data?.spot ?? null;
   const venue = data?.venue;
-  const spotStamp = useMemo(() => positioningSpotDetail(spot, data?.spotAsOf, venue), [spot, data?.spotAsOf, venue]);
+  const spotStamp = useMemo(() => positioningSpotDetail(spot, data?.spotAsOf, venue, data?.spotBasis),
+    [spot, data?.spotAsOf, data?.spotBasis, venue]);
   // A coin's options (Deribit's) count open interest in coins, to tenths.
   const coin = isCoinContract(data?.contract);
   const unit = coin ? ` ${data!.contract!.unit}` : "";
@@ -496,6 +504,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const band = gammaData?.band;
   const shares = band ? `${Math.round(band.shareLow * 100)}-${Math.round(band.shareHigh * 100)}%` : "";
   const walls = useMemo(() => gammaWalls(gammaStrikes), [gammaStrikes]);
+  const gammaTimes = useMemo(() => gammaTimesFigure(gammaData?.gammaAsOf, gammaData?.quotesAsOf),
+    [gammaData?.gammaAsOf, gammaData?.quotesAsOf]);
   const gammaFigures = useMemo<StatItem[]>(() => !gammaData?.total ? [] : [
     { id: "net", label: "Net GEX", value: formatGamma(gammaData.total.net), detail: "$ per 1% move",
       color: gammaData.total.net >= 0 ? colors.positive : colors.negative },
@@ -507,8 +517,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
       detail: `${shares} with dealers${gammaData.boxes?.length ? ", boxes out" : ""}` }] : []),
-    { id: "spot", label: "Spot", value: formatLevel(gammaSpot), ...positioningSpotDetail(gammaSpot, gammaData.spotAsOf, gammaData.venue) },
-  ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares, walls]);
+    { id: "spot", label: "Spot", value: formatLevel(gammaSpot),
+      ...positioningSpotDetail(gammaSpot, gammaData.spotAsOf, gammaData.venue, gammaData.spotBasis) },
+    // Gamma is evaluated at the spot's time; before the open its volatilities are the last session's.
+    ...(gammaTimes ? [{ id: "gamma-at", ...gammaTimes }] : []),
+  ], [band, colors.negative, colors.positive, gammaData, gammaSpot, gammaTimes, shares, walls]);
   // The assumption rides in the legend, where the numbers it changes are read; the
   // dealer range figure names its own share. It gives way before the series name does.
   const assumption = width >= 60 ? "dealers long calls, short puts" : width >= 48 ? "long calls, short puts" : null;
@@ -580,7 +593,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       onHeaderClick={(id) => setExpirySort((current) => nextHeaderSort(current, id))}
       emptyStateTitle="No listed expiries."
       getExportMetadata={() => [["open interest as of", data?.oiDate ?? ""], ["change since", data?.previousOiDate ?? ""], ["spot", spot ?? ""],
-        ...(hasGamma ? [["net GEX unit", "dollars of dealer delta per 1% move"], ["quotes as of", netGammas ? gamma.data?.quotesAsOf ?? "" : ""]] : [])]}
+        ...(hasGamma ? [["net GEX unit", "dollars of dealer delta per 1% move"], ["gamma at", netGammas ? gamma.data?.gammaAsOf ?? "" : ""],
+          ["vols from", netGammas ? gamma.data?.quotesAsOf ?? "" : ""]] : [])]}
       rootBefore={<ChartTableHeader width={width} height={bodyHeight} figures={ladderFigures}
         tableRows={expiryRows.length} tableChromeRows={chartTableChromeRows(expiryColumnList, width)}
         chart={expiryChart ? {
@@ -619,7 +633,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
                 ["range with boxes high", gammaData.bandWithBoxes.high],
                 ["box legs left out", (gammaData.boxes ?? []).map((leg) => `${leg.expiry} ${leg.strike} x${leg.contracts}`).join("; ")]] : []),
               ["flip", gammaData.flip ?? ""], ["call wall", walls.callWall ?? ""], ["put wall", walls.putWall ?? ""],
-              ["open interest as of", gammaData.oiDate ?? ""], ["quotes as of", gammaData.quotesAsOf ?? ""]]}
+              ["open interest as of", gammaData.oiDate ?? ""], ["gamma at", gammaData.gammaAsOf ?? ""],
+              ["vols from", gammaData.quotesAsOf ?? ""]]}
             rootBefore={<ChartTableHeader width={width} height={bodyHeight} query={query} figures={gammaFigures}
               tableRows={gammaRows.length} tableChromeRows={chartTableChromeRows(GAMMA_COLUMNS, width)}
               chart={gammaChart ? {

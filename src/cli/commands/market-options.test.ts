@@ -78,6 +78,17 @@ test("options takes --expiration as a date, asks for its UTC midnight, and rejec
   await expect(options.execute(["AAPL", "--expiration"], expiryProvider([]).cli.context)).rejects.toThrow("--expiration needs a date");
 });
 
+test("options takes --expiry as GEX and OPX spell it, naming it as typed, and not beside --expiration", async () => {
+  // The dispatcher's option check reads the spellings help declares.
+  expect(options.help!.options!.some((option) => /(^|, )--expiry </.test(option.flags))).toBe(true);
+  const hit = expiryProvider([EXPIRIES[1]!]);
+  await options.execute(["AAPL", "--expiry=2028-03-17"], hit.cli.context);
+  expect(hit.requests[0]!.slice(0, 3)).toEqual(["AAPL", "", EXPIRIES[1]]);
+  await expect(options.execute(["AAPL", "--expiry", "next-friday"], expiryProvider([]).cli.context)).rejects.toThrow('Invalid --expiry "next-friday"');
+  await expect(options.execute(["AAPL", "--expiry", "2028-03-17", "--expiration", "2028-03-17"], expiryProvider([]).cli.context))
+    .rejects.toThrow("--expiry is --expiration; give one of them.");
+});
+
 test("options fails on an expiry the chain does not list, in dates, and on one the provider answered with other contracts", async () => {
   const unlisted = expiryProvider([]);
   await expect(options.execute(["AAPL", "--expiration", "2028-01-21"], unlisted.cli.context))

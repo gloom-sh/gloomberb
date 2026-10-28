@@ -92,6 +92,7 @@ import {
   optionsBasisFields,
   optionsBasisFootnote,
   parseOptionExpiration,
+  takeExpirationOption,
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
@@ -2637,12 +2638,13 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const leapsOptions = takeLeapsOptions(args);
-  const expiration = takeOption(args, "--expiration");
+  const expirationOption = takeExpirationOption(args);
+  const { value: expiration, flag: expirationFlag } = expirationOption;
+  if (expirationOption.both) ctx.fail("--expiry is --expiration; give one of them.", `Usage: gloom ${OPTIONS_USAGE}`);
   const exchangeOption = takeOption(args, "--exchange");
   if (leapsOptions.leaps) {
     // With --leaps, --expiration is a window of one expiry.
-    const expirationGiven = expiration != null || rawArgs.some((arg) => arg === "--expiration" || arg.startsWith("--expiration="));
-    const criteria = parseLeapsCriteria({ ...leapsOptions.raw, ...expirationGiven ? { "--expiration": expiration ?? "" } : {} });
+    const criteria = parseLeapsCriteria({ ...leapsOptions.raw, ...expirationOption.given ? { "--expiration": expiration ?? "" } : {} });
     if ("error" in criteria) ctx.fail(criteria.error, `Usage: gloom ${LEAPS_USAGE}`);
     const entries = normalizeSymbols(args);
     if (entries.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloom ${LEAPS_USAGE}`);
@@ -2654,11 +2656,11 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   }
   const raw = requireOneArg(args, OPTIONS_USAGE, "symbol", ctx);
   let expirationDate: number | undefined;
-  if (expiration != null || rawArgs.includes("--expiration")) {
+  if (expirationOption.given) {
     const parsed = expiration == null ? null : parseOptionExpiration(expiration);
     if (parsed == null) {
       ctx.fail(
-        expiration == null ? "--expiration needs a date." : `Invalid --expiration "${expiration}".`,
+        expiration == null ? `${expirationFlag} needs a date.` : `Invalid ${expirationFlag} "${expiration}".`,
         `Use ${OPTION_EXPIRATION_FORMAT}.${expiration == null ? "" : expirationHint(expiration)}\nUsage: gloom ${OPTIONS_USAGE}`,
       );
     }
@@ -2690,7 +2692,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const listed = await readChain(undefined).then(({ chain }) => chain.expirationDates,
         logFailure("cli-market", "Read available option expirations failed", []));
       ctx.fail(`expiry ${expiryIsoDate(expirationDate)} for ${listing.key} `
-        + expiredExpiryText(expirationDate, listed, now, { exchange: expiryVenue, flag: "expiration" }),
+        + expiredExpiryText(expirationDate, listed, now, { exchange: expiryVenue, flag: expirationFlag.slice(2) }),
       `Run gloom options ${listing.key} to list the live expiries.`);
     }
     const { result, chain: read } = await loadForListing(listing, market, ctx, async () => {
@@ -3272,7 +3274,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       usage: [OPTIONS_USAGE, LEAPS_USAGE],
       options: [
         {
-          flags: `--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>`,
+          flags: `--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>, --expiry <${OPTION_EXPIRATION_PLACEHOLDER}>`,
           description: "Expiration as a date (2028-01-21) or Unix seconds; defaults to the nearest one, and lists the others. With --leaps: rank that expiry alone",
         },
         EXCHANGE_OPTION,
