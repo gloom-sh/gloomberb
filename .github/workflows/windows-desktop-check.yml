@@ -1,0 +1,135 @@
+name: Windows desktop check
+
+# Installs the Windows desktop app and drives it with real OS input
+# (scripts/windows-desktop-check): window resizing from every edge and corner,
+# maximize and restore, snapping, minimize and restore, dock dividers,
+# floating panes, a popped-out window and typing, at several display scales,
+# pictured step by step. It checks this commit's build against the list of
+# known failures, and runs the same steps on the latest release to compare.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag to compare against (the latest release when empty)
+        required: false
+        default: ""
+      scales:
+        description: Display scales in percent, comma separated
+        required: false
+        default: "100,125,150"
+  pull_request:
+    paths:
+      - ".github/workflows/windows-desktop-check.yml"
+      - "scripts/windows-desktop-check/**"
+      - "src/renderers/electrobun/**"
+      - "src/renderers/dom/**"
+      - "src/components/layout/**"
+      - "electrobun.config.ts"
+      - "patches/electrobun@*.patch"
+      - "scripts/build-windows-desktop-package.ps1"
+      - "scripts/build-windows-installer.ps1"
+      - "scripts/windows-installer.iss"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/windows-desktop-check.yml"
+      - "scripts/windows-desktop-check/**"
+      - "src/renderers/electrobun/**"
+      - "src/renderers/dom/**"
+      - "src/components/layout/**"
+      - "electrobun.config.ts"
+      - "patches/electrobun@*.patch"
+      - "scripts/build-windows-desktop-package.ps1"
+      - "scripts/build-windows-installer.ps1"
+      - "scripts/windows-installer.iss"
+
+concurrency:
+  group: windows-desktop-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.build }}
+    runs-on: windows-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [head, release]
+    env:
+      SCALES: ${{ inputs.scales || '100,125,150' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Download the release installer
+        if: matrix.build == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $Tag = $env:RELEASE
+          if (-not $Tag) { $Tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName }
+          gh release download $Tag --repo $env:GITHUB_REPOSITORY --pattern stable-win-x64-GloomSetup.exe --dir release-installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "INSTALLER=$PWD\release-installer\stable-win-x64-GloomSetup.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Checking release $Tag"
+
+      - name: Build the desktop package
+        if: matrix.build == 'head'
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        if: matrix.build == 'head'
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        if: matrix.build == 'head'
+        shell: pwsh
+        run: |
+          ./scripts/build-windows-installer.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "INSTALLER=$PWD\artifacts\stable-win-x64-GloomSetup.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Set the screen to its largest mode
+        shell: pwsh
+        run: ./scripts/windows-desktop-check/display.ps1 -Largest
+
+      - name: Install
+        shell: pwsh
+        run: bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
+
+      - name: Drive the app at each scale
+        shell: pwsh
+        run: |
+          foreach ($Scale in $env:SCALES.Split(",")) {
+            $Scale = $Scale.Trim()
+            ./scripts/windows-desktop-check/display.ps1 -Scale $Scale
+            bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-$Scale" --label ${{ matrix.build }}
+          }
+          ./scripts/windows-desktop-check/display.ps1 -Scale 100
+          exit 0
+
+      - name: Report
+        shell: pwsh
+        run: |
+          if ("${{ matrix.build }}" -eq "head") {
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check --known scripts/windows-desktop-check/known-failures.json
+          } else {
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-desktop-check-${{ matrix.build }}
+          path: windows-desktop-check
+          if-no-files-found: warn
