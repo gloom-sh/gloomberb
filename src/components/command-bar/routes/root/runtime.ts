@@ -7,7 +7,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { listingChoiceQuery, symbolSearchQuery, type TickerSearchCandidate } from "../../../../tickers/search";
 import type { AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
-import type { ResultItem } from "../../list/model";
+import { isDefaultSelectable, type ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
 import { normalizeCommandTickerSearchText, readRootTickerQuery } from "../ticker-search/results";
@@ -19,11 +19,6 @@ import { isProviderResultItem } from "./search-providers";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import type { ShortcutIntent } from "./shortcuts";
 import { clampIndex } from "../../../../utils/math";
-
-/** A row plain Enter can run, so the untouched selection may rest on it. */
-function isDefaultSelectable(item: ResultItem): boolean {
-  return item.disabled !== true && item.defaultSelectable !== false;
-}
 
 interface UseCommandBarRootRuntimeOptions {
   activeCollectionId: string | null;
@@ -343,8 +338,12 @@ export function useCommandBarRootRuntime({
         if (shiftedIdx >= 0) return shiftedIdx;
         return clampIndex(current, resultIds.length);
       }
-      // Untouched, the selection follows the best row on offer.
+      // Untouched, the selection follows the best row on offer. When every row
+      // is an offer or a placeholder, none of them is the answer and none is
+      // selected: Enter must not take one of them for the ticker still being
+      // searched.
       const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
+      if (defaultIdx < 0) return -1;
       return clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
     });
   }, [

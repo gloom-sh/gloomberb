@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import type { AppState } from "../../state/app/context";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
@@ -12,7 +12,7 @@ import type {
   PaneTemplateDef,
 } from "../../types/plugin";
 import { resolveCommandBarMode, type CommandBarMode } from "./view-model";
-import type { ListScreenState, ResultItem } from "./list/model";
+import { isDefaultSelectable, type ListScreenState, type ResultItem } from "./list/model";
 import type { CommandBarRoute } from "./workflow/types";
 import type { CollectionCommandId } from "./helpers";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
@@ -67,6 +67,7 @@ interface UseCommandBarSelectionRuntimeOptions {
   rootModeKindRef: MutableRefObject<CommandBarMode>;
   rootQuery: string;
   rootQueryRef: MutableRefObject<string>;
+  rootSelectedIdx: number;
   rootSelectionNavigatedRef: MutableRefObject<boolean>;
   rootShortcutIntent: ShortcutIntent;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
@@ -78,6 +79,11 @@ interface UseCommandBarSelectionRuntimeOptions {
    */
   runRootRow?: RunRootRow;
   runSecurityDescriptionShortcut: (query?: string, options?: { forceNewPane?: boolean }) => void | Promise<void>;
+  /**
+   * The search that decides the best row is still out, so the list on screen
+   * is a stand-in for the answer.
+   */
+  searchPending: boolean;
   setRootQuery: (query: string) => void;
   stateConfigLayout: AppState["config"]["layout"];
   stateRef: MutableRefObject<AppState>;
@@ -108,12 +114,14 @@ export function useCommandBarSelectionRuntime({
   rootModeKindRef,
   rootQuery,
   rootQueryRef,
+  rootSelectedIdx,
   rootSelectionNavigatedRef,
   rootShortcutIntent,
   rootThemeBaseIdRef,
   runDirectCommand,
   runRootRow,
   runSecurityDescriptionShortcut,
+  searchPending,
   setRootQuery,
   stateConfigLayout,
   stateRef,
@@ -276,6 +284,13 @@ export function useCommandBarSelectionRuntime({
     updateTopRoute,
   ]);
 
+  /**
+   * An Enter pressed with no row to run while the search is still out. It
+   * waits for the answer instead of running whatever else the list shows, and
+   * is dropped when the user types, moves the selection or leaves the root.
+   */
+  const pendingEnterRef = useRef<{ query: string; secondary: boolean } | null>(null);
+
   const activateListSelection = useCallback((options?: { secondary?: boolean; item?: ResultItem }) => {
     const listState = visibleListStateRef.current;
     if (!listState) return;
@@ -311,7 +326,13 @@ export function useCommandBarSelectionRuntime({
         secondaryAction: () => runSecurityDescriptionShortcut(symbol, { forceNewPane: true }) };
     }
     const selected = options?.item ?? typed ?? listState.results[listState.selectedIdx];
-    if (!selected || selected.disabled) return;
+    if (!selected) {
+      if (searchPending && !currentRoute && !options?.item && !rootSelectionNavigatedRef.current) {
+        pendingEnterRef.current = { query: rootQueryRef.current, secondary: options?.secondary === true };
+      }
+      return;
+    }
+    if (selected.disabled) return;
 
     // Opened from an add row: a venue picked from the colon list joins that
     // collection. Any other text or screen runs as usual.
@@ -396,8 +417,36 @@ export function useCommandBarSelectionRuntime({
     rootShortcutIntent,
     runRootRow,
     runSecurityDescriptionShortcut,
+    searchPending,
     stateConfigLayout,
     stateRef,
+    visibleListStateRef,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingEnterRef.current;
+    if (!pending) return;
+    if (currentRoute || rootQueryRef.current !== pending.query || rootSelectionNavigatedRef.current) {
+      pendingEnterRef.current = null;
+      return;
+    }
+    const listState = visibleListStateRef.current;
+    if (!listState?.results.some(isDefaultSelectable)) {
+      // Still searching: the answer may bring a row. Answered with none: there is nothing to run.
+      if (!searchPending) pendingEnterRef.current = null;
+      return;
+    }
+    // The selection follows the rows in the render after they land.
+    if (!listState.results[listState.selectedIdx]) return;
+    pendingEnterRef.current = null;
+    activateListSelection({ secondary: pending.secondary });
+  }, [
+    activateListSelection,
+    currentRoute,
+    rootQueryRef,
+    rootSelectedIdx,
+    rootSelectionNavigatedRef,
+    searchPending,
     visibleListStateRef,
   ]);
 
