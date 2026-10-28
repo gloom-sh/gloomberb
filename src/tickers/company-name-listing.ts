@@ -33,11 +33,13 @@ export interface CompanyNameListing {
 
 /**
  * Where a listing's company trades now when it moved off the symbol (GETY
- * became GETYQ on 2026-10-22), from the line's quote (null when it has none):
- * the symbol it took, and the change in one line. Null when it did not move,
- * or that cannot be told.
+ * became GETYQ on 2026-10-22), from the line's quote (null when it has none)
+ * and the name search gives it: the symbol it took, and the change in one
+ * line. Null when it did not move, or that cannot be told.
  */
-export type MovedLineLookup = (listing: { symbol: string; exchange: string; quote: Quote | null }) => Promise<{ symbol: string; note: string } | null>;
+export type MovedLineLookup = (
+  listing: { symbol: string; exchange: string; quote: Quote | null; name: string | null },
+) => Promise<{ symbol: string; note: string } | null>;
 
 /** Share lines that are not the company's common stock, though search may type them as such. */
 const NOT_COMMON = /preferred|warrant|right|unit|note|bond|debenture/i;
@@ -177,7 +179,7 @@ async function firstQuoted<T extends RankedListing>(
   }
   if (movedLine && isUsVenue(first.exchange)) {
     const symbol = first.result.symbol.toUpperCase();
-    const moved = await movedLine({ symbol, exchange: first.exchange, quote });
+    const moved = await movedLine({ symbol, exchange: first.exchange, quote, name: first.result.name?.trim() || null });
     if (moved && moved.symbol.toUpperCase() !== symbol) return { line: first, moved: { ...moved, symbol: moved.symbol.toUpperCase() } };
   }
   if (hasPrice(quote)) return only(first);

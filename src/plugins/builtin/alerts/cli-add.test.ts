@@ -1,4 +1,5 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { setCloudApiFetchTransport } from "../../../api-client/request";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -26,6 +27,7 @@ const dataDirs: string[] = [];
 afterEach(async () => {
   setSystemTime();
   setCloudApiFetchTransport(null);
+  apiClient.setSessionToken(null);
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -453,6 +455,8 @@ test("an alert only a signed-in account gets checked is saved signed out and rea
   setCloudApiFetchTransport(async () => { throw new TypeError("fetch failed"); });
   const signedIn = await desk.run(["list"], { format: "csv" });
   expect(signedIn.output.split("\n")[1]!.split(",")[5]).toBe("active");
+  // The command keeps the saved session once it set it, so a lookup running beside Cloud's readings never loses it.
+  expect(apiClient.getSessionToken()).toBe("session-token");
   expect(signedIn.printed!.result.warnings?.some((warning) => warning.includes("needs sign-in"))).toBe(false);
   expect((await desk.run(["add", "AAPL", "filing", "8-K"])).output).not.toContain("needs sign-in");
 });

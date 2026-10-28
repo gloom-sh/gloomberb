@@ -1365,15 +1365,25 @@ function findCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">,
  * looked up.
  */
 async function movedLineOf(
-  listing: { symbol: string; exchange: string; quote: Quote | null },
+  listing: { symbol: string; exchange: string; quote: Quote | null; name: string | null },
   deps: Pick<ListingDeps, "dataProvider">,
 ): Promise<{ symbol: string; note: string } | null> {
-  const { quote, ...line } = listing;
+  const { quote, name, ...line } = listing;
   if (quote && !lineMayHaveMoved(quote)) return null;
   const fate = await loadListingFate(line, deps.dataProvider, { quote });
-  // Without a quote nothing trades under the line to tell the company's change from a new security's.
-  const moved = fate.moved ?? (quote ? null : movedAwayChange(fate.change));
+  const moved = fate.moved ?? (quote ? null : movedWithoutQuote(fate.change, name));
   return moved ? { symbol: moved.tradesAs, note: moved.note } : null;
+}
+
+/**
+ * The move of a line with no quote, when it is the move of the company search
+ * names on the line. With no quote nothing tells the company's change from an
+ * older one's: a reused symbol's change data is the company that held it
+ * before, so it is followed only when that company is this one.
+ */
+function movedWithoutQuote(change: ListingFate["change"], name: string | null): MovedTickerChange | null {
+  const moved = movedAwayChange(change);
+  return moved && sameCompany(name, moved.issuer) ? moved : null;
 }
 
 async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {

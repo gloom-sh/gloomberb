@@ -117,14 +117,14 @@ test("with quoted, a company that moved off its US line is followed to the symbo
       return { symbol, price: 0.019, currency: "EUR", change: 0, changePercent: 0, lastUpdated: 1 };
     },
   };
-  const movedLine = async ({ symbol, exchange, quote }: { symbol: string; exchange: string; quote: Quote | null }) => {
-    asked.push(`${symbol}:${exchange}:${quote ? "quoted" : "none"}`);
+  const movedLine = async ({ symbol, exchange, quote, name }: { symbol: string; exchange: string; quote: Quote | null; name: string | null }) => {
+    asked.push(`${symbol}:${exchange}:${quote ? "quoted" : "none"}:${name}`);
     return symbol === "GETY" ? { symbol: "GETYQ", note: "GETY became GETYQ on 2026-10-22" } : null;
   };
   expect(await findListingOfCompanyName(service, "getty images", { quoted: true, movedLine })).toEqual({
     symbol: "GETYQ", exchange: "", name: "Getty Images Holdings, Inc.", moved: "GETY became GETYQ on 2026-10-22",
   });
-  expect(asked).toEqual(["GETY:NYSE:none"]);
+  expect(asked).toEqual(["GETY:NYSE:none:Getty Images Holdings, Inc."]);
   // With no change to follow, the next line with a quote, as before.
   expect(await findListingOfCompanyName(service, "getty images", { quoted: true, movedLine: async () => null })).toMatchObject({ symbol: "L2S", exchange: "MUNICH" });
   // A first line abroad is not a US line a company leaves for another symbol: no lookup.

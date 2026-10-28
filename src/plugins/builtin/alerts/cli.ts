@@ -495,19 +495,18 @@ interface CloudRuleStates {
 /**
  * Gloom Cloud checks the event rules this app does not, for a signed-in account. With no session nothing has
  * read them, so they are not checked yet; with one (`session`, the app's saved one), their readings are Cloud's.
+ * The command runs with that session from here on, as market commands do (`initMarketData`): it is set once and
+ * never put back, so the earnings-date lookup running beside this never loses it midway.
  */
 async function cloudRuleStates(rules: readonly EventAlertRule[], session: string | null): Promise<CloudRuleStates> {
   const empty = { states: new Map<string, AlertRuleState>(), failed: false };
   if (!session || !rules.some(checkedWhenSignedIn)) return empty;
-  const previous = apiClient.getSessionToken();
   apiClient.setSessionToken(session);
   try {
     const history = await fetchAlertHistory(0);
     return { states: new Map(history.states.map((state) => [state.ruleId, state])), failed: false };
   } catch (error) {
     return { ...empty, failed: true, warning: `Gloom Cloud's readings of event alerts could not be loaded: ${error instanceof Error ? error.message : String(error)}` };
-  } finally {
-    apiClient.setSessionToken(previous);
   }
 }
 

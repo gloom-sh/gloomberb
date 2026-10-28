@@ -313,6 +313,18 @@ test("a company's name whose US line moved to another symbol is quoted there, ne
   expect(quoted.failure).toBeNull();
   expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["GETYQ"]);
   expect(quoted.warnings).toContain(`Read "getty images" as GETYQ (${name}). GETY became GETYQ on 2026-10-22.`);
+
+  // A reused symbol: the change on record is the company that held GETY before, not Getty Images, so it is not followed.
+  const reused = createTestDataProvider({
+    ...dataProvider,
+    getTickerChanges: async (symbol) => symbol === "GETY"
+      ? { symbol, moved: { symbol: "GTYQ", name: "Gentry Yards Corp", hops: [{ from: "GETY", to: "GTYQ", date: "2009-03-02" }] }, formerly: null, listedName: null,
+        changes: [{ from: "GETY", to: "GTYQ", date: "2009-03-02" }] }
+      : null,
+  });
+  const other = await runQuote(["getty images"], { dataProvider: reused, batches: [], searches: () => 0 });
+  expect(other.rows.map((row) => row.target.symbol)).not.toContain("GTYQ");
+  expect(other.warnings.join("\n")).not.toContain("GTYQ");
 });
 
 test("a symbol whose company moved says so in one line and in its JSON row; the symbol it moved to, one with no change or no service print nothing", async () => {
