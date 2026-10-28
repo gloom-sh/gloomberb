@@ -1086,6 +1086,12 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 `econ` lists the economic calendar from today (UTC), about two weeks ahead.
 
+**Names**
+
+- `--search <text>` keeps the events whose name has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. `--json` has `metadata.search`.
+- The Fed's rate decision reads `Federal Funds Rate (upper bound)`: its figures are the top of the target range (4.00% for 3.75-4.00%), the range `WIRP` shows. Alerts take the name either way.
+- A release still to come with a prior and no forecast has no consensus yet: text ends with a note that the dash under Forecast means just that, and the ECO pane says it in its footer on that row.
+
 **Dates**
 
 - `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, text says `The stored calendar starts <date>` and `--json` has `metadata.storedFrom`. The stored calendar reaches back 400 days: an earlier `--from` fails as an input error naming the earliest day (`--from 2024-01-01 is before the earliest day the calendar reaches back to, 2025-09-20`), with `earliest` in `--json`.

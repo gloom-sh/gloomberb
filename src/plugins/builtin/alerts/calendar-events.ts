@@ -3,7 +3,7 @@
 // release's rows as the calendar's feeds name it from week to week, and the
 // notifications sent before it and once its figures are out. CPI and FOMC are
 // two cases of the same alert, whose dates come from their own calendars.
-import { dateKey, eventCountry, matchesCountry, type CountryFilter } from "../econ/calendar-model";
+import { dateKey, econEventName, eventCountry, matchesCountry, type CountryFilter } from "../econ/calendar-model";
 import { isAllDayEvent, hasNoReleaseTime, type EconEvent, type EconImpact } from "../econ/types";
 import { RENAMED_RELEASES } from "../shared/macro-releases";
 import { MACRO_EVENT_NAMES } from "./research-builder";
@@ -126,7 +126,11 @@ export interface CalendarEventChoice {
 
 const IMPACT_RANK: Record<EconImpact, number> = { high: 0, medium: 1, low: 2 };
 
-type RankedChoice = CalendarEventChoice & { words: string[] };
+type RankedChoice = CalendarEventChoice & {
+  words: string[];
+  /** The words of the name `econ` shows it under, when that is not the feed's (the Fed's rate as its upper bound). */
+  shownWords: string[];
+};
 
 /**
  * The calendar's releases, one per country and name, each with its next row
@@ -150,6 +154,7 @@ function calendarChoices(events: readonly EconEvent[], now: number): RankedChoic
       impact: rows.reduce<EconImpact>((best, event) => IMPACT_RANK[event.impact] < IMPACT_RANK[best] ? event.impact : best, "low"),
       next,
       words: calendarNameWords(named.event),
+      shownWords: calendarNameWords(econEventName(named)),
     };
   });
 }
@@ -246,7 +251,8 @@ function matchCalendarWords(
   now: number,
 ): CalendarEventMatch {
   const choices = calendarChoices(country ? events.filter((event) => matchesCountry(event, country)) : events, now);
-  const exact = choices.filter((choice) => choice.words.join(" ") === words.join(" "));
+  // The name as the feed gives it, or as `econ` shows it: the alert keeps the feed's, which the calendar's rows carry.
+  const exact = choices.filter((choice) => [choice.words, choice.shownWords].some((name) => name.join(" ") === words.join(" ")));
   const naming = (typed: readonly string[], loose: boolean) => typed.length === 0 ? [] : choices.filter((choice) =>
     typed.every((word) => loose ? wordFound(word, choice.words) : choice.words.includes(word)));
   // CPI by the name one feed gives it everywhere but the US (China's Inflation Rate YoY).
@@ -278,7 +284,7 @@ function matchCalendarWords(
   return { kind: "match", choice: strip(ranked[0]!), others: ranked.slice(1).map(strip) };
 }
 
-function strip({ words: _words, ...choice }: RankedChoice): CalendarEventChoice {
+function strip({ words: _words, shownWords: _shown, ...choice }: RankedChoice): CalendarEventChoice {
   return choice;
 }
 

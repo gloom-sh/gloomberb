@@ -31,7 +31,7 @@ import { Box, Text } from "../../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
-import { actualColor, CALENDAR_TIME_ZONE_LABEL, timeLabel } from "./calendar-model";
+import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, timeLabel } from "./calendar-model";
 import { hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -238,7 +238,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   const rows = useMemo<HistoryRow[]>(() => projected
     .map((obs, index) => ({ date: obs.date, value: obs.value, change: index > 0 ? obs.value - projected[index - 1]!.value : null }))
     .reverse(), [projected]);
-  const label = event.event;
+  const label = econEventName(event);
   const series = useMemo(() => [staticSeries(
     projected.map((obs) => scalarPoint(new Date(`${obs.date}T00:00:00Z`), obs.value)),
     { id: "fred-history", label, color: colors.positive, calendarSpaced: true },

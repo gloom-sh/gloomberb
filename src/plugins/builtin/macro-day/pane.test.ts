@@ -16,6 +16,8 @@ test("figure columns carry the economic calendar's labels, each as wide as its h
   expect(figures.map((column) => column.width)).toEqual([8, 10, 7]);
   // Days without figures show none of the three columns.
   expect(columnsFor("all", [day(null)]).map((column) => column.id)).toEqual(["date", "release", "move", "multiple"]);
+  // A yield's moves are basis points, and the column says so.
+  expect(columnsFor("all", [day(null)], "yield").find((column) => column.id === "move")!.label).toBe("Move bp");
 });
 
 test("an average move that rounds to 0.00% is neither up nor down", () => {

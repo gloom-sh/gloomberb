@@ -18,7 +18,7 @@ import { useLiveSessionRefresh } from "../shared/volatility/live-session";
 import type { RealizedVolatilityEstimator, VolatilityConeStatistics } from "../shared/volatility";
 import { loadCurrentAtmIv, loadRealizedVolatilityHistory, refreshCurrentAtmIv } from "./client";
 import type { CurrentAtmIvSnapshot } from "./model";
-import { projectRealizedVolatility } from "./model";
+import { atmIvObservedLabel, projectRealizedVolatility } from "./model";
 import { RealizedVolGraph, VolatilityConeChart } from "./charts";
 import { coneWindowDate } from "./chart-model";
 import type { RealizedVolEvidenceStatus } from "./evidence";
@@ -183,7 +183,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     <QueryBar width={width} filters={[
       { id: "estimator", label: "Estimator", value: estimator, options: ESTIMATOR_OPTIONS, onChange: (value: string) => setEstimator(value as RealizedVolatilityEstimator) },
       { id: "lookback", label: "Lookback", value: String(lookback), options: [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }], onChange: setLookback },
-    ]} meta={reference ? `ATM IV observed ${reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC` : "Annualized %"} />
+    ]} meta={reference ? `ATM IV observed ${atmIvObservedLabel(reference.date)}` : "Annualized %"} />
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="realized volatility" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.history.length}>
       {model && view === "cone" ? <>

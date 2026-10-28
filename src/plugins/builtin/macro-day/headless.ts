@@ -1,7 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
-import { macroDayEventLabel, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayStats } from "./model";
+import { formatMacroDayMove, macroDayEventLabel, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
   type MacroEventKind, type MacroSurprise } from "./releases";
 
@@ -39,6 +39,12 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
       releases: releases.releases, coveredThrough: releases.coveredThrough, earnings: earnings.reports });
     const notes = [staleMacroReleasesNotice(releases), macroDayEarningsNotice(earnings)].filter((note): note is string => !!note);
     const row = (label: string, stats: MacroDayStats) => ({ label, ...stats });
+    // A yield index (^TNX) moves by its level: its columns are headed bp and read the change in the yield.
+    const yieldMoves = model.basis === "yield";
+    const bp = (signed: boolean) => (value: unknown) => typeof value === "number" ? formatMacroDayMove(value, "yield", { signed, unit: false }) : "--";
+    const move = yieldMoves ? bp(true) : percent;
+    const absMove = yieldMoves ? bp(false) : percent;
+    const header = (label: string) => yieldMoves ? `${label} bp` : label;
     const release = String(args.options.release ?? "all");
     const surprise = String(args.options.surprise ?? "all") as MacroSurprise | "all";
     const events = model.events.filter((event) => (release === "all" || event.kind === release) && matchesSurprise(event, surprise));
@@ -48,14 +54,14 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       sections: [
         { title: "By release", columns: [{ key: "label", header: "Day" }, { key: "count", header: "Days" },
-          { key: "meanAbs", header: "Avg |move|", format: percent }, { key: "multiple", header: "vs normal", format: multiple },
-          { key: "mean", header: "Avg move", format: percent }, { key: "hitRate", header: "Up", format: share }],
+          { key: "meanAbs", header: header("Avg |move|"), format: absMove }, { key: "multiple", header: "vs normal", format: multiple },
+          { key: "mean", header: header("Avg move"), format: move }, { key: "hitRate", header: "Up", format: share }],
         rows: [...model.kinds.map((kind) => row(MACRO_EVENT_LABELS[kind], model.byKind[kind])), ...selected,
           row(model.kinds.includes("ipca") ? "Any US release" : "Any release", model.allEvents), ...(model.earnings.count ? [row("Earnings", model.earnings)] : []), row("Normal day", model.normal)] },
         { title: "Release days", columns: [{ key: "date", header: "Date" }, { key: "event", header: "Release" },
           { key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
           { key: "surprise", header: "Surprise" },
-          { key: "session", header: "Session" }, { key: "move", header: "Move", format: percent }, { key: "multiple", header: "vs normal", format: multiple }],
+          { key: "session", header: "Session" }, { key: "move", header: header("Move"), format: move }, { key: "multiple", header: "vs normal", format: multiple }],
         rows: events.map(({ figures, ...event }) => ({ ...event, event: macroDayEventLabel(event), actual: figures?.actual ?? null,
           forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: figures?.surprise ?? null,
           ...(figures ? { headline: figures.event } : {}) })) },
@@ -64,7 +70,8 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
       unavailableSymbols: model.events.length ? [] : [instrument.symbol],
       errors: history.error ? [history.error] : [],
       ...(notes.length ? { notes } : {}),
-      metadata: { unit: "decimal return, close to close on the release day", start: model.start, asOf: model.asOf,
+      metadata: { unit: yieldMoves ? "change in the yield in percentage points, close to close on the release day"
+        : "decimal return, close to close on the release day", start: model.start, asOf: model.asOf,
         releasesThrough: releases.coveredThrough, releaseSources: Object.values(MACRO_RELEASE_SOURCES),
         stale: history.stale || earnings.stale, fetchedAt: history.fetchedAt, methodology: "docs/research-data.md#macro-day-reaction" },
     };
