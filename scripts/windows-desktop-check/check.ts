@@ -200,6 +200,21 @@ const PAGE_HELPER = String.raw`(() => {
       const label = named.getAttribute("aria-label");
       return (named.getAttribute("data-gloom-role") || named.tagName.toLowerCase()) + (label ? ' "' + label + '"' : "");
     },
+    /** A point on the tallest vertical dock divider that nothing covers, such as a floating pane. */
+    dividerPoint() {
+      const dividers = [...document.querySelectorAll("[data-gloom-role=dock-divider]")]
+        .map((el) => ({ el, r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.height > r.width)
+        .sort((a, b) => b.r.height - a.r.height);
+      const divider = dividers[0];
+      if (!divider) return null;
+      const x = divider.r.left + divider.r.width / 2;
+      for (let y = divider.r.bottom - 24; y > divider.r.top + 24; y -= 8) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && divider.el.contains(hit)) return { x, y };
+      }
+      return null;
+    },
     /** A bare point on a pane's header bar, or its title. */
     paneHeaderPoint(id) {
       const pane = q('[data-gloom-role=pane-window][data-gloom-pane-id="' + id + '"]');
@@ -1108,7 +1123,9 @@ class Run {
       const before = await layoutOf(main.page);
       const divider = before.dividers.filter((entry) => entry.rect.height > entry.rect.width).sort((a, b) => b.rect.height - a.rect.height)[0];
       if (!divider) return { status: "fail", detail: "no vertical dock divider" };
-      const from = this.centerOf(main, divider.rect);
+      const grip = await evaluate<{ x: number; y: number } | null>(main.page.cdp, "window.__winCheck.dividerPoint()");
+      if (!grip) return { status: "fail", detail: "nothing of the dock divider is uncovered" };
+      const from = this.toScreen(main, grip);
       const dx = Math.round(140 * main.scale);
       let duringX: number | null = null;
       await win.drag(from, { x: from.x + dx, y: from.y }, {
@@ -1142,7 +1159,8 @@ class Run {
       const point = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(before.id)})`);
       if (!point) return { status: "fail", detail: "no header on the floating pane" };
       const from = this.toScreen(main, point);
-      const delta = { x: Math.round(-140 * main.scale), y: Math.round(90 * main.scale) };
+      const move = { x: -Math.min(80, Math.round(before.rect.x - 40)), y: 40 };
+      const delta = { x: Math.round(move.x * main.scale), y: Math.round(move.y * main.scale) };
       let during: CssRect | null = null;
       await win.drag(from, { x: from.x + delta.x, y: from.y + delta.y }, {
         whileHeld: async () => {
@@ -1154,12 +1172,12 @@ class Run {
       const shot = this.shots.take("floating-move-after", win.clientRect(main.hwnd));
       if (shot) shots.push(shot);
       const cell = 20;
-      const landed = !!after && after.floating && near(after.rect.x, before.rect.x - 140, cell) && near(after.rect.y, before.rect.y + 90, cell);
+      const landed = !!after && after.floating && near(after.rect.x, before.rect.x + move.x, cell) && near(after.rect.y, before.rect.y + move.y, cell);
       const duringRect = during as CssRect | null;
-      const followed = !!duringRect && near(duringRect.x, before.rect.x - 140, cell) && near(duringRect.y, before.rect.y + 90, cell);
+      const followed = !!duringRect && near(duringRect.x, before.rect.x + move.x, cell) && near(duringRect.y, before.rect.y + move.y, cell);
       return {
         status: landed && followed ? "pass" : "fail",
-        detail: `from ${Math.round(before.rect.x)},${Math.round(before.rect.y)} by -140,+90 CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.x)},${Math.round(duringRect.y)}` : "gone"}, after ${after ? `${Math.round(after.rect.x)},${Math.round(after.rect.y)}${after.floating ? "" : " (docked)"}` : "gone"}`,
+        detail: `from ${Math.round(before.rect.x)},${Math.round(before.rect.y)} by ${move.x},+${move.y} CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.x)},${Math.round(duringRect.y)}` : "gone"}, after ${after ? `${Math.round(after.rect.x)},${Math.round(after.rect.y)}${after.floating ? "" : " (docked)"}` : "gone"}`,
       };
     });
 
@@ -1168,8 +1186,14 @@ class Run {
       const before = (await layoutOf(main.page)).panes.find((pane) => pane.floating);
       if (!before?.resize) return { status: "fail", detail: "no resize corner on the floating pane" };
       const from = this.centerOf(main, before.resize);
+      const page = await layoutOf(main.page);
+      const floor = page.status ? page.status.y : page.innerHeight;
+      const grow = {
+        x: Math.max(20, Math.min(120, Math.round(page.innerWidth - (before.rect.x + before.rect.width) - 30))),
+        y: Math.max(10, Math.min(80, Math.round(floor - (before.rect.y + before.rect.height) - 30))),
+      };
       let during: CssRect | null = null;
-      await win.drag(from, { x: from.x + Math.round(120 * main.scale), y: from.y + Math.round(80 * main.scale) }, {
+      await win.drag(from, { x: from.x + Math.round(grow.x * main.scale), y: from.y + Math.round(grow.y * main.scale) }, {
         whileHeld: async () => {
           during = (await layoutOf(main.page)).panes.find((pane) => pane.id === before.id)?.rect ?? null;
           const shot = this.shots.take("floating-resize-during", win.clientRect(main.hwnd));
@@ -1181,12 +1205,12 @@ class Run {
       const shot = this.shots.take("floating-resize-after", win.clientRect(main.hwnd));
       if (shot) shots.push(shot);
       const cell = 20;
-      const grew = !!after && near(after.rect.width, before.rect.width + 120, cell) && near(after.rect.height, before.rect.height + 80, cell);
+      const grew = !!after && near(after.rect.width, before.rect.width + grow.x, cell) && near(after.rect.height, before.rect.height + grow.y, cell);
       const duringRect = during as CssRect | null;
-      const followed = !!duringRect && near(duringRect.width, before.rect.width + 120, cell);
+      const followed = !!duringRect && near(duringRect.width, before.rect.width + grow.x, cell);
       return {
         status: grew && followed ? "pass" : "fail",
-        detail: `${Math.round(before.rect.width)}x${Math.round(before.rect.height)} dragged +120,+80 CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.width)}x${Math.round(duringRect.height)}` : "gone"}, after ${after ? `${Math.round(after.rect.width)}x${Math.round(after.rect.height)}` : "gone"}`,
+        detail: `${Math.round(before.rect.width)}x${Math.round(before.rect.height)} dragged +${grow.x},+${grow.y} CSS px: mid-drag ${duringRect ? `${Math.round(duringRect.width)}x${Math.round(duringRect.height)}` : "gone"}, after ${after ? `${Math.round(after.rect.width)}x${Math.round(after.rect.height)}` : "gone"}`,
       };
     });
 
