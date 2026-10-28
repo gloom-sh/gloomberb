@@ -31,10 +31,18 @@ function buildPaneStatusInfo({
 }
 
 /**
+ * Where the company data note sits: after the warning indicator (-10) and
+ * before the pane's own status (0 and the ticker quote's -1), so it leads what
+ * the pane says about its data and a narrow footer cuts that status first.
+ */
+const COMPANY_DATA_ORDER = -5;
+
+/**
  * A company pane on a receipt or a foreign line that shows its company's data
- * from the home line says which: `company data from 000660 KRX`, after the
- * pane's own status. Nothing when the data is the listing's own. Every company
- * pane registers it here, so it reads and looks the same in each.
+ * from the home line says which: `company data from 000660 KRX · as of
+ * 2026-06-30`, before the pane's own status (after a warning). Nothing when
+ * the data is the listing's own. Every company pane registers it here, so it
+ * reads, looks and sits the same in each.
  */
 export function useCompanyDataFooter(companyFrom: CompanyFrom | null | undefined, enabled = true) {
   const language = useAppLanguage();
@@ -48,7 +56,7 @@ export function useCompanyDataFooter(companyFrom: CompanyFrom | null | undefined
   const id = useId();
   usePaneFooter(
     `company-data:${id}`,
-    () => enabled && segment ? { order: 1, info: [segment] } : null,
+    () => enabled && segment ? { order: COMPANY_DATA_ORDER, info: [segment] } : null,
     [enabled, segment],
   );
 }

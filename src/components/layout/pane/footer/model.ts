@@ -224,6 +224,25 @@ const INFO_FLOOR_CHARS = 10;
 const WARNING_FLOOR_CHARS = 24;
 const HINT_GAP = 1;
 
+/**
+ * What the footer draws between two info segments, muted, as a status draws
+ * between its own parts ("Newest story Mon 14:23 · 12h delayed"): two
+ * segments side by side never read as one sentence ("company data from PBR ·
+ * as of 2026-06-30"). An icon (`⚠[!]`, `◷15m`) is a mark, not a phrase: a
+ * column sets it apart.
+ */
+export const PANE_FOOTER_SEPARATOR = " · ";
+const SEPARATOR_WIDTH = displayWidth(PANE_FOOTER_SEPARATOR);
+
+/** Whether the footer draws {@link PANE_FOOTER_SEPARATOR} between two adjacent segments, else a one-column gap. */
+export function separatesPaneFooterSegments(before: Pick<PaneFooterSegment, "icon">, after: Pick<PaneFooterSegment, "icon">): boolean {
+  return !before.icon && !after.icon;
+}
+
+function segmentGapWidth(before: PaneFooterSegment, after: PaneFooterSegment): number {
+  return separatesPaneFooterSegments(before, after) ? SEPARATOR_WIDTH : 1;
+}
+
 function paneHintWidth(hint: Pick<PaneHint, "key" | "label">, prefix = ""): number {
   return getShortcutHintWidth(hint.key, hint.label, prefix);
 }
@@ -238,7 +257,7 @@ function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
     const text = segment.parts.reduce((sum, part, partIndex) => (
       sum + (partIndex > 0 ? 1 : 0) + displayWidth(part.text)
     ), 0);
-    return total + (index > 0 ? 1 : 0) + text;
+    return total + (index > 0 ? segmentGapWidth(segments[index - 1]!, segment) : 0) + text;
   }, 0);
 }
 
@@ -266,7 +285,8 @@ export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { be
   while (besideHints && fitted.length > 1 && infoTextWidth(fitted) > width) {
     const last = fitted.at(-1)!;
     if (last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
-    const room = width - infoTextWidth(fitted.slice(0, -1)) - 2;
+    // After the separator, a column short of the hints.
+    const room = width - infoTextWidth(fitted.slice(0, -1)) - segmentGapWidth(fitted.at(-2)!, last) - 1;
     if (room * 2 >= infoTextWidth([last])) return [...fitted.slice(0, -1), clipSegment(last, room)];
     fitted = fitted.slice(0, -1);
   }
