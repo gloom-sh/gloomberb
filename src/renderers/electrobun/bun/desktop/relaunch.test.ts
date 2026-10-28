@@ -47,6 +47,32 @@ describe("desktop relaunch", () => {
     }
   });
 
+  // Electrobun's job ends whatever the app starts when it exits, so Windows
+  // starts the waiting process, from a command line inside a script.
+  test("on Windows, has Windows start the launcher once this process has exited", () => {
+    const decode = (cmd: string[]) => {
+      expect(cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand"]);
+      return Buffer.from(cmd.at(-1)!, "base64").toString("utf16le");
+    };
+    const command = desktopRelaunchCommand({
+      platform: "win32",
+      pid: 42,
+      execPath: "C:\\Users\\Ann O'Neil\\Gloom\\bin\\bun.exe",
+      args: ["C:\\Users\\Ann O'Neil\\Gloom\\Resources\\main.js"],
+      cwd: "C:\\Users\\Ann O'Neil\\Gloom\\bin",
+      pathEnv: "",
+    });
+    expect(command.waitForIt).toBe(true);
+    const handOff = decode(command.cmd);
+    expect(handOff).toContain("Invoke-CimMethod -ClassName Win32_Process -MethodName Create");
+    expect(handOff).toContain("CurrentDirectory = 'C:\\Users\\Ann O''Neil\\Gloom\\bin'");
+    const commandLine = /CommandLine = '((?:[^']|'')*)'/.exec(handOff)![1]!.replaceAll("''", "'");
+    expect(decode(commandLine.split(" "))).toBe(
+      "Wait-Process -Id 42 -ErrorAction SilentlyContinue; "
+      + "Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin'",
+    );
+  });
+
   test("on a Mac, opens the bundle by the full path of open, from /", () => {
     const context = { platform: "darwin", pid: 42, execPath: "/Applications/Gloomberb.app/Contents/MacOS/bun", args: [], cwd: "/Applications/Gloomberb.app/Contents/MacOS", pathEnv: "" };
     const renamed = desktopRelaunchCommand(context, "/Applications/Gloom.app");
