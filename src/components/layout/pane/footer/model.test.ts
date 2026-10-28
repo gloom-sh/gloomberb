@@ -37,7 +37,10 @@ describe("footer hint row", () => {
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale" }] };
     // The two and the separator between them (" · ").
     expect(fitPaneFooterInfo([line, stale], full.length + 8)).toEqual([line, stale]);
-    expect(fitPaneFooterInfo([line, stale], full.length + 7)[0]!.parts).toEqual(line.variants![0]);
+    // The status after it gives way before it shortens.
+    const tight = fitPaneFooterInfo([line, stale], full.length + 7);
+    expect(tight[0]).toEqual(line);
+    expect(tight[1]!.parts[0]!.text).toBe("st…");
     const narrow = fitPaneFooterInfo([line, stale], 70);
     expect(narrow.map((segment) => segment.parts[0]!.text)).toEqual(["Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed", "stale"]);
     expect(narrow[0]!.title).toBe(full);
@@ -68,6 +71,21 @@ describe("footer hint row", () => {
     expect(fitPaneFooterInfo([note, status], both - 1).at(-1)!.parts[0]!.text).toEndWith("…");
     // The icon and its one column, then the note.
     expect(fitPaneFooterInfo([warning, note], 1 + 1 + note.parts[0]!.text.length)).toEqual([warning, note]);
+  });
+
+  test("a note with a shorter form keeps its full text while the status after it can give way", () => {
+    const listed: PaneFooterSegment = { id: "listed", parts: [{ text: "No events listed after Mon Aug 24", tone: "warning" }] };
+    const note: PaneFooterSegment = { id: "note", parts: [{ text: "-- forecast = no consensus yet" }], variants: [[{ text: "no consensus yet" }]] };
+    const updated: PaneFooterSegment = { id: "updated", parts: [{ text: "updated 1m ago" }] };
+    const all = 33 + 3 + 30 + 3 + 14;
+    expect(fitPaneFooterInfo([listed, note, updated], all)).toEqual([listed, note, updated]);
+    // A column short: the update time goes, and the note stays whole.
+    expect(fitPaneFooterInfo([listed, note, updated], all - 9).map((segment) => segment.parts[0]!.text))
+      .toEqual(["No events listed after Mon Aug 24", "-- forecast = no consensus yet"]);
+    // Only once the note alone does not fit does it take its shorter form.
+    const short = fitPaneFooterInfo([listed, note, updated], 33 + 3 + 20);
+    expect(short.map((segment) => segment.parts[0]!.text)).toEqual(["No events listed after Mon Aug 24", "no consensus yet"]);
+    expect(short[1]!.title).toBe("-- forecast = no consensus yet");
   });
 
   test("a failure keeps more of its sentence than a status word does", () => {

@@ -261,11 +261,8 @@ function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
   }, 0);
 }
 
-/**
- * The info segments as they fit `width`: segments with `variants` step down
- * together, one variant at a time, until the row fits or none is left.
- */
-export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
+/** Segments with `variants` step down together, one variant at a time, until they fit or none is left. */
+function stepDownTogether(info: PaneFooterSegment[], width: number): PaneFooterSegment[] {
   const stages = Math.max(0, ...info.map((segment) => segment.variants?.length ?? 0));
   let fitted = info;
   for (let stage = 0; stage < stages && infoTextWidth(fitted) > width; stage += 1) {
@@ -278,11 +275,19 @@ export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { be
       } : segment;
     });
   }
-  // A trailing status cut mid-word reads as part of the hints beside it ("quote 12h t[x] put"): one that does not
-  // fit ends in an ellipsis a column short of them, or is left out when less than half of it would show. A
-  // warning, an icon or a pressable segment stays as it is, clipped by the row if it must be. With no hints beside it
-  // (a pane picture's footer), the row clips it, so a frame that fits its own status line sees it overflow.
-  while (besideHints && fitted.length > 1 && infoTextWidth(fitted) > width) {
+  return fitted;
+}
+
+/**
+ * A trailing status cut mid-word reads as part of the hints beside it ("quote
+ * 12h t[x] put"): one that does not fit ends in an ellipsis a column short of
+ * them, or is left out when less than half of it would show, until the row
+ * fits or `keep` segments are left. A warning, an icon or a pressable segment
+ * stays as it is, clipped by the row if it must be.
+ */
+function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): PaneFooterSegment[] {
+  let fitted = info;
+  while (fitted.length > keep && infoTextWidth(fitted) > width) {
     const last = fitted.at(-1)!;
     if (last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
     // After the separator, a column short of the hints.
@@ -291,6 +296,27 @@ export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { be
     fitted = fitted.slice(0, -1);
   }
   return fitted;
+}
+
+/**
+ * The info segments as they fit `width`: segments with `variants` step down
+ * together, one variant at a time, until the row fits or none is left; beside
+ * the hints, the trailing status that still does not fit is then cut or left
+ * out (trimTrailing). A status after every segment with shorter forms gives
+ * way first, before any of them shortens: a pane puts what goes first last
+ * (an update time after a note that explains the row in hand).
+ *
+ * With no hints beside it (a pane picture's footer), the row clips the rest,
+ * so a frame that fits its own status line sees it overflow.
+ */
+export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
+  if (!besideHints) return stepDownTogether(info, width);
+  const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
+  if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
+    const trimmed = trimTrailing(info, width, lastWithVariants + 1);
+    if (infoTextWidth(trimmed) <= width) return trimmed;
+  }
+  return trimTrailing(stepDownTogether(info, width), width, 1);
 }
 
 /** A segment cut to `width` behind an ellipsis, each part keeping its tone; the full text stays as its title. */
