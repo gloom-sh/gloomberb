@@ -17,7 +17,8 @@ test("a full page with more matches is neither an error nor too large for an Ask
   const result = await equityScreenerHeadless.load({ argument: undefined, options: {} } as never, { apiClient } as never);
   expect(result.errors).toEqual([]);
   expect(result.complete).toBe(false);
-  expect(result.metadata).toMatchObject({ matched: 680, returned: 100, hasMore: true, notices: ["Top 100 of 680 matches; narrow the criteria to see the rest."] });
+  expect(result.metadata).toMatchObject({ matched: 680, returned: 100, hasMore: true,
+    notices: ["Top 100 of 680 matches; --limit lists up to 500, or narrow the criteria to see the rest."] });
   expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThan(MAX_TOOL_RESULT_BYTES);
 
   data.warnings = ["Bounded scan: some listings were not evaluated."];
@@ -120,4 +121,75 @@ test("--preset golden-cross runs the Ideas screen on days since the cross, and a
   await expect(load({ preset: "golden-cross", saved: "Growth" })).rejects.toThrow("Choose one of --preset, --saved and --definition.");
   // Every idea is a definition the validator takes.
   for (const idea of SCREEN_IDEAS) expect(parseScreenDefinition(idea.definition)).toEqual(idea.definition);
+});
+
+test("--limit pages to its rows; the sort field and every --metric get a column, and the states shown are explained", async () => {
+  const data = screenFixture();
+  data.definition = { ...data.definition, sort: { field: "dividendYieldPercent", direction: "desc" } };
+  const metric = (value: number, state: "partial" | "stale") => ({ ...data.rows[0]!.metrics.trailingPE, value, state });
+  const row = (symbol: string, yieldPercent: number, state: "partial" | "stale") => ({
+    ...data.rows[0]!, symbol,
+    metrics: { ...data.rows[0]!.metrics, trailingPE: metric(15, state), beta: metric(0.8, "partial"),
+      dividendYieldPercent: { ...metric(yieldPercent, "partial"), unit: "%" } },
+  });
+  const pages = [[row("EIX", 6, "partial"), row("AVA", 5.3, "stale")], [row("POR", 5, "partial")]];
+  const asked: Array<{ limit: number; cursor: string | null }> = [];
+  const apiClient = { equityScreener: async (_path: string, init?: { body?: string }) => {
+    const { limit, cursor } = JSON.parse(init!.body!);
+    asked.push({ limit, cursor });
+    const page = asked.length - 1;
+    return structuredClone({ ...data, rows: pages[page]!, nextCursor: page === 0 ? "next" : null,
+      universe: { ...data.universe, covered: 700, matched: 3 } });
+  } };
+  const result = await equityScreenerHeadless.load({ argument: undefined,
+    options: { definition: JSON.stringify(data.definition), metric: "trailingPE,beta", limit: 3 } } as never, { apiClient } as never);
+  expect(asked).toEqual([{ limit: 3, cursor: null }, { limit: 1, cursor: "next" }]);
+  const section = result.sections![0]!;
+  expect(section.rows!.map((entry) => entry.symbol)).toEqual(["EIX", "AVA", "POR"]);
+  // P/E leads with its unit, rank, date and state; beta and the sort field follow.
+  expect(section.columns!.map((column) => column.key).slice(-3)).toEqual(["state", "beta", "dividendYieldPercent"]);
+  expect(section.rows![0]).toMatchObject({ value: "15.0", unit: "x", state: "partial", beta: "0.80", dividendYieldPercent: "6.0" });
+  expect(result.notes!.map((note) => note.split(" means ")[0])).toEqual(["A partial State", "A stale State"]);
+  expect(result.complete).toBe(true);
+  // Last and Chg% are columns of every report: a --metric naming them adds neither again, and their raw numbers stay.
+  const shown = await equityScreenerHeadless.load({ argument: undefined,
+    options: { definition: JSON.stringify(data.definition), metric: "trailingPE,price,changePercent", limit: 1 } } as never,
+  { apiClient: { equityScreener: async () => {
+    const priced = row("EIX", 6, "partial");
+    priced.metrics = { ...priced.metrics, price: { ...metric(58.19, "partial"), unit: "USD" }, changePercent: { ...metric(0.71, "partial"), unit: "%" } };
+    return structuredClone({ ...data, rows: [priced], nextCursor: null });
+  } } } as never);
+  const shownSection = shown.sections![0]!;
+  const keys = shownSection.columns!.map((column) => column.key);
+  expect(keys.filter((key) => key === "price" || key === "changePercent")).toEqual(["price", "changePercent"]);
+  expect(keys.at(-1)).toBe("dividendYieldPercent");
+  expect(shownSection.rows![0]).toMatchObject({ price: 58.19, changePercent: 0.71 });
+  // Repeated flags and a comma list read as one list, each metric once.
+  expect(equityScreenerHeadless.options.find((option) => option.key === "metric")!.normalize!("trailingPE, beta,trailingPE"))
+    .toBe("trailingPE,beta");
+  expect(() => equityScreenerHeadless.options.find((option) => option.key === "metric")!.normalize!("trailingPE,pe"))
+    .toThrow('Invalid --metric value "pe"');
+});
+
+test("a sector or industry that names nothing says the names it was likely meant as, instead of No data", async () => {
+  const run = async (criteria: unknown[], rows: boolean) => {
+    const data = screenFixture();
+    data.definition = { ...data.definition, criteria: criteria as never };
+    if (!rows) data.rows = [];
+    data.universe = { ...data.universe, sectors: ["Technology", "Utilities"] };
+    const apiClient = { equityScreener: async () => structuredClone(data) };
+    return equityScreenerHeadless.load({ argument: undefined, options: { definition: JSON.stringify(data.definition) } } as never,
+      { apiClient } as never);
+  };
+  const empty = await run([{ field: "sector", op: "in", value: ["Utility"] }], false);
+  expect((empty.sections![0] as { empty?: string }).empty)
+    .toBe('No sector is named "Utility". Closest: Utilities. gloom catalog EQS lists every sector and industry.');
+  // With rows, the value that matched nothing is a warning beside them; a sector given as an industry says which it is.
+  const some = await run([{ field: "industry", op: "in", value: ["Solar", "Utilities", "Banks"] }], true);
+  expect(some.warnings).toEqual(['No industry is named "Utilities"; it is a sector name, so use "field": "sector". '
+    + 'No industry is named "Banks". Closest: Banks - Diversified, Banks - Regional. gloom catalog EQS lists every sector and industry.']);
+  // A GICS sector name points at the sector it is here.
+  const gics = await run([{ field: "sector", op: "in", value: ["Information Technology"] }], false);
+  expect((gics.sections![0] as { empty?: string }).empty).toStartWith('No sector is named "Information Technology". Closest: Technology.');
+  expect(equityScreenerHeadless.discovery!.reference!.map(({ title, items }) => [title, items.length])).toEqual([["Sectors", 11], ["Industries", 144]]);
 });

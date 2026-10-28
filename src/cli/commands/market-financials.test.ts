@@ -8,7 +8,7 @@ import { createTestTicker } from "../../test-support/ticker";
 import type { TickerFinancials } from "../../types/financials";
 import { DEFAULT_CLI_OPTIONS, type CliOutputFormat } from "../options";
 import { serializeCliResult } from "../result";
-import { marketDataCliCommands } from "./market";
+import { comparedSymbols, marketDataCliCommands } from "./market";
 
 const FINANCIALS: TickerFinancials = {
   quote: {
@@ -172,4 +172,16 @@ test("a fund's trailing yield in fundamentals, the overview and DIV% is the one 
   const divColumn = (history: Map<string, typeof actions> | undefined) => getColumnValue({ id: "dividend_yield", label: "DIV%", width: 7, align: "right" },
     createTestTicker("FUND", "Fund"), fund, { baseCurrency: "USD", exchangeRates: new Map(), now: Date.now(), corporateActions: history }).text;
   expect([divColumn(new Map([["FUND", actions]])), divColumn(new Map())]).toEqual(["2.00%", "4.62%"]);
+});
+
+// `valuation NEE FSLR` said "Not a ticker: NEE FSLR", with no word of the function that compares them.
+test("valuation given several symbols points at RV, which compares them; a company's name is still a name", async () => {
+  const cli = createTestCliContext({ dataProvider: { getTickerFinancials: async () => FINANCIALS } });
+  const valuation = marketDataCliCommands.find((entry) => entry.name === "valuation")!;
+  for (const args of [["NEE", "FSLR"], ["NEE FSLR"], ["NEE,FSLR"]]) {
+    await expect(valuation.execute(args, cli.context)).rejects.toThrow("valuation takes one symbol; got NEE FSLR.");
+  }
+  expect(comparedSymbols(["NEE,FSLR"])).toEqual(["NEE", "FSLR"]);
+  expect(comparedSymbols(["Bank of America"])).toBeNull();
+  expect(comparedSymbols(["BP:LSE"])).toBeNull();
 });

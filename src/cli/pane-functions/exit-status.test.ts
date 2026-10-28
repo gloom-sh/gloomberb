@@ -10,7 +10,12 @@ import { createDefaultConfig } from "../../types/config";
 import { reportFailure, runPaneFunction } from ".";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { serializeCliResult } from "../result";
-import { DEFAULT_CLI_OPTIONS } from "../options";
+import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
+import { isCliFailure } from "../errors";
+import { setCliPlainOverride } from "../../utils/cli-output";
+import { mkdtemp, readFile, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 let finra: ReturnType<typeof spyOn> | null = null;
 afterEach(() => {
@@ -28,14 +33,18 @@ beforeEach(() => {
     : { status: "empty" } as never);
 });
 
-async function runSiw(...args: string[]) {
+function siwContext(cliOptions: Partial<CliGlobalOptions> = {}) {
   const persistence = new AppPersistence(":memory:");
-  const cli = createTestCliContext({
+  return createTestCliContext({
     config: createDefaultConfig("/tmp/gloomberb-list-exit-test"),
     dataProvider: createTestDataProvider(),
     persistence,
     store: new TickerRepository(persistence.tickers),
-  });
+  }, cliOptions);
+}
+
+async function runSiw(...args: string[]) {
+  const cli = siwContext();
   (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
   process.exitCode = 0;
   const { exitCode } = await captureConsole(() => runPaneFunction(["SIW", ...args], cli.context));
@@ -114,4 +123,108 @@ test("a listing unavailable is that listing: another listing of the symbol, or a
   expect(failed(["sxr8"], ["SXR8:XETRA"])).toBe(true);
   // A bare name that could be either of two listings asked is neither.
   expect(failed(["SAN:EPA", "SAN:MCE"], ["SAN"])).toBe(false);
+});
+
+// `fn RV NEE --csv --output rv.csv` printed the CSV, wrote nothing and exited 0.
+test("fn --output writes the report to the file, in the format asked for, and says where; what only shot draws fails", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-fn-output-"));
+  try {
+    const cli = siwContext({ format: "csv" });
+    (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+    const target = join(folder, "new folder", "siw.csv");
+    const { stdout, exitCode } = await captureConsole(() => runPaneFunction(["SIW", "GME", "--output", target], cli.context));
+    expect(exitCode ?? 0).toBe(0);
+    expect(stdout).toBe(`Saved ${target}`);
+    // Nothing is printed through the command's own result: the rows went to the file.
+    expect(cli.printed).toEqual([]);
+    const csv = await readFile(target, "utf8");
+    expect(csv.split("\n")[0]).toContain(",");
+    expect(csv).toContain("GME");
+    expect(csv).not.toContain("\x1b[");
+
+    const shot = siwContext();
+    (shot.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+    await expect(runPaneFunction(["SIW", "GME", "--theme", "amber"], shot.context)).rejects.toThrow("--theme is an option of shot");
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+/** Runs with stdout a terminal `columns` wide that takes colour, as an interactive shell has it. */
+async function asTerminal<T>(columns: number, run: () => Promise<T>): Promise<T> {
+  const stdout = process.stdout as { isTTY?: boolean; columns?: number };
+  const saved = { isTTY: stdout.isTTY, columns: stdout.columns, noColor: process.env.NO_COLOR, term: process.env.TERM };
+  stdout.isTTY = true;
+  stdout.columns = columns;
+  delete process.env.NO_COLOR;
+  process.env.TERM = "xterm-256color";
+  try {
+    return await run();
+  } finally {
+    stdout.isTTY = saved.isTTY;
+    stdout.columns = saved.columns;
+    if (saved.noColor === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = saved.noColor;
+    if (saved.term === undefined) delete process.env.TERM;
+    else process.env.TERM = saved.term;
+  }
+}
+
+// From a terminal, `fn ... --output` wrote the colour codes and the terminal-width table the report was drawn with.
+test("fn --output from a terminal writes text as a redirect gets it: no colour, every cell whole", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-fn-output-"));
+  try {
+    const target = join(folder, "siw.txt");
+    const report = async (...args: string[]) => {
+      const cli = siwContext();
+      (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+      await captureConsole(() => runPaneFunction(["SIW", "GME", ...args], cli.context));
+      return cli.printed[0] ? serializeCliResult(cli.printed[0].result, DEFAULT_CLI_OPTIONS, cli.printed[0].options) : "";
+    };
+    // Drawn for a 30-column terminal: in colour, its lines wrapped to the width.
+    const terminal = await asTerminal(30, () => report());
+    expect(terminal).toContain("\x1b[");
+    // As a redirect draws it: plain, at no width.
+    setCliPlainOverride(true);
+    const redirected = await report().finally(() => setCliPlainOverride(null));
+    expect(redirected).not.toBe(terminal.replace(/\x1b\[[0-9;]*m/g, ""));
+    // The file written from that terminal is the redirect's.
+    await asTerminal(30, () => report("--output", target));
+    const text = await readFile(target, "utf8");
+    expect(text).not.toContain("\x1b[");
+    expect(text).toBe(`${redirected}\n`);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("fn --output refuses a folder, writes nothing for a report with no data and fails as --json does, and --json says what it saved", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-fn-output-"));
+  try {
+    const run = async (format: "json" | "csv", ...args: string[]) => {
+      const cli = siwContext({ format });
+      (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+      const output = await captureConsole(() => runPaneFunction(["SIW", ...args], cli.context));
+      return { ...output, printed: cli.printed };
+    };
+    await expect(run("csv", "GME", "--output", folder)).rejects.toThrow(`Cannot write ${folder}: it is a folder.`);
+
+    // No data: the same code as plain --json gives, and no file.
+    const plain = await run("json", "BTC-USD");
+    const expected = (plain.printed[0]!.result as { failure: { code: string } }).failure;
+    const empty = join(folder, "empty.csv");
+    const failed = await run("json", "BTC-USD", "--output", empty).then(() => null, (error: unknown) => error);
+    expect(isCliFailure(failed)).toBe(true);
+    expect(failed).toMatchObject({ code: "no_data", message: (expected as { message: string }).message, details: `Nothing was written to ${empty}.` });
+    expect(expected.code).toBe("no_data");
+    await expect(readFile(empty, "utf8")).rejects.toThrow();
+
+    // --json prints the envelope of what it saved.
+    const saved = join(folder, "siw.json");
+    const written = await run("json", "GME", "--output", saved);
+    expect(JSON.parse(written.stdout)).toMatchObject({ ok: true, data: { output: saved, format: "json", rows: 1 } });
+    expect(JSON.parse(await readFile(saved, "utf8"))).toMatchObject({ ok: true });
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });

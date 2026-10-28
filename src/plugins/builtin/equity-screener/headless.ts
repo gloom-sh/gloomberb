@@ -4,6 +4,8 @@ import {
   KPI_FIELDS,
   NUMERIC_FIELDS,
   type NumericField,
+  type ScreenMetric,
+  type ScreenPayload,
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { KPI_COVERAGE_NOTE } from "../company-kpis/model";
@@ -16,6 +18,15 @@ import { SCREEN_IDEAS, screenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
 import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
+  CATEGORY_NAMES_POINTER,
+  SCREEN_INDUSTRIES,
+  SCREEN_SECTORS,
+  unmatchedCategoryText,
+  unmatchedCategoryValues,
+} from "./categories";
+import { REPORT_ROWS } from "../shared/headless-options";
+import {
+  appendScreenPage,
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
   formatScreenMetric,
@@ -71,6 +82,75 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
       : "-",
   };
 }
+
+/** Rows a report lists without `--limit`: one page, as the pane loads before it pages. */
+const SCREEN_PAGE_ROWS = 100;
+/** The most rows `--limit` lists, read a page at a time. */
+const SCREEN_ROW_LIMIT = 500;
+/** The most rows the server returns in one page. */
+const SCREEN_MAX_PAGE = 200;
+
+/** The rows a report lists: pages of the screen, in its order, until `limit` rows or the last match. */
+async function fetchScreenRows(definition: ScreenDefinition, limit: number, ctx: HeadlessPaneContext): Promise<ScreenPayload> {
+  let data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient, Math.min(limit, SCREEN_MAX_PAGE));
+  while (data.rows.length < limit && data.nextCursor) {
+    const page = await fetchScreen(definition, data.nextCursor, ctx.signal, ctx.apiClient, Math.min(limit - data.rows.length, SCREEN_MAX_PAGE));
+    data = { ...appendScreenPage(data, page), warnings: [...new Set([...data.warnings, ...page.warnings])] };
+  }
+  return data;
+}
+
+/** What a report of the first rows says of the rest. */
+function moreMatchesNotice(shown: number, matched: number): string {
+  return matched <= SCREEN_ROW_LIMIT
+    ? `Top ${shown} of ${matched} matches; --limit ${matched} lists them all.`
+    : `Top ${shown} of ${matched} matches; --limit lists up to ${SCREEN_ROW_LIMIT}, or narrow the criteria to see the rest.`;
+}
+
+const isNumericField = (field: string): field is NumericField => (NUMERIC_FIELDS as readonly string[]).includes(field);
+const metricToken = (value: string) => value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+
+/** `--metric trailingPE,dividendYieldPercent` as the fields it names, each once, in order; an unknown one fails. */
+function readMetrics(value: string): NumericField[] {
+  const fields = value.split(",").map((part) => part.trim()).filter(Boolean).map((part) => {
+    const field = NUMERIC_FIELDS.find((candidate) => metricToken(candidate) === metricToken(part));
+    if (!field) throw new Error(`Invalid --metric value "${part}". Use one of: ${NUMERIC_FIELDS.join(", ")}.`);
+    return field;
+  });
+  if (fields.length === 0) throw new Error("--metric requires a value, such as --metric trailingPE.");
+  return [...new Set(fields)];
+}
+
+type ShownCategory = "sector" | "industry" | "currency";
+const CATEGORY_HEADERS: Record<ShownCategory, string> = { sector: "Sector", industry: "Industry", currency: "Currency" };
+/** Columns every report prints, so neither another metric nor the sort field adds them again. */
+const ALWAYS_SHOWN = new Set(["symbol", "exchange", "name", "price", "changePercent"]);
+
+/**
+ * The columns a report adds after the first metric's: the other metrics
+ * asked for, then the field the screen is sorted by, so the order of the
+ * rows is explained by a column (P/E focus, sorted by dividend yield). A
+ * column every report prints (Last, Chg%) is not added twice, and its raw
+ * number stays in the row.
+ */
+function extraScreenColumns(metrics: readonly NumericField[], sortField: string): Array<NumericField | ShownCategory> {
+  return [...new Set([...metrics.slice(1), sortField as NumericField | ShownCategory])]
+    .filter((field) => field !== metrics[0] && !ALWAYS_SHOWN.has(field));
+}
+
+/** Another metric's cell: its value as the focus column prints it, with the currency of a money value. */
+function extraMetricCell(field: NumericField, metric: ScreenMetric | undefined): string {
+  if (!metric) return "-";
+  if (metric.access === "pro") return "locked";
+  const value = formatScreenMetric(field, metric);
+  return metric.value != null && /^[A-Z]{3}$/.test(metric.unit) ? `${value} ${metric.unit}` : value;
+}
+
+/** What the State column's words mean, said once under a report whose first metric has them. */
+const STATE_LEGEND: ReadonlyArray<{ state: ScreenMetric["state"]; text: string }> = [
+  { state: "partial", text: "A partial State means the source gives no date for the figure, so As of is when it was collected, or that it covers part of what it measures." },
+  { state: "stale", text: "A stale State means the figure is older than its field allows, such as a quote over 4 days old or fundamentals collected over 7 days ago." },
+];
 
 /** A typed `--definition`, checked; every error points at the worked example. */
 function readDefinition(text: string): ScreenDefinition {
@@ -135,15 +215,32 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     {
       key: "metric",
       type: "enum",
+      list: true,
       // No default: a preset leads with its own metric, anything else with marketCap.
       description:
-        "Metric to display with its source date and covered-universe rank: marketCap, or the preset's own metric.",
+        "Metric to display with its source date and covered-universe rank: marketCap, or the preset's own metric. Several, as a comma list or the flag again, add a column each after the first.",
+      example: "--metric trailingPE --metric dividendYieldPercent",
       values: NUMERIC_FIELDS.map((value) => ({ value })),
+      normalize: (value) => readMetrics(value).join(","),
+    },
+    {
+      key: "limit",
+      type: "integer",
+      shot: REPORT_ROWS,
+      minimum: 1,
+      maximum: SCREEN_ROW_LIMIT,
+      defaultValue: SCREEN_PAGE_ROWS,
+      description: `Matching rows to list, in the screen's order, up to ${SCREEN_ROW_LIMIT}.`,
+      example: "--limit 40",
     },
   ],
   describe: "Equity screener",
   discovery: {
     aliases: ["EQS"],
+    reference: [
+      { title: "Sectors", items: [...SCREEN_SECTORS] },
+      { title: "Industries", items: [...SCREEN_INDUSTRIES] },
+    ],
     dataRequirements: ["Gloom Cloud stored screener snapshot"],
     limitations: [
       "Covered stored universe, not every listed equity.",
@@ -203,8 +300,10 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
         },
       };
     }
-    const data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient);
-    const metric = (args.options.metric ?? preset?.metric ?? "marketCap") as NumericField;
+    const limit = typeof args.options.limit === "number" ? args.options.limit : SCREEN_PAGE_ROWS;
+    const data = await fetchScreenRows(definition, limit, ctx);
+    const metrics = readMetrics(args.options.metric == null ? preset?.metric ?? "marketCap" : String(args.options.metric));
+    const metric = metrics[0]!;
     // Last, Chg% and market cap are the regular session, as `quote` and the
     // pane read each row's quote; an extended print is a column of its own.
     // A sort on one of them is redone on those figures.
@@ -218,21 +317,33 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const kpiGaps = !withheld && missing > 0 && (KPI_FIELDS as readonly string[]).includes(metric)
       ? [`${missing} of ${rows.length} ${rows.length === 1 ? "row has" : "rows have"} no ${screenLabel(metric)}. ${KPI_COVERAGE_NOTE}`]
       : [];
+    // A category value that names nothing (`Utility` for Utilities) says so with the names it was likely meant as.
+    const unmatched = unmatchedCategoryValues(data.definition, data, rows).map(unmatchedCategoryText);
+    const unmatchedText = unmatched.length > 0 ? [...unmatched, CATEGORY_NAMES_POINTER].join(" ") : null;
     // A CAD screen of listings quoted in USD is empty for its currency, not for want of companies: say so, and give the screen in USD.
     const currencyEmpty = rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
-    const empty = currencyEmpty
+    const empty = rows.length === 0 && unmatchedText
+      ? unmatchedText
+      : currencyEmpty
       ? [
         `${currencyEmpty.title} ${currencyEmpty.detail}`,
         `In the base currency, ${currencyEmpty.base.currency}: gloom fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
       ].join("\n")
       : null;
+    const ytdBase = screenYtdBase(data.rows, data.snapshot?.assembledAt);
+    // The metrics after the first, then the field the rows are sorted by, so the order shown is explained by a column.
+    const extra = extraScreenColumns(metrics, data.definition.sort.field);
+    const states = new Set(rows.map((row) => row.metrics[metric].state));
+    const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
+    const notes = [...kpiGaps, ...legend];
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {
       freshness: { asOf: data.snapshot?.sourceNewestAt ?? null },
       complete: !data.nextCursor && errors.length === 0,
       errors,
-      ...(kpiGaps.length ? { notes: kpiGaps } : {}),
+      ...(notes.length ? { notes } : {}),
+      ...(rows.length > 0 && unmatchedText ? { warnings: [unmatchedText] } : {}),
       sections: [
         {
           title: "Matching equities",
@@ -246,11 +357,14 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
             ...(metric === "changePercent" ? [] : [{ key: "changePercent", header: "Chg%", align: "right" as const, format: percent }]),
             ...extendedSessions.map(extendedColumn),
             // YTD names the close it is measured from: `YTD% vs 31 Dec close`.
-            { key: "value", header: screenColumnLabel(metric, screenYtdBase(data.rows, data.snapshot?.assembledAt), "report"), align: "right" },
+            { key: "value", header: screenColumnLabel(metric, ytdBase, "report"), align: "right" },
             { key: "unit", header: "Unit" },
             { key: "percentile", header: "Covered pctl", align: "right" },
             { key: "asOf", header: "As of" },
             { key: "state", header: "State" },
+            ...extra.map((field): HeadlessPaneColumn => isNumericField(field)
+              ? { key: field, header: screenColumnLabel(field, ytdBase, "report"), align: "right" }
+              : { key: field, header: CATEGORY_HEADERS[field] }),
           ],
           rows: rows.map((row) => {
             const observation = row.metrics[metric];
@@ -274,6 +388,9 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
                   : Math.round(observation.percentile.value),
               asOf: stamp.collected ? `${stamp.text} (collected)` : stamp.text,
               state: observation.access === "pro" ? "locked" : observation.state,
+              ...Object.fromEntries(extra.map((field) => [field, isNumericField(field)
+                ? extraMetricCell(field, row.metrics[field])
+                : row[field]])),
             };
           }),
         },
@@ -286,11 +403,11 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
         covered: data.universe.covered,
         returned: data.rows.length,
         hasMore: !!data.nextCursor,
+        metrics,
+        ...(unmatched.length > 0 ? { unmatchedValues: unmatchedCategoryValues(data.definition, data, rows) } : {}),
         priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership and percentiles are the snapshot's, which ranks by the close; a sort on price, changePercent, volume or marketCap orders these rows by the figures shown.",
         notices: data.nextCursor
-          ? [
-              `Top ${data.rows.length} of ${data.universe.matched} matches; narrow the criteria to see the rest.`,
-            ]
+          ? [moreMatchesNotice(data.rows.length, data.universe.matched)]
           : [],
       },
     };

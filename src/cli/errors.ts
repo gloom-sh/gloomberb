@@ -63,6 +63,12 @@ export function failWithFields(message: string, code: string, fields: Record<str
   throw new CliFailure(message, undefined, code, undefined, fields);
 }
 
+/** Fails as `error` says: its code, message, details and whether to retry, and any field it carries beside them. */
+export function failWithError(error: CliErrorObject): never {
+  const { code, message, details, retryable, ...fields } = error;
+  throw new CliFailure(message, details, code, retryable, Object.keys(fields).length > 0 ? fields : undefined);
+}
+
 /** Fails with what asking again shortly may get past (a busy service): `--json` marks it `retryable`. */
 export function failRetryable(message: string, code: string): never {
   throw new CliFailure(message, undefined, code, true);

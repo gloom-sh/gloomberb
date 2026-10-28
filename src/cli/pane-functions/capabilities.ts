@@ -2,6 +2,7 @@ import type {
   HeadlessPaneArgumentDef,
   HeadlessPaneDefinition,
   HeadlessPaneOptionDef,
+  HeadlessPaneReference,
   PaneDef,
   PaneTemplateDef,
 } from "../../types/plugin";
@@ -26,6 +27,8 @@ export interface PaneFunctionCapability {
   screenshotReadiness: PaneFunctionScreenshotReadiness;
   dataRequirements: string[];
   limitations: string[];
+  /** Lists the catalog prints under the options (EQS's sector and industry names). */
+  reference?: HeadlessPaneReference[];
   options: PaneFunctionOptionDef[];
   /** A rendered view that refuses any option it does not declare (PaneDef.reportOptionsOnly), as a headless report does. */
   strictOptions?: boolean;

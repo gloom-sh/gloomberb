@@ -3,7 +3,7 @@ import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
-import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-output";
+import { buildForFile, cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   filterPaneCatalogEntries,
   findFunctionCode,
@@ -36,12 +36,13 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
-import { isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
+import { CLI_ERROR_CODE, failWithError, isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables, type CliReportTables } from "../report-tables";
-import { cliOutputWritten, type CliErrorObject } from "../result";
+import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
+import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-file";
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import { shotOptionRefusal } from "./shot-options";
@@ -276,6 +277,16 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       if (parsed.strict) {
         throw new Error("--strict is an option of shot. fn takes --require-bot-safe to fail on a report that is not complete.");
       }
+      // What only a capture draws is refused, never ignored: the report would print as if it had not been given.
+      if (parsed.shotOnly?.length) {
+        const one = parsed.shotOnly.length === 1;
+        const shot = ["gloom shot", resolved.token, parsed.arg.trim() && commandWord(parsed.arg.trim())].filter(Boolean).join(" ");
+        throw new Error(`${parsed.shotOnly.join(" and ")} ${one ? "is an option" : "are options"} of shot, which saves the pane as a PNG; fn prints the report. `
+          + `Drop ${one ? "it" : "them"} from fn, or capture the pane with ${shot}.`);
+      }
+      // The file --output names, checked before the report loads so a path that cannot be written fails at once.
+      const outputPath = parsed.outputPath === null ? null : resolveOutputPath(parsed.outputPath);
+      if (outputPath) await checkOutputPath(outputPath);
       if (parsed.requireBotSafe && (
         !resolved.capability.botSafe || resolved.capability.reportReadiness !== "ready"
       )) {
@@ -305,13 +316,15 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         : null;
       const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
+      // A report written to a file is drawn for it as it is built: no colour and no terminal width, as a redirect gets it.
+      const buildReport = () => buildFunctionReport(resolved, context, parsed.arg);
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
         () => loadForListing(
           parsed.listing ?? [],
           context,
           ctx,
-          () => buildFunctionReport(resolved, context, parsed.arg),
+          outputPath ? () => buildForFile(buildReport) : buildReport,
           (built) => built.data.empty || !built.data.complete,
         ),
       ));
@@ -348,10 +361,24 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), {
         failsWithoutData: resolved.headless?.failsWithoutData, tables: report.tables });
       // The report states its own freshness in its data and text; JSON cites it as `source` too.
-      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) }, {
+      const result = { data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) };
+      const render = {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
-      });
+      };
+      if (outputPath) {
+        // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails
+        // as plain --json fails, with its code and whether to retry.
+        if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
+        await writeOutputFile(outputPath, `${renderForFile(() => serializeCliResult(result, ctx.cliOptions, render))}\n`);
+        // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
+        const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount };
+        printCliResult({ data: saved, ...(warnings.length > 0 ? { warnings } : {}) },
+          { ...ctx.cliOptions, format: ctx.cliOptions.format === "json" ? "json" : "text" },
+          { text: () => `Saved ${outputPath}` });
+        return;
+      }
+      ctx.printResult(result, render);
       if (failure) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
@@ -585,8 +612,9 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
-    // A failure with fields for --json (`ticker_moved`, its change and retry) keeps its code and them.
-    if (isCliFailure(error) && error.fields) throw error;
+    // A failure with fields for --json (`ticker_moved`, its change and retry), or a code of its own (`no_data`,
+    // `service_unreachable` and whether to retry), keeps them.
+    if (isCliFailure(error) && (error.fields || error.code !== CLI_ERROR_CODE)) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
     const message = error instanceof Error ? error.message : String(error);

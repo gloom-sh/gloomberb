@@ -1388,7 +1388,20 @@ provider name. Symbols differing only by share-class separator are one listing, 
 OTC or foreign order-book lines of an issuer with a US primary line in the same
 currency are omitted. Sector and industry come from stored provider profiles and
 are missing for many smaller listings, so a sector criterion covers only listings
-with a stored profile.
+with a stored profile. A sector or industry criterion matches a name exactly, as
+`gloom catalog EQS` lists them (Utilities, Solar, Banks - Regional). A name that
+matches nothing (`Utility`, `utilities`, a GICS name such as `Information
+Technology`, or a sector given as an industry) is named with the closest names: as
+the reason a screen is empty, or as a warning beside the rows the other names found.
+
+`fn EQS` lists the first 100 rows, and `--limit` up to 500 in the screen's order.
+Its first `--metric` is shown with its unit, rank, date and state; more metrics
+(`--metric trailingPE --metric dividendYieldPercent`, or a comma list) and the field
+the screen is sorted by follow as columns of their own, so the order of the rows
+reads from a column. The pane puts the sort field right after its focus metric too.
+A partial State means the source gives no date for the figure, so As of is when it
+was collected, or that the figure covers part of what it measures; a stale one is
+older than its field allows. The report says so under the rows that have either.
 
 ATR% is the 14-session average true range as a percent of the last completed
 close, for US listings, from stored daily bars of settled sessions only. A session's

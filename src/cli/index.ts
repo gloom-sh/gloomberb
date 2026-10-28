@@ -179,6 +179,7 @@ export function createCoreCliCommands(
           { flags: "--<option> <value>", description: "A function setting; gloom catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
           { flags: "--explain", description: "Follow the report with what its terms mean (text and JSON; CSV keeps the rows)" },
+          { flags: "--output <path>, --out <path>", description: "Write the report to this file, in the format asked for, and print where it went" },
           {
             ...TABLE_SECTION_OPTION,
             description: `${TABLE_SECTION_OPTION.description} (CALLS keeps --section for the transcript part)`,
@@ -190,6 +191,7 @@ export function createCoreCliCommands(
           "fn ANR SAN:EPA",
           "fn CBR --json",
           "fn WEI --csv --section europe > europe.csv",
+          "fn RV NEE,FSLR --csv --output rv.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
           "fn HIVG SPY --event fomc --offset -6 --lookback ALL --csv",

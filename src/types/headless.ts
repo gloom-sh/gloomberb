@@ -34,6 +34,12 @@ export interface HeadlessPaneArgumentDef {
   examples?: readonly string[];
 }
 
+/** A list the catalog prints under a function's options, such as the sector names a screen's criteria match. */
+export interface HeadlessPaneReference {
+  title: string;
+  items: readonly string[];
+}
+
 export interface HeadlessPaneOptionValue {
   value: string;
   aliases?: string[];
@@ -83,6 +89,8 @@ export interface HeadlessPaneOptionDef {
    * absent.
    */
   valueWords?: number;
+  /** The value is a comma list (`--metric trailingPE,dividendYieldPercent`), and the flag typed again adds to it. */
+  list?: boolean;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
   example?: string;
   /** The example runs without the function's optional argument, as an option that works only then does (`fn INS --side sell`). */
@@ -646,6 +654,8 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];
+    /** Names an option's values match, listed by the catalog under each title: EQS's sectors and industries. */
+    reference?: HeadlessPaneReference[];
     screenshotReadiness?: "ready" | "partial" | "live-dom" | "unsupported";
   };
   /**

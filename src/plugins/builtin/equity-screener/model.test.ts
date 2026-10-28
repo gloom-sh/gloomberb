@@ -185,7 +185,9 @@ test("ATR% is a one-decimal percent with no sign or sign colour, and works as a 
     sort: { field: "atrPercent", direction: "desc" },
   });
   expect(resultFields(screen, "atrPercent").slice(0, 3)).toEqual(["atrPercent", "marketCap", "price"]);
-  expect(resultFields(screen, "trailingPE").slice(0, 3)).toEqual(["trailingPE", "marketCap", "atrPercent"]);
+  // The field the rows are sorted by comes right after the focus metric, so their order reads from a column.
+  expect(resultFields(screen, "trailingPE").slice(0, 3)).toEqual(["trailingPE", "atrPercent", "marketCap"]);
+  expect(resultFields(screen, "trailingPE", ["beta"]).slice(0, 3)).toEqual(["trailingPE", "beta", "atrPercent"]);
 });
 
 test("the field list is requested with the volatility group, which servers without it ignore", async () => {

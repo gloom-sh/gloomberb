@@ -421,7 +421,10 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             {persistenceError}
           </Text>
         ) : null}
-        <OnboardingActions hint={portfolioSub === "positions" && desktop ? tf("Later: {shortcut}, then AP.", { shortcut: commandBarShortcut }) : undefined}>
+        <OnboardingActions hint={portfolioSub === "positions" && desktop
+          // The step needs one ticker; once it has one, more can be added later.
+          ? positionCount === 0 ? t("Add one ticker to continue.") : tf("Later: {shortcut}, then AP.", { shortcut: commandBarShortcut })
+          : undefined}>
           {portfolioSub === "positions" ? (
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (

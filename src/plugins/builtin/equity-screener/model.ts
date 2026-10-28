@@ -195,11 +195,28 @@ export function metricDate(metric: ScreenMetric): { text: string; collected: boo
   return { text: "--", collected: false };
 }
 
-/** Focus metric, then the screen's numeric criteria, then context columns. Money needs one currency. */
-export function resultFields(definition: ScreenDefinition, metric: NumericField): NumericField[] {
-  const numeric = (field: string): field is NumericField => (NUMERIC_FIELDS as readonly string[]).includes(field);
-  const fields = [metric, ...definition.criteria.map((criterion) => criterion.field).filter(numeric), ...CONTEXT_FIELDS];
+const isNumeric = (field: string): field is NumericField => (NUMERIC_FIELDS as readonly string[]).includes(field);
+
+/**
+ * Focus metric, the other metrics asked for, the field the rows are sorted
+ * by (so their order is explained by a column), then the screen's numeric
+ * criteria and the context columns. Money needs one currency.
+ */
+export function resultFields(definition: ScreenDefinition, metric: NumericField, others: readonly NumericField[] = []): NumericField[] {
+  const sort = isNumeric(definition.sort.field) ? [definition.sort.field] : [];
+  const fields = [metric, ...others, ...sort, ...definition.criteria.map((criterion) => criterion.field).filter(isNumeric), ...CONTEXT_FIELDS];
   return [...new Set(fields)].filter((field) => definition.currency || !MONETARY.has(field) || field === metric);
+}
+
+/**
+ * The metrics a pane's `metric` setting names, the focus first: one field, or
+ * the comma list `--metric` leaves (`trailingPE,dividendYieldPercent`).
+ * Unknown names are skipped; none known leaves `fallback`.
+ */
+export function screenMetricSetting(setting: unknown, fallback: NumericField): [NumericField, ...NumericField[]] {
+  const fields = typeof setting === "string" ? setting.split(",").map((part) => part.trim()).filter(isNumeric) : [];
+  const unique = [...new Set(fields)];
+  return unique.length > 0 ? unique as [NumericField, ...NumericField[]] : [fallback];
 }
 
 /**

@@ -279,6 +279,17 @@ function TuiFieldRow({
   );
 }
 
+/**
+ * The line under the form: what Enter does, and how the step goes on. It
+ * needs one ticker, and while a field has the keyboard Enter adds, so Esc
+ * comes first.
+ */
+function positionsHint(editing: boolean, count: number): string {
+  if (!editing && count > 0) return tf("Enter continues · a adds another{broker}", { broker: "" });
+  const enter = editing ? t("Enter: next field, then add") : t("Enter to add a ticker");
+  return `${enter} · ${count > 0 ? t("Esc, then Enter: continue") : t("Add one ticker to continue")}`;
+}
+
 /** The size held: negative for a short. */
 function SignedNumberField(props: ComponentProps<typeof NumberField>) {
   return <NumberField {...props} allowNegative />;
@@ -302,13 +313,7 @@ function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut 
         ) : state.submitting ? (
           <Text fg={colors.textDim}>{t("adding...")}</Text>
         ) : (
-          <Text fg={colors.textMuted}>
-            {editing
-              ? t("Enter: next field, then add.")
-              : state.positions.length > 0
-                ? tf("Enter continues · a adds another{broker}", { broker: "" })
-                : t("Enter to add a ticker.")}
-          </Text>
+          <Text fg={colors.textMuted}>{positionsHint(editing, state.positions.length)}</Text>
         )}
       </Box>
       <Box height={1} />
