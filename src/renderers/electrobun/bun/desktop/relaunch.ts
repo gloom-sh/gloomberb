@@ -1,4 +1,4 @@
-import { dirname } from "path";
+import { dirname, win32 } from "path";
 
 /**
  * The folders the relaunch script finds `sleep` in, after whatever PATH the
@@ -8,6 +8,10 @@ const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function powershellQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function findMacAppBundle(execPath: string): string | null {
@@ -70,7 +74,19 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
     };
   }
 
-  if (context.platform === "win32") return { cmd: [context.execPath, ...context.args] };
+  if (context.platform === "win32") {
+    // Chromium's profile stays held until this process has exited: an app
+    // started before then hands itself to this one and crashes. It starts as
+    // the Start menu starts it, from the launcher beside the runtime.
+    const bin = win32.dirname(context.execPath);
+    const launcher = win32.join(bin, "launcher.exe");
+    return {
+      cmd: [
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
+        `Wait-Process -Id ${context.pid} -ErrorAction SilentlyContinue; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)}`,
+      ],
+    };
+  }
 
   const args = context.args.map(shellQuote).join(" ");
   return {

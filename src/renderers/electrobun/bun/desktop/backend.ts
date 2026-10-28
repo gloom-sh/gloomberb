@@ -361,6 +361,10 @@ export class DesktopBackend {
     }
     this.detachedWindows.closeAll();
     this.teardownServices();
+    // As a quit does: an app whose windows are gone ends at once on Windows.
+    const window = this.mainWindow;
+    this.mainWindow = null;
+    window?.close();
     Utils.quit();
   }
 

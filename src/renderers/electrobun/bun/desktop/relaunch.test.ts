@@ -47,6 +47,22 @@ describe("desktop relaunch", () => {
     }
   });
 
+  test("on Windows, starts the app from its launcher once this process has exited", () => {
+    const command = desktopRelaunchCommand({
+      platform: "win32",
+      pid: 42,
+      execPath: "C:\\Users\\Ann O'Neil\\Gloom\\bin\\bun.exe",
+      args: ["C:\\Users\\Ann O'Neil\\Gloom\\Resources\\main.js"],
+      cwd: "C:\\Users\\Ann O'Neil\\Gloom\\bin",
+      pathEnv: "",
+    });
+    expect(command.cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"]);
+    expect(command.cmd.at(-1)).toBe(
+      "Wait-Process -Id 42 -ErrorAction SilentlyContinue; "
+      + "Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin'",
+    );
+  });
+
   test("on a Mac, opens the bundle by the full path of open, from /", () => {
     const context = { platform: "darwin", pid: 42, execPath: "/Applications/Gloomberb.app/Contents/MacOS/bun", args: [], cwd: "/Applications/Gloomberb.app/Contents/MacOS", pathEnv: "" };
     const renamed = desktopRelaunchCommand(context, "/Applications/Gloom.app");
