@@ -27,6 +27,7 @@ import {
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 import { renameLegacyMacApp } from "./desktop/app-name";
+import { moveLegacyAppIdentifierFolders } from "./desktop/app-identifier";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 
 console.log = (...args) => console.error(...args);
@@ -64,6 +65,26 @@ if (appRename?.kind === "renamed") {
   await new Promise<never>(() => {});
 } else if (appRename?.kind === "skipped") {
   console.error(`[desktop] kept the app's old name: ${appRename.reason}`);
+}
+
+// An install from before the bundle identifier changed keeps its data,
+// downloaded updates and (on Windows) the app itself in folders named after
+// the old one. They move under the new one; a Windows app running from there
+// quits for a script to move it and open it again, before any window shows.
+const identifierMove = await moveLegacyAppIdentifierFolders({
+  platform: process.platform,
+  execPath: process.execPath,
+  homeDir: homedir(),
+  localAppData: process.env.LOCALAPPDATA,
+  pid: process.pid,
+  ppid: process.ppid,
+}).catch((error: unknown) => {
+  console.error("[desktop] could not move the app's folders to its new identifier", error instanceof Error ? error.message : String(error));
+  return null;
+});
+if (identifierMove?.kind === "relaunching") {
+  Utils.quit();
+  await new Promise<never>(() => {});
 }
 
 function readOpenUrlEvent(event: unknown): string | null {

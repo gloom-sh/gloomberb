@@ -16,6 +16,8 @@ The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, install
 
 The app was called `Gloomberb.app` up to 0.18.4. An install from then updates as usual, and the first time the new version starts it renames itself to `Gloom.app` and opens again, moving the `gloom` and `gloomberb` links the install script made in `~/.local/bin` (or `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) along with it. A link it cannot rewrite, in a folder you cannot write to, keeps the old name until you can. A Homebrew install keeps the old name until `brew upgrade --cask gloomberb` installs `Gloom.app` in its place. Your settings and data stay where they are.
 
+The app's bundle identifier is `sh.gloom.desktop`; earlier builds carried `com.vincelwt.gloomberb`. The first time a new version starts, it moves its folder in `~/Library/Application Support` to the new name, with the update it downloaded. Your settings and data in `~/.gloomberb` stay where they are, and macOS asks once more before the app shows notifications.
+
 The command was called `gloomberb` before 0.18.4. That name keeps working everywhere, and an install from before 0.18.4 gets `gloom` beside it when it updates: the terminal binary adds it next to itself the first time the new version runs, and the desktop app adds it next to the `gloomberb` link the installer or Homebrew made when it starts.
 
 `Gloom.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloom` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
@@ -48,6 +50,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 - **Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
+- **Updates:** downloaded to `%LOCALAPPDATA%\sh.gloom.desktop`. Earlier builds used `%LOCALAPPDATA%\com.vincelwt.gloomberb`. The first time a new version starts from there, it closes, moves that folder, points the Desktop and Start menu shortcuts and the uninstall entry that led into it at the new one, and opens again.
 - **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloom doctor` names them.
 - **Versions:** Windows 11 on x64 is the tested setup. Windows 10, and ARM PCs running the x64 build through Windows' built-in emulation, are untested.
 
