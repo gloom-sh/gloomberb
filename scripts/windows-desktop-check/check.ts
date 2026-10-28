@@ -546,6 +546,26 @@ function distinctColors(bitmap: Bitmap): number {
   return colors.size;
 }
 
+/** The picture's commonest color and its share: a page that never loaded is one flat white. */
+function commonestColor(bitmap: Bitmap): { color: number; share: number } {
+  const counts = new Map<number, number>();
+  let total = 0;
+  for (let y = 0; y < bitmap.height; y += 2) {
+    for (let x = 0; x < bitmap.width; x += 2) {
+      const offset = (y * bitmap.width + x) * 4;
+      const color = (bitmap.data[offset]! << 16) | (bitmap.data[offset + 1]! << 8) | bitmap.data[offset + 2]!;
+      counts.set(color, (counts.get(color) ?? 0) + 1);
+      total += 1;
+    }
+  }
+  let color = 0;
+  let most = 0;
+  for (const [value, count] of counts) if (count > most) { color = value; most = count; }
+  return { color, share: total ? most / total : 1 };
+}
+
+const isLight = (color: number) => ((color >> 16) & 0xff) > 230 && ((color >> 8) & 0xff) > 230 && (color & 0xff) > 230;
+
 // --- The run ---------------------------------------------------------------
 
 const RESIZE_CURSORS: Record<string, string> = {
@@ -1456,12 +1476,24 @@ class Run {
       // A new window paints its page once that has loaded.
       const openedAt = Date.now();
       let colors = 0;
-      while (Date.now() - openedAt < 20_000) {
-        await sleep(500);
-        try { colors = distinctColors(win.captureScreen(win.clientRect(opened.hwnd))); } catch { colors = 0; }
-        if (colors >= 6) break;
+      // Before it paints, a window can show what was behind it for a moment,
+      // so its page counts as drawn once two looks a second apart agree.
+      let drawnLooks = 0;
+      let commonest = { color: 0xffffff, share: 1 };
+      while (Date.now() - openedAt < 20_000 && drawnLooks < 2) {
+        await sleep(1_000);
+        try {
+          const bitmap = win.captureScreen(win.clientRect(opened.hwnd));
+          colors = distinctColors(bitmap);
+          commonest = commonestColor(bitmap);
+        } catch { colors = 0; commonest = { color: 0xffffff, share: 1 }; }
+        const blank = commonest.share > 0.97 && isLight(commonest.color);
+        drawnLooks = colors >= 6 && !blank ? drawnLooks + 1 : 0;
       }
-      const painted = colors >= 6 ? `painted after ${((Date.now() - openedAt) / 1000).toFixed(1)} s` : "still blank after 20 s";
+      const drawn = drawnLooks >= 2;
+      const painted = drawn
+        ? `painted after ${((Date.now() - openedAt) / 1000).toFixed(1)} s`
+        : `still blank after 20 s (${Math.round(commonest.share * 100)}% #${commonest.color.toString(16).padStart(6, "0")})`;
       const rect = win.windowRect(opened.hwnd);
       const mainRect = win.windowRect(main.hwnd);
       const overMain = rect.left < mainRect.right && rect.right > mainRect.left && rect.top < mainRect.bottom && rect.bottom > mainRect.top;
@@ -1473,7 +1505,7 @@ class Run {
       this.knownWindows.add(opened.hwnd);
       win.showWindow(opened.hwnd, "minimize");
       return {
-        status: colors >= 6 ? "pass" : "fail",
+        status: drawn ? "pass" : "fail",
         detail: `opened "${opened.title}" at ${fmt(rect)}, ${overMain ? "over" : "away from"} the main window at ${fmt(mainRect)}; ${painted}`,
       };
     });
