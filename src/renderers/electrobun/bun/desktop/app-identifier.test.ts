@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { legacyWindowsApp, moveLegacyAppIdentifierFolders, windowsIdentifierMoveScript } from "./app-identifier";
+import { legacyWindowsApp, moveLegacyAppIdentifierFolders, psString, windowsIdentifierMoveScript } from "./app-identifier";
 
 // The Mac move runs in this process, so these check what is on disk after it.
 // The Windows one is a script the Windows verification runs for real
@@ -25,7 +25,7 @@ function write(path: string, text: string): void {
 }
 
 function mac() {
-  return moveLegacyAppIdentifierFolders({ platform: "darwin", execPath: "/Applications/Gloom.app/Contents/MacOS/bun", homeDir: home, pid: 1, ppid: 1 });
+  return moveLegacyAppIdentifierFolders({ platform: "darwin", execPath: "/Applications/Gloom.app/Contents/MacOS/bun", homeDir: home });
 }
 
 describe("on a Mac", () => {
@@ -76,11 +76,16 @@ describe("on Windows", () => {
     const script = windowsIdentifierMoveScript({
       legacy,
       current: "C:\\Users\\O'Brien\\AppData\\Local\\sh.gloom.desktop",
-      afterExit: { pids: [4120, 0, 3996], folder: `${legacy}\\stable\\app`, launcher: "stable\\app\\bin\\launcher.exe", taskName: "GloomIdentifierMove-1" },
+      afterExit: { folder: `${legacy}\\stable\\app`, cancel: `${legacy}\\identifier-move.cancel`, launcher: "stable\\app\\bin\\launcher.exe", taskName: "GloomIdentifierMove-1" },
     });
     expect(script).toContain("$Legacy = 'C:\\Users\\O''Brien\\AppData\\Local\\com.vincelwt.gloomberb'\r\n");
-    expect(script).toContain("$AppPids = @(4120, 3996)\r\n");
+    expect(script).toContain("$AppFolder = 'C:\\Users\\O''Brien\\AppData\\Local\\com.vincelwt.gloomberb\\stable\\app'\r\n");
     expect(script).toContain("$OldWins = $true\r\n");
     expect(script).not.toMatch(/[^\r]\n/);
+  });
+
+  // PowerShell ends a single-quoted string at any of ' ‘ ’ ‚ ‛ unless it is doubled.
+  test("quotes a path with any quote PowerShell reads in it", () => {
+    expect(psString("C:\\Users\\O\u2019Brien\\\u2018a\u201Ab\u201B")).toBe("'C:\\Users\\O\u2019\u2019Brien\\\u2018\u2018a\u201A\u201Ab\u201B\u201B'");
   });
 });

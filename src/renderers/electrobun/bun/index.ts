@@ -76,8 +76,6 @@ const identifierMove = await moveLegacyAppIdentifierFolders({
   execPath: process.execPath,
   homeDir: homedir(),
   localAppData: process.env.LOCALAPPDATA,
-  pid: process.pid,
-  ppid: process.ppid,
 }).catch((error: unknown) => {
   console.error("[desktop] could not move the app's folders to its new identifier", error instanceof Error ? error.message : String(error));
   return null;

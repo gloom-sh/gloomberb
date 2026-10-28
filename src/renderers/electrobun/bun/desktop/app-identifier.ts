@@ -26,9 +26,6 @@ export interface AppIdentifierMoveContext {
   homeDir: string;
   /** `%LOCALAPPDATA%`, where Electrobun keeps the folders on Windows. */
   localAppData?: string;
-  /** This process and its launcher, which the Windows script waits for. */
-  pid: number;
-  ppid: number;
 }
 
 export type AppIdentifierMove =
@@ -105,8 +102,12 @@ export function legacyWindowsApp(execPath: string, legacy: string): { folder: st
   return { folder: win32.join(legacy, app), launcher: win32.join(app, "bin", "launcher.exe") };
 }
 
-function psString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
+/**
+ * `value` as a single-quoted PowerShell string. PowerShell also takes the
+ * curly single quotes U+2018 to U+201B for quotes; doubling escapes each.
+ */
+export function psString(value: string): string {
+  return `'${value.replace(/['\u2018-\u201B]/g, "$&$&")}'`;
 }
 
 interface WindowsMoveScript {
@@ -114,9 +115,10 @@ interface WindowsMoveScript {
   current: string;
   /** The app runs from the old folder: the script waits for it to quit and opens it again. */
   afterExit?: {
-    pids: number[];
-    /** The folder it runs from, whose WebView helpers it also waits for. */
+    /** The folder it runs from: the script waits for everything running from there, the app and its WebView helpers. */
     folder: string;
+    /** The file the app writes when it stops waiting for the script, which then leaves it be. */
+    cancel: string;
     /** Its launcher, relative to either identifier's folder. */
     launcher: string;
     /** The scheduled task that runs the script, which it removes. */
@@ -132,14 +134,24 @@ interface WindowsMoveScript {
 // the new folder's is.
 const WINDOWS_MOVE_SCRIPT_BODY = String.raw`
 $Log = Join-Path $Current 'identifier-move.log'
+# UTF-8 without a byte order mark: the app reads " started " from it, and a
+# path with an accent in it reads back as it is.
+$LogEncoding = New-Object System.Text.UTF8Encoding $false
 
 function Write-Log([string]$Message) {
-  try { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString('o') + ' ' + $Message) } catch { }
+  for ($Attempt = 0; $Attempt -lt 10; $Attempt += 1) {
+    try { [IO.File]::AppendAllText($Log, (Get-Date).ToString('o') + ' ' + $Message + [Environment]::NewLine, $LogEncoding); return } catch { Start-Sleep -Milliseconds 100 }
+  }
 }
 
 function Test-Under([string]$Path, [string]$Root) {
   if (-not $Path) { return $false }
   return $Path.Equals($Root, [StringComparison]::OrdinalIgnoreCase) -or $Path.StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)
+}
+
+# The processes whose program is in $Root, whatever started them.
+function Get-RunningUnder([string]$Root) {
+  @(Get-Process -ErrorAction SilentlyContinue | Where-Object { try { Test-Under $_.Path $Root } catch { $false } })
 }
 
 function Invoke-Retried([scriptblock]$Action, [string]$What) {
@@ -237,18 +249,24 @@ function Update-UninstallEntries {
 $Reopen = $false
 try {
   New-Item -ItemType Directory -Force -Path $Current | Out-Null
+  if ($AppFolder) {
+    # The app gave up waiting for this before it started, and runs on.
+    if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting before this started'; return }
+  }
   Write-Log ('started ' + $PID)
 
-  if ($AppPids.Count -gt 0) {
-    foreach ($AppPid in $AppPids) { Wait-Process -Id $AppPid -Timeout 60 -ErrorAction SilentlyContinue }
-    if (@($AppPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }).Count -gt 0) { throw 'the app did not quit' }
-    $Reopen = $true
-    # Its WebView helpers go with it, a moment later.
-    for ($Wait = 0; $Wait -lt 30; $Wait += 1) {
-      $Left = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { try { Test-Under $_.Path $AppFolder } catch { $false } })
-      if ($Left.Count -eq 0) { break }
+  if ($AppFolder) {
+    # The app and its WebView helpers, by where they run from. Having seen
+    # "started", the app quits, however long that takes: a slow quit still
+    # ends with it open again. Only one that stopped waiting for this, and
+    # wrote $Cancel, runs on, and is left so.
+    $Deadline = (Get-Date).AddMinutes(30)
+    while ((Get-RunningUnder $AppFolder).Count -gt 0 -and -not (Test-Path -LiteralPath $Cancel) -and (Get-Date) -lt $Deadline) {
       Start-Sleep -Milliseconds 500
     }
+    if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting; it stays where it is'; return }
+    if ((Get-RunningUnder $AppFolder).Count -gt 0) { throw 'the app did not quit' }
+    $Reopen = $true
   }
 
   $Apps = @()
@@ -304,8 +322,8 @@ export function windowsIdentifierMoveScript({ legacy, current, afterExit }: Wind
     `$Current = ${psString(current)}`,
     `$LegacyIdentifier = ${psString(LEGACY_DESKTOP_APP_IDENTIFIER)}`,
     `$CurrentIdentifier = ${psString(DESKTOP_APP_IDENTIFIER)}`,
-    `$AppPids = @(${(afterExit?.pids ?? []).filter((pid) => Number.isInteger(pid) && pid > 0).join(", ")})`,
     `$AppFolder = ${psString(afterExit?.folder ?? "")}`,
+    `$Cancel = ${psString(afterExit?.cancel ?? "")}`,
     `$Launcher = ${psString(afterExit?.launcher ?? "")}`,
     `$TaskName = ${psString(afterExit?.taskName ?? "")}`,
     `$OldWins = ${afterExit ? "$true" : "$false"}`,
@@ -348,15 +366,17 @@ async function startedScript(log: string): Promise<boolean> {
  * could not move it, or never ran) leaves it running from where it is until a
  * later start.
  */
-async function moveRunningWindowsApp(context: AppIdentifierMoveContext, folders: AppIdentifierFolders, app: { folder: string; launcher: string }): Promise<AppIdentifierMove> {
+async function moveRunningWindowsApp(folders: AppIdentifierFolders, app: { folder: string; launcher: string }): Promise<AppIdentifierMove> {
   const log = win32.join(folders.current, "identifier-move.log");
+  const cancel = win32.join(folders.current, "identifier-move.cancel");
   const last = await stat(log).catch(() => null);
   if (last && Date.now() - last.mtimeMs < RECENT_ATTEMPT_MS) return { kind: "skipped" };
   await rm(log, { force: true });
+  await rm(cancel, { force: true });
   const taskName = `GloomIdentifierMove-${Date.now()}`;
   const script = await writeScript(folders, windowsIdentifierMoveScript({
     ...folders,
-    afterExit: { pids: [context.pid, context.ppid], folder: app.folder, launcher: app.launcher, taskName },
+    afterExit: { folder: app.folder, cancel, launcher: app.launcher, taskName },
   }));
   const command = powershellCommand(script).map((part) => (part === script ? `"${part}"` : part)).join(" ");
   const schtasks = (...args: string[]) => {
@@ -366,7 +386,11 @@ async function moveRunningWindowsApp(context: AppIdentifierMoveContext, folders:
   try {
     schtasks("/create", "/tn", taskName, "/tr", command, "/sc", "once", "/st", "00:00", "/f");
     schtasks("/run", "/tn", taskName);
-    if (!(await startedScript(log))) throw new Error("it did not start");
+    if (!(await startedScript(log))) {
+      // A script that starts after this leaves the app be: it runs on.
+      await writeFile(cancel, "").catch(() => {});
+      throw new Error("it did not start");
+    }
     return { kind: "relaunching" };
   } catch (error) {
     try { schtasks("/delete", "/tn", taskName, "/f"); } catch { /* Intentional ignore: never created. */ }
@@ -406,5 +430,5 @@ export async function moveLegacyAppIdentifierFolders(context: AppIdentifierMoveC
     return { kind: "moved" };
   }
   const app = legacyWindowsApp(context.execPath, folders.legacy);
-  return app ? moveRunningWindowsApp(context, folders, app) : moveWindowsFolder(folders);
+  return app ? moveRunningWindowsApp(folders, app) : moveWindowsFolder(folders);
 }
