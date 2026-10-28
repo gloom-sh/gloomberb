@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { SwapCurvePayload, SwapTenor } from "../../../api-client/swap-curve";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { createPluginCache, type PluginCacheResult } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { validateSwapCurve } from "./swaps-model";
@@ -49,10 +50,16 @@ export interface SavedCopyAnswer<T> {
 }
 
 const curveKey = (curve: CurveId, requestedDate: string) => `${curve}:${requestedDate || "latest"}`;
-const answer = <T>(result: PluginCacheResult<T>): SavedCopyAnswer<T> => ({
-  data: result.data,
-  savedAt: result.refreshError ? result.fetchedAt : null,
-});
+/**
+ * A copy is the saved one by where it came from, whatever its failure said. A
+ * refusal asking again will not change (access denied, an unknown curve) is
+ * said rather than covered by the copy, as `loadCloudResource` does.
+ */
+function answer<T>(result: PluginCacheResult<T>): SavedCopyAnswer<T> {
+  const saved = result.source === "stale-fallback";
+  if (saved && isPermanentClientError(result.error)) throw result.error;
+  return { data: result.data, savedAt: saved ? result.fetchedAt : null };
+}
 
 /** The curve on the date (its latest without one), or the copy an earlier read saved when it cannot be read. */
 export async function loadSavedCurve(curve: CurveId, requestedDate: string,

@@ -6,6 +6,7 @@ import type {
   HeadlessShotState,
 } from "../../../types/plugin";
 import { formatShortDate } from "../../../utils/datetime-format";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
@@ -229,15 +230,40 @@ export interface ThirteenFHeadlessDependencies {
   loadEtfHoldings?(ticker: string, ctx: HeadlessPaneContext): Promise<FundMembersPayload>;
 }
 
+/** The oldest copy a load's 13F reads answered from because their refresh failed, by the load's context. */
+const savedCopies = new WeakMap<HeadlessPaneContext, { savedAt: number | null }>();
+
+/** How a 13F read for the load `ctx` says it answered from the copy saved at `savedAt`. */
+const noteSavedCopy = (ctx: HeadlessPaneContext) => (savedAt: number) => {
+  const entry = savedCopies.get(ctx);
+  if (entry) entry.savedAt = Math.min(entry.savedAt ?? savedAt, savedAt);
+};
+
+/**
+ * One load, whose report ends with when the oldest saved copy it answered
+ * from was saved (`couldn't refresh; saved copy from <time>`), as every
+ * command says it, instead of listing each failed refresh as an error.
+ */
+async function readingSavedCopies<T extends object>(ctx: HeadlessPaneContext, run: () => Promise<T>): Promise<T> {
+  const entry: { savedAt: number | null } = { savedAt: null };
+  savedCopies.set(ctx, entry);
+  try {
+    const result = await run();
+    return entry.savedAt == null ? result : servedFromSavedCopy(result, entry.savedAt);
+  } finally {
+    if (savedCopies.get(ctx) === entry) savedCopies.delete(ctx);
+  }
+}
+
 const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   loadBrowser: (tab, query, limit, _args, ctx) => loadBrowserRows(
     tab,
     query,
     ctx.signal,
-    { limit },
+    { limit, onSavedCopy: noteSavedCopy(ctx) },
   ),
   // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
-  loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args) }),
+  loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx) }),
   loadSplitFactors: (detail, ctx) => loadSplitFactors(
     detail,
     (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
@@ -247,6 +273,7 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   searchFunds: (query, ctx) => searchThirteenFFunds(query, THIRTEENF_MAX_LIMIT, ctx.signal),
   loadPerformance: (cik, name, ctx) => loadFundPerformance(cik, name, ctx.signal, {
     splitFactor: (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
+    onSavedCopy: noteSavedCopy(ctx),
   }),
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
   loadEtfHoldings: (ticker, ctx) => fetchMembers(ticker, ctx.apiClient),
@@ -541,7 +568,7 @@ export function createThirteenFHeadless(
     ],
     describe: (args, result) => thirteenFTitle(args, result?.metadata),
     shotState: async (args, load) => thirteenFShotState(args, (await load()).metadata ?? {}),
-    async load(args, ctx) {
+    load: (args, ctx) => readingSavedCopies(ctx, async () => {
       const query = typeof args.argument === "string" ? args.argument.trim() : "";
       const requestedView = String(args.options.view) as HeadlessThirteenFView;
       const compare = typeof args.options.compare === "string" ? args.options.compare.trim() : "";
@@ -920,7 +947,7 @@ export function createThirteenFHeadless(
           ],
         },
       };
-    },
+    }),
   };
 }
 

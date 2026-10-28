@@ -108,11 +108,13 @@ export function createPluginCache<T, Stored = T>(options: {
         }
         return { value, fetchedAt, staleAt: fetchedAt + options.policy.staleMs, expiresAt: fetchedAt + options.policy.expireMs, source: options.source };
       } });
+      // A retained copy carries its refresh failure, whatever was thrown (an Error without a message included).
+      const failed = "refreshError" in result;
       const error = result.refreshError;
       return {
-        data: result.value, fetchedAt: result.fetchedAt, stale: !!error || result.staleAt <= Date.now(),
-        source: error ? "stale-fallback" : result === before ? "cache" : "network",
-        ...(error ? { error, refreshError: error instanceof Error ? error.message : String(error) } : {}),
+        data: result.value, fetchedAt: result.fetchedAt, stale: failed || result.staleAt <= Date.now(),
+        source: failed ? "stale-fallback" : result === before ? "cache" : "network",
+        ...(failed ? { error, refreshError: error instanceof Error ? error.message : String(error) } : {}),
       };
     },
   };

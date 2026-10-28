@@ -2,6 +2,7 @@ import type { ScreenerQuote } from "../../../api-client/market-discovery";
 export type { ScreenerQuote } from "../../../api-client/market-discovery";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { logFailure } from "../../../utils/log-failure";
+import { savedCopyMark, servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import type {
@@ -68,7 +69,7 @@ function shouldUseCache(api: MarketScreenerApi, options?: FetchCacheOptions): bo
   return options?.cache === true || (options?.cache !== false && api === screenerApi);
 }
 
-function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data: T; stale: boolean } | null {
+function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data: T; stale: boolean; fetchedAt: number } | null {
   const record = marketMoversPersistence?.getResource<CachedResult<T>>(CACHE_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: CACHE_SCHEMA_VERSION,
@@ -79,6 +80,7 @@ function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data
   return {
     data: record.value.data,
     stale: record.value.stale || !!record.stale || failedFetches.has(key),
+    fetchedAt: record.fetchedAt,
   };
 }
 
@@ -117,10 +119,11 @@ async function loadCached<T>(
       return result;
     })
     .catch((error) => {
-      // Serving the expired copy is right; hiding that it is expired is not.
+      // Serving the expired copy is right; hiding that it is expired is not. A command that shows it
+      // ends with when the copy was saved.
       if (fallback) {
         failedFetches.add(key);
-        return { data: fallback.data, stale: true };
+        return servedFromSavedCopy({ data: fallback.data, stale: true }, fallback.fetchedAt);
       }
       throw error;
     })
@@ -389,7 +392,7 @@ export async function fetchPreferredMarketMovers(
   const eligibility = sources.isCloudEligible();
   if (!(typeof eligibility === "boolean" ? eligibility : await eligibility)) {
     const result = await sources.fetchMarket(category, count, options);
-    return { quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
+    return { ...savedCopyMark(result), quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
   }
 
   const marketMetadata = sources.fetchMarket(
@@ -425,6 +428,7 @@ export async function fetchPreferredMarketMovers(
 
   const fallback = await marketMetadata;
   return {
+    ...savedCopyMark(fallback),
     quotes: rankScreenerQuotes(category, fallback.data),
     source: "gloom",
     stale: fallback.stale,

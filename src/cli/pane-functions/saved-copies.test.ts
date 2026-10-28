@@ -10,6 +10,7 @@ import { captureConsole } from "../../test-support/console";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
+import { setHttpFetchTransport } from "../../utils/http-transport";
 import { printCliError } from "../errors";
 import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import { DEFAULT_CLI_OPTIONS } from "../options";
@@ -29,6 +30,7 @@ const unreachable = () => new DataServiceUnreachableError(Object.assign(new Erro
 const spies: Array<{ mockRestore(): void }> = [];
 const profiles: AppPersistence[] = [];
 afterEach(() => {
+  setHttpFetchTransport(null);
   for (const spy of spies.splice(0)) spy.mockRestore();
   for (const profile of profiles.splice(0)) profile.close();
   process.exitCode = 0;
@@ -93,6 +95,36 @@ test("fn ECST answers a failed refresh from the statistic an earlier run read, s
   expect(offline.text).toMatch(/Payrolls m\/m +\+29k +\+133k/);
   expect(offline.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
   expect(offline.text).not.toContain("Errors:");
+});
+
+// Offline, 13F listed each saved copy it answered from as an error ("refresh failed: ... Retained data
+// retrieved ...") and MOST called its saved list stale: neither said what every other command says.
+test("fn 13F and fn MOST answer a failed refresh from what an earlier run read, saying so in the one closing line", async () => {
+  const offline = { now: false };
+  const sec13f = spyOn(apiClient, "getCloudSec13F").mockImplementation(async (path: string) => {
+    if (offline.now) throw unreachable();
+    return path === "/funds" ? [{ cik: "1067983", name: "Berkshire Hathaway Inc" }] : [];
+  });
+  const movers = spyOn(apiClient, "getMarketMovers").mockImplementation(async () => {
+    if (offline.now) throw unreachable();
+    return { status: "success", stale: false, data: { quotes: [{ symbol: "STLA", name: "Stellantis N.V.", price: 4.68, change: 0.54, changePercent: 12.92, volume: 94_550_000, avgVolume: 32_600_000 }] } } as never;
+  });
+  spies.push(sec13f, movers);
+  // The public 13F source the app falls back to is out of reach too.
+  setHttpFetchTransport(async () => { throw unreachable(); });
+  const saved = profile();
+  const thirteenF = ["13F", "Berkshire Hathaway"];
+  expect((await fn(thirteenF, saved)).text).toContain("Berkshire Hathaway Inc");
+  expect((await fn(["MOST"], saved)).text).toContain("Stellantis");
+
+  offline.now = true;
+  for (const [args, shown] of [[thirteenF, "Berkshire Hathaway Inc"], [["MOST"], "Stellantis"]] as const) {
+    const answer = await fn([...args], saved);
+    expect(answer.error).toBeNull();
+    expect(answer.text).toContain(shown);
+    expect(answer.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
+    expect(answer.text).not.toMatch(/Errors:|Retained data|refresh failed|stale/);
+  }
 });
 
 test("a plugin that keeps a command's persistence past the command never reaches the store the command closed", () => {
