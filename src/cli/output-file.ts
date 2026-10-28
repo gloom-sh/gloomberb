@@ -42,7 +42,11 @@ function isFolder(path: string, paths: typeof posix): Error {
 
 /** Fails when `path` names a folder: checked before a report loads, so it stops at once. */
 export async function checkOutputPath(path: string, platform: NodeJS.Platform = process.platform): Promise<void> {
-  if ((await stat(path).catch(() => null))?.isDirectory()) throw isFolder(path, platform === "win32" ? win32 : posix);
+  const existing = await stat(path).catch(() => {
+    // Intentional ignore: a path that does not exist yet is the usual case, and writing reports any real failure.
+    return null;
+  });
+  if (existing?.isDirectory()) throw isFolder(path, platform === "win32" ? win32 : posix);
 }
 
 /**
