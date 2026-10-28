@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import { realizedVolatility, REALIZED_VOLATILITY_WINDOWS } from "../shared/volatility";
 import { DEFAULT_SURFACE_SETTINGS, pendingSurfaceExpiry, type SurfaceExpiry, type SurfaceSnapshot } from "../vol-surface/model";
-import { projectCurrentAtmIv, projectRealizedVolatility } from "./model";
+import { atmIvObservedLabel, projectCurrentAtmIv, projectRealizedVolatility } from "./model";
 
 function history(length = 1400, end = Date.UTC(2026, 8, 22)): PricePoint[] {
   return Array.from({ length }, (_, index) => {
@@ -128,6 +128,10 @@ describe("current ATM IV reference", () => {
     expect(result.warnings).toEqual(["9 butterfly arbitrage warnings"]);
     const offline = projectCurrentAtmIv(surface([selected], { failures: [{ expiration: null, message: "Treasury: offline" }] }));
     expect(offline.error).toBe("Treasury: offline");
+  });
+
+  test("reads the observation to the minute, never a chain read's seconds and milliseconds", () => {
+    expect(atmIvObservedLabel(new Date("2026-10-27T20:14:59.999Z"))).toBe("2026-10-27 20:14 UTC");
   });
 
   test("says when nearer expiries without usable quotes pushed the reference to a farther tenor", () => {

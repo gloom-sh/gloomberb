@@ -17,6 +17,7 @@ import {
   type LiveScan,
 } from "./live-model";
 import { LIVE_SCAN_INDEXES } from "../../../api-client/live-scan";
+import { formatHiloPrice } from "./hilo-model";
 
 /** `all`, an index (`sp500`) or a sector (`Energy`), as `--universe` takes it. */
 function parseHeadlessUniverse(value: string): LiveScan["universe"] {
@@ -61,7 +62,24 @@ function emptyText(payload: LiveScanPayload): string {
 
 const number = (value: unknown) => (typeof value === "number" ? value : undefined);
 
+/** `2026-10-27 19:59 UTC`: when the scan last ran, to the minute. */
+const utcMinute = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * What the report says above the matches: outside the session that the
+ * market is closed and when the scan last ran, since a delay means nothing
+ * then; in the session a delayed feed's delay.
+ */
+function headerNotice(payload: LiveScanPayload): string | null {
+  if (payload.status === "closed") {
+    const last = payload.asOf ?? payload.takenAt;
+    return last != null && Number.isFinite(last) ? `Market closed; last scan ${utcMinute(last)}` : "Market closed";
+  }
+  return payload.access === "delayed" ? `Delayed ${payload.delayMinutes} minutes` : null;
+}
+
 function projectLiveScan(payload: LiveScanPayload, scan: LiveScan): HeadlessSnapshotResult {
+  const notice = headerNotice(payload);
   return {
     asOf: new Date(payload.asOf ?? payload.takenAt ?? Date.now()).toISOString(),
     empty: emptyText(payload),
@@ -80,7 +98,7 @@ function projectLiveScan(payload: LiveScanPayload, scan: LiveScan): HeadlessSnap
     ...(payload.status === "degraded" ? { errors: ["Live scanner degraded"] } : {}),
     freshness: freshness(payload),
     metadata: {
-      ...(payload.access === "delayed" ? { notices: [`Delayed ${payload.delayMinutes} minutes`] } : {}),
+      ...(notice ? { notices: [notice] } : {}),
       ...(payload.warnings.length ? { warnings: payload.warnings } : {}),
       status: payload.status,
       access: payload.access,
@@ -117,7 +135,8 @@ export const liveScanHeadless: HeadlessPaneDefinition<"snapshot"> = {
   columns: [
     { key: "symbol", header: "Symbol" },
     { key: "name", header: "Name" },
-    { key: "price", header: "Price", align: "right" },
+    // At the pane's precision: cents, or four decimals under a dollar; the JSON keeps the feed's digits.
+    { key: "price", header: "Price", align: "right", format: (value) => typeof value === "number" ? formatHiloPrice(value) : "--" },
     { key: "changePercent", header: "Chg %", align: "right", format: (value) => formatPercentRaw(number(value)) },
     { key: "relativeVolume", header: "RVol", align: "right", format: (value) => formatMultiple(number(value)) },
     { key: "volume", header: "Volume", align: "right" },

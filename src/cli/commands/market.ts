@@ -242,7 +242,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
-import { isYieldIndexSymbol } from "../index-roots";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";

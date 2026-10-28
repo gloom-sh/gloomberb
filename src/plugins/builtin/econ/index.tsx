@@ -36,10 +36,12 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
+  awaitsConsensus,
   calendarDisplayRows,
   CALENDAR_TIME_ZONE_LABEL,
   dateKey,
   dayLabel,
+  econEventName,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -50,6 +52,7 @@ import {
   eventCountry,
   matchesCountry,
   matchesImpact,
+  NO_CONSENSUS_NOTE,
   noScheduledReleasesMessage,
   parseCountryFilter,
   resetEconCalendarPersistence,
@@ -322,7 +325,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     : formatCountdown(nextEvent.date.getTime() - now);
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
-  const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
+  const nextText = nextEvent && nextCountdown ? `next ${econEventName(nextEvent)} ${nextCountdown}` : null;
   // The cached first paint is being replaced; its age only counts once a load has answered.
   const showStale = stale && (!loading || calendar.updatedAt !== null);
   // An empty list says it in its empty state instead.
@@ -330,6 +333,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // What the High filter, where the calendar opens, leaves out, and the key that lists it (Shift+F steps back to All).
   const hiddenCount = useMemo(() => lowerImpactHidden(events, impactFilter, countryFilter), [countryFilter, events, impactFilter]);
   const hiddenStatus = hiddenCount > 0 && !detailEvent ? `${hiddenCount} lower-impact hidden` : null;
+  // The dash under Forecast on the row in hand, while its consensus is not in yet.
+  const focusedEvent = detailEvent ?? filtered[selectedIdx];
+  const noConsensus = !!focusedEvent && awaitsConsensus(focusedEvent);
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(hiddenStatus ? [{
       id: "hidden-impact",
@@ -341,8 +347,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(listedAfterStatus ? [{ id: "listed-after", parts: [{ text: listedAfterStatus, tone: "warning" as const }] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
+    // Behind the warnings, so a narrow footer gives it up before them, and ahead of the update time, which goes first.
+    ...(noConsensus ? [{ id: "no-consensus", parts: [{ text: NO_CONSENSUS_NOTE, tone: "muted" as const }],
+      variants: [[{ text: "no consensus yet", tone: "muted" as const }]] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [detailEvent, hiddenStatus, listedAfterStatus, nextText, showStale, staleness]);
+  ], [detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, showStale, staleness]);
   // A report of the pane (`gloom fn ECO`) says it too.
   const listedThrough = listedEnd ? dateKey(listedEnd) : null;
   useRemoteUiNode(listedAfter && listedThrough ? {
@@ -433,7 +442,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         return withCountryFlag({ text: country, color: colors.textMuted }, country, flagged);
       }
       case "event":
-        return { text: ev.event, color: colors.text };
+        return { text: econEventName(ev), color: colors.text };
       case "actual":
         return {
           text: ev.actual ?? "—",
@@ -480,7 +489,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       focused={focused}
       detailOpen={!!detailEvent}
       onBack={() => setOpenKey(null)}
-      detailTitle={detailEvent?.event}
+      detailTitle={detailEvent ? econEventName(detailEvent) : undefined}
       detailContent={detailContent}
       rootWidth={width}
       rootHeight={Math.max(1, height - 1)}
@@ -576,7 +585,7 @@ export const economicCalendarModule: PluginModule = {
     description: "Upcoming economic events, releases, and indicators.",
     // "econ" stays a keyword so the old ECON prefix still finds this pane.
     keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp", "rate decision", "ipca",
-      "brazil inflation", "pmi", "ism", "purchasing managers", "flash pmi"],
+      "brazil inflation", "pmi", "ism", "purchasing managers", "flash pmi", "jobs report", "nfp", "payrolls", "nonfarm"],
     // ECO MX,BR opens the calendar on those countries.
     shortcut: {
       prefix: "ECO",
