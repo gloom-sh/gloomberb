@@ -175,20 +175,29 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     brokers,
   });
 
+  // Each plugin's caches save what a command fetches where the app keeps them, so a failed refresh answers from them.
+  const resources = context.persistence?.resources;
+  const persistences: Array<ReturnType<typeof createCommandPluginPersistence>> = [];
+  const commandPersistence = (stateId: string) => {
+    const persistence = createCommandPluginPersistence(resources, `plugin:${stateId}`);
+    persistences.push(persistence);
+    return persistence;
+  };
+
   const destroy = () => {
     let failure: unknown;
     for (const plugin of setupPlugins.splice(0).reverse()) {
       try { plugin.dispose?.(); } catch (error) { failure ??= error; }
     }
+    // A plugin that keeps its persistence past dispose must not reach a store the command closes.
+    for (const persistence of persistences.splice(0)) persistence.release();
     brokers.clear();
     if (context.resolveBroker === resolveBroker) context.resolveBroker = previousResolver;
     if (failure) throw failure;
   };
 
-  // Each plugin's caches save what a command fetches where the app keeps them, so a failed refresh answers from them.
-  const resources = context.persistence?.resources;
   const namespaced = (stateId: string) => ({
-    persistence: createCommandPluginPersistence(resources, `plugin:${stateId}`),
+    persistence: commandPersistence(stateId),
     resume: discoveryContext.resume,
     configState: discoveryContext.configState,
     teamState: discoveryContext.teamState,

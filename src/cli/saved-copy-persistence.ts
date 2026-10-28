@@ -2,6 +2,7 @@ import type { AppResourceStorePort } from "../core/app-service-ports";
 import type { JsonValue } from "../data/sqlite/json";
 import type { PersistedResourceValue } from "../types/persistence";
 import type { PluginPersistence } from "../types/plugin";
+import { logFailure } from "../utils/log-failure";
 
 type SetResourceOptions = Parameters<PluginPersistence["setResource"]>[3];
 
@@ -15,21 +16,39 @@ type SetResourceOptions = Parameters<PluginPersistence["setResource"]>[3];
  * so a command still asks for current data rather than answering from the
  * app's cache. Plugin state is not read or kept. With no resource store,
  * nothing outlives the run.
+ *
+ * The profile's store closes when the command ends, while a plugin may keep
+ * the persistence it was set up with: `release()` leaves the store alone from
+ * then on, and a store that fails (closed, full) costs the saved copy only,
+ * never the command.
  */
-export function createCommandPluginPersistence(resources: AppResourceStorePort | null | undefined, namespace: string): PluginPersistence {
+export function createCommandPluginPersistence(
+  resources: AppResourceStorePort | null | undefined,
+  namespace: string,
+): PluginPersistence & { release(): void } {
   const fetched = new Map<string, PersistedResourceValue<unknown>>();
   const keyOf = (kind: string, key: string) => `${kind}:${key}`;
+  let store = resources ?? null;
+  const saved = <T>(operation: string, run: (store: AppResourceStorePort) => T, fallback: T): T => {
+    if (!store) return fallback;
+    try {
+      return run(store);
+    } catch (error) {
+      return logFailure("cli.saved-copies", `${operation} a saved copy failed`, fallback)(error);
+    }
+  };
   return {
+    release: () => { store = null; },
     getState: () => null,
     setState: () => {},
     deleteState: () => {},
     getResource: <T = unknown>(kind: string, key: string, options?: { sourceKey?: string; schemaVersion?: number; allowExpired?: boolean }) => {
       const own = fetched.get(keyOf(kind, key)) as PersistedResourceValue<T> | undefined;
-      if (own || !options?.allowExpired || !resources) return own ?? null;
-      const record = resources.get<T>(
+      if (own || !options?.allowExpired) return own ?? null;
+      const record = saved("Reading", (resources) => resources.get<T>(
         { namespace, kind, entityKey: key, sourceKey: options.sourceKey },
         { schemaVersion: options.schemaVersion, allowExpired: true },
-      );
+      ), null);
       return record && {
         value: record.value,
         fetchedAt: record.fetchedAt,
@@ -54,16 +73,16 @@ export function createCommandPluginPersistence(resources: AppResourceStorePort |
         provenance: options.provenance ?? null,
       };
       fetched.set(keyOf(kind, key), entry);
-      resources?.set<T>({ namespace, kind, entityKey: key, sourceKey: options.sourceKey }, value, {
+      saved("Writing", (resources) => resources.set<T>({ namespace, kind, entityKey: key, sourceKey: options.sourceKey }, value, {
         cachePolicy: options.cachePolicy,
         schemaVersion: options.schemaVersion,
         provenance: options.provenance as JsonValue | null | undefined,
-      });
+      }), undefined);
       return entry;
     },
     deleteResource: (kind: string, key: string, options?: { sourceKey?: string }) => {
       fetched.delete(keyOf(kind, key));
-      resources?.delete({ namespace, kind, entityKey: key, sourceKey: options?.sourceKey });
+      saved("Deleting", (resources) => resources.delete({ namespace, kind, entityKey: key, sourceKey: options?.sourceKey }), undefined);
     },
   };
 }

@@ -11,6 +11,7 @@ import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
 import { printCliError } from "../errors";
+import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { runPaneFunction } from ".";
@@ -92,4 +93,21 @@ test("fn ECST answers a failed refresh from the statistic an earlier run read, s
   expect(offline.text).toMatch(/Payrolls m\/m +\+29k +\+133k/);
   expect(offline.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
   expect(offline.text).not.toContain("Errors:");
+});
+
+test("a plugin that keeps a command's persistence past the command never reaches the store the command closed", () => {
+  const store = new AppPersistence(":memory:");
+  const kept = createCommandPluginPersistence(store.resources, "plugin:test");
+  const policy = { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } };
+  kept.setResource("board", "gas", { value: 1 }, policy);
+  expect(kept.getResource("board", "other", { allowExpired: true })).toBeNull();
+  // Released with the catalog, then the store closes: later reads and writes stay in memory.
+  kept.release();
+  store.close();
+  expect(() => kept.setResource("board", "oil", { value: 2 }, policy)).not.toThrow();
+  expect(kept.getResource("board", "oil", { allowExpired: true })?.value).toEqual({ value: 2 });
+  // Not released, a closed store costs the saved copy, never the caller.
+  const unreleased = createCommandPluginPersistence(store.resources, "plugin:test");
+  expect(() => unreleased.setResource("board", "gas", { value: 3 }, policy)).not.toThrow();
+  expect(unreleased.getResource("board", "coal", { allowExpired: true })).toBeNull();
 });
