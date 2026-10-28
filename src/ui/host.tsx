@@ -709,7 +709,12 @@ export interface SaveTextFileRequest {
 
 export interface RendererHost {
   requestExit(): void;
-  startWindowDrag?(): Promise<void> | void;
+  /**
+   * From a press on a title bar. `press.detail` counts the clicks: where the
+   * system's title bars maximize on a double-click, the second press does that
+   * instead of moving the window.
+   */
+  startWindowDrag?(press?: { detail?: number }): Promise<void> | void;
   controlWindow?(action: "minimize" | "toggle-maximize" | "close"): Promise<void> | void;
   /**
    * Opens a link in the person's browser. Resolves false when no browser could

@@ -170,9 +170,9 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
   }, [desktopWindowBridge, locked, pluginRegistry]);
 
-  const startWindowDrag = useCallback(() => {
+  const startWindowDrag = useCallback((press?: { detail?: number }) => {
     focusPane();
-    if (nativeWindowChrome) void rendererHost.startWindowDrag?.();
+    if (nativeWindowChrome) void rendererHost.startWindowDrag?.(press);
   }, [focusPane, nativeWindowChrome, rendererHost]);
 
   const sharePane = useCallback(() => {
