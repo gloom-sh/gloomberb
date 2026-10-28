@@ -176,9 +176,13 @@ $Journal = New-Object System.Collections.Generic.List[object]
 $Exited = $false
 $Opened = $false
 
+# UTF-8 without a byte order mark: the app reads the answer from the first
+# line, and a path with an accent in it reads back as it is.
+$LogEncoding = New-Object System.Text.UTF8Encoding $false
+
 function Write-Log([string]$Message) {
   for ($Attempt = 0; $Attempt -lt 10; $Attempt += 1) {
-    try { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString('o') + ' ' + $Message); return } catch { Start-Sleep -Milliseconds 100 }
+    try { [IO.File]::AppendAllText($Log, (Get-Date).ToString('o') + ' ' + $Message + [Environment]::NewLine, $LogEncoding); return } catch { Start-Sleep -Milliseconds 100 }
   }
 }
 

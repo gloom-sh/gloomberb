@@ -15,5 +15,6 @@ describe("the scripts the Windows app leaves", () => {
     expect(scriptAnswer("2026-10-28T18:11:44+00:00 busy: C:\\Tools\\bin\\bun.exe runs\r\n")).toEqual({ kind: "busy", reason: "C:\\Tools\\bin\\bun.exe runs" });
     expect(scriptAnswer("2026-10-28T18:11:44+00:00 declined: cannot write in C:\\Tools\r\n")).toEqual({ kind: "declined", reason: "cannot write in C:\\Tools" });
     expect(scriptAnswer("2026-10-28T18:11:44+00:00 the app stopped waiting before this started\r\n")).toBeNull();
+    expect(scriptAnswer("\uFEFF2026-10-28T18:11:44+00:00 started 4120\r\n")).toEqual({ kind: "started" });
   });
 });

@@ -44,7 +44,7 @@ export type ScriptAnswer =
  * `<time> busy: …` or `<time> declined: …`; null before it wrote one.
  */
 export function scriptAnswer(log: string): ScriptAnswer | null {
-  for (const line of log.split(/\r?\n/)) {
+  for (const line of log.replace(/^\uFEFF/, "").split(/\r?\n/)) {
     const match = /^\S+ (started|busy|declined)\b:? ?(.*)$/.exec(line);
     if (!match) continue;
     if (match[1] === "started") return { kind: "started" };
