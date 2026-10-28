@@ -38,10 +38,13 @@ function declaredPayDate(data: Pick<DividendData, "declared" | "metrics">, now =
  */
 function incompleteNote(entry: DividendRankingEntry): string | null {
   if ("error" in entry) return "not read";
-  const { historyError, summaryError } = entry.data;
-  if (historyError && summaryError) return "no cash history or summary";
+  const { historyError, summaryError, forwardFromFundamentals, metrics } = entry.data;
+  // A forward yield read from fundamentals in place of the summary is dated by the ex-date it annualizes.
+  const forward = summaryError && forwardFromFundamentals && metrics.forwardRateAsOf
+    ? `; fwd yield from fundamentals, ex ${metrics.forwardRateAsOf}` : "";
+  if (historyError && summaryError) return `no cash history or summary${forward}`;
   if (historyError) return "no cash history";
-  return summaryError ? "no summary" : null;
+  return summaryError ? `no summary${forward}` : null;
 }
 
 /** How a row's trailing yield was counted, when its year holds fewer payments than its cadence pays; null otherwise. */
@@ -164,7 +167,7 @@ function rankingColumns(bonds: boolean): HeadlessPaneColumn[] {
 
 /** Shown once a row is incomplete, so a missing figure never reads as a non-payer's. */
 const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "",
-  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date)." };
+  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date); a forward yield read from fundamentals instead is dated by its ex-date." };
 
 /** Shown once a regular payer's trailing year holds fewer payments than its cadence pays, which says nothing is missing from the read itself. */
 const YIELD_BASIS_COLUMN: HeadlessPaneColumn = { key: "yieldBasis", header: "Yield basis", format: (value) => typeof value === "string" ? value : "",

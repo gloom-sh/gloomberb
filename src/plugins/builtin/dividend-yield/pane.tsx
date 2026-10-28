@@ -28,7 +28,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
+import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 import { buildTrailingCashChartPoints, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
@@ -190,8 +190,16 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   // quote is read through a ref instead of being an effect dependency.
   const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
   quoteRef.current = { price: quotePrice, currency: quoteCurrency };
+  // The forward rate the ticker's fundamentals state, read only when the summary is missing. Fundamentals can
+  // arrive after the read, so a new stated rate reads again; a price tick does not.
+  const stated = statedForwardRate(financials);
+  const statedKey = stated ? `${stated.rate}|${stated.exDate}|${stated.currency}` : "";
+  const statedRef = useRef(stated);
+  statedRef.current = stated;
 
-  const request = useCallback(() => loadData(listingSymbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, listingSymbol, cloudSession.requestKey]);
+  const request = useCallback(() => loadData(listingSymbol!, quoteRef.current.price, exchange, quoteRef.current.currency, {
+    loadStatedForwardRate: () => statedRef.current,
+  }), [exchange, loadData, listingSymbol, cloudSession.requestKey, statedKey]);
   const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(listingSymbol ? request : null);
   // An integrity response may contain no usable rows. Retain only historical
   // rows from this resource; its new unavailable metrics remain authoritative.

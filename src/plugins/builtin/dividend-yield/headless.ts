@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { fetchDividendData, type DividendData } from "./client";
+import { fetchDividendData, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText } from "./view";
@@ -78,7 +78,10 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
       logFailure("dividend-yield.headless", "Read dividend reference quote failed")(error);
       currentPrice = null;
     }
-    const data = await fetchDividendData(listingSymbol, currentPrice, exchange, currentPriceCurrency);
+    const data = await fetchDividendData(listingSymbol, currentPrice, exchange, currentPriceCurrency, {
+      // Read only when the summary is missing: the forward rate fundamentals state, as `fundamentals` shows it.
+      loadStatedForwardRate: async () => statedForwardRate(await context.marketData.getTickerFinancials(listingSymbol, exchange)),
+    });
     if (referenceQuote && dividendReferencePrice(currentPrice, currentPriceCurrency, data.currency ?? "") != null) {
       Object.assign(data, dividendQuotePriceMetadata(referenceQuote));
     }

@@ -11,13 +11,71 @@ import { regularSessionValuationPrice } from "../../../market-data/quotes/regula
 import { declaredDividends } from "../../../utils/declared-dividends";
 import { cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend } from "../../../utils/forward-dividend";
-import type { DeclaredCash, DeclaredDividendAction } from "../../../types/financials";
+import type { DeclaredCash, DeclaredDividendAction, TickerFinancials } from "../../../types/financials";
+import { logFailure } from "../../../utils/log-failure";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
-export const INCOMPLETE_DIVIDEND_HISTORY = "Incomplete cash history; totals unavailable.";
+
+/** ` (last tried 2026-10-27 15:38 UTC)`, or nothing when the time is not known. */
+function lastTried(at: string | undefined): string {
+  const time = at ? Date.parse(at) : Number.NaN;
+  if (!Number.isFinite(time)) return "";
+  const iso = new Date(time).toISOString();
+  return ` (last tried ${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC)`;
+}
+
+/** A read with some cash rows, but not all of them usable. */
+function incompleteDividendHistory(triedAt?: string): string {
+  return `Incomplete cash history${lastTried(triedAt)}; totals unavailable.`;
+}
+/** A read with no cash rows at all: nothing is incomplete, there is nothing. */
+function unavailableDividendHistory(triedAt?: string): string {
+  return `Cash history unavailable${lastTried(triedAt)}; no payments, totals or growth.`;
+}
+/** A read without its summary; `forward` when another source still gave the forward rate. */
+function unavailableDividendSummary(triedAt?: string, { forward = false } = {}): string {
+  return `Dividend summary unavailable${lastTried(triedAt)}; no ${forward ? "payout ratio or pay date" : "forward rate, payout ratio or pay date"}.`;
+}
+export const INCOMPLETE_DIVIDEND_HISTORY = incompleteDividendHistory();
 export const MISSING_DIVIDEND_CURRENCY = "Dividend currency is unavailable; cash amounts cannot be compared safely.";
-export const UNAVAILABLE_DIVIDEND_SUMMARY = "Dividend summary unavailable.";
+export const UNAVAILABLE_DIVIDEND_SUMMARY = unavailableDividendSummary();
 export const INVALID_DIVIDEND_SUMMARY_DATE = "Invalid dividend summary date.";
+
+/** The forward rate a listing's fundamentals state: the annual rate, in the major unit of `currency`, and the ex-date it annualizes. */
+interface StatedForwardRate {
+  rate: number;
+  exDate: string;
+  currency: string;
+}
+
+/**
+ * The forward rate fundamentals state for a listing (DUK's 4.34, declared,
+ * ex 2026-11-13), in its quote's currency; null when its yield is not a
+ * forward one or the rate, its ex-date or the currency is missing.
+ */
+export function statedForwardRate(financials: Pick<TickerFinancials, "fundamentals" | "quote"> | null | undefined): StatedForwardRate | null {
+  const fundamentals = financials?.fundamentals;
+  const currency = resolveCurrencyUnit(financials?.quote?.currency).currency;
+  const rate = fundamentals?.dividendRate;
+  const exDate = fundamentals?.exDividendDate;
+  if (fundamentals?.dividendYieldBasis !== "forward" || !currency || typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0
+    || !exDate || !/^\d{4}-\d{2}-\d{2}$/.test(exDate)) return null;
+  return { rate, exDate, currency };
+}
+
+/** A summary holding only a stated forward rate, dated by its ex-date, for a read whose own summary is missing. */
+function statedRateSummary(stated: StatedForwardRate): QuoteSummaryDividendFields {
+  return {
+    trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null, dividendDate: null,
+    forwardAnnualDividendRate: stated.rate, forwardRateAsOf: stated.exDate,
+    exDividendDate: Date.parse(`${stated.exDate}T00:00:00Z`) / 1000, currency: stated.currency,
+  };
+}
+
+interface DividendReadOptions {
+  /** The forward rate fundamentals state (statedForwardRate), asked only when the summary is missing. */
+  loadStatedForwardRate?: () => Promise<StatedForwardRate | null> | StatedForwardRate | null;
+}
 
 let connectionHealth: ConnectionHealthRegistry | null = null;
 
@@ -79,6 +137,8 @@ export interface DividendData {
   historyError?: string;
   /** Independent summary failures do not invalidate usable cash history. */
   summaryError?: string;
+  /** Set when the summary was missing and the forward rate is the one fundamentals state (statedForwardRate). */
+  forwardFromFundamentals?: boolean;
   notes?: string[];
   providerId?: string;
   /** Source fetch time, not the last ex-date or this pane's cache-read time. */
@@ -93,21 +153,28 @@ export async function fetchDividendData(
   currentPrice: number | null,
   exchange = "",
   currentPriceCurrency?: string,
+  options: DividendReadOptions = {},
 ): Promise<DividendData> {
   const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
   if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
-  const { actions: sourceActions, quote: rawQuote, summary: quoteFields } = response.data;
+  const { actions: sourceActions, quote: rawQuote, summary, triedAt } = response.data;
   // In the major unit as the history arrives, as every other reader of it gets it.
   const actions = sourceActions ? cashInMajorUnits(sourceActions) : null;
   const quote = rawQuote ? mapQuote(rawQuote) : null;
-  const summaryError = response.data.summaryError ?? (!quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
-    : [quoteFields.exDividendDate, quoteFields.dividendDate]
+  const cashCurrency = resolveCurrencyUnit(actions?.currency).currency;
+  // Without a summary, the forward rate fundamentals state stands in, dated by the ex-date it annualizes (DUK's declared one).
+  const stated = !summary && options.loadStatedForwardRate
+    ? await Promise.resolve().then(options.loadStatedForwardRate).catch(logFailure("dividend-yield.client", "Read the stated forward rate failed", null))
+    : null;
+  const statedFields = !summary && stated && (!cashCurrency || stated.currency === cashCurrency) ? statedRateSummary(stated) : null;
+  const quoteFields = summary ?? statedFields;
+  const summaryError = !summary ? unavailableDividendSummary(triedAt, { forward: quoteFields != null })
+    : response.data.summaryError ?? ([summary.exDividendDate, summary.dividendDate]
       .some((timestamp) => timestamp != null && reportedDividendDate(timestamp) === null)
       ? INVALID_DIVIDEND_SUMMARY_DATE : undefined);
-  const cashCurrency = resolveCurrencyUnit(actions?.currency).currency;
   const summaryUnit = resolveCurrencyUnit(quoteFields?.currency);
   const currency = cashCurrency || summaryUnit.currency;
-  let historyError = response.data.historyError;
+  let historyError = !actions && response.data.historyError ? unavailableDividendHistory(triedAt) : response.data.historyError;
   if (actions && !cashCurrency) historyError = MISSING_DIVIDEND_CURRENCY;
   if (!currency && (quoteFields?.trailingAnnualDividendRate != null || quoteFields?.forwardAnnualDividendRate != null)) {
     historyError = MISSING_DIVIDEND_CURRENCY;
@@ -119,7 +186,8 @@ export async function fetchDividendData(
     return payment ? [declared ? { ...payment, declared } : payment] : [];
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
   if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== actions.dividends.length)) {
-    historyError = INCOMPLETE_DIVIDEND_HISTORY;
+    // A read with no rows is not an incomplete one.
+    historyError = actions.dividends.length === 0 ? unavailableDividendHistory(triedAt) : incompleteDividendHistory(triedAt);
   }
   const suppliedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency);
   // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
@@ -138,6 +206,7 @@ export async function fetchDividendData(
     payments, ...(declared.length > 0 ? { declared } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
+    ...(statedFields && metrics.forwardRate != null ? { forwardFromFundamentals: true } : {}),
     // A history standing in for a refresh that could not read it is dated by its own read.
     providerId: actions?.providerId ?? "gloom", fetchedAt: actions?.dividendsAsOf ?? actions?.fetchedAt,
     stale: response.stale === true || response.data.stale === true || actions?.stale === true,
