@@ -19,7 +19,6 @@ function load() {
   const user32 = dlopen("user32.dll", {
     SetProcessDpiAwarenessContext: { args: [FFIType.i64], returns: FFIType.bool },
     EnumWindows: { args: [FFIType.function, FFIType.i64], returns: FFIType.bool },
-    EnumChildWindows: { args: [FFIType.ptr, FFIType.function, FFIType.i64], returns: FFIType.bool },
     GetWindowTextW: { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
     GetClassNameW: { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
     GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
@@ -39,7 +38,6 @@ function load() {
     WindowFromPoint: { args: [FFIType.i64], returns: FFIType.ptr },
     SendMessageTimeoutW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.i64 },
     SendInput: { args: [FFIType.u32, FFIType.ptr, FFIType.i32], returns: FFIType.u32 },
-    GetCursorPos: { args: [FFIType.ptr], returns: FFIType.bool },
     GetCursorInfo: { args: [FFIType.ptr], returns: FFIType.bool },
     LoadCursorW: { args: [FFIType.u64, FFIType.u64], returns: FFIType.u64 },
     GetSystemMetrics: { args: [FFIType.i32], returns: FFIType.i32 },
@@ -119,20 +117,6 @@ export function topLevelWindows(): WindowInfo[] {
   }, { args: [FFIType.ptr, FFIType.i64], returns: FFIType.i32 });
   try {
     user32.EnumWindows(callback.ptr as never, 0);
-  } finally {
-    callback.close();
-  }
-  return handles.map(windowInfo);
-}
-
-export function childWindows(parent: Hwnd): WindowInfo[] {
-  const handles: Hwnd[] = [];
-  const callback = new JSCallback((hwnd: number) => {
-    handles.push(hwnd);
-    return 1;
-  }, { args: [FFIType.ptr, FFIType.i64], returns: FFIType.i32 });
-  try {
-    user32.EnumChildWindows(parent as never, callback.ptr as never, 0);
   } finally {
     callback.close();
   }
@@ -240,12 +224,6 @@ export function windowDpi(hwnd: Hwnd): { dpi: number; awareness: string } {
   return { dpi: user32.GetDpiForWindow(hwnd as never), awareness: AWARENESS[awareness] ?? `unknown (${awareness})` };
 }
 
-export function cursorPosition(): Point {
-  const buffer = new Int32Array(2);
-  user32.GetCursorPos(ptr(buffer));
-  return { x: buffer[0]!, y: buffer[1]! };
-}
-
 const CURSOR_NAMES: Array<[string, number]> = [
   ["arrow", 32512], ["text", 32513], ["wait", 32514], ["crosshair", 32515],
   ["resize-nwse", 32642], ["resize-nesw", 32643], ["resize-ew", 32644], ["resize-ns", 32645],
@@ -339,11 +317,11 @@ export function moveMouse(point: Point): void {
   mouseInput(0, point);
 }
 
-export function mouseDown(): void {
+function mouseDown(): void {
   mouseInput(MOUSEEVENTF_LEFTDOWN);
 }
 
-export function mouseUp(): void {
+function mouseUp(): void {
   mouseInput(MOUSEEVENTF_LEFTUP);
 }
 
@@ -401,11 +379,6 @@ export const VK = {
   left: 0x25, up: 0x26, right: 0x27, down: 0x28, win: 0x5b,
 } as const;
 
-/** Lets a key up, whether or not it was down. */
-export function keyDown(code: number): void {
-  keyInput(code, false);
-}
-
 /**
  * Presses a chord as a person does: the modifiers go down first and come up
  * `holdModifiersMs` after the key, often after what the chord opened has
@@ -427,6 +400,7 @@ export async function pressChord(modifiers: number[], key: string, holdModifiers
   }
 }
 
+/** Lets a key up, whether or not it was down. */
 export function keyUp(code: number): void {
   keyInput(code, true);
 }
