@@ -176,3 +176,105 @@ test("a shipped item takes no vote, and a refused vote is said on its row", asyn
   expect(row).toContain("Pro only");
   expect(row).not.toContain("✓");
 });
+
+/** A session the test switches: who is signed in, and the listeners told when that changes. */
+function switchableSession(first: ReturnType<typeof apiClient.getCurrentUser>) {
+  let current = first;
+  const listeners = new Set<() => void>();
+  const userSpy = spyOn(apiClient, "getCurrentUser").mockImplementation(() => current);
+  const subscribeSpy = spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  });
+  return {
+    restore: () => { userSpy.mockRestore(); subscribeSpy.mockRestore(); },
+    async become(next: ReturnType<typeof apiClient.getCurrentUser>) {
+      await act(async () => {
+        current = next;
+        for (const listener of listeners) listener();
+      });
+      await settle();
+      return tui.frame();
+    },
+  };
+}
+
+const proUser = (id: string) => ({ id, emailVerified: true, plan: "pro", effectivePlan: "pro" }) as ReturnType<typeof apiClient.getCurrentUser>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+const VOTED_CHAT = ITEMS.map((entry) => (entry.id === "chat" ? { ...entry, votes: 8, voted: true } : entry));
+const chatRow = (frame: string) => frame.split("\n").find((line) => line.includes("Threads in chat"));
+
+test("a sign-out or another account drops the last account's list at once, and a failed read does not bring it back", async () => {
+  const session = switchableSession(proUser("pro-a"));
+  try {
+    const reads: Array<ReturnType<typeof deferred<RoadmapPayload>>> = [];
+    const roadmap: RoadmapClient = {
+      getRoadmap: () => { const read = deferred<RoadmapPayload>(); reads.push(read); return read.promise; },
+      setRoadmapVote: async () => { throw new Error("not in this test"); },
+    };
+    await render(roadmap);
+    await act(async () => { reads[0]!.resolve({ items: VOTED_CHAT, canVote: true }); });
+    await settle();
+    let frame = tui.frame();
+    expect(chatRow(frame)).toMatch(/✓ 8\b/);
+    expect(frame).toMatch(/\[v\] unvote/);
+
+    // Signed out: the read is on its way, and nothing of the Pro account shows.
+    frame = await session.become(null);
+    expect(reads).toHaveLength(2);
+    expect(frame).toContain("Loading Roadmap");
+    expect(frame).not.toContain("Threads in chat");
+    expect(frame).not.toContain("✓");
+    expect(frame).not.toMatch(/\[v\]/);
+    await act(async () => { reads[1]!.resolve({ items: ITEMS, canVote: false }); });
+    await settle();
+    frame = tui.frame();
+    expect(chatRow(frame)).toMatch(/\b7\b/);
+    expect(frame).not.toContain("✓");
+    expect(frame).toContain("Pro members vote");
+
+    // Another account whose read fails: the failure, not the list before it.
+    frame = await session.become(proUser("pro-b"));
+    await act(async () => { reads[2]!.reject(new Error("Network is unreachable")); });
+    await settle();
+    frame = tui.frame();
+    expect(frame).toContain("Roadmap unavailable.");
+    expect(frame).not.toContain("Threads in chat");
+    expect(frame).not.toContain("Pro members vote");
+    expect(frame).not.toMatch(/\[v\]/);
+  } finally {
+    session.restore();
+  }
+});
+
+test("a vote still on its way when the account changes leaves the next account's list alone", async () => {
+  const session = switchableSession(proUser("pro-a"));
+  try {
+    const answer = deferred<{ id: string; votes: number; voted: boolean }>();
+    const votes: Array<[string, boolean]> = [];
+    const roadmap: RoadmapClient = {
+      getRoadmap: async () => ({ items: structuredClone(ITEMS), canVote: apiClient.getCurrentUser()?.id === "pro-a" }),
+      setRoadmapVote: (id, voted) => { votes.push([id, voted]); return answer.promise; },
+    };
+    let frame = await render(roadmap);
+    frame = await press("v");
+    expect(votes).toEqual([["chat", true]]);
+    expect(chatRow(frame)).toMatch(/✓ 8\b/);
+
+    frame = await session.become(proUser("pro-b"));
+    await act(async () => { answer.resolve({ id: "chat", votes: 8, voted: true }); });
+    await settle();
+    frame = tui.frame();
+    expect(chatRow(frame)).toMatch(/\b7\b/);
+    expect(frame).not.toContain("✓");
+  } finally {
+    session.restore();
+  }
+});

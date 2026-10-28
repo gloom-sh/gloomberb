@@ -101,10 +101,15 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
   const client = useContext(RoadmapClientContext) ?? apiClient;
   const access = usePlanAccess();
-  // A sign-in, a sign-out or a new plan asks again: the votes and the right to cast one are the account's.
+  // A sign-in, a sign-out or a new plan asks again: the votes and the right to
+  // cast one are the account's. The new loader starts from no list, so the
+  // last account's marks and vote hint go at once, not when (or if) the new
+  // read lands. A refresh of the same session keeps its list.
   const sessionKey = JSON.stringify([apiClient.getCurrentUser()?.id ?? null, access.emailVerified, access.hasProAccess]);
   const loader = useCallback((_force: boolean) => client.getRoadmap(), [client, sessionKey]);
-  const resource = useAsyncResource(loader, { keepPreviousData: true });
+  const resource = useAsyncResource(loader);
+  const sessionRef = useRef(sessionKey);
+  sessionRef.current = sessionKey;
   const payload = resource.data;
   const canVote = payload?.canVote === true;
 
@@ -113,7 +118,12 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
   useEffect(() => setLocalVotes({}), [resource.updatedAt]);
   const items = useMemo(() => withLocalVotes(payload, localVotes), [payload, localVotes]);
   const rows = useMemo(() => buildSectionedRows(roadmapSections(items), itemKey), [items]);
-  const { noteFor, setNote } = useRowNotes<RoadmapItem, VoteFailure>(items, { key: itemKey, signature: voteSignature });
+  const { noteFor, setNote, clearNotes } = useRowNotes<RoadmapItem, VoteFailure>(items, { key: itemKey, signature: voteSignature });
+  // Another account's votes and refusals are not this one's.
+  useEffect(() => {
+    setLocalVotes({});
+    clearNotes();
+  }, [sessionKey, clearNotes]);
 
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedItemId", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("openItemId", null);
@@ -130,13 +140,17 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
   const toggleVote = useCallback(async (item: RoadmapItem) => {
     if (!canVote || !isVotable(item) || inFlight.current.has(item.id)) return;
     const voted = !item.voted;
+    const session = sessionRef.current;
     inFlight.current.add(item.id);
     setNote(item.id, null);
     setLocalVotes((current) => ({ ...current, [item.id]: optimisticVote(item, voted) }));
     try {
       const answer = await client.setRoadmapVote(item.id, voted);
+      // An answer for the account that just left changes nothing on screen.
+      if (sessionRef.current !== session) return;
       setLocalVotes((current) => ({ ...current, [item.id]: answer }));
     } catch (error) {
+      if (sessionRef.current !== session) return;
       setLocalVotes((current) => ({ ...current, [item.id]: { id: item.id, votes: item.votes, voted: item.voted } }));
       setNote(item.id, voteFailure(error, voted));
     } finally {
