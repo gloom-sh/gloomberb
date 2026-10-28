@@ -59,6 +59,22 @@ test("--tab events lists the event alerts the Events tab shows, with their dates
   expect((await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "prices" } }), contextWith([], []))).notes).toBeUndefined();
 });
 
+test("signed out, an event alert only a signed-in account gets checked reads Needs sign-in, with one line on signing in", async () => {
+  const filing = createResearchAlert("filing_type", { "filing_type:symbol": "WHR", "filing_type:exchange": "US", "filing_type:form": "8-K" });
+  const cpi = createScheduledAlert({ kind: "macro", event: "cpi" }, 1, "2026-11-10", Date.UTC(2026, 9, 17));
+  const ctx = contextWith([], [filing, cpi]);
+  const signedOut = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }), ctx);
+  // The app reads a CPI date itself, signed in or not.
+  expect(signedOut.rows.map((row) => [row.following, row.state])).toEqual([["WHR · 8-K", "Needs sign-in"], ["CPI release", "Active"]]);
+  expect(signedOut.notes).toEqual([expect.stringMatching(/^1 event alert needs sign-in: .*Log In or Sign Up\)\.$/)]);
+
+  const signedIn = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }), {
+    ...ctx, apiClient: { getSessionToken: () => "session-token" } as unknown as HeadlessPaneApiClient,
+  });
+  expect(signedIn.rows.map((row) => row.state)).toEqual(["Active", "Active"]);
+  expect(signedIn.notes).toBeUndefined();
+});
+
 test("a saved event list that does not read is reported, not shown as no alerts", async () => {
   const ctx = contextWith([], []);
   ctx.config.pluginConfig[ALERTS_PLUGIN_ID]![EVENT_ALERTS_KEY] = "{";

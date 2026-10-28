@@ -160,7 +160,7 @@ async function answerCompanyName(
     if (error instanceof ListingArgError) return null;
     throw error;
   });
-  const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} } : null;
+  const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {} } : null;
   const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
   if (found && quoted?.quote) return answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis });
   if (!unsettled) return null;

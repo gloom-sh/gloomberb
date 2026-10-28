@@ -28,27 +28,34 @@ import {
 } from "./model";
 
 /**
- * A completed auction's missing bid-to-cover or bidder split is a blank cell:
- * the source has bid-to-cover regularly from late 1999 and the split only from
- * 2008-04-07. "-" stays for an announced auction whose results are not out yet.
+ * A missing bid-to-cover or bidder split is a blank cell: the source has
+ * bid-to-cover regularly from late 1999 and the split only from 2008-04-07,
+ * and an announced auction has no results to fill them; its Rate says so.
  */
-const missing = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction) ? "-" : "";
-const formatPercent = (value: unknown, row: Record<string, unknown>) => value == null ? missing(row) : `${Number(value).toFixed(1)}%`;
+const formatPercent = (value: unknown) => value == null ? "" : `${Number(value).toFixed(1)}%`;
+
+/** What an announced auction's Rate reads until the source publishes its results. */
+const RESULTS_NOT_PUBLISHED = "results not published";
+const pending = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction);
 
 /** Why the stop-out column is not a tail; the docs page says the same at length. */
 const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
 
 const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction: "
-  + "bid-to-cover is regular from late 1999, the indirect, direct and dealer split from 2008-04-07. - is a result not out yet.";
+  + "bid-to-cover is regular from late 1999, the indirect, direct and dealer split from 2008-04-07.";
 
 /** A completed auction the source gives no bid-to-cover or no bidder split for. */
 const lacksMetrics = (auction: TreasuryAuction) => !isPendingAuction(auction)
   && (auction.bidToCoverRatio == null || indirectPct(auction) == null || directPct(auction) == null || dealerPct(auction) == null);
 
-/** The rate as the table prints it; a TIPS or FRN row says what its number is (`2.653% real`, `4.0bp spread`). */
+/**
+ * The rate as the table prints it; a TIPS or FRN row says what its number is
+ * (`2.653% real`, `4.0bp spread`), and an announced auction that its results
+ * are not published yet.
+ */
 const rateCell = (value: unknown, row: Record<string, unknown>) => {
-  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-");
+  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : "-");
   const qualifier = value == null ? null : rateQualifier(row as unknown as TreasuryAuction);
   return qualifier ? `${text} ${qualifier}` : text;
 };
@@ -61,14 +68,16 @@ const COLUMNS = [
     key: "rate",
     header: "Rate",
     align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-"),
+    format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(
+      row as unknown as TreasuryAuction, value == null ? null : Number(value), pending(row) ? RESULTS_NOT_PUBLISHED : "-",
+    ),
     textFormat: rateCell,
   },
-  { key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(1) },
   {
-    key: "bidToCoverRatio", header: "B/C", align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => value == null ? missing(row) : Number(value).toFixed(2),
+    key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : Number(value).toFixed(1),
   },
+  { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2) },
   { key: "indirectPercent", header: "Indirect", align: "right" as const, format: formatPercent },
   { key: "directPercent", header: "Direct", align: "right" as const, format: formatPercent },
   { key: "dealerPercent", header: "Dealer", align: "right" as const, format: formatPercent },

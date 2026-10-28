@@ -843,6 +843,8 @@ gloom alerts add congress                  # your portfolio and watchlist; congr
 gloom alerts add 13f 1067983               # a fund by its SEC CIK
 ```
 
+These rules, except an IV level and an earnings, CPI, FOMC or calendar date, are checked only for a signed-in account. One added while signed out is saved and reads `needs sign-in` in `gloom alerts list` and its CSV and **Needs sign-in** in **Events** and `fn ALRT --tab events`, with one line on how to sign in, until a session is saved.
+
 A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere. `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:

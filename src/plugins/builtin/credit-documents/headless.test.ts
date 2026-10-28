@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CreditDocumentsPayload, CreditFact, CreditInstrument, CreditScreenPayload } from "../../../api-client/credit-documents";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneContext } from "../../../types/plugin";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import fixture from "./fico.fixture.json";
 import { creditHeadless } from "./headless";
 import { creditCoupon } from "./model";
@@ -92,6 +93,15 @@ describe("credit-document exports", () => {
     docs.access = "preview";
     const preview = (await load({}, docs)).sections.find((section) => section.title === "Maturity wall") as Extract<HeadlessBundleSection, { rows: unknown[] }>;
     expect(preview.columns!.map((column) => column.key)).not.toContain("share");
+  });
+
+  test("an issuer the set does not cover reads as one line, not the reason and a generic not-covered line", async () => {
+    const docs = { ...payload(), symbol: "WHR", issuer: null, instruments: [], covenants: [], maturities: [], changeOfControl: [], lockedRows: 0, warnings: [] };
+    const report = await load({}, docs);
+    const text = renderHeadlessPaneText(creditHeadless, report, { rawArgument: "WHR", argument: "WHR", symbols: ["WHR"], options: {} }, "CRDOC");
+    expect(text.split("\n").filter((line) => /WHR/.test(line) && /not (an issuer|covered)/.test(line))).toEqual([
+      "No credit documents on file for WHR: it is not an issuer the credit-document set covers. Try `gloom fn CRDOC FICO` for an issuer with documents.",
+    ]);
   });
 
   test("the screen lists its signals by the pane's columns, evidence stays behind --instrument", async () => {

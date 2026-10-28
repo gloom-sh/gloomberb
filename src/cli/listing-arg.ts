@@ -17,7 +17,7 @@ import {
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
-import { loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
+import { lineMayHaveMoved, loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
 import { groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
@@ -107,6 +107,12 @@ export interface ListingArg {
    * `readAs` asks about it, and a command the listing fails asks too.
    */
   meant?: { symbol: string; name: string };
+  /**
+   * A bare symbol a company's name was read as still says what it was read
+   * as (`listingChoiceNotes`): GETYQ for "getty images", whose NYSE line
+   * became GETYQ. Other bare symbols say where the data service chose instead.
+   */
+  readFromName?: true;
 }
 
 /** "Did you mean JPM (JPMorgan Chase & Co.)?", for a name read as a fund or an index; empty for any other listing. */
@@ -457,7 +463,7 @@ export function coinListingNotes(
  * its warnings.
  */
 export async function listingChoiceNotes(
-  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs">,
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs" | "readFromName">,
   deps: ListingDeps,
   quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType" | "stale" | "delisting"> | null | undefined,
   /** The venues `loadBareVenues` already started; looked up here when not given. */
@@ -465,6 +471,8 @@ export async function listingChoiceNotes(
 ): Promise<string[]> {
   const coin = coinListingNotes(listing, quote);
   if (!isBareListing(listing)) return [...listingReadNotes(listing), ...coin];
+  // A bare symbol a name was read as says so: "Read "getty images" as GETYQ (...). GETY became GETYQ on 2026-10-22."
+  if (listing.readFromName) return [...listingReadNotes(listing), ...coin];
   if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return coin;
   const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
   if (!exchange) return coin;
@@ -480,7 +488,7 @@ export async function listingChoiceNotes(
  * as another listing (BTC, the Grayscale trust) ends with the coin's pair.
  */
 export async function quotedListingChoiceNotes(
-  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs">,
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs" | "readFromName">,
   deps: ListingDeps,
 ): Promise<string[]> {
   const venues = loadBareVenues(listing, deps);
@@ -1351,7 +1359,36 @@ function isMajorCoinName(word: string): boolean {
 }
 
 function findCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<CompanyNameListing | null> {
-  return findListingOfCompanyName(deps.dataProvider, typed, { meant: true, quoted: true, ...options });
+  return findListingOfCompanyName(deps.dataProvider, typed, { meant: true, quoted: true, movedLine: (listing) => movedLineOf(listing, deps), ...options });
+}
+
+/**
+ * Where the company of a US line that stopped trading, or has no quote, trades
+ * now when it moved off the symbol (`loadListingFate`): GETY became GETYQ on
+ * 2026-10-22, so "getty images" is GETYQ rather than its delisted NYSE line or
+ * the Munich line still quoting the old shares. A line that trades is not
+ * looked up.
+ */
+async function movedLineOf(
+  listing: { symbol: string; exchange: string; quote: Quote | null; name: string | null },
+  deps: Pick<ListingDeps, "dataProvider">,
+): Promise<{ symbol: string; note: string } | null> {
+  const { quote, name, ...line } = listing;
+  if (quote && !lineMayHaveMoved(quote)) return null;
+  const fate = await loadListingFate(line, deps.dataProvider, { quote });
+  const moved = fate.moved ?? (quote ? null : movedWithoutQuote(fate.change, name));
+  return moved ? { symbol: moved.tradesAs, note: moved.note } : null;
+}
+
+/**
+ * The move of a line with no quote, when it is the move of the company search
+ * names on the line. With no quote nothing tells the company's change from an
+ * older one's: a reused symbol's change data is the company that held it
+ * before, so it is followed only when that company is this one.
+ */
+function movedWithoutQuote(change: ListingFate["change"], name: string | null): MovedTickerChange | null {
+  const moved = movedAwayChange(change);
+  return moved && sameCompany(name, moved.issuer) ? moved : null;
 }
 
 async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
@@ -1360,11 +1397,16 @@ async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvi
 }
 
 function companyListingArg(typed: string, found: CompanyNameListing): ListingArg {
-  const key = `${found.symbol}:${found.exchange}`;
+  const key = found.exchange ? `${found.symbol}:${found.exchange}` : found.symbol;
   // A fund or an index carrying the name asks about the company's stock: "Did you mean JPM (JPMorgan Chase & Co.)?".
   const meant = found.meant ? { symbol: found.meant.symbol, name: found.meant.name } : null;
   const question = meant ? ` ${meantQuestion({ meant })}` : "";
-  return { ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${question}`, ...meant ? { meant } : {} };
+  // A company that moved off the line search lists says so: "GETY became GETYQ on 2026-10-22."
+  const moved = found.moved ? ` ${found.moved}.` : "";
+  return {
+    ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${moved}${question}`,
+    ...meant ? { meant } : {}, ...found.exchange ? {} : { readFromName: true as const },
+  };
 }
 
 /**
@@ -1382,7 +1424,7 @@ export async function companyNameSuggestion(typed: string, deps: Pick<ListingDep
     const found = isCompanyNameInput(words) ? await findCompanyName(words, deps).catch(busyAsMiss) : await findOneWordCompany(words, deps);
     const listing = found?.meant ?? found;
     if (!listing || listing.symbol.toUpperCase() === words.toUpperCase()) return null;
-    return { symbol: isUsListingExchange(listing.exchange) ? listing.symbol : `${listing.symbol}:${listing.exchange}`, name: listing.name };
+    return { symbol: !listing.exchange || isUsListingExchange(listing.exchange) ? listing.symbol : `${listing.symbol}:${listing.exchange}`, name: listing.name };
   } catch (error) {
     logFailure("cli.listing-arg", "Search a company name for a suggestion failed")(error);
     return null;
