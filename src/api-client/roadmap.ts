@@ -5,7 +5,7 @@ import type { CloudApiRequest } from "./request";
  * with the votes Pro members put on the first two. Anyone reads it; a signed-in
  * Pro member votes once per item and can take the vote back.
  */
-export const ROADMAP_STATUSES = ["building", "planned", "shipped"] as const;
+const ROADMAP_STATUSES = ["building", "planned", "shipped"] as const;
 export type RoadmapStatus = (typeof ROADMAP_STATUSES)[number];
 
 export interface RoadmapItem {
@@ -54,7 +54,7 @@ function parseItem(value: unknown): RoadmapItem | null {
 }
 
 /** Items it cannot read (an unknown status from a newer service) are left out, not the whole list. */
-export function parseRoadmapPayload(value: unknown): RoadmapPayload {
+function parseRoadmapPayload(value: unknown): RoadmapPayload {
   if (!isRecord(value) || !Array.isArray(value.items)) throw new Error("The roadmap service returned invalid data.");
   return {
     items: value.items.map(parseItem).filter((item): item is RoadmapItem => item !== null),
