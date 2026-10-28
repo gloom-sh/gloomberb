@@ -674,6 +674,47 @@ describe("TickerResearchPane", () => {
     expect(frame).not.toContain("Trade");
   });
 
+  // Following a cursor onto a symbol with no saved ticker leaves the pane empty
+  // for a moment, and the tabs that need no ticker are then the only ones
+  // visible. The first of them is not a tab anyone opened, so it must not stay
+  // mounted (and fetch) once the ticker arrives.
+  test("mounts only the tab on screen when a ticker arrives after an empty pane", async () => {
+    const mounted: string[] = [];
+    const probe = (id: string): TickerResearchTabDef["component"] => () => {
+      useEffect(() => {
+        mounted.push(id);
+      }, []);
+      return <text>{`${id} body`}</text>;
+    };
+    setSharedRegistryForTests({
+      tickerResearchTabs: new Map<string, TickerResearchTabDef>([
+        ["overview", { id: "overview", name: "Overview", order: 10, component: probe("overview"), isVisible: ({ ticker }) => !!ticker }],
+        ["revenue", { id: "revenue", name: "Revenue", order: 25, component: probe("revenue"), isVisible: () => true }],
+      ]),
+    } as unknown as PluginRegistry);
+    setOptionsProvider(createProvider(false));
+
+    await tui.render(
+      <DetailHarness
+        config={createDetailConfig("AAPL")}
+        ticker={createTestTicker("MSFT")}
+        financials={null}
+      />,
+      { width: 90, height: 24 },
+    );
+    await flushFrame();
+    expect(tui.frame()).toContain("No ticker selected.");
+
+    await act(async () => {
+      harnessDispatch!({ type: "UPDATE_TICKER", ticker: createTestTicker("AAPL") });
+      await Promise.resolve();
+    });
+    await flushFrame();
+
+    expect(tui.frame()).toContain("overview body");
+    expect(mounted).toEqual(["overview"]);
+  });
+
   test("opens the Chart tab from a click on the overview price chart", async () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
