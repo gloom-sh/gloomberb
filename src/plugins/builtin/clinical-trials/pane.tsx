@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   DataTableStackView,
   PaneLinkMenu,
@@ -56,7 +56,7 @@ import {
   type TrialFilters,
 } from "./model";
 import { useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
-import { looksLikeTicker, tickerCompanyName } from "../shared/ticker-company";
+import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -186,7 +186,6 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   }, [client, filtersKey, term]);
   const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true });
   const trials = studies.rows;
-  const error = studies.error?.message ?? null;
   const loadMore = useTableLoadMore(scrollRef, studies.hasMore && !openItemId, studies.loadMore);
   // Scrolling asks for the next page, so a page that does not fill a tall
   // pane asks for it once it is laid out.
@@ -229,28 +228,23 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     setOpenItemId(null);
   }, [filters, setOpenItemId, setSavedFilters, setSelectedId]);
 
-  const reload = useCallback(() => {
-    studies.reload();
-    sponsorTickers.retry();
-  }, [sponsorTickers, studies]);
   // `TRIAL VKTX`: no study names a symbol, so one that finds nothing is
   // searched as its company's name, quoted so the registry matches the whole
   // name as a sponsor files it, and the search box then shows it. Each term
   // is looked up once.
-  const [looked, setLooked] = useState<ReadonlySet<string>>(() => new Set());
-  const resolvingTicker = studies.status === "loaded" && trials.length === 0 && !studies.error
-    && looksLikeTicker(term) && !looked.has(term.toUpperCase());
-  useEffect(() => {
-    if (!resolvingTicker) return;
-    let live = true;
-    void tickerCompanyName(dataProvider, term).catch(() => null).then((name) => {
-      if (!live) return;
-      setLooked((current) => new Set([...current, term.toUpperCase()]));
-      if (name) updateQuery(`"${name}"`);
-    });
-    return () => { live = false; };
-  }, [dataProvider, resolvingTicker, term, updateQuery]);
-  const loading = (studies.loading && trials.length === 0) || resolvingTicker;
+  const companySearch = useTickerCompanySearch(dataProvider, term, {
+    eligible: studies.status === "loaded" && trials.length === 0 && !studies.error && looksLikeTicker(term),
+    key: term.toUpperCase(),
+    onCompany: (name) => updateQuery(`"${name}"`),
+  });
+  const retryCompanySearch = companySearch.retry;
+  const error = studies.error?.message ?? companySearch.error;
+  const reload = useCallback(() => {
+    retryCompanySearch();
+    studies.reload();
+    sponsorTickers.retry();
+  }, [retryCompanySearch, sponsorTickers, studies]);
+  const loading = (studies.loading && trials.length === 0) || companySearch.resolving;
   usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
 
   const detailTicker = detailTrial ? tickerOf(detailTrial) : undefined;

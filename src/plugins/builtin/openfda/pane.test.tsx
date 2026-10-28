@@ -3,6 +3,7 @@ import { act, useCallback, useMemo, useState } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createProviderMiss, ProviderBusyError } from "../../../sources/provider-errors";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -12,7 +13,10 @@ import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
 const tui = createOpenTuiTestHarness();
 const PANE = "fda:test";
 
-afterEach(() => setHttpFetchTransport(null));
+afterEach(() => {
+  setHttpFetchTransport(null);
+  quoteBusy = false;
+});
 
 const VACCINE_REPORT = {
   safetyreportid: "30000001",
@@ -25,11 +29,14 @@ const VACCINE_REPORT = {
 };
 
 const asked: string[] = [];
+let quoteBusy = false;
 const provider = createTestDataProvider({
   getQuote: async (symbol: string) => {
     asked.push(symbol);
+    if (quoteBusy) throw new ProviderBusyError();
     if (symbol === "CAT") return createTestQuote({ symbol, name: "Caterpillar Inc.", instrumentType: "EQUITY" });
-    if (symbol !== "AZN") throw new Error(`No quote for ${symbol}`);
+    // What the router says when no listing trades under a symbol.
+    if (symbol !== "AZN") throw createProviderMiss(`Not a ticker: ${symbol}.`, undefined, { notFound: true });
     return createTestQuote({ symbol, name: "AstraZeneca PLC", instrumentType: "EQUITY" });
   },
 });
@@ -80,4 +87,27 @@ test("a ticker that matches nothing is searched as its company's name; a term th
   expect(tui.frame()).toContain("No drug reports match ZZZZ.");
   expect(tui.frame()).toContain("Try the drug's brand or generic name");
   expect(tui.frame()).not.toContain("Press /");
+});
+
+// A quote that could not be read is no answer: the pane says so instead of reporting that nothing matches AZN, and asks again on refresh.
+test("a ticker whose company could not be looked up shows the failure, and a refresh looks again", async () => {
+  const searched: string[] = [];
+  setHttpFetchTransport(async (url) => {
+    const search = new URL(url).searchParams.get("search") ?? "";
+    searched.push(search);
+    return /AstraZeneca/i.test(search)
+      ? new Response(JSON.stringify({ meta: { results: { skip: 0, limit: 50, total: 1 } }, results: [VACCINE_REPORT] }), { status: 200 })
+      : new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 });
+  });
+  quoteBusy = true;
+  await act(async () => { await tui.render(<Harness query="AZN" />, { width: 110, height: 10 }); });
+  await settleFrame(tui.setup(), 12);
+  expect(tui.frame()).toContain("Couldn't look up AZN's company.");
+  expect(tui.frame()).not.toContain("No drug reports match AZN.");
+
+  quoteBusy = false;
+  await act(async () => { tui.setup().mockInput.pressKey("r"); });
+  await settleFrame(tui.setup(), 12);
+  expect(tui.frame()).toContain("ASTRAZENECA COVID-19 VACCINE");
+  expect(searched.some((search) => /AstraZeneca/.test(search))).toBe(true);
 });
