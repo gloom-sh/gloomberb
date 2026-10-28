@@ -346,12 +346,11 @@ function deadStrips(bitmap: Bitmap, strip = 10): { right: number; bottom: number
   return { right: rightTotal ? right / rightTotal : 0, bottom: bottomTotal ? bottom / bottomTotal : 0 };
 }
 
+/** Distinct colors on a fine grid: a line of text in an empty pane counts. */
 function distinctColors(bitmap: Bitmap): number {
   const colors = new Set<number>();
-  const stepX = Math.max(1, Math.floor(bitmap.width / 64));
-  const stepY = Math.max(1, Math.floor(bitmap.height / 48));
-  for (let y = 0; y < bitmap.height; y += stepY) {
-    for (let x = 0; x < bitmap.width; x += stepX) {
+  for (let y = 0; y < bitmap.height; y += 2) {
+    for (let x = 0; x < bitmap.width; x += 2) {
       const offset = (y * bitmap.width + x) * 4;
       colors.add((bitmap.data[offset]! << 16) | (bitmap.data[offset + 1]! << 8) | bitmap.data[offset + 2]!);
     }
@@ -418,7 +417,9 @@ class Run {
     return win.topLevelWindows().filter((info) => info.visible && info.className === "BasicWindowClass" && !this.knownWindows.has(info.hwnd));
   }
 
-  async launch(profile: string): Promise<void> {
+  async launch(profile: string, timeoutMs = 120_000): Promise<void> {
+    // A key left down by an earlier step or run would change what clicks do.
+    for (const key of [win.VK.control, win.VK.shift, win.VK.alt, win.VK.win]) win.keyUp(key);
     for (const info of win.topLevelWindows()) this.knownWindows.add(info.hwnd);
     const bin = join(this.app, "bin");
     this.launcher = Bun.spawn([join(bin, "launcher.exe")], {
@@ -434,7 +435,8 @@ class Run {
       stderr: Bun.file(join(this.out, `app-stderr-${this.launches}.log`)),
     });
     // The main window's page lays out its panes; the popped-out window follows.
-    const deadline = Date.now() + 120_000;
+    const deadline = Date.now() + timeoutMs;
+    const launcher = this.launcher;
     const pages = new Map<string, Page>();
     let mainPage: Page | null = null;
     let detachedPage: Page | null = null;
@@ -454,11 +456,13 @@ class Run {
       if (mainPage && !mainReadyAt) mainReadyAt = Date.now();
       const windows = this.appWindows();
       if (mainPage && windows.length >= 1 && (detachedPage && windows.length >= 2 || Date.now() - mainReadyAt > 30_000)) break;
+      if (launcher.exitCode !== null) break;
       await sleep(500);
     }
     const windows = this.appWindows();
     if (!mainPage || !windows.length) {
-      throw new Error(`The app opened ${windows.length} window(s) and ${pages.size} page(s) in 120 s, ${mainPage ? "with" : "without"} the main layout: ${windows.map((info) => info.title).join(", ")}`);
+      const how = launcher.exitCode !== null ? `exited with code ${launcher.exitCode} after` : "in";
+      throw new Error(`The app ${how} ${Math.round((Date.now() - deadline + timeoutMs) / 1000)} s with ${windows.length} window(s) and ${pages.size} page(s), ${mainPage ? "with" : "without"} the main layout`);
     }
     const mainInfo = windows.find((info) => info.title === "Gloom") ?? windows[0]!;
     const detachedInfo = windows.find((info) => info.hwnd !== mainInfo.hwnd) ?? null;
@@ -596,11 +600,19 @@ class Run {
       problems.push(`the status bar ends at ${Math.round(layout.status.y + layout.status.height)}, the window at ${Math.round(cssHeight)}`);
     }
     if (!win.isMinimized(window.hwnd)) {
-      const bitmap = win.captureScreen(client);
-      const strips = deadStrips(bitmap);
-      if (strips.right > 0.6) problems.push(`${Math.round(strips.right * 100)}% of the right edge is flat black or white`);
-      if (strips.bottom > 0.6) problems.push(`${Math.round(strips.bottom * 100)}% of the bottom edge is flat black or white`);
-      if (distinctColors(bitmap) < 6) problems.push("the window is blank");
+      // Only what is on screen: off it, the capture is black whatever the app drew.
+      const screen = win.monitorOf(window.hwnd).monitor;
+      const visible = {
+        left: Math.max(client.left, screen.left), top: Math.max(client.top, screen.top),
+        right: Math.min(client.right, screen.right), bottom: Math.min(client.bottom, screen.bottom),
+      };
+      if (visible.right - visible.left > 20 && visible.bottom - visible.top > 20) {
+        const bitmap = win.captureScreen(visible);
+        const strips = deadStrips(bitmap);
+        if (visible.right === client.right && strips.right > 0.6) problems.push(`${Math.round(strips.right * 100)}% of the right edge is flat black or white`);
+        if (visible.bottom === client.bottom && strips.bottom > 0.6) problems.push(`${Math.round(strips.bottom * 100)}% of the bottom edge is flat black or white`);
+        if (distinctColors(bitmap) < 6) problems.push("the window is blank");
+      }
       const shot = this.shots.take(label, client);
       if (shot) shots.push(shot);
     }
@@ -1091,18 +1103,29 @@ class Run {
         if (desktop) shots.push(desktop);
         return { status: "fail", detail: "no new window opened" };
       }
-      await sleep(3_000);
-      const rect = win.clientRect(opened.hwnd);
-      const bitmap = win.captureScreen(rect);
-      const colors = distinctColors(bitmap);
-      const shot = this.shots.take("pop-out-window", win.windowRect(opened.hwnd));
+      // A new window paints its page once that has loaded.
+      const openedAt = Date.now();
+      let colors = 0;
+      while (Date.now() - openedAt < 20_000) {
+        await sleep(500);
+        try { colors = distinctColors(win.captureScreen(win.clientRect(opened.hwnd))); } catch { colors = 0; }
+        if (colors >= 6) break;
+      }
+      const painted = colors >= 6 ? `painted after ${((Date.now() - openedAt) / 1000).toFixed(1)} s` : "still blank after 20 s";
+      const rect = win.windowRect(opened.hwnd);
+      const mainRect = win.windowRect(main.hwnd);
+      const overMain = rect.left < mainRect.right && rect.right > mainRect.left && rect.top < mainRect.bottom && rect.bottom > mainRect.top;
+      const shot = this.shots.take("pop-out-window", rect);
       if (shot) shots.push(shot);
       const desktop = this.shots.desktop("pop-out-desktop");
       if (desktop) shots.push(desktop);
       // Out of the way of the steps after.
       this.knownWindows.add(opened.hwnd);
       win.showWindow(opened.hwnd, "minimize");
-      return { status: colors >= 6 ? "pass" : "fail", detail: `opened "${opened.title}" at ${fmt(win.windowRect(opened.hwnd))}${colors >= 6 ? "" : ", blank"}` };
+      return {
+        status: colors >= 6 ? "pass" : "fail",
+        detail: `opened "${opened.title}" at ${fmt(rect)}, ${overMain ? "over" : "away from"} the main window at ${fmt(mainRect)}; ${painted}`,
+      };
     });
   }
 
@@ -1134,7 +1157,10 @@ class Run {
       if (!win.isWindow(detached.hwnd)) {
         return { status: "fail", detail: `the popped-out window docked back into the main window, whose top is ${mainRect.top - work.top - 6} px below where its title bar was dropped` };
       }
-      return { status: "pass", detail: `still its own window at ${fmt(win.windowRect(detached.hwnd))}; the main window is at ${fmt(mainRect)}` };
+      const detail = `still its own window at ${fmt(win.windowRect(detached.hwnd))}; the main window is at ${fmt(mainRect)}`;
+      // Out of the way of the main window's title bar for the steps after.
+      await this.place(detached, this.detachedRect);
+      return { status: "pass", detail };
     });
   }
 
@@ -1152,11 +1178,14 @@ class Run {
       const deadline = Date.now() + 15_000;
       while (win.isWindow(this.main.hwnd) && Date.now() < deadline) await sleep(300);
       if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: "the Close button did not close the app" };
-      await sleep(1_500);
+      const closedAt = Date.now();
       this.pastErrors.push(...this.main.page.errors);
-      const saved = await readFile(join(this.profile, "desktop-window.json"), "utf8").catch(() => "(none)");
       for (const window of [this.main, this.detached]) window?.page.cdp.close();
-      this.launcher?.kill();
+      // Opening the app again only works once the last one has exited.
+      const exited = await Promise.race([this.launcher!.exited.then(() => true), sleep(90_000).then(() => false)]);
+      const exitDetail = exited ? `exited ${((Date.now() - closedAt) / 1000).toFixed(1)} s after its window closed` : "still running 90 s after its window closed";
+      if (!exited) Bun.spawnSync(["taskkill", "/PID", String(this.launcher!.pid), "/T", "/F"]);
+      const saved = await readFile(join(this.profile, "desktop-window.json"), "utf8").catch(() => "(none)");
       this.launches += 1;
       await this.launch(this.profile);
       await sleep(1_000);
@@ -1166,7 +1195,49 @@ class Run {
       const same = (["left", "top", "right", "bottom"] as const).every((side) => near(reopened[side], moved[side], 4));
       return {
         status: same ? "pass" : "fail",
-        detail: `moved to ${fmt(moved)}, closed with its button, reopened at ${fmt(reopened)}; it saved ${saved.trim()}`,
+        detail: `moved to ${fmt(moved)}, closed with its button, reopened at ${fmt(reopened)}; the app ${exitDetail}; it saved ${saved.trim()}`,
+      };
+    });
+  }
+
+  /** Closes the app with its button and opens it again two seconds later, as someone restarting it does. */
+  async reopenRightAway(): Promise<void> {
+    await this.step("reopen-right-away", "Close with the window button and open again two seconds later", async (shots) => {
+      await this.reset(this.main, this.baseRect);
+      await this.clickControl(this.main, "close");
+      const deadline = Date.now() + 15_000;
+      while (win.isWindow(this.main.hwnd) && Date.now() < deadline) await sleep(200);
+      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: "the Close button did not close the app" };
+      for (const window of [this.main, this.detached]) window?.page.cdp.close();
+      const previous = this.launcher!;
+      await sleep(2_000);
+      const stillRunning = previous.exitCode === null;
+      this.launches += 1;
+      let opened = true;
+      let failure = "";
+      try {
+        await this.launch(this.profile, 45_000);
+      } catch (error) {
+        opened = false;
+        failure = error instanceof Error ? error.message : String(error);
+      }
+      const desktop = this.shots.desktop("reopened-right-away");
+      if (desktop) shots.push(desktop);
+      const log = await readFile(join(this.out, `app-stdout-${this.launches}.log`), "utf8").catch(() => "");
+      const crashLog = await readFile(join(this.out, `app-stderr-${this.launches}.log`), "utf8").catch(() => "");
+      const signs = [
+        log.includes("Failed to initialize CEF") ? "CEF failed to start" : "",
+        log.includes("Opening in existing browser session") ? "Chromium handed off to the closing app" : "",
+        /panic|Segmentation fault/.test(crashLog) ? "the new app crashed" : "",
+      ].filter(Boolean);
+      if (!opened) {
+        await this.close();
+        const exited = await Promise.race([previous.exited.then(() => true), sleep(60_000).then(() => false)]);
+        if (!exited) Bun.spawnSync(["taskkill", "/PID", String(previous.pid), "/T", "/F"]);
+      }
+      return {
+        status: opened ? "pass" : "fail",
+        detail: `the closed app was ${stillRunning ? "still running" : "gone"} 2 s after its window closed; ${opened ? "the app opened again" : `no window: ${failure.slice(0, 160)}`}${signs.length ? `; ${signs.join(", ")}` : ""}`,
       };
     });
   }
@@ -1180,7 +1251,7 @@ class Run {
       if (!point) return { status: "fail", detail: "no bare spot on the title bar" };
       const before = win.visibleRect(window.hwnd);
       const from = this.toScreen(window, point);
-      const delta = { x: 90, y: 70 };
+      const delta = { x: -90, y: 70 };
       let during: Rect | null = null;
       await win.drag(from, { x: from.x + delta.x, y: from.y + delta.y }, {
         whileHeld: async () => { during = win.visibleRect(window.hwnd); },
@@ -1227,6 +1298,8 @@ class Run {
     this.pastErrors.push(...await this.pageErrors());
     for (const window of [this.main, this.detached]) window?.page.cdp.close();
     const pids = new Set(win.topLevelWindows().filter((info) => info.className === "BasicWindowClass" && (!this.knownWindows.has(info.hwnd) || info.hwnd === this.main?.hwnd || info.hwnd === this.detached?.hwnd)).map((info) => info.pid));
+    // The launcher's tree holds the app's Bun process even once its windows are gone.
+    Bun.spawnSync(["taskkill", "/PID", String(this.launcher.pid), "/T", "/F"]);
     this.launcher.kill();
     for (const pid of pids) Bun.spawnSync(["taskkill", "/PID", String(pid), "/T", "/F"]);
     this.launcher = null;
@@ -1294,6 +1367,8 @@ async function run(): Promise<void> {
     await runner.windowSteps(runner.main, "main", runner.baseRect);
     await runner.paneSteps();
     await runner.finish();
+    await runner.reopenRightAway();
+    await runner.ensure(runner.main);
     await runner.remembersFrame();
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);

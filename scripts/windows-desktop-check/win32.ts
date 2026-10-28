@@ -389,6 +389,11 @@ export const VK = {
   left: 0x25, up: 0x26, right: 0x27, down: 0x28, win: 0x5b,
 } as const;
 
+/** Lets a key up, whether or not it was down. */
+export function keyUp(code: number): void {
+  keyInput(code, true);
+}
+
 /** Presses a chord: every key down in order, then up in reverse. Letters by their capital. */
 export async function pressKeys(...keys: Array<number | string>): Promise<void> {
   const codes = keys.map((key) => typeof key === "number" ? key : key.toUpperCase().charCodeAt(0));

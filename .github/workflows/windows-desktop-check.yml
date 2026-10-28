@@ -18,6 +18,14 @@ on:
         description: Display scales in percent, comma separated
         required: false
         default: "100,125,150"
+      app_ref:
+        description: Branch, tag or commit whose app to build and check (this run's commit when empty); the steps always come from this run's commit
+        required: false
+        default: ""
+      builds:
+        description: Builds to check, as a JSON list of head and release
+        required: false
+        default: '["head","release"]'
   pull_request:
     paths:
       - ".github/workflows/windows-desktop-check.yml"
@@ -46,7 +54,7 @@ on:
       - "scripts/windows-installer.iss"
 
 concurrency:
-  group: windows-desktop-check-${{ github.ref }}
+  group: windows-desktop-check-${{ github.ref }}-${{ inputs.app_ref }}
   cancel-in-progress: true
 
 permissions:
@@ -60,11 +68,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [head, release]
+        build: ${{ fromJSON(inputs.builds || '["head","release"]') }}
     env:
       SCALES: ${{ inputs.scales || '100,125,150' }}
+      CHECK: scripts/windows-desktop-check
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.app_ref }}
+
+      # The steps come from this run's commit even when the app comes from another.
+      - uses: actions/checkout@v4
+        if: inputs.app_ref != ''
+        with:
+          path: harness
+          sparse-checkout: scripts/windows-desktop-check
+
+      - name: Take the steps from this run's commit
+        if: inputs.app_ref != ''
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force scripts/windows-desktop-check -ErrorAction SilentlyContinue
+          Move-Item harness/scripts/windows-desktop-check scripts/windows-desktop-check
+          Remove-Item -Recurse -Force harness
+          git log -1 --format="Checking the app at %H %s"
 
       - uses: ./.github/actions/setup-bun
 
@@ -101,30 +128,30 @@ jobs:
 
       - name: Set the screen to its largest mode
         shell: pwsh
-        run: ./scripts/windows-desktop-check/display.ps1 -Largest
+        run: ./$env:CHECK/display.ps1 -Largest
 
       - name: Install
         shell: pwsh
-        run: bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
+        run: bun $env:CHECK/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
 
       - name: Drive the app at each scale
         shell: pwsh
         run: |
           foreach ($Scale in $env:SCALES.Split(",")) {
             $Scale = $Scale.Trim()
-            ./scripts/windows-desktop-check/display.ps1 -Scale $Scale
-            bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-$Scale" --label ${{ matrix.build }}
+            ./$env:CHECK/display.ps1 -Scale $Scale
+            bun $env:CHECK/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\${{ matrix.build }}-$Scale" --label ${{ matrix.build }}
           }
-          ./scripts/windows-desktop-check/display.ps1 -Scale 100
+          ./$env:CHECK/display.ps1 -Scale 100
           exit 0
 
       - name: Report
         shell: pwsh
         run: |
           if ("${{ matrix.build }}" -eq "head") {
-            bun scripts/windows-desktop-check/report.ts windows-desktop-check --known scripts/windows-desktop-check/known-failures.json
+            bun $env:CHECK/report.ts windows-desktop-check --known $env:CHECK/known-failures.json
           } else {
-            bun scripts/windows-desktop-check/report.ts windows-desktop-check
+            bun $env:CHECK/report.ts windows-desktop-check
           }
 
       - uses: actions/upload-artifact@v4
