@@ -1,3 +1,5 @@
+import { logFailure } from "../../../utils/log-failure";
+
 type Arm = "control" | "teaser" | null;
 type TeaserKind = "summary" | "sample" | "none";
 const active = new Map<string, Set<object>>();
@@ -17,7 +19,7 @@ export function trackWallView({ identity, placement, exposure, currentIdentity, 
   active.set(key, copies);
   let released = false;
   let reported = false;
-  const answer = exposure.catch(() => null);
+  const answer = exposure.catch(logFailure("shared.wall-view-lifecycle", "Resolve wall experiment arm failed", null));
 
   return {
     exposure: answer,

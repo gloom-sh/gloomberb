@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { fetchHistoryResult, InvalidHistoryResultError } from "../../../../sources/history-result";
 import { historyRetentionNotice, isHistoryRetentionError } from "../../../../sources/history-retention";
 import {
@@ -74,8 +75,8 @@ async function sessionVenue(provider: DataProvider, symbol: string, exchange: st
       ? await provider.getQuoteMetadata(symbol, exchange)
       : await provider.getQuote(symbol, exchange);
     return metadata?.listingExchangeName ?? "";
-  } catch {
-    return "";
+  } catch (error) {
+    return logFailure("ticker-detail.data-panes.returns-history", "Read return session venue failed", "")(error);
   }
 }
 

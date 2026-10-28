@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { HiringSignalGroup, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
@@ -60,7 +61,10 @@ export function HiringSignalsView({ group, symbol, width, height, focused, acces
     try {
       const payload = snapshotSetting ? validateSignals(snapshotSetting) : null;
       return payload && ("group" in payload ? !symbol && payload.group === group : payload.symbol.toUpperCase() === symbol?.toUpperCase()) ? payload : null;
-    } catch { return null; }
+    } catch (error) {
+      logFailure("company-attention.signals", "Validate hiring signals snapshot failed")(error);
+      return null;
+    }
   }, [snapshotSetting, symbol, group]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSignals(group, symbol, accessKey, filter, force), [snapshot, group, symbol, accessKey, filter]);
   const resource = useAsyncResource(loader, { initialData: () => cachedSignals(group, symbol, accessKey, filter), clearOnError: isAccessDenied, keepPreviousData: true });

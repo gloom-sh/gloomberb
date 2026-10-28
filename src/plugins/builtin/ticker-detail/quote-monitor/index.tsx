@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { PerpEquityRow } from "../../perps/equity-row";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useUiCapabilities } from "../../../../ui";
@@ -173,7 +174,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !liveStreaming || boardInstruments.length === 0) return;
-    void coordinator.loadQuotesBatch(boardInstruments).catch(() => {});
+    void coordinator.loadQuotesBatch(boardInstruments).catch(logFailure("ticker-detail.quote-monitor", "Warm quote monitor board failed"));
   }, [boardInstrumentKey, liveStreaming]);
   const { pinTicker } = usePluginTickerActions();
   const { openPaneSettings } = usePluginAppActions();

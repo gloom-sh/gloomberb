@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { useEffect, useRef, useState } from "react";
 import { getPublishedUsEquitySession } from "../../../../market-data/published-us-sessions";
 import { usePaneVisible } from "../../../../state/app/activity";
@@ -146,10 +147,13 @@ export function useLiveSessionRefresh(
       if (inFlight || cancelled) return;
       lastRef.current = Date.now();
       let pending: void | Promise<unknown>;
-      try { pending = refreshRef.current(); } catch { return; }
+      try { pending = refreshRef.current(); } catch (error) {
+        logFailure("shared.volatility.live-session", "Start live session refresh failed")(error);
+        return;
+      }
       if (pending && typeof (pending as Promise<unknown>).then === "function") {
         inFlight = true;
-        void (pending as Promise<unknown>).catch(() => {}).finally(() => { inFlight = false; });
+        void (pending as Promise<unknown>).catch(logFailure("shared.volatility.live-session", "Live session refresh failed")).finally(() => { inFlight = false; });
       }
     };
     if (Date.now() - lastRef.current >= intervalMs) run();

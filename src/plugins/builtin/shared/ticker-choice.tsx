@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback } from "react";
 import { ChoiceDialog } from "../../../components/ui/choice-dialog";
 import { t } from "../../../i18n";
@@ -29,6 +30,6 @@ export function useOpenTickerChoice(): (symbols: readonly string[]) => void {
       ),
     }).then((symbol) => {
       if (symbol) openTicker(symbol);
-    }).catch(() => {});
+    }).catch(logFailure("shared.ticker-choice", "Open ticker choice failed"));
   }, [dialog, openTicker]);
 }

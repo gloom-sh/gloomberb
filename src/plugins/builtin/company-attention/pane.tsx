@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -57,7 +58,10 @@ function Evidence({ row, width, posting, source }: Size & { row: AttentionRow; p
 }
 /** A link's site, as a reader names it: "sec.gov". */
 function linkName(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Source"; }
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch {
+    // Intentional ignore: a malformed link has no site to name, so it reads as Source.
+    return "Source";
+  }
 }
 
 export function HiringPane(props: Size) {
@@ -105,7 +109,10 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const [mix, setMix] = usePluginPaneState<string>(`${kind}:mix`, kind === "hiring" ? "functions" : "countries");
   const filters = useMemo<AppAttentionFilter>(() => kind === "apps" ? { ...(country ? { country } : {}), ...(chart ? { chart: chart as AppChart } : {}), days: Number(days) || 90 } : {}, [kind, country, chart, days]);
   const [snapshotSetting] = usePaneSettingValue<AttentionPayload | null>("attentionSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateAttention(kind, snapshotSetting) : null; } catch { return null; } }, [kind, snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateAttention(kind, snapshotSetting) : null; } catch (error) {
+    logFailure("company-attention.pane", "Validate attention snapshot failed")(error);
+    return null;
+  } }, [kind, snapshotSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadAttention(kind, symbol, accessKey, filters, force), [kind, symbol, accessKey, filters, snapshot]);
   const resource = useAsyncResource(loader, { initialData: () => cachedAttention(kind, symbol, accessKey, filters), clearOnError: isAccessDenied });
   const data = resource.data?.payload;

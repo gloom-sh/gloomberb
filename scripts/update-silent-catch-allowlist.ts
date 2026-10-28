@@ -33,6 +33,10 @@ const INCLUDED = [
   "src/plugins/builtin/earnings/",
   "src/plugins/builtin/futures-curve/",
   "src/plugins/builtin/fx-matrix/",
+  "src/plugins/builtin/shared/",
+  "src/plugins/builtin/portfolio-list/",
+  "src/plugins/builtin/ticker-detail/",
+  "src/plugins/builtin/company-attention/",
 ];
 
 type SilentCatch = {
