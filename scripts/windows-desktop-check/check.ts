@@ -284,8 +284,12 @@ class Shots {
 
   constructor(private readonly dir: string) {}
 
-  /** Grabs the screen in `rect` now; the file is written by flush(). Returns its name. */
-  take(label: string, rect: Rect): string | null {
+  /**
+   * Grabs the screen in `rect` now; the file is written by flush(). Returns its
+   * name. A `zoom` above 1 blows every pixel up into a square, for looking at
+   * a frame's edge pixel by pixel.
+   */
+  take(label: string, rect: Rect, zoom = 1): string | null {
     const screen = win.screenRect();
     const clipped = {
       left: Math.max(screen.left, rect.left), top: Math.max(screen.top, rect.top),
@@ -299,6 +303,7 @@ class Shots {
       console.error(`Could not picture ${label}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+    if (zoom > 1) bitmap = enlarge(bitmap, zoom);
     this.count += 1;
     const name = `${String(this.count).padStart(3, "0")}-${label.replace(/[^a-z0-9-]+/gi, "-").toLowerCase()}.png`;
     this.pending.push({ path: join(this.dir, name), bitmap });
@@ -317,6 +322,42 @@ class Shots {
       await writeFile(path, await image.getBuffer("image/png"));
     }
   }
+}
+
+function enlarge(bitmap: Bitmap, zoom: number): Bitmap {
+  const width = bitmap.width * zoom;
+  const height = bitmap.height * zoom;
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const sourceRow = Math.floor(y / zoom) * bitmap.width;
+    for (let x = 0; x < width; x += 1) {
+      bitmap.data.copy(data, (y * width + x) * 4, (sourceRow + Math.floor(x / zoom)) * 4, (sourceRow + Math.floor(x / zoom)) * 4 + 4);
+    }
+  }
+  return { width, height, data };
+}
+
+function pixel(bitmap: Bitmap, x: number, y: number): [number, number, number] {
+  const offset = (y * bitmap.width + x) * 4;
+  return [bitmap.data[offset]!, bitmap.data[offset + 1]!, bitmap.data[offset + 2]!];
+}
+
+const hex = (rgb: [number, number, number]) => `#${rgb.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+const colorDistance = (a: [number, number, number], b: [number, number, number]) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+
+/** The color most of a row holds, and how much of the row holds it. */
+function rowColor(bitmap: Bitmap, y: number, from = 0, to = bitmap.width): { color: [number, number, number]; share: number } {
+  const counts = new Map<number, number>();
+  let total = 0;
+  for (let x = from; x < to; x += 1) {
+    const [r, g, b] = pixel(bitmap, x, y);
+    const key = (r << 16) | (g << 8) | b;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    total += 1;
+  }
+  let best = 0, bestCount = 0;
+  for (const [key, count] of counts) if (count > bestCount) { best = key; bestCount = count; }
+  return { color: [(best >> 16) & 255, (best >> 8) & 255, best & 255], share: total ? bestCount / total : 0 };
 }
 
 /**
@@ -758,8 +799,119 @@ class Run {
     return true;
   }
 
+  /** Pictures the frame's corners, edges and buttons up close, from outside the window in. */
+  frameCrops(window: AppWindow, label: string, shots: string[]): void {
+    const frame = win.visibleRect(window.hwnd);
+    const size = Math.round(36 * (win.windowDpi(window.hwnd).dpi / 96));
+    const outside = Math.round(size / 3);
+    const corner = (name: string, x: number, y: number) => {
+      const rect = { left: x - outside, top: y - outside, right: x - outside + size, bottom: y - outside + size };
+      const shot = this.shots.take(`${label}-${name}`, rect, 6);
+      if (shot) shots.push(shot);
+    };
+    corner("top-left", frame.left, frame.top);
+    corner("bottom-left", frame.left, frame.bottom - size + 2 * outside);
+    corner("bottom-right", frame.right - size + 2 * outside, frame.bottom - size + 2 * outside);
+    const buttons = { left: frame.right - Math.round(170 * window.scale), top: frame.top - outside, right: frame.right + outside, bottom: frame.top + Math.round(40 * window.scale) };
+    const shot = this.shots.take(`${label}-buttons`, buttons, 3);
+    if (shot) shots.push(shot);
+  }
+
+  /** Reads the frame: how far the page is from the window's edges, and what the top rows hold. */
+  async frameReading(window: AppWindow): Promise<{ problems: string[]; facts: string[] }> {
+    const frame = win.visibleRect(window.hwnd);
+    const client = win.clientRect(window.hwnd);
+    const problems: string[] = [];
+    const facts: string[] = [];
+    const insets = { left: client.left - frame.left, top: client.top - frame.top, right: frame.right - client.right, bottom: frame.bottom - client.bottom };
+    facts.push(`frame ${fmt(frame)}, page ${fmt(client)}, insets ${insets.left}/${insets.top}/${insets.right}/${insets.bottom} px`);
+    for (const [side, inset] of Object.entries(insets)) {
+      if (inset > 2) problems.push(`a ${inset} px gap between the ${side} edge of the frame and the page`);
+      if (inset < -1) problems.push(`the page runs ${-inset} px past the ${side} edge of the frame`);
+    }
+    const style = win.windowStyle(window.hwnd);
+    facts.push(`style ${style.flags.join(" ") || style.value}`);
+    // The top rows of the window against the header under them.
+    const screen = win.monitorOf(window.hwnd).monitor;
+    const top = { left: Math.max(frame.left, screen.left), top: Math.max(frame.top, screen.top), right: Math.min(frame.right, screen.right), bottom: Math.min(frame.top + Math.round(16 * window.scale), screen.bottom) };
+    if (top.right - top.left > 40 && top.bottom - top.top > 6) {
+      const bitmap = win.captureScreen(top);
+      // Clear of the buttons and anything else on the header.
+      const span = Math.round(bitmap.width * 0.4);
+      const header = rowColor(bitmap, bitmap.height - 2, 0, span);
+      const rows = [0, 1, 2].map((y) => rowColor(bitmap, y, 0, span));
+      facts.push(`top rows ${rows.map((row) => hex(row.color)).join(" ")} over the header's ${hex(header.color)}`);
+      rows.forEach((row, y) => {
+        if (row.share > 0.8 && colorDistance(row.color, header.color) > 24 && y > 0) {
+          problems.push(`row ${y} at the top is a ${hex(row.color)} strip over the ${hex(header.color)} header`);
+        }
+      });
+    }
+    // The buttons sit inside the window, on its top edge.
+    const layout = await layoutOf(window.page);
+    if (layout.controls) {
+      const right = client.left + (layout.controls.x + layout.controls.width) * window.scale;
+      const topEdge = client.top + layout.controls.y * window.scale;
+      facts.push(`buttons end ${Math.round(client.right - right)} px from the right edge, ${Math.round(topEdge - client.top)} px from the top`);
+      if (right > client.right + 1 || right > screen.right + 1) problems.push("the window buttons are cut off on the right");
+    }
+    return { problems, facts };
+  }
+
+  async frameSteps(window: AppWindow, name: string, start: Rect): Promise<void> {
+    const label = name === "main" ? "Main window" : "Popped-out window";
+    const other = window === this.main ? this.detached : this.main;
+    await this.step(`${name}-frame`, `${label}: the frame, corners and buttons, active and inactive`, async (shots) => {
+      await this.reset(window, start);
+      // The pointer away from the buttons, which light up under it.
+      win.moveMouse({ x: Math.round((start.left + start.right) / 2), y: Math.round((start.top + start.bottom) / 2) });
+      await sleep(400);
+      const active = await this.frameReading(window);
+      this.frameCrops(window, `${name}-frame-active`, shots);
+      const frame = win.visibleRect(window.hwnd);
+      const whole = this.shots.take(`${name}-frame-active-whole`, { left: frame.left - 24, top: frame.top - 24, right: frame.right + 24, bottom: frame.bottom + 24 });
+      if (whole) shots.push(whole);
+      let inactive: { problems: string[]; facts: string[] } | null = null;
+      if (other?.hwnd && win.isWindow(other.hwnd)) {
+        await this.focus(other);
+        await sleep(500);
+        inactive = await this.frameReading(window);
+        this.frameCrops(window, `${name}-frame-inactive`, shots);
+        await this.focus(window);
+      }
+      const problems = [...active.problems, ...(inactive?.problems.map((problem) => `inactive: ${problem}`) ?? [])];
+      return {
+        status: problems.length ? "fail" : "pass",
+        detail: [...problems, `active: ${active.facts.join("; ")}`, inactive ? `inactive: ${inactive.facts.slice(2).join("; ")}` : "no other window to make it inactive"].join("; "),
+      };
+    });
+    await this.step(`${name}-frame-maximized`, `${label}: the frame and buttons when maximized`, async (shots) => {
+      await this.reset(window, start);
+      if (!await this.clickControl(window, "maximize")) return { status: "fail", detail: "no maximize button" };
+      win.moveMouse({ x: Math.round((start.left + start.right) / 2), y: Math.round((start.top + start.bottom) / 2) });
+      await sleep(400);
+      const reading = await this.frameReading(window);
+      const monitor = win.monitorOf(window.hwnd);
+      const frame = win.visibleRect(window.hwnd);
+      const client = win.clientRect(window.hwnd);
+      if (client.top < monitor.monitor.top || client.left < monitor.monitor.left || client.right > monitor.monitor.right) reading.problems.push(`the page runs off the screen: ${fmt(client)} on ${fmt(monitor.monitor)}`);
+      const top = this.shots.take(`${name}-maximized-top-left`, { left: monitor.work.left, top: monitor.work.top, right: monitor.work.left + Math.round(220 * window.scale), bottom: monitor.work.top + Math.round(40 * window.scale) }, 3);
+      if (top) shots.push(top);
+      const buttons = this.shots.take(`${name}-maximized-buttons`, { left: monitor.work.right - Math.round(220 * window.scale), top: monitor.work.top, right: monitor.work.right, bottom: monitor.work.top + Math.round(40 * window.scale) }, 3);
+      if (buttons) shots.push(buttons);
+      const bottom = this.shots.take(`${name}-maximized-bottom`, { left: monitor.work.left, top: monitor.work.bottom - Math.round(40 * window.scale), right: monitor.work.left + Math.round(300 * window.scale), bottom: monitor.monitor.bottom }, 2);
+      if (bottom) shots.push(bottom);
+      await this.clickControl(window, "maximize");
+      return {
+        status: reading.problems.length ? "fail" : "pass",
+        detail: [...reading.problems, `frame ${fmt(frame)} on a ${fmt(monitor.work)} work area`, ...reading.facts].join("; "),
+      };
+    });
+  }
+
   async windowSteps(window: AppWindow, name: string, start: Rect): Promise<void> {
     const label = name === "main" ? "Main window" : "Popped-out window";
+    await this.frameSteps(window, name, start);
     const edges: Array<[Edge, Point]> = name === "main"
       ? [
         ["right", { x: 120, y: 0 }], ["bottom", { x: 0, y: 80 }], ["left", { x: 100, y: 0 }], ["top", { x: 0, y: 60 }],

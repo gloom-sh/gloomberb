@@ -126,6 +126,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "INSTALLER=$PWD\artifacts\stable-win-x64-GloomSetup.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
+      # The installer under check, to install and try by hand.
+      - uses: actions/upload-artifact@v4
+        if: matrix.build == 'head'
+        with:
+          name: GloomSetup-windows-x64
+          path: artifacts/stable-win-x64-GloomSetup.exe
+          retention-days: 14
+
       - name: Set the screen to its largest mode
         shell: pwsh
         run: ./$env:CHECK/display.ps1 -Largest
