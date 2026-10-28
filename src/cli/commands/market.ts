@@ -165,6 +165,7 @@ import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
 import {
+  closestStoriesReason,
   commodityNewsRoute,
   commonWordCandidate,
   METALS_NEWS_TOPIC,
@@ -179,6 +180,7 @@ import {
   noMetalStoriesMessage,
   noStoriesMessage,
   quotedSearchCommand,
+  searchClosestNewsStories,
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
@@ -199,6 +201,7 @@ import {
   cloudNewsFreshness,
   cloudRealtimeAccess,
   REPORTED_DATA,
+  SEC_FILING_ROWS,
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
@@ -1934,26 +1937,29 @@ const NEWS_COLUMNS = [
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty, commodity = true, failure, ticker = null }: {
+  { reason, empty, commodity = true, failure, ticker = null, closest = false }: {
     reason?: string;
     empty?: string;
     commodity?: boolean;
     failure?: string;
     /** The listing a coin pair's search stands in for. */
     ticker?: string | null;
+    /** No story has every word: these are the ones with the most. */
+    closest?: boolean;
   },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
   const searched = failure === undefined;
   const named = searched && commodity && articles.length === 0 && commodityNamedIn(text) !== null;
   const route = named ? await commodityNewsRoute(text) : null;
+  const closestReason = closest && articles.length > 0 ? closestStoriesReason(text) : null;
   ctx.printResult({
     data: articles,
     ...(searched ? {} : { warnings: [`Searching stories for "${text}" failed: ${failure}`] }),
-    metadata: { ticker, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
+    metadata: { ticker, search: text, feed: null, ...(closestReason ? { match: "closest" } : {}), ...(route ? { futuresNews: route.command } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
-    heading: newsSearchHeading(text, reason),
+    heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
     columns: NEWS_COLUMNS,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
@@ -2015,7 +2021,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
-    await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
+    const answer = await searchClosestNewsStories(text, limit);
+    await printNewsSearch(text, answer.found, { closest: answer.closest }, ctx);
     return;
   }
   // A metal's future or name is its market's news, not a company's: GOLD in capitals stays Gold.com's.
@@ -2195,7 +2202,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           ...listingMetadata(resolved), ...(form ? { form } : {}),
           ...(page ? { announcementsPage: page.url } : {}),
         },
-        freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
+        freshness: rowsFreshness(filingRows(filings), SEC_FILING_ROWS),
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
         heading: listingHeading(resolved),
@@ -2496,7 +2503,7 @@ async function runHolders(
     const columns = holderReportColumns(shownRows, valueCurrency);
     // Dated as HDS dates it: by the list's as-of; an insider report of Form 4 filings alone as INS dates it, by the newest.
     const freshness = form4Only
-      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" })
+      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILING_ROWS, basis: "Form 4 filings" })
       : rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;

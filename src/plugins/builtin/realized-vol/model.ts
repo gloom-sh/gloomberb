@@ -19,6 +19,24 @@ export interface RealizedVolatilityModel {
   /** What the volatility is annualised at, read from the series' own dates. */
   barsPerYear: BarsPerYear;
   warnings: string[];
+  /**
+   * The windows the history is too short for, longest last: a stock that
+   * listed in May has no 180- or 260-bar estimate yet, and nothing failed.
+   */
+  shortWindows: number[];
+  /**
+   * What a short history leaves out, said once: "Listed 2026-05-07: 121
+   * daily bars so far; the 180- and 260-bar windows need more". Null when the
+   * history covers the lookback and every window.
+   */
+  historyNote: string | null;
+}
+
+/** "the 180-bar window", "the 180- and 260-bar windows", "the 90-, 180- and 260-bar windows". */
+function windowsText(windows: readonly number[]): string {
+  if (windows.length === 1) return `the ${windows[0]}-bar window`;
+  const head = windows.slice(0, -1).map((window) => `${window}-`);
+  return `the ${head.join(", ")} and ${windows.at(-1)}-bar windows`;
 }
 
 export interface RealizedVolatilityProjectionOptions {
@@ -45,6 +63,10 @@ export function projectRealizedVolatility(
   const windows = [...new Set(options.windows ?? REALIZED_VOLATILITY_WINDOWS)]
     .filter((window) => REALIZED_VOLATILITY_WINDOWS.some((standard) => standard === window));
   const warnings: string[] = [];
+  // What follows from a history shorter than the windows and lookback asked for: notes, not failures.
+  let shortLookback = false;
+  let shortWarmup = false;
+  const shortWindows: number[] = [];
   const dates = new Map<number, PricePoint>();
   for (const point of points) {
     const date = new Date(point.date);
@@ -66,24 +88,28 @@ export function projectRealizedVolatility(
   const cone = volatilityCone(cadenceIssue ? [] : history, { estimator, lookbackYears });
   const visible = history.filter((point) => point.date.getTime() > cutoff);
   const visibleSeries = series.filter((point) => point.date.getTime() > cutoff);
-  if (history.length > 0 && history[0]!.date.getTime() > cutoff) {
-    warnings.push(`History covers less than the requested ${lookbackYears}Y lookback`);
-  }
+  if (history.length > 0 && history[0]!.date.getTime() > cutoff) shortLookback = true;
   for (const window of history.length > 0 && !cadenceIssue ? REALIZED_VOLATILITY_WINDOWS : []) {
     const result = realizedVolatilityResult(history, window, estimator);
-    if (result.reason === "insufficient-history") warnings.push(`HV${window} needs more daily history`);
+    if (result.reason === "insufficient-history") shortWindows.push(window);
     else if (result.reason) warnings.push(`HV${window} unavailable: ${result.reason.replaceAll("-", " ")}`);
   }
   const priorWarmup = history.filter((point) => point.date.getTime() <= cutoff).length;
   const requiredWarmup = estimator === "close-to-close" || estimator === "yang-zhang" ? 260 : 259;
   if (history.length > 0 && !cadenceIssue && priorWarmup < requiredWarmup) {
-    warnings.push("Long-window cone estimates do not cover the complete lookback");
+    shortWarmup = true;
   } else if (!cadenceIssue && cone.some((row) => row.sampleSize < visible.length)) {
     warnings.push("Unavailable historical estimates reduce volatility-cone sample coverage");
   }
+  const first = history[0]?.date.toISOString().slice(0, 10);
+  // A history that starts inside the lookback is the listing's whole life: it listed then.
+  const historyNote = !first || (!shortLookback && !shortWarmup && !shortWindows.length) ? null
+    : `${shortLookback ? "Listed" : "History starts"} ${first}: ${history.length} daily bars so far; ${shortWindows.length
+      ? `${windowsText(shortWindows)} need${shortWindows.length === 1 ? "s" : ""} more`
+      : "the long windows' cone covers part of the lookback"}`;
   return { symbol: options.symbol.trim().toUpperCase(), estimator, lookbackYears, windows,
     history: visible, series: visibleSeries, cone, asOf, barsPerYear: barsPerYear(history.map((point) => point.date)),
-    warnings: [...new Set(warnings)] };
+    warnings: [...new Set(warnings)], shortWindows, historyNote };
 }
 
 interface CurrentAtmIvReference {

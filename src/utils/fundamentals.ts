@@ -128,7 +128,8 @@ type FundamentalsCurrencies = Pick<TickerFinancials, "financialCurrency"> & {
  * The currency of the trailing EPS, revenue, income and cash flows: the one the fundamentals declare for themselves.
  * A block that declares none is in the statements' currency only when the listing trades in it; on a listing quoted
  * in another (a receipt in USD beside TWD books, YPFD in ARS beside USD statements) its currency is unknown, since
- * Gloom Cloud labels every block whose currency it can tell. Never the quote's.
+ * Gloom Cloud labels every block whose currency it can tell. With no statements to tell by (a recent IPO such as
+ * HAWK), the listing's own currency: its market cap's, else its quote's, when that is a major unit.
  */
 export function fundamentalsCurrency(
   financials: FundamentalsCurrencies | null | undefined,
@@ -136,8 +137,9 @@ export function fundamentalsCurrency(
   const declared = financials?.fundamentals?.financialCurrency?.trim();
   if (declared) return declared;
   const statements = financials?.financialCurrency?.trim();
-  if (!statements) return undefined;
   const listed = financials?.fundamentals?.marketCapCurrency?.trim() || financials?.quote?.currency?.trim();
+  // A listing quoted in a minor unit (GBp) does not say whether the figures are in pence or pounds.
+  if (!statements) return listed && resolveCurrencyUnit(listed).divisor === 1 ? resolveCurrencyUnit(listed).currency : undefined;
   return !listed || resolveCurrencyUnit(listed).currency === resolveCurrencyUnit(statements).currency ? statements : undefined;
 }
 

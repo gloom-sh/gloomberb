@@ -7,7 +7,7 @@ import { loadHolderSnapshot } from "./client";
 import { holderValueCurrency } from "./format";
 import { logFailure } from "../../../utils/log-failure";
 import type { HolderData } from "../../../types/financials";
-import { SEC_FILINGS } from "../shared/report-freshness";
+import { SEC_FILING_ROWS, SEC_FILINGS } from "../shared/report-freshness";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
 import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
 import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
@@ -197,7 +197,7 @@ export function createHoldersHeadless(
           rows: limited,
           // Reports that could not be read this time are missing from the rows.
           complete: beneficialListComplete(payload),
-          freshness: { ...SEC_FILINGS, basis: "13D/13G filings", observedKey: "filingDate" },
+          freshness: { ...SEC_FILING_ROWS, basis: "13D/13G filings" },
           metadata: {
             symbol: payload.ticker || symbol,
             name: payload.companyName || null,

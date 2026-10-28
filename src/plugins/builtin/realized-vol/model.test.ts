@@ -59,7 +59,19 @@ describe("realized-volatility projection", () => {
     expect(points[80]!.high).toBeGreaterThan(100);
     const corrected = projectRealizedVolatility([...points].reverse(), { symbol: "AAPL", windows: [10] });
     expect(corrected.series.at(-1)!.values[10]).toBeCloseTo(realizedVolatility(points, 10)!, 12);
-    expect(result.warnings.some((warning) => warning.includes("complete lookback"))).toBe(true);
+    // A hundred days of history is a short one: a note, not a warning.
+    expect(result.historyNote).toMatch(/^Listed 2026-06-15: 100 daily bars so far; /);
+  });
+
+  test("a short history is a note of when it starts and which windows need more, and no warning (HAWK)", () => {
+    const points = history(121, Date.UTC(2026, 9, 28));
+    const result = projectRealizedVolatility(points, { symbol: "HAWK" });
+    expect(result.warnings).toEqual([]);
+    expect(result.shortWindows).toEqual([180, 260]);
+    expect(result.historyNote).toMatch(/^Listed \d{4}-\d{2}-\d{2}: 121 daily bars so far; the 180- and 260-bar windows need more$/);
+    expect(result.cone.filter((row) => row.current == null).map((row) => row.window)).toEqual([180, 260]);
+    // A long history has nothing to say.
+    expect(projectRealizedVolatility(history(), { symbol: "AAPL", lookbackYears: 2 }).historyNote).toBeNull();
   });
 
   test("reports incomplete cone coverage after latest estimates recover from an old rejected bar", () => {

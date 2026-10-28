@@ -16,17 +16,23 @@ async function report(financials: TickerFinancials): Promise<string> {
 }
 
 test("ticker monetary fundamentals keep reported units across foreign, minor and unknown currencies", async () => {
-  for (const [currency, eps] of [["CNY", "CN¥2.50"], ["GBp", "2.50 GBp"], ["GBX", "2.50 GBX"], ["ILA", "2.50 ILA"], ["ZAc", "2.50 ZAc"], [" ", "2.50 (ccy?)"]] as const) {
+  // Nothing declared and no statements (a recent IPO): the listing's own USD.
+  for (const [currency, eps] of [["CNY", "CN¥2.50"], ["GBp", "2.50 GBp"], ["GBX", "2.50 GBX"], ["ILA", "2.50 ILA"], ["ZAc", "2.50 ZAc"], [" ", "$2.50"]] as const) {
     const financials: TickerFinancials = { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
       fundamentals: { eps: 2.5, revenue: 1_000_000, netIncome: 0, freeCashFlow: -25_000, financialCurrency: currency },
     };
     const text = await report(financials);
     expect(text).toContain(`EPS (TTM) ${eps}`);
-    expect(text).toContain(`Revenue (TTM) 1M ${currency.trim() || "(ccy?)"}`);
-    expect(text).toContain(`Net Income (TTM) 0 ${currency.trim() || "(ccy?)"}`);
-    expect(text).toContain(`Free Cash Flow (TTM) -25k ${currency.trim() || "(ccy?)"}`);
+    expect(text).toContain(`Revenue (TTM) 1M ${currency.trim() || "USD"}`);
+    expect(text).toContain(`Net Income (TTM) 0 ${currency.trim() || "USD"}`);
+    expect(text).toContain(`Free Cash Flow (TTM) -25k ${currency.trim() || "USD"}`);
+    expect(text).not.toContain("(ccy?)");
     expect(financials.fundamentals?.eps).toBe(2.5);
   }
+  // A listing quoted in pence does not say whether unlabelled figures are pence or pounds.
+  const pence = await report({ quote: { ...quote, currency: "GBp" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { eps: 2.5, revenue: 1_000_000 } });
+  expect(pence).toContain("Revenue (TTM) 1M (ccy?)");
 });
 
 test("statement units use compatible history, keep explicit overrides and exclude share counts", async () => {
@@ -184,7 +190,7 @@ test("after the close the EV row and its note read one close, the cap rests on t
   expect(nerdy).toContain("EV unavailable: the provider's figure failed validation.");
 });
 
-test("trailing figures use the fundamentals' currency, then the statements' on a listing that trades in theirs, never the quote's", async () => {
+test("trailing figures use the fundamentals' currency, then the statements' on a listing that trades in theirs, then the listing's with no statements", async () => {
   const fundamentals = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, operatingCashFlow: 42.43e9, freeCashFlow: 36.96e9 };
   const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string, listed = "ZAR"): TickerFinancials => ({
     quote: { ...quote, currency: listed }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
@@ -201,8 +207,8 @@ test("trailing figures use the fundamentals' currency, then the statements' on a
   expect(fromStatements).not.toContain("(ccy?)");
   expect(plain(renderFundamentalsReport({ ...reportedIn("ZAR"), symbol: "UNITTEST" }, "valuation"))).toContain("EPS (TTM) ZAR 31.43");
   expect(plain(await report(reportedIn("ZAR", "USD")))).toContain("Revenue (TTM) 202.08B USD");
-  // Nothing declares a currency: the GBP quote must not stand in for it, nor the ZAR statements of a GBP listing.
-  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B (ccy?)");
+  // Nothing declares a currency and there are no statements: the GBP listing's. The ZAR statements of a GBP listing do not.
+  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B GBP");
   const london = plain(await report(reportedIn("ZAR", undefined, "GBP")));
   expect(london).toContain("EPS (TTM) 31.43 (ccy?)");
   expect(london).toContain("Revenue (TTM) 202.08B (ccy?)");
