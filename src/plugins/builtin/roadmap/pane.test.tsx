@@ -92,13 +92,13 @@ function client(payload: RoadmapPayload | (() => Promise<RoadmapPayload>), votes
 
 test("loading shows the spinner until the roadmap answers", async () => {
   const frame = await render(client(() => new Promise<RoadmapPayload>(() => {})));
-  expect(frame).toMatch(/Loading roadmap/);
+  expect(frame).toContain("Loading Roadmap");
   expect(frame).not.toContain("Pro members vote");
 });
 
 test("a failed read says so in the body and offers a retry", async () => {
   const frame = await render(client(async () => { throw new Error("Network is unreachable"); }));
-  expect(frame).toMatch(/[Rr]oadmap unavailable/);
+  expect(frame).toContain("Roadmap unavailable.");
   expect(frame).toContain("Network is unreachable");
   expect(frame).toContain("Retry");
 });
@@ -107,6 +107,7 @@ test("an empty roadmap says there is nothing on it yet", async () => {
   const frame = await render(client({ items: [], canVote: false }));
   expect(frame).toContain("Nothing on the roadmap yet.");
   expect(frame).not.toContain("Building");
+  expect(frame).not.toContain("Pro members vote");
 });
 
 test("signed out, the groups and counts read, the one quiet line says Pro members vote, and v does nothing", async () => {

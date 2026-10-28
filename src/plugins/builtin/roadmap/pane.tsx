@@ -157,7 +157,7 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
     // A failed refresh keeps the list; the failure goes in the footer.
     loading: resource.loading && !!payload,
     error: payload ? resource.error : null,
-    info: payload && !canVote ? [PRO_VOTES_SEGMENT] : NO_SEGMENTS,
+    info: !canVote && items.length > 0 ? [PRO_VOTES_SEGMENT] : NO_SEGMENTS,
     hints,
   });
 
@@ -204,7 +204,7 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
       status={payload ? undefined : {
         loading: resource.loading,
         error: resource.error,
-        subject: "roadmap",
+        subject: "Roadmap",
         retry: { onRetry: reload, pending: resource.loading },
       }}
       emptyStateTitle="Nothing on the roadmap yet."
