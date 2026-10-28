@@ -625,7 +625,7 @@ function optionDescription(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option);
   const parts = [option.description.replace(/\.$/, "")];
   // An enum that also reads other values (a bar size of any length) lists its values as examples.
-  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`${option.normalize ? "Such as" : "One of"} ${choices.join(", ")}`);
+  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`${option.list ? "Each one of" : option.normalize ? "Such as" : "One of"} ${choices.join(", ")}`);
   if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
   return `${parts.join(". ")}.`;
 }
@@ -634,6 +634,26 @@ function optionDescription(option: PaneFunctionOptionDef): string {
 export function limitationSentence(text: string): string {
   const trimmed = text.trim();
   return !trimmed || /[.!?]["')\]]*$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
+ * Names as lines of at most `width`, each name whole and the names apart by
+ * semicolons, since a name may hold a comma (Furnishings, Fixtures & Appliances).
+ */
+function packNames(names: readonly string[], width: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  names.forEach((name, index) => {
+    const word = index < names.length - 1 ? `${name};` : name;
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
 }
 
 function renderCatalogEntry(entry: PaneCatalogEntry): string {
@@ -667,6 +687,10 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
       capability.options.map((option) => [optionFlags(option), optionDescription(option)] as const),
       { width, termStyle: cliStyles.command },
     ));
+  }
+
+  for (const { title, items } of capability.reference ?? []) {
+    lines.push("", renderSection(title), ...packNames(items, width - 2).map((line) => `  ${line}`));
   }
 
   lines.push("", renderSection("Examples"));

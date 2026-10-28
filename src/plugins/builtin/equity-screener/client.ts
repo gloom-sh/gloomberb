@@ -40,10 +40,12 @@ export async function fetchScreen(
   cursor: string | null = null,
   signal?: AbortSignal,
   client: ScreenerClient = apiClient,
+  /** Rows a page holds, at most the server's 200. */
+  limit = 100,
 ): Promise<ScreenPayload> {
   const payload = validateScreenPayload(
     await screenerApi.query(
-      { ...parseScreenDefinition(definition), limit: 100, cursor },
+      { ...parseScreenDefinition(definition), limit, cursor },
       signal,
       client,
     ),

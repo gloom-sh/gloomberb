@@ -20,6 +20,7 @@ export type {
   HeadlessPaneOptionType,
   HeadlessPaneOptionValue,
   HeadlessPaneOptionValues,
+  HeadlessPaneReference,
   HeadlessPaneResult,
   HeadlessPaneResultByShape,
   HeadlessPaneRow,

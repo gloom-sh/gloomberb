@@ -74,6 +74,26 @@ const PLAIN_EMPTY_CELL = "—";
 let colorEnabledOverride: boolean | null = null;
 let widthOverride: number | null = null;
 let plainOverride: boolean | null = null;
+/** Output is being rendered for a file (`renderForFile`), which has no terminal width. */
+let renderingForFile = false;
+
+/**
+ * Output rendered for a file (`fn --output`) as a redirect gets it: plain,
+ * without colour, and fitted to no width but `--width`'s.
+ */
+export function renderForFile<T>(render: () => T): T {
+  const saved = { color: colorEnabledOverride, plain: plainOverride, file: renderingForFile };
+  colorEnabledOverride = false;
+  plainOverride = true;
+  renderingForFile = true;
+  try {
+    return render();
+  } finally {
+    colorEnabledOverride = saved.color;
+    plainOverride = saved.plain;
+    renderingForFile = saved.file;
+  }
+}
 
 function colorEnabled(): boolean {
   if (colorEnabledOverride != null) return colorEnabledOverride;
@@ -176,7 +196,7 @@ export function setCliWidthOverride(value: number | null): void {
 /** Columns the output is fitted to: `--width`, else the terminal's, or null when output is piped or redirected. */
 export function cliTerminalWidth(): number | null {
   if (widthOverride != null) return widthOverride;
-  if (!process.stdout.isTTY) return null;
+  if (renderingForFile || !process.stdout.isTTY) return null;
   const columns = process.stdout.columns;
   return typeof columns === "number" && columns > 0 ? columns : null;
 }

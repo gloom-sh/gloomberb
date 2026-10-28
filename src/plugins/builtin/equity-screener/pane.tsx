@@ -73,6 +73,7 @@ import {
   parseScreenDefinition,
   pickerFields,
   resultFields,
+  screenMetricSetting,
   SIGN_COLORED,
   screenColumnLabel,
   screenCurrencyEmpty,
@@ -82,6 +83,7 @@ import {
   screenYtdBase,
 } from "./model";
 import { useScreenResults } from "./results";
+import { unmatchedCategoryText, unmatchedCategoryValues } from "./categories";
 import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, sortLiveScreenRows, type LiveScreenRow } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
@@ -118,8 +120,10 @@ export function resultColumns(
   asOf: boolean,
   extendedSessions: readonly ExtendedSession[] = [],
   ytdBase: string | null = null,
+  /** Other metrics `--metric` asked for, shown first after the focus metric. */
+  otherMetrics: readonly NumericField[] = [],
 ): DataTableColumn[] {
-  const [focus, ...others] = resultFields(definition, metric);
+  const [focus, ...others] = resultFields(definition, metric, otherMetrics);
   const metricColumn = (field: NumericField, form: "pane" | "compact"): DataTableColumn => {
     const label = screenColumnLabel(field, ytdBase, form);
     return { id: `m:${field}`, label, width: columnWidth(field, label), align: "right" };
@@ -261,10 +265,12 @@ function EquityScreenView({
   const session = useResearchCloudSession(),
     access = usePlanAccess();
   const [definition, setDefinition] = usePluginPaneState("definition", initial);
-  const [metric, setMetric] = usePaneSettingValue<NumericField>(
+  const [metricSetting, setMetric] = usePaneSettingValue<string>(
     "metric",
     initialMetric,
   );
+  // `--metric trailingPE,dividendYieldPercent` leads with the first and adds the others as columns.
+  const [metric, ...otherMetrics] = screenMetricSetting(metricSetting, initialMetric);
   const [mode, setMode] = usePluginPaneState("mode", "results");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(
     "selected",
@@ -381,7 +387,11 @@ function EquityScreenView({
   const ytdBase = screenYtdBase(snapshotRows, data?.snapshot?.assembledAt);
   // A screen its currency emptied says so, not that no company matches.
   const currencyEmpty = data && data.rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
-  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions, ytdBase);
+  // A criterion's name that matches nothing (`Utility`) says so with the names it was likely meant as.
+  const unmatchedNames = data && data.rows.length === 0
+    ? unmatchedCategoryValues(data.definition, data).map(unmatchedCategoryText).join(" ") || null
+    : null;
+  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions, ytdBase, otherMetrics);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));
@@ -1086,8 +1096,9 @@ function EquityScreenView({
                 },
               });
             }}
-            emptyStateTitle={currencyEmpty?.title ?? "No equities match this screen."}
-            emptyStateHint={currencyEmpty ? `${currencyEmpty.detail} Choose ${currencyEmpty.base.currency} to screen in the base currency.` : undefined}
+            emptyStateTitle={(unmatchedNames ? null : currencyEmpty?.title) ?? "No equities match this screen."}
+            emptyStateHint={unmatchedNames
+              ?? (currencyEmpty ? `${currencyEmpty.detail} Choose ${currencyEmpty.base.currency} to screen in the base currency.` : undefined)}
           />
         </PaneStatusBody>
       </>

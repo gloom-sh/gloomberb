@@ -221,7 +221,7 @@ export function buildOverviewStats({
     const count = ratioCount(pair.ratio);
     stats.push(receiptSide
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio)!, `${count} sh per ADR`], link: ADR_PAIR }
-      : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these share${pair.ratio === 1 ? "" : "s"}`, `1:${count}`], link: ADR_PAIR });
+      : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {

@@ -145,8 +145,9 @@ export function parsePaneFunctionArgsFor(
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
   if (!found?.pane) return parsed;
   const capability = getPaneFunctionCapability(found.template, found.pane);
-  if (!capability.options.some((option) => (option.valueWords ?? 1) > 1)) return parsed;
-  return parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1);
+  if (!capability.options.some((option) => (option.valueWords ?? 1) > 1 || option.list)) return parsed;
+  return parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1,
+    (key) => findCapabilityOption(capability, key)?.list === true);
 }
 
 /**

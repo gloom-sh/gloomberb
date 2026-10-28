@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../types/financials";
-import { compareDepositaryPair, listingDepositaryPair, pairPriceInput, pesoImpliedRates, premiumText, type PairPriceInput } from "./depositary-pair";
+import { compareDepositaryPair, depositaryPairText, listingDepositaryPair, pairPriceInput, pesoImpliedRates, premiumText, type PairPriceInput } from "./depositary-pair";
 
 const FRI_CLOSE = Date.UTC(2026, 9, 23, 20, 0);
 
@@ -67,4 +67,10 @@ test("the peso's CCL comes from the receipt and the C line, its MEP from the D l
   // Without a ratio on record the receipt's rate is left out, not guessed; a peso price priced otherwise is no peso rate.
   expect(pesoImpliedRates(null, { home, receipt: input("GGAL", 37.91, "USD", FRI_CLOSE), ccl: null, mep: null })).toEqual([]);
   expect(pesoImpliedRates(10, { home: { ...home, currency: "USD" }, receipt: input("GGAL", 37.91, "USD", FRI_CLOSE), ccl: null, mep: null })).toEqual([]);
+});
+
+test("a home line names its receipt's ratio in shares, one share included", () => {
+  expect(depositaryPairText({ receipt: "RWEOY", ratio: 1, ordinary: ["RWE.DE"] }, false)).toBe("1 RWEOY ADR = 1 of these shares");
+  expect(depositaryPairText({ receipt: "GGAL", ratio: 10, ordinary: ["GGAL.BA"] }, false)).toBe("1 GGAL ADR = 10 of these shares");
+  expect(depositaryPairText({ receipt: "RIO", ratio: 1, ordinary: ["RIO.L"] }, true)).toBe("1 ADR = 1 ordinary share of RIO.L");
 });

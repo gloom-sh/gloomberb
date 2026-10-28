@@ -10,7 +10,10 @@ import { createDefaultConfig } from "../../types/config";
 import { reportFailure, runPaneFunction } from ".";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { serializeCliResult } from "../result";
-import { DEFAULT_CLI_OPTIONS } from "../options";
+import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
+import { mkdtemp, readFile, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 let finra: ReturnType<typeof spyOn> | null = null;
 afterEach(() => {
@@ -28,14 +31,18 @@ beforeEach(() => {
     : { status: "empty" } as never);
 });
 
-async function runSiw(...args: string[]) {
+function siwContext(cliOptions: Partial<CliGlobalOptions> = {}) {
   const persistence = new AppPersistence(":memory:");
-  const cli = createTestCliContext({
+  return createTestCliContext({
     config: createDefaultConfig("/tmp/gloomberb-list-exit-test"),
     dataProvider: createTestDataProvider(),
     persistence,
     store: new TickerRepository(persistence.tickers),
-  });
+  }, cliOptions);
+}
+
+async function runSiw(...args: string[]) {
+  const cli = siwContext();
   (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
   process.exitCode = 0;
   const { exitCode } = await captureConsole(() => runPaneFunction(["SIW", ...args], cli.context));
@@ -114,4 +121,29 @@ test("a listing unavailable is that listing: another listing of the symbol, or a
   expect(failed(["sxr8"], ["SXR8:XETRA"])).toBe(true);
   // A bare name that could be either of two listings asked is neither.
   expect(failed(["SAN:EPA", "SAN:MCE"], ["SAN"])).toBe(false);
+});
+
+// `fn RV NEE --csv --output rv.csv` printed the CSV, wrote nothing and exited 0.
+test("fn --output writes the report to the file, in the format asked for, and says where; what only shot draws fails", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-fn-output-"));
+  try {
+    const cli = siwContext({ format: "csv" });
+    (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+    const target = join(folder, "new folder", "siw.csv");
+    const { stdout, exitCode } = await captureConsole(() => runPaneFunction(["SIW", "GME", "--output", target], cli.context));
+    expect(exitCode ?? 0).toBe(0);
+    expect(stdout).toBe(`Saved ${target}`);
+    // Nothing is printed through the command's own result: the rows went to the file.
+    expect(cli.printed).toEqual([]);
+    const csv = await readFile(target, "utf8");
+    expect(csv.split("\n")[0]).toContain(",");
+    expect(csv).toContain("GME");
+    expect(csv).not.toContain("\x1b[");
+
+    const shot = siwContext();
+    (shot.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+    await expect(runPaneFunction(["SIW", "GME", "--theme", "amber"], shot.context)).rejects.toThrow("--theme is an option of shot");
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });

@@ -1734,6 +1734,22 @@ const STATEMENT_COLUMNS: CliResultColumn<ReturnType<typeof financialStatementRow
   { key: "currency", header: "Cur" },
 ];
 
+/** A symbol as typed in capitals (`NEE`, `BP:LSE`, `7203.T`), never a word of a company's name. */
+const TYPED_SYMBOL = /^[A-Z0-9][A-Z0-9.:^=&-]{0,15}$/;
+
+/**
+ * The symbols of a command given several where it takes one: `NEE FSLR` as
+ * two words, or as one (`"NEE FSLR"`, `NEE,FSLR`). One word with spaces is
+ * a list only when every part is a symbol as typed, so a company's name
+ * (`"Bank of America"`) is still searched for. Null for one symbol.
+ */
+export function comparedSymbols(args: readonly string[]): string[] | null {
+  const words = args.flatMap((arg) => arg.split(/[\s,]+/)).filter(Boolean);
+  if (words.length < 2) return null;
+  if (args.length > 1 || args.some((arg) => arg.includes(","))) return words;
+  return words.every((word) => TYPED_SYMBOL.test(word)) ? words : null;
+}
+
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
@@ -1758,6 +1774,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
   if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
   if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
+  // Several symbols are a comparison, which RV draws side by side.
+  const compared = view === "valuation" ? comparedSymbols(args) : null;
+  if (compared) {
+    ctx.fail(`valuation takes one symbol; got ${compared.join(" ")}.`,
+      `To compare their valuations side by side: gloom fn RV ${compared.join(",")}\nUsage: gloom valuation <symbol>`);
+  }
   const raw = requireOneArg(args, `${commandName} <symbol>`, "symbol", ctx);
   const selectTables = (tables: CliReportTables) => {
     try {

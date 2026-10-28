@@ -41,9 +41,9 @@ export function ratioCount(ratio: number): string {
   return Number.isInteger(ratio) ? String(ratio) : String(Number(ratio.toPrecision(6)));
 }
 
-/** What a home line says of its receipt: `1 GGAL ADR = 10 of these shares`. */
+/** What a home line says of its receipt: `1 GGAL ADR = 10 of these shares`, and `1 of these shares` for one. */
 function homeLineRatioText(pair: DepositaryPair): string {
-  return `1 ${pair.receipt} ADR = ${ratioCount(pair.ratio)} of these share${pair.ratio === 1 ? "" : "s"}`;
+  return `1 ${pair.receipt} ADR = ${ratioCount(pair.ratio)} of these shares`;
 }
 
 /**
