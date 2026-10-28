@@ -16,8 +16,29 @@ import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calcula
 import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
 import { formatUtcTime } from "../../utils/utc-time";
+import { takeOption } from "./command-utils";
 
 export const OPTIONS_USAGE = `options <symbol> [--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>]`;
+
+/** `--expiration` as `options` names it, and `--expiry` as `fn GEX` and `fn OPX` do. */
+const OPTIONS_EXPIRATION_FLAGS = ["--expiration", "--expiry"] as const;
+type OptionsExpirationFlag = (typeof OPTIONS_EXPIRATION_FLAGS)[number];
+
+/**
+ * Takes the expiry option out of `args`, under either spelling: its value,
+ * the flag as typed (for messages), whether it was given at all (a flag with
+ * no value is given), and whether both spellings were.
+ */
+export function takeExpirationOption(args: string[]): {
+  value: string | undefined;
+  flag: OptionsExpirationFlag;
+  given: boolean;
+  both: boolean;
+} {
+  const typed = OPTIONS_EXPIRATION_FLAGS.filter((flag) => args.some((arg) => arg === flag || arg.startsWith(`${flag}=`)));
+  const [expiration, expiry] = OPTIONS_EXPIRATION_FLAGS.map((flag) => takeOption(args, flag));
+  return { value: expiration ?? expiry, flag: typed.length === 1 ? typed[0]! : "--expiration", given: typed.length > 0, both: typed.length > 1 };
+}
 
 export { parseOptionExpiration };
 

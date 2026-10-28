@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test";
-import { chartWindow, expiryAxis, formatDistance, gammaWalls, openInterestTotal, strikeAxis, strikeChartOpenInterest } from "./model";
+import {
+  chartWindow,
+  expiryAxis,
+  formatDistance,
+  formatGammaTimes,
+  formatPositioningSpot,
+  gammaTimesFigure,
+  gammaWalls,
+  openInterestTotal,
+  positioningSpotDetail,
+  strikeAxis,
+  strikeChartOpenInterest,
+} from "./model";
 
 const rows = (entries: Array<[number, number]>) => entries.map(([strike, weight]) => ({ strike, weight }));
 const weight = (row: { weight: number }) => row.weight;
@@ -52,4 +64,23 @@ test("the walls are the strikes with the most call and put gamma, ties to the lo
   // Listed out of order: 770 beats 790 for calls and 760 beats 770 for puts on the tie, a signed put counting by its size.
   expect(gammaWalls(strikes)).toEqual({ callWall: 770, putWall: 760 });
   expect(gammaWalls([{ strike: 700, calls: 0, puts: 0 }])).toEqual({ callWall: null, putWall: null });
+});
+
+test("gamma's time and its quotes' read apart before the open, and an index outside its session reads as the close", () => {
+  // SPY before the open: gamma at the pre-market print, volatilities from the last session's quotes.
+  expect(formatGammaTimes("2026-10-27T10:55:00Z", "2026-10-26T20:14:59Z")).toBe("Tue 27 Oct 10:55 UTC, vols from Mon 26 Oct 20:14 UTC");
+  expect(gammaTimesFigure("2026-10-27T10:55:00Z", "2026-10-26T20:14:59Z")).toEqual({
+    label: "Gamma at", value: "Tue 10:55 UTC", detail: "vols from Mon 20:14 UTC",
+    detailVariants: ["vols from Mon 20:14 UTC", "vols Mon 20:14 UTC", "vols Mon 20:14"],
+  });
+  // In the session the quotes are the same day's, so their day goes.
+  expect(gammaTimesFigure("2026-10-27T14:05:00Z", "2026-10-27T14:01:10Z")?.detail).toBe("vols from 14:01 UTC");
+  // An older server dates its quotes alone.
+  expect(formatGammaTimes(undefined, "2026-10-26T20:14:59Z")).toBeNull();
+  expect(gammaTimesFigure(undefined, "2026-10-26T20:14:59Z")).toEqual({ label: "Quotes as of", value: "Mon 20:14 UTC" });
+
+  // SPX stamped at 20:43 after Monday's close is that close, not an after-hours print; a share's is after hours.
+  expect(positioningSpotDetail(7722.6, "2026-10-26T20:00:00.000Z", undefined, "close").detail).toBe("close Mon 26 Oct");
+  expect(formatPositioningSpot(7722.6, "2026-10-26T20:00:00.000Z", undefined, "close")).toBe("7,722.60 close Mon 26 Oct");
+  expect(positioningSpotDetail(770.1, "2026-10-26T20:43:00.000Z").detail).toBe("after hours Mon 26 Oct 20:43 UTC");
 });

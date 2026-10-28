@@ -65,7 +65,7 @@ export const optionsPositioningModule: PluginModule = {
       id: "options-positioning-gex",
       label: "Dealer Gamma",
       description: "Net dealer gamma by strike, its total, flip level, call and put walls and the range for the dealer assumption.",
-      keywords: ["gex", "gamma", "dealer gamma", "gamma exposure", "gamma flip", "call wall", "put wall"],
+      keywords: ["gex", "gamma", "dealer gamma", "gamma exposure", "gamma flip", "zero gamma", "gamma level", "call wall", "put wall", "0dte"],
       shortcut: "GEX",
     }, "gex"),
   ],

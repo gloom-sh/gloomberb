@@ -42,6 +42,8 @@ export interface OpenInterestPayload {
   tracked: boolean;
   spot: number | null;
   spotAsOf: string | null;
+  /** `close` when spot is a regular session's close at `spotAsOf`: a cash index outside its session. Absent from older servers. */
+  spotBasis?: "close";
   delayed: boolean;
   expiries: ExpiryOpenInterest[];
   expiry: string | null;
@@ -82,6 +84,8 @@ export interface GammaPayload {
   oiDate: string | null;
   spot: number | null;
   spotAsOf: string | null;
+  /** `close` when spot is a regular session's close at `spotAsOf`: a cash index outside its session. Absent from older servers. */
+  spotBasis?: "close";
   delayed: boolean;
   /** The one expiry measured, or null for all of them. */
   expiry: string | null;
@@ -99,7 +103,14 @@ export interface GammaPayload {
   strikes: GammaStrike[];
   /** Each priced expiry's totals, from the same legs as `total`; absent from older servers. */
   byExpiry?: GammaExpiry[];
+  /** When the quotes behind the volatilities were taken: the expiry's own, or the newest priced one's for all. */
   quotesAsOf: string | null;
+  /**
+   * The instant gamma is evaluated at, which time to expiry runs from: now
+   * while the quotes are current, the spot's time with a closed session's
+   * quotes (before the open). Absent from older servers.
+   */
+  gammaAsOf?: string | null;
   warnings: string[];
   /** The venue listing the options, when it is not the US exchanges: Deribit. */
   venue?: string;
