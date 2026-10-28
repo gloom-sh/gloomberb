@@ -10,7 +10,7 @@ function result(symbol: string, name: string): InstrumentSearchResult {
 const EMPTY_CDS: CloudCdsResponse = { source: "DTCC PPD", asOf: null, trades: [] };
 
 /** Records what the loader searched for and what it then asked the backend. */
-function spy(searchResults: InstrumentSearchResult[] | Error = []) {
+function spy(searchResults: InstrumentSearchResult[] | Error = [], covered: readonly string[] = []) {
   const searched: string[] = [];
   const requested: Array<string | undefined> = [];
   return {
@@ -25,7 +25,18 @@ function spy(searchResults: InstrumentSearchResult[] | Error = []) {
       if (searchResults instanceof Error) throw searchResults;
       return searchResults;
     },
+    coveredIssuers: async () => covered,
   };
+}
+
+/** A US listing on its primary exchange, the line a name resolves to. */
+function primaryUs(symbol: string, name: string, exchange = "NYSE"): InstrumentSearchResult {
+  return { ...result(symbol, name), exchange, primaryExchange: exchange, currency: "USD" };
+}
+
+/** A listing abroad, which a one-word name must never resolve to. */
+function foreign(symbol: string, name: string, exchange: string, currency: string): InstrumentSearchResult {
+  return { ...result(symbol, name), exchange, primaryExchange: exchange, currency };
 }
 
 describe("loadCdsActivity", () => {
@@ -33,7 +44,7 @@ describe("loadCdsActivity", () => {
     // A near-miss is returned first, so first-result-wins would send the wrong name.
     const calls = spy([result("ORCL.MX", "Oracle de Mexico"), result("ORCL", "Oracle Corporation")]);
 
-    const activity = await loadCdsActivity("ORCL", calls.fetchCds, calls.searchInstruments);
+    const activity = await loadCdsActivity("ORCL", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
 
     expect(calls.searched).toEqual(["ORCL"]);
     expect(calls.requested).toEqual(["Oracle Corporation"]);
@@ -50,7 +61,7 @@ describe("loadCdsActivity", () => {
       ["BRK.B", "Berkshire Hathaway Inc. Class B", "Berkshire Hathaway Inc."],
     ] as const) {
       const calls = spy([result(symbol, listing)]);
-      await loadCdsActivity(symbol, calls.fetchCds, calls.searchInstruments);
+      await loadCdsActivity(symbol, calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
       expect(calls.requested).toEqual([issuer]);
     }
   });
@@ -70,15 +81,15 @@ describe("loadCdsActivity", () => {
     };
     const calls = spy([cedear, primary]);
 
-    await loadCdsActivity("ORCL", calls.fetchCds, calls.searchInstruments);
+    await loadCdsActivity("ORCL", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
 
     expect(calls.requested).toEqual(["Oracle Corporation"]);
   });
 
-  test("falls back to the first result when no symbol matches exactly", async () => {
-    const calls = spy([result("AVGO", "Broadcom Inc."), result("AVGOP", "Broadcom Preferred")]);
+  test("falls back to the first primary US listing when no symbol matches exactly", async () => {
+    const calls = spy([foreign("AVGO.MX", "Broadcom Mexico", "BMV", "MXN"), primaryUs("AVGO", "Broadcom Inc.", "NASDAQ")]);
 
-    await loadCdsActivity("BRCM", calls.fetchCds, calls.searchInstruments);
+    await loadCdsActivity("BRCM", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
 
     expect(calls.requested).toEqual(["Broadcom Inc."]);
   });
@@ -86,21 +97,68 @@ describe("loadCdsActivity", () => {
   test("sends a company name straight through without searching", async () => {
     const calls = spy([result("ORCL", "Oracle Corporation")]);
 
-    const activity = await loadCdsActivity("Tencent Holdings Limited", calls.fetchCds, calls.searchInstruments);
+    const activity = await loadCdsActivity("Tencent Holdings Limited", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
 
     expect(calls.searched).toEqual([]);
     expect(calls.requested).toEqual(["Tencent Holdings Limited"]);
     expect(activity.issuer).toBe("Tencent Holdings Limited");
   });
 
+  describe("a one-word or lowercase name", () => {
+    const COVERED = ["Ford Motor Credit Company LLC", "Ford Motor Company", "Paramount Global", "The Goodyear Tire & Rubber Company", "Whirlpool Corporation"];
+
+    test("matches the covered issuers before any listing, so a foreign first hit never wins", async () => {
+      for (const [typed, hits, issuer] of [
+        ["goodyear", [foreign("GOODYEAR", "Goodyear India Ltd.", "NSE", "INR"), primaryUs("GT", "The Goodyear Tire & Rubber Company", "NASDAQ")], "The Goodyear Tire & Rubber Company"],
+        ["paramount", [primaryUs("PZG", "Paramount Gold Nevada Corp.", "NYSEAMERICAN")], "Paramount Global"],
+        ["Paramount", [primaryUs("PZG", "Paramount Gold Nevada Corp.", "NYSEAMERICAN")], "Paramount Global"],
+        // The issuer that starts with the words, then the shortest.
+        ["ford", [], "Ford Motor Company"],
+        ["ford motor credit", [], "Ford Motor Credit Company LLC"],
+      ] as const) {
+        const calls = spy([...hits], COVERED);
+        const activity = await loadCdsActivity(typed, calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+        expect(calls.requested).toEqual([issuer]);
+        expect(activity.unmatched ?? null).toBeNull();
+      }
+    });
+
+    test("then takes the primary US common stock it names, in the covered spelling", async () => {
+      const lower = spy([foreign("WHR", "Whirlpool Corp. - CEDEAR", "BYMA", "ARS"), primaryUs("WHR", "Whirlpool Corp")], COVERED);
+      await loadCdsActivity("whr", lower.fetchCds, lower.searchInstruments, lower.coveredIssuers);
+      expect(lower.requested).toEqual(["Whirlpool Corporation"]);
+
+      // Not covered: the listing's name goes to the tape, with the covered issuers closest to what was typed.
+      const getty = spy([foreign("L2S", "Getty Images Holdings, Inc.", "MUNICH", "EUR"), primaryUs("GETY", "Getty Images Holdings, Inc. Class A Common Stock")], COVERED);
+      const activity = await loadCdsActivity("getty images", getty.fetchCds, getty.searchInstruments, getty.coveredIssuers);
+      expect(getty.requested).toEqual(["Getty Images Holdings, Inc."]);
+      expect(activity.unmatched).toEqual({ nearest: [] });
+    });
+
+    test("goes to the tape as typed when only a foreign line has it, with the closest covered issuers", async () => {
+      const calls = spy([foreign("GOODYEAR", "Goodyear India Ltd.", "NSE", "INR")], COVERED);
+      const activity = await loadCdsActivity("goodyer", calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
+      expect(calls.requested).toEqual(["goodyer"]);
+      expect(activity.unmatched).toEqual({ nearest: ["The Goodyear Tire & Rubber Company"] });
+
+      // Without the covered list the name still reaches the tape.
+      const outage = spy([], COVERED);
+      const unlisted = await loadCdsActivity("paramount", outage.fetchCds, outage.searchInstruments, async () => {
+        throw new Error("levels unavailable");
+      });
+      expect(outage.requested).toEqual(["paramount"]);
+      expect(unlisted.unmatched).toEqual({ nearest: [] });
+    });
+  });
+
   test("keeps the raw ticker when search is empty or fails", async () => {
     const empty = spy([]);
-    await loadCdsActivity("ORCL", empty.fetchCds, empty.searchInstruments);
+    await loadCdsActivity("ORCL", empty.fetchCds, empty.searchInstruments, empty.coveredIssuers);
     expect(empty.requested).toEqual(["ORCL"]);
 
     // A search outage must not also take out the CDS request.
     const broken = spy(new Error("search unavailable"));
-    const activity = await loadCdsActivity("ORCL", broken.fetchCds, broken.searchInstruments);
+    const activity = await loadCdsActivity("ORCL", broken.fetchCds, broken.searchInstruments, broken.coveredIssuers);
     expect(broken.requested).toEqual(["ORCL"]);
     expect(activity.issuer).toBe("ORCL");
   });
@@ -108,7 +166,7 @@ describe("loadCdsActivity", () => {
   test("market-wide load searches nothing and sends no issuer", async () => {
     const calls = spy([result("ORCL", "Oracle Corporation")]);
 
-    const activity = await loadCdsActivity(null, calls.fetchCds, calls.searchInstruments);
+    const activity = await loadCdsActivity(null, calls.fetchCds, calls.searchInstruments, calls.coveredIssuers);
 
     expect(calls.searched).toEqual([]);
     expect(calls.requested).toEqual([undefined]);

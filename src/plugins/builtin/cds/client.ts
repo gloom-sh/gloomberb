@@ -9,6 +9,8 @@ import type { CloudCdsHistoryParams } from "../../../api-client/paths";
 import type { InstrumentSearchResult } from "../../../types/instrument";
 import {
   cdsReferenceEntity,
+  closestCoveredIssuers,
+  coveredIssuerMatch,
   issuerNameOf,
   normalizeCdsTrades,
   spreadLevelsOf,
@@ -29,6 +31,12 @@ export interface CdsActivity {
   query: string | null;
   /** The issuer name actually sent, after any symbol lookup. */
   issuer: string | null;
+  /**
+   * Set when a name matched no covered issuer and was sent as typed or as its
+   * listing's name: the covered issuers closest to what was typed, for the
+   * view to offer when the tape has nothing under it either.
+   */
+  unmatched?: { nearest: string[] } | null;
   /** How many days of the tape the trades cover. */
   days: number;
   trades: CdsTrade[];
@@ -38,13 +46,14 @@ export type CdsActivityLoader = (issuer: string | null) => Promise<CdsActivity>;
 
 export type CdsFetch = (params: { issuer?: string; days?: number; limit?: number }) => Promise<CloudCdsResponse>;
 export type InstrumentSearch = (query: string, limit?: number) => Promise<InstrumentSearchResult[]>;
+/** The names of the issuers whose 5Y line has a level, as the tape spells them. */
+export type CoveredIssuers = () => Promise<readonly string[]>;
 
 /**
- * A bare ticker with normal symbol punctuation and no spaces. Anything longer or
- * containing a space is already a company name and is sent as the tape would
- * name it.
+ * A ticker as typed: symbol punctuation, no spaces, and no lowercase letter.
+ * `WHR` and `BRK.B` are tickers; `goodyear` and `Paramount` are names.
  */
-const TICKER_LIKE = /^[A-Za-z0-9][A-Za-z0-9.^:-]{0,11}$/;
+const TICKER_LIKE = /^[A-Z0-9][A-Z0-9.^:-]{0,11}$/;
 const US_PRIMARY_EXCHANGES = new Set(["AMEX", "NASDAQ", "NYSE", "NYSEAMERICAN", "NYSEARCA"]);
 
 function isPrimaryUsCommonStock(result: InstrumentSearchResult): boolean {
@@ -55,44 +64,111 @@ function isPrimaryUsCommonStock(result: InstrumentSearchResult): boolean {
     && (type === "stk" || type === "equity" || type.includes("common stock"));
 }
 
+/** The covered issuers' names, from the same request as their levels. */
+export function coveredIssuersFrom(fetchLevels: CdsLevelsFetch): CoveredIssuers {
+  return async () => ((await fetchLevels()).levels ?? []).flatMap((level) => (typeof level.issuer === "string" ? [level.issuer] : []));
+}
+
+const defaultCoveredIssuers = coveredIssuersFrom(() => apiClient.getCloudCdsLevels());
+
+async function searchOrNone(searchInstruments: InstrumentSearch, query: string): Promise<InstrumentSearchResult[]> {
+  try {
+    return await searchInstruments(query);
+  } catch {
+    // Intentional ignore: a search outage sends the name as typed instead of failing the CDS request.
+    return [];
+  }
+}
+
+async function coveredOrNone(coveredIssuers: CoveredIssuers): Promise<readonly string[]> {
+  try {
+    return await coveredIssuers();
+  } catch {
+    // Intentional ignore: without the covered list the name goes on to the listing and the tape.
+    return [];
+  }
+}
+
+export interface CdsIssuerResolution {
+  /** The name the tape is asked for. */
+  issuer: string;
+  /** Set when a name matched no covered issuer; see `CdsActivity.unmatched`. */
+  unmatched: { nearest: string[] } | null;
+}
+
 /**
- * The backend matches DTCC issuer names, so a ticker has to become a company
- * name first: its reference entity when the debt sits with another entity,
- * else the listed company's name without its share class ("Alphabet Inc.",
- * not "Alphabet Inc. Class A Common Stock"). An untracked symbol has no local
- * metadata to expand it, and its quote name never arrives for a fixed
- * binding, so the shared instrument search is the only reliable expansion. A
- * search outage falls back to the raw input rather than taking the CDS
- * request down with it.
+ * The backend matches DTCC issuer names, so what was typed has to become one.
+ *
+ * A ticker (`WHR`) becomes its reference entity when the debt sits with
+ * another entity, else the listed company's name without its share class
+ * ("Alphabet Inc.", not "Alphabet Inc. Class A Common Stock"): the primary US
+ * common stock where exchanges reuse the symbol, any exact listing otherwise.
+ * An untracked symbol has no local metadata to expand it, and its quote name
+ * never arrives for a fixed binding, so the shared instrument search is the
+ * only reliable expansion.
+ *
+ * A one-word or lowercase name (`goodyear`, `paramount `) matches the names of
+ * the covered issuers first, then the primary US common stock it names. A
+ * foreign line never wins: the first search hit for `goodyear` is Goodyear
+ * India, whose name no CDS trades under. Nothing matched, the name goes to the
+ * tape as typed, with the covered issuers closest to it.
+ *
+ * A longer name in capitals and lowercase is already a company name and is
+ * sent as written. A search outage falls back to the raw input rather than
+ * taking the CDS request down with it.
  */
+export async function resolveCdsIssuer(
+  query: string,
+  searchInstruments: InstrumentSearch,
+  coveredIssuers: CoveredIssuers = defaultCoveredIssuers,
+): Promise<CdsIssuerResolution> {
+  const ticker = TICKER_LIKE.test(query);
+  if (!ticker && /\s/.test(query) && query !== query.toLowerCase()) return { issuer: issuerNameOf(query), unmatched: null };
+  let results: InstrumentSearchResult[] | null = null;
+  if (ticker) {
+    const referenceEntity = cdsReferenceEntity(query);
+    if (referenceEntity) return { issuer: referenceEntity, unmatched: null };
+    results = await searchOrNone(searchInstruments, query);
+    const exactMatches = results.filter((result) => result.symbol.toUpperCase() === query);
+    const name = (exactMatches.find(isPrimaryUsCommonStock) ?? exactMatches[0])?.name?.trim();
+    if (name) return { issuer: issuerNameOf(name), unmatched: null };
+  }
+  const covered = await coveredOrNone(coveredIssuers);
+  const named = coveredIssuerMatch(query, covered);
+  if (named) return { issuer: named, unmatched: null };
+  results ??= await searchOrNone(searchInstruments, query);
+  const symbol = query.toUpperCase();
+  const primary = results.filter(isPrimaryUsCommonStock);
+  const listing = (primary.find((result) => result.symbol.toUpperCase() === symbol) ?? primary[0])?.name?.trim();
+  if (listing) {
+    const issuer = issuerNameOf(listing);
+    const listed = coveredIssuerMatch(issuer, covered);
+    return listed
+      ? { issuer: listed, unmatched: null }
+      : { issuer, unmatched: { nearest: closestCoveredIssuers(query, covered) } };
+  }
+  return { issuer: ticker ? query : issuerNameOf(query), unmatched: { nearest: closestCoveredIssuers(query, covered) } };
+}
+
+/** The name `resolveCdsIssuer` sends to the tape, for a caller that only needs that. */
 export async function resolveIssuerName(
   issuer: string,
   searchInstruments: InstrumentSearch,
+  coveredIssuers?: CoveredIssuers,
 ): Promise<string> {
-  if (!TICKER_LIKE.test(issuer)) return issuerNameOf(issuer);
-  const referenceEntity = cdsReferenceEntity(issuer);
-  if (referenceEntity) return referenceEntity;
-  try {
-    const results = await searchInstruments(issuer);
-    const symbol = issuer.toUpperCase();
-    const exactMatches = results.filter((result) => result.symbol.toUpperCase() === symbol);
-    const match = exactMatches.find(isPrimaryUsCommonStock) ?? exactMatches[0] ?? results[0];
-    const name = match?.name?.trim();
-    return name ? issuerNameOf(name) : issuer;
-  } catch {
-    return issuer;
-  }
+  return (await resolveCdsIssuer(issuer, searchInstruments, coveredIssuers)).issuer;
 }
 
 export async function loadCdsActivity(
   issuer: string | null,
   fetchCds: CdsFetch = (params) => apiClient.getCloudCds(params),
   searchInstruments: InstrumentSearch = (query, limit) => apiClient.searchInstruments(query, limit),
+  coveredIssuers: CoveredIssuers = defaultCoveredIssuers,
 ): Promise<CdsActivity> {
   const query = issuer?.trim() || null;
-  const resolved = query ? await resolveIssuerName(query, searchInstruments) : null;
+  const resolved = query ? await resolveCdsIssuer(query, searchInstruments, coveredIssuers) : null;
   const response = await fetchCds({
-    ...(resolved ? { issuer: resolved } : {}),
+    ...(resolved ? { issuer: resolved.issuer } : {}),
     days: CDS_TRADE_DAYS,
     limit: CDS_TRADE_LIMIT,
   });
@@ -100,7 +176,8 @@ export async function loadCdsActivity(
     source: response.source,
     asOf: response.asOf,
     query,
-    issuer: resolved,
+    issuer: resolved?.issuer ?? null,
+    ...(resolved?.unmatched ? { unmatched: resolved.unmatched } : {}),
     days: CDS_TRADE_DAYS,
     trades: normalizeCdsTrades(response.trades ?? []),
   };

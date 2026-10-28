@@ -5,6 +5,7 @@ import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
+import { typoDistance } from "../../../utils/typo-distance";
 import { formatMove } from "../credit-boards/model";
 
 export const CDS_PANE_ID = "cds";
@@ -20,7 +21,7 @@ const DECIMAL_TO_BP = 10_000;
 
 export interface CdsTrade {
   id: string;
-  /** Reported spelling, kept verbatim so a display name can be chosen later. */
+  /** The issuer's best spelling on the tape, the same on every print of it (see `normalizeCdsTrades`). */
   issuer: string;
   /** Alias-collapsed grouping key. Internal only; never shown or sent. */
   issuerKey: string;
@@ -31,8 +32,13 @@ export interface CdsTrade {
   notionalCapped: boolean;
   currency: string | null;
   couponBp: number | null;
-  /** Only what the report carried. Never derived from upfront or coupon. */
+  /**
+   * Only what the report carried. Never derived from upfront or coupon, and
+   * empty when the field held points upfront (`pointsUpfront`).
+   */
   spreadBp: number | null;
+  /** The quote of a print whose spread field held points upfront, not bp. */
+  pointsUpfront: number | null;
   /** Source inputs retained even when their notation cannot supply a bp rate. */
   reportedSpread: number | null;
   spreadNotation: string | null;
@@ -144,6 +150,62 @@ export function issuerGroupKey(name: string): string {
 }
 
 /**
+ * The covered issuer a name stands for, by its words: the issuer of that very
+ * name, else one whose name holds those words in a row (`goodyear` is "The
+ * Goodyear Tire & Rubber Company"), one that starts with them first, then the
+ * shortest, so `ford` is Ford Motor Company and not Ford Motor Credit. Null
+ * when none does.
+ */
+export function coveredIssuerMatch(name: string, covered: readonly string[]): string | null {
+  const wanted = issuerGroupKey(displayIssuerName(name));
+  if (!wanted) return null;
+  let best: { issuer: string; leading: boolean; words: number } | null = null;
+  for (const issuer of covered) {
+    const key = issuerGroupKey(displayIssuerName(issuer));
+    if (key === wanted) return displayIssuerName(issuer);
+    if (!` ${key} `.includes(` ${wanted} `)) continue;
+    const candidate = { issuer: displayIssuerName(issuer), leading: key.startsWith(`${wanted} `), words: key.split(" ").length };
+    if (!best
+      || (candidate.leading !== best.leading ? candidate.leading
+        : candidate.words !== best.words ? candidate.words < best.words
+          : candidate.issuer.localeCompare(best.issuer) < 0)) best = candidate;
+  }
+  return best?.issuer ?? null;
+}
+
+/** How many covered issuers an unmatched name offers. */
+const CLOSEST_ISSUERS = 3;
+
+/**
+ * How near a word is to one of a name's: a slip of the keys, or the same first
+ * letters (`goodyer`, `paramo`). Short words never count, or every name with
+ * "co" in it would be close.
+ */
+function wordCloseness(typed: string, word: string): number {
+  if (typed.length < 3 || word.length < 3) return 0;
+  if (typed.length >= 4 && typoDistance(typed, word) <= 1) return typed.length;
+  let shared = 0;
+  while (shared < Math.min(typed.length, word.length) && typed[shared] === word[shared]) shared += 1;
+  return shared >= 4 || (shared >= 3 && shared === typed.length) ? shared : 0;
+}
+
+/** The covered issuers closest to a name that matched none, closest first; none when nothing is near. */
+export function closestCoveredIssuers(name: string, covered: readonly string[]): string[] {
+  const typed = issuerGroupKey(displayIssuerName(name)).split(" ").filter(Boolean);
+  const scored = new Map<string, number>();
+  for (const issuer of covered) {
+    const words = issuerGroupKey(displayIssuerName(issuer)).split(" ");
+    const score = typed.reduce((sum, word) => sum + Math.max(0, ...words.map((other) => wordCloseness(word, other))), 0);
+    const shown = displayIssuerName(issuer);
+    if (score > 0 && score > (scored.get(shown) ?? 0)) scored.set(shown, score);
+  }
+  return [...scored]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, CLOSEST_ISSUERS)
+    .map(([issuer]) => issuer);
+}
+
+/**
  * DTCC writes a comma inside a field as `;` ("CCO Holdings;LLC",
  * "Amazon.com;Inc."), so a name gets its comma back before it is shown,
  * grouped or sent as a query.
@@ -208,6 +270,37 @@ function couponToBasisPoints(fixedRate: number | null): number | null {
 }
 
 /**
+ * How far a reported quote may sit from the points its upfront works out to
+ * and still be read as those points: accrued and rounding move the amount by
+ * about a tenth of a point.
+ */
+const POINTS_MATCH_PTS = 0.5;
+const POINTS_MATCH_SHARE = 0.05;
+
+/**
+ * Some desks key a distressed name's points upfront into the spread field and
+ * leave the coupon blank: Whirlpool's Dec 2028 contract printed `0.00065`,
+ * 6.5 read as bp, beside 319,861 upfront on 5M, which is 6.4 points. Without a
+ * coupon nothing makes the field a running spread, and when the amount over
+ * the notional reads as the same number in points, it is that many points.
+ * A real spread that low on a running coupon would need the upfront to land on
+ * the same number by chance, below 5bp.
+ */
+function pointsUpfrontOf(
+  spreadBp: number | null,
+  couponBp: number | null,
+  upfront: number | null,
+  notional: number | null,
+): number | null {
+  if (couponBp != null || spreadBp == null || !(spreadBp > 0)) return null;
+  if (upfront == null || !Number.isFinite(upfront) || notional == null || !(notional > 0)) return null;
+  const impliedPts = (Math.abs(upfront) / notional) * 100;
+  const tolerance = Math.max(POINTS_MATCH_PTS, impliedPts * POINTS_MATCH_SHARE);
+  // The decimal the field holds carries float noise (0.001525 is 15.249999...).
+  return Math.abs(spreadBp - impliedPts) <= tolerance ? Math.round(spreadBp * 1e6) / 1e6 : null;
+}
+
+/**
  * When the trade was struck, not when the tape carried it. A lifecycle
  * correction is disseminated long after the fact, so using the event time would
  * date an old trade as new.
@@ -232,32 +325,46 @@ function issuerOf(trade: CloudCdsTradePayload): string | null {
   return underlier && identifiesIssuer(underlier) ? displayIssuerName(underlier) : null;
 }
 
+/**
+ * The tape's prints as rows. One issuer reads as one name on every print:
+ * the tape spells Whirlpool three ways in a week ("WHIRLPOOL CORPORATION",
+ * "Whirlpool Corp", "Whirlpool Corporation"), and each row takes the spelling
+ * the issuer list shows for them all.
+ */
 export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): CdsTrade[] {
   const rows: CdsTrade[] = [];
+  const names = new Map<string, string>();
   for (const trade of trades) {
     const eventAt = tapeTime(trade);
     if (eventAt == null) continue;
     const issuer = issuerOf(trade);
     // Nothing names the reference entity, so the row would invent one.
     if (!issuer) continue;
+    const issuerKey = issuerGroupKey(issuer);
+    const named = names.get(issuerKey);
+    names.set(issuerKey, named ? preferredIssuerName(named, issuer) : issuer);
+    const couponBp = couponToBasisPoints(trade.fixedRate);
+    const reportedBp = spreadToBasisPoints(trade.reportedSpread, trade.spreadNotation);
+    const pointsUpfront = pointsUpfrontOf(reportedBp, couponBp, trade.upfrontAmount, trade.notionalAmount);
     rows.push({
       id: trade.disseminationId,
       issuer,
-      issuerKey: issuerGroupKey(issuer),
+      issuerKey,
       eventAt,
       maturity: trade.maturityDate ?? trade.expirationDate,
       notional: trade.notionalAmount,
       notionalCapped: trade.notionalCapped,
       currency: trade.notionalCurrency,
-      couponBp: couponToBasisPoints(trade.fixedRate),
-      spreadBp: spreadToBasisPoints(trade.reportedSpread, trade.spreadNotation),
+      couponBp,
+      spreadBp: pointsUpfront == null ? reportedBp : null,
+      pointsUpfront,
       reportedSpread: trade.reportedSpread,
       spreadNotation: trade.spreadNotation,
       upfront: trade.upfrontAmount,
       upfrontCurrency: trade.upfrontCurrency,
     });
   }
-  return rows;
+  return rows.map((row) => ({ ...row, issuer: names.get(row.issuerKey) ?? row.issuer }));
 }
 
 /**
@@ -405,13 +512,23 @@ export function cdsFreshness(lastTrade: number | string | null): HeadlessPaneFre
  * What an empty view says: the window searched and, for one name, the
  * reference entity the query became, with what was typed when that differs.
  */
-export function noTradesMessage({ query, issuer, days }: {
+export function noTradesMessage({ query, issuer, days, unmatched = null }: {
   query: string | null;
   issuer: string | null;
   days: number;
+  /**
+   * A name that matched no covered issuer, once the tape has no trades and no
+   * line under it either: what the view says instead is that no issuer
+   * matches, with the covered ones closest to what was typed.
+   */
+  unmatched?: { nearest: readonly string[] } | null;
 }): string {
   const window = `in the last ${days} days`;
   if (!query) return `No single-name CDS trades ${window}.`;
+  if (unmatched) {
+    const nearest = unmatched.nearest.length ? ` Closest covered issuers: ${unmatched.nearest.join(", ")}.` : "";
+    return `No CDS issuer matches ${query}.${nearest}`;
+  }
   const name = issuer && issuer.toUpperCase() !== query.toUpperCase() ? `${issuer} (${query})` : issuer ?? query;
   return `No CDS trades for ${name} ${window}.`;
 }
@@ -610,22 +727,25 @@ export function sortIssuers(
   });
 }
 
-export type TradeColumnId = "time" | "maturity" | "notional" | "currency" | "coupon" | "spread" | "upfront";
+export type TradeColumnId = "time" | "maturity" | "notional" | "currency" | "coupon" | "spread" | "points" | "upfront";
 export type TradeColumn = DataTableColumn & { id: TradeColumnId };
 export type TradeSortPreference = SortPreference<TradeColumnId>;
 
-export const TRADE_SORT_COLUMN_IDS: readonly TradeColumnId[] = [
-  "time",
-  "maturity",
-  "notional",
-  "coupon",
-  "spread",
-  "upfront",
-];
 export const DEFAULT_TRADE_SORT: TradeSortPreference = { columnId: "time", direction: "desc" };
 
-export function buildTradeColumns(width: number): TradeColumn[] {
-  const maturityWidth = Math.max(10, Math.min(12, width - 59));
+/** Whether any print was quoted in points upfront, which is when the trades show a Points column. */
+export function hasPointsQuotes(trades: readonly Pick<CdsTrade, "pointsUpfront">[]): boolean {
+  return trades.some((trade) => trade.pointsUpfront != null);
+}
+
+/** The columns `]` and `[` cycle the trades' sort through: the ones shown. */
+export function tradeSortColumnIds(points: boolean): readonly TradeColumnId[] {
+  return ["time", "maturity", "notional", "coupon", "spread", ...(points ? ["points" as const] : []), "upfront"];
+}
+
+/** A Points column sits beside Spread only when a print was quoted in points. */
+export function buildTradeColumns(width: number, points = false): TradeColumn[] {
+  const maturityWidth = Math.max(10, Math.min(12, width - 59 - (points ? 9 : 0)));
   return [
     { id: "time", label: "TIME UTC", width: 16, align: "left" },
     { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
@@ -633,6 +753,7 @@ export function buildTradeColumns(width: number): TradeColumn[] {
     { id: "currency", label: "CCY", width: 5, align: "left" },
     { id: "coupon", label: "COUPON", width: 9, align: "right" },
     { id: "spread", label: "SPREAD", width: 10, align: "right" },
+    ...(points ? [{ id: "points" as const, label: "POINTS", width: 9, align: "right" as const }] : []),
     { id: "upfront", label: "ABS UPFRONT", width: 13, align: "right" },
   ];
 }
@@ -651,6 +772,8 @@ function tradeSortValue(columnId: TradeColumnId, row: CdsTrade): string | number
       return row.couponBp;
     case "spread":
       return row.spreadBp;
+    case "points":
+      return row.pointsUpfront;
     case "upfront":
       return row.upfront;
   }
