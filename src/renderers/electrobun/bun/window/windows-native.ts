@@ -41,6 +41,14 @@ function loadWin32() {
       args: [FFIType.ptr, FFIType.ptr, FFIType.int, FFIType.int, FFIType.int, FFIType.int, FFIType.u32],
       returns: FFIType.bool,
     },
+    GetCursorPos: {
+      args: [FFIType.ptr],
+      returns: FFIType.bool,
+    },
+    PostMessageW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64],
+      returns: FFIType.bool,
+    },
   });
 }
 
@@ -54,6 +62,25 @@ function win32OrNull(): Win32 | null {
     cachedWin32 = null;
   }
   return cachedWin32;
+}
+
+const WM_NCLBUTTONDOWN = 0x00a1;
+const HTCAPTION = 2;
+
+/**
+ * Hands a press on the header to Windows as a press on a native title bar, from
+ * where the pointer is. Its move loop then moves the window until the button
+ * comes up: it snaps to the edges and corners of the screen and comes out of
+ * maximized, which a window moved by hand does not. Electrobun's own mover
+ * only moves. False off Windows.
+ */
+export function startSystemWindowMove(windowHandle: Pointer): boolean {
+  const win32 = win32OrNull();
+  if (!win32) return false;
+  const point = new Int32Array(2);
+  if (!win32.symbols.GetCursorPos(ptr(point))) return false;
+  const position = ((point[1]! & 0xffff) << 16) | (point[0]! & 0xffff);
+  return win32.symbols.PostMessageW(windowHandle, WM_NCLBUTTONDOWN, BigInt(HTCAPTION), BigInt(position >>> 0));
 }
 
 export function wideString(value: string): Uint8Array {
