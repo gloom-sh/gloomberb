@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { createBaseConverter } from "../../../../cli/base-converter";
 import { savedListingName } from "../../../../cli/listing-arg";
 import { currentListingName } from "../../../../tickers/listing-name";
@@ -257,8 +258,9 @@ export async function loadCollectionQuotes(
         const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
           datesChangeBasis ? { ...context, datesChangeBasis } : context);
         quotes.set(ticker.metadata.ticker, quote);
-      } catch {
-        // Ignore partial quote failures so the rest of the table still renders.
+      } catch (error) {
+        // A partial quote failure leaves the rest of the table rendering.
+        logFailure("portfolio-list.cli.render", "Load collection quote failed")(error);
       }
     }),
   );
@@ -1269,7 +1271,7 @@ async function loadMarketCapFinancials(
   const targets = needed.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }));
   if (dataProvider.getTickerFinancialsBatch) {
     await Promise.all(chunked(targets, FINANCIALS_BATCH_SIZE).map(async (batch) => {
-      const results = await dataProvider.getTickerFinancialsBatch!(batch).catch(() => []);
+      const results = await dataProvider.getTickerFinancialsBatch!(batch).catch(logFailure("portfolio-list.cli.render", "Load market cap financials batch failed", []));
       batch.forEach((target, index) => {
         const value = (results.find((result) => result.target === target) ?? results[index])?.financials;
         if (value) financials.set(target.symbol, value);
@@ -1278,7 +1280,7 @@ async function loadMarketCapFinancials(
     return financials;
   }
   await mapWithConcurrency(targets, FINANCIALS_CONCURRENCY, async (target) => {
-    const value = await dataProvider.getTickerFinancials(target.symbol, target.exchange).catch(() => null);
+    const value = await dataProvider.getTickerFinancials(target.symbol, target.exchange).catch(logFailure("portfolio-list.cli.render", "Load market cap financials failed", null));
     if (value) financials.set(target.symbol, value);
   });
   return financials;
@@ -1298,7 +1300,7 @@ async function loadPerpetualFunding(tickers: readonly TickerRecord[]): Promise<M
   });
   const funding = new Map<string, number | null>();
   await mapWithConcurrency(markets, PERPETUAL_CONCURRENCY, async ({ symbol, listing }) => {
-    funding.set(symbol, await loadPerpetualMarket(listing).then((market) => market?.row.fundingRate8h ?? null, () => null));
+    funding.set(symbol, await loadPerpetualMarket(listing).then((market) => market?.row.fundingRate8h ?? null, logFailure("portfolio-list.cli.render", "Load perpetual funding failed", null)));
   });
   return funding;
 }

@@ -1,3 +1,4 @@
+import { logFailure } from "../../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
@@ -133,7 +134,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
     symbol && dataProvider?.getChartResolutionSupport
       ? dataProvider.getChartResolutionSupport(symbol, exchange)
       : NO_SUPPORT,
-  ).catch(() => NO_SUPPORT), [dataProvider, exchange, symbol]);
+  ).catch(logFailure("ticker-detail.data-panes.returns-pane", "Read return interval support failed", NO_SUPPORT)), [dataProvider, exchange, symbol]);
   const [support, setSupport] = useState<readonly ChartResolutionSupport[] | null>(null);
   useEffect(() => {
     let cancelled = false;

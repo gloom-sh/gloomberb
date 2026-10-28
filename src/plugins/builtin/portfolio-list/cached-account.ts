@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { peekPersistedBrokerAccounts } from "../../../brokers/account-cache";
 import type { AppResourceStorePort } from "../../../core/app-service-ports";
 import type { AppConfig } from "../../../types/config";
@@ -20,8 +21,9 @@ export function peekCachedBrokerAccounts(
     try {
       const accounts = peekPersistedBrokerAccounts(resources, instance);
       if (accounts?.length) brokerAccounts[instance.id] = accounts;
-    } catch {
+    } catch (error) {
       // An unreadable snapshot leaves the portfolio without account figures.
+      logFailure("portfolio-list.cached-account", "Read cached broker accounts failed")(error);
     }
   }
   return brokerAccounts;

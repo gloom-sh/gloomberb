@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { apiClient } from "../../../api-client";
 import { recordResearchActivity, researchUpgradeUrl } from "../../../api-client/research-activity";
@@ -159,7 +160,7 @@ async function openCheckoutWithHandoff(
     .then(({ url, link }): CheckoutHandoffTarget => ({
       url,
       link: link ?? null,
-      opened: rendererHost.openExternal(url).then((result) => result !== false, () => false),
+      opened: rendererHost.openExternal(url).then((result) => result !== false, logFailure("shared.cloud-upgrade", "Open checkout in the browser failed", false)),
     }));
   void promptCheckoutHandoff(dialog, target);
   await (await target).opened;
@@ -221,10 +222,10 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
         openCloudUpgradePage("cloud", async () => {
           const url = await apiClient.createBrowserHandoff()
             .then((handoff) => handoff.url)
-            .catch(() => CLOUD_UPGRADE_URL);
+            .catch(logFailure("shared.cloud-upgrade", "Create Cloud page handoff failed", CLOUD_UPGRADE_URL));
           await rendererHost.openExternal(url);
         })
-      )).catch(() => {});
+      )).catch(logFailure("shared.cloud-upgrade", "Open Cloud upgrade page failed"));
     };
     if (
       checkout.sheet === false ||

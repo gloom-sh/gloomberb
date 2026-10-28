@@ -119,6 +119,7 @@ export function getQuoteMonitorPaneSettings(
     try {
       symbols = parseTickerListInput(storedText, MAX_TICKER_LIST_SIZE);
     } catch {
+      // Intentional ignore: unparseable saved ticker text falls back to the legacy symbol or the pane's ticker.
       symbols = [];
     }
   }
