@@ -3,7 +3,7 @@ import type { Quote } from "../types/financials";
 import type { FormerIssuerRecord, TickerChangeHop, TickerChanges } from "../types/ticker-changes";
 import { isCryptoPairSymbol } from "../utils/crypto-pair";
 import { canonicalExchange, isUsListingExchange } from "../utils/exchanges";
-import { sameCompany, shortCompanyName } from "./company-name";
+import { companyNameCase, sameCompany, shortCompanyName } from "./company-name";
 
 /**
  * A symbol that changed (FB became META), as data for `--json`. `moved`: the
@@ -209,7 +209,7 @@ export function movedAwayChange(change: TickerChange | null | undefined): MovedT
  * look. A quote that stopped before the change, or that names the issuer that
  * left, is that issuer's old line rather than a new listing.
  *
- * "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"
+ * "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)"
  * "HFC became DINO on 2022-03-15"
  * "METV was META until 2022-01-31" (data only: `tickerChangeLine` prints none)
  */
@@ -224,7 +224,8 @@ export function describeTickerChange(
   if (moved) {
     const [first] = moved.hops;
     if (!first) return null;
-    const issuer = moved.name?.trim() ? shortCompanyName(moved.name) : null;
+    // A name filed in capitals ("aTYR PHARMA INC") reads as it is written: aTyr Pharma.
+    const issuer = moved.name?.trim() ? shortCompanyName(companyNameCase(moved.name.trim())) : null;
     const stillTheIssuer = !!current && (
       (current.lastTraded != null && current.lastTraded < day(first.date))
       || (!!current.name && !!moved.name && sameCompany(current.name, moved.name))
@@ -234,8 +235,11 @@ export function describeTickerChange(
     const when = moved.hops.length === 1
       ? `changed ${first.date}`
       : `changed to ${first.to} on ${first.date}${laterHops(moved.hops)}`;
+    // "LIFE now lists Ethos Technologies Inc.; LIFE was aTyr Pharma before, now ATYR (changed 2024-06-05)".
     const note = listed
-      ? `${symbol} now lists ${listed}; ${issuer ?? `the former ${symbol}`} trades as ${moved.symbol} (${when})`
+      ? issuer
+        ? `${symbol} now lists ${listed}; ${symbol} was ${issuer} before, now ${moved.symbol} (${when})`
+        : `${symbol} now lists ${listed}; the former ${symbol} trades as ${moved.symbol} (${when})`
       : `${symbol} became ${first.to} on ${first.date}${laterHops(moved.hops)}`;
     return { symbol, kind: "moved", note, changes: moved.hops, tradesAs: moved.symbol, issuer, listed };
   }
