@@ -1,0 +1,67 @@
+name: macOS desktop launch check
+
+# Builds the desktop app from a branch, unsigned, opens it on a fresh profile,
+# and asks its page something through the remote API: the answer travels from
+# the command line to the app and over the app's socket to its page and back.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: Branch, tag or commit of the app to build
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.app_ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build the desktop app
+        run: bunx electrobun build
+
+      - name: Open the app and ask its page
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/macos-desktop-launch-check"
+          home="$RUNNER_TEMP/gloom-home"
+          mkdir -p "$out" "$home"
+          git log -1 --format="Checking the app at %H %s" | tee "$out/summary.txt"
+          app="$(find build -maxdepth 2 -name '*.app' -type d | head -1)"
+          echo "app: $app" | tee -a "$out/summary.txt"
+          GLOOMBERB_HOME="$home" "$app/Contents/MacOS/launcher" >"$out/app-stdout.log" 2>"$out/app-stderr.log" &
+          launcher=$!
+          connected=no
+          for _ in $(seq 1 120); do
+            if grep -q "desktop control endpoint started" "$out/app-stdout.log" "$out/app-stderr.log"; then connected=yes; break; fi
+            sleep 1
+          done
+          echo "the page asked the app to start (endpoint started): $connected" | tee -a "$out/summary.txt"
+          sleep 5
+          screencapture -x "$out/desktop.png" || true
+          pids="$(pgrep -f "$app" | paste -sd, -)"
+          { echo "listening (lsof, the app's processes $pids):"; lsof -nP -a -p "$pids" -iTCP -sTCP:LISTEN; } >"$out/listening.txt" 2>&1 || true
+          cat "$out/listening.txt" | tee -a "$out/summary.txt"
+          GLOOMBERB_HOME="$home" perl -e 'alarm 60; exec @ARGV' bun src/cli/entry.ts remote schema --app desktop >"$out/remote-schema.json" 2>"$out/remote-schema.err"
+          answered=$?
+          echo "gloom remote schema exited $answered, $(wc -c <"$out/remote-schema.json") bytes" | tee -a "$out/summary.txt"
+          head -c 400 "$out/remote-schema.json" | tee -a "$out/summary.txt"; echo
+          cat "$out/remote-schema.err" | tee -a "$out/summary.txt"
+          pkill -f "$app" || true
+          kill "$launcher" 2>/dev/null || true
+          test "$connected" = yes && test "$answered" -eq 0 && test -s "$out/remote-schema.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-desktop-launch-check
+          path: ${{ runner.temp }}/macos-desktop-launch-check
+          retention-days: 14
