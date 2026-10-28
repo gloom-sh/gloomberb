@@ -8,7 +8,7 @@ import {
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
-import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization } from "../../utils/market-capitalization";
+import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
 import {
   formatCompact,
   formatCurrency,
@@ -808,7 +808,9 @@ function fundamentalsNotes(
   const enterpriseValue = shown("Enterprise Value")
     ? enterpriseValueReconciliationNote(fundamentals) ?? computedEnterpriseValueNote(fundamentals)
     : undefined;
-  return [shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings].filter((note): note is string => !!note);
+  // A cap Gloom Cloud withheld says why, as RV and EQS do.
+  const withheld = withheldMarketCap(fundamentals)?.note;
+  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings].filter((note): note is string => !!note);
 }
 
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.

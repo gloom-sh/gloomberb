@@ -1,6 +1,6 @@
 import { formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
-import { marketCapBasisNote, viewMarketCapitalization } from "../../../utils/market-capitalization";
+import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import { enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -126,7 +126,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const gaps: Partial<Record<RelativeValuationGapKey, string>> = {};
   if (session.price == null) gaps.price = quoteStale ? QUOTE_STALE : NOT_REPORTED;
   if (session.changePercent == null) gaps.changePercent = quoteStale ? QUOTE_STALE : NOT_REPORTED;
-  if (capitalization == null) gaps.marketCap = quoteStale && !fundamentals?.marketCap ? QUOTE_STALE : NOT_REPORTED;
+  const withheld = withheldMarketCap(fundamentals);
+  if (capitalization == null) gaps.marketCap = withheld?.gap ?? (quoteStale && !fundamentals?.marketCap ? QUOTE_STALE : NOT_REPORTED);
   if (trailingPE == null && !trailingNotMeaningful && reportedMultiples.trailingPE == null) gaps.trailingPE = NOT_REPORTED;
   if (forwardPE == null && !forwardNotMeaningful && reportedMultiples.forwardPE == null) gaps.forwardPE = NOT_REPORTED;
   if (evSales == null && !evSalesNotMeaningful) gaps.evSales = evSalesGap(fundamentals, quote?.currency, evSalesWithdrawn, enterpriseValueGap);
@@ -158,6 +159,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     marketCapProvenance: capitalization?.provenance ?? null,
     /** valuation's note when the cap is the share count times the price: the provider's figure it replaced. */
     marketCapNote: marketCapBasisNote(capitalization) ?? null,
+    /** Why Gloom Cloud withheld the cap (a receipt priced as ordinary shares), as `valuation` and EQS say it; null otherwise. */
+    marketCapWithheld: withheld?.note ?? null,
     trailingPE,
     forwardPE,
     reportedMultiples,

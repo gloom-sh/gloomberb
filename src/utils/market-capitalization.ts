@@ -20,11 +20,34 @@ function explicitCurrency(currency: string | undefined): currency is string {
   return currency != null && /^[A-Z]{3}$/.test(currency);
 }
 
-/** A lightweight quote can omit capitalization without invalidating the snapshot. */
+/** What every view says for a cap Gloom Cloud withheld, in the words its screener uses. */
+const WITHHELD_MARKET_CAP: Record<NonNullable<Fundamentals["marketCapUnavailable"]>, { gap: string; note: string }> = {
+  "receipt-priced-as-ordinary": {
+    gap: "receipt, no ratio",
+    note: "No market cap: a depositary receipt with no known ratio, whose source's cap is the receipt price x the company's ordinary shares.",
+  },
+};
+
+/**
+ * Why a listing has no market cap when Gloom Cloud withheld it: `gap` for a cell, `note` for a line under a
+ * report. Null when the cap was not withheld.
+ */
+export function withheldMarketCap(fundamentals: Pick<Fundamentals, "unavailableFields" | "marketCapUnavailable"> | undefined):
+  { gap: string; note: string } | null {
+  if (!fundamentals?.unavailableFields?.includes("marketCap")) return null;
+  const reason = fundamentals.marketCapUnavailable ? WITHHELD_MARKET_CAP[fundamentals.marketCapUnavailable] : undefined;
+  return reason ?? { gap: "withheld", note: "No market cap: Gloom Cloud withheld it." };
+}
+
+/**
+ * A lightweight quote can omit capitalization without invalidating the snapshot. A cap Gloom Cloud withheld
+ * (withheldMarketCap) is none, the quote's included.
+ */
 export function selectMarketCapitalization(
   quote: Quote | undefined,
   fundamentals: Fundamentals | undefined,
 ): MarketCapitalization | null {
+  if (withheldMarketCap(fundamentals)) return null;
   if (usableValue(quote?.marketCap) && explicitCurrency(quote?.currency)) {
     return { value: quote.marketCap, currency: quote.currency,
       provenance: { kind: "quote", source: quote.providerId } };

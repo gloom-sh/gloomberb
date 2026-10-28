@@ -6,16 +6,19 @@ import { formatCompact } from "./format";
 import { formatUtcTime } from "./utc-time";
 
 export const RETRACTABLE_VALUATION_FIELDS = ["enterpriseValue", "enterpriseToRevenue"] as const;
+/** Every field a source can retract: the valuation fields, and a receipt's market cap (`marketCapUnavailable`). */
+export const RETRACTED_FUNDAMENTALS_FIELDS = [...RETRACTABLE_VALUATION_FIELDS, "marketCap"] as const;
 
-/** A retraction survives serialization and overrides a contradictory cached number. */
+/** A retraction survives serialization and overrides a contradictory cached number; its reason goes with it. */
 export function redactUnavailableFundamentals(value: Fundamentals | undefined): Fundamentals | undefined {
-  if (!value || value.unavailableFields === undefined) return value;
+  if (!value || (value.unavailableFields === undefined && value.marketCapUnavailable === undefined)) return value;
   const unavailableFields = Array.isArray(value.unavailableFields)
-    ? RETRACTABLE_VALUATION_FIELDS.filter((field) => value.unavailableFields!.includes(field)) : [];
+    ? RETRACTED_FUNDAMENTALS_FIELDS.filter((field) => value.unavailableFields!.includes(field)) : [];
   const result = { ...value };
   if (unavailableFields.length) result.unavailableFields = unavailableFields;
   else delete result.unavailableFields;
   for (const field of unavailableFields) delete result[field];
+  if (!unavailableFields.includes("marketCap")) delete result.marketCapUnavailable;
   return result;
 }
 

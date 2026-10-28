@@ -88,3 +88,19 @@ test("a margin the source did not serve for the trailing year falls back to the 
   const gap = relativeValuationValues({ ...carnival, annualStatements: [carnival.annualStatements[0]!, { date: "2025-11-30", totalRevenue: 26.62e9 }] });
   expect(gap).toMatchObject({ operatingMargin: null, operatingMarginPeriod: null, gaps: { operatingMargin: "not reported" } });
 });
+
+// fn RV SMSN:LSE,SSNLF showed 27.34T USD for the GDR: its price x Samsung's ordinaries, from a stale quote's fallback.
+test("a receipt cap Gloom Cloud withheld is no cap, from the quote or the fundamentals, and says why", () => {
+  const receipt: TickerFinancials = {
+    ...snapshot,
+    quote: { symbol: "SMSN:LSE", price: 4298, change: 188, changePercent: 4.57, currency: "USD", lastUpdated: 1_000,
+      stale: true, marketCap: 27_342_862_889_112 },
+    fundamentals: { marketCap: 27_342_862_889_112, marketCapCurrency: "USD", sharesOutstanding: 5_792_563_304,
+      unavailableFields: ["marketCap"], marketCapUnavailable: "receipt-priced-as-ordinary" },
+  };
+  for (const values of [relativeValuationValues(receipt), relativeValuationValues({ ...receipt, quote: { ...receipt.quote!, stale: false } })]) {
+    expect(values.marketCap).toBeNull();
+    expect(values.gaps.marketCap).toBe("receipt, no ratio");
+    expect(values.marketCapWithheld).toBe("No market cap: a depositary receipt with no known ratio, whose source's cap is the receipt price x the company's ordinary shares.");
+  }
+});

@@ -306,3 +306,21 @@ test("per-share bases that reprice a multiple stay with that multiple's observat
   expect(mergeRefreshedFinancials(older, createTestFinancials({ fundamentals: { revenue: 200 } })).fundamentals)
     .toMatchObject({ forwardEps: 5, dividendRate: 2 });
 });
+
+// SMSN on the LSE: Gloom Cloud withholds a GDR's cap that was its price x Samsung's ordinaries (27.34T USD).
+test("a withheld market cap stays withheld over an older cached one, until a fresh observation serves a cap", () => {
+  const withheld = createTestFinancials({ fundamentals: {
+    unavailableFields: ["marketCap", "enterpriseValue", "enterpriseToRevenue"], marketCapUnavailable: "receipt-priced-as-ordinary",
+  } });
+  const cached = createTestFinancials({ fundamentals: { marketCap: 27_342_862_889_112, marketCapCurrency: "USD", revenue: 100 } });
+  for (const merged of [mergeFinancials(withheld, cached)?.fundamentals, mergeRefreshedFinancials(cached, withheld).fundamentals]) {
+    expect(merged?.marketCap).toBeUndefined();
+    expect(merged).toMatchObject({ marketCapUnavailable: "receipt-priced-as-ordinary", revenue: 100 });
+  }
+  // A fresh cap ends the withholding and its reason.
+  const priced = mergeFinancials(createTestFinancials({ fundamentals: { marketCap: 995_900_000_000, marketCapCurrency: "USD" } }), withheld)
+    ?.fundamentals;
+  expect(priced).toMatchObject({ marketCap: 995_900_000_000 });
+  expect(priced?.unavailableFields).not.toContain("marketCap");
+  expect(priced?.marketCapUnavailable).toBeUndefined();
+});
