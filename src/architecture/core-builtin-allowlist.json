@@ -9,7 +9,7 @@
   "src/cli/commands/options-chain.ts": ["options","options-calculator"],
   "src/cli/commands/options-leaps.ts": ["iv-history","options","vol-surface"],
   "src/cli/commands/overview.ts": ["correlation","econ","market-movers","sectors","world-indices"],
-  "src/cli/commands/ticker.ts": ["notes"],
+  "src/cli/commands/ticker.ts": ["ipo-calendar","notes"],
   "src/cli/desktop-pane-shot.ts": ["market-valuation","time-sales"],
   "src/cli/pane-functions/data.ts": ["chart-composer","correlation","seasonality","ticker-detail"],
   "src/cli/pane-functions/financial-ratio-shot.ts": ["ticker-detail"],

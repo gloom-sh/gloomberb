@@ -364,8 +364,8 @@ function amount(value: number): string {
 }
 
 /** What a direct listing with no price reads in a column; a report's row says why in full. */
-export const DIRECT_LISTING_PRICE = "direct listing";
-export const DIRECT_LISTING_NO_PRICE = "direct listing, no offer price";
+const DIRECT_LISTING_PRICE = "direct listing";
+const DIRECT_LISTING_NO_PRICE = "direct listing, no offer price";
 
 /**
  * "$18", "HK$26.20-28.50", "240-260p", "CHF 45": the offer price once set, else the range.
