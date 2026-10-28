@@ -34,7 +34,7 @@ curl -fsSL gloom.sh/install | bash
 
 This installs `gloom` to `~/.local/bin` by default. A Linux desktop package is not published yet.
 
-On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g gloomberb` works there too.
+On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g @gloom-sh/terminal` works there too.
 
 ## Windows
 
@@ -54,7 +54,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 For a terminal-only setup on x64, install Bun and use the package:
 
 ```powershell
-bun install -g gloomberb
+bun install -g @gloom-sh/terminal
 ```
 
 ## Terminal Package
@@ -62,10 +62,10 @@ bun install -g gloomberb
 Already have Bun installed on any supported OS?
 
 ```bash
-bun install -g gloomberb
+bun install -g @gloom-sh/terminal
 ```
 
-`npm install -g gloomberb` works too. The package installs the `gloom` command, and `gloomberb`, its name before 0.18.4, which runs the same program. An install from before 0.18.4 gets `gloom` when it updates with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`).
+`npm install -g @gloom-sh/terminal` works too. An existing `gloomberb` install keeps updating as it is.
 
 Then run:
 
@@ -97,7 +97,7 @@ On first start, the app clones its missing official plugins from GitHub once a l
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloomberb`, `bun remove -g @gloom-sh/terminal` (or `gloomberb`, if that is what you installed), or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 
