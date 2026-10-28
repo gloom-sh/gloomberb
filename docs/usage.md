@@ -760,6 +760,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
 | `CHG` | Changelog |
+| `ROADMAP` | What is being built, planned and shipped; Pro members vote ([Roadmap](#roadmap)) |
 | `HELP` | Open shortcut and layout help |
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio. `AW` also takes a pasted list of tickers |
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
@@ -842,6 +843,8 @@ gloom alerts add catalyst                  # your portfolio and watchlists; PFE 
 gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
 gloom alerts add 13f 1067983               # a fund by its SEC CIK
 ```
+
+These rules, except an IV level and an earnings, CPI, FOMC or calendar date, are checked only for a signed-in account. One added while signed out is saved and reads `needs sign-in` in `gloom alerts list` and its CSV and **Needs sign-in** in **Events** and `fn ALRT --tab events`, with one line on how to sign in, until a session is saved.
 
 A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere. `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
@@ -985,7 +988,7 @@ What moves while you watch:
   - After the regular close, LAST, CHG and CHG% hold the official close and its move, while EXT% follows the extended-hours print from that close (market value, DAY and P&L keep the live price). In the pre-market the row holds the last session the same way when the quote carries its close and move, otherwise LAST and EXT% are the pre-market print. `DES` uses the same rules.
 - `WEI`, `FUT`, `BI`/`SP`, `FXC`, `EQS` rows, `CRYP`, the header SPY chip and market state, and price alerts (which trigger on the tick that crosses). After the close `BI`, `MOST`'s lists and `EQS` hold the regular close and only their extended-hours column moves (see [Company Research](#company-research)).
 - **Charts**, including the research Chart tab: the forming bar takes each quote's high, low, close and volume. A daily, weekly or monthly bar is the regular session's: after the close it holds at the official close, the close `gloom history` and `portfolio show --close` give. Intraday bars and the extended-hours view of a US listing keep the extended prints.
-- `OMON`: Last, volume, IV and Greeks stream during the regular session, and a real-time chain reloads every 15 seconds. `OVDV` reloads a real-time surface every 15 seconds in session, `HVG` re-reads its ATM IV every minute, `VOLS` and the `VIX` curve stream index levels, and `CTM` and `WIRP` refresh delayed contract quotes every minute while Globex trades.
+- `OMON`: Last, volume, IV and Greeks stream during the regular session, and a real-time chain reloads every 15 seconds. `OVDV` reloads a real-time surface every 15 seconds in session, `HVG` re-reads its ATM IV every minute, `VOLS` and the `VIX` curve stream index levels, and `CTM` and `WIRP` refresh delayed contract quotes every minute while Globex trades. When one of these in-session re-reads fails in `OVDV`, `HVG`, `VIX` or `VOLS`, the last data stays on screen and the failure is a data warning (`!`) until a re-read succeeds.
 
 News panes refresh every two minutes while the app is visible (a hidden browser tab falls back to the configured interval, which still feeds breaking-news notifications). `VF` toggles value flashing: a changed price dims for 300 ms.
 
@@ -1085,6 +1088,12 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 ### The economic calendar (`econ`)
 
 `econ` lists the economic calendar from today (UTC), about two weeks ahead.
+
+**Names**
+
+- `--search <words>` keeps the events whose name has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. `--json` has `metadata.search`.
+- The Fed's rate decision reads `Federal Funds Rate (upper bound)`: its figures are the top of the target range (4.00% for 3.75-4.00%), the range `WIRP` shows. Alerts take the name either way.
+- A release still to come with a prior and no forecast has no consensus yet: text ends with a note that the dash under Forecast means just that, and the ECO pane says it in its footer on that row.
 
 **Dates**
 
@@ -1717,7 +1726,7 @@ The status is one of four:
 | Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
-A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`). A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. In the app, a pane whose quotes are such copies says `saved copy from 15:31` in its footer until a refresh answers.
+A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`), instead of listing the failed refresh as an error. A refusal that asking again will not change, such as signing out or a series Gloom Cloud no longer serves, is reported as an error even when a saved copy exists. A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. In the app, a pane whose quotes are such copies says `saved copy from 15:31` in its footer until a refresh answers.
 
 **Venues polled apart.** A report over such venues dates each by its own newest observation and says how old its oldest price is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · funding = current estimate, pays 08:00 UTC`.
 
@@ -2215,6 +2224,14 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions with no thesis yet. `THESIS NVDA AMD` starts one on a basket or a pair. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.
 - Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team (teammates can challenge a pillar). Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision.
 - Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`v`), need Pro.
+
+## Roadmap
+
+`ROADMAP` (or `RMAP`) lists what is being built, what is planned and what shipped, each with a one-line summary and its votes; shipped items show the day they shipped. Enter opens an item.
+
+- Anyone can read it, signed in or not.
+- Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
+- A vote that did not go through says so on its row, and the item's detail says why.
 
 ## Localized interface
 

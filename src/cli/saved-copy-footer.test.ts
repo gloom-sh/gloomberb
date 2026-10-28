@@ -8,6 +8,11 @@ import { AssetDataRouter } from "../sources/provider-router";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { marketDataCliCommands } from "./commands/market";
+import { overviewCliCommands } from "./commands/overview";
+import { apiClient } from "../api-client";
+import { ApiRequestError } from "../api-client/errors";
+import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "../plugins/builtin/econ/calendar-model";
+import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 import { DEFAULT_CLI_OPTIONS } from "./options";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { serializeCliResult } from "./result";
@@ -160,4 +165,61 @@ test("a report that reached nothing and had no saved copy names no time it was r
     source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", retrievedAt: "2026-10-24T09:40:00.000Z", unreached: true,
   };
   expect(formatFreshnessLine(freshness)).toBe("Source: FINRA · not a live feed (twice-monthly settlement)");
+});
+
+test("fred, yield-curve and econ answer a failed refresh from what an earlier run read, and say when that was", async () => {
+  const shared = new Proxy(persistence, { get: (target, key) => key === "close" ? () => {} : Reflect.get(target, key) });
+  const observations = [{ date: "2026-10-22", value: 4.99 }, { date: "2026-10-21", value: 5 }];
+  const state = { offline: false };
+  const series = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async () => {
+    if (state.offline) throw unreachable();
+    return { observations, info: null };
+  });
+  const calendar = spyOn(apiClient, "getCloudEconomicCalendar").mockImplementation(async () => {
+    if (state.offline) throw unreachable();
+    return [{ id: "nfp", date: "2026-11-06T13:30:00.000Z", time: "13:30", country: "US", event: "Non Farm Payrolls", impact: "high", actual: null, forecast: null, prior: "29K" }];
+  });
+  attachEconCalendarPersistence(new MemoryPluginPersistence());
+  const run = (name: string, args: string[], cliOptions: Partial<typeof DEFAULT_CLI_OPTIONS> = {}) => {
+    const cli = createTestCliContext({ persistence: shared }, cliOptions);
+    return collectSavedCopies(async () => {
+      await overviewCliCommands.find((command) => command.name === name)!.execute(args, cli.context);
+      const { result, options } = cli.printed[0]!;
+      return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, color: false }, options);
+    });
+  };
+  try {
+    clock.mockReturnValue(at("2026-10-22T22:08:00Z"));
+    for (const [name, args] of [["fred", ["DGS10"]], ["yield-curve", []], ["econ", []]] as const) {
+      expect(await run(name, [...args])).toContain("not a live feed");
+    }
+    state.offline = true;
+    clock.mockReturnValue(at("2026-10-22T22:20:00Z"));
+    expect(await run("fred", ["DGS10"])).toMatch(/2026-10-22 +4\.99[\s\S]*· couldn't refresh; saved copy from 22:08 UTC/);
+    expect(await run("yield-curve", [])).toMatch(/10Y +4\.99 +-1\.0bp[\s\S]*· couldn't refresh; saved copy from 22:08 UTC/);
+    expect(await run("econ", [], { refresh: true })).toMatch(/Non Farm Payrolls[\s\S]*· couldn't refresh; saved copy from 22:08 UTC/);
+  } finally {
+    series.mockRestore();
+    calendar.mockRestore();
+    resetEconCalendarPersistence();
+  }
+});
+
+// With a copy an earlier run saved, a series Gloom Cloud stopped serving printed that copy as if it were only offline.
+test("fred says a series Gloom Cloud no longer serves, even with a copy an earlier run saved", async () => {
+  const shared = new Proxy(persistence, { get: (target, key) => key === "close" ? () => {} : Reflect.get(target, key) });
+  const series = spyOn(apiClient, "getCloudFredSeries").mockResolvedValue({ observations: [{ date: "2026-10-22", value: 4.99 }], info: null });
+  const fred = () => {
+    const cli = createTestCliContext({ persistence: shared });
+    return collectSavedCopies(() => overviewCliCommands.find((command) => command.name === "fred")!.execute(["DGS10"], cli.context));
+  };
+  try {
+    clock.mockReturnValue(at("2026-10-22T22:08:00Z"));
+    await fred();
+    series.mockRejectedValue(new ApiRequestError("Unsupported FRED series DGS10", 400, undefined, undefined, { code: "unsupported_series" }));
+    clock.mockReturnValue(at("2026-10-22T22:20:00Z"));
+    await expect(fred()).rejects.toThrow("Unsupported FRED series DGS10. List supported series with: gloom fred --list");
+  } finally {
+    series.mockRestore();
+  }
 });

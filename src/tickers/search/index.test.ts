@@ -1549,6 +1549,84 @@ describe("ticker-search utilities", () => {
     expect(resolveManualPositionCurrency(undefined, ticker, portfolio, "USD")).toBe("EUR");
   });
 
+  test("a crypto exchange's line of a coin pair is saved as the crypto venue's listing, in the pair's currency", async () => {
+    // Search offered these lines without a currency; no source quotes them, and the row read as dollars.
+    const picks = [
+      ["BTC/GBP", "COINBASE PRO", "BTC-GBP", "GBP"],
+      ["DOGE/GBP", "KRAKEN", "DOGE-GBP", "GBP"],
+      ["ETH/EUR", "KRAKEN", "ETH-EUR", "EUR"],
+      ["LINK/EUR", "BINANCE", "LINK-EUR", "EUR"],
+      ["LINK/ETH", "UPBIT", "LINK-ETH", "ETH"],
+    ] as const;
+    for (const [symbol, exchange, listing, currency] of picks) {
+      for (const tickerSymbol of [undefined, `${symbol}:${exchange}`]) {
+        const loaded: string[] = [];
+        const repository = {
+          loadTicker: async (key: string) => { loaded.push(key); return null; },
+          createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+          saveTicker: async () => {},
+        };
+        const pick = makeSearchResult(symbol, `${symbol} pair`, { exchange, type: "Digital Currency", currency: "" });
+        const { ticker } = await upsertTickerFromSearchResult(repository as any, pick, { tickerSymbol });
+        expect(ticker.metadata, `${symbol} ${tickerSymbol ?? ""}`).toMatchObject({ exchange: "CCC", currency });
+        expect(parsePublicTickerKey(ticker.metadata.ticker).symbol).toBe(listing);
+        expect(loaded.some((key) => key.includes("/"))).toBe(false);
+      }
+    }
+    // The venue's own row names its currency too; a share class on a stock exchange is not a coin.
+    const repository = { loadTicker: async () => null, createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }), saveTicker: async () => {} };
+    expect((await upsertTickerFromSearchResult(repository as any, makeSearchResult("BTC-GBP", "Bitcoin GBP", { exchange: "CCC" }))).ticker.metadata)
+      .toMatchObject({ ticker: "BTC-GBP", exchange: "CCC", currency: "GBP" });
+    expect((await upsertTickerFromSearchResult(repository as any, makeSearchResult("BRK/B", "Berkshire", { exchange: "NYSE" }))).ticker.metadata)
+      .toMatchObject({ ticker: "BRK/B", exchange: "NYSE", currency: "" });
+  });
+
+  test("a coin pair typed with a slash resolves to the crypto venue's listing", async () => {
+    const searched: string[] = [];
+    const dataProvider = createTestDataProvider({
+      search: async (query: string) => {
+        searched.push(query);
+        return query === "BTC-GBP" ? [makeSearchResult("BTC-GBP", "Bitcoin GBP", { exchange: "CCC", type: "CRYPTOCURRENCY" })] : [];
+      },
+    });
+    for (const query of ["btc/gbp", "BTC/GBP:KRAKEN"]) {
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }))
+        .toMatchObject({ kind: "provider", symbol: "BTC-GBP", result: { exchange: "CCC" } });
+    }
+    expect(searched[0]).toBe("BTC-GBP");
+    expect(searched.some((query) => query.includes("/"))).toBe(false);
+    // Typed in the search bar, BTC/GBP looks like a currency pair's spelling, which keeps only market symbols.
+    const rows = [makeSearchResult("BTC-GBP", "Bitcoin GBP", { exchange: "CCC", type: "CRYPTOCURRENCY" }),
+      makeSearchResult("EURUSD=X", "EUR/USD", { exchange: "CCY", type: "CURRENCY" })];
+    expect(buildTickerSearchCandidates({ query: "btc/gbp", tickers: new Map(), providerResults: rows }).map((item) => item.symbol)).toEqual(["BTC-GBP"]);
+    expect(buildTickerSearchCandidates({ query: "EUR/USD", tickers: new Map(), providerResults: rows }).map((item) => item.symbol)).toEqual(["EURUSD=X"]);
+  });
+
+  test("a spot commodity or a currency typed or picked with a slash is never read as a coin", async () => {
+    // GAU-USD is a token (Gamer Arena); GAU/USD is gold by the gram, WTI/USD and XBR/USD spot crude.
+    const searched: string[] = [];
+    const spot = (symbol: string, exchange: string) => makeSearchResult(symbol, symbol, { exchange, type: exchange === "CCY" ? "CURRENCY" : "COMMODITY" });
+    const rows: Record<string, ReturnType<typeof spot>[]> = {
+      "WTI/USD": [spot("WTI/USD", "COMMODITY")], "GAU/USD:COMMODITY": [spot("GAU/USD", "COMMODITY")],
+      "XBR/USD": [spot("XBR/USD", "COMMODITY")], "RUBUSD=X": [spot("RUBUSD=X", "CCY")],
+    };
+    const dataProvider = createTestDataProvider({
+      search: async (query: string) => { searched.push(query); return rows[query] ?? []; },
+    });
+    for (const [query, symbol, exchange] of [["wti/usd", "WTI/USD", "COMMODITY"], ["GAU/USD:COMMODITY", "GAU/USD", "COMMODITY"],
+      ["xbr/usd", "XBR/USD", "COMMODITY"], ["RUB/USD:CCY", "RUBUSD=X", "CCY"]] as const) {
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }), query)
+        .toMatchObject({ kind: "provider", symbol, result: { exchange } });
+    }
+    expect(searched.filter((query) => query.includes("-"))).toEqual([]);
+    // A pick of one is saved as it is.
+    const repository = { loadTicker: async () => null, createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }), saveTicker: async () => {} };
+    for (const [symbol, exchange] of [["GAU/USD", "COMMODITY"], ["WTI/USD", "COMMODITY"], ["RUB/USD", "CCY"]] as const) {
+      const pick = makeSearchResult(symbol, symbol, { exchange, type: "Digital Currency" });
+      expect((await upsertTickerFromSearchResult(repository as any, pick)).ticker.metadata.exchange, symbol).toBe(exchange);
+    }
+  });
+
   test("refreshes low-quality saved metadata when opening a provider-backed result", async () => {
     const existing = createTestTicker("AAPL", "AAPL");
     const saved: TickerRecord[] = [];

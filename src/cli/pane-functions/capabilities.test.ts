@@ -357,6 +357,21 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("the jobs report's names list the calendar, the statistics and the release-day reaction first", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      // "jobs report" listed JOBS (hiring), FDA, CG and EE, and nfp found MDAY alone.
+      for (const query of ["jobs report", "nfp", "payrolls", "nonfarm"]) {
+        const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 10);
+        expect(shown.slice(0, 3).map(({ token }) => token).sort(), query).toEqual(["ECO", "ECST", "MDAY"]);
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("Buffett, overlap, copying a basket and active share searches list 13F first, one word or several", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());

@@ -24,6 +24,7 @@ import { CloudApiRequestTransport, putWithRevision } from "./request";
 import { CloudApiSocket } from "./socket";
 import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
+import { CloudRoadmapApi } from "./roadmap";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
 import { CloudTelemetryApi } from "./telemetry";
@@ -154,6 +155,7 @@ class GloomApiClient {
   private readonly data: CloudDataApi = new CloudDataApi((path, options) => this.request(path, options));
   private readonly notes: CloudNotesApi = new CloudNotesApi((path, options) => this.request(path, options));
   private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
+  private readonly roadmap: CloudRoadmapApi = new CloudRoadmapApi((path, options) => this.request(path, options));
   private readonly telemetry: CloudTelemetryApi = new CloudTelemetryApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
@@ -874,6 +876,8 @@ class GloomApiClient {
   putCloudNote = this.notes.putNote.bind(this.notes);
   submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
+  getRoadmap = this.roadmap.getRoadmap.bind(this.roadmap);
+  setRoadmapVote = this.roadmap.setRoadmapVote.bind(this.roadmap);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);

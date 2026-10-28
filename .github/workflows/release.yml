@@ -8,6 +8,16 @@ on:
       # no workflow, but a nightly tag pushed by hand must not publish to npm
       # or Homebrew either.
       - "!v*-nightly.*"
+  # Publishes @gloom-sh/terminal for a tag that already has a release, when
+  # that step failed or was skipped. It runs only the publish-terminal job:
+  # no build, no asset upload, no Homebrew, no website refresh. It lives in
+  # this file because npm trusted publishing is bound to it.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish as @gloom-sh/terminal, e.g. v0.19.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,13 +27,14 @@ jobs:
   # The terminal binaries, the signed macOS desktop app and the Windows
   # desktop installer, shared with the Nightly workflow.
   build:
+    if: ${{ github.event_name == 'push' }}
     uses: ./.github/workflows/build-release-assets.yml
     secrets: inherit
 
   release:
     needs:
       - build
-    if: ${{ always() && !cancelled() }}
+    if: ${{ github.event_name == 'push' && always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -121,12 +132,18 @@ jobs:
             echo "package.json is at $PACKAGE_VERSION but the tag is $GITHUB_REF_NAME; tag the commit bump-version.sh made." >&2
             exit 1
           fi
+          if npm view "gloomberb@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "gloomberb@$PACKAGE_VERSION is already on npm."
+            exit 0
+          fi
           npm publish --access public --provenance
 
       # The same build under a second name, @gloom-sh/terminal, once the
       # repository variable PUBLISH_GLOOM_TERMINAL is "true". It installs the
       # same gloom and gloomberb commands. A version already there is skipped,
-      # so a rerun of the release does not fail on it.
+      # so a rerun of the release does not fail on it, and a publish that
+      # fails without the version appearing (the provenance log answers 409
+      # now and then) is tried once more.
       - name: Publish to npm as @gloom-sh/terminal
         if: ${{ vars.PUBLISH_GLOOM_TERMINAL == 'true' }}
         run: |
@@ -137,7 +154,15 @@ jobs:
             exit 0
           fi
           npm pkg set "name=@gloom-sh/terminal"
-          npm publish --access public --provenance
+          if ! npm publish --access public --provenance; then
+            sleep 30
+            if npm view "@gloom-sh/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+              echo "@gloom-sh/terminal@$PACKAGE_VERSION is on npm after the failed publish."
+              exit 0
+            fi
+            echo "Publish failed and @gloom-sh/terminal@$PACKAGE_VERSION is not on npm; trying once more."
+            npm publish --access public --provenance
+          fi
           git checkout -- package.json
 
       - name: Note the skipped @gloom-sh/terminal publish
@@ -159,3 +184,66 @@ jobs:
           gh api repos/vincelwt/gloomberb-platform/dispatches \
             -f event_type=gloomberb-release \
             -f "client_payload[ref]=${GITHUB_REF_NAME}"
+
+  # Workflow dispatch only: publishes @gloom-sh/terminal for an existing tag,
+  # the same way the release job does after a push, with nothing else.
+  publish-terminal:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          # The same tags the push trigger accepts: v*, never a nightly.
+          case "$TAG" in
+            v[0-9]*-nightly.*) echo "$TAG is a nightly tag; nightlies are not published to npm." >&2; exit 1 ;;
+            v[0-9]*) ;;
+            *) echo "$TAG is not a release tag like v0.19.0." >&2; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Check package.json matches the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if [ "v$PACKAGE_VERSION" != "$TAG" ]; then
+            echo "package.json is at $PACKAGE_VERSION but the tag is $TAG; pass the tag bump-version.sh made." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install npm 11 (required for trusted publishing)
+        run: npm install -g npm@11
+
+      - name: Publish to npm as @gloom-sh/terminal
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if npm view "@gloom-sh/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "@gloom-sh/terminal@$PACKAGE_VERSION is already on npm."
+            exit 0
+          fi
+          npm pkg set "name=@gloom-sh/terminal"
+          if ! npm publish --access public --provenance; then
+            sleep 30
+            if npm view "@gloom-sh/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+              echo "@gloom-sh/terminal@$PACKAGE_VERSION is on npm after the failed publish."
+              exit 0
+            fi
+            echo "Publish failed and @gloom-sh/terminal@$PACKAGE_VERSION is not on npm; trying once more."
+            npm publish --access public --provenance
+          fi

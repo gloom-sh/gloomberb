@@ -1,9 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
-import { act } from "react";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { act, useReducer } from "react";
+import { apiClient } from "../../../api-client";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { appReducer, createInitialState } from "../../../state/app/context";
+import { createTestPaneConfig, TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { statsCache } from "./cache";
@@ -68,5 +71,43 @@ test.each([
     await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
     await act(async () => { await tui.setup().renderOnce(); });
     expect(tui.frame()).toContain("FRED T10Y2Y");
+  }
+});
+
+test("offline, the statistic stays and its footer says when the saved copy is from, not the refresh error", async () => {
+  statsCache.attach(new MemoryPluginPersistence());
+  const observations = Array.from({ length: 25 }, (_, index) => ({
+    date: new Date(Date.UTC(2019, index, 1)).toISOString().slice(0, 10), value: 100 + index,
+  })).reverse();
+  const series = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async () => ({ observations, info: null }));
+  function Harness() {
+    const initial = createInitialState(createTestPaneConfig("/tmp/gloom-ecst-saved", {
+      instanceId: "ecst:saved", paneId: "econ-statistics", settings: { stat: "curve-spread" },
+    }));
+    initial.focusedPaneId = "ecst:saved";
+    const [state, dispatch] = useReducer(appReducer, initial);
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId="ecst:saved" pluginId="market-overview" runtime={createTestPluginRuntime()} width={120} height={36}>
+      {(body) => <EconStatisticsPane paneId="ecst:saved" paneType="econ-statistics" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  const settle = async () => {
+    for (let frame = 0; frame < 8; frame++) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); await tui.setup().renderOnce(); });
+    }
+  };
+  try {
+    await act(async () => { await tui.render(<Harness />, { width: 120, height: 36 }); });
+    await settle();
+    expect(tui.frame()).toContain("FRED T10Y2Y");
+    expect(tui.frame()).not.toContain("saved copy");
+
+    series.mockRejectedValue(new DataServiceUnreachableError(Object.assign(new Error("Unable to connect"), { code: "ConnectionRefused" })));
+    await tui.emitKeypress({ name: "r" });
+    await settle();
+    expect(tui.frame()).toContain("FRED T10Y2Y");
+    expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
+    expect(tui.frame()).not.toMatch(/couldn't reach/i);
+  } finally {
+    series.mockRestore();
   }
 });

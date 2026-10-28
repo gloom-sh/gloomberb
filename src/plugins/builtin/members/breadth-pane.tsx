@@ -40,7 +40,8 @@ export function Breadth({ fund, width, height, focused, active }: Pick<PaneProps
     color: colors.warning, calendarSpaced: true,
   })], [history, metric, colors.warning]);
   const link = useChartTableSelection({ rows, getId: keyOf, getDate: dateOf, selectedId: selected ?? latest?.date ?? null, onSelect: setSelected, focused });
-  const sessionOpen = useLiveSessionRefresh(() => resource.load(true), data?.access === "realtime" ? 15_000 : 60_000, active && visible, resource.updatedAt);
+  // The resource keeps a failed load as its error (stale, and a warning below), so this refresh never rejects.
+  const sessionOpen = useLiveSessionRefresh(() => resource.load(true), data?.access === "realtime" ? 15_000 : 60_000, active && visible, resource.updatedAt).live;
   useAutoRefresh(resource.updatedAt, () => { if (active && visible && !sessionOpen) void resource.load(data?.basis === "intraday"); });
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active });
   usePaneStatusFooter({ registrationId: "members:breadth", loading: !!data && resource.loading,

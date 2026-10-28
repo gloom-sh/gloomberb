@@ -7,6 +7,7 @@ import {
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { shortDate } from "../earnings/format";
@@ -260,14 +261,15 @@ export async function loadEarningsCallsWithClient(
         allowExpired: true,
       });
       if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
-        return {
+        // A command that shows it ends with when the copy was saved, not with the failure.
+        return servedFromSavedCopy({
           ...expired.value,
           ...sourceScope(expired.value.calls),
           fetchedAt: expired.fetchedAt,
           stale: true,
           refreshError,
           errorStatus,
-        };
+        }, expired.fetchedAt);
       }
       throw error;
     })
@@ -366,11 +368,11 @@ export async function loadUpcomingCallsWithClient(
       // Losing Pro access re-gates the calendar, as it does the list.
       const expired = read(true);
       if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
-        return {
+        return servedFromSavedCopy({
           ...upcomingFromCache(expired.value, expired.fetchedAt, true),
           refreshError: error instanceof Error ? error.message : String(error),
           errorStatus,
-        };
+        }, expired.fetchedAt);
       }
       throw error;
     })

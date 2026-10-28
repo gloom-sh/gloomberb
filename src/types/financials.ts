@@ -88,6 +88,26 @@ export interface DepositaryPair {
   ordinary: string[];
 }
 
+/**
+ * A Buenos Aires CEDEAR's ratio from BYMA's published list, as Gloom Cloud
+ * serves it: 20 AAPL:BYMA are 1 Apple share. Its market cap is the company's,
+ * in the currency of the listing it stands for.
+ */
+export interface CedearRatio {
+  /** The CEDEAR's listing: AAPL:BYMA. */
+  listing: string;
+  /** CEDEARs that make `shares` of the company's shares: 20 for Apple. */
+  receipts: number;
+  /** The company's shares `receipts` CEDEARs stand for: 1 for Apple, 8 for BABA's 9 (one receipt of 8 shares). */
+  shares: number;
+  /** The company as the list names it: "Apple Inc.". */
+  company: string;
+  /** The listing it stands for, as a ticker: AAPL, VALE3.SA. */
+  underlying: string;
+  /** The date of BYMA's list. */
+  listedAt: string;
+}
+
 /** How a depositary receipt relates to the ordinary shares, as Gloom Cloud states it. */
 interface DepositaryReceiptFacts {
   /** Whether the listing is a depositary receipt; absent when unknown. */
@@ -96,6 +116,8 @@ interface DepositaryReceiptFacts {
   adrRatio?: number;
   /** The receipt and its home lines, on the receipt's records and each home line's. */
   depositaryPair?: DepositaryPair;
+  /** A Buenos Aires CEDEAR's ratio, on its records. */
+  cedearRatio?: CedearRatio;
 }
 
 export interface Quote extends DepositaryReceiptFacts {

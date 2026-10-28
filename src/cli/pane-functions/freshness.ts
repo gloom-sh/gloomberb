@@ -1061,7 +1061,8 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
   const undated = detail.date === "none";
   return [
     ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
-      : freshness.unreached && !freshness.asOf ? []
+      // Undated, a saved copy is not "retrieved" now: its own part says when it was saved.
+      : (freshness.unreached || freshness.savedAt) && !freshness.asOf ? []
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     ...(freshness.schedule && detail.schedule !== "none"
       ? [typeof detail.schedule === "number" ? freshness.scheduleVariants?.[detail.schedule] ?? freshness.schedule : freshness.schedule] : []),

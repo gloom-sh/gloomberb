@@ -12,8 +12,9 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatNumber } from "../../../utils/format";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
-import { getCachedStatsBundle, loadStatsBundle } from "./client";
+import { getCachedStatsBundle, loadStatsBundle, unansweredErrors } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
@@ -145,7 +146,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const { selected, searchFocused } = list;
   const rows = useMemo(() => withCategoryHeaders(list.visible), [list.visible]);
 
-  const error = resource.error ?? bundle?.errors[0] ?? null;
+  const error = resource.error ?? (bundle ? unansweredErrors(bundle)[0] : null) ?? null;
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selected) return [];
     // A Treasury yield names when in the day it was taken, as GC does, so it is not read against ^TNX's earlier close.
@@ -153,11 +154,14 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = [
       { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
     ];
-    // The cached first paint is being replaced; its age only counts once that load fails.
+    // The cached first paint is being replaced; its age only counts once that load fails, and then it is the
+    // copy an earlier read saved, which says when that was.
     const seeding = resource.loading && resource.updatedAt === null && !selected.refreshError;
-    if (selected.observationStale || (selected.cacheStale && !seeding)) {
+    const savedAt = selected.cacheSource === "stale-fallback" ? selected.fetchedAt : null;
+    if (selected.observationStale || (selected.cacheStale && !seeding && savedAt == null)) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
+    if (savedAt != null) info.push(savedCopyFooterSegment("saved-copy", savedAt));
     return info;
   }, [resource.loading, resource.updatedAt, selected]);
 

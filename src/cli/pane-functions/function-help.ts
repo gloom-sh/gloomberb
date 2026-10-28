@@ -1426,6 +1426,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: [],
   },
+  ROADMAP: {
+    summary: "What is being built, what is planned and what shipped, with each item's votes. Pro members vote on what is building or planned, once per item, and can take the vote back.",
+    usage: ["ROADMAP"],
+    keys: [OPEN, key("v", "ote")],
+    data: null,
+    bloomberg: [],
+  },
   HELP: {
     summary: "Help and the function reference. HELP with a function opens its card, F1 opens the focused pane's, and HELP HELP reaches support.",
     usage: ["HELP", "HELP OMON", "HELP HELP"],
