@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   DataTableStackView,
   DetailScrollBody,
@@ -35,7 +35,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
-import { looksLikeTicker, tickerCompanyName } from "../shared/ticker-company";
+import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
 import { OpenFdaClient, parseOpenFdaDate } from "./client";
 import {
   activeFilters,
@@ -303,23 +303,20 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
   // as TRIAL reads one, and the search box then shows it. Only a term written in
   // capitals, as a ticker is (the search box or `fn FDA AZN`): a word such as
   // "cat" stays the search it is. Each term is looked up once.
-  const [looked, setLooked] = useState<ReadonlySet<string>>(() => new Set());
-  const resolvingTicker = records.status === "loaded" && rows.length === 0 && !records.error
-    && writtenAsTicker(term) && !looked.has(term);
-  useEffect(() => {
-    if (!resolvingTicker) return;
-    let live = true;
-    void tickerCompanyName(dataProvider, term).catch(() => null).then((name) => {
-      if (!live) return;
-      setLooked((current) => new Set([...current, term]));
-      if (name) updateQuery(name);
-    });
-    return () => { live = false; };
-  }, [dataProvider, resolvingTicker, term, updateQuery]);
+  const companySearch = useTickerCompanySearch(dataProvider, term, {
+    eligible: records.status === "loaded" && rows.length === 0 && !records.error && writtenAsTicker(term),
+    key: term,
+    onCompany: updateQuery,
+  });
+  const retryCompanySearch = companySearch.retry;
 
-  const loading = (records.loading && rows.length === 0) || resolvingTicker;
-  const error = records.error?.message ?? null;
-  usePaneRefreshKey(records.reload, { focused, enabled: !searchFocused && !openItemId });
+  const loading = (records.loading && rows.length === 0) || companySearch.resolving;
+  const error = records.error?.message ?? companySearch.error;
+  const reload = useCallback(() => {
+    retryCompanySearch();
+    records.reload();
+  }, [records, retryCompanySearch]);
+  usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
 
   const linkRecord = openRecord ?? selected;
   const info = useMemo<PaneFooterSegment[]>(() => [

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { createProviderMiss, ProviderBusyError } from "../../../sources/provider-errors";
 import type { Quote } from "../../../types/financials";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 import { looksLikeTicker, tickerCompanyName } from "./ticker-company";
 
 const quotes: Record<string, Partial<Quote>> = {
@@ -9,7 +11,8 @@ const quotes: Record<string, Partial<Quote>> = {
 };
 const provider = { getQuote: async (symbol: string) => {
   const quote = quotes[symbol];
-  if (!quote) throw new Error(`No quote for ${symbol}`);
+  // What the router says when no listing trades under a symbol.
+  if (!quote) throw createProviderMiss(`Not a ticker: ${symbol}.`, undefined, { notFound: true });
   return { symbol, price: 1, currency: "USD", change: 0, changePercent: 0, lastUpdated: 0, ...quote } as Quote;
 } };
 
@@ -22,4 +25,12 @@ test("a ticker reads as its company's name; a fund or an unknown symbol names no
   expect(await tickerCompanyName(null, "VKTX")).toBeNull();
   expect(["VKTX", "brk.b", "F"].map(looksLikeTicker)).toEqual([true, true, true]);
   expect(["Viking Therapeutics", "semaglutide", "NCT07846033"].map(looksLikeTicker)).toEqual([false, false, false]);
+});
+
+// A quote that could not be read says nothing about the company: the search must not settle for none.
+test("a quote that could not be read rejects rather than naming no company", async () => {
+  for (const failure of [new DataServiceUnreachableError(new Error("offline")), new ProviderBusyError()]) {
+    const failing = { getQuote: async () => { throw failure; } };
+    await expect(tickerCompanyName(failing, "VKTX")).rejects.toBe(failure);
+  }
 });
