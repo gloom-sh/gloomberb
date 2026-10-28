@@ -125,4 +125,6 @@ export interface MarketDividendsPayload {
   summary: DividendSummary | null;
   historyError?: string;
   summaryError?: string;
+  /** When Gloom Cloud last asked for the history and the summary, ISO. Absent from older servers. */
+  triedAt?: string;
 }

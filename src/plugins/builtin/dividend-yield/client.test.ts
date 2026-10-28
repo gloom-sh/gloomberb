@@ -188,6 +188,37 @@ describe("cash distribution calculations", () => {
     expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
   });
 
+  test("a read without its summary takes the forward rate fundamentals state, and each error says what is missing and when it was tried", async () => {
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const triedAt = "2026-10-27T15:38:12.000Z";
+    const paid = (coverage: string, exDates: string[]) => ({ symbol: "DUK", currency: "USD", fetchedAt: triedAt, coverage: { dividends: coverage },
+      splits: [], earnings: [], dividends: exDates.map((exDate) => ({ exDate, amount: 1.085 })) });
+    let actions = paid("available", [day(-350), day(-260), day(-170), day(-75)]);
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: {
+      quote: null, summary: null, actions, triedAt, summaryError: "Dividend summary unavailable" } }));
+    // DUK: fundamentals state 4.34 a year, declared, going ex in sixteen days.
+    const stated = { rate: 4.34, exDate: day(16), currency: "USD" };
+    const data = await fetchDividendData("DUK", 124, "", "USD", { loadStatedForwardRate: async () => stated });
+    expect(data.metrics).toMatchObject({ forwardRate: 4.34, forwardRateAsOf: day(16), nextExDividendDate: new Date(day(16)) });
+    expect(data.forwardFromFundamentals).toBe(true);
+    expect(data.summaryError).toBe("Dividend summary unavailable (last tried 2026-10-27 15:38 UTC); no payout ratio or pay date.");
+    const request = { rawArgument: "DUK", argument: "DUK", symbols: ["DUK"], options: {} };
+    expect(projectDividendYieldHeadless(data, request).sections[0]?.entries?.find((entry) => entry.label === "Forward yield")?.formatted)
+      .toBe(`3.50% (annualized from the declared distribution, ex ${day(16)})`);
+    // A rate stated in another currency than the cash is not taken.
+    const pounds = await fetchDividendData("DUK", 124, "", "USD", { loadStatedForwardRate: async () => ({ ...stated, currency: "GBP" }) });
+    expect(pounds.metrics.forwardRate).toBeNull();
+    expect(pounds.summaryError).toBe("Dividend summary unavailable (last tried 2026-10-27 15:38 UTC); no forward rate, payout ratio or pay date.");
+
+    // SO: no rows at all is a missing history, not an incomplete one; some rows short of their coverage are incomplete.
+    actions = paid("unavailable", []);
+    expect((await fetchDividendData("SO", 93, "", "USD")).historyError)
+      .toBe("Cash history unavailable (last tried 2026-10-27 15:38 UTC); no payments, totals or growth.");
+    actions = paid("unavailable", [day(-75)]);
+    expect((await fetchDividendData("SO", 93, "", "USD")).historyError)
+      .toBe("Incomplete cash history (last tried 2026-10-27 15:38 UTC); totals unavailable.");
+  });
+
   test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {
     const quarterly = Array.from({ length: 8 }, (_, quarter) => payment(
       new Date(Date.UTC(2024, 8 + quarter * 3, 25)).toISOString().slice(0, 10),
