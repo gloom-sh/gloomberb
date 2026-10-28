@@ -1,5 +1,7 @@
-import { useMemo } from "react";
-import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "./footer";
+import { useId, useMemo } from "react";
+import { companyDataFooterSegment, usePaneFooter, type PaneFooterSegment, type PaneHint } from "./footer";
+import type { CompanyFrom } from "../../../types/company-from";
+import { useAppLanguage } from "../../../i18n/react";
 import { useExternalLinkFooter } from "../../use-external-link-footer";
 import { loadingErrorFooterInfo } from "../../data-table/table-pane";
 
@@ -26,6 +28,29 @@ function buildPaneStatusInfo({
   info = EMPTY_STATUS_INFO,
 }: PaneStatusInfoOptions): PaneFooterSegment[] {
   return [...info, ...(stale ? [STALE_SEGMENT] : []), ...loadingErrorFooterInfo(loading, error)];
+}
+
+/**
+ * A company pane on a receipt or a foreign line that shows its company's data
+ * from the home line says which: `company data from 000660 KRX`, after the
+ * pane's own status. Nothing when the data is the listing's own. Every company
+ * pane registers it here, so it reads and looks the same in each.
+ */
+export function useCompanyDataFooter(companyFrom: CompanyFrom | null | undefined, enabled = true) {
+  const language = useAppLanguage();
+  const segment = useMemo(() => companyDataFooterSegment(companyFrom), [
+    language,
+    companyFrom?.symbol,
+    companyFrom?.exchange,
+    companyFrom?.name,
+  ]);
+  // Its own registration, so a view nested in a pane (13D/G under holders) never clears the pane's.
+  const id = useId();
+  usePaneFooter(
+    `company-data:${id}`,
+    () => enabled && segment ? { order: 1, info: [segment] } : null,
+    [enabled, segment],
+  );
 }
 
 export function usePaneStatusFooter({

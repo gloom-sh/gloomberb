@@ -22,6 +22,7 @@ import {
 } from "./model";
 
 export {
+  companyDataFooterSegment,
   datesPaneData,
   DELAYED_SEGMENT,
   delayedFooterSegment,

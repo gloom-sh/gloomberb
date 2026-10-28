@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from"
 type AppStore = "app-store" | "google-play"
 export type AppChart = "free" | "paid" | "grossing" | "unranked"
 
@@ -97,6 +98,8 @@ interface AppSourceState {
 export interface AppAttentionPayload {
   generatedAt: string
   requestedSymbol?: string
+  /** The company's home line the data is read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom
   page?: { offset: number; limit: number; total: number; nextOffset: number | null }
   symbol: string | null
   access: "pro" | "preview"

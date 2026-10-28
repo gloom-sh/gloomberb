@@ -46,6 +46,7 @@ import {
   type TranscriptSection,
 } from "./model";
 import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { companyDataNotes } from "../../../types/company-from";
 
 const CALL_COLUMNS = [
   { key: "ticker", header: "Ticker" },
@@ -172,6 +173,7 @@ function projectEarningsCallsHeadless(
     ...(next ? { textRows: rows.filter((row) => row.id !== next.id) } : {}),
     errors: result.refreshError ? [result.refreshError] : undefined,
     ...(sourceLimitReached || result.pending ? { complete: false } : {}),
+    ...(result.companyFrom ? { notes: companyDataNotes(result.companyFrom) } : {}),
     metadata: {
       ...(next ? { notices: [nextCallNotice(next, now)], nextCall: { id: next.id, callAt: next.callAt, timeKnown: callTimeKnown(next), in: callCountdown(next, now) } } : {}),
       fetchedAt: result.fetchedAt,
@@ -213,6 +215,7 @@ function transcriptResult(
     rows,
     errors: calls.refreshError ? [calls.refreshError] : undefined,
     ...(calls.stale || calls.pending ? { complete: false } : {}),
+    ...(calls.companyFrom ? { notes: companyDataNotes(calls.companyFrom) } : {}),
     metadata: {
       stale: calls.stale,
       callListFetchedAt: calls.fetchedAt,

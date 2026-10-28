@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "./company-from";
 import type { PerpBoardRow } from "../api-client/perps";
 import type { PriceBasis } from "./instrument";
 
@@ -436,6 +437,8 @@ export interface HolderData extends DepositaryReceiptFacts {
   asOf?: string;
   summary?: HolderSummary;
   holders: HolderRecord[];
+  /** The company's home line the data is read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom;
 }
 
 interface AnalystPriceTarget {

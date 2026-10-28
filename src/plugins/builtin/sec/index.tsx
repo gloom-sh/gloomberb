@@ -11,7 +11,7 @@ import { usePaneSettingValue } from "../../../state/app/context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { t, tf } from "../../../i18n";
-import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
+import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, useCompanyDataFooter, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
 import { displayWidth } from "../../../utils/format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
@@ -466,6 +466,8 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
   });
 
+  // A foreign line's filings are its company's, read from the home line.
+  useCompanyDataFooter(issuerFilings[0]?.companyFrom, !openFiling);
   usePaneNoticeFooter({
     registrationId: "sec:form-filter",
     notices: filterHistoryCapped

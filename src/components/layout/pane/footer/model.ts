@@ -1,5 +1,6 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
-import { t } from "../../../../i18n";
+import { t, tf } from "../../../../i18n";
+import { type CompanyFrom, companyFromLabel } from "../../../../types/company-from";
 import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
@@ -114,6 +115,24 @@ export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.n
     title: `${t("Couldn't refresh")}: ${text}`,
     parts: [{ text, tone: "warning" }],
     variants: [[{ text: t("saved copy"), tone: "warning" }]],
+  };
+}
+
+/**
+ * The footer's one form for company data a pane shows from another listing
+ * of the company: a receipt or a foreign line (SKHY, HY9H in Frankfurt) reads
+ * its home line's news, filings or holders, `company data from 000660 KRX`.
+ * Null when the data is the listing's own.
+ */
+export function companyDataFooterSegment(from: CompanyFrom | null | undefined): PaneFooterSegment | null {
+  if (!from) return null;
+  const listing = companyFromLabel(from);
+  const text = tf("company data from {listing}", { listing });
+  return {
+    id: "company-data",
+    title: from.name ? `${text} (${from.name})` : text,
+    parts: [{ text, tone: "muted" }],
+    variants: [[{ text: tf("from {listing}", { listing }), tone: "muted" }]],
   };
 }
 

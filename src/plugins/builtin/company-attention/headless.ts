@@ -3,6 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import type { AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention, fetchBuilding, fetchMoves, fetchSignals, type BuildingPayload, type SignalsPayload } from "./client";
+import { companyDataNotes } from "../../../types/company-from";
 import { BUILDING_FILTERS, BUILDING_VIEWS, buildingBoardModel, buildingNumber, buildingPreviewNote, companyBuildingModel, isBuildingFilter, type BuildingSection } from "./building-model";
 import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
 import { companyMovesModel, isMovesFilter, movesBoardModel, movesNumber, movesPreviewNote, MOVES_FILTERS, MOVES_VIEWS, type MovesSection } from "./moves-model";
@@ -146,7 +147,7 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const why = movesModel?.latest?.why;
       const company = args.symbols[0] ? signalsReads[0]?.data : undefined;
       const held = company && !("group" in company) && company.held ? holdText(company.held) : null;
-      const notes = [...model.notices, ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),
+      const notes = [...model.notices, ...companyDataNotes("companyFrom" in data ? data.companyFrom : null), ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),
         ...(movesData instanceof Error ? [movesData.message] : []), ...(why ? [why] : []),
         ...(signalsData instanceof Error ? [signalsData.message] : []), ...(held ? [`No expansion or anomaly signal this week: ${held.toLowerCase()}.`] : []),
         ...(buildingData instanceof Error ? [buildingData.message] : []), ...(buildingHeld ? [`No mix to compare this week: ${buildingHeld.toLowerCase()}.`] : [])];

@@ -2,6 +2,7 @@ import { apiClient } from "../../../api-client";
 import { newsProvider, type NewsCapability } from "../../../capabilities";
 import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../../../sources/gloomberb-cloud/news";
 import type { NewsArticle, NewsPage, NewsQuery } from "../../../news/types";
+import { readCompanyFrom } from "../../../types/company-from";
 
 interface BackendNews {
   id: string;
@@ -34,6 +35,7 @@ export function createDesktopNewsSource(backend: BackendNews, client: CloudNewsC
             articles: cloudNewsReadArticles(read, query.ticker),
             nextCursor: read.nextCursor ?? null,
             access: read.access ?? null,
+            companyFrom: readCompanyFrom(read.companyFrom),
           };
         } catch {
           // The aggregate page keeps RSS failures beside any usable stories.

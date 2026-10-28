@@ -9,6 +9,7 @@ import {
   EmptyState,
   PaneStatusBody, QueryBar,
   StatGrid,
+  useCompanyDataFooter,
   usePaneFooter,
   useQueryBarSearch,
   useTableLoadMore,
@@ -277,6 +278,8 @@ function CallsListView({
   const [listStatus, setListStatus] = useState<"idle" | "loading" | "loaded" | "error">(initialShelf ? "loaded" : "idle");
   const [listError, setListError] = useState<{ message: string; status?: number } | null>(null);
   const [stale, setStale] = useState(initialShelf?.stale === true);
+  // The company's home line the shelf is read from, for a receipt or a foreign line.
+  const [companyFrom, setCompanyFrom] = useState(initialShelf?.companyFrom ?? null);
   const [listFetchedAt, setListFetchedAt] = useState(initialShelf?.fetchedAt ?? 0);
   const listRequestVersion = useRef(0);
   const [listCompletedRequest, setListCompletedRequest] = useState(0);
@@ -340,6 +343,7 @@ function CallsListView({
           setNextOffset(result.calls.length);
           setHasMore(result.sourceLimitReached === true);
           setStale(result.stale);
+          setCompanyFrom(result.companyFrom ?? null);
           setListFetchedAt(result.fetchedAt);
           setListPending(result.pending === true && result.calls.length === 0);
           setListError(
@@ -410,6 +414,7 @@ function CallsListView({
     setListStatus(held ? "loaded" : "idle");
     setListPending(held?.pending === true && held.calls.length === 0);
     setStale(held?.stale === true);
+    setCompanyFrom(held?.companyFrom ?? null);
     setListFetchedAt(held?.fetchedAt ?? 0);
     setListError(null);
     setLookup(null);
@@ -817,6 +822,8 @@ function CallsListView({
     [focusSearch, scrollTranscriptBy, openSource, playerShown, playback.toggle, playback.seekBy],
   );
 
+  // A receipt's or foreign line's calls are its company's, read from the home line.
+  useCompanyDataFooter(companyFrom, !readerOpen);
   usePaneFooter(
     footerId,
     () => {

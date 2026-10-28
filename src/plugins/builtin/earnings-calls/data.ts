@@ -11,6 +11,7 @@ import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { shortDate } from "../earnings/format";
 import { callCountdown, callDay, callTimeKnown, isUpcomingCall } from "./upcoming";
+import { type CompanyFrom, readCompanyFrom } from "../../../types/company-from";
 
 type EarningsCallsApiClient = Pick<
   HeadlessPaneApiClient,
@@ -50,6 +51,8 @@ export interface EarningsCallsResult {
   pending?: boolean;
   /** The symbol is not one the SEC knows, so there is nothing to look for. */
   unknownTicker?: boolean;
+  /** The company's home line the calls are read from, when not the listing asked. */
+  companyFrom?: CompanyFrom | null;
   /** Maximum rows requested from the server, which supplies no total/hasMore. */
   sourceLimit?: number;
   /** The response filled its request; additional calls may exist. */
@@ -216,8 +219,15 @@ export async function loadEarningsCallsWithClient(
       ...(offset > 0 ? { offset } : {}),
     })
     .then((payload) => {
-      const calls = listingCalls(payload.calls ?? [], abroad);
-      const value = { calls, pending: payload.pending === true, unknownTicker: payload.unknownTicker === true };
+      // Calls the service read from the company's home line are the company's, whatever the line's own name.
+      const companyFrom = readCompanyFrom(payload.companyFrom);
+      const calls = companyFrom ? payload.calls ?? [] : listingCalls(payload.calls ?? [], abroad);
+      const value = {
+        calls,
+        pending: payload.pending === true,
+        unknownTicker: payload.unknownTicker === true,
+        ...(companyFrom ? { companyFrom } : {}),
+      };
       // A list with calls still being produced changes by the minute, so it
       // is not worth keeping; a list of finished transcripts is.
       const settled = !value.pending && calls.every((call) => call.hasTranscript);
