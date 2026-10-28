@@ -225,9 +225,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // visible; the upstream chain cache dedupes the requests across users. A
   // delayed surface keeps the configured refresh.
   const realtimeSurface = !!settledSnapshot?.expiries.some((entry) => entry.dataSource === "live" || entry.realtimeEligible === true);
-  const liveActive = useLiveSessionRefresh(reloadLive, SURFACE_LIVE_RELOAD_MS,
+  const liveRefresh = useLiveSessionRefresh(reloadLive, SURFACE_LIVE_RELOAD_MS,
     !!symbol && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading,
     resource.updatedAt);
+  const liveActive = liveRefresh.live;
   useAutoRefresh(resource.updatedAt, liveActive ? noRefresh : resource.load);
   const shownDate = historyDate ?? fallbackDate;
   const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
@@ -397,7 +398,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(pinned != null && snapshot && !resource.loading && !snapshot.catalogue.includes(pinned)
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
       ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
-    ...(active.error ? [active.error] : [])];
+    ...(active.error ? [active.error] : []), ...(liveRefresh.error ? [liveRefresh.error] : [])];
   const spotBasis = snapshot && !snapshot.stored ? surfaceSpotBasisLabel(snapshot) : null;
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`

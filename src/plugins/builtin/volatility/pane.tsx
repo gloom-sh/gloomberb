@@ -107,7 +107,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     await coordinator.loadQuotesBatch(quiet.map((target) => ({ symbol: target.symbol, exchange: "" })), { forceRefresh: true });
   }, [liveTargets]);
   // With streaming off the quote layer already polls every minute.
-  useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveStreaming && liveTargets.length > 0);
+  const levelRefresh = useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveStreaming && liveTargets.length > 0);
   const liveLevels = useThrottledValue(useMemo(() => {
     const levels = new Map<VolatilityIndexId, VolatilityLiveLevel>();
     for (const definition of VOLATILITY_INDICES) {
@@ -139,7 +139,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   }, [data?.board, sort, loading]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   useVolatilityEvidence(result, tab, selected, resource.loading);
-  const notices = [resource.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
+  const notices = [resource.error, levelRefresh.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
     ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
   // From the tab the press finds, so the footer's hint never holds an old one.

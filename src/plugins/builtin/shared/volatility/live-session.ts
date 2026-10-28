@@ -1,4 +1,3 @@
-import { logFailure } from "../../../../utils/log-failure";
 import { useEffect, useRef, useState } from "react";
 import { getPublishedUsEquitySession } from "../../../../market-data/published-us-sessions";
 import { usePaneVisible } from "../../../../state/app/activity";
@@ -113,6 +112,21 @@ export function useOptionsSessionOpen(enabled = true): boolean {
   return state.nextChangeAt != null && Date.now() >= state.nextChangeAt ? usOptionsSession(Date.now()).open : state.open;
 }
 
+export interface LiveSessionRefresh {
+  /** The refresh cycle is running, which is what "live" means. */
+  live: boolean;
+  /**
+   * Why the last refresh failed, until one succeeds or the cycle stops. The
+   * data it would have replaced stays on screen, so the pane shows this where
+   * it shows its own failed refreshes.
+   */
+  error: string | null;
+}
+
+function isCancellation(error: unknown): boolean {
+  return !!error && typeof error === "object" && (error as { name?: unknown }).name === "AbortError";
+}
+
 /**
  * Calls `refresh` every `intervalMs` while enabled, the pane can be seen (the
  * app is visible and the pane is not covered) and the options market is open.
@@ -120,18 +134,19 @@ export function useOptionsSessionOpen(enabled = true): boolean {
  * after the caller's own load (`loadedAt`); returning after a hidden or
  * covered stretch, or reaching the open, more than an interval after the last
  * data fires straight away. A refresh still in flight is never overlapped by
- * the next. Returns whether the refresh cycle is running, which is what
- * "live" means.
+ * the next. A refresh that throws or rejects is reported as `error` until the
+ * next one succeeds; a cancelled one (an AbortError) is no failure.
  */
 export function useLiveSessionRefresh(
   refresh: () => void | Promise<unknown>,
   intervalMs: number,
   enabled: boolean,
   loadedAt?: number | null,
-): boolean {
+): LiveSessionRefresh {
   const visible = usePaneVisible();
   const open = useOptionsSessionOpen(enabled);
   const active = enabled && visible && open;
+  const [error, setError] = useState<string | null>(null);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const lastRef = useRef(Date.now());
@@ -143,24 +158,31 @@ export function useLiveSessionRefresh(
     let cancelled = false;
     // A load the caller finished itself counts as the latest refresh.
     if (loadedAtRef.current != null && loadedAtRef.current > lastRef.current) lastRef.current = loadedAtRef.current;
+    const succeeded = () => { if (!cancelled) setError(null); };
+    const failed = (failure: unknown) => {
+      if (cancelled || isCancellation(failure)) return;
+      const message = (failure instanceof Error ? failure.message : String(failure ?? "")).trim();
+      setError(message || "Live refresh failed");
+    };
     const run = () => {
       if (inFlight || cancelled) return;
       lastRef.current = Date.now();
       let pending: void | Promise<unknown>;
-      try { pending = refreshRef.current(); } catch (error) {
-        logFailure("shared.volatility.live-session", "Start live session refresh failed")(error);
+      try { pending = refreshRef.current(); } catch (failure) {
+        failed(failure);
         return;
       }
       if (pending && typeof (pending as Promise<unknown>).then === "function") {
         inFlight = true;
-        void (pending as Promise<unknown>).catch(logFailure("shared.volatility.live-session", "Live session refresh failed")).finally(() => { inFlight = false; });
-      }
+        void (pending as Promise<unknown>).then(succeeded, failed).finally(() => { inFlight = false; });
+      } else succeeded();
     };
     if (Date.now() - lastRef.current >= intervalMs) run();
     const timer = setInterval(run, intervalMs);
-    return () => { cancelled = true; clearInterval(timer); };
+    // A stopped cycle's failure is old news: the pane's own loads take over.
+    return () => { cancelled = true; clearInterval(timer); setError(null); };
   }, [active, intervalMs]);
-  return active;
+  return { live: active, error: active ? error : null };
 }
 
 /**
