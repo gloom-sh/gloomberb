@@ -322,6 +322,37 @@ describe("GloomberbCloudProvider", () => {
     }
   });
 
+  test("a spot commodity or a currency written with a slash is asked for as it is, never as a coin", async () => {
+    // GAU-USD on the crypto venue is a token (Gamer Arena) at 0.000014; GAU/USD is gold by the gram.
+    const spot: Record<string, [number, string]> = {
+      "GAU/USD:COMMODITY": [134.2, "COMMODITY"], "WTI/USD:COMMODITY": [61.3, "COMMODITY"], "XBR/USD:": [65.1, ""], "RUB/USD:CCY": [0.0123, "CCY"],
+    };
+    const requests: string[] = [];
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      requests.push(`${symbol}:${exchange ?? ""}`);
+      const [price, listingExchangeName] = spot[`${symbol}:${exchange ?? ""}`] ?? [0.000014, "CCC"];
+      return { status: "success", data: { symbol, price, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName } };
+    };
+    const provider = new GloomberbCloudProvider();
+    for (const key of Object.keys(spot)) {
+      const [symbol, exchange] = key.split(":") as [string, string];
+      const answer = await provider.getQuote(symbol, exchange);
+      expect(answer.price, key).toBe(spot[key]![0]);
+      expect(providerQuoteMatchesTarget(answer, symbol, exchange), key).toBe(true);
+    }
+    expect(requests).toEqual(Object.keys(spot));
+    // A coin-typed row on the commodity venue is not a coin either.
+    setCloudApiFetchTransport(async (url) => new URL(url).pathname === "/market/search"
+      ? Response.json({ status: "success", data: [{ symbol: "GAU/USD", name: "Gold gram", exchange: "COMMODITY", type: "Digital Currency" },
+        { symbol: "GAU/USD", name: "Gamer Arena", exchange: "KRAKEN", type: "Digital Currency" }] })
+      : Response.json({ status: "empty", data: null }));
+    try {
+      expect((await provider.search("gau/usd")).map((row) => `${row.symbol}:${row.exchange}`)).toEqual(["GAU/USD:COMMODITY", "GAU/USD:KRAKEN"]);
+    } finally {
+      setCloudApiFetchTransport(null);
+    }
+  });
+
   test("rejects contradictory qualified listings before quote, research, history or auth transport", async () => {
     let calls = 0;
     apiClient.ensureVerifiedSession = async () => { calls++; return verifiedUser; };

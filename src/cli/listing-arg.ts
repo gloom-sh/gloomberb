@@ -36,7 +36,7 @@ import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy } from "../sources/provider-errors";
-import { dashedCoinPair, exchangeLineCoinListing, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
+import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
@@ -179,8 +179,10 @@ function parseCleanListingArg(
   // A crypto exchange's line of a pair (BTC/GBP:COINBASE PRO, as search offered it) is the crypto venue's BTC-GBP:CCC.
   const line = venueKey.exchange || optionCode ? exchangeLineCoinListing(venueKey.symbol, venueKey.exchange ?? optionCode) : null;
   if (line) return { symbol: line.symbol, exchange: line.exchange, key: `${line.symbol}:${line.exchange}` };
-  // BTC/USD, as crypto venues write a pair, is the coin's own BTC-USD.
-  const parsed = { ...venueKey, symbol: dashedCoinPair(venueKey.symbol) ?? venueKey.symbol };
+  // BTC/USD, as crypto venues write a pair, is the coin's own BTC-USD; spot crude (WTI/USD) and gold by the gram
+  // (GAU/USD:COMMODITY) are not coins, though tokens share their letters.
+  const coinPair = isSpotCommodityOrCurrencyPair(venueKey.symbol, venueKey.exchange ?? optionCode) ? null : dashedCoinPair(venueKey.symbol);
+  const parsed = { ...venueKey, symbol: coinPair ?? venueKey.symbol };
   const ownCode = parsed.exchange ? typedExchangeCode(typed) : "";
   let exchange = parsed.exchange ?? option;
   let code = ownCode || optionCode;

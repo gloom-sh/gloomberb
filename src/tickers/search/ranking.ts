@@ -4,7 +4,7 @@ import type {
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { currencyPairCode } from "../../utils/currency-pair";
-import { exchangeLineCoinListing } from "../../utils/crypto-pair";
+import { typedCoinPairListing } from "../../utils/crypto-pair";
 import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 import { futuresContractByCode } from "../../market-data/futures-board";
@@ -324,7 +324,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   );
 
   // BTC/GBP reads as a currency pair's spelling, and is the crypto venue's BTC-GBP.
-  const coinListing = exchangeLineCoinListing(query)?.symbol;
+  const coinListing = typedCoinPairListing(query)?.symbol;
   const filtered = ranked.filter(({ item, textScore }) => {
     if (textScore <= 0) return false;
     if (isExplicitMarketSymbol(query) && !isExplicitMarketSymbol(item.symbol || item.label)

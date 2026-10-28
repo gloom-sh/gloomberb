@@ -11,7 +11,7 @@ import {
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { scopedBrokerContractIdentityKey } from "../../utils/instrument-identity";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
-import { coinPairQuoteCurrency, exchangeLineCoinListing } from "../../utils/crypto-pair";
+import { coinPairQuoteCurrency, exchangeLineCoinListing, isCoinRowType } from "../../utils/crypto-pair";
 
 /**
  * The key a result is saved under when its symbol is already saved for
@@ -39,7 +39,8 @@ export async function upsertTickerFromSearchResult(
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
   // A crypto exchange's line of a coin pair (BTC/GBP on COINBASE PRO), which no source quotes, is saved as the
   // crypto venue's listing of the pair (BTC-GBP on CCC), in the currency the pair is quoted in.
-  const coin = result.brokerContract ? null : exchangeLineCoinListing(getSearchResultSymbol(result), listingVenue(result));
+  const coin = result.brokerContract ? null
+    : exchangeLineCoinListing(getSearchResultSymbol(result), listingVenue(result), { coinRow: isCoinRowType(result.type) });
   if (coin) {
     result = { ...result, symbol: coin.symbol, exchange: coin.exchange, primaryExchange: undefined, currency: coin.currency };
     if (options.tickerSymbol) options = { ...options, tickerSymbol: publicTickerKey(coin.symbol, coin.exchange) };

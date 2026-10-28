@@ -27,6 +27,11 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
     expect(parseListingArg(raw, option).key).toBe(key);
   }
   expect(parseListingArg("BRK/B:NYSE").key).toBe("BRK/B:NYSE");
+  // Spot gold by the gram and crude keep their own listing (GAU-USD is a token), and a currency is its pair.
+  for (const [raw, option, key] of [["GAU/USD:COMMODITY", undefined, "GAU/USD:COMMODITY"], ["WTI/USD", "COMMODITY", "WTI/USD:COMMODITY"],
+    ["xbr/usd", undefined, "XBR/USD"], ["RUB/USD:CCY", undefined, "RUBUSD=X"]] as const) {
+    expect(parseListingArg(raw, option).key, raw).toBe(key);
+  }
   // A currency pair is the one listing the service has for it, on its venue by either name or by its syntax.
   for (const [raw, option] of [["EUR/USD", undefined], ["EURUSD:CCY", undefined], ["eurusd:fx", undefined], ["EURUSD", "FX"], ["EURUSD=X", "CCY"]] as const) {
     expect(parseListingArg(raw, option)).toEqual({ symbol: "EURUSD=X", exchange: "", key: "EURUSD=X" });

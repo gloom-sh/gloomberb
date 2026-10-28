@@ -1602,6 +1602,31 @@ describe("ticker-search utilities", () => {
     expect(buildTickerSearchCandidates({ query: "EUR/USD", tickers: new Map(), providerResults: rows }).map((item) => item.symbol)).toEqual(["EURUSD=X"]);
   });
 
+  test("a spot commodity or a currency typed or picked with a slash is never read as a coin", async () => {
+    // GAU-USD is a token (Gamer Arena); GAU/USD is gold by the gram, WTI/USD and XBR/USD spot crude.
+    const searched: string[] = [];
+    const spot = (symbol: string, exchange: string) => makeSearchResult(symbol, symbol, { exchange, type: exchange === "CCY" ? "CURRENCY" : "COMMODITY" });
+    const rows: Record<string, ReturnType<typeof spot>[]> = {
+      "WTI/USD": [spot("WTI/USD", "COMMODITY")], "GAU/USD:COMMODITY": [spot("GAU/USD", "COMMODITY")],
+      "XBR/USD": [spot("XBR/USD", "COMMODITY")], "RUBUSD=X": [spot("RUBUSD=X", "CCY")],
+    };
+    const dataProvider = createTestDataProvider({
+      search: async (query: string) => { searched.push(query); return rows[query] ?? []; },
+    });
+    for (const [query, symbol, exchange] of [["wti/usd", "WTI/USD", "COMMODITY"], ["GAU/USD:COMMODITY", "GAU/USD", "COMMODITY"],
+      ["xbr/usd", "XBR/USD", "COMMODITY"], ["RUB/USD:CCY", "RUBUSD=X", "CCY"]] as const) {
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }), query)
+        .toMatchObject({ kind: "provider", symbol, result: { exchange } });
+    }
+    expect(searched.filter((query) => query.includes("-"))).toEqual([]);
+    // A pick of one is saved as it is.
+    const repository = { loadTicker: async () => null, createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }), saveTicker: async () => {} };
+    for (const [symbol, exchange] of [["GAU/USD", "COMMODITY"], ["WTI/USD", "COMMODITY"], ["RUB/USD", "CCY"]] as const) {
+      const pick = makeSearchResult(symbol, symbol, { exchange, type: "Digital Currency" });
+      expect((await upsertTickerFromSearchResult(repository as any, pick)).ticker.metadata.exchange, symbol).toBe(exchange);
+    }
+  });
+
   test("refreshes low-quality saved metadata when opening a provider-backed result", async () => {
     const existing = createTestTicker("AAPL", "AAPL");
     const saved: TickerRecord[] = [];
