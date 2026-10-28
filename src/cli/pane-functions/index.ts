@@ -3,7 +3,7 @@ import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
-import { cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
+import { buildForFile, cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   filterPaneCatalogEntries,
   findFunctionCode,
@@ -36,7 +36,7 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
-import { isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
+import { CLI_ERROR_CODE, failWithError, isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
@@ -316,13 +316,15 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         : null;
       const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
+      // A report written to a file is drawn for it as it is built: no colour and no terminal width, as a redirect gets it.
+      const buildReport = () => buildFunctionReport(resolved, context, parsed.arg);
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
         () => loadForListing(
           parsed.listing ?? [],
           context,
           ctx,
-          () => buildFunctionReport(resolved, context, parsed.arg),
+          outputPath ? () => buildForFile(buildReport) : buildReport,
           (built) => built.data.empty || !built.data.complete,
         ),
       ));
@@ -365,8 +367,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       };
       if (outputPath) {
-        // A report with no data writes no file: a header alone would read as a screen that matched nothing.
-        if (failure) ctx.fail(failure.message, `Nothing was written to ${outputPath}.`);
+        // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails
+        // as plain --json fails, with its code and whether to retry.
+        if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
         await writeOutputFile(outputPath, `${renderForFile(() => serializeCliResult(result, ctx.cliOptions, render))}\n`);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
         const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount };
@@ -609,8 +612,9 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
-    // A failure with fields for --json (`ticker_moved`, its change and retry) keeps its code and them.
-    if (isCliFailure(error) && error.fields) throw error;
+    // A failure with fields for --json (`ticker_moved`, its change and retry), or a code of its own (`no_data`,
+    // `service_unreachable` and whether to retry), keeps them.
+    if (isCliFailure(error) && (error.fields || error.code !== CLI_ERROR_CODE)) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
     const message = error instanceof Error ? error.message : String(error);

@@ -77,21 +77,42 @@ let plainOverride: boolean | null = null;
 /** Output is being rendered for a file (`renderForFile`), which has no terminal width. */
 let renderingForFile = false;
 
+/** Renders for a file from here on; the function returned puts the terminal's rendering back. */
+function enterFileRendering(): () => void {
+  const saved = { color: colorEnabledOverride, plain: plainOverride, file: renderingForFile };
+  colorEnabledOverride = false;
+  plainOverride = true;
+  renderingForFile = true;
+  return () => {
+    colorEnabledOverride = saved.color;
+    plainOverride = saved.plain;
+    renderingForFile = saved.file;
+  };
+}
+
 /**
  * Output rendered for a file (`fn --output`) as a redirect gets it: plain,
  * without colour, and fitted to no width but `--width`'s.
  */
 export function renderForFile<T>(render: () => T): T {
-  const saved = { color: colorEnabledOverride, plain: plainOverride, file: renderingForFile };
-  colorEnabledOverride = false;
-  plainOverride = true;
-  renderingForFile = true;
+  const restore = enterFileRendering();
   try {
     return render();
   } finally {
-    colorEnabledOverride = saved.color;
-    plainOverride = saved.plain;
-    renderingForFile = saved.file;
+    restore();
+  }
+}
+
+/**
+ * `renderForFile` around work that renders as it loads: a report whose text is
+ * drawn while it is built is drawn for the file, though stdout is a terminal.
+ */
+export async function buildForFile<T>(build: () => Promise<T>): Promise<T> {
+  const restore = enterFileRendering();
+  try {
+    return await build();
+  } finally {
+    restore();
   }
 }
 

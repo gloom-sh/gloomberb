@@ -123,17 +123,19 @@ function readMetrics(value: string): NumericField[] {
 
 type ShownCategory = "sector" | "industry" | "currency";
 const CATEGORY_HEADERS: Record<ShownCategory, string> = { sector: "Sector", industry: "Industry", currency: "Currency" };
-/** Columns every report prints, so the sort field is not added again for them. */
+/** Columns every report prints, so neither another metric nor the sort field adds them again. */
 const ALWAYS_SHOWN = new Set(["symbol", "exchange", "name", "price", "changePercent"]);
 
 /**
  * The columns a report adds after the first metric's: the other metrics
  * asked for, then the field the screen is sorted by, so the order of the
- * rows is explained by a column (P/E focus, sorted by dividend yield).
+ * rows is explained by a column (P/E focus, sorted by dividend yield). A
+ * column every report prints (Last, Chg%) is not added twice, and its raw
+ * number stays in the row.
  */
 function extraScreenColumns(metrics: readonly NumericField[], sortField: string): Array<NumericField | ShownCategory> {
-  const sort = ALWAYS_SHOWN.has(sortField) ? [] : [sortField as NumericField | ShownCategory];
-  return [...new Set([...metrics.slice(1), ...sort])].filter((field) => field !== metrics[0]);
+  return [...new Set([...metrics.slice(1), sortField as NumericField | ShownCategory])]
+    .filter((field) => field !== metrics[0] && !ALWAYS_SHOWN.has(field));
 }
 
 /** Another metric's cell: its value as the focus column prints it, with the currency of a money value. */

@@ -151,6 +151,19 @@ test("--limit pages to its rows; the sort field and every --metric get a column,
   expect(section.rows![0]).toMatchObject({ value: "15.0", unit: "x", state: "partial", beta: "0.80", dividendYieldPercent: "6.0" });
   expect(result.notes!.map((note) => note.split(" means ")[0])).toEqual(["A partial State", "A stale State"]);
   expect(result.complete).toBe(true);
+  // Last and Chg% are columns of every report: a --metric naming them adds neither again, and their raw numbers stay.
+  const shown = await equityScreenerHeadless.load({ argument: undefined,
+    options: { definition: JSON.stringify(data.definition), metric: "trailingPE,price,changePercent", limit: 1 } } as never,
+  { apiClient: { equityScreener: async () => {
+    const priced = row("EIX", 6, "partial");
+    priced.metrics = { ...priced.metrics, price: { ...metric(58.19, "partial"), unit: "USD" }, changePercent: { ...metric(0.71, "partial"), unit: "%" } };
+    return structuredClone({ ...data, rows: [priced], nextCursor: null });
+  } } } as never);
+  const shownSection = shown.sections![0]!;
+  const keys = shownSection.columns!.map((column) => column.key);
+  expect(keys.filter((key) => key === "price" || key === "changePercent")).toEqual(["price", "changePercent"]);
+  expect(keys.at(-1)).toBe("dividendYieldPercent");
+  expect(shownSection.rows![0]).toMatchObject({ price: 58.19, changePercent: 0.71 });
   // Repeated flags and a comma list read as one list, each metric once.
   expect(equityScreenerHeadless.options.find((option) => option.key === "metric")!.normalize!("trailingPE, beta,trailingPE"))
     .toBe("trailingPE,beta");
