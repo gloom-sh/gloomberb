@@ -1336,10 +1336,63 @@ function Seed-DesktopConfig {
     activeLayoutIndex = 0
   }
 
+  Write-SeededViewIds $DataDir
+
   [pscustomobject]@{
     DataDir = $DataDir
     GlobalConfigPath = $GlobalConfigPath
   }
+}
+
+# The ids the desktop view keeps in its WebView storage have a copy in the
+# data folder, which a build under another bundle identifier, starting with
+# empty storage, takes them back from. The fixture's copy holds them and one
+# key the view does not keep. The view puts its three into its storage, reads
+# them back from there, finds them different from the copy and writes it
+# again: once it holds exactly those three, they went through the storage.
+$SeededViewIds = [ordered]@{
+  "gloomberb.sync.clientId" = "client_verify-windows"
+  "gloomberb.web.anonymous-id" = "0f9d5c1a-58a4-4b6e-9a31-2c1d2b7e8f00"
+  "gloomberb.web.attribution" = '{"first_touch_at":"2026-10-01T00:00:00.000Z"}'
+}
+$UnkeptViewIdKey = "gloomberb.verify.unkept"
+
+function Write-SeededViewIds {
+  param([string]$DataDir)
+
+  $Copy = [ordered]@{}
+  foreach ($Key in $SeededViewIds.Keys) { $Copy[$Key] = $SeededViewIds[$Key] }
+  $Copy[$UnkeptViewIdKey] = "not the view's"
+  $Copy | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $DataDir "desktop-view-ids.json") -Encoding UTF8
+}
+
+function Assert-ViewIdsRestored {
+  param([string]$DataDir)
+
+  $Path = Join-Path $DataDir "desktop-view-ids.json"
+  $Saved = $null
+  for ($Attempt = 0; $Attempt -lt 60; $Attempt += 1) {
+    $Saved = $null
+    if (Test-Path $Path) {
+      try { $Saved = Get-Content $Path -Raw | ConvertFrom-Json } catch { $Saved = $null }
+    }
+    if ($Saved -and -not ($Saved.PSObject.Properties.Name -contains $UnkeptViewIdKey)) { break }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $Saved) {
+    throw "The copy of the view's ids is gone: $Path"
+  }
+  $Names = @($Saved.PSObject.Properties.Name | Sort-Object)
+  $Expected = @($SeededViewIds.Keys | Sort-Object)
+  if (($Names -join ",") -ne ($Expected -join ",")) {
+    throw "The view did not keep its ids through its storage: the copy holds $($Names -join ', ')"
+  }
+  foreach ($Key in $SeededViewIds.Keys) {
+    if ($Saved.$Key -cne $SeededViewIds[$Key]) {
+      throw "The view kept $Key as '$($Saved.$Key)', not '$($SeededViewIds[$Key])'"
+    }
+  }
+  Write-Host "The view restored its ids from the copy on disk and kept them."
 }
 
 function Restore-EnvironmentVariable {
@@ -1784,6 +1837,7 @@ try {
 
   Resolve-VisibleWindowByTitle -Title "Gloom" -Label "Main window liveness" | Out-Null
   Resolve-VisibleWindowByTitle -Title "Detached Watchlist" -Label "Detached pop-out liveness" | Out-Null
+  Assert-ViewIdsRestored $SeededDesktopConfig.DataDir
 
   $GuiProcess.Refresh()
   if ($GuiProcess.HasExited -and $GuiProcess.ExitCode -ne 0) {

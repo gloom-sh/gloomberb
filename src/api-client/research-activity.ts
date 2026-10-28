@@ -46,8 +46,9 @@ const signinWallExperiment = createWallExperimentSession("wall_teaser_signin");
 const upgradeExperiment = createUpgradeExperimentSession();
 const WALL_VIEWS_SESSION_KEY = "gloomberb.wall-teaser.views";
 
-const ATTRIBUTION_STORAGE_KEY = "gloomberb.web.attribution";
-const ANONYMOUS_ID_STORAGE_KEY = "gloomberb.web.anonymous-id";
+// The desktop app also keeps a copy of these two on disk (electrobun/view/view-ids.ts).
+export const ATTRIBUTION_STORAGE_KEY = "gloomberb.web.attribution";
+export const ANONYMOUS_ID_STORAGE_KEY = "gloomberb.web.anonymous-id";
 const HANDOFF_ID_KEY = "_gloom";
 const ATTRIBUTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Another device's clock may run slightly ahead; a touch from a minute in the future is still fresh. */

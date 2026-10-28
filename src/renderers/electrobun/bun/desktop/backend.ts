@@ -575,6 +575,7 @@ export class DesktopBackend {
       case "host.notify":
       case "host.showContextMenu":
       case "host.saveBootFrame":
+      case "host.saveViewIds":
       case "host.setAppBadge":
         return handleDesktopHostRequest(this, rpc, request);
       case "update.check":

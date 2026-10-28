@@ -24,6 +24,7 @@ import type { CapabilityRegistry } from "../../../../capabilities";
 import { telemetryOptedOut } from "../../../../telemetry/crash-reports";
 import { describeNodeOs, readOrCreateInstallId } from "../../../../telemetry/crash-reports-node";
 import type { DesktopBackend, DesktopRpc } from "./backend";
+import { readDesktopViewIds } from "./view-ids";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
@@ -94,6 +95,7 @@ function buildInitializationPayload(
       homeDir: homedir(),
       optedOut: telemetryOptedOut(process.env),
     },
+    viewIds: readDesktopViewIds(config.dataDir),
   };
 }
 

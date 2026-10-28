@@ -1,5 +1,6 @@
 import { dirname } from "path";
 import { mkdirSync, writeFileSync } from "fs";
+import { DESKTOP_APP_IDENTIFIERS } from "../src/renderers/electrobun/shared/app-name";
 
 interface Options {
   version: string;
@@ -78,7 +79,9 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
   # The command's name before 0.18.4, kept for scripts and habits.
   binary "#{appdir}/Gloom.app/Contents/Resources/gloomberb", target: "gloomberb"
 
-  uninstall quit: "com.vincelwt.gloomberb"
+  # Quits the app under either of its bundle identifiers, whichever the
+  # installed copy carries.
+  uninstall quit: [${DESKTOP_APP_IDENTIFIERS.map((identifier) => JSON.stringify(identifier)).join(", ")}]
 
   zap trash: "~/.gloomberb"
 end

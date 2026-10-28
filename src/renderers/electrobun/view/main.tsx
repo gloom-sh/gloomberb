@@ -56,6 +56,8 @@ import { currentTelemetryConfig } from "../../../telemetry/live-config";
 import { attentionCountsEnabled, installAttentionCounter } from "../../../telemetry/attention-counts";
 import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
+import { cloudSyncController } from "../../../sync/controller";
+import { createViewIdMirror, restoreViewIds, viewIdStorage } from "./view-ids";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -178,10 +180,26 @@ async function boot() {
   const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
     subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),
   };
+  // Before anything reads them: ids this view's storage lacks come back from
+  // the copy on disk, and the main window keeps that copy up to date. The sync
+  // id is made at the first push, and a gloom.sh link can bring a visitor id.
+  const viewStorage = viewIdStorage();
+  if (viewStorage) restoreViewIds(viewStorage, init.viewIds);
+  const mirrorViewIds = viewStorage && init.windowKind === "main"
+    ? createViewIdMirror(viewStorage, init.viewIds, (ids) => backendRequest("host.saveViewIds", { ids }))
+    : () => {};
+  mirrorViewIds();
+  cloudSyncController.subscribe(mirrorViewIds);
   initializeDesktopResearchActivity();
-  const desktopDeepLinkBridge = observeDesktopDeepLinks({
+  const observedDeepLinks = observeDesktopDeepLinks({
     subscribe: (listener) => onBackendMessage("desktop.deepLink", listener),
   });
+  const desktopDeepLinkBridge: typeof observedDeepLinks = {
+    subscribe: (listener) => observedDeepLinks.subscribe((deeplink) => {
+      listener(deeplink);
+      mirrorViewIds();
+    }),
+  };
   const webUiHost = createWebUiHost(init.desktopPlatform);
   // Compiled by the Bun process, which owns the filesystem. A failure here must
   // not stop the app from starting: the marketplace reports broken plugins, and
