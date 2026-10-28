@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { installerFolderScript, regExportValue, updaterAppFolder, WINDOWS_INSTALLER_APP_ID } from "./installer-folder";
+import { installerFolderScript, mayTryMove, noteMoveTry, regExportValue, updaterAppFolder, WINDOWS_INSTALLER_APP_ID } from "./installer-folder";
 
 // What these decide is whether the app quits at its start to move itself, and
-// what the script it leaves moves. The move itself runs on a real install in
-// the Windows verification (scripts/verify-windows-update.ps1).
+// what the script it leaves moves. The script runs in Windows PowerShell on
+// folders made for it in scripts/verify-windows-installer-folder.test.ps1, and
+// on a real install in scripts/verify-windows-update.ps1.
 describe("the Windows installer's folder", () => {
   const local = "C:\\Users\\O'Brien\\AppData\\Local";
 
@@ -46,10 +47,39 @@ describe("the Windows installer's folder", () => {
       sources: [`${local}\\com.vincelwt.gloomberb\\stable\\app`],
       folder: `${local}\\com.vincelwt.gloomberb\\stable`,
       log: `${local}\\com.vincelwt.gloomberb\\stable\\installer-folder.log`,
-      afterExit: { pids: [4120, 0, 3996], taskName: "GloomInstallerFolder-1" },
+      afterExit: { cancel: `${local}\\com.vincelwt.gloomberb\\stable\\installer-folder.cancel`, taskName: "GloomInstallerFolder-1" },
     });
     expect(script).toContain("$Target = 'C:\\Users\\O''Brien\\AppData\\Local\\Programs\\Gloom'\n");
     expect(script).toContain("$Sources = @('C:\\Users\\O''Brien\\AppData\\Local\\com.vincelwt.gloomberb\\stable\\app')\n");
-    expect(script).toContain("$AppPids = @(4120, 3996)\n");
+    expect(script).toContain("$AfterExit = $true\n");
+    expect(installerFolderScript({ target: "C:\\Gloom", sources: [], folder: "C:\\x", log: "C:\\x\\log" })).toContain("$AfterExit = $false\n");
+  });
+
+  // A move that cannot happen must not make the app quit and open again at
+  // every start: it waits between tries, and gives up on a build after three.
+  test("tries to move a build three times at most, ten minutes apart", () => {
+    const minute = 60_000;
+    let tries = null as ReturnType<typeof noteMoveTry> | null;
+    let now = 0;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      expect(mayTryMove(tries, "0.19.0+abc", now)).toBe(true);
+      tries = noteMoveTry(tries, "0.19.0+abc", now);
+      expect(mayTryMove(tries, "0.19.0+abc", now + 9 * minute)).toBe(false);
+      now += 10 * minute;
+    }
+    expect(mayTryMove(tries, "0.19.0+abc", now + 24 * 60 * minute)).toBe(false);
+    // The next update starts over.
+    expect(mayTryMove(tries, "0.19.1+def", now)).toBe(true);
+    expect(noteMoveTry(tries, "0.19.1+def", now).failed).toBe(1);
+  });
+
+  test("waits, without giving up, while the installer's folder is in use", () => {
+    let tries = noteMoveTry(null, "0.19.0+abc", 0);
+    for (let start = 1; start <= 10; start += 1) {
+      tries = noteMoveTry(tries, "0.19.0+abc", start * 600_000, false);
+      expect(mayTryMove(tries, "0.19.0+abc", start * 600_000 + 1)).toBe(false);
+    }
+    expect(tries.failed).toBe(1);
+    expect(mayTryMove(tries, "0.19.0+abc", 11 * 600_000)).toBe(true);
   });
 });

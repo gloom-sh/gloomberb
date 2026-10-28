@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, readFile, rm, stat } from "fs/promises";
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { win32 } from "path";
 import { logFailure } from "../../../../utils/log-failure";
@@ -21,6 +21,10 @@ import { psString, runScriptAfterExit, runScriptInBackground, writePowerShellScr
  * the installer's folder removes a copy an earlier update left in the
  * updater's. Either way the shortcuts and uninstall entry Electrobun's own
  * setup made for its folder, if any, follow to the installer's.
+ *
+ * The app quits for the move only once the script has checked it can make
+ * it, and tries a build at most three times, ten minutes apart: a move that
+ * cannot happen never makes it quit and open again at every start.
  */
 
 /** The installer's AppId, which names its uninstall entry (windows-installer.iss). */
@@ -33,9 +37,6 @@ export interface InstallerFolderContext {
   homeDir: string;
   /** `%LOCALAPPDATA%`, where Electrobun keeps the updater's folder. */
   localAppData?: string;
-  /** This process and its launcher, which the script waits for. */
-  pid: number;
-  ppid: number;
   /** The folder the installer's uninstall entry records, or null; read from the registry when left out. */
   readInstallerFolder?: () => Promise<string | null>;
 }
@@ -47,12 +48,14 @@ export type InstallerFolderMove =
   | { kind: "relaunching" }
   /** A copy left in the updater's folder goes in the background. */
   | { kind: "removing" }
-  /** The last try at moving the app failed a moment ago; it runs from where it is and tries again later. */
+  /** The app runs from where it is: a try failed a moment ago, tries failed too often for this build, or the installer's folder is in use. */
   | { kind: "skipped" }
   | { kind: "failed" };
 
-/** How long a failed move keeps the app from trying again, so a script that cannot move it never makes it quit in a loop. */
-const RETRY_AFTER_FAILURE_MS = 10 * 60_000;
+/** How long a try at moving the app keeps it from trying again, so a move that cannot happen never makes it quit in a loop. */
+const RETRY_AFTER_MS = 10 * 60_000;
+/** Tries at moving one build before it stays in the updater's folder until the next update. */
+const MAX_MOVE_TRIES = 3;
 /** How long after the start a copy left in the updater's folder goes, out of the launch's way. */
 const REMOVAL_DELAY_MS = 10_000;
 const LAUNCHER = "bin\\launcher.exe";
@@ -148,20 +151,35 @@ interface InstallerFolderScript {
   /** This build's app data folder: the script's log goes there, and a folder it removes is moved there first. */
   folder: string;
   log: string;
-  /** The app runs from `sources[0]`: the script waits for it to quit, moves it into `target` and opens it again. */
-  afterExit?: { pids: number[]; taskName: string };
+  /**
+   * The app runs from `sources[0]`: the script waits for everything running
+   * from there to quit, moves it into `target` and opens it again. `cancel`
+   * is the file the app writes when it stops waiting for the script.
+   */
+  afterExit?: { cancel: string; taskName: string };
 }
 
-// PowerShell 5.1. Only the build's own entries (bin, Resources) are replaced
-// in the installer's folder: the installer's uninstaller stays, and so does
-// anything else in a folder the user picked. The old ones wait beside it
-// until the new ones are all in, and go back if they are not.
+// PowerShell 5.1. The build goes into the installer's folder by renames only:
+// from another drive it is copied beside the installed build first. A folder
+// of the build (bin, Resources) replaces the installed one whole when that
+// holds nothing but the app's files; in one that also holds other files (an
+// install in C:\Tools, whose bin was already there) only the app's files are
+// replaced. What it replaces waits beside it, in the installer's folder,
+// until all of the build is in, and goes back if it is not. Then the app
+// opens again, and the rest (shortcuts, uninstall entries, the copy it came
+// from) follows.
 const SCRIPT_BODY = String.raw`
 $Launcher = 'bin\launcher.exe'
+$FileList = 'Resources\update-files.txt'
 $UninstallPath = 'Software\Microsoft\Windows\CurrentVersion\Uninstall'
+$Journal = New-Object System.Collections.Generic.List[object]
+$Exited = $false
+$Opened = $false
 
 function Write-Log([string]$Message) {
-  try { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString('o') + ' ' + $Message) } catch { }
+  for ($Attempt = 0; $Attempt -lt 10; $Attempt += 1) {
+    try { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString('o') + ' ' + $Message); return } catch { Start-Sleep -Milliseconds 100 }
+  }
 }
 
 function Test-Under([string]$Path, [string]$Root) {
@@ -169,16 +187,24 @@ function Test-Under([string]$Path, [string]$Root) {
   return $Path.Equals($Root, [StringComparison]::OrdinalIgnoreCase) -or $Path.StartsWith($Root + '\', [StringComparison]::OrdinalIgnoreCase)
 }
 
+# The processes whose program is in $Root, whatever started them.
 function Get-RunningUnder([string]$Root) {
   @(Get-Process -ErrorAction SilentlyContinue | Where-Object { try { Test-Under $_.Path $Root } catch { $false } })
 }
 
-function Wait-Quiet([string]$Root, [int]$Seconds) {
+# The processes running one of the build's programs from the installer's
+# folder, such as the gloom command: they keep its files from being replaced.
+# Another program the user keeps in that folder does not.
+function Get-AppRunningInTarget {
+  @(Get-RunningUnder $Target | Where-Object { $BuildFiles.Contains($_.Path.Substring($Target.Length + 1)) })
+}
+
+function Wait-Until([int]$Seconds, [scriptblock]$Condition) {
   for ($Wait = 0; $Wait -lt ($Seconds * 2); $Wait += 1) {
-    if ((Get-RunningUnder $Root).Count -eq 0) { return $true }
+    if (& $Condition) { return $true }
     Start-Sleep -Milliseconds 500
   }
-  return ((Get-RunningUnder $Root).Count -eq 0)
+  return [bool](& $Condition)
 }
 
 function Invoke-Retried([scriptblock]$Action, [string]$What) {
@@ -190,55 +216,158 @@ function Invoke-Retried([scriptblock]$Action, [string]$What) {
   }
 }
 
-function Get-Stamp { (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss') }
+function Get-Stamp { (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8) }
 
-# A rename on one drive; across drives, a copy and then a removal.
-function Move-Tree([string]$From, [string]$To) {
-  if ([IO.Path]::GetPathRoot($From) -eq [IO.Path]::GetPathRoot($To)) {
-    Invoke-Retried { Move-Item -LiteralPath $From -Destination $To } ('move ' + $From)
-    return
-  }
-  Invoke-Retried {
-    if (Test-Path -LiteralPath $To) { Remove-Item -LiteralPath $To -Recurse -Force }
-    Copy-Item -LiteralPath $From -Destination $To -Recurse -Force
-  } ('copy ' + $From)
-  Invoke-Retried { Remove-Item -LiteralPath $From -Recurse -Force } ('remove ' + $From)
+function Test-Folder([string]$Path) {
+  $Item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  return ($null -ne $Item) -and $Item.PSIsContainer -and -not ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)
 }
 
-function Install-Build([string]$From) {
-  $Entries = @(Get-ChildItem -LiteralPath $From -Force)
-  if (-not (Test-Path -LiteralPath (Join-Path $From $Launcher))) { throw ('no ' + $Launcher + ' in ' + $From) }
-  $Aside = $Target + '.previous-' + (Get-Stamp)
-  New-Item -ItemType Directory -Force -Path $Aside | Out-Null
-  $SetAside = New-Object System.Collections.Generic.List[string]
-  $Placed = New-Object System.Collections.Generic.List[string]
+# The files in $Root, as paths after $Prefix. A link is a file here: it is not followed.
+function Get-Files([string]$Root, [string]$Prefix) {
+  foreach ($Item in @(Get-ChildItem -LiteralPath $Root -Force)) {
+    $Relative = if ($Prefix) { $Prefix + '\' + $Item.Name } else { $Item.Name }
+    if ($Item.PSIsContainer -and -not ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-Files $Item.FullName $Relative } else { $Relative }
+  }
+}
+
+function Remove-Tree([string]$Path) {
+  if (Test-Path -LiteralPath $Path) { Invoke-Retried { Remove-Item -LiteralPath $Path -Recurse -Force } ('remove ' + $Path) }
+}
+
+# Makes the missing folders up to $Path, each noted to take back.
+function New-Folder([string]$Path) {
+  if (Test-Path -LiteralPath $Path) { return }
+  New-Folder (Split-Path -Parent $Path)
+  New-Item -ItemType Directory -Path $Path | Out-Null
+  $Journal.Add(@($null, $Path))
+}
+
+# A rename, noted to take back. Nothing lands inside a folder in its way.
+function Move-Noted([string]$From, [string]$To) {
+  if (Test-Path -LiteralPath $To) { throw ($To + ' is in the way') }
+  New-Folder (Split-Path -Parent $To)
+  Invoke-Retried { Move-Item -LiteralPath $From -Destination $To } ('move ' + $From)
+  $Journal.Add(@($From, $To))
+}
+
+function Undo-Noted {
+  for ($Index = $Journal.Count - 1; $Index -ge 0; $Index -= 1) {
+    $Step = $Journal[$Index]
+    try {
+      if ($null -eq $Step[0]) {
+        [IO.Directory]::Delete($Step[1], $false)
+      } else {
+        if (Test-Path -LiteralPath $Step[0]) { throw ($Step[0] + ' is in the way') }
+        Invoke-Retried { Move-Item -LiteralPath $Step[1] -Destination $Step[0] } ('put back ' + $Step[0])
+      }
+    } catch { Write-Log ('could not take back a step: ' + $_.Exception.Message) }
+  }
+  $Journal.Clear()
+}
+
+# The files earlier updates put in the installer's folder, as they listed them.
+function Read-FileList {
+  $Path = Join-Path $Target $FileList
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  foreach ($Line in [IO.File]::ReadAllLines($Path)) {
+    $Line = $Line.Trim()
+    if ($Line -and $Line -notmatch '^[\\/]|:|\.\.') { $Line }
+  }
+}
+
+function Install-Build([string]$Source) {
+  $Stamp = Get-Stamp
+  $From = $Source
+  $Next = $null
+  if (-not [IO.Path]::GetPathRoot($Source).Equals([IO.Path]::GetPathRoot($Target), [StringComparison]::OrdinalIgnoreCase)) {
+    $Next = Join-Path $Target ('.gloom-next-' + $Stamp)
+    try {
+      New-Item -ItemType Directory -Path $Next | Out-Null
+      foreach ($Entry in @(Get-ChildItem -LiteralPath $Source -Force)) {
+        Copy-Item -LiteralPath $Entry.FullName -Destination (Join-Path $Next $Entry.Name) -Recurse -Force
+      }
+    } catch {
+      $Reason = $_.Exception.Message
+      try { Remove-Tree $Next } catch { Write-Log ('could not remove ' + $Next + ': ' + $_.Exception.Message) }
+      throw ('could not copy the build into ' + $Target + ': ' + $Reason)
+    }
+    $From = $Next
+  }
+
+  $NewFiles = @(Get-Files $From '')
+  $Listed = @(Read-FileList)
+  $Own = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  foreach ($File in ($NewFiles + $Listed + @($FileList))) { [void]$Own.Add($File) }
+  $Aside = Join-Path $Target ('.gloom-previous-' + $Stamp)
+  $Journal.Clear()
   try {
-    foreach ($Entry in $Entries) {
+    foreach ($Entry in @(Get-ChildItem -LiteralPath $From -Force)) {
       $Name = $Entry.Name
       $Old = Join-Path $Target $Name
-      if (Test-Path -LiteralPath $Old) {
-        Invoke-Retried { Move-Item -LiteralPath $Old -Destination (Join-Path $Aside $Name) } ('set aside ' + $Old)
-        $SetAside.Add($Name)
+      if (-not (Test-Path -LiteralPath $Old)) {
+        Move-Noted $Entry.FullName $Old
+      } elseif (-not $Entry.PSIsContainer) {
+        if (Test-Folder $Old) { throw ($Old + ' is a folder') }
+        Move-Noted $Old (Join-Path $Aside $Name)
+        Move-Noted $Entry.FullName $Old
+      } else {
+        if (-not (Test-Folder $Old)) { throw ($Old + ' is not a folder') }
+        $Others = @(Get-Files $Old $Name | Where-Object { -not $Own.Contains($_) })
+        if ($Others.Count -eq 0) {
+          Move-Noted $Old (Join-Path $Aside $Name)
+          Move-Noted $Entry.FullName $Old
+          Write-Log ('replaced ' + $Old)
+        } else {
+          Write-Log ('kept ' + $Others.Count + ' file(s) in ' + $Old + ' that are not the app''s, such as ' + $Others[0])
+          foreach ($Relative in @(Get-Files $Entry.FullName $Name)) {
+            $Place = Join-Path $Target $Relative
+            if (Test-Path -LiteralPath $Place) {
+              if (Test-Folder $Place) { throw ($Place + ' is a folder') }
+              Move-Noted $Place (Join-Path $Aside $Relative)
+            }
+            Move-Noted (Join-Path $From $Relative) $Place
+          }
+        }
       }
-    }
-    foreach ($Entry in $Entries) {
-      Move-Tree $Entry.FullName (Join-Path $Target $Entry.Name)
-      $Placed.Add($Entry.Name)
     }
   } catch {
     $Reason = $_.Exception.Message
-    foreach ($Name in $Placed) {
-      try { Move-Tree (Join-Path $Target $Name) (Join-Path $From $Name) } catch { Write-Log ('could not put back ' + $Name + ': ' + $_.Exception.Message) }
-    }
-    foreach ($Name in $SetAside) {
-      try { Move-Item -LiteralPath (Join-Path $Aside $Name) -Destination (Join-Path $Target $Name) } catch { Write-Log ('could not put back the old ' + $Name + ': ' + $_.Exception.Message) }
-    }
-    Remove-Item -LiteralPath $Aside -Force -ErrorAction SilentlyContinue
+    Undo-Noted
+    if ($Next) { try { Remove-Tree $Next } catch { Write-Log ('could not remove ' + $Next + ': ' + $_.Exception.Message) } }
     throw $Reason
   }
+  $Journal.Clear()
+
+  # For the uninstaller, which removes what it installed itself: what updates
+  # put here, the files of this build and those of earlier ones still here.
   try {
-    Invoke-Retried { Remove-Item -LiteralPath $Aside -Recurse -Force } ('remove ' + $Aside)
-  } catch { Write-Log ($_.Exception.Message + '; the app removes it at its next start') }
+    $Files = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($File in $NewFiles) { [void]$Files.Add($File) }
+    foreach ($File in $Listed) { if (Test-Path -LiteralPath (Join-Path $Target $File)) { [void]$Files.Add($File) } }
+    [IO.File]::WriteAllLines((Join-Path $Target $FileList), [string[]]@($Files | Sort-Object))
+  } catch { Write-Log ('could not list the files for the uninstaller: ' + $_.Exception.Message) }
+  foreach ($Leftover in @($Aside, $Next)) {
+    if ($Leftover) {
+      try { Remove-Tree $Leftover } catch { Write-Log ($_.Exception.Message + '; the app removes it at its next start') }
+    }
+  }
+}
+
+# What a move that did not finish left in the installer's folder.
+function Remove-Staging {
+  foreach ($Leftover in @(Get-ChildItem -LiteralPath $Target -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '.gloom-next-*' -or $_.Name -like '.gloom-previous-*' })) {
+    if ((Get-RunningUnder $Leftover.FullName).Count -gt 0) { continue }
+    try { Remove-Tree $Leftover.FullName; Write-Log ('removed ' + $Leftover.FullName) } catch { Write-Log $_.Exception.Message }
+  }
+}
+
+function Open-App([string]$Path) {
+  $script:Opened = $true
+  try {
+    Start-Process -FilePath $Path -WorkingDirectory (Split-Path -Parent $Path)
+    Write-Log ('opened ' + $Path)
+  } catch { Write-Log ('could not open ' + $Path + ': ' + $_.Exception.Message) }
 }
 
 # A value naming a path in $From, naming $To instead; null for any other.
@@ -321,20 +450,43 @@ function Remove-Source([string]$Source) {
   Write-Log ('removed ' + $Source)
 }
 
-$Moved = $false
+# One script at a time: the app opened in the installer's folder removes the
+# copy it came from too, and waits for this one.
+$Mutex = New-Object System.Threading.Mutex($false, 'Local\GloomInstallerFolder')
+$Locked = $false
 try {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Log) | Out-Null
-  Write-Log ('started ' + $PID)
-  if ($AppPids.Count -gt 0) {
-    foreach ($AppPid in $AppPids) { Wait-Process -Id $AppPid -Timeout 60 -ErrorAction SilentlyContinue }
-    if (@($AppPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }).Count -gt 0) { throw 'the app did not quit' }
-    # Its WebView helpers go with it, a moment later.
-    if (-not (Wait-Quiet $Sources[0] 15)) { throw 'the app did not quit' }
-    if (-not (Wait-Quiet $Target 30)) { throw ('something still runs from ' + $Target) }
+  try { $Locked = $Mutex.WaitOne($(if ($AfterExit) { 5000 } else { 120000 })) } catch { $Locked = ($_.Exception.GetBaseException() -is [System.Threading.AbandonedMutexException]) }
+  if ($AfterExit) {
+    # The app quits only on "started": anything that keeps the move from
+    # happening is said before, and the app runs on.
+    if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting before this started'; return }
+    if (-not $Locked) { Write-Log 'busy: another move of the app runs'; return }
+    if (-not (Test-Path -LiteralPath (Join-Path $Sources[0] $Launcher))) { Write-Log ('declined: no ' + $Launcher + ' in ' + $Sources[0]); return }
+    $BuildFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($File in @(Get-Files $Sources[0] '')) { [void]$BuildFiles.Add($File) }
+    # A build that just quit there for an update can take a moment to go.
+    if (-not (Wait-Until 8 { (Get-AppRunningInTarget).Count -eq 0 })) {
+      Write-Log ('busy: ' + @(Get-AppRunningInTarget)[0].Path + ' runs'); return
+    }
+    try {
+      $Probe = Join-Path $Target ('.gloom-next-' + (Get-Stamp))
+      New-Item -ItemType Directory -Path $Probe | Out-Null
+      [IO.Directory]::Delete($Probe, $false)
+    } catch { Write-Log ('declined: cannot write in ' + $Target + ': ' + $_.Exception.Message); return }
+    Write-Log ('started ' + $PID)
+    # The app and its WebView helpers, by where they run from.
+    if (-not (Wait-Until 60 { (Get-RunningUnder $Sources[0]).Count -eq 0 })) { throw 'the app did not quit' }
+    if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting; it stays where it is'; return }
+    $Exited = $true
+    if (-not (Wait-Until 30 { (Get-AppRunningInTarget).Count -eq 0 })) { throw ('the app runs from ' + $Target) }
     Install-Build $Sources[0]
-    $Moved = $true
     Write-Log ('moved ' + $Sources[0] + ' into ' + $Target)
+    Open-App (Join-Path $Target $Launcher)
     Set-InstalledVersion
+  } else {
+    if (-not $Locked) { throw 'another move of the app runs' }
+    Write-Log ('started ' + $PID)
   }
   foreach ($Source in $Sources) {
     try {
@@ -343,19 +495,20 @@ try {
       Remove-Source $Source
     } catch { Write-Log ('could not remove ' + $Source + ': ' + $_.Exception.Message) }
   }
+  Remove-Staging
   Write-Log 'done'
 } catch {
-  if ($AppPids.Count -gt 0) { Write-Log ('move failed: ' + $_.Exception.Message) } else { Write-Log ('removal failed: ' + $_.Exception.Message) }
+  if ($AfterExit) { Write-Log ('move failed: ' + $_.Exception.Message) } else { Write-Log ('removal failed: ' + $_.Exception.Message) }
+  # The app opens again only if it quit for this, from where it was.
+  if ($Exited -and -not $Opened) {
+    $Open = Join-Path $Sources[0] $Launcher
+    if (-not (Test-Path -LiteralPath $Open)) { $Open = Join-Path $Target $Launcher }
+    Open-App $Open
+  }
 } finally {
   $ErrorActionPreference = 'Continue'
-  if ($AppPids.Count -gt 0) {
-    $Open = Join-Path $Target $Launcher
-    if (-not $Moved -and (Test-Path -LiteralPath (Join-Path $Sources[0] $Launcher))) { $Open = Join-Path $Sources[0] $Launcher }
-    try {
-      Start-Process -FilePath $Open -WorkingDirectory (Split-Path -Parent $Open)
-      Write-Log ('opened ' + $Open)
-    } catch { Write-Log ('could not open ' + $Open + ': ' + $_.Exception.Message) }
-  }
+  if ($Locked) { try { $Mutex.ReleaseMutex() } catch { } }
+  $Mutex.Dispose()
   if ($TaskName) { schtasks.exe /delete /tn $TaskName /f | Out-Null }
   Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 }
@@ -370,48 +523,99 @@ export function installerFolderScript({ target, sources, folder, log, afterExit 
     `$AppData = ${psString(folder)}`,
     `$Log = ${psString(log)}`,
     `$InstallerEntry = ${psString(INSTALLER_ENTRY)}`,
-    `$AppPids = @(${(afterExit?.pids ?? []).filter((pid) => Number.isInteger(pid) && pid > 0).join(", ")})`,
+    `$AfterExit = ${afterExit ? "$true" : "$false"}`,
+    `$Cancel = ${psString(afterExit?.cancel ?? "")}`,
     `$TaskName = ${psString(afterExit?.taskName ?? "")}`,
   ];
   return `${header.join("\n")}\n${SCRIPT_BODY}`;
 }
 
-/** Whether the last move failed a moment ago. */
-async function failedRecently(log: string): Promise<boolean> {
-  const last = await stat(log).catch(() => null);
-  if (!last || Date.now() - last.mtimeMs >= RETRY_AFTER_FAILURE_MS) return false;
-  return (await readFile(log, "utf8").catch(() => "")).includes(" move failed: ");
+/** The tries at moving a build into the installer's folder, kept across starts. */
+export interface MoveTries {
+  /** The build they were for: its version and hash. */
+  build: string;
+  /** Tries that failed, or would have: each one the app may have quit for. */
+  failed: number;
+  /** When the last one started, in ms. */
+  last: number;
 }
 
-/** Where the script and its log go: the app data folder of this build's identifier. */
+/** Whether the app may try to move `build` now, after `tries`. */
+export function mayTryMove(tries: MoveTries | null, build: string, now: number): boolean {
+  if (!tries || tries.build !== build) return true;
+  return tries.failed < MAX_MOVE_TRIES && now - tries.last >= RETRY_AFTER_MS;
+}
+
+/**
+ * `tries` with one more for `build` at `now`. Every try counts as failed when
+ * it starts: one that works leaves this build's updater folder for good. One
+ * the script put off because the installer's folder was in use does not.
+ */
+export function noteMoveTry(tries: MoveTries | null, build: string, now: number, counts = true): MoveTries {
+  const failed = tries?.build === build ? tries.failed : 0;
+  return { build, failed: failed + (counts ? 1 : 0), last: now };
+}
+
+async function readMoveTries(path: string): Promise<MoveTries | null> {
+  const value = await readFile(path, "utf8").then((text) => JSON.parse(text) as Partial<MoveTries>, () => null);
+  if (!value || typeof value.build !== "string" || typeof value.failed !== "number" || typeof value.last !== "number") return null;
+  return { build: value.build, failed: value.failed, last: value.last };
+}
+
+async function writeMoveTries(path: string, tries: MoveTries): Promise<void> {
+  await writeFile(path, JSON.stringify(tries), "utf8");
+}
+
+/** The build in `appFolder`, by its version and hash. */
+async function buildId(appFolder: string): Promise<string> {
+  const info = await readFile(win32.join(appFolder, "Resources", "version.json"), "utf8").then((text) => JSON.parse(text) as { version?: unknown; hash?: unknown }, () => null);
+  return `${String(info?.version ?? "")}+${String(info?.hash ?? "")}`;
+}
+
+/** Where the script, its log and the tries go: the app data folder of this build's identifier. */
 function scriptFolder(localAppData: string, channel: string): string {
   return win32.join(localAppData, DESKTOP_APP_IDENTIFIER, channel);
 }
 
 async function moveIntoInstallerFolder(
-  context: InstallerFolderContext,
   localAppData: string,
   running: { folder: string; channel: string },
   target: string,
 ): Promise<InstallerFolderMove> {
   const folder = scriptFolder(localAppData, running.channel);
-  const log = win32.join(folder, "installer-folder.log");
-  if (await failedRecently(log)) return { kind: "skipped" };
-  await mkdir(folder, { recursive: true });
-  await rm(log, { force: true });
-  const others = (await updaterFolders(localAppData, running.channel)).filter((path) => !samePath(path, running.folder));
-  const taskName = `GloomInstallerFolder-${Date.now()}`;
-  const script = win32.join(folder, "installer-folder-move.ps1");
-  await writePowerShellScript(script, installerFolderScript({
-    target,
-    sources: [running.folder, ...others],
-    folder,
-    log,
-    afterExit: { pids: [context.pid, context.ppid], taskName },
-  }));
+  const triesPath = win32.join(folder, "installer-folder-tries.json");
+  const build = await buildId(running.folder);
+  const tries = await readMoveTries(triesPath);
+  const now = Date.now();
+  if (!mayTryMove(tries, build, now)) return { kind: "skipped" };
+  // Noted before the app can quit for it: a try that cannot be noted is not made.
   try {
-    await runScriptAfterExit(script, log, taskName);
-    return { kind: "relaunching" };
+    await mkdir(folder, { recursive: true });
+    await writeMoveTries(triesPath, noteMoveTry(tries, build, now));
+  } catch (error) {
+    logFailure("desktop-installer-folder", "Could not note a try at moving the app into the installer's folder")(error);
+    return { kind: "failed" };
+  }
+  const log = win32.join(folder, "installer-folder.log");
+  const cancel = win32.join(folder, "installer-folder.cancel");
+  await rm(log, { force: true });
+  await rm(cancel, { force: true });
+  const others = (await updaterFolders(localAppData, running.channel)).filter((path) => !samePath(path, running.folder));
+  const taskName = `GloomInstallerFolder-${now}`;
+  const script = win32.join(folder, "installer-folder-move.ps1");
+  try {
+    await writePowerShellScript(script, installerFolderScript({
+      target,
+      sources: [running.folder, ...others],
+      folder,
+      log,
+      afterExit: { cancel, taskName },
+    }));
+    const answer = await runScriptAfterExit(script, log, cancel, taskName);
+    if (answer.kind === "started") return { kind: "relaunching" };
+    if (answer.kind === "busy") await writeMoveTries(triesPath, noteMoveTry(tries, build, now, false)).catch(() => {});
+    console.error(`[desktop] the app stays where it is, for now: ${answer.reason}`);
+    return { kind: "skipped" };
   } catch (error) {
     logFailure("desktop-installer-folder", "Could not run the script that moves the app into the installer's folder")(error);
     return { kind: "failed" };
@@ -451,7 +655,7 @@ export async function settleInstallerFolder(context: InstallerFolderContext): Pr
   if (running) {
     const target = await installerFolder(read);
     if (!target || samePath(target, running.folder)) return { kind: "none" };
-    return moveIntoInstallerFolder(context, localAppData, running, target);
+    return moveIntoInstallerFolder(localAppData, running, target);
   }
 
   const bin = win32.dirname(context.execPath);
@@ -459,7 +663,8 @@ export async function settleInstallerFolder(context: InstallerFolderContext): Pr
   const app = win32.dirname(bin);
   const channel = await buildChannel(app);
   const copies = await updaterFolders(localAppData, channel);
-  if (copies.length === 0) return { kind: "none" };
+  const leftovers = (await readdir(app).catch(() => [] as string[])).filter((name) => /^\.gloom-(next|previous)-/i.test(name));
+  if (copies.length === 0 && leftovers.length === 0) return { kind: "none" };
   // Only from the installer's folder: a copy run from anywhere else (a
   // portable one) leaves an install from Electrobun's own setup alone.
   const target = await installerFolder(read);

@@ -253,40 +253,65 @@ begin
   end;
 end;
 
-// Updates the app installs itself replace bin and Resources whole, so they
-// can hold files this uninstaller never installed, which kept the folder.
-// In a folder that holds nothing but the app they go whole; in one the user
-// shares with other files, only what was installed goes.
+// The list in which updates from inside the app name every file they put in
+// its folder (installer-folder.ts): this uninstaller removes only the files it
+// installed itself.
+function UpdateFileList(): string;
+begin
+  Result := ExpandConstant('{app}\Resources\update-files.txt');
+end;
+
+// A path from that list: relative, and inside the app's folder.
+function IsInsideApp(Path: string): Boolean;
+begin
+  if Path = '' then
+    Result := False
+  else
+    Result := (Pos(':', Path) = 0) and (Pos('..', Path) = 0) and (Path[1] <> '\') and (Path[1] <> '/');
+end;
+
+// The folders above Path, inside the app's folder, that it leaves empty.
+procedure RemoveEmptyFoldersAbove(Path: string);
+var
+  Folder: string;
+begin
+  Folder := ExtractFileDir(Path);
+  while Length(Folder) > Length(ExpandConstant('{app}')) do
+  begin
+    if not RemoveDir(Folder) then
+      Exit;
+    Folder := ExtractFileDir(Folder);
+  end;
+end;
+
+// What updates added: the files they list, and what a move into this folder
+// that did not finish left (.gloom-next-*, .gloom-previous-*). A file they do
+// not list stays, and so does the folder holding it: one the user picked can
+// hold their own files, in its bin as well.
 procedure RemoveFilesAddedByUpdates();
 var
-  FindRec: TFindRec;
-  OnlyApp: Boolean;
-  Entry: string;
+  Files: TArrayOfString;
+  Path: string;
+  I: Integer;
 begin
   if not DirExists(ExpandConstant('{app}')) then
     Exit;
-  OnlyApp := True;
-  if FindFirst(ExpandConstant('{app}\*'), FindRec) then
+  if LoadStringsFromFile(UpdateFileList(), Files) then
   begin
-    try
-      repeat
-        Entry := FindRec.Name;
-        if (Entry <> '.') and (Entry <> '..') and (CompareText(Entry, 'bin') <> 0) and (CompareText(Entry, 'Resources') <> 0) and (CompareText(Copy(Entry, 1, 5), 'unins') <> 0) then
-          OnlyApp := False;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
+    for I := 0 to GetArrayLength(Files) - 1 do
+    begin
+      Path := Trim(Files[I]);
+      if IsInsideApp(Path) then
+      begin
+        DeleteFile(ExpandConstant('{app}\') + Path);
+        RemoveEmptyFoldersAbove(ExpandConstant('{app}\') + Path);
+      end;
     end;
+    DeleteFile(UpdateFileList());
+    RemoveEmptyFoldersAbove(UpdateFileList());
   end;
-  if not OnlyApp then
-  begin
-    Log('Kept what updates added to ' + ExpandConstant('{app}') + ': the folder holds other files');
-    Exit;
-  end;
-  if DirExists(ExpandConstant('{app}\bin')) and not DelTree(ExpandConstant('{app}\bin'), True, True, True) then
-    Log('Could not remove ' + ExpandConstant('{app}\bin'));
-  if DirExists(ExpandConstant('{app}\Resources')) and not DelTree(ExpandConstant('{app}\Resources'), True, True, True) then
-    Log('Could not remove ' + ExpandConstant('{app}\Resources'));
+  DelTree(ExpandConstant('{app}\.gloom-next-*'), False, True, True);
+  DelTree(ExpandConstant('{app}\.gloom-previous-*'), False, True, True);
   RemoveDir(ExpandConstant('{app}'));
 end;
 

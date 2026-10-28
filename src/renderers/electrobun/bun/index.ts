@@ -56,8 +56,6 @@ const installerFolderMove = await settleInstallerFolder({
   execPath: process.execPath,
   homeDir: homedir(),
   localAppData: process.env.LOCALAPPDATA,
-  pid: process.pid,
-  ppid: process.ppid,
 }).catch((error: unknown) => {
   console.error("[desktop] could not move the app into the installer's folder", error instanceof Error ? error.message : String(error));
   return null;

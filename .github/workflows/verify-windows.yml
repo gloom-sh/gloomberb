@@ -45,6 +45,11 @@ jobs:
         shell: pwsh
         run: ./scripts/verify-windows-diagnostics.test.ps1
 
+      # Windows PowerShell 5.1, which the app runs the script with.
+      - name: Test the script that moves an update into the installer's folder
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/verify-windows-installer-folder.test.ps1
+
       - name: Build Windows desktop package
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
