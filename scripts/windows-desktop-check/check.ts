@@ -1376,6 +1376,43 @@ class Run {
     });
   }
 
+  /**
+   * The app restarting itself, as the Restart button on its error screen
+   * makes it: the page sends the same message the button does.
+   */
+  async restartsItself(): Promise<void> {
+    await this.step("restart-itself", "The app restarts itself, as from the Restart button on its error screen", async (shots) => {
+      await this.reset(this.main, this.baseRect);
+      for (const info of win.topLevelWindows()) this.knownWindows.add(info.hwnd);
+      const sent = await evaluate<boolean>(this.main.page.cdp, `(() => {
+        if (!window.__electrobunBunBridge) return false;
+        window.__electrobunBunBridge.postMessage(JSON.stringify({ type: "message", id: "host.restart", payload: { reason: "windows-check", source: "windows-check" } }));
+        return true;
+      })()`, 5_000).catch(() => false);
+      if (!sent) return { status: "fail", detail: "the page has no bridge to send the restart on" };
+      const closing = Date.now();
+      while (win.isWindow(this.main.hwnd) && Date.now() - closing < 15_000) await sleep(200);
+      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: "the app did not close to restart" };
+      for (const window of [this.main, this.detached]) window?.page.cdp.close();
+      let opened: win.WindowInfo | undefined;
+      while (!opened && Date.now() - closing < 60_000) {
+        await sleep(500);
+        opened = this.appWindows().find((info) => !this.knownWindows.has(info.hwnd));
+      }
+      const desktop = this.shots.desktop(opened ? "restarted" : "restart-missing");
+      if (desktop) shots.push(desktop);
+      if (opened) {
+        // Not this run's launch: stopped by its window.
+        Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
+        await sleep(1_500);
+      }
+      return {
+        status: opened ? "pass" : "fail",
+        detail: opened ? `a new window opened ${((Date.now() - closing) / 1000).toFixed(1)} s after the old one closed` : "no window came back within 60 s of the old one closing",
+      };
+    });
+  }
+
   /** Closes the app with its button and opens it again two seconds later, as someone restarting it does. */
   async reopenRightAway(): Promise<void> {
     await this.step("reopen-right-away", "Close with the window button and open again two seconds later", async (shots) => {
@@ -1546,6 +1583,8 @@ async function run(): Promise<void> {
     await runner.reopenRightAway();
     await runner.ensure(runner.main);
     await runner.remembersFrame();
+    await runner.ensure(runner.main);
+    await runner.restartsItself();
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);
     console.error(fatal);
