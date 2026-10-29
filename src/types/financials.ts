@@ -794,6 +794,11 @@ export interface FinancialStatement {
   date: string;
   /** Source of the fiscal period date; does not establish metric publication dates. */
   dateSource?: "sec" | "provider";
+  /**
+   * The accounting standard the issuer reports in, from the taxonomy of its latest annual report to the SEC (10-K,
+   * 20-F or 40-F): BABA's 20-F is US GAAP, NVO's IFRS. Absent for a company that files none with the SEC.
+   */
+  accountingStandard?: "us-gaap" | "ifrs";
   /** Original vendor period date when independent filing evidence changes it. */
   providerDate?: string;
   /** Filing evidence for the period identity only, not availability of every field. */

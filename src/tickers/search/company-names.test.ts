@@ -168,7 +168,7 @@ test("a company's name typed where a symbol goes is its common stock, before a f
   ];
   // The service marks JPM with the name run together; the index's words match "JP Morgan" only loosely.
   expect(await findListingOfCompanyName(serviceAnswering({ "JP Morgan": jpm }), "JP Morgan", { meant: true }))
-    .toEqual({ symbol: "JPM", exchange: "NYSE", name: "JPMorgan Chase & Co." });
+    .toEqual({ symbol: "JPM", exchange: "NYSE", name: "JPMorgan Chase & Co.", named: true });
   // A stock that has every word goes before a fund that does.
   const goldman = [
     "GLDM | Goldman Sachs Physical Gold ETF | ARCA | ETF",

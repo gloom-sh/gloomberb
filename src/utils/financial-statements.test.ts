@@ -226,8 +226,8 @@ describe("statementHistoryNotes", () => {
       "quarterly history from 2025-03-28; older quarters not served",
       "earlier quarters, one metric at a time: gloom fn GF KO --period quarterly --periods 40",
     ]);
-    // Unknown (the history could not be read): the report says what it holds and points nowhere.
-    expect(statementHistoryNotes("quarterly", ["2025-03-28"], "KO", null)).toEqual(["quarterly history from 2025-03-28; older quarters not served"]);
+    // Unknown (the history was not read in time): nothing is said of older quarters.
+    expect(statementHistoryNotes("quarterly", ["2025-03-28"], "KO", null)).toEqual([]);
     // A report with no dated period has nothing to say about its history.
     expect(statementHistoryNotes("annual", [], "KO", true)).toEqual([]);
     expect(statementHistoryNotes("annual", ["TTM"], "KO", true)).toEqual([]);
@@ -242,6 +242,16 @@ describe("statementHistoryNotes", () => {
     // Nothing dated to compare against, or a failed read: unknown.
     expect(await hasOlderStatements(load, "annual", ["TTM"])).toBeNull();
     expect(await hasOlderStatements(async () => { throw new Error("down"); }, "annual", ["2023-12-31"])).toBeNull();
+  });
+
+  test("hasOlderStatements stops waiting at its deadline, so a slow history leaves the report on time", async () => {
+    let answer: (value: { annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }) => void = () => {};
+    const slow = () => new Promise<{ annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }>((resolve) => { answer = resolve; });
+    const started = Date.now();
+    expect(await hasOlderStatements(slow, "annual", ["2023-12-31"], 20)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(1_000);
+    // The answer arriving after it changes nothing.
+    answer({ annualStatements: [{ date: "2019-12-31" }], quarterlyStatements: [] });
   });
 });
 

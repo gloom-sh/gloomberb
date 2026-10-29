@@ -15,7 +15,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
+import { findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { lineMayHaveMoved, loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -1336,6 +1336,22 @@ const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
 export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
   const found = await findOneWordCompany(typed, deps);
   return found ? companyListingArg(typed, found) : null;
+}
+
+/**
+ * A word the service marks as a company's name (`searchAliases`), read as
+ * that company's listing as `oneWordCompanyName` reads a word, for a bare
+ * symbol no source quotes, before it is read on the symbol's listings abroad:
+ * "siemens" is SIE on XETRA (Siemens AG), not SIEMENS on NSE (Siemens Ltd.).
+ * Null when the service marks no listing with the word, or marks the word's
+ * own symbol, and when search names no company or is too busy to say.
+ */
+export async function serviceNamedCompany(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  // Most symbols are no company's name: one search says so before any listing is weighed or quoted.
+  if (!ONE_WORD_NAME.test(typed.trim()) || !await marksAnotherListing(deps.dataProvider, typed)) return null;
+  const found = await findOneWordCompany(typed, deps);
+  if (!found?.named || found.symbol.toUpperCase() === typed.trim().toUpperCase()) return null;
+  return companyListingArg(typed, found);
 }
 
 /** The company `oneWordCompanyName` reads a word as, before it is read as a listing. */
