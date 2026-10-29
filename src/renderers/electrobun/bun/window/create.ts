@@ -10,6 +10,7 @@ import {
 import type { WindowFrame, WindowMinimumSize } from "./frame";
 import { applyWindowsCustomChrome } from "./windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./windows-icons";
+import { fitPageToClientArea } from "./windows-native";
 
 type DesktopTitleBarStyle = "default" | "hidden" | "hiddenInset";
 type DesktopWindowRenderer = "native" | "cef";
@@ -21,8 +22,13 @@ type DesktopWindowStyleMask = {
   FullSizeContentView?: boolean;
 };
 
+/**
+ * No native title bar: the header is the title bar. On Windows "hidden" is a
+ * bare popup with no frame to resize by, which Windows also takes for
+ * fullscreen; "hiddenInset" keeps the sizing frame and cuts out the caption.
+ */
 function desktopTitleBarStyle(): DesktopTitleBarStyle {
-  return process.platform === "darwin" ? "hiddenInset" : "hidden";
+  return process.platform === "linux" ? "hidden" : "hiddenInset";
 }
 
 function desktopWindowRenderer(): DesktopWindowRenderer {
@@ -91,7 +97,13 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   });
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
-  if (process.platform === "win32") loadAgainWhenTakenForCtrlClick(window);
+  if (process.platform === "win32") {
+    loadAgainWhenTakenForCtrlClick(window);
+    // The page exists once it has loaded; until then there is nothing to fit.
+    window.webview.on("dom-ready", () => {
+      fitPageToClientArea(window.ptr);
+    });
+  }
   updateWindowFrameCache(window, frame, minSize);
   const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
