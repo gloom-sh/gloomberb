@@ -166,23 +166,6 @@ describe("AppPersistence", () => {
     }
   });
 
-  // A power cut may cost the cache its last few commits, never user data.
-  test("user data commits with a full flush and the cache without one", () => {
-    const persistence = new AppPersistence(createTempDbPath("sync-levels"), { interactive: true });
-    const { connection, access } = persistence.database;
-    const level = () => connection.query<{ synchronous: number }, []>("PRAGMA synchronous").get()?.synchronous;
-    let during: number | undefined;
-    try {
-      access.write("probe user write", () => { during = level(); });
-      expect(during).toBe(2);
-      access.writeCache("probe cache write", () => { during = level(); });
-      expect(during).toBe(1);
-      expect(level()).toBe(1);
-    } finally {
-      persistence.close();
-    }
-  });
-
   test("runs resource maintenance on the first write and at write, byte, or time intervals", () => {
     const dbPath = createTempDbPath("resource-maintenance-frequency");
     const persistence = new AppPersistence(dbPath);

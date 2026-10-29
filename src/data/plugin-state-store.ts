@@ -35,6 +35,11 @@ function stateKey(pluginId: string, key: string): string {
   return `${pluginId}:${key}`;
 }
 
+/** A queued write's row, unambiguous where ids and keys hold colons. */
+function rowKey(pluginId: string, key: string): string {
+  return `${pluginId}\u0000${key}`;
+}
+
 export class PluginStateStore {
   private readonly cache = new Map<string, CachedPluginStateRecord>();
   /** Writes queued behind another program's lock, read back until they land. */
@@ -47,7 +52,7 @@ export class PluginStateStore {
 
   get<T>(pluginId: string, key: string, schemaVersion = DEFAULT_PLUGIN_STATE_SCHEMA_VERSION): PluginStateRecord<T> | null {
     const cacheKey = stateKey(pluginId, key);
-    const pending = this.pending.get(cacheKey);
+    const pending = this.pending.get(rowKey(pluginId, key));
     if (pending) {
       return pending.record?.schemaVersion === schemaVersion ? pending.record as PluginStateRecord<T> : null;
     }
@@ -108,7 +113,7 @@ export class PluginStateStore {
       },
     }));
 
-    this.write("save plugin state", writes, () => {
+    this.write("save plugin state", writes, writes.length === 1, () => {
       const insert = this.db.query(
         `INSERT OR REPLACE INTO plugin_state (plugin_id, key, schema_version, value, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
@@ -125,7 +130,7 @@ export class PluginStateStore {
   }
 
   delete(pluginId: string, key: string): void {
-    this.write("delete plugin state", [{ pluginId, key, record: null }], () => {
+    this.write("delete plugin state", [{ pluginId, key, record: null }], true, () => {
       this.db.query("DELETE FROM plugin_state WHERE plugin_id = ? AND key = ?").run(pluginId, key);
     });
     this.cache.delete(stateKey(pluginId, key));
@@ -170,7 +175,8 @@ export class PluginStateStore {
 
   clear(pluginId: string): void {
     const cleared = this.keys(pluginId).map((key): PendingPluginState => ({ pluginId, key, record: null }));
-    this.write("clear plugin state", cleared, () => {
+    // Deletes rows this store may not know of: never one row's write.
+    this.write("clear plugin state", cleared, false, () => {
       this.db.query("DELETE FROM plugin_state WHERE plugin_id = ?").run(pluginId);
     });
     for (const cacheKey of this.cache.keys()) {
@@ -180,14 +186,22 @@ export class PluginStateStore {
     }
   }
 
-  /** Runs `statement` through the write queue, reading `entries` back until it lands. */
-  private write(operationName: string, entries: PendingPluginState[], statement: () => void): void {
-    for (const entry of entries) this.pending.set(stateKey(entry.pluginId, entry.key), entry);
-    this.access.write(operationName, statement, () => {
-      for (const entry of entries) {
-        const cacheKey = stateKey(entry.pluginId, entry.key);
-        if (this.pending.get(cacheKey) === entry) this.pending.delete(cacheKey);
-      }
+  /**
+   * Runs `statement` through the write queue, reading `entries` back until it
+   * lands. A write of exactly one row (`oneRow`) replaces a queued write of
+   * the same row.
+   */
+  private write(operationName: string, entries: PendingPluginState[], oneRow: boolean, statement: () => void): void {
+    for (const entry of entries) this.pending.set(rowKey(entry.pluginId, entry.key), entry);
+    const only = oneRow && entries.length === 1 ? entries[0] : undefined;
+    this.access.write(operationName, statement, {
+      ...(only ? { key: `plugin_state\u0000${rowKey(only.pluginId, only.key)}` } : {}),
+      settled: () => {
+        for (const entry of entries) {
+          const pendingKey = rowKey(entry.pluginId, entry.key);
+          if (this.pending.get(pendingKey) === entry) this.pending.delete(pendingKey);
+        }
+      },
     });
   }
 }

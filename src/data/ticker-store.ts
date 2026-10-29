@@ -81,13 +81,19 @@ export class TickerStore {
     });
   }
 
-  /** Runs `statement` through the write queue, reading `entries` back until it lands. */
+  /**
+   * Runs `statement` through the write queue, reading `entries` back until it
+   * lands. A write of one row replaces a queued write of the same row.
+   */
   private write(operationName: string, entries: Array<[string, PendingTicker]>, statement: () => void): void {
     for (const [symbol, entry] of entries) this.pending.set(symbol, entry);
-    this.access.write(operationName, statement, () => {
-      for (const [symbol, entry] of entries) {
-        if (this.pending.get(symbol) === entry) this.pending.delete(symbol);
-      }
+    this.access.write(operationName, statement, {
+      ...(entries.length === 1 ? { key: `tickers\u0000${entries[0]![0]}` } : {}),
+      settled: () => {
+        for (const [symbol, entry] of entries) {
+          if (this.pending.get(symbol) === entry) this.pending.delete(symbol);
+        }
+      },
     });
   }
 }

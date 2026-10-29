@@ -79,17 +79,20 @@ export class SqliteDatabase {
     // Opening waits for another program's lock: it happens once, and the app
     // has nothing to show without its data.
     this.connection.exec(`PRAGMA busy_timeout=${SQLITE_BUSY_TIMEOUT_MS}`);
-    withSqliteBusyRetry("enable sqlite wal", () => {
-      this.connection.exec("PRAGMA journal_mode=WAL");
-    });
-    // Commits stop flushing the disk; user data flushes per write (access.ts).
-    this.connection.exec("PRAGMA synchronous=NORMAL");
+    const journalMode = withSqliteBusyRetry("enable sqlite wal", () => (
+      this.connection.query<{ journal_mode: string }, []>("PRAGMA journal_mode=WAL").get()?.journal_mode
+    ));
+    // In WAL mode commits can stop flushing the disk and the database stays
+    // whole; user data still flushes per write (access.ts). Where WAL does not
+    // take (a network share, an in-memory database), every commit flushes.
+    const wal = journalMode?.toLowerCase() === "wal";
+    this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);
     });
     // The app's statements choose how long to wait for a lock themselves.
     if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
-    this.access = createSqliteAccess(this.connection, { interactive: options.interactive });
+    this.access = createSqliteAccess(this.connection, { interactive: options.interactive, relaxedCommits: wal });
   }
 
   close(): void {

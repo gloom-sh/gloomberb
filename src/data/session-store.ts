@@ -72,8 +72,11 @@ export class SessionStore {
 
   private write(operationName: string, sessionId: string, entry: PendingSession, statement: () => void): void {
     this.pending.set(sessionId, entry);
-    this.access.write(operationName, statement, () => {
-      if (this.pending.get(sessionId) === entry) this.pending.delete(sessionId);
+    this.access.write(operationName, statement, {
+      key: `session_snapshots\u0000${sessionId}`,
+      settled: () => {
+        if (this.pending.get(sessionId) === entry) this.pending.delete(sessionId);
+      },
     });
   }
 }
