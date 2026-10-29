@@ -1,0 +1,31 @@
+name: Name an address in Bun 1.3.13 baseline
+
+on:
+  push:
+    branches:
+      - chore/windows-arm-repro
+    paths:
+      - .github/workflows/windows-bun-symbols.yml
+
+permissions:
+  contents: read
+
+jobs:
+  symbols:
+    runs-on: windows-latest
+    steps:
+      - name: Name the fault offset
+        shell: pwsh
+        run: |
+          $Dir = Join-Path $env:RUNNER_TEMP "bunsym"
+          Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-windows-x64-baseline-profile.zip" -OutFile "$Dir.zip"
+          Expand-Archive "$Dir.zip" -DestinationPath $Dir
+          $Bin = Join-Path $Dir "bun-windows-x64-baseline-profile"
+          $Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
+          $Commands = @(
+            ".reload /f", "lmv m bun_profile",
+            "ln bun_profile+0x3282dd", "u bun_profile+0x3282dd-0x40 L28", "uf /c bun_profile+0x3282dd",
+            "ln bun_profile+0x4dca1f", "ln bun_profile+0x6a7d3a", "ln bun_profile+0x6a78da",
+            "q"
+          ) -join "; "
+          & $Cdb -z (Join-Path $Bin "bun-profile.exe") -y $Bin -c $Commands 2>&1 | Select-Object -Last 220
