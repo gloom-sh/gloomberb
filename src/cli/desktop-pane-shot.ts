@@ -880,9 +880,12 @@ async function fitShotStatusLine(session: CdpSession, { variants, dates }: ShotS
   return typeof value === "string" ? value : null;
 }
 
-/** The port Chrome's DevTools listen on, once it has written all of its first line; 0 until then. */
+/**
+ * The port Chrome's DevTools listen on: 0 while the file's first line is
+ * incomplete, and a rejection before Chrome has written the file at all.
+ */
 async function readDevToolsPort(userDataDir: string): Promise<number> {
-  const text = await Bun.file(join(userDataDir, "DevToolsActivePort")).text().catch(() => "");
+  const text = await Bun.file(join(userDataDir, "DevToolsActivePort")).text();
   const lineEnd = text.indexOf("\n");
   const port = lineEnd > 0 ? Number(text.slice(0, lineEnd)) : 0;
   return Number.isInteger(port) && port > 0 ? port : 0;
