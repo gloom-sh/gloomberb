@@ -156,7 +156,7 @@ Chords use `Ctrl`, `Cmd`, `Alt`, `Shift` and `CmdOrCtrl` (Control in the termina
 
 ## Command Reference
 
-Use `HELP` inside Gloom for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`).
+Use `HELP` inside Gloom for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`), then one line on the search bar and **Start Here**. The command bar's keys and the layout notes are in the Reference tab, and every key table in Help shares one key column so the descriptions line up.
 
 ### Searching by asset class
 

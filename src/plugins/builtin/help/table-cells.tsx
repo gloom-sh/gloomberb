@@ -31,10 +31,21 @@ export function badgeColumnWidth(
   return Math.max(min, Math.min(max, widest));
 }
 
+/**
+ * The chips of a group that fit a column whole, in order. A chip that would be
+ * cut ("Ctrl+Hor") is left out instead, so what shows is always a real key; the
+ * first chip stays whatever the width.
+ */
+export function wholeBadges(labels: readonly string[], width: number): readonly string[] {
+  let count = Math.min(1, labels.length);
+  while (count < labels.length && badgeGroupWidth(labels.slice(0, count + 1)) <= width) count += 1;
+  return labels.slice(0, count);
+}
+
 export function badgeCell(
   labels: readonly string[],
   width: number,
-  options: { tone?: "neutral" | "accent"; emptyLabel?: string; emptyColor?: string } = {},
+  options: { tone?: "neutral" | "accent"; emptyLabel?: string; emptyColor?: string; wholeOnly?: boolean } = {},
 ): DataTableCell {
   if (labels.length === 0) {
     return options.emptyLabel
@@ -45,7 +56,7 @@ export function badgeCell(
     text: labels.join(" "),
     content: (
       <Box flexDirection="row" gap={BADGE_GAP} width={width} height={1} overflow="hidden">
-        {labels.map((label, index) => (
+        {(options.wholeOnly ? wholeBadges(labels, width) : labels).map((label, index) => (
           <Badge key={`${label}:${index}`} label={label} variant="solid" tone={options.tone ?? "neutral"} />
         ))}
       </Box>
