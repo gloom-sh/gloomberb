@@ -32,7 +32,7 @@ const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 /**
  * The names the host is published under: `gloomberb`, which plugins import
- * as, and `@gloom-sh/terminal` once releases are also published under it.
+ * as, and `@gloom-sh/terminal`.
  */
 const HOST_PACKAGE_NAMES: ReadonlySet<string> = new Set(["gloomberb", "@gloom-sh/terminal"]);
 
