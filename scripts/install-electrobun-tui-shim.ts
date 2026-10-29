@@ -1,5 +1,6 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
+import * as ResEdit from "resedit";
 import { buildShotView, packShotView, SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
 
 type TargetOs = "darwin" | "linux" | "win";
@@ -232,13 +233,16 @@ function rceditExecutablePath(): string {
   return existsSync(rceditX64Path) ? rceditX64Path : join(rceditBinDir, "rcedit.exe");
 }
 
+function packageVersion(): string {
+  return (JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string }).version;
+}
+
 /**
  * What Windows shows for the app's processes, in Task Manager, a file's
  * properties and its firewall and security prompts. The runtime is Bun's, and
  * otherwise carries Bun's name and publisher.
  */
-function windowsVersionStrings(): string[] {
-  const version = (JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string }).version;
+function windowsVersionStrings(version: string): string[] {
   return [
     "--set-version-string", "FileDescription", "Gloom",
     "--set-version-string", "ProductName", "Gloom",
@@ -247,13 +251,54 @@ function windowsVersionStrings(): string[] {
   ];
 }
 
+/** US English in Unicode: the language rcedit edits a file's version details in. */
+const VERSION_LANGUAGE = { lang: 1033, codepage: 1200 };
+
+/**
+ * Electrobun's launcher and Chromium helpers ship with no version details at
+ * all, and rcedit only edits details a file has, so Windows showed them by
+ * file name. Each gets empty ones here, with the app's version, for rcedit to
+ * fill in.
+ */
+function addVersionDetails(exePath: string, version: string): void {
+  const exe = ResEdit.NtExecutable.from(readFileSync(exePath), { ignoreCert: true });
+  const resources = ResEdit.NtExecutableResource.from(exe);
+  if (ResEdit.Resource.VersionInfo.fromEntries(resources.entries).length > 0) return;
+  const info = ResEdit.Resource.VersionInfo.createEmpty();
+  info.lang = VERSION_LANGUAGE.lang;
+  // The fixed version is numbers only: a canary's suffix stays in the text.
+  const [major = 0, minor = 0, patch = 0] = /^(\d+)\.(\d+)\.(\d+)/.exec(version)?.slice(1).map(Number) ?? [];
+  info.setFileVersion(major, minor, patch, 0, VERSION_LANGUAGE.lang);
+  info.setProductVersion(major, minor, patch, 0, VERSION_LANGUAGE.lang);
+  info.setStringValues(VERSION_LANGUAGE, { OriginalFilename: basename(exePath) });
+  info.outputToResourceEntries(resources.entries);
+  resources.outputResource(exe);
+  writeFileSync(exePath, Buffer.from(exe.generate()));
+}
+
+/**
+ * The app's programs: the launcher its shortcuts open, the runtime, and the
+ * Chromium helpers Electrobun copies once for each kind of process.
+ */
+const WINDOWS_EXECUTABLES = [
+  "launcher.exe",
+  "bun.exe",
+  "bun Helper.exe",
+  "bun Helper (Alerts).exe",
+  "bun Helper (GPU).exe",
+  "bun Helper (Plugin).exe",
+  "bun Helper (Renderer).exe",
+];
+
 function embedWindowsIcons(runtimePath: string, resourcesPath: string): void {
   const iconPath = createWindowsIcon(resourcesPath);
   const rceditPath = rceditExecutablePath();
-  const versionStrings = windowsVersionStrings();
-  for (const exeName of ["launcher.exe", "bun.exe"]) {
+  const version = packageVersion();
+  const versionStrings = windowsVersionStrings(version);
+  for (const exeName of WINDOWS_EXECUTABLES) {
     const exePath = join(runtimePath, exeName);
     if (!existsSync(exePath)) continue;
+    addVersionDetails(exePath, version);
     const edited = Bun.spawnSync({
       cmd: [rceditPath, exePath, "--set-icon", iconPath, ...versionStrings],
       stdout: "inherit",
