@@ -1,11 +1,6 @@
 name: Windows CLI capture repro
 
 on:
-  push:
-    branches:
-      - chore/windows-arm-repro
-    paths:
-      - .github/workflows/windows-cli-capture-repro.yml
   workflow_dispatch:
     inputs:
       installer_run:
@@ -60,7 +55,7 @@ jobs:
           (Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion | ForEach-Object { Write-Host "chrome $_" }
 
           $Work = Join-Path $env:RUNNER_TEMP "v"
-          $Fails = 0; $Total = 0; $AllPorts = @()
+          $Fails = 0; $Odd = 0; $Total = 0; $AllPorts = @()
           foreach ($Round in 1..${{ inputs.rounds || '3' }}) {
             Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
             $Caller = Join-Path $Work "caller with spaces"; $Profile = Join-Path $Work ".gloomberb"; $Temp = Join-Path $Work "t"
@@ -105,6 +100,11 @@ jobs:
               $Bad = $Out -match "Timed out waiting for Chrome DevTools"
               Write-Host ("round {0} {1}: exit {2} in {3} s{4}" -f $Round, $Name, $Code, $Seconds, $(if ($Bad) { " TIMED OUT" } else { "" }))
               if (Test-Path $Watch) { $Ports = @(Get-Content $Watch | ForEach-Object { if ($_ -match " port (\d+) ") { [int]$Matches[1] } } | Where-Object { $_ -gt 0 } | Select-Object -Unique); $AllPorts += $Ports }
+              $Expected = if ($Name -eq "fn-diag") { 1 } else { 0 }
+              if ($Code -ne $Expected -and -not $Bad) {
+                $Odd++
+                Write-Host "   unexpected exit, output:"; $Out.Substring(0, [Math]::Min(1500, $Out.Length)) -split "`n" | ForEach-Object { Write-Host "   $_" }
+              }
               if ($Bad) {
                 $Fails++
                 if (Test-Path $Watch) { Get-Content $Watch | ForEach-Object { Write-Host "   $_" } } else { Write-Host "   (no chrome seen)" }
@@ -113,4 +113,4 @@ jobs:
           }
           $InRange = @($AllPorts | Where-Object { $Port = $_; @($Ranges | Where-Object { $Port -ge $_[0] -and $Port -le $_[1] }).Count -gt 0 })
           Write-Host "DevTools ports seen: $($AllPorts.Count), inside excluded ranges: $($InRange.Count) ($($AllPorts | Select-Object -First 12))"
-          Write-Host "timed out: $Fails of $Total captures"
+          Write-Host "timed out: $Fails of $Total captures; other unexpected exits: $Odd"
