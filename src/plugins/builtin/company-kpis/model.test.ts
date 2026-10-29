@@ -3,7 +3,8 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
-import { allObservations, companyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { getTableWidth } from "../../../components/ui/table-layout";
+import { allObservations, companyColumns, companyEmptyState, directionLabel, directionTone, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
@@ -130,4 +131,48 @@ test("series read by metric: the consolidated figure before its parts, reported 
     observation({ id: "other-metric", metric: { ...observation().metric, name: "Active customers" } }),
   ];
   expect([...rows].sort(seriesOrder).map((row) => row.id)).toEqual(["other-metric", "total-quarter", "total-year", "adjusted", "segment-quarter", "segment-year"]);
+});
+
+test("the Action column says what a guide did in plain words, and a guide with nothing to compare with is new", () => {
+  const word = (direction: Parameters<typeof directionLabel>[0]["direction"], previousId: string | null = null) => directionLabel({ direction, previousId });
+  expect(["raised", "cut", "reiterated", "mixed", "initiated", "withdrawn"].map((direction) => word(direction as never))).toEqual(["Raised", "Lowered", "Maintained", "Mixed", "New", "Withdrawn"]);
+  // The service keeps the predecessor when it cannot rank the change (a new hedge or conditions): that guide changed.
+  expect(word("not_comparable", "guide:previous")).toBe("Changed");
+  // It drops it for another period: there is no earlier guide to set this one beside.
+  expect(word("not_comparable")).toBe("New");
+  // A New guide reads as one whichever way the service reached it; a Changed one as no news.
+  expect(directionTone({ direction: "not_comparable", previousId: null })).toBe(directionTone({ direction: "initiated", previousId: null }));
+  expect(directionTone({ direction: "not_comparable", previousId: "guide:previous" })).toBe("muted");
+});
+
+test("a guidance table fits its pane: the columns narrow, the metric keeps the rest, and only a column the detail repeats goes", () => {
+  const fits = (columns: ReturnType<typeof fitCompanyColumns>, width: number) => getTableWidth(columns) <= width - 1;
+  const tracker = companyColumns(true, false, false, false, true);
+  const history = companyColumns(true, false, true, false, true);
+  // 720px is 90 cells: Issued stays on the tracker, which is the column the pane cut off.
+  const narrow = fitCompanyColumns(tracker, 90);
+  expect(narrow.map((column) => column.id)).toEqual(["metric", "period", "value", "change", "issued"]);
+  expect(fits(narrow, 90)).toBe(true);
+  expect(narrow.find((column) => column.id === "metric")!.width).toBeGreaterThanOrEqual(14);
+  // History has two more columns than a pane that narrow holds: the Action, which the outcome says, gives way.
+  const narrowHistory = fitCompanyColumns(history, 90, true);
+  expect(narrowHistory.map((column) => column.id)).toEqual(["metric", "period", "actual", "outcome", "value", "issued"]);
+  expect(fits(narrowHistory, 90)).toBe(true);
+  // A pane that holds the table as defined gets it as defined, and a narrow one drops Issued before the metric is squeezed.
+  expect(fitCompanyColumns(tracker, 160)).toEqual(tracker);
+  expect(fitCompanyColumns(tracker, 70).map((column) => column.id)).toEqual(["metric", "period", "value", "change"]);
+  expect(fits(fitCompanyColumns(tracker, 70), 70)).toBe(true);
+  // Basis and scope name a row on the terminal, so a table they keep too wide scrolls rather than lose them.
+  const named = companyColumns(true, false, false);
+  expect(fitCompanyColumns(named, 60).map((column) => column.id)).toEqual(named.map((column) => column.id));
+});
+
+test("an empty table says a company has nothing on file and names one that has, else what the selection lacks", () => {
+  expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false })).toEqual({ title: "No guidance on file for AAPL.", hint: "Try GUIDE WMT." });
+  expect(companyEmptyState("guidance", "AAPL", { tab: "table", hasRows: false }, "cli").hint).toBe("Try `fn GUIDE WMT`.");
+  expect(companyEmptyState("kpis", "NFLX", { tab: "table", hasRows: false })).toEqual({ title: "No KPIs on file for NFLX.", hint: "Try KPIS AAPL." });
+  // It never sends a company to itself.
+  expect(companyEmptyState("guidance", "wmt", { tab: "table", hasRows: false }).hint).toBe("Try GUIDE DAL.");
+  expect(companyEmptyState("guidance", "WMT", { tab: "history", hasRows: true })).toEqual({ title: "Actuals have not been matched to these guidance periods yet." });
+  expect(companyEmptyState("kpis", "AAPL", { tab: "table", hasRows: true })).toEqual({ title: "No disclosed observations for this selection yet." });
 });

@@ -6,7 +6,7 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition 
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode } from "./client";
-import { allGuidance, allObservations, companyCellText, companyColumns, companyPreviewNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
+import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
   type CompanyRow } from "./model";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 
@@ -110,7 +110,10 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       const notes = [ageNote(data, latest, mode),
         ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null,
         ...companyDataNotes(data.companyFrom)].filter((note): note is string => !!note);
-      return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
+      // A company with nothing on file says so once, as the pane does, rather than "not covered".
+      const nothingOnFile = datasetRows(data).length === 0 && data.lockedRows === 0 && !requested;
+      const { title, hint } = companyEmptyState(mode, symbol, { tab: "table", hasRows: !nothingOnFile }, "cli");
+      return { complete: !data.truncated, ...(nothingOnFile ? { empty: `${title} ${hint}` } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
         ...(notes.length ? { notes } : {}),
         sections: "series" in data ? [
           section("Latest KPIs", data.series.map((series) => series.latest), { first: true }),

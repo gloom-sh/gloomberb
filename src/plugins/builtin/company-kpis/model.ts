@@ -1,9 +1,11 @@
 import type { GuidancePayload, KpiGuidance, KpiObservation, KpiSeries, KpiUnit, KpisPayload } from "../../../api-client/company-kpis";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
+import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { freePreviewNote } from "../shared/free-preview";
+import type { CompanyMode } from "./client";
 
 export type CompanyRow = KpiObservation | KpiGuidance;
 export const isGuidance = (row: CompanyRow): row is KpiGuidance => "issuedDate" in row;
@@ -89,13 +91,30 @@ function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): 
   if (row.unit === "currency_per_unit" || row.unit === "volume") return ` ${unitLabel(row)}`;
   return "";
 }
-/** Raised reads as good news, a cut as bad, a reiteration as no news. */
-export const directionTone = (direction: KpiGuidance["direction"]) => direction === "raised" ? "positive" as const : direction === "cut" ? "negative" as const
-  : direction === "withdrawn" ? "warning" as const : direction === "initiated" ? "text" as const : "muted" as const;
+/** Raised reads as good news, a cut as bad, a reiteration as no news, and a New guide as itself whichever way the service reached it. */
+export const directionTone = (guide: Pick<KpiGuidance, "direction" | "previousId">) => guide.direction === "raised" ? "positive" as const : guide.direction === "cut" ? "negative" as const
+  : guide.direction === "withdrawn" ? "warning" as const : directionLabel(guide) === "New" ? "text" as const : "muted" as const;
 /** A change is good when it moves the way the metric's owner wants it to. */
 export const changeTone = (row: KpiObservation, value: number | null) => value === null || value === 0 || row.metric.favorable === "neutral" ? "muted" as const
   : (value > 0) === (row.metric.favorable === "higher") ? "positive" as const : "negative" as const;
-export const directionLabel = (direction: KpiGuidance["direction"]) => direction === "not_comparable" ? "Not comparable" : direction.charAt(0).toUpperCase() + direction.slice(1);
+/**
+ * What a guide did against the one before it for the same period, in plain
+ * words. A guide with no earlier one to set it against is New, whether it is
+ * the company's first or the first for its period. The service sets a guide it
+ * cannot rank (a different hedge or conditions) beside its predecessor as not
+ * comparable: that one Changed, with no word for up or down.
+ */
+export function directionLabel(guide: Pick<KpiGuidance, "direction" | "previousId">): string {
+  switch (guide.direction) {
+    case "raised": return "Raised";
+    case "cut": return "Lowered";
+    case "reiterated": return "Maintained";
+    case "mixed": return "Mixed";
+    case "withdrawn": return "Withdrawn";
+    case "initiated": return "New";
+    case "not_comparable": return guide.previousId ? "Changed" : "New";
+  }
+}
 export const outcomeLabel = (row: KpiGuidance) => !row.actual ? "Pending" : row.actual.favorable === "in_line" ? "In range"
   : row.actual.favorable === "neutral" ? row.actual.outcome === "above" ? "Above" : row.actual.outcome === "below" ? "Below" : "In range"
   : row.actual.favorable === "beat" ? "Beat" : "Miss";
@@ -163,7 +182,7 @@ export const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
 /** The text of a table cell as the pane draws it; the report prints the same words. */
 export function companyCellText(row: CompanyRow, column: string, observations: KpiObservation[]): string {
   const guide = isGuidance(row) ? row : null;
-  if (column === "change") return guide ? directionLabel(guide.direction) : changeText(observationChange(row as KpiObservation, observations));
+  if (column === "change") return guide ? directionLabel(guide) : changeText(observationChange(row as KpiObservation, observations));
   return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
     : column === "unit" ? unitLabel(row)
     : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
@@ -193,6 +212,55 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
   const shown = named ? columns.filter((column) => column.id !== "basis" && column.id !== "scope") : columns;
   return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
+}
+
+/** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
+const NARROW_WIDTHS: Record<string, number> = { value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+/** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
+const METRIC_FLOOR = 14;
+
+/**
+ * The table's columns at a pane `width` in cells, so none is cut at the right edge.
+ * A table that already fits is left as it is. Otherwise the columns take their
+ * narrow widths, and the metric, which flexes, keeps what is left down to its
+ * floor. Below that a column whose meaning is in the detail goes (Action in History,
+ * where the outcome says it, then Issued), never one that names the row. A table that
+ * cannot fit even so keeps its narrow widths and scrolls sideways, as it always has.
+ */
+export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
+  const room = width - 1;
+  if (getTableWidth(columns) <= room) return [...columns];
+  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => column.id in NARROW_WIDTHS ? { ...column, width: Math.min(column.width, NARROW_WIDTHS[column.id]!) } : column);
+  const attempt = (list: readonly DataTableColumn[]): DataTableColumn[] | null => {
+    const tight = narrow(list);
+    const metric = tight.find((column) => column.id === "metric");
+    if (!metric) return getTableWidth(tight) <= room ? tight : null;
+    const fitted = Math.min(metric.width, room - (getTableWidth(tight) - tableColumnWidth(metric)));
+    return fitted >= METRIC_FLOOR ? tight.map((column) => column === metric ? { ...column, width: fitted } : column) : null;
+  };
+  let shown = [...columns];
+  for (const drop of [null, ...(history ? ["change", "issued"] : ["issued"])]) {
+    if (drop) shown = shown.filter((column) => column.id !== drop);
+    const fitted = attempt(shown);
+    if (fitted) return fitted;
+  }
+  return narrow(columns);
+}
+
+/** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */
+const EXAMPLE_COMPANIES: Record<CompanyMode, readonly string[]> = { guidance: ["WMT", "DAL"], kpis: ["AAPL", "NVDA"] };
+
+/**
+ * What an empty table says. A company with nothing on file for the function says so
+ * plainly and names one that has some; a selection or tab that narrows what the company
+ * has says what is missing from it. `cli` types `fn GUIDE WMT`, the app's command bar `GUIDE WMT`.
+ */
+export function companyEmptyState(mode: CompanyMode, symbol: string, view: { tab: string; hasRows: boolean }, surface: "cli" | "pane" = "pane"): { title: string; hint?: string } {
+  if (view.hasRows) return { title: view.tab === "history" ? "Actuals have not been matched to these guidance periods yet." : "No disclosed observations for this selection yet." };
+  const examples = EXAMPLE_COMPANIES[mode];
+  const example = examples.find((candidate) => candidate !== symbol.trim().toUpperCase()) ?? examples[0]!;
+  const command = `${mode === "kpis" ? "KPIS" : "GUIDE"} ${example}`;
+  return { title: `No ${mode === "kpis" ? "KPIs" : "guidance"} on file for ${symbol}.`, hint: `Try ${surface === "cli" ? `\`fn ${command}\`` : command}.` };
 }
 
 /** What a missing KPI means, as KPIS states it among its limitations and EQS beside a KPI column with gaps. */
