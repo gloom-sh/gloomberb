@@ -11,7 +11,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 const NAME_NOISE = new Set([
   "co", "company", "corp", "corporation", "inc", "incorporated", "ltd", "limited", "llc", "lp", "plc", "sa", "ag", "nv", "se",
   "spa", "ab", "as", "asa", "oyj", "bv", "gmbh", "kgaa", "bhd", "berhad", "pcl", "the", "adr", "ads", "cedear", "cedears",
-  "sponsored", "unsponsored", "cdr", "cdi",
+  "sponsored", "unsponsored", "cdr", "cdi", "aktiengesellschaft", "aktiebolag",
 ]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
 const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
@@ -43,6 +43,56 @@ export function sameCompany(left: string | null | undefined, right: string | nul
   if (a.size === 0 || b.size === 0) return false;
   const [fewer, more] = a.size <= b.size ? [a, b] : [b, a];
   return [...fewer].every((word) => more.has(word));
+}
+
+// Words that tell one class of a company's shares from another ("Berkshire Hathaway Inc. Class B"), never its business.
+const SHARE_CLASS_WORD = /^(?:class|series|[a-z]|\d+)$/;
+
+/** Whether two names differ only in how they name a class of shares, so they are one company's whatever the venue. */
+function sameBusinessWords(left: Set<string>, right: Set<string>): boolean {
+  const differ = [...left].filter((word) => !right.has(word)).concat([...right].filter((word) => !left.has(word)));
+  return differ.every((word) => SHARE_CLASS_WORD.test(word));
+}
+
+/** A company line as `companyLines` weighs it. */
+export interface CompanyLineFacts {
+  name: string | null | undefined;
+  /** The line's canonical venue. */
+  exchange: string;
+  /** A depositary receipt, whose name says whose shares it holds rather than whose it is. */
+  receipt: boolean;
+  /** The service marks it as its company's home line (`homeListing`). */
+  home: boolean;
+}
+
+/**
+ * The lines among `lines` that are `lead`'s company's own (`sameCompany`),
+ * less those under a name that adds words for another business, though one
+ * name's words are all in the other's: Siemens Energy AG and Siemens
+ * Healthineers AG are not Siemens AG, nor Sony Financial Group Sony Group. A
+ * name is another business's where a venue lists a line under it beside a
+ * line under the lead's own name (both on XETRA, both in Tokyo), or where it
+ * and a line under the lead's name are each marked as a home line, since a
+ * company has one (Siemens Ltd. on NSE beside Siemens AG on XETRA). Receipts
+ * are named for the shares they hold, so they never tell two businesses
+ * apart, and nor do words that name a class of shares (Class B). A name with
+ * more words on no shared venue stays the company's (Deutsche Lufthansa AG on
+ * XETRA for LUFTHANSA on Budapest). `lead` is always one of them.
+ */
+export function companyLines<T>(lead: T, lines: readonly T[], facts: (line: T) => CompanyLineFacts): T[] {
+  const own = facts(lead);
+  const ownWords = companyWords(own.name);
+  const ownName = (line: CompanyLineFacts) => sameBusinessWords(companyWords(line.name), ownWords);
+  const candidates = lines.filter((line) => line === lead || sameCompany(own.name, facts(line).name));
+  const read = candidates.map((line) => ({ line, facts: facts(line), words: companyWords(facts(line).name) }));
+  const ownShares = read.filter((entry) => !entry.facts.receipt && ownName(entry.facts));
+  const ownVenues = new Set(ownShares.map((entry) => entry.facts.exchange).filter(Boolean));
+  const ownHome = ownShares.some((entry) => entry.facts.home);
+  // A name another business goes by, once one of its share lines gives it away: all its lines are that business's.
+  const others = read.filter((entry) => !entry.facts.receipt && !ownName(entry.facts)
+    && ((!!entry.facts.exchange && ownVenues.has(entry.facts.exchange)) || (entry.facts.home && ownHome)));
+  const otherBusiness = (words: Set<string>) => others.some((other) => sameBusinessWords(other.words, words));
+  return read.filter((entry) => entry.line === lead || ownName(entry.facts) || !otherBusiness(entry.words)).map((entry) => entry.line);
 }
 
 /**

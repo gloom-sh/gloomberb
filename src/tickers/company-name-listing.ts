@@ -3,7 +3,7 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
-import { companyNameExtraWords, companyNameMatch, namedByService, runTogether, sameCompany, shortCompanyName } from "./company-name";
+import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, runTogether, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { lineDistance, primaryCompanyLine } from "./search/home-listing";
 import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking";
@@ -17,6 +17,8 @@ export interface CompanyNameListing {
   exchange: string;
   /** The listing's name as search gives it. */
   name: string;
+  /** The service marked the listing with the name as typed (`searchAliases`): the company it means by it. */
+  named?: true;
   /**
    * When the listing is a fund or an index carrying the name ("JP Morgan" read
    * as ^JTEK, JP MORGAN ETF TRUS), the company's common stock the name says
@@ -134,23 +136,26 @@ export async function findListingOfCompanyName(
   // name typed opens what a search for it lists first (LHA on XETRA for "lufthansa", not LUFTHANSA on Budapest).
   const named = namedByService(name, first.result);
   const firstHomes = otherHomesThan(first);
-  const lead = first.home ? first : primaryCompanyLine(first, listed.filter((listing) => listing === first || (!listing.home
-    && !firstHomes.has(plainName(listing.result.name)) && listing.stock === first.stock
-    && sameCompany(first.result.name, listing.result.name)
+  // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's.
+  const lead = first.home ? first : primaryCompanyLine(first, companyLines(first, listed, lineFacts).filter((listing) => listing === first
+    || (!listing.home && !firstHomes.has(plainName(listing.result.name)) && listing.stock === first.stock
     && (!named || companyNameExtraWords(listing.result.name, first.result.name) != null))),
   ({ result, exchange }) => ({ distance: lineDistance(listedType(result), exchange, result.symbol), score: result.popularity ?? null }),
   { named });
   // The lead may give way to its company's other lines: as near the name and of its kind.
   const otherHomes = otherHomesThan(lead);
-  const lines = [lead, ...listed.filter((listing) => listing !== lead && !listing.home && !otherHomes.has(plainName(listing.result.name))
-    && sameCompany(lead.result.name, listing.result.name)
+  const lines = [lead, ...companyLines(lead, listed, lineFacts).filter((listing) => listing !== lead && !listing.home
+    && !otherHomes.has(plainName(listing.result.name))
     && listing.rank.slice(0, NAME_RANKS).every((value, index) => value === lead.rank[index]))];
   const quoted = options.quoted ? await firstQuoted(dataProvider, lines, options.movedLine) : { line: lead, moved: null };
   const best = quoted.line;
   const found: CompanyNameListing = quoted.moved
     // The line it moved to is a US symbol, read bare as `quote` reads one (GETYQ, which trades over the counter).
     ? { symbol: quoted.moved.symbol, exchange: "", name: best.result.name, moved: quoted.moved.note }
-    : { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name };
+    : {
+      symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name,
+      ...namedByService(name, best.result) ? { named: true as const } : {},
+    };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
   return meant ? { ...found, meant } : found;
 }
@@ -217,6 +222,11 @@ async function firstQuoted<T extends RankedListing>(
 }
 
 /** A name as two venues may spell it alike: "SIEMENS LTD" for Siemens Ltd. */
+/** A listing as `companyLines` weighs it. */
+function lineFacts({ result, exchange, home }: { result: InstrumentSearchResult; exchange: string; home: boolean }) {
+  return { name: result.name, exchange, receipt: RECEIPT.test(listedType(result)), home };
+}
+
 function plainName(name: string | null | undefined): string {
   return (name ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
@@ -227,6 +237,20 @@ function listingKey({ result, exchange }: RankedListing): string {
 
 function hasPrice(quote: { price?: number } | null | undefined): boolean {
   return !!quote && Number.isFinite(quote.price) && quote.price !== 0;
+}
+
+/**
+ * Whether search marks a listing under another symbol with the word as typed
+ * (`searchAliases`): "siemens" marks SIE on XETRA, whose symbol is not the
+ * word. One search, the one `findListingOfCompanyName` asks first, so asking
+ * this before it costs nothing more.
+ */
+export async function marksAnotherListing(dataProvider: Partial<Pick<DataProvider, "search">>, word: string): Promise<boolean> {
+  // A source that cannot search marks nothing.
+  if (typeof dataProvider.search !== "function") return false;
+  const answer = await searchListings(dataProvider as Pick<DataProvider, "search">, word.trim());
+  return Array.isArray(answer) && answer.some((result) =>
+    result.symbol.toUpperCase() !== word.trim().toUpperCase() && namedByService(word, result));
 }
 
 function searchListings(dataProvider: Pick<DataProvider, "search">, query: string): Promise<InstrumentSearchResult[] | ProviderBusyError> {

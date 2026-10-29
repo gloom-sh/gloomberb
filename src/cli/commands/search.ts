@@ -35,7 +35,7 @@ import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
@@ -283,9 +283,13 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
     || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
   const marked = !!primary.result && namedByService(query, primary.result);
-  const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"
-    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company)
-    && (!marked || companyNameExtraWords(resolveSearchName(candidate), company) != null));
+  // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's.
+  const lines = companyLines(primary, candidates.filter((candidate) => candidate === primary || (candidate.kind === "search"
+    && candidate.category !== "Funds & Derivatives" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"))),
+  (candidate) => ({
+    name: resolveSearchName(candidate), exchange: candidateExchange(candidate),
+    receipt: listingDistance(candidate) === 2, home: candidate.result?.homeListing === true,
+  })).filter((candidate) => candidate === primary || !marked || companyNameExtraWords(resolveSearchName(candidate), company) != null);
   const home = primaryCompanyLine(primary, lines, (candidate) => ({
     distance: listingDistance(candidate), score: candidate.result?.popularity ?? candidate.popularity ?? null,
   }), { named: marked });

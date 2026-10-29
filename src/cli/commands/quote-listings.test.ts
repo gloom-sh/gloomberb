@@ -548,6 +548,27 @@ test("a word many names share is a name only as search's top result or an exact 
   ]);
 });
 
+test("a word the service marks as a company's name is that company, not a line abroad whose symbol is the word", async () => {
+  // /market/search?q=siemens on 2026-10-29: SIEMENS is Siemens Ltd. on NSE; the service marks SIE on XETRA with "siemens".
+  const row = (symbol: string, name: string, exchange: string, searchAliases?: string[]) => ({
+    providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "EUR", homeListing: true, ...searchAliases ? { searchAliases } : {},
+  });
+  const answering = (rows: ReturnType<typeof row>[]) => createTestDataProvider({
+    search: async () => rows,
+    // No source quotes the bare word; each listing is quoted by its key.
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.exchange
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+  });
+  const ltd = row("SIEMENS", "Siemens Ltd.", "NSE");
+  const marked = await runQuote(["siemens"], { dataProvider: answering([ltd, row("SIE", "Siemens Aktiengesellschaft", "XETRA", ["siemens"])]), batches: [], searches: () => 0 });
+  expect(marked.rows.map((entry) => entry.target.symbol)).toEqual(["SIE:XETRA"]);
+  expect(marked.warnings.map((warning) => warning.toLowerCase())).toContain('read "siemens" as sie:xetra (siemens aktiengesellschaft).');
+  // Unmarked, the symbol is read on its listing abroad, as before.
+  const unmarked = await runQuote(["siemens"], { dataProvider: answering([ltd, row("SIE", "Siemens Aktiengesellschaft", "XETRA")]), batches: [], searches: () => 0 });
+  expect(unmarked.rows.map((entry) => entry.target.symbol)).toEqual(["SIEMENS:NSE"]);
+});
+
 test("a company's name read as an index asks about the company's stock; marked by the service, it is that stock", async () => {
   const row = (symbol: string, name: string, exchange: string, type: string, searchAliases?: string[]) =>
     ({ providerId: "test", symbol, name, exchange, type, currency: "USD", ...searchAliases ? { searchAliases } : {} });

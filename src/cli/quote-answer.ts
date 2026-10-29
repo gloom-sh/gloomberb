@@ -21,6 +21,8 @@ import {
   notTradedMessage,
   oneWordCompanyName,
   quoteBareListing,
+  serviceNamedCompany,
+  type ListingArg,
   requireCliListing,
   resolveCliListing,
   tradingBoardNote,
@@ -64,7 +66,9 @@ export interface QuoteAnswer {
 /**
  * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
  * is not listed on says so. A bare symbol the data service read on its home
- * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
+ * listing abroad names that venue (SXR8 -> XETRA). One no source quotes that
+ * the service marks as another listing's company name is that company
+ * (`serviceNamedCompany`: "siemens" is SIE:XETRA); else it is
  * quoted on its listings (`quoteBareListing`), else names them, or asks for an
  * exchange when several companies list it (2222); a bare index root (VIX) also
  * names its index (^VIX), and a futures board code a security keeps (GC) its
@@ -98,6 +102,10 @@ export async function answerQuote(
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
+  // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
+  const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
+  const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
+  if (meant) return meant;
   const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
   if (other?.kind === "quoted") {
     return {
@@ -155,17 +163,32 @@ async function answerCompanyName(
   const named = await oneWordCompanyName(listing.typed, market);
   // A real ticker a source failed to quote is not a company's name, even when the company carries the word.
   if (!named || (unsettled && named.symbol.toUpperCase() === listing.symbol.toUpperCase())) return null;
-  // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
+  const answer = await answerNamedListing(named, market, request, refresh, datesChangeBasis);
+  if (answer) return answer;
+  if (!unsettled) return null;
+  const sentence = await notATickerWords(listing.typed, market);
+  return { result: { ...result, error: new Error(sentence) }, listing, notes: [] };
+}
+
+/**
+ * The row of the listing a company's name was read as (`named`), saying so;
+ * null when the app cannot read its venue or it has no quote.
+ */
+async function answerNamedListing(
+  named: ListingArg,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+  datesChangeBasis: boolean,
+): Promise<QuoteAnswer | null> {
+  // A listing on a venue the app cannot read is no answer: the word keeps its own.
   const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
     if (error instanceof ListingArgError) return null;
     throw error;
   });
   const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {} } : null;
   const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
-  if (found && quoted?.quote) return answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis });
-  if (!unsettled) return null;
-  const sentence = await notATickerWords(listing.typed, market);
-  return { result: { ...result, error: new Error(sentence) }, listing, notes: [] };
+  return found && quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */
