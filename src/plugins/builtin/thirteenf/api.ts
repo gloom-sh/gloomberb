@@ -30,11 +30,12 @@ const FORMS_13F_CACHE_POLICY = {
 } as const;
 
 export interface Forms13FReadOptions {
+  /** A part of the answer that could not be read, said beside what was. */
   onWarning?: (warning: string) => void;
   /**
    * A read answered from the copy saved at `savedAt` (ms) because its refresh
-   * failed, said by when it was saved (a command's closing line) instead of
-   * as an `onWarning` line.
+   * failed. Only a caller that says when its copy was saved (the footer's
+   * "saved copy from", a command's closing line) is answered from one.
    */
   onSavedCopy?: (savedAt: number) => void;
   forceRefresh?: boolean;
@@ -162,17 +163,9 @@ async function fetchForms13F<T>(
       }
       const retained = options.cache !== false
         ? store?.getResource<T>(CACHE_KIND, key, { ...cacheOptions, allowExpired: true }) : null;
-      // A caller may retain old research only when it can surface its provenance.
-      if (!retained) throw error;
-      if (options.onSavedCopy && Number.isFinite(retained.fetchedAt)) {
-        options.onSavedCopy(retained.fetchedAt);
-        return retained.value;
-      }
-      if (!options.onWarning) throw error;
-      const retrieved = new Date(retained.fetchedAt);
-      const age = Number.isFinite(retrieved.getTime()) ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
-      const reason = (error instanceof Error ? error.message : String(error)).trim() || "Request failed";
-      options.onWarning(`${key}: refresh failed: ${reason}. Retained data ${age}.`);
+      // A caller may retain old research only when it can say when it was saved.
+      if (!retained || !options.onSavedCopy || !Number.isFinite(retained.fetchedAt)) throw error;
+      options.onSavedCopy(retained.fetchedAt);
       return retained.value;
     } finally {
       if (activeRequests.get(key) === slot.promise) activeRequests.delete(key);

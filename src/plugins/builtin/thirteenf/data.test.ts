@@ -372,8 +372,9 @@ function json(value: unknown): Response {
 }
 
 
-test("browser, reconciled report and individual filing expose failed-refresh cache provenance without changing filing dates", async () => {
+test("browser, reconciled report and individual filing say when the copy a failed refresh left was saved, without changing filing dates", async () => {
   attachThirteenFApiPersistence(new MemoryPluginPersistence());
+  const started = Date.now();
   let fail = false;
   setHttpFetchTransport(async url => {
     if (fail) throw new Error("Controlled network outage");
@@ -395,14 +396,16 @@ test("browser, reconciled report and individual filing expose failed-refresh cac
   expect(retainedDetail.latestForm).toEqual(detail.latestForm);
   expect(retainedDetail.latestHoldings).toEqual(detail.latestHoldings);
   expect(retainedFiling.rows).toEqual(filing.rows);
-  for (const warning of [retainedBrowser.warning, ...retainedDetail.warnings!, ...retainedFiling.warnings]) {
-    expect(warning).toContain("Controlled network outage");
-    expect(warning).toMatch(/retrieved \d{4}-\d{2}-\d{2}T/);
+  // Each says when its copy was saved, for the footer every pane gives one, and none lists the failure.
+  for (const result of [retainedBrowser, retainedDetail, retainedFiling]) {
+    expect(result.savedAt).toBeGreaterThanOrEqual(started);
+    expect(result.savedAt!).toBeLessThanOrEqual(Date.now());
   }
+  expect([retainedBrowser.warning, ...retainedDetail.warnings!, ...retainedFiling.warnings].join(" ")).not.toContain("Controlled network outage");
   fail = false;
-  expect((await loadBrowserRows("funds", "1067983")).warning).toBeUndefined();
-  expect((await loadFundDetail("1067983", "Fund")).warnings).toEqual([]);
-  expect((await loadFilingPositions("1067983", "0001067983-26-000001")).warnings).toEqual([]);
+  for (const result of [await loadBrowserRows("funds", "1067983"), await loadFundDetail("1067983", "Fund"), await loadFilingPositions("1067983", "0001067983-26-000001")]) {
+    expect(result.savedAt).toBeUndefined();
+  }
 });
 
 test("performance history joins by CIK, rejects mismatched periods and leaves absent ranks unknown", async () => {

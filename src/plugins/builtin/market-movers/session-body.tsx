@@ -6,6 +6,7 @@ import type {
 } from "../../../api-client/market-movers";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import {
   buildScreenerQuoteTargets,
@@ -201,7 +202,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
         id: "feed",
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
-      ...(payload?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "muted" as const }] }] : []),
+      ...(payload?.stale ? [STALE_SEGMENT] : []),
       // A float the source does not date says so once, while the FLOAT column shows.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
     ],

@@ -48,8 +48,9 @@ test("malformed refresh retains cache with failure until valid recovery; empty a
   const first = await fetchScreenerResult("day_gainers", 25, api, { cache: true });
   const record = persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })!;
   answer = { finance: { result: null, error: { code: "Unavailable" } } };
-  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true, forceRefresh: true })).toEqual({ data: first.data, stale: true });
-  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual({ data: first.data, stale: true });
+  const saved = { data: first.data, stale: true, savedAt: record.fetchedAt };
+  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true, forceRefresh: true })).toEqual(saved);
+  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual(saved);
   expect(persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })?.fetchedAt).toBe(record.fetchedAt);
   await expect(fetchScreenerResult("day_losers", 25, api, { cache: true })).rejects.toThrow("Invalid market movers");
   answer = payload([]);

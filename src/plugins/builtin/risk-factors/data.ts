@@ -21,6 +21,8 @@ type RiskApiClient = Pick<HeadlessPaneApiClient, "getRiskReports" | "getRiskRepo
 interface RiskFreshness {
   fetchedAt: number;
   stale: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
   errorStatus?: number;
 }
@@ -84,6 +86,7 @@ function loadCached<T extends object>(
       ...fallback.value,
       fetchedAt: fallback.fetchedAt,
       stale: true,
+      savedAt: fallback.fetchedAt,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
       errorStatus: error instanceof ApiRequestError ? error.status : undefined,
     }, fallback.fetchedAt);

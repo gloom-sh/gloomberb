@@ -106,6 +106,8 @@ export interface BrowserLoadResult {
   period?: string;
   quarter?: string;
   warning?: string;
+  /** A refresh failed and the oldest copy that answered instead was saved at this time (ms). */
+  savedAt?: number;
   hasMore?: boolean;
   nextOffset?: number;
   reportsLoaded?: Promise<void>;
@@ -118,9 +120,29 @@ export async function loadBrowserRows(
   options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { offset?: number; limit?: number } = {},
 ): Promise<BrowserLoadResult> {
   const warnings: string[] = [];
-  const result = await loadBrowserPage(tab, query, signal, { ...options, onWarning: warning => warnings.push(warning) });
+  const page: { result?: BrowserLoadResult; savedAt?: number } = {};
+  const onSavedCopy = (savedAt: number) => {
+    page.savedAt = Math.min(page.savedAt ?? savedAt, savedAt);
+    // The rows' reports answer after the page does, and their copies date it too.
+    if (page.result) page.result.savedAt = page.savedAt;
+    options.onSavedCopy?.(savedAt);
+  };
+  const result = await loadBrowserPage(tab, query, signal, { ...options, onSavedCopy, onWarning: warning => warnings.push(warning) });
+  page.result = result;
+  if (page.savedAt != null) result.savedAt = page.savedAt;
   if (warnings.length) result.warning = [...new Set([result.warning, ...warnings].filter(Boolean))].join(" ") || undefined;
   return result;
+}
+
+/** The oldest saved copy a load answered from (`savedAt`), each also passed on to `onSavedCopy`. */
+function savedCopies(onSavedCopy?: (savedAt: number) => void) {
+  const copies: { savedAt?: number; note: (savedAt: number) => void } = {
+    note: (savedAt) => {
+      copies.savedAt = Math.min(copies.savedAt ?? savedAt, savedAt);
+      onSavedCopy?.(savedAt);
+    },
+  };
+  return copies;
 }
 
 async function loadBrowserPage(
@@ -440,7 +462,8 @@ export async function loadFundPerformance(
   options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup } = {},
 ): Promise<FundPerformanceResult> {
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
+  const saved = savedCopies(options.onSavedCopy);
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: saved.note, onWarning: (warning: string) => warnings.push(warning) };
   const detail = await loadFundDetail(cik, fallbackName, signal, options);
   const period = detail.latestForm?.periodOfReport;
   const quarter = period ? periodToQuarter(period) : null;
@@ -482,7 +505,9 @@ export async function loadFundPerformance(
         : filed?.skipped.length ? `No share position held through the quarter to ${period} that could be priced across it.`
           : `No share position held through the quarter to ${period}.`;
   const warning = [...new Set([...(detail.warnings ?? []), ...warnings])].join(" ") || undefined;
+  const savedAt = Math.min(detail.savedAt ?? Infinity, saved.savedAt ?? Infinity);
   return {
+    ...(Number.isFinite(savedAt) ? { savedAt } : {}),
     rows: [row], ...(quarter ? { quarter } : {}), ...(period ? { period } : {}), hasMore: false, basis, ranking,
     ...(filed?.splits.length ? { splits: filed.splits } : {}),
     ...(filed?.skipped.length ? { skipped: filed.skipped } : {}),
@@ -500,7 +525,8 @@ export async function loadFundDetail(
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
+  const saved = savedCopies(options.onSavedCopy);
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: saved.note, onWarning: (warning: string) => warnings.push(warning) };
 
   const forms = await listThirteenFForms(
     cik,
@@ -554,6 +580,7 @@ export async function loadFundDetail(
     previousReport,
     warnings,
     filingGap,
+    ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}),
   };
 }
 
@@ -562,12 +589,13 @@ export async function loadFilingPositions(
   accessionNumber: string,
   signal?: AbortSignal,
   options: { forceRefresh?: boolean; offset?: number; limit?: number } = {},
-): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean; warnings: string[] }> {
+): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean; warnings: string[]; savedAt?: number }> {
   const warnings: string[] = [];
+  const saved = savedCopies();
   const result = await listThirteenFFormHoldingsPage(cik, accessionNumber, signal, {
-    ...options, onWarning: warning => warnings.push(warning),
+    ...options, onSavedCopy: saved.note, onWarning: warning => warnings.push(warning),
   });
-  return { ...result, warnings };
+  return { ...result, warnings, ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}) };
 }
 
 /** `2026Q2` for a quarter end such as 2026-06-30. */

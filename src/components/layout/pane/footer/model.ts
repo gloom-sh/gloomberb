@@ -120,6 +120,16 @@ export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.n
 }
 
 /**
+ * The saved-copy segment of a pane showing several answers (a list and the
+ * report it opens): the oldest of the copies among `savedAts` (ms), or no
+ * segment when none of them is one.
+ */
+export function savedCopyFooterInfo(savedAts: readonly (number | null | undefined)[], id = "saved-copy"): PaneFooterSegment[] {
+  const times = savedAts.filter((at): at is number => typeof at === "number" && Number.isFinite(at));
+  return times.length > 0 ? [savedCopyFooterSegment(id, Math.min(...times))] : [];
+}
+
+/**
  * The footer's one form for company data a pane shows from another listing
  * of the company: a receipt or a foreign line (SKHY, HY9H in Frankfurt) reads
  * its home line's news, filings or holders, `company data from 000660 KRX`.

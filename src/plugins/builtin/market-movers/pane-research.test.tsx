@@ -228,7 +228,9 @@ test("trending failures retain only same-list rows and success time, partial ref
     membershipFails = true;
     now += 1_000;
     await tui.emitKeypress({ name: "r", sequence: "r" });
-    await tui.waitForFrameToContain("stale");
+    // The list answered from its saved copy says when it was saved, as every pane does, not "stale".
+    await tui.waitForFrameToContain("saved copy from");
+    expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
     expect(await csv()).toContain("SECOND");
     expect(lastSuccessful).toBe(recoveredAt);
     membershipFails = false;

@@ -37,6 +37,8 @@ export interface TreasuryAuctionsResult {
   fetchedAt: number;
   /** True when the network failed and expired cache was served instead. */
   stale: boolean;
+  /** The refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
 }
 
@@ -87,6 +89,7 @@ export async function loadTreasuryAuctions(
   const result = await cache.load(`recent:${window}`, walk(loader, () => auctionWindowQuery(window)), { force });
   return {
     auctions: result.data, fetchedAt: result.fetchedAt, stale: result.stale,
+    ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}),
     ...(result.refreshError ? { refreshError: result.refreshError } : {}),
   };
 }
@@ -108,8 +111,10 @@ async function loadAllTreasuryAuctions(force: boolean, loader: AuctionLoader): P
   const seen = new Set<string>();
   const auctions = [...recent.data, ...archive.data].filter((auction) => !seen.has(auction.id) && Boolean(seen.add(auction.id)));
   const refreshError = recent.refreshError ?? archive.refreshError;
+  const savedAt = Math.min(...[recent, archive].map((part) => part.source === "stale-fallback" ? part.fetchedAt : Infinity));
   return {
     auctions, fetchedAt: recent.fetchedAt, stale: recent.stale || archive.stale,
+    ...(Number.isFinite(savedAt) ? { savedAt } : {}),
     ...(refreshError ? { refreshError } : {}),
   };
 }

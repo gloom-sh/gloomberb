@@ -13,6 +13,8 @@ import {
   type DataTableRootKeyContext,
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -208,8 +210,10 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const auctions = resource.data?.auctions ?? NO_AUCTIONS;
   const stale = resource.data?.stale ?? false;
   const fetchedAt = resource.data?.fetchedAt ?? null;
+  // A refresh that failed shows the auctions an earlier read saved, and says when that copy is from.
+  const savedAt = resource.data?.savedAt ?? null;
   // A cache that could not be refreshed arrives as a result, not a failure.
-  const error = resource.error ?? (resource.loading ? null : resource.data?.refreshError ?? null);
+  const error = resource.error ?? (resource.loading || savedAt != null ? null : resource.data?.refreshError ?? null);
   // Once auctions have loaded, a refresh runs without a loading state.
   const loading = resource.loading && !resource.data;
   const [filter, setFilter] = usePluginPaneState<AuctionFilter>("activeTab", "all");
@@ -302,8 +306,9 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
     const info = loadingErrorFooterInfo(loading, error);
-    if (stale) info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
-    if (fetchedAt) {
+    if (savedAt != null) info.push(...savedCopyFooterInfo([savedAt]));
+    else if (stale) info.push(STALE_SEGMENT);
+    if (fetchedAt && savedAt == null) {
       info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
     }
     return {
@@ -323,6 +328,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     fetchedAt,
     focusSearch,
     loading,
+    savedAt,
     stale,
   ]);
 

@@ -46,6 +46,8 @@ interface ProxyResult<T> {
   /** Null is an explicit 404, not a transient failure or access denial. */
   data: T | null;
   fetchedAt: number | null;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
 }
 type ActiveRequest<T> = { store: PluginPersistence | null; promise: Promise<ProxyResult<T>> };
@@ -110,6 +112,7 @@ function loadCached<T>(
     return {
       data: fallback.value,
       fetchedAt: fallback.fetchedAt,
+      savedAt: fallback.fetchedAt,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
     };
   }).finally(() => { if (active.get(activeKey) === request) active.delete(activeKey); });

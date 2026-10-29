@@ -114,7 +114,7 @@ afterEach(() => {
   opened = [];
 });
 
-test("stale discovery is disclosed; standard refresh follows latest until an explicit historical selection", async () => {
+test("discovery answered from its saved copy says when it was saved; standard refresh follows latest until an explicit historical selection", async () => {
   const store = new MemoryPluginPersistence();
   store.seedResource("reports", "ACME", list([2025]), { sourceKey: "risk-factors", schemaVersion: 1, stale: true });
   store.seedResource("report", "ACME:2025", report(2025), { sourceKey: "risk-factors", schemaVersion: 1 });
@@ -130,7 +130,10 @@ test("stale discovery is disclosed; standard refresh follows latest until an exp
   await mount();
   const stale = frame();
   expect(stale).toContain("Only 2025 risk analysis");
-  expect(stale).toContain("Discovery unavailable");
+  // The footer line every pane gives a saved copy, not the failure or a cache stamp of its own.
+  expect(stale).toContain("saved copy from");
+  expect(stale).not.toContain("Discovery unavailable");
+  expect(stale).not.toContain("cached");
 
   unavailable = false;
   await key("r");
@@ -138,7 +141,7 @@ test("stale discovery is disclosed; standard refresh follows latest until an exp
   expect(latest).toContain("Only 2026 risk analysis");
   expect(latest).toContain("Filed 2026-02-03");
   expect(latest).toContain("updated 2026-02-04");
-  expect(latest).not.toContain("Discovery unavailable");
+  expect(latest).not.toContain("saved copy");
 
   await click("2025 10-K");
   newest = 2027;

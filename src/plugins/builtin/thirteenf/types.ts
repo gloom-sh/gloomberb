@@ -99,6 +99,8 @@ export interface FundDetailData {
   warnings?: string[];
   /** Set when the latest report predates the newest quarter past its deadline. */
   filingGap?: ThirteenFFilingGap | null;
+  /** A refresh failed and the oldest copy that answered instead was saved at this time (ms). */
+  savedAt?: number;
 }
 
 /** A manager a 13F-NT names as reporting its holdings. */

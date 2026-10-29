@@ -19,6 +19,8 @@ import {
   type SectionedRow,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
@@ -162,6 +164,8 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
   }, [range]);
   const resource = useAsyncResource(entitled ? loader : null, {
     keepPreviousData: true,
+    // A refusal asking again will not change takes the calendar off screen, for its wall or its error.
+    clearOnError: isPermanentClientError,
     initialData: () => cachedUpcomingCalls(range),
   });
   const data = resource.data;
@@ -204,12 +208,16 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
   const proRequired = !signInRequired && !verificationRequired && (!access.hasProAccess || (!data && refused === 402));
 
   const hints = useMemo<PaneHint[]>(() => [{ id: "search", key: "/", label: "search", onPress: focusSearch }], [focusSearch]);
+  // A refresh that failed shows the calendar an earlier read saved, and says when that copy is from.
+  const savedAt = data?.savedAt ?? null;
+  const savedInfo = useMemo(() => savedCopyFooterInfo([savedAt]), [savedAt]);
   usePaneStatusFooter({
     registrationId: "earnings-calls:calendar",
     enabled: !detailOpen && entitled,
     loading: resource.loading && !!data,
-    error: data ? data.refreshError ?? resource.error : null,
-    stale: !!data && (data.stale || !!resource.error),
+    error: data ? (savedAt == null ? data.refreshError : null) ?? resource.error : null,
+    stale: !!data && savedAt == null && (data.stale || !!resource.error),
+    info: savedInfo,
     hints,
   });
   // A calendar cut at the server's limit says so, rather than end the week early.

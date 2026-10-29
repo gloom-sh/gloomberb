@@ -96,6 +96,8 @@ function writeCache<T>(key: string, data: T): void {
 export interface CachedResult<T> {
   data: T;
   stale: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
 }
 
 async function loadCached<T>(
@@ -123,7 +125,7 @@ async function loadCached<T>(
       // ends with when the copy was saved.
       if (fallback) {
         failedFetches.add(key);
-        return servedFromSavedCopy({ data: fallback.data, stale: true }, fallback.fetchedAt);
+        return servedFromSavedCopy({ data: fallback.data, stale: true, savedAt: fallback.fetchedAt }, fallback.fetchedAt);
       }
       throw error;
     })
@@ -146,6 +148,8 @@ export interface MarketMoversResult {
   quotes: ScreenerQuote[];
   source: MarketMoversDataSource;
   stale: boolean;
+  /** Its refresh failed and the list saved at this time (ms) answered instead. */
+  savedAt?: number;
 }
 
 export interface PreferredMarketMoverSources {
@@ -392,7 +396,13 @@ export async function fetchPreferredMarketMovers(
   const eligibility = sources.isCloudEligible();
   if (!(typeof eligibility === "boolean" ? eligibility : await eligibility)) {
     const result = await sources.fetchMarket(category, count, options);
-    return { ...savedCopyMark(result), quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
+    return {
+      ...savedCopyMark(result),
+      quotes: rankScreenerQuotes(category, result.data),
+      source: "gloom",
+      stale: result.stale,
+      ...(result.savedAt != null ? { savedAt: result.savedAt } : {}),
+    };
   }
 
   const marketMetadata = sources.fetchMarket(
@@ -432,6 +442,7 @@ export async function fetchPreferredMarketMovers(
     quotes: rankScreenerQuotes(category, fallback.data),
     source: "gloom",
     stale: fallback.stale,
+    ...(fallback.savedAt != null ? { savedAt: fallback.savedAt } : {}),
   };
 }
 

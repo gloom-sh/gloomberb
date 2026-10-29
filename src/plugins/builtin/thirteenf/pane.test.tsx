@@ -14,7 +14,9 @@ import { TickerResearchPane } from "../ticker-detail/pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { attachThirteenFApiPersistence, resetThirteenFApiPersistence } from "./api";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { fundListCache, fundMembersCache } from "../members/client";
@@ -26,6 +28,7 @@ let latestState: AppState | null = null;
 
 afterEach(() => {
   latestState = null;
+  resetThirteenFApiPersistence();
   fundListCache.reset();
   fundMembersCache.reset();
   setHttpFetchTransport(null);
@@ -169,6 +172,39 @@ describe("ThirteenFPane", () => {
     expect(
       latestState?.paneState[PANE_ID]?.pluginState?.thirteenf?.selectedId,
     ).toBeUndefined();
+  });
+
+  test("a refresh that fails shows the funds' saved copy and says when it was saved, as every pane does", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    let offline = false;
+    setHttpFetchTransport(async (url) => {
+      if (offline) throw new Error("Unable to connect");
+      return new URL(String(url)).pathname.endsWith("/topfunds")
+        ? json([{ cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: null }])
+        : json([]);
+    });
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-thirteenf-pane-test"));
+    state.focusedPaneId = PANE_ID;
+    await act(async () => {
+      await tui.render(
+        <TestPaneFrame state={state} dispatch={() => {}} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()} width={100} height={20}>
+          {(body) => <ThirteenFPane paneId={PANE_ID} paneType="thirteenf-funds" focused {...body} />}
+        </TestPaneFrame>,
+        { width: 100, height: 20 },
+      );
+    });
+    await renderFrames();
+    expect(tui.frame()).toContain("Alpha Capital");
+
+    offline = true;
+    await emitKeypress({ name: "r", sequence: "r" });
+    const saved = await tui.waitForFrameToContain("saved copy from");
+    expect(saved).toContain("Alpha Capital");
+    expect(saved).not.toMatch(/refresh failed|Retained data|Unable to connect/);
+
+    offline = false;
+    await emitKeypress({ name: "r", sequence: "r" });
+    expect(await tui.waitForFrameToExclude("saved copy")).toContain("Alpha Capital");
   });
 
   test("moves from the first fund row to search with Up", async () => {
