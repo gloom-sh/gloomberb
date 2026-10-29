@@ -215,10 +215,15 @@ function nameWord(word: string, opening: boolean, domain: boolean): string {
  * the way its source means it and comes back as it is.
  */
 export function companyNameCase(name: string): string {
-  if (!/\p{Lu}/u.test(name) || name !== name.toUpperCase()) return name;
+  // A brand that opens in lower case before capitals (aTYR, iROBOT) is still a name in capitals: aTyr, iRobot.
+  const brand = /^\p{Ll}(?=\p{Lu}{2})/u;
+  const capitals = name.split(/\s+/).map((word) => word.replace(brand, "")).join(" ");
+  if (!/\p{Lu}/u.test(name) || capitals !== capitals.toUpperCase()) return name;
   let words = 0;
   return name.replace(/\S+/g, (token) => {
     const opening = words++ === 0;
+    const lead = brand.exec(token)?.[0];
+    if (lead) return `${lead}${token.charAt(1)}${token.slice(2).toLowerCase()}`;
     // A separator inside a word (Coca-Cola, AT&T, Amazon.com, McDonald's) cuts it into words of its own.
     return token.split(/([-/.&,'\u2019]+)/).map((part, index, parts) => {
       if (index % 2 === 1) return part;
