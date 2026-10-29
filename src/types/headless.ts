@@ -403,6 +403,12 @@ export interface HeadlessPaneFreshness {
    * `newest story` dates a news list `newest story Tue 29 Sep 2026 20:17 UTC`.
    */
   asOfLabel?: string;
+  /**
+   * Say when the rows were retrieved too, after the newest one's date: a list
+   * dated by its newest filing was not read then (`newest filing Tue 27 Oct
+   * 2026 · retrieved Wed 28 Oct 2026 19:07 UTC`).
+   */
+  retrievedToo?: boolean;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /**

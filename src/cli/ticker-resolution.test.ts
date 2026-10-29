@@ -245,7 +245,7 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   const online = provider(async (symbol) => changes[symbol] ?? null);
 
   const fb = await resolveCliTicker("FB", tickerStore(), online);
-  expect(fb.notes).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  expect(fb.notes).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)"]);
   expect(fb.change).toMatchObject({ kind: "moved", tradesAs: "META", listed: "ProShares S&P 500 Dynamic Daily Buffer ETF" });
   // Nothing lists the old symbol any more: the failure says where it went.
   expect((await failed(resolveCliTicker("TRCH", tickerStore(), online)))?.message)

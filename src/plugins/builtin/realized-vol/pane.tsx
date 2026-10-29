@@ -118,7 +118,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType), iv: showIv ? iv.data?.reference ?? null : null } : null,
   [model, quote?.currency, quote?.instrumentType, showIv, iv.data]);
   const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
-    ...(model?.warnings ?? []), ...(showIv ? iv.data?.warnings ?? [] : []),
+    ...(model?.warnings ?? []), model?.historyNote, ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
   ].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "realized-vol-notices", notices: [...new Set(notices)], focused });
@@ -154,15 +154,17 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     role: "report-notice", label: "Chart window",
     getMetadata: () => ({ text: `Chart legend: ${legendWindow}-bar window`, key: "legendWindow", value: legendWindow }),
   } : null);
+  const ivErrors = showIv ? [...new Set([iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null]
+    .filter((value): value is string => !!value))] : [];
   const evidence: RealizedVolEvidenceStatus = {
     symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator, legendWindow,
-    windows, lookbackYears: Number(lookback) === 2 ? 2 : 1, showIv,
+    windows, lookbackYears: Number(lookback) === 2 ? 2 : 1, showIv, shortWindows: model?.shortWindows ?? [],
     loading: history.loading || (showIv && iv.loading),
     stale: history.data?.stale ?? false, source: history.data?.source ?? null,
     asOf: model?.asOf?.toISOString() ?? null,
-    errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []),
-      ...(showIv ? [iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null] : []),
-    ].filter((value): value is string => !!value))],
+    errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []), ...ivErrors]
+      .filter((value): value is string => !!value))],
+    ivErrors,
     currentIv: showIv && iv.data?.reference ? { value: iv.data.reference.value * 100,
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,

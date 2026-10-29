@@ -621,10 +621,18 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
 
 /** Stories whose headline, summary or publisher matches the text, best match first; the service takes at most 100. */
 /** `topics` are NI codes the stories must carry: `query=gold&topics=metals` is gold's market news. */
-export function cloudNewsSearchPath(query: string, limit?: number, topics?: readonly string[]): string {
+/**
+ * `closest`: when no story has every word, the stories with the most of them, marked `match: "closest"`.
+ * `tickers`: only the stories filed under them (`HAWK:NYSE`).
+ */
+export function cloudNewsSearchPath(
+  query: string, limit?: number, topics?: readonly string[], options: { closest?: boolean; tickers?: readonly string[] } = {},
+): string {
   const search = new URLSearchParams({ query });
   if (limit != null) search.set("limit", String(limit));
   if (topics?.length) search.set("topics", topics.join(","));
+  if (options.tickers?.length) search.set("tickers", options.tickers.join(","));
+  if (options.closest) search.set("closest", "1");
   return appendQuery("/news/search", search);
 }
 

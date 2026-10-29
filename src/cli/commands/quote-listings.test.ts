@@ -342,7 +342,7 @@ test("a symbol whose company moved says so in one line and in its JSON row; the 
   };
 
   const moved = await quote(["FB", "META", "AAPL"], async (symbol) => changes[symbol] ?? null);
-  expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)"]);
   // META is what was typed: its change stays in the row as data, with no line.
   expect(moved.rows.map((row) => (row as { tickerChange?: { kind: string } }).tickerChange?.kind ?? null)).toEqual(["moved", "formerly", null]);
   // Offline: the quote still answers, with nothing extra.
@@ -440,7 +440,7 @@ test("search lists a symbol it no longer finds as no longer trading with its las
   }
 
   const fb = await json("FB");
-  expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
+  expect(fb.warnings).toEqual([`FB now lists ${fund}; FB was Meta Platforms before, now META (changed 2022-06-09)`]);
   expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
   // A symbol with no change and no quote says nothing more.
   expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloom catalog "ZZZZ"']);

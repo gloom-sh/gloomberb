@@ -2,6 +2,7 @@ import { formatFxRate } from "../cli/fx-pair";
 import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../types/financials";
 import { quotedFxPair } from "./currency-pair";
 import { resolveCurrencyUnit } from "./currency-units";
+import { isUsListingExchange } from "./exchanges";
 import { formatCompact } from "./format";
 import { formatUtcTime } from "./utc-time";
 
@@ -119,24 +120,53 @@ export function computedEnterpriseValueNote(fundamentals: Parameters<typeof ente
 }
 
 /** What names the currency of the trailing figures: the fundamentals' own labels, else the statements' on a listing that trades in theirs. */
-type FundamentalsCurrencies = Pick<TickerFinancials, "financialCurrency"> & {
+type FundamentalsCurrencies = Pick<TickerFinancials, "financialCurrency" | "statementHistory"> & {
   fundamentals?: Pick<Fundamentals, "financialCurrency" | "epsCurrency" | "marketCapCurrency"> | null;
-  quote?: Pick<Quote, "currency"> | null;
+  quote?: Pick<Quote, "currency" | "exchangeName" | "listingExchangeName" | "isDepositaryReceipt"> | null;
 };
+
+/** What a caller knows of the listing beyond its quote: the day it listed (its IPO's), when known. */
+interface ListingAge {
+  listedSince?: string | null;
+  now?: Date;
+}
+
+/** A listing that started within about a year: its statements may not be served yet. */
+const RECENT_LISTING_DAYS = 372;
+
+/**
+ * The listing's own currency, standing in for figures with no statements to tell their currency by: only for a
+ * listing of the last year or so (a recent IPO such as HAWK) or a US listing in dollars that is no receipt, and
+ * never after a statements read that failed. A minor unit (GBp) does not say whether figures are pence or pounds.
+ */
+function listingCurrencyFallback(financials: FundamentalsCurrencies | null | undefined, listing: ListingAge): string | undefined {
+  const listed = financials?.fundamentals?.marketCapCurrency?.trim() || financials?.quote?.currency?.trim();
+  if (!listed || resolveCurrencyUnit(listed).divisor !== 1) return undefined;
+  if (financials?.statementHistory?.status === "retryable-failure") return undefined;
+  const currency = resolveCurrencyUnit(listed).currency;
+  const since = listing.listedSince ? Date.parse(`${listing.listedSince.slice(0, 10)}T00:00:00Z`) : NaN;
+  const recent = Number.isFinite(since) && (listing.now ?? new Date()).getTime() - since <= RECENT_LISTING_DAYS * 86_400_000;
+  const quote = financials?.quote;
+  const home = currency === "USD" && quote?.isDepositaryReceipt !== true
+    && isUsListingExchange(quote?.listingExchangeName || quote?.exchangeName);
+  return recent || home ? currency : undefined;
+}
 
 /**
  * The currency of the trailing EPS, revenue, income and cash flows: the one the fundamentals declare for themselves.
  * A block that declares none is in the statements' currency only when the listing trades in it; on a listing quoted
  * in another (a receipt in USD beside TWD books, YPFD in ARS beside USD statements) its currency is unknown, since
- * Gloom Cloud labels every block whose currency it can tell. Never the quote's.
+ * Gloom Cloud labels every block whose currency it can tell. With no statements to tell by, the listing's own
+ * currency where that is safe (listingCurrencyFallback).
  */
 export function fundamentalsCurrency(
   financials: FundamentalsCurrencies | null | undefined,
+  listing: ListingAge = {},
 ): string | undefined {
   const declared = financials?.fundamentals?.financialCurrency?.trim();
   if (declared) return declared;
   const statements = financials?.financialCurrency?.trim();
-  if (!statements) return undefined;
+  if (!statements) return listingCurrencyFallback(financials, listing);
   const listed = financials?.fundamentals?.marketCapCurrency?.trim() || financials?.quote?.currency?.trim();
   return !listed || resolveCurrencyUnit(listed).currency === resolveCurrencyUnit(statements).currency ? statements : undefined;
 }
@@ -147,8 +177,9 @@ export function fundamentalsCurrency(
  */
 export function fundamentalsEpsCurrency(
   financials: FundamentalsCurrencies | null | undefined,
+  listing: ListingAge = {},
 ): string | undefined {
-  return financials?.fundamentals?.epsCurrency?.trim() || fundamentalsCurrency(financials);
+  return financials?.fundamentals?.epsCurrency?.trim() || fundamentalsCurrency(financials, listing);
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
