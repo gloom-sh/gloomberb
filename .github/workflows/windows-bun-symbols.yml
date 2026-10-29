@@ -1,4 +1,4 @@
-name: Name addresses in Bun 1.3.13 baseline and Arm ntdll
+name: Name addresses in Bun 1.3.13 baseline
 
 on:
   push:
@@ -25,26 +25,9 @@ jobs:
           $Commands = @(
             ".reload /f", "lmv m bun_profile",
             "ln bun_profile+0x3282dd", "u bun_profile+0x3282dd-0x40 L28", "uf /c bun_profile+0x3282dd",
-            "ln bun_profile+0x4dca1f", "ln bun_profile+0x6a7d3a", "ln bun_profile+0x6a78da",
+            "x bun_profile!*segfault_handle*", "x bun_profile!*handleSegfaultWindows*", "x bun_profile!*panic_stage*",
+            "!dh -s bun_profile",
             "q"
           ) -join "; "
-          & $Cdb -z (Join-Path $Bin "bun-profile.exe") -y $Bin -c $Commands 2>&1 | Select-Object -Last 220
+          & $Cdb -z (Join-Path $Bin "bun-profile.exe") -y $Bin -c $Commands 2>&1 | Select-Object -Last 120
 
-  ntdll:
-    runs-on: windows-11-arm
-    steps:
-      - name: Name the ntdll fault and its caller
-        shell: pwsh
-        run: |
-          $Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe"
-          $Sym = "srv*$env:RUNNER_TEMP\sym*https://msdl.microsoft.com/download/symbols"
-          (Get-Item C:\Windows\System32\ntdll.dll).VersionInfo | Format-List FileVersion, ProductVersion
-          $Commands = @(
-            ".reload /f", "lm m ntdll",
-            "ln ntdll+0x18c580", "u ntdll+0x18c580-0x30 L24",
-            "ln ntdll+0x23e630", "u ntdll+0x23e630-0x10 L8",
-            "q"
-          ) -join "; "
-          & $Cdb -z C:\Windows\System32\ntdll.dll -y $Sym -c $Commands 2>&1 | Select-Object -Last 80
-          $Commands = @(".reload /f", "lm m xtajit64se", "ln xtajit64se+0x1bf0e0", "q") -join "; "
-          & $Cdb -z C:\Windows\System32\xtajit64se.dll -y $Sym -c $Commands 2>&1 | Select-Object -Last 12
