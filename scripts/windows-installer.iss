@@ -253,8 +253,73 @@ begin
   end;
 end;
 
+// The list in which updates from inside the app name every file they put in
+// its folder (installer-folder.ts): this uninstaller removes only the files it
+// installed itself.
+function UpdateFileList(): string;
+begin
+  Result := ExpandConstant('{app}\Resources\update-files.txt');
+end;
+
+// A path from that list: relative, and inside the app's folder.
+function IsInsideApp(Path: string): Boolean;
+begin
+  if Path = '' then
+    Result := False
+  else
+    Result := (Pos(':', Path) = 0) and (Pos('..', Path) = 0) and (Path[1] <> '\') and (Path[1] <> '/');
+end;
+
+// The folders above Path, inside the app's folder, that it leaves empty.
+procedure RemoveEmptyFoldersAbove(Path: string);
+var
+  Folder: string;
+begin
+  Folder := ExtractFileDir(Path);
+  while Length(Folder) > Length(ExpandConstant('{app}')) do
+  begin
+    if not RemoveDir(Folder) then
+      Exit;
+    Folder := ExtractFileDir(Folder);
+  end;
+end;
+
+// What updates added: the files they list, and what a move into this folder
+// that did not finish left (.gloom-next-*, .gloom-previous-*). A file they do
+// not list stays, and so does the folder holding it: one the user picked can
+// hold their own files, in its bin as well.
+procedure RemoveFilesAddedByUpdates();
+var
+  Files: TArrayOfString;
+  Path: string;
+  I: Integer;
+begin
+  if not DirExists(ExpandConstant('{app}')) then
+    Exit;
+  if LoadStringsFromFile(UpdateFileList(), Files) then
+  begin
+    for I := 0 to GetArrayLength(Files) - 1 do
+    begin
+      Path := Trim(Files[I]);
+      if IsInsideApp(Path) then
+      begin
+        DeleteFile(ExpandConstant('{app}\') + Path);
+        RemoveEmptyFoldersAbove(ExpandConstant('{app}\') + Path);
+      end;
+    end;
+    DeleteFile(UpdateFileList());
+    RemoveEmptyFoldersAbove(UpdateFileList());
+  end;
+  DelTree(ExpandConstant('{app}\.gloom-next-*'), False, True, True);
+  DelTree(ExpandConstant('{app}\.gloom-previous-*'), False, True, True);
+  RemoveDir(ExpandConstant('{app}'));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
+  begin
     RemovePathEntry();
+    RemoveFilesAddedByUpdates();
+  end;
 end;

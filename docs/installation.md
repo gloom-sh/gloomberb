@@ -44,7 +44,7 @@ Install the desktop app:
 
 The installer is not code-signed yet, so Windows SmartScreen may stop it. Click **More info** on the "Windows protected your PC" screen, then **Run anyway**. To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).
 
-- **Folder:** `%LOCALAPPDATA%\Programs\Gloom`. Installers up to 0.18.4 used `Programs\Gloomberb`; running a new installer over such an install moves it, with its PATH entry.
+- **Folder:** `%LOCALAPPDATA%\Programs\Gloom`, where updates from inside the app install too. Installers up to 0.18.4 used `Programs\Gloomberb`; running a new installer over such an install moves it, with its PATH entry. Earlier versions installed an update from inside the app in `%LOCALAPPDATA%\com.vincelwt.gloomberb\stable\app` instead, and the Start menu kept opening the version before it. The first time a current version starts from there, it moves itself into the installer's folder and opens again. In a folder you picked that holds other files, such as `C:\Tools` with its own `bin`, updates replace only the app's files, and uninstalling removes only those.
 - **Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
