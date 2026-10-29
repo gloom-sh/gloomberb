@@ -1,0 +1,57 @@
+name: Windows on Arm launch repro
+
+on:
+  push:
+    branches:
+      - chore/windows-arm-repro
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stays-up:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm-v0.18.5
+            os: windows-11-arm
+            tags: v0.18.5
+          - name: arm-v0.19.0
+            os: windows-11-arm
+            tags: v0.19.0
+          - name: arm-v0.19.1
+            os: windows-11-arm
+            tags: v0.19.1
+          - name: arm-v0.18.5-then-v0.19.1
+            os: windows-11-arm
+            tags: v0.18.5 v0.19.1
+          - name: x64-v0.19.1
+            os: windows-latest
+            tags: v0.19.1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install and open each release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $Failed = @()
+          foreach ($Tag in "${{ matrix.tags }}".Split(" ")) {
+            $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-$Tag.exe"
+            Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/$Tag/stable-win-x64-GloomSetup.exe" -OutFile $Installer
+            try {
+              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Tag -Seconds 90
+            } catch {
+              $Failed += "${Tag}: $($_.Exception.Message)"
+            }
+          }
+          if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stays-up-${{ matrix.name }}
+          path: artifacts/windows-stays-up
