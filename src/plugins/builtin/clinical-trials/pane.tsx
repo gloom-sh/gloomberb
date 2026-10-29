@@ -12,11 +12,9 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
   type QueryBarFilter,
-  type RowPage,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
@@ -34,14 +32,17 @@ import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { ClinicalTrialsClient, type ClinicalTrial, type DatePrecision, type TrialDateType } from "./client";
+import { missingCell, NO_VALUE } from "../shared/research-cells";
+import { ClinicalTrialsClient, trialDrug, type ClinicalTrial, type DatePrecision, type TrialDateType } from "./client";
 import {
   ALL,
   PHASE_FILTER_OPTIONS,
   SPONSOR_FILTER_OPTIONS,
   STATUS_FILTER_OPTIONS,
+  hasTrialPhase,
   keepsToneWhenSelected,
   normalizeTrialFilters,
+  orderTrials,
   sponsorClassLabel,
   trialFiltersNarrow,
   trialFiltersQuery,
@@ -55,16 +56,19 @@ import {
   type TrialFilterOption,
   type TrialFilters,
 } from "./model";
-import { useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
+import { sponsorTickerStore, useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
+import { COMPANIES_FIRST, createTrialPageLoader } from "./trial-pages";
 import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const DEFAULT_PAGE_SIZE = 50;
+/** How long a page waits for its sponsors' tickers, so the list draws already in order; a slower lookup fills in after. */
+const TICKER_WAIT_MS = 2000;
 
 /** As precise as the registry gave it, marked when it is the sponsor's estimate. */
 function formatDate(date: Date | null, precision: DatePrecision = "day", type?: TrialDateType): string {
-  if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return "-";
+  if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return NO_VALUE;
   const text = date.toISOString().slice(0, precision === "year" ? 4 : precision === "month" ? 7 : 10);
   return type === "ESTIMATED" ? `${text} (est.)` : text;
 }
@@ -74,7 +78,7 @@ function trialPosted(trial: ClinicalTrial): Date | null {
   return trial.firstPostDate ?? trial.firstSubmitDate;
 }
 
-/** The ticker cell: the symbol, its venue when there is room; blank when there is none; `?` when it was not looked up. */
+/** The ticker cell: the symbol, its venue when there is room; the blank mark when there is none; `?` when it was not looked up; nothing while it is being looked up. */
 function tickerCell(ticker: SponsorTicker | undefined, showVenue: boolean, colors: ThemeColors, selected: boolean, open: () => void): DataTableCell {
   if (ticker?.kind === "listed") {
     const venue = showVenue && ticker.exchange && !/^(NYSE|NASDAQ|AMEX|ARCA|BATS|CBOE)$/.test(ticker.exchange) ? ticker.exchange : "";
@@ -90,6 +94,7 @@ function tickerCell(ticker: SponsorTicker | undefined, showVenue: boolean, color
     };
   }
   if (ticker?.kind === "failed") return { text: "?", value: null, color: colors.textMuted };
+  if (ticker?.kind === "none") return missingCell(colors);
   return { text: "", value: null };
 }
 
@@ -121,7 +126,7 @@ function trialFacts(trial: ClinicalTrial, ticker: SponsorTicker | undefined, col
     ticker?.kind === "listed"
       ? { label: "Ticker", value: tickerDetail(ticker), color: colors.textBright, link: { label: tf("Open {ticker}", { ticker: ticker.ticker }), onOpen: openTicker } }
       : { label: "Ticker", value: tickerDetail(ticker), color: colors.textDim },
-    { label: "Enrollment", value: trial.enrollment != null ? trial.enrollment.toLocaleString("en-US") : "-" },
+    { label: "Enrollment", value: trial.enrollment != null ? trial.enrollment.toLocaleString("en-US") : NO_VALUE },
     { label: "Registry ID", value: trial.nctId },
     { label: "Start", value: formatDate(trial.startDate, trial.startDatePrecision, trial.startDateType) },
     { label: "Posted", value: formatDate(trialPosted(trial)) },
@@ -168,24 +173,27 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
 
   // The registry pages by an opaque token, which the next page's offset keys.
   // A new search or filter makes a new loader and so starts over with no tokens.
+  // With no sponsor class chosen, the companies' studies page first and the rest
+  // after them, so the list opens on the companies instead of on whatever was
+  // updated last; the pane orders what has loaded (`orderTrials`).
   const term = query.trim();
   const filtersKey = `${filters.status}|${filters.phase}|${filters.sponsorClass}`;
-  const loadPage = useMemo(() => {
-    const tokens = new Map<number, string>();
-    const narrowing = trialFiltersQuery(filters);
-    return async ({ offset, signal }: PageRequest): Promise<RowPage<ClinicalTrial>> => {
-      const pageToken = offset > 0 ? tokens.get(offset) : undefined;
-      if (offset > 0 && !pageToken) return { rows: [], hasMore: false };
-      const page = await client.listTrials({ term: term || undefined, ...narrowing, pageSize: DEFAULT_PAGE_SIZE, pageToken }, signal);
-      const nextOffset = offset + page.trials.length;
-      if (page.nextPageToken) tokens.set(nextOffset, page.nextPageToken);
-      return { rows: page.trials, hasMore: !!page.nextPageToken, nextOffset };
-    };
+  const loadPage = useMemo(() => createTrialPageLoader({
+    list: (studiesQuery, signal) => client.listTrials(studiesQuery, signal),
+    query: { term: term || undefined, ...trialFiltersQuery(filters), pageSize: DEFAULT_PAGE_SIZE },
+    stages: filters.sponsorClass === ALL ? COMPANIES_FIRST : [{}],
+    // A page's sponsors are asked for before it shows, so it lands in order; a slow lookup fills in after.
+    onPage: (pageTrials, signal) => sponsorTickerStore.loadWithin(
+      pageTrials.map((trial) => trial.sponsor),
+      TICKER_WAIT_MS,
+      signal,
+      { companies: pageTrials.filter((trial) => trial.sponsorClass === "INDUSTRY").map((trial) => trial.sponsor) },
+    ),
     // `filtersKey` stands for `filters`, which is rebuilt each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, filtersKey, term]);
+  }), [client, filtersKey, term]);
   const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true });
-  const trials = studies.rows;
+  const loadedTrials = studies.rows;
   const loadMore = useTableLoadMore(scrollRef, studies.hasMore && !openItemId, studies.loadMore);
   // Scrolling asks for the next page, so a page that does not fill a tall
   // pane asks for it once it is laid out.
@@ -197,12 +205,19 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       if (box?.viewport && box.scrollHeight > 0 && box.scrollHeight <= box.viewport.height) loadNextPage();
     }, 0);
     return () => clearTimeout(timer);
-  }, [hasMore, height, loadNextPage, loadingMore, openItemId, trials.length]);
+  }, [hasMore, height, loadNextPage, loadingMore, openItemId, loadedTrials.length]);
 
-  // Tickers come from Gloom Cloud a page of sponsors at a time; rows never wait for them.
-  const sponsors = useMemo(() => [...new Set(trials.map((trial) => trial.sponsor))], [trials]);
-  const sponsorTickers = useSponsorTickers(sponsors, session.requestKey);
+  // Tickers come from Gloom Cloud a page of sponsors at a time; a page waits a moment for them (see the loader).
+  // A company its ticker lookup has no name for is looked up in its search (Bayer is BAYN on Xetra).
+  const sponsors = useMemo(() => [...new Set(loadedTrials.map((trial) => trial.sponsor))], [loadedTrials]);
+  const companies = useMemo(
+    () => [...new Set(loadedTrials.filter((trial) => trial.sponsorClass === "INDUSTRY").map((trial) => trial.sponsor))],
+    [loadedTrials],
+  );
+  const sponsorTickers = useSponsorTickers(sponsors, session.requestKey, { companies });
   const tickerOf = useCallback((trial: ClinicalTrial) => sponsorTickers.tickers.get(trial.sponsor), [sponsorTickers.tickers]);
+  // Listed sponsors first, then other companies, then the rest, the latest phase first in each.
+  const trials = useMemo(() => orderTrials(loadedTrials, tickerOf), [loadedTrials, tickerOf]);
 
   const selectedTrial = trials.find((item) => item.nctId === selectedId) ?? trials[0] ?? null;
   const openTrial = openItemId
@@ -307,11 +322,11 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     switch (column.id) {
       case "updated": {
         const updated = formatDate(trial.lastUpdatePostDate);
-        return trial.lastUpdatePostDate ? { text: updated, value: updated, color: colors.textDim } : { text: "--", value: null, color: colors.textMuted };
+        return trial.lastUpdatePostDate ? { text: updated, value: updated, color: colors.textDim } : missingCell(colors);
       }
       case "phase": {
-        const text = trialPhaseLabel(trial.phases, layout.compact);
-        return { text, color: text === "--" || text === "N/A" ? colors.textMuted : colors.text };
+        if (!hasTrialPhase(trial.phases)) return missingCell(colors);
+        return { text: trialPhaseLabel(trial.phases, layout.compact), color: colors.text };
       }
       case "status": {
         const status = trialStatus(trial.status);
@@ -324,6 +339,10 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       }
       case "title":
         return { text: trial.title, color: colors.text, attributes: rowState.selected ? TextAttributes.BOLD : undefined };
+      case "drug": {
+        const drug = trialDrug(trial);
+        return drug ? { text: drug, color: colors.text } : missingCell(colors);
+      }
       case "sponsor":
         return { text: trial.sponsor, color: trial.sponsorClass === "INDUSTRY" ? colors.textBright : colors.textDim };
       case "ticker": {

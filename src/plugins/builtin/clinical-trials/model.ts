@@ -1,7 +1,8 @@
 import type { DataTableColumn } from "../../../components";
 import { blendHex, type ThemeColors } from "../../../theme/colors";
 import type { PaneReportOptionDef } from "../../../types/plugin";
-import type { StudiesQuery } from "./client";
+import type { ClinicalTrial, StudiesQuery } from "./client";
+import type { SponsorTicker } from "./sponsor-tickers";
 
 /**
  * Where a study stands, as a reader of the list sorts it: open to patients,
@@ -107,6 +108,55 @@ export function trialPhaseLabel(phases: readonly string[], compact = false): str
     .filter(Boolean))]
     .sort();
   return `${compact ? "Ph" : "Phase"} ${numbers.join("/")}`;
+}
+
+/** Whether the study has a phase to show: not an observational study with none, nor a device study the registry calls not applicable. */
+export function hasTrialPhase(phases: readonly string[]): boolean {
+  const label = trialPhaseLabel(phases);
+  return label !== "--" && label !== "N/A";
+}
+
+/**
+ * How far along a study's phase is, for ordering: Phase 4 before 3 before 2
+ * before 1 before early phase 1, a study of two phases (2/3) by its later
+ * one, and a study with no phase to show after them all.
+ */
+export function trialPhaseRank(phases: readonly string[]): number {
+  let rank = 0;
+  for (const phase of phases) {
+    const code = phase.trim().toUpperCase();
+    const value = code === "EARLY_PHASE1" ? 0.5 : Number(code.replace("PHASE", ""));
+    if (Number.isFinite(value) && value > rank) rank = value;
+  }
+  return rank;
+}
+
+/**
+ * The three kinds of lead sponsor the list is ordered by: a company whose
+ * ticker Gloom Cloud found (0), any other company (1), and everything else:
+ * universities, hospitals, agencies, networks and individuals (2).
+ */
+type TrialSponsorGroup = 0 | 1 | 2;
+
+function trialSponsorGroup(trial: Pick<ClinicalTrial, "sponsorClass">, ticker: SponsorTicker | undefined): TrialSponsorGroup {
+  if (ticker?.kind === "listed") return 0;
+  return trial.sponsorClass === "INDUSTRY" ? 1 : 2;
+}
+
+/**
+ * The studies as the pane lists them: listed sponsors first, then other
+ * companies, then everything else, the latest phase first within each; studies
+ * of one group and phase stay in the registry's order (most recently updated
+ * first). A new array, so the loaded rows keep their order.
+ */
+export function orderTrials<T extends Pick<ClinicalTrial, "sponsorClass" | "phases" | "sponsor">>(
+  trials: readonly T[],
+  tickerOf: (trial: T) => SponsorTicker | undefined,
+): T[] {
+  return trials
+    .map((trial, index) => ({ trial, index, group: trialSponsorGroup(trial, tickerOf(trial)), phase: trialPhaseRank(trial.phases) }))
+    .sort((a, b) => a.group - b.group || b.phase - a.phase || a.index - b.index)
+    .map(({ trial }) => trial);
 }
 
 /** The phase as the detail view says it. */
@@ -228,7 +278,7 @@ export const TRIAL_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [
   },
 ];
 
-type TrialColumnId = "updated" | "phase" | "status" | "title" | "sponsor" | "ticker";
+type TrialColumnId = "updated" | "phase" | "status" | "title" | "drug" | "sponsor" | "ticker";
 export type TrialColumn = DataTableColumn & { id: TrialColumnId };
 
 export interface TrialLayout {
@@ -242,28 +292,42 @@ export interface TrialLayout {
 /** The gap after each column plus the table's padding, as the terminal table draws them. */
 const TABLE_CHROME = 1 + 2;
 
+/** The title is what the list is read by: the drug and then the date give way before it has less than this. */
+const TITLE_ROOM_WITH_DRUG = 24;
+const TITLE_ROOM_WITH_DATE = 36;
+/** An ISO day, as every date column reads. */
+const DATE_WIDTH = 10;
+
 /**
- * The title takes what is left; status, phase and ticker stay narrow and the
- * sponsor keeps a readable width. Status reads in full, and the sponsor and
- * ticker widen, only once the title has room of its own. The columns add up
- * to the pane, so nothing scrolls sideways.
+ * The title takes what is left; phase, status and ticker stay narrow and the
+ * sponsor keeps a readable width. Status reads in full, and the sponsor, drug
+ * and ticker widen, only once the title has room of its own. The columns add
+ * up to the pane, so nothing scrolls sideways. Narrower than a terminal the
+ * drug, and before it the update date (the detail has it, and the list's
+ * dates run close together), give way to the title.
  */
 export function trialLayout(width: number): TrialLayout {
-  const compact = width < 90;
+  const compact = width < 100;
   const wide = width >= 140;
-  // Narrower than a terminal, the update date gives way to the title: the list
-  // is newest first and the detail has the date.
-  const timed = width >= 76;
-  const fixed: TrialColumn[] = [
-    // An ISO day, as every date column reads.
-    ...(timed ? [{ id: "updated" as const, label: "Updated", width: 10, align: "left" as const }] : []),
-    { id: "phase", label: "Phase", width: compact ? 7 : 9, align: "left" },
-    { id: "status", label: "Status", width: wide ? 23 : 11, align: "left" },
-    { id: "sponsor", label: "Sponsor", width: wide ? 30 : compact ? 15 : 22, align: "left" },
-    { id: "ticker", label: "Ticker", width: wide ? 11 : 6, align: "left" },
-  ];
-  const used = fixed.reduce((sum, column) => sum + column.width + 1, 0) + TABLE_CHROME;
-  const title: TrialColumn = { id: "title", label: "Title", width: Math.max(12, width - used - 1), align: "left", flexGrow: 1 };
-  const statusAt = fixed.findIndex((column) => column.id === "status") + 1;
-  return { compact, showVenue: wide, columns: [...fixed.slice(0, statusAt), title, ...fixed.slice(statusAt)] };
+  const phase: TrialColumn = { id: "phase", label: "Phase", width: compact ? 7 : 9, align: "left" };
+  const status: TrialColumn = { id: "status", label: "Status", width: wide ? 23 : 11, align: "left" };
+  const drug: TrialColumn = { id: "drug", label: "Drug", width: wide ? 18 : compact ? 12 : 14, align: "left" };
+  const sponsor: TrialColumn = { id: "sponsor", label: "Sponsor", width: wide ? 28 : compact ? 15 : 22, align: "left" };
+  const ticker: TrialColumn = { id: "ticker", label: "Ticker", width: wide ? 11 : 6, align: "left" };
+  const updated: TrialColumn = { id: "updated", label: "Updated", width: DATE_WIDTH, align: "left" };
+  const cells = (columns: TrialColumn[]) => columns.reduce((sum, column) => sum + column.width + 1, 0) + TABLE_CHROME;
+  // What the title keeps beside the other columns: its own gap, and the pane's last column's.
+  const titleWidth = (columns: TrialColumn[]) => width - cells(columns) - 1;
+  const base = [phase, status, sponsor, ticker];
+  const withDrug = titleWidth([...base, drug]) >= TITLE_ROOM_WITH_DRUG;
+  const lead = withDrug ? [...base, drug] : base;
+  const timed = titleWidth([...lead, updated]) >= TITLE_ROOM_WITH_DATE;
+  const rest = timed ? [...lead, updated] : lead;
+  const title: TrialColumn = { id: "title", label: "Title", width: Math.max(12, titleWidth(rest)), align: "left", flexGrow: 1 };
+  return {
+    compact,
+    showVenue: wide,
+    // Phase and status, the title, then what is about the study (drug, sponsor, ticker) and when it was updated.
+    columns: [phase, status, title, ...(withDrug ? [drug] : []), sponsor, ticker, ...(timed ? [updated] : [])],
+  };
 }

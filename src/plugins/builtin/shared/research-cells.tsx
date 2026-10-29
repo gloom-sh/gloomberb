@@ -14,7 +14,7 @@ import { displayWidth } from "../../../utils/format";
  */
 
 /** The one placeholder for a value the source does not give. */
-const NO_VALUE = "--";
+export const NO_VALUE = "--";
 
 export const missingCell = (colors: ThemeColors): DataTableCell => ({ text: NO_VALUE, value: null, color: colors.textMuted });
 
