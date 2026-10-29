@@ -1170,8 +1170,11 @@ class Run {
       const header = rowColor(bitmap, bitmap.height - 2, 0, span);
       const rows = [0, 1, 2].map((y) => rowColor(bitmap, y, 0, span));
       facts.push(`top rows ${rows.map((row) => hex(row.color)).join(" ")} over the header's ${hex(header.color)}`);
+      // Windows draws its border over the top rows as thick as beside the
+      // page: 1 px at 100%, 2 rows at 150%, the second blended darker.
+      const border = Math.max(1, Math.min(insets.left, insets.right));
       rows.forEach((row, y) => {
-        if (row.share > 0.8 && colorDistance(row.color, header.color) > 24 && y > 0) {
+        if (row.share > 0.8 && colorDistance(row.color, header.color) > 24 && y >= border) {
           problems.push(`row ${y} at the top is a ${hex(row.color)} strip over the ${hex(header.color)} header`);
         }
       });
