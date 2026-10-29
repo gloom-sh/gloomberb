@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
-import { cloudNewsFreshness, quoteObservation } from "../../plugins/builtin/shared/report-freshness";
+import { cloudNewsFreshness, quoteObservation, SEC_FILING_ROWS } from "../../plugins/builtin/shared/report-freshness";
 import { createTestQuote } from "../../test-support/data-provider";
 import { quotesFreshness } from "../freshness";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
@@ -75,6 +75,14 @@ describe("report freshness", () => {
     ] }, now);
     expect(split).toMatchObject({ asOf: "2026-09-01" });
     expect(split.referencePeriod).toBeUndefined();
+  });
+
+  test("a list of filings is dated by its newest filing and by when it was read", () => {
+    const filings = { rows: [{ filingDate: "2026-10-06" }, { filingDate: "2026-08-13" }] };
+    const declared = rows(SEC_FILING_ROWS);
+    expect(line(declared, filings)).toBe("Source: SEC EDGAR · newest filing Tue 6 Oct 2026 · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
+    // No filing to date it by: when it was read, once.
+    expect(line(declared, { rows: [] })).toBe("Source: SEC EDGAR · retrieved Fri 9 Oct 2026 05:00 UTC · not a live feed (filed data)");
   });
 
   test("says how long a delay is in minutes or hours, as a range when rows differ", () => {

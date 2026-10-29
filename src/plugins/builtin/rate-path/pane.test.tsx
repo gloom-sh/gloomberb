@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
@@ -26,6 +26,7 @@ function payload(): RatePathPayload {
 const tui = createOpenTuiTestHarness();
 let spy: { mockRestore(): void } | undefined;
 afterEach(() => {
+  setSystemTime();
   spy?.mockRestore(); spy = undefined;
   ratePathCache.reset();
 });
@@ -69,6 +70,8 @@ test("the path fits the body: short panes give the meetings the room instead of 
 });
 
 test("the path names what it plots: one target range, the SEP dots, meetings by month", async () => {
+  // Before the payload's first meeting, so the header counts down to it instead of printing its date.
+  setSystemTime(new Date("2026-09-22T15:00:00Z"));
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
   const lines = await render(140, 45);
   const header = lines.findIndex((line) => line.includes("MEETING"));

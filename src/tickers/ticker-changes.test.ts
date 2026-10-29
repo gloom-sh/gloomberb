@@ -31,7 +31,7 @@ describe("describeTickerChange", () => {
     expect(change).toEqual({
       symbol: "FB",
       kind: "moved",
-      note: "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
+      note: "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)",
       changes: [{ from: "FB", to: "META", date: "2022-06-09" }],
       tradesAs: "META",
       issuer: "Meta Platforms",
@@ -48,7 +48,21 @@ describe("describeTickerChange", () => {
     // Without a look of its own, the command goes by what the service lists there.
     expect(describeTickerChange("FB", FB)?.note).toBe(changed);
     expect(describeTickerChange("FB", { ...FB, listedName: "ProShares Fund" })?.note)
-      .toBe("FB now lists ProShares Fund; Meta Platforms trades as META (changed 2022-06-09)");
+      .toBe("FB now lists ProShares Fund; FB was Meta Platforms before, now META (changed 2022-06-09)");
+  });
+
+  test("a reused ticker says which company it was before, in the case its name is written (LIFE)", () => {
+    const life: TickerChanges = {
+      symbol: "LIFE",
+      moved: { symbol: "ATYR", name: "aTYR PHARMA INC", hops: [{ from: "LIFE", to: "ATYR", date: "2024-06-05" }] },
+      formerly: null,
+      listedName: "Ethos Technologies Inc.",
+      changes: [{ from: "LIFE", to: "ATYR", date: "2024-06-05" }],
+    };
+    expect(describeTickerChange("LIFE", life, { name: "Ethos Technologies Inc.", lastTraded: Date.parse("2026-10-28T20:00:00Z") })).toMatchObject({
+      note: "LIFE now lists Ethos Technologies Inc.; LIFE was aTyr Pharma before, now ATYR (changed 2024-06-05)",
+      issuer: "aTyr Pharma",
+    });
   });
 
   test("follows a company through each later symbol", () => {

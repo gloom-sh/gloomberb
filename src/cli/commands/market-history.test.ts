@@ -249,7 +249,7 @@ test("history of a listing that stopped trading says so instead of not a ticker,
   await expect(history.execute(["TWTR", "--range", "5Y"], cli.context)).rejects.toThrow("TWTR stopped trading 2022-10-27; no history or options served.");
   await history.execute(["FB"], cli.context);
   expect(cli.printed[0]!.result.warnings?.[0]).toBe(
-    "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
+    "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)",
   );
 });
 
