@@ -1,5 +1,6 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import {
+  econEventName,
   eventCountry,
   getCalendarCache,
   landedHighImpactPrints,
@@ -57,7 +58,8 @@ const DEFAULT_DEPS: PrintWatchDeps = {
 };
 
 function printBody(event: EconEvent): string {
-  return event.forecast ? `${event.event} ${event.actual} vs ${event.forecast}` : `${event.event} ${event.actual}`;
+  const name = econEventName(event);
+  return event.forecast ? `${name} ${event.actual} vs ${event.forecast}` : `${name} ${event.actual}`;
 }
 
 type PrintWatchContext = Pick<GloomPluginContext, "notify" | "showPane">;

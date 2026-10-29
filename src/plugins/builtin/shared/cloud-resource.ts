@@ -1,5 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
-import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import type { PluginCacheResult } from "../../../data/plugin-cache";
 
 interface CloudCache<T> {
@@ -12,6 +12,8 @@ export interface CloudResource<T> {
   payload: T;
   stale: boolean;
   refreshError: string | null;
+  /** When the copy shown was saved, when it is one because its refresh failed. */
+  savedAt?: number;
 }
 
 /**
@@ -36,8 +38,9 @@ const isAbort = (error: unknown) => !!error && typeof error === "object" && (err
 
 /**
  * Loads through the cache, falling back to the cached copy when a refresh
- * fails. A refused session still throws, so the pane shows its sign-in wall
- * instead of data the account can no longer see.
+ * fails. A refusal asking again will not change still throws: a refused
+ * session, so the pane shows its sign-in wall instead of data the account can
+ * no longer see, and any other permanent client error (an unknown series).
  *
  * Callers of one key share the request in flight, which runs on the first
  * caller's `signal`. When that caller goes away (a tab left while it loads,
@@ -57,8 +60,13 @@ export async function loadCloudResource<T>(
     throw error;
   });
   if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
-  if (isAccessDenied(result.error)) throw result.error;
-  return { payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null };
+  const saved = result.source === "stale-fallback";
+  if (saved && isPermanentClientError(result.error)) throw result.error;
+  // A copy served because its refresh failed is one by where it came from, whatever the failure said (or did not).
+  return {
+    payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
+    ...(saved ? { savedAt: result.fetchedAt } : {}),
+  };
 }
 
 /**

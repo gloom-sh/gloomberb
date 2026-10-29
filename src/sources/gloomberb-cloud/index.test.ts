@@ -6,6 +6,7 @@ import { cloudNewsParams } from "./news";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { ProviderBusyError, ProviderMissError, providerMissReason } from "../provider-errors";
 import { verifiedUser } from "../../test-support/cloud-api";
+import { providerQuoteMatchesTarget } from "../provider-router/financials";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
 const originalGetCloudSecFilings = apiClient.getCloudSecFilings.bind(apiClient);
@@ -231,7 +232,8 @@ describe("GloomberbCloudProvider", () => {
     };
     apiClient.getCloudQuotesBatch = async (targets) => {
       for (const target of targets) requests.push(["batch", target.symbol, target.exchange]);
-      return { status: "success", data: { items: targets.map((target) => ({ ...target, status: "success" as const, data: quote(target.symbol) })) } };
+      return { status: "success", data: { items: targets.map((target) => ({ ...target, status: "success" as const,
+        data: { ...quote(target.symbol), listingExchangeName: target.exchange } })) } };
     };
     apiClient.getCloudHistory = async (symbol, exchange) => {
       requests.push(["history", symbol, exchange]);
@@ -250,6 +252,105 @@ describe("GloomberbCloudProvider", () => {
       ["batch", "0700", "HKEX"], ["batch", "1211", "HKEX"], ["batch", "7203", "JPX"],
       ["history", "0005", "HKEX"],
     ]);
+  });
+
+  test("a quote for another listing than the one asked for is no answer: BHP on Cboe Australia is never the NYSE receipt", async () => {
+    // Asked for BHP on CXA, the service answered with BHP on NYSE at 81.81 USD.
+    const nyse = { symbol: "BHP", price: 81.81, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName: "NYSE" };
+    const answers: Record<string, typeof nyse> = { ASX: { ...nyse, price: 58.04, currency: "AUD", listingExchangeName: "ASX" } };
+    apiClient.getCloudQuote = async (_symbol, exchange) => ({ status: "success", data: answers[exchange ?? ""] ?? nyse });
+    apiClient.getCloudQuotesBatch = async (targets) => ({ status: "success", data: { items: targets.map((target) => ({
+      ...target, exchange: target.exchange ?? "", status: "success" as const, data: answers[target.exchange ?? ""] ?? nyse,
+    })) } });
+    const provider = new GloomberbCloudProvider();
+    for (const [symbol, exchange] of [["BHP", "CXA"], ["BHP:CXA", ""]] as const) {
+      const error = await provider.getQuote(symbol, exchange).catch((caught: unknown) => caught);
+      expect(error, symbol).toBeInstanceOf(ProviderMissError);
+    }
+    expect(await provider.getQuote("BHP", "ASX")).toMatchObject({ price: 58.04, currency: "AUD" });
+    expect(await provider.getQuote("BHP", "NYSE")).toMatchObject({ price: 81.81, currency: "USD" });
+    const targets = [{ symbol: "BHP", exchange: "CXA" }, { symbol: "BHP", exchange: "ASX" }];
+    const batch = await provider.getQuotesBatch(targets);
+    expect(batch.find((result) => result.target === targets[0])).toMatchObject({ quote: null, error: expect.any(ProviderMissError) });
+    expect(batch.find((result) => result.target === targets[1])?.quote).toMatchObject({ price: 58.04, currency: "AUD" });
+  });
+
+  test("a crypto exchange's line of a coin pair is quoted as the crypto venue's listing, in the pair's currency", async () => {
+    // Search offered BTC/GBP on COINBASE PRO; no source quotes that line, and the row read as dollars.
+    const venue: Record<string, [number, string]> = {
+      "BTC-GBP": [61268.49, "GBP"], "DOGE-GBP": [0.06056, "GBP"], "ETH-EUR": [2126.33, "EUR"], "LINK-EUR": [10.65453, "EUR"],
+    };
+    const quote = (symbol: string) => ({ symbol, price: venue[symbol]![0], currency: venue[symbol]![1], change: 0, changePercent: 0,
+      lastUpdated: 1, listingExchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" });
+    const requests: string[] = [];
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      requests.push(`${symbol}:${exchange}`);
+      return { status: "success", data: quote(symbol) };
+    };
+    apiClient.getCloudQuotesBatch = async (targets) => {
+      requests.push(...targets.map((target) => `${target.symbol}:${target.exchange}`));
+      return { status: "success", data: { items: targets.map((target) => ({ symbol: target.symbol, exchange: target.exchange ?? "",
+        status: "success" as const, data: quote(target.symbol) })) } };
+    };
+    const lines = [["BTC/GBP", "COINBASE PRO", "BTC-GBP"], ["DOGE/GBP", "KRAKEN", "DOGE-GBP"],
+      ["ETH/EUR", "KRAKEN", "ETH-EUR"], ["LINK/EUR", "BINANCE", "LINK-EUR"]] as const;
+    const provider = new GloomberbCloudProvider();
+    for (const [symbol, exchange, listing] of lines) {
+      for (const [ticker, saved] of [[symbol, exchange], [`${symbol}:${exchange}`, ""]] as const) {
+        const answer = await provider.getQuote(ticker, saved);
+        expect(answer, ticker).toMatchObject({ price: venue[listing]![0], currency: venue[listing]![1] });
+        // The row it is saved as keeps it.
+        expect(providerQuoteMatchesTarget(answer, ticker, saved), ticker).toBe(true);
+      }
+    }
+    const targets = lines.map(([symbol, exchange]) => ({ symbol, exchange }));
+    const batch = await provider.getQuotesBatch(targets);
+    expect(targets.map((target) => batch.find((result) => result.target === target)?.quote?.currency)).toEqual(["GBP", "GBP", "EUR", "EUR"]);
+    expect(requests.every((request) => request.endsWith(":CCC") && !request.includes("/"))).toBe(true);
+    // Search offers the pair once, as that listing; a line in a currency the venue has no coin in stays as it is.
+    const line = (symbol: string, exchange: string, type = "Digital Currency") => ({ symbol, name: symbol, exchange, type });
+    setCloudApiFetchTransport(async (url) => new URL(url).pathname === "/market/search"
+      ? Response.json({ status: "success", data: [line("ETH/EUR", "KRAKEN"), line("ETH/EUR", "COINBASE PRO"),
+        line("ETH/USDT", "BINANCE"), line("BRK/B", "NYSE", "Common Stock")] })
+      : Response.json({ status: "empty", data: null }));
+    try {
+      expect((await provider.search("eth/eur")).map((row) => [row.symbol, row.exchange, row.currency ?? ""])).toEqual([
+        ["ETH-EUR", "CCC", "EUR"], ["ETH/USDT", "BINANCE", ""], ["BRK/B", "NYSE", ""],
+      ]);
+    } finally {
+      setCloudApiFetchTransport(null);
+    }
+  });
+
+  test("a spot commodity or a currency written with a slash is asked for as it is, never as a coin", async () => {
+    // GAU-USD on the crypto venue is a token (Gamer Arena) at 0.000014; GAU/USD is gold by the gram.
+    const spot: Record<string, [number, string]> = {
+      "GAU/USD:COMMODITY": [134.2, "COMMODITY"], "WTI/USD:COMMODITY": [61.3, "COMMODITY"], "XBR/USD:": [65.1, ""], "RUB/USD:CCY": [0.0123, "CCY"],
+    };
+    const requests: string[] = [];
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      requests.push(`${symbol}:${exchange ?? ""}`);
+      const [price, listingExchangeName] = spot[`${symbol}:${exchange ?? ""}`] ?? [0.000014, "CCC"];
+      return { status: "success", data: { symbol, price, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName } };
+    };
+    const provider = new GloomberbCloudProvider();
+    for (const key of Object.keys(spot)) {
+      const [symbol, exchange] = key.split(":") as [string, string];
+      const answer = await provider.getQuote(symbol, exchange);
+      expect(answer.price, key).toBe(spot[key]![0]);
+      expect(providerQuoteMatchesTarget(answer, symbol, exchange), key).toBe(true);
+    }
+    expect(requests).toEqual(Object.keys(spot));
+    // A coin-typed row on the commodity venue is not a coin either.
+    setCloudApiFetchTransport(async (url) => new URL(url).pathname === "/market/search"
+      ? Response.json({ status: "success", data: [{ symbol: "GAU/USD", name: "Gold gram", exchange: "COMMODITY", type: "Digital Currency" },
+        { symbol: "GAU/USD", name: "Gamer Arena", exchange: "KRAKEN", type: "Digital Currency" }] })
+      : Response.json({ status: "empty", data: null }));
+    try {
+      expect((await provider.search("gau/usd")).map((row) => `${row.symbol}:${row.exchange}`)).toEqual(["GAU/USD:COMMODITY", "GAU/USD:KRAKEN"]);
+    } finally {
+      setCloudApiFetchTransport(null);
+    }
   });
 
   test("rejects contradictory qualified listings before quote, research, history or auth transport", async () => {

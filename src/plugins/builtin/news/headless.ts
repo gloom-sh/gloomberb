@@ -12,6 +12,7 @@ import {
   type CloudNewsRead,
 } from "../../../sources/gloomberb-cloud/news";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { companyDataNotes, readCompanyFrom } from "../../../types/company-from";
 import { formatUtcSeconds } from "../../../utils/utc-time";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -95,7 +96,8 @@ function projectNewsHeadless(
     // A coin pair no story is filed under shows the stories that mention the coin, and says so.
     ...(response.searchedFor && args.symbols[0]
       ? { notes: [coinNewsFallbackNotice(parsePublicTickerKey(args.symbols[0]).symbol, response.searchedFor)] }
-      : {}),
+      // A receipt's or foreign line's stories are its company's, read from the home line.
+      : response.companyFrom ? { notes: companyDataNotes(readCompanyFrom(response.companyFrom)) } : {}),
     metadata: {
       nextCursor: response.nextCursor,
       sentiment,

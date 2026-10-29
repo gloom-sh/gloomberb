@@ -31,6 +31,7 @@ import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
 import { useAsyncResource } from "../../../public/react";
 import { usePlanAccess } from "../../../api-client/plan-access";
+import { apiClient } from "../../../api-client";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
@@ -39,13 +40,14 @@ import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } fro
 import { FIRED_LOG_KEY } from "./fired-log";
 import { withAlertChange } from "./alert-log";
 
-const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
+const columnsFor = (width: number, lastCheck: boolean, needsSignIn: boolean): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },
   { id: "target", label: "Following", width: 28, flexGrow: 1, align: "left" },
   ...(lastCheck && width >= 96
     ? [{ id: "last", label: "Last check", width: 34, align: "left" as const }]
     : []),
-  { id: "status", label: "State", width: 8, align: "left" },
+  // Wide enough to say "Needs sign-in" only when a row does.
+  { id: "status", label: "State", width: needsSignIn ? 13 : 8, align: "left" },
   { id: "created", label: "Since", width: 10, align: "left" },
 ];
 
@@ -97,10 +99,13 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const selectedRule = items[Math.min(selected, Math.max(0, items.length - 1))];
   const now = Date.now();
   const selectedFired = !!selectedRule && ruleState(selectedRule, now) === "Alerted";
-  const openTarget = useOpenAlertTarget();
-  const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
   const access = usePlanAccess();
+  // A saved session counts before its account has loaded, so a signed-in start does not flash "Needs sign-in".
+  const signedIn = access.signedIn || !!apiClient.getSessionToken();
+  const needsSignIn = !signedIn && rules.some((rule) => ruleState(rule, now, false) === "Needs sign-in");
+  const openTarget = useOpenAlertTarget();
+  const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   const session = useResearchCloudSession();
   const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind) && rule.kind !== "iv_level");
   const stateLoader = useCallback(() => fetchAlertHistory(0), [session.requestKey]);
@@ -110,7 +115,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [history.data],
   );
   // An IV level is read by this app, so its last reading needs no session.
-  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"));
+  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"), needsSignIn);
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],
@@ -216,7 +221,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
         // An IV level that could not be read says so on its own row: No data in State, the reason in Last check.
         const check = rule.kind === "iv_level" ? checks[rule.id] : undefined;
         const unread = rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt && check?.value === null;
-        const state = ruleState(rule, now);
+        const state = ruleState(rule, now, signedIn);
+        // A rule nothing checks while signed out says so in its State, in the warning tone.
+        const waiting = state === "Needs sign-in" && column.id === "status";
         return {
           text:
             column.id === "kind"
@@ -236,6 +243,8 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
             ? colors.selectedText
             : unread && (column.id === "status" || column.id === "last")
               ? colors.negative
+              : waiting
+                ? colors.warning
               : rule.status === "paused"
                 ? colors.textMuted
                 : colors.text,

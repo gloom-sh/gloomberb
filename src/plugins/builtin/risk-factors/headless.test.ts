@@ -3,6 +3,7 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { buildHeadlessFunctionReport } from "../../../cli/pane-functions/headless";
 import { blockExternalNetwork } from "../../../test-support/network-guard";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { collectSavedCopies } from "../../../data/saved-copies";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
 import { attachRiskFactorsPersistence, resetRiskFactorsPersistence } from "./data";
@@ -69,6 +70,19 @@ test("actual RISK report distinguishes a stale latest discovery from an independ
   expect(historical.data.complete).toBe(true);
   expect(historical.data.metadata).toMatchObject({ requestedYear: "2025", latestDiscoveryChecked: false, listStale: false });
   expect(requests).toEqual([]);
+});
+
+test("in a command, RISK answered from saved copies ends with when they were saved instead of the failed refresh", async () => {
+  const store = new MemoryPluginPersistence();
+  attachRiskFactorsPersistence(store);
+  store.seedResource("reports", "ACME", list([2025]), { sourceKey: "risk-factors", schemaVersion: 1, stale: true });
+  store.seedResource("report", "ACME:2025", report(2025), { sourceKey: "risk-factors", schemaVersion: 1, stale: true });
+  transport(() => new Response("Discovery unavailable", { status: 503 }));
+
+  const saved = await collectSavedCopies(() => run());
+  expect(saved.text).toContain("Source 2025 text");
+  expect(saved.text).toMatch(/couldn't refresh; saved copy from \d\d:\d\d UTC/);
+  expect(saved.text).not.toContain("Discovery unavailable");
 });
 
 test("actual latest RISK export preserves source text, separate analysis and full change provenance", async () => {

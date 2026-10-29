@@ -1,6 +1,6 @@
 import type { DoeSeriesRow, DoeTab } from "../../../api-client/doe";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchDoeBoard } from "./client";
+import { loadDoeBoard } from "./client";
 import {
   DOE_TABS,
   DOE_UNIT_LABEL,
@@ -61,7 +61,8 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
         "Five-year ranges read earlier years on the same calendar day.", "A range holds fewer than five years where a series is younger."] },
     describe: "EIA weekly petroleum and natural gas storage",
     async load(args) {
-      const data = await fetchDoeBoard();
+      // Read afresh; a failed read answers from the board an earlier one saved, which the report says it is.
+      const data = (await loadDoeBoard(true)).payload;
       // Each tab is dated by its own EIA report (petroleum Wednesday, gas Thursday);
       // once the next one is a day overdue the tables have missed it. The basis
       // names what Vs 1Y and Vs 5Y avg are measured against.

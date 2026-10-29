@@ -11,6 +11,7 @@ import { listingAbroad, type IssuerListingParams } from "../../../api-client/pat
 import { createPluginCache } from "../../../data/plugin-cache";
 import { secListingKey } from "../../../utils/sec";
 import { finiteOrNull, recordOrNull } from "../../../utils/guards";
+import { readCompanyFrom } from "../../../types/company-from";
 import { cachedCloudResource, loadCloudResource, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 
@@ -110,8 +111,11 @@ function normalizeBeneficialOwnersPayload(value: unknown, ticker: string): Benef
   if (!raw || !Array.isArray(raw.owners)) throw new Error("The server returned an invalid 13D/13G list");
   const coverage = recordOrNull(raw.coverage);
   const nextOffset = finiteOrNull(raw.nextOffset);
+  const companyFrom = readCompanyFrom(raw.companyFrom);
+  const { companyFrom: _unread, ...rest } = raw;
   return {
-    ...raw,
+    ...rest,
+    ...(companyFrom ? { companyFrom } : {}),
     ticker: text(raw.ticker) ?? ticker,
     cik: cikOrNull(raw.cik) ?? "",
     companyName: text(raw.companyName) ?? "",

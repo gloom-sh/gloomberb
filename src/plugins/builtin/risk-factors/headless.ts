@@ -1,4 +1,5 @@
 import type { HeadlessBundleSection, HeadlessPaneDefinition } from "../../../types/plugin";
+import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
 import { loadRiskReportWithClient, loadRiskReportsWithClient, type RiskReportsResult } from "./data";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
@@ -39,7 +40,8 @@ export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const report = await loadRiskReportWithClient(context.apiClient, ticker, year, { force, listing });
     const sections: HeadlessBundleSection[] = [
-      { title: "Filing", entries: [
+      // A report served from a saved copy dates the report by when it was saved (the list does in the metadata).
+      { title: "Filing", ...savedCopyMark(report), entries: [
         { label: "Ticker", value: report.ticker },
         { label: "Filing year", value: report.reportYear },
         { label: "Filed", value: report.filedAt },
@@ -62,12 +64,13 @@ export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { key: "group", header: "Group" }, { key: "heading", header: "Heading" },
       { key: "excerpt", header: "Prior source excerpt" }, { key: "note", header: "Analysis" },
     ], rows: report.diff.removed.map((risk, index) => ({ ...risk, note: report.notes.removed.find((note) => note.index === index)?.text ?? null })) });
-    const errors = [list?.refreshError, report.refreshError].filter((error): error is string => !!error);
+    const errors = [unansweredRefreshError(list), unansweredRefreshError(report)].filter((error): error is string => !!error);
     return {
       sections,
       errors: errors.length ? errors : undefined,
       ...(list?.stale || report.stale ? { complete: false } : {}),
       metadata: {
+        ...savedCopyMark(list),
         ticker: report.ticker, requestedYear: selection, reportYear: report.reportYear,
         filedAt: report.filedAt, updatedAt: report.updatedAt, docUrl: report.docUrl,
         reportFetchedAt: report.fetchedAt, reportStale: report.stale,

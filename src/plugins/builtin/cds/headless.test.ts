@@ -187,6 +187,59 @@ describe("CDS report", () => {
     expect(stale.result.notes).toEqual(["5Y level not derivable after 2025-10-17: DTCC prints carry upfront without payer side."]);
   });
 
+  test("quotes a print whose upfront is its points in a Points column, and names the issuer one way", async () => {
+    // Whirlpool, 27 Oct 2026: two prints keyed 6.5 and 15.25 into the spread field, spelled three ways on the tape.
+    const whirlpool = (id: string, executed: string, overrides: Partial<CloudCdsTradePayload>) => tape(id, executed, {
+      issuerName: "Whirlpool Corp", fixedRate: null, spreadNotation: "3", ...overrides,
+    });
+    const trades = normalizeCdsTrades([
+      tape("1", "2026-10-27T20:15:00Z", { issuerName: "WHIRLPOOL CORPORATION", fixedRate: 0.01, upfrontAmount: 1_232_374 }),
+      whirlpool("2", "2026-10-27T20:14:00Z", { maturityDate: "2028-12-20", reportedSpread: 0.00065, upfrontAmount: 319_861 }),
+      whirlpool("3", "2026-10-27T20:13:00Z", { maturityDate: "2029-12-20", reportedSpread: 0.001525, upfrontAmount: 757_361 }),
+      tape("4", "2026-10-27T19:34:00Z", { issuerName: "Whirlpool Corporation", fixedRate: 0.01, upfrontAmount: 895_000 }),
+    ]);
+    const { result, text, tables } = await report("WHR", {
+      load: async () => ({ ...FORD, query: "WHR", issuer: "Whirlpool Corporation", trades }),
+      loadHistory: async () => ({ ...FORD_LINE, issuer: "Whirlpool Corporation" }),
+    });
+    const rows = result.sections.find((section) => section.title === "Trades")!.rows!;
+    expect(rows.map((row) => [row.issuer, row.spreadBp, row.pointsUpfront])).toEqual([
+      ["Whirlpool Corporation", null, null],
+      ["Whirlpool Corporation", null, 6.5],
+      ["Whirlpool Corporation", null, 15.25],
+      ["Whirlpool Corporation", null, null],
+    ]);
+    expect(text).toMatch(/Whirlpool Corporation\s+2028-12-20\s+5M\+\s+USD\s+--\s+--\s+6\.5 pts\s+319\.9k USD/);
+    expect(text).not.toMatch(/Whirlpool Corp\s|WHIRLPOOL/);
+    const csv = renderReportCsv(selectReportTables(tables, "trades")).split("\n");
+    expect(csv[0]).toMatch(/^Time UTC,Issuer,Maturity,Notional,CCY,Coupon \(bp\),Spread \(bp\),Points,Abs upfront \(USD\),/);
+    expect(csvCells(csv[3]!).slice(1, 9)).toEqual(["Whirlpool Corporation", "2029-12-20", "5M+", "USD", "", "", "15.25", "757361"]);
+    // A tape without such a print keeps the columns it had.
+    const ford = await report("F", { load: async () => FORD, loadHistory: async () => FORD_LINE });
+    expect(ford.text).not.toContain("Points");
+  });
+
+  test("says no CDS issuer matches a name the covered issuers and the tape both lack, and offers the closest", async () => {
+    const nothing: CdsSpreadHistory = { ...FORD_LINE, issuer: null, points: [], change1W: null, change1M: null };
+    const unmatched = (typed: string, nearest: string[]) => report(typed, {
+      load: async () => ({ ...FORD, query: typed, issuer: typed, trades: [], unmatched: { nearest } }),
+      loadHistory: async () => nothing,
+    });
+    const typo = await unmatched("goodyer", ["The Goodyear Tire & Rubber Company"]);
+    expect(typo.text).toContain("No CDS issuer matches goodyer. Closest covered issuers: The Goodyear Tire & Rubber Company.");
+    expect(typo.text).not.toContain("No 5Y spread level");
+    const far = await unmatched("getty images", []);
+    expect(far.text).toContain("No CDS issuer matches getty images.");
+    expect(far.result.notes).toEqual(["fn CDS lists the covered issuers."]);
+    // A name the tape still knows by its own spelling reads as that issuer.
+    const nokia = await report("nokia", {
+      load: async () => ({ ...FORD, query: "nokia", issuer: "nokia", trades: [], unmatched: { nearest: [] } }),
+      loadHistory: async () => ({ ...FORD_LINE, issuer: "Nokia Oyj" }),
+    });
+    expect(nokia.result.sections[0]!.title).toBe("Nokia Oyj");
+    expect(nokia.text).toContain("No CDS trades for nokia in the last 5 days.");
+  });
+
   test("lists issuers with their 5Y level and its date from one request, however many are listed", async () => {
     const requests = { levels: 0, history: 0 };
     const listed = Array.from({ length: 40 }, (_, index) => (

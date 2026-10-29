@@ -171,8 +171,11 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
-    ...(asOf ? [{ id: "date", parts: [{ text: observationTime ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
+    // One fact, "close 2026-09-25": the basis and its date read as one segment.
+    ...(data || asOf ? [{ id: "basis", parts: [
+      ...(data ? [{ text: observationBasis, tone: "muted" as const }] : []),
+      ...(asOf ? [{ text: observationTime ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] : []),
+    ] }] : []),
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, cycleTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);

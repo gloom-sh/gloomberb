@@ -42,7 +42,7 @@ import { appTtmRate, enterpriseValueReconciliationNote, ttmAtAppRate, ttmConvers
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
-import { isReceiptSide, listingDepositaryPair } from "../../../market-data/depositary-pair";
+import { isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../../market-data/depositary-pair";
 import {
   CompactRangeBar,
   FundamentalsGrid,
@@ -335,6 +335,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     nextEarnings: financials?.nextEarnings,
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,
+    cedearRatio: listingCedearRatio(financials),
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
     dividend,

@@ -470,3 +470,29 @@ test("a row with no figures comes out at its own time once that has passed, as r
   // A release with its actual is unchanged.
   expect(seen("Existing Home Sales")).toEqual(Array(5).fill("2026-10-19T14:00:00.000Z"));
 });
+
+test("--search finds an event however its name is spaced or hyphenated, and the Fed's rate reads as its upper bound", async () => {
+  const calendar = [
+    ...twoWeeks,
+    { ...event("2026-10-28T18:00:00.000Z", "US", "high", "Federal Funds Rate"), forecast: "4.00%", prior: "4.00%" },
+    { ...event("2026-11-06T13:30:00.000Z", "US", "high", "Non Farm Payrolls"), prior: "29K" },
+    { ...event("2026-11-06T13:30:00.000Z", "US", "low", "Nonfarm Payrolls Private"), prior: "46K" },
+    { ...event("2026-10-30T07:45:00.000Z", "FR", "low", "French Private Non-Farm Payrolls QoQ Prel"), forecast: "-0.1%", prior: "-0.1%" },
+  ];
+  setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
+  const nonfarm = await econPrinted(calendar, ["--search", "nonfarm"]);
+  expect((nonfarm.result.data as Array<{ event: string }>).map((row) => row.event))
+    .toEqual(["French Private Non-Farm Payrolls QoQ Prel", "Non Farm Payrolls", "Nonfarm Payrolls Private"]);
+  // The payrolls have a prior and no forecast yet: the dash under Forecast is a consensus not in yet.
+  const text = await econText(calendar, ["--search", "non farm payrolls", "--country", "US"]);
+  expect(text).toContain("— forecast = no consensus yet");
+  // The policy rate is the top of the Fed's range, searched by the name it is shown under or the feed's.
+  for (const words of ["fed funds", "upper bound"]) {
+    const rate = await econText(calendar, ["--search", words]);
+    expect(rate).toContain("Federal Funds Rate (upper bound)");
+    expect(rate).not.toContain("Payrolls");
+    // A release with its forecast in leaves the note out.
+    expect(rate).not.toContain("no consensus yet");
+  }
+  expect(await econText(calendar, ["--search", "ism"])).toContain("No matching events");
+});

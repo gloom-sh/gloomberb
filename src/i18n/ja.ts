@@ -1668,6 +1668,8 @@ export const ja: Record<string, string> = {
   "Guides": "ガイド",
   "Academy": "アカデミー",
   "offline, saved copy": "オフライン、保存済みのコピー",
+  "company data from {listing}": "{listing} の企業データ",
+  "from {listing}": "{listing} から",
   "Open in Browser": "ブラウザで開く",
   "No docs match \"{query}\".": "「{query}」に一致するドキュメントはありません。",
   "No docs for {name} yet.": "{name} のドキュメントはまだありません。",

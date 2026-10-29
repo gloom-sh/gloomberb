@@ -14,6 +14,7 @@ import { portfolioAnalyticsModule } from "./analytics";
 import { brokerTradingModule } from "./broker-trading";
 import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
+import { roadmapModule } from "./roadmap";
 import { connectionsModule } from "./connections";
 import { pluginMarketplaceModule } from "./plugin-marketplace";
 import { relativeRotationModule } from "./relative-rotation";
@@ -116,7 +117,7 @@ import { FIXED_INCOME_HOSTS } from "./fixed-income/model";
 
 export const applicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule, docsModule],
+  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule, docsModule, roadmapModule],
 });
 
 export const portfolioPlugin = composeBuiltinPlugin({

@@ -1685,6 +1685,13 @@
    "lesson": "/academy/terminal-and-workspace/how-the-terminal-works/help-cards"
   },
   {
+   "code": "ROADMAP",
+   "name": "Roadmap",
+   "description": "What is coming next",
+   "detail": "What is being built, what is planned and what shipped, with each item's votes. Pro members vote on what is building or planned, once per item, and can take the vote back.",
+   "category": "app"
+  },
+  {
    "code": "HELP",
    "name": "Help",
    "description": "Shortcuts and reference",
