@@ -233,6 +233,14 @@ describe("financial ratios", () => {
     const gaap = ratioTableForFinancials(delta, leverage, "annual");
     expect(gaap.cells.get("net-debt-ebitda")![0]).toEqual({ value: (12.851 - 3.787) / 9.3, inputs: [(12.851 - 3.787) * B, 5.984 * B, 9.3 * B] });
     expect(gaap.rows.find((row) => row.id === "net-debt-ebitda:1")!.label).toBe("excl. op. leases");
+    // The basis follows the standard the issuer reports in, not the form: Alibaba's 20-F is US GAAP, though no
+    // 10-K or 10-Q dates its rows.
+    const alibaba = annual({
+      date: "2026-03-31", currency: "CNY", dateSource: "provider", accountingStandard: "us-gaap", totalDebt: 180 * B,
+      capitalLeaseObligations: 21 * B, cashCashEquivalentsAndShortTermInvestments: 500 * B, ebitda: 190 * B,
+    });
+    expect(ratioTableForFinancials(alibaba, leverage, "annual").rows.find((row) => row.id === "net-debt-ebitda:1")!.label)
+      .toBe("excl. op. leases");
     // No lease line anywhere: no row about them.
     expect(ratioTableForFinancials(annual(year("2025-12-31", 7.272, undefined, 8.29, 7.951)), leverage, "annual")
       .rows.filter((row) => row.def.id === "net-debt-ebitda").map((row) => row.label)).toEqual(["Net Debt / EBITDA", "Net Debt", "\u00f7 EBITDA"]);
