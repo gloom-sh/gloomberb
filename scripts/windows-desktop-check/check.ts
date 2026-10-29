@@ -109,18 +109,20 @@ function keepTaskSchedulerLog(): void {
 
 /**
  * Why a restart brought no window back: the restart task as the Task Scheduler
- * has it and what its log says it did, and the app's processes and the shells
- * around them, with the session each runs in.
+ * has it and what its log says it did, the restart script's own log, and the
+ * app's processes and the shells around them, with the session each runs in.
  */
 async function restartReport(out: string, oldPid: number): Promise<string> {
   const script = String.raw`
 $ErrorActionPreference = 'Continue'
 "this check runs in session " + (Get-Process -Id $PID).SessionId
 "the old app (" + ${oldPid} + ") is " + $(if (Get-Process -Id ${oldPid} -ErrorAction SilentlyContinue) { 'still running' } else { 'gone' })
-$query = schtasks /Query /TN "Gloom restart ${oldPid}" /V /FO LIST 2>&1
+$query = schtasks /Query /TN "GloomRestart-${oldPid}" /V /FO LIST 2>&1
 "task: " + (($query | Where-Object { $_ -match '^(Status|Last Run Time|Last Result|Task To Run|ERROR)' } | ForEach-Object { ([string]$_).Trim() }) -join ' | ')
+$log = Join-Path $env:TEMP "gloom-restart-${oldPid}.log"
+if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log | ForEach-Object { "script: " + $_ } } else { "script: no log at " + $log }
 Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational -MaxEvents 200 -ErrorAction SilentlyContinue |
-  Where-Object { $_.Message -like '*Gloom restart*' } | Sort-Object TimeCreated | ForEach-Object {
+  Where-Object { $_.Message -like '*GloomRestart*' } | Sort-Object TimeCreated | ForEach-Object {
     "event {0:HH:mm:ss} {1}: {2}" -f $_.TimeCreated, $_.Id, ($_.Message -replace '\s+', ' ')
   }
 Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='launcher.exe' OR Name='powershell.exe'" | ForEach-Object {
