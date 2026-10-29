@@ -2,12 +2,14 @@ import type {
   CdxBoardIndex,
   CreditBoardPoint,
   CreditIndexQuote,
+  CreditLevelKind,
   SovrBoardSovereign,
 } from "../../../api-client/credit-boards";
 import { spanAxisFormatter, formatBpAxis } from "../../../components/chart-table/axis";
 import { historyStatistics } from "../../../components/chart/curve/model";
 import type { MarketBoardRow } from "../../../components/market-board";
 import type { PricePoint } from "../../../types/financials";
+import type { HeadlessPaneColumn } from "../../../types/plugin";
 
 const YEAR_DAYS = 365;
 /** A level older than this is not the current market. */
@@ -91,6 +93,33 @@ export function cdxDay(index: CdxBoardIndex, now = Date.now()): CdxDay {
 function utcClock(instant: string): string | null {
   const time = Date.parse(instant);
   return Number.isFinite(time) ? new Date(time).toISOString().slice(11, 16) : null;
+}
+
+/**
+ * How a level that is the day's settlement price, not its trades, is marked
+ * beside its date.
+ */
+export const SETTLEMENT_TEXT = "settlement";
+
+/**
+ * A report's mark for the levels that are settlement prices: blank for a
+ * level from the day's trades. Shown only when a row is one, and each row
+ * then carries `kind`.
+ */
+export const levelKindColumn: HeadlessPaneColumn = {
+  key: "kind", header: "Level",
+  description: "Blank for a level from the day's trades. settlement for the day's end-of-day settlement price, which stands in "
+    + "on a day without enough agreeing trades; its prints are 0.",
+  format: (value) => value === "settlement" ? SETTLEMENT_TEXT : "",
+};
+
+/** `kind` on every row once one level is a settlement; nothing otherwise, so a report without one is unchanged. */
+export function levelKinds<T>(items: readonly T[], kindOf: (item: T) => CreditLevelKind | null | undefined) {
+  const shown = items.some((item) => kindOf(item) === "settlement");
+  return {
+    columns: shown ? [levelKindColumn] : [],
+    row: (item: T) => shown ? { kind: kindOf(item) ?? "traded" } : {},
+  };
 }
 
 /**
