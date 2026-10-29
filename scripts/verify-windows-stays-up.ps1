@@ -13,6 +13,8 @@ param(
   # The launcher gives the app's own output (and Bun's crash report) nowhere in
   # a release build; with this it passes it through, here to files.
   [switch]$Console,
+  # Repro only: a Chromium switch added to the installed build.json.
+  [string]$AddChromiumFlag = "",
   [string]$EvidenceDir = (Join-Path (Get-Location) "artifacts\windows-stays-up")
 )
 
@@ -86,6 +88,14 @@ $Folder = Get-InstallFolder
 $Launcher = Join-Path $Folder "bin\launcher.exe"
 $Version = try { (Get-Content (Join-Path $Folder "Resources\version.json") -Raw | ConvertFrom-Json).version } catch { "unknown" }
 Write-Line "installed $Version in $Folder"
+if ($AddChromiumFlag) {
+  $BuildJson = Join-Path $Folder "Resources\build.json"
+  $Build = Get-Content -LiteralPath $BuildJson -Raw | ConvertFrom-Json
+  if (-not $Build.PSObject.Properties["chromiumFlags"]) { $Build | Add-Member -NotePropertyName chromiumFlags -NotePropertyValue ([pscustomobject]@{}) }
+  $Build.chromiumFlags | Add-Member -Force -NotePropertyName $AddChromiumFlag -NotePropertyValue $true
+  [System.IO.File]::WriteAllText($BuildJson, ($Build | ConvertTo-Json -Depth 20 -Compress), (New-Object System.Text.UTF8Encoding $false))
+  Write-Line "chromiumFlags now $($Build.chromiumFlags | ConvertTo-Json -Compress)"
+}
 
 $Started = Get-Date
 $Output = Join-Path $Evidence "app-stdout.txt"
