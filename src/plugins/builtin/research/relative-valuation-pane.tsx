@@ -1,5 +1,5 @@
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
@@ -11,7 +11,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
-import { useAppSelector, usePaneInstance } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance, usePaneTitle, useUpdatePaneSettings } from "../../../state/app/context";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { buildQuoteKey } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
@@ -25,7 +25,10 @@ import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../
 import { formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
-import { usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginTickerActions } from "../../runtime";
+import { apiClient } from "../../../api-client";
+import { errorMessage } from "../../../utils/errors";
+import { formatTickerListInput } from "../../../tickers/list";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
@@ -35,6 +38,10 @@ import { quoteFreshnessFields } from "../shared/report-freshness";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 import { conversionNote, conversionPairText, convertMarketCaps, usdRateFromEntry } from "./relative-valuation-currency";
 import { fundamentalsBasisParts, fundamentalsThroughText } from "./relative-valuation-basis";
+import {
+  AUTO_PEERS_SETTING, findPeers, PEER_SELECTION_SETTING, PeerPickError, peerSelectionOf, relativeValuationTitle,
+} from "./relative-valuation-peers";
+import { relativeSymbolsFromPane } from "./relative-valuation-settings";
 
 type ExtendedColumnId = "preMarket" | "afterHours" | "overnight";
 type RelativeColumnId = "symbol" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
@@ -43,14 +50,6 @@ type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
   error?: string;
 };
-
-function relativeSymbolsFromPane(symbol: string | null, paneSettings: Record<string, unknown> | undefined): string[] {
-  const settingsSymbols = Array.isArray(paneSettings?.symbols)
-    ? paneSettings.symbols.filter((value): value is string => typeof value === "string")
-    : [];
-  if (settingsSymbols.length > 0) return settingsSymbols;
-  return symbol ? [symbol] : [];
-}
 
 const EXTENDED_COLUMN_IDS: Record<ExtendedSession, ExtendedColumnId> = { PRE: "preMarket", POST: "afterHours", OVERNIGHT: "overnight" };
 
@@ -151,6 +150,8 @@ function sortRelativeRowIndices(
     .map((entry) => entry.index);
 }
 
+const NO_SYMBOLS: string[] = [];
+
 /** Live values keep moving; the row order follows them at most this often. */
 const RELATIVE_ORDER_SAMPLE_MS = 5_000;
 
@@ -170,7 +171,37 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   // Keyed on the list itself, so a settings write that leaves the peers alone
   // does not start the snapshot over.
   const symbolList = relativeSymbolsFromPane(symbol, pane?.settings).join(",");
-  const symbols = useMemo(() => (symbolList ? symbolList.split(",") : []), [symbolList]);
+  const listed = useMemo(() => (symbolList ? symbolList.split(",") : []), [symbolList]);
+  const settings = pane?.settings;
+  // A pane opened on one ticker compares it with the peers `fn RV <ticker> --peers` picks, by the same
+  // method, and keeps them in its settings with how they were chosen.
+  const peerSelection = useMemo(() => peerSelectionOf(settings?.[PEER_SELECTION_SETTING], listed), [listed, settings]);
+  const peerSubject = settings?.[AUTO_PEERS_SETTING] === true && listed.length === 1 && !peerSelection ? listed[0]! : null;
+  const dataProvider = useAssetData();
+  const updateSettings = useUpdatePaneSettings();
+  const [peerAttempt, setPeerAttempt] = useState(0);
+  const [peerFailure, setPeerFailure] = useState<{ subject: string; message: string } | null>(null);
+  useEffect(() => {
+    if (!peerSubject || !dataProvider) return;
+    const controller = new AbortController();
+    setPeerFailure(null);
+    findPeers(peerSubject, { marketData: dataProvider, apiClient, signal: controller.signal }).then((selection) => {
+      if (controller.signal.aborted) return;
+      const compared = [selection.subject, ...selection.peers];
+      updateSettings({ symbols: compared, symbolsText: formatTickerListInput(compared), [PEER_SELECTION_SETTING]: selection });
+    }, (failure: unknown) => {
+      if (controller.signal.aborted) return;
+      setPeerFailure({ subject: peerSubject, message: failure instanceof PeerPickError ? failure.reason : `No peers: ${errorMessage(failure)}` });
+    });
+    return () => controller.abort();
+  }, [dataProvider, peerAttempt, peerSubject, updateSettings]);
+  const peerError = peerSubject && peerFailure?.subject === peerSubject ? peerFailure.message : null;
+  // The table waits for the peers, so it fills once; without any it shows the ticker alone.
+  const pickingPeers = peerSubject != null && peerError == null;
+  const symbols = pickingPeers ? NO_SYMBOLS : listed;
+  // The title says how the peers were chosen, or lists the tickers; a title the user gave the pane stays.
+  const ownsTitle = /^RV(?:\s|$)/.test(pane?.title ?? "");
+  usePaneTitle(ownsTitle && listed.length > 0 ? relativeValuationTitle(listed, peerSelection) : null);
   const { navigateTicker } = usePluginTickerActions();
   const loadPeers = useCallback(async (forceRefresh: boolean): Promise<PeerSnapshot[]> => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -189,8 +220,14 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   // Fundamentals come from one batched snapshot; prices stream on top of it.
   // A changed peer list keeps the last snapshot up until its own answer.
   const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, { keepPreviousData: true });
-  const { data: peers, loading, updatedAt, reload } = peerSnapshot;
-  const error = symbols.length > 0 ? peerSnapshot.error : "No tickers selected";
+  const { data: peers, updatedAt, reload: reloadSnapshot } = peerSnapshot;
+  const loading = peerSnapshot.loading || pickingPeers;
+  const error = symbols.length > 0 ? peerSnapshot.error : pickingPeers ? null : "No tickers selected";
+  // Refreshing asks for the peers again when picking them failed.
+  const reload = useCallback(() => {
+    if (peerError) setPeerAttempt((attempt) => attempt + 1);
+    return reloadSnapshot();
+  }, [peerError, reloadSnapshot]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
@@ -274,7 +311,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   const staleSymbols = rows.filter((row) => row.quoteStale).map((row) => row.symbol);
   const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);
-  const status = [error, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
+  const status = [error, peerError, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
     missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
 
   usePaneNoticeFooter({

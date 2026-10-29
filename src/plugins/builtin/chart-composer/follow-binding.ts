@@ -21,6 +21,16 @@ function normalized(instrument: InstrumentRef): InstrumentRef {
 const key = (instrument: InstrumentRef) => instrumentIdentityKey(normalized(instrument));
 const publicKey = (instrument: InstrumentRef) => publicTickerKey(instrument.symbol, instrument.exchange);
 
+/**
+ * One listing however a series names it: the same symbol and broker contract, on the same venue
+ * or with the venue left out on either side (`AAPL` added beside a revenue line on `AAPL:NASDAQ`).
+ */
+function sameListing(left: InstrumentRef, right: InstrumentRef): boolean {
+  const a = normalized(left), b = normalized(right);
+  return key({ ...a, exchange: "" }) === key({ ...b, exchange: "" })
+    && (!a.exchange || !b.exchange || canonicalExchange(a.exchange) === canonicalExchange(b.exchange));
+}
+
 /** Bootstrap old charts once; persisted IDs keep ownership through comparison collisions. */
 export function resolveFollowSeriesIds(
   spec: ChartSpec,
@@ -44,8 +54,10 @@ export function resolveFollowSeriesIds(
     || (next && securities.find(series => series.source.kind === "security" && publicKey(normalized(series.source.instrument)) === publicKey(next)))
     || securities[0];
   if (!owner || owner.source.kind !== "security") return [];
-  const ownerKey = key(owner.source.instrument);
-  return securities.filter(series => series.source.kind === "security" && key(series.source.instrument) === ownerKey).map(series => series.id);
+  const ownerInstrument = owner.source.instrument;
+  // Every field of the followed ticker moves with it (revenue and total debt); other tickers stay.
+  return securities.filter(series => series.source.kind === "security" && sameListing(series.source.instrument, ownerInstrument))
+    .map(series => series.id);
 }
 
 /** Only the followed series move; other contracts and comparisons stay authored. */

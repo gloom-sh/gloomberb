@@ -84,8 +84,9 @@ The focused pane's footer shows its actions with their keys, such as `[a]dd`. Th
 
 ### Linking a pane to a list
 
-A pane that shows one ticker (`GP`, `GIP`, `OMON`, `OPX`, `SEAS`, `FA`, company news) can follow a watchlist, portfolio or scanner like the research pane. Choose **Link to** and the list's name in its pane menu (`OPX NVDA  ⧉ Linked to Watchlist`).
+A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `FA`, company news) can follow a watchlist, portfolio or scanner like the research pane. Choose **Link to** and the list's name in its pane menu (`OPX NVDA  ⧉ Linked to Watchlist`).
 
+- A chart links when all its lines are one ticker's, whatever the fields: `GF AAPL` with revenue and total debt moves both lines to the selected row and keeps their fields, range and settings. FRED lines stay as they are. A chart of two tickers (`GF AAPL MSFT`, `CMP`) has no **Link to**.
 - It can also follow another single-ticker pane (**Link to Ticker Research AAPL**), so a desk of option panes moves with one research pane.
 - **Unlink from** keeps the ticker the pane shows. If the list was empty, a linked `OMON`, `CN`, `FA`, `HP`, `SEC`, `INS`, `HDS`, `ANR`, `EVT` or `EE` pane has no ticker to keep and closes.
 - Typing `OPX AAPL` while a linked OPX is open opens a separate pane.
@@ -238,7 +239,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS [ticker]` | Insider activity. Alone, the companies whose insiders are buying or selling in the open market |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
-| `RV <tickers>` | Relative valuation |
+| `RV <tickers>` | Relative valuation. One ticker adds its industry peers |
 
 #### Company function notes
 

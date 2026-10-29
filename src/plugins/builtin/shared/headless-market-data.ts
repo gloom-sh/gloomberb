@@ -6,7 +6,7 @@ import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
-export async function resolveHeadlessInstrument(ctx: HeadlessPaneContext, symbol: string) {
+export async function resolveHeadlessInstrument(ctx: Pick<HeadlessPaneContext, "resolveInstrument">, symbol: string) {
   return ctx.resolveInstrument ? ctx.resolveInstrument(symbol) : parsePublicTickerKey(symbol);
 }
 
@@ -39,7 +39,7 @@ export async function resolveHeadlessIssuerListing(ctx: HeadlessPaneContext, key
   return resolveIssuerListing(key, exchange, ctx.marketData);
 }
 
-export async function loadHeadlessFinancials(ctx: HeadlessPaneContext, key: string) {
+export async function loadHeadlessFinancials(ctx: Pick<HeadlessPaneContext, "marketData" | "resolveInstrument">, key: string) {
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   return ctx.marketData.getTickerFinancials(symbol, exchange ?? "");
 }
