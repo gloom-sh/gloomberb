@@ -375,6 +375,24 @@ const PAGE_HELPER = String.raw`(() => {
       const label = named.getAttribute("aria-label");
       return (named.getAttribute("data-gloom-role") || named.tagName.toLowerCase()) + (label ? ' "' + label + '"' : "");
     },
+    /**
+     * A point on a docked pane's body that nothing covers, such as a floating
+     * pane, and that takes no typing, which would keep a shortcut from the app.
+     */
+    panePoint(id) {
+      const pane = [...document.querySelectorAll("[data-gloom-role=pane-window]")].find((el) => el.getAttribute("data-gloom-pane-id") === id);
+      if (!pane) return null;
+      const r = pane.getBoundingClientRect();
+      const title = pane.querySelector("[data-gloom-role=pane-title]");
+      const top = title ? title.getBoundingClientRect().bottom + 12 : r.top + 32;
+      for (let y = top; y < r.bottom - 12; y += 12) {
+        for (let x = r.left + 16; x < r.right - 16; x += 24) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit && pane.contains(hit) && !hit.closest("input, textarea, [contenteditable=true], button, a, [role=button]")) return { x, y };
+        }
+      }
+      return null;
+    },
     /** A point on the tallest vertical dock divider that nothing covers, such as a floating pane. */
     dividerPoint() {
       const dividers = [...document.querySelectorAll("[data-gloom-role=dock-divider]")]
@@ -477,6 +495,20 @@ async function connectPage(target: { id: string; webSocketDebuggerUrl: string })
 }
 
 const layoutOf = (page: Page) => evaluate<PageLayout>(page.cdp, "window.__winCheck.layout()", 5_000);
+
+/** A press or key the page saw, as `inputsSince` lists them. */
+interface PageInput { at: number; type: string; x: number; y: number; detail: number; key: string; ctrl: boolean; target: string }
+
+const inputsSince = (page: Page, since: number) =>
+  evaluate<PageInput[]>(page.cdp, `window.__winCheck.inputsSince(${since})`, 3_000).catch((): PageInput[] => []);
+
+/** The last presses and keys a page saw, for a report. */
+function describeInputs(inputs: PageInput[], since: number): string {
+  const said = inputs.slice(-12).map((entry) => entry.type === "keydown"
+    ? `+${((entry.at - since) / 1000).toFixed(2)}s key ${entry.ctrl ? "Ctrl+" : ""}${entry.key} on ${entry.target}`
+    : `+${((entry.at - since) / 1000).toFixed(2)}s ${entry.type} ${entry.detail} at ${entry.x},${entry.y} on ${entry.target}`);
+  return said.length ? said.join(", ") : "no press or key";
+}
 
 // --- Pictures --------------------------------------------------------------
 
@@ -687,18 +719,13 @@ class Run {
     if (!main || !win.isWindow(main.hwnd)) return null;
     const open = await evaluate<boolean>(main.page.cdp, "window.__winCheck.commandBarOpen()", 3_000).catch(() => false);
     if (!open) return null;
-    const inputs = await evaluate<Array<{ at: number; type: string; x: number; y: number; detail: number; key: string; ctrl: boolean; target: string }>>(
-      main.page.cdp, `window.__winCheck.inputsSince(${since})`, 3_000,
-    ).catch(() => []);
+    const inputs = await inputsSince(main.page, since);
     const shot = this.shots.take(`${id}-command-bar-open`, win.clientRect(main.hwnd));
     if (shot) shots.push(shot);
     await this.focus(main);
     await win.pressKeys(win.VK.escape);
     await sleep(300);
-    const said = inputs.slice(-12).map((entry) => entry.type === "keydown"
-      ? `+${((entry.at - since) / 1000).toFixed(2)}s key ${entry.ctrl ? "Ctrl+" : ""}${entry.key} on ${entry.target}`
-      : `+${((entry.at - since) / 1000).toFixed(2)}s ${entry.type} ${entry.detail} at ${entry.x},${entry.y} on ${entry.target}`);
-    return `the command bar opened during this step; the main page saw: ${said.length ? said.join(", ") : "no press or key"}`;
+    return `the command bar opened during this step; the main page saw: ${describeInputs(inputs, since)}`;
   }
 
   // --- Windows and pages ---
@@ -1540,10 +1567,18 @@ class Run {
       await this.reset(main, this.baseRect);
       const before = new Set(this.appWindows().map((info) => info.hwnd));
       const layout = await layoutOf(main.page);
-      const pane = layout.panes.find((entry) => entry.id === "attention-trending:home");
-      if (!pane) return { status: "fail", detail: "the trending pane is missing" };
+      // The trending pane, or another docked one where a floating pane left
+      // none of it to click: a click on whatever covers it focuses that instead.
+      const candidates = ["attention-trending:home", ...layout.panes.filter((entry) => !entry.floating).map((entry) => entry.id)];
+      let target: { id: string; point: { x: number; y: number } } | null = null;
+      for (const id of new Set(candidates)) {
+        const point = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.panePoint(${JSON.stringify(id)})`, 3_000).catch(() => null);
+        if (point) { target = { id, point }; break; }
+      }
+      if (!target) return { status: "fail", detail: "no docked pane has a spot to click that nothing covers" };
       // Focus it with a click on its body, then the chord.
-      await win.click(this.toScreen(main, { x: pane.rect.x + pane.rect.width / 2, y: pane.rect.y + Math.min(pane.rect.height - 8, 60) }));
+      const pressedAt = Date.now();
+      await win.click(this.toScreen(main, target.point));
       await sleep(400);
       await win.pressChord([win.VK.control, win.VK.shift], "o", 600);
       let opened: win.WindowInfo | undefined;
@@ -1555,7 +1590,8 @@ class Run {
       if (!opened) {
         const desktop = this.shots.desktop("pop-out-missing");
         if (desktop) shots.push(desktop);
-        return { status: "fail", detail: "no new window opened" };
+        const seen = describeInputs(await inputsSince(main.page, pressedAt), pressedAt);
+        return { status: "fail", detail: `no new window opened for ${target.id}, clicked at ${Math.round(target.point.x)},${Math.round(target.point.y)}; the main page saw: ${seen}` };
       }
       // A new window paints its page once that has loaded.
       const openedAt = Date.now();
@@ -1590,7 +1626,7 @@ class Run {
       win.showWindow(opened.hwnd, "minimize");
       return {
         status: drawn ? "pass" : "fail",
-        detail: `opened "${opened.title}" at ${fmt(rect)}, ${overMain ? "over" : "away from"} the main window at ${fmt(mainRect)}; ${painted}`,
+        detail: `opened "${opened.title}" for ${target.id} at ${fmt(rect)}, ${overMain ? "over" : "away from"} the main window at ${fmt(mainRect)}; ${painted}`,
       };
     });
   }
