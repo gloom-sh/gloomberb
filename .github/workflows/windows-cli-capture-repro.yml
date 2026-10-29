@@ -13,7 +13,10 @@ on:
         default: "40912105186"
       rounds:
         description: How many shot/fn rounds
-        default: "20"
+        default: "3"
+      reserve:
+        description: Reserve ports 43000-52999 first, as Windows reserves blocks of ports
+        default: "true"
 
 permissions:
   contents: read
@@ -43,6 +46,12 @@ jobs:
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=`"$InstallDir`"")
           if ($Install.ExitCode -ne 0) { throw "install failed" }
           $Cli = Join-Path $InstallDir "bin\gloom.cmd"
+          if ("${{ inputs.reserve || 'true' }}" -eq "true") {
+            for ($Start = 43000; $Start -lt 53000; $Start += 500) {
+              $Said = netsh int ipv4 add excludedportrange protocol=tcp startport=$Start numberofports=500 2>&1 | Out-String
+              if ($LASTEXITCODE -ne 0) { Write-Host "could not reserve $Start+500: $($Said.Trim())" }
+            }
+          }
           $Excluded = netsh interface ipv4 show excludedportrange protocol=tcp | Out-String
           Write-Host "excluded TCP port ranges:"; Write-Host $Excluded
           $Ranges = @([regex]::Matches($Excluded, "(\d+)\s+(\d+)") | ForEach-Object { ,@([int]$_.Groups[1].Value, [int]$_.Groups[2].Value) })
@@ -52,7 +61,7 @@ jobs:
 
           $Work = Join-Path $env:RUNNER_TEMP "v"
           $Fails = 0; $Total = 0; $AllPorts = @()
-          foreach ($Round in 1..${{ inputs.rounds || '20' }}) {
+          foreach ($Round in 1..${{ inputs.rounds || '3' }}) {
             Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
             $Caller = Join-Path $Work "caller with spaces"; $Profile = Join-Path $Work ".gloomberb"; $Temp = Join-Path $Work "t"
             New-Item -ItemType Directory -Force -Path $Caller, $Profile, $Temp | Out-Null
