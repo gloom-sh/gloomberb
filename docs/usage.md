@@ -1683,7 +1683,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 `fundamentals` and `valuation` follow the same rules: `Metric,Value` rows with the unit in each label (`Market Cap (ZAR)`, `Dividend Yield (forward) (%)`), and for `fundamentals` a second `Profile` table. `financials --csv` writes the statement table with plain amounts under its displayed columns. All three end with the source line.
 
-**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds.
+**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more when there is one: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds. A listing whose `GF` history goes no further back (most listings outside the US start in 2022) says `older years not available for this listing` instead. Quarterly growth is vs prior quarter. A company that reports half-yearly (Qantas on ASX) has no quarters: `--period quarterly` says so and names `--period annual`. A share count of zero, or one a thousandth of the company's usual count, is shown as missing.
 
 **An old latest period.** A latest period over 15 months old is said first (`Latest period 2024-06-30 is 27 months old.`), and a newer column with only some figures (an EPS alone) is named instead of read as current. FA's ratio tabs say it too, and it is a `# note:` in `--csv` and `notes` in `--json`.
 
