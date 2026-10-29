@@ -56,6 +56,14 @@ function isWindowFullscreen(backend: DesktopBackend, windowKey: string | undefin
   }
 }
 
+function isWindowMaximized(backend: DesktopBackend, windowKey: string | undefined): boolean {
+  try {
+    return windowForRpcKey(backend, windowKey)?.isMaximized?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 function controlWindow(
   backend: DesktopBackend,
   windowKey: string | undefined,
@@ -118,6 +126,8 @@ export async function handleDesktopHostRequest(
     }
     case "host.windowFullscreen":
       return isWindowFullscreen(backend, backend.rpcs.getRpcWindowKey(rpc));
+    case "host.windowMaximized":
+      return isWindowMaximized(backend, backend.rpcs.getRpcWindowKey(rpc));
     case "host.startWindowDrag": {
       const targetWindow = windowForRpcKey(backend, backend.rpcs.getRpcWindowKey(rpc));
       if (!targetWindow?.ptr || !startSystemWindowMove(targetWindow.ptr)) {

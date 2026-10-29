@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "./titlebar-overlay";
+import { useWindowMaximized } from "./window-fullscreen";
 
 const WINDOWS_CONTROL_SIZE_PX = TITLEBAR_OVERLAY_HEIGHT_PX;
 export const WINDOWS_CONTROL_GROUP_WIDTH_PX = WINDOWS_CONTROL_SIZE_PX * 3;
@@ -65,11 +66,15 @@ const TOP_EDGES: Array<{ edge: TopEdge; cursor: string; width?: number }> = [
 
 function WindowTopEdge() {
   const rendererHost = useRendererHost();
+  // A maximized window has no edge to pull, and its buttons must take a press
+  // at the screen's very top.
+  const maximized = useWindowMaximized();
   const startResize = useCallback((edge: TopEdge, event: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     void rendererHost.startWindowResize?.(edge);
   }, [rendererHost]);
 
+  if (maximized) return null;
   return (
     <Box
       flexDirection="row"
