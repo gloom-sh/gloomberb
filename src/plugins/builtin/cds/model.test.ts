@@ -363,6 +363,7 @@ describe("5Y spread chart", () => {
         level: 234.9,
         spreadBp: 234.9,
         date: "2026-09-25",
+        settlement: false,
         couponBp: null,
         change1w: 4.04,
         change1m: 12.7,
@@ -380,6 +381,9 @@ describe("5Y spread chart", () => {
       { id: "1m", label: "1M", value: "+13.0bp" },
       { id: "range", label: "Range", value: "181 to 235bp", detail: "since 2026-07-24" },
     ]);
+    // A day without enough trades stands on its settlement price, and the level says so beside its date.
+    expect(spreadFigures(line([level("2026-09-24", 233), { ...level("2026-09-25", 235), prints: 0, kind: "settlement" }]))[0]?.detail)
+      .toBe("2026-09-25 · settlement");
     // Without a comparable level the move is left out, not shown as zero.
     expect(spreadFigures(line([level("2026-06-01", 72.5), level("2026-09-25", 60)])).map((item) => item.id))
       .toEqual(["spread", "range"]);
@@ -411,6 +415,7 @@ describe("5Y spread chart", () => {
       level: 57.65,
       spreadBp: 18654.4,
       date: "2026-10-15",
+      settlement: false,
       couponBp: 500,
       change1w: 10.9,
       change1m: 36.1,

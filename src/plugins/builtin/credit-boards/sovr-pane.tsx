@@ -31,6 +31,7 @@ import {
   formatCurrencyMove,
   formatLevel,
   formatMove,
+  SETTLEMENT_TEXT,
   sovrRows,
   type SovrRow,
 } from "./model";
@@ -65,7 +66,7 @@ function SovereignDetail({ row, width, height, focused }: { row: SovrRow; width:
   const { sovereign, year } = row;
   const items: StatItem[] = [
     { id: "level", label: "5Y spread", value: formatLevel("spread", sovereign.level),
-      detail: `${formatPercentileRank(year.percentile, "1Y")} · ${sovereign.date}` },
+      detail: [formatPercentileRank(year.percentile, "1Y"), sovereign.date, ...(sovereign.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
     { id: "1m", label: "1M", value: formatMove("spread", sovereign.change1M) },
     { id: "1w", label: "1W", value: formatMove("spread", sovereign.change1W) },
     { id: "fx", label: "Currency 1M", value: formatCurrencyMove(sovereign.currency, row.currencyMove) },

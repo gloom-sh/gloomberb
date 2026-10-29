@@ -11,6 +11,7 @@ import type {
 } from "../types/financials";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
 import type { ChatPaneLink } from "./chat-pane-link";
+import type { CreditLevelKind } from "./credit-boards";
 
 /**
  * What stands behind a chat account. `discord` is a person on the Gloom
@@ -689,6 +690,8 @@ export interface CloudCdsHistoryPointPayload {
   maturity: string;
   /** For a line quoted upfront: that day's level in points on the line's coupon. */
   upfrontPts?: number;
+  /** The day's trades, or the settlement price on a day without enough of them (`prints` 0). */
+  kind?: CreditLevelKind;
 }
 
 /**
@@ -735,6 +738,8 @@ export interface CloudCdsLevelPayload extends CloudCdsUpfrontQuote {
   issuer: string;
   spreadBp: number;
   date: string;
+  /** As the history response's last point. */
+  kind?: CreditLevelKind;
   /** As the history response's moves for the same name. */
   change1W?: number | null;
   change1M?: number | null;

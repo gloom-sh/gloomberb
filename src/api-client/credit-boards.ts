@@ -3,10 +3,19 @@
  * as daily levels built from DTCC public dissemination.
  */
 
+/**
+ * What a day's level rests on: the day's trades, or the clearing house's
+ * end-of-day settlement price on a day without enough agreeing trades (its
+ * `prints` is then 0). Absent from a server that predates it, which read as
+ * `traded`.
+ */
+export type CreditLevelKind = "traded" | "settlement";
+
 export interface CreditBoardPoint {
   date: string;
   level: number;
   prints: number;
+  kind?: CreditLevelKind;
   /** The contract that was on the run that day, e.g. "2031-12-20". */
   maturity: string;
   /**
@@ -32,6 +41,8 @@ export interface CdxBoardIndex {
   maturity: string | null;
   level: number | null;
   prints: number | null;
+  /** What the latest level rests on, as on each point; null without a level. */
+  kind?: CreditLevelKind | null;
   /** HY and EM: the latest level as a conventional spread in bp, as on each point. */
   spreadBp?: number | null;
   /**
@@ -71,6 +82,8 @@ export interface SovrBoardSovereign {
   level: number;
   prints: number;
   reported: number;
+  /** What the latest level rests on, as on each point. */
+  kind?: CreditLevelKind;
   change1W: number | null;
   change1M: number | null;
   points: CreditBoardPoint[];
