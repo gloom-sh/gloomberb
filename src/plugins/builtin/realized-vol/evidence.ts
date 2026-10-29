@@ -19,7 +19,16 @@ export interface RealizedVolEvidenceStatus {
   source: string | null;
   asOf: string | null;
   errors: string[];
+  /** The errors that are the current IV's alone: a chart missing only its IV point names that, not the symbol. */
+  ivErrors?: string[];
+  /** The windows the history is too short for: their series have no values, and the capture is whole without them. */
+  shortWindows?: number[];
   currentIv: { value: number; date: string; label: string; source: string | null; expiration: number } | null;
+}
+
+/** A series a short history leaves without values: a selected window it is too short for. */
+function shortSeries(id: string, shortWindows: readonly number[] | undefined): boolean {
+  return /^hv-\d+$/.test(id) && (shortWindows ?? []).includes(Number(id.slice(3)));
 }
 
 export interface RealizedVolEvidence extends RealizedVolEvidenceStatus {
@@ -38,7 +47,8 @@ export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], s
   const plottedValueCount = plotted.reduce((sum, entry) => sum + entry.points.filter((point) => isFiniteNumber(point.value)).length, 0);
   return { ...status, kind: "realized-volatility", version: 1, series: plotted, plottedValueCount,
     complete: !status.loading && !status.stale && status.errors.length === 0 && !!status.asOf
-      && plotted.length > 0 && plotted.every((entry) => entry.points.some((point) => isFiniteNumber(point.value)))
+      && plotted.length > 0 && plotted.some((entry) => entry.points.some((point) => isFiniteNumber(point.value)))
+      && plotted.every((entry) => shortSeries(entry.id, status.shortWindows) || entry.points.some((point) => isFiniteNumber(point.value)))
       && (!status.showIv || status.currentIv != null),
   };
 }
@@ -56,12 +66,15 @@ function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
     || !isFiniteNumber(value.lookbackYears) || typeof value.showIv !== "boolean" || typeof value.complete !== "boolean"
     || typeof value.loading !== "boolean" || typeof value.stale !== "boolean" || !isDateString(value.asOf)
     || !isStringArray(value.errors)
+    || (value.shortWindows !== undefined && (!Array.isArray(value.shortWindows) || !value.shortWindows.every(isFiniteNumber)))
+    || (value.ivErrors !== undefined && !isStringArray(value.ivErrors))
     || !Array.isArray(value.series) || !value.series.every((entry) => isRecord(entry) && typeof entry.id === "string"
       && typeof entry.unit === "string" && Array.isArray(entry.points) && entry.points.every((point) => isRecord(point)
         && isDateString(point.date) && (point.value === null || isFiniteNumber(point.value))))) return null;
   const evidence = value as unknown as RealizedVolEvidence;
+  // The IV point is drawn only when there is one: a chart without it matches its data, and is incomplete for it.
   const required = evidence.view === "graph" ? [...evidence.windows.map((window) => `hv-${window}`), "price",
-    ...(evidence.showIv ? ["current-iv"] : [])] : ["min", "max", "mean", "current"];
+    ...(evidence.showIv && evidence.currentIv != null ? ["current-iv"] : [])] : ["min", "max", "mean", "current"];
   if (!required.length || (evidence.view === "graph" && !evidence.windows.length)
     || evidence.series.length !== required.length || new Set(evidence.series.map((entry) => entry.id)).size !== required.length
     || required.some((id) => !evidence.series.some((entry) => entry.id === id))) return null;
@@ -75,8 +88,17 @@ function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
   }
   if (evidence.complete && (evidence.loading || evidence.stale || evidence.errors.length > 0
     || (evidence.showIv && !evidence.currentIv)
-    || evidence.series.some((entry) => !entry.points.some((point) => isFiniteNumber(point.value))))) return null;
+    || evidence.series.some((entry) => !shortSeries(entry.id, evidence.shortWindows) && !entry.points.some((point) => isFiniteNumber(point.value))))) return null;
   return evidence;
+}
+
+/** Drawn, current and whole but for the current IV, whose errors are the only ones. */
+function missingOnlyIv(evidence: RealizedVolEvidence): boolean {
+  const ivErrors = new Set(evidence.ivErrors ?? []);
+  return evidence.view === "graph" && evidence.showIv && evidence.currentIv == null
+    && !evidence.loading && !evidence.stale && evidence.plottedValueCount > 0
+    && evidence.errors.every((error) => ivErrors.has(error))
+    && evidence.series.every((entry) => shortSeries(entry.id, evidence.shortWindows) || entry.points.some((point) => isFiniteNumber(point.value)));
 }
 
 export const realizedVolScreenshotEvidence: PaneScreenshotEvidenceHook<RealizedVolEvidence> = {
@@ -98,6 +120,9 @@ export const realizedVolScreenshotEvidence: PaneScreenshotEvidenceHook<RealizedV
   },
   unavailable(evidence, { resolved, payload }) {
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
-    return evidence?.complete && !evidence.loading ? [] : [symbol ?? "realized volatility"];
+    if (evidence?.complete && !evidence.loading) return [];
+    // The volatility drawn whole and only the IV point missing: the capture names the IV, not the symbol.
+    if (evidence && missingOnlyIv(evidence)) return [`${symbol ?? evidence.symbol} current ATM IV`];
+    return [symbol ?? "realized volatility"];
   },
 };

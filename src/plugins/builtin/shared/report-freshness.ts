@@ -48,6 +48,14 @@ export function barResolutionFromDates(dates: readonly (string | number | Date)[
 export const SEC_FILINGS: HeadlessPaneFreshness = { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data", oldest: null };
 
 /**
+ * A list of filings, dated by its newest one's filing date and by when it was
+ * read: `newest filing Tue 27 Oct 2026 · retrieved Wed 28 Oct 2026 19:07 UTC`.
+ */
+export const SEC_FILING_ROWS: HeadlessPaneFreshness = {
+  ...SEC_FILINGS, observedKey: "filingDate", asOfLabel: "newest filing", retrievedToo: true,
+};
+
+/**
  * What a filings view opened inside a pane that hosts others (Issuer Debt in
  * Fixed Income) declares as its template's `reportFreshness`, so a capture
  * dates the filings rather than the issuer's stock quote.

@@ -100,6 +100,7 @@ import { bondFigures, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { readFundFacts } from "../../market-data/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
+import { ipoDetailNotes, ipoMetricRows, loadTickerIpo, type TickerIpo } from "../../plugins/builtin/ipo-calendar/listing-ipo";
 import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
 
 const NEWS_ITEM_LIMIT = 5;
@@ -126,6 +127,8 @@ const METADATA_SEPARATOR = "  ·  ";
 interface TickerCommandDependencies {
   /** `--exchange`: the listing, for a symbol that trades in several places. */
   exchange?: string;
+  /** A stock's IPO of the last year with its lock-up news; a failure leaves the IPO section out. */
+  listingIpo?: (listing: { symbol: string; exchange?: string | null }) => Promise<TickerIpo | null>;
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
@@ -1081,8 +1084,11 @@ export async function buildTickerReport({
   fundFacts = null,
   memberships,
   offerings = [],
+  ipo = null,
 }: {
   symbol: string;
+  /** A stock's IPO of the last year, with its lock-up estimate and news (loadTickerIpo). */
+  ipo?: TickerIpo | null;
   /** The lists holding the company, by any of its listings (loadCompanyMemberships); the saved listing's own lists when absent. */
   memberships?: CompanyMemberships;
   /** The filings behind the latest statements, and a newer quarter's results release. */
@@ -1253,7 +1259,15 @@ export async function buildTickerReport({
     ]);
   }
 
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
+  // A stock that listed in the last year: its IPO, the move since, and when its lock-up is estimated to end.
+  if (ipo) {
+    appendMetricSection(lines, "IPO", ipoMetricRows(ipo.deal, quote ? getRegularSessionDisplay(quote)?.price : null));
+    for (const note of ipoDetailNotes(ipo.deal, ipo.news)) lines.push(cliStyles.muted(note));
+  }
+
+  // A listing of the last year may have no statements yet: its IPO says how recent it is.
+  const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
+  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials, listing),
     { text: enterpriseValueText }, distributions, bondFund, codes);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
@@ -1352,9 +1366,11 @@ function buildTickerStructuredData({
   bondFund = null,
   memberships,
   offerings = [],
+  ipo = null,
 }: {
   symbol: string;
   listing: CliListing;
+  ipo?: TickerIpo | null;
   memberships: CompanyMemberships;
   statementFilings: StatementFilingsReport | null;
   offerings?: readonly OfferingFiling[];
@@ -1437,6 +1453,8 @@ function buildTickerStructuredData({
     // and the offering prospectuses filed since that the cash does not include.
     cashRunway: runway,
     offeringsAfterBalanceSheet: runway ? offeringsAfter(offerings, runway.periodEnd) : [],
+    // A stock that listed in the last year: its IPO deal (offer price, first day, lock-up estimate) and lock-up news.
+    ...ipo ? { ipo: { ...ipo.deal, lockupNews: ipo.news } } : {},
     // The form and filed date of the latest periods' filings, and a newer quarter's results released before its statements.
     statementFilings,
     notes,
@@ -1578,6 +1596,11 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     });
     // An offering since the latest balance sheet, read only when the report has a runway to flag.
     const offerings = loadOfferingFilings(statementSources, { symbol: requestSymbol, exchange }, cashRunway(resolvedFinancials) != null);
+    // A stock's IPO of the last year, read beside the rest; it never fails the report.
+    const ipoLoad = quote && resolveTickerInstrumentKind(tickerFile, resolvedFinancials) === "equity"
+      ? (dependencies.listingIpo ?? loadTickerIpo)({ symbol: requestSymbol, exchange: exchange || quote.listingExchangeName || quote.exchangeName })
+        .catch(logFailure("cli.commands-ticker", "Read a listing's IPO failed", null))
+      : Promise.resolve(null);
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
@@ -1645,6 +1668,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           bondFund: await bondFund,
           memberships,
           offerings: await offerings,
+          ipo: await ipoLoad,
         }),
       });
       return;
@@ -1671,6 +1695,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         fundFacts: await fundFacts,
         memberships,
         offerings: await offerings,
+        ipo: await ipoLoad,
     }));
     if (freshness) console.log(`\n${cliFreshnessFooter(freshness, quote ?? resolvedFinancials)}`);
   });

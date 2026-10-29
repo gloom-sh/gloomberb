@@ -82,6 +82,28 @@ export async function searchNewsStories(text: string, limit: number, topics?: re
   return response.items.map((item) => mapCloudNewsArticle(item));
 }
 
+/** A search's stories, and whether they are its closest ones because no story has every word. */
+export interface NewsSearchAnswer {
+  found: NewsArticle[];
+  closest: boolean;
+}
+
+/**
+ * The stories matching the text; when no story has every word of a search of
+ * several, the ones with the most of them, most words first. Spellings of
+ * one word are one word to the service: lockup, lock-up and lock up;
+ * spinoff and spin-off; expiry and expiration.
+ */
+export async function searchClosestNewsStories(text: string, limit: number): Promise<NewsSearchAnswer> {
+  const response = await apiClient.searchCloudNews(text, limit, undefined, { closest: true });
+  return { found: response.items.map((item) => mapCloudNewsArticle(item)), closest: response.match === "closest" };
+}
+
+/** What the heading says of a search no story has every word of. */
+export function closestStoriesReason(text: string): string {
+  return `no story has every word of "${text}"; the closest, most words first`;
+}
+
 /** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
 export const METALS_NEWS_TOPIC = "metals";
 

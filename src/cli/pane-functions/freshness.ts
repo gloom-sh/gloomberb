@@ -123,6 +123,8 @@ export interface ReportFreshness {
   ageOnly?: true;
   /** What the newest observation is, said before its time: `newest story Tue 29 Sep 2026 20:17 UTC`. */
   asOfLabel?: string;
+  /** The line says when the report was retrieved after the newest observation's date (`retrieved Wed 28 Oct 2026 19:07 UTC`). */
+  retrievedToo?: true;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /** Shorter forms of `note`, in the order a capture's line too long for it tries them. */
@@ -610,6 +612,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(status === "unreported" && declared.ageOnly ? { ageOnly: true as const } : {}),
     ...(asOfLabel ? { asOfLabel } : {}),
+    ...(asOf && declared.retrievedToo ? { retrievedToo: true as const } : {}),
     ...(note ? { note } : {}),
     ...(noteVariants.length > 0 ? { noteVariants } : {}),
     ...(schedule ? { schedule } : {}),
@@ -1064,6 +1067,8 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
       // Undated, a saved copy is not "retrieved" now: its own part says when it was saved.
       : (freshness.unreached || freshness.savedAt) && !freshness.asOf ? []
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
+    // A list dated by its newest filing says when it was read as well.
+    ...(freshness.retrievedToo && freshness.asOf && !freshness.savedAt ? [`retrieved ${timeText(freshness.retrievedAt, local)}`] : []),
     ...(freshness.schedule && detail.schedule !== "none"
       ? [typeof detail.schedule === "number" ? freshness.scheduleVariants?.[detail.schedule] ?? freshness.schedule : freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
