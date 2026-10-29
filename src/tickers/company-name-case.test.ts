@@ -37,3 +37,11 @@ test("a name written in capitals reads as a company name, with legal forms, shor
 test("a name that already carries lower case, or no letters, is left as its source wrote it", () => {
   for (const name of ["Apple Inc.", "iShares Core S&P 500", "NVIDIA Corporation", "3M Company", "", "66"]) expect(companyNameCase(name)).toBe(name);
 });
+
+test("a brand that opens in lower case before capitals is a name in capitals all the same", () => {
+  expect(companyNameCase("aTYR PHARMA INC")).toBe("aTyr Pharma Inc");
+  expect(companyNameCase("iROBOT CORP")).toBe("iRobot Corp");
+  // Lower case anywhere else is how the source means it.
+  expect(companyNameCase("aTyr Pharma Inc")).toBe("aTyr Pharma Inc");
+  expect(companyNameCase("eBay INC")).toBe("eBay INC");
+});

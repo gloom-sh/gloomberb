@@ -25,7 +25,7 @@ test("what became of a symbol is one line from quote's sources: a listing that s
   const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", lastUpdated: now });
   // The fund's bars or none, the line is quote's.
   const moved = describeListingFate({ symbol: "FB" }, etf, fb, now);
-  const line = "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)";
+  const line = "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)";
   expect(listingFateNotes(moved, { served: true, firstDate: "2025-10-13" })).toEqual([line]);
   expect(listingFateNotes(moved, { served: false })).toEqual([line]);
   // Read on a listing abroad, the symbol is not the US one the changes are of.
