@@ -70,7 +70,7 @@ const spies: Array<{ mockRestore(): void }> = [];
 
 beforeEach(() => {
   cotBoardCache.reset();
-  // The front price's unit is remembered for the session, and a detail waits for it.
+  // The front price's unit is remembered for the session; each test asks for it afresh.
   resetFuturesPriceUnits();
   spies.push(
     spyOn(apiClient, "getCloudCotBoard").mockImplementation(async () => board()),
@@ -120,7 +120,8 @@ type AskedSpy = { mock: { results: Array<{ value: unknown }> } };
 /**
  * Renders until the open detail has its answers: its contract, the front
  * price's history and the contract terms the price's unit comes from, each
- * asked for and settled. The detail shows nothing until all three have.
+ * asked for and settled. The chart draws once the contract and history are
+ * in; the unit joins its legend when the terms answer.
  */
 async function settleDetail() {
   const asked = { contract: apiClient.getCloudCotContract, history: apiClient.getCloudHistory, terms: apiClient.getCloudFuturesContract };
