@@ -91,7 +91,7 @@ column under 480px steps every reading level down together (13.2px body).
 |---|---|
 | Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
 | Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it so it opens into the pane; an inactive one takes the hover fill in that shape. Their labels sit on the title's centre line. |
-| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
+| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A label's lowercase letters sit in the middle of the fill, and an icon in front of it centres with them. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
 | Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. |
 | Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
 | Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
@@ -211,6 +211,13 @@ the edge on purpose), colours (the audit's report lists them), hover and focus
 states, WebKit (Linux WebKit crashes on several panes; the local audit
 pictures it), signed-in and Pro panes beyond their walls, and the terminal
 (its own frames, held byte for byte by the terminal tests).
+
+Where a chip's icon and letters sit is measured from their ink, in the font
+in question, not judged from font metrics: `bun run ui:badge-ink` pictures
+the badge specimens (`scenario=badge-ink`) at 2x in Chromium and WebKit, and
+on a Mac in the system WebKit with SF Mono (`--engines wkwebview`), and
+gives each chip's icon, x-height letters and capitals against the centre of
+its fill in device pixels. Half a pixel is the line between centred and not.
 
 ## 1. Anatomy
 

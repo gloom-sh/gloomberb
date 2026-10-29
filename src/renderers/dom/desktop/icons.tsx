@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { releasePointerFocus } from "../host/focus-scope";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { IconButtonProps, IconName, IconProps } from "../../../components/ui/icon";
 
 /** The desktop icon set, drawn on a 12-unit grid in the current colour. */
@@ -180,22 +180,7 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
 };
 
-/**
- * An icon in a line of text. `middle` centres it half an x-height above the
- * baseline; the offset lifts it to half the capital height, where a label's
- * capitals, digits and tall letters have their middle. Both units read the
- * text's own font, so it holds for any font and size. A browser without the
- * `cap` unit drops the offset and keeps the x-height middle.
- */
-const INLINE_ICON_STYLE: CSSProperties = {
-  display: "inline-block",
-  verticalAlign: "middle",
-  position: "relative",
-  top: "calc(0.5ex - 0.5cap)",
-  marginRight: "var(--gloom-space-xs)",
-};
-
-export function WebIcon({ name, size = 12, color, inline }: IconProps) {
+export function WebIcon({ name, size = 12, color, fullHeight }: IconProps) {
   return (
     <svg
       viewBox="0 0 12 12"
@@ -204,7 +189,8 @@ export function WebIcon({ name, size = 12, color, inline }: IconProps) {
       fill="none"
       aria-hidden="true"
       data-gloom-icon={name}
-      style={inline ? { flex: "none", ...INLINE_ICON_STYLE, color } : { flex: "none", display: "block", color }}
+      // The viewBox keeps its size and sits in the middle of the taller box (preserveAspectRatio's default).
+      style={{ flex: "none", display: "block", color, ...(fullHeight ? { height: "100%" } : {}) }}
     >
       {ICONS[name]}
     </svg>
