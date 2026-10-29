@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { debugLog } from "../../utils/debug-log";
+import { logFailure } from "../../utils/log-failure";
 
 /**
  * Pages SQLite lets the WAL grow to before the connection that commits
@@ -114,7 +115,30 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
     if (failed || stopped) return;
     failed = true;
     checkpointLog.warn("The WAL checkpointer stopped; commits checkpoint themselves", { reason });
-    onFailure();
+    try {
+      onFailure();
+    } catch (error) {
+      logFailure("data.sqlite", "Could not give commits their checkpoints back")(error);
+    }
+  };
+
+  /** False when the worker is gone (a crashed thread throws on a message), which ends the checkpointer. */
+  const post = (message: { type: string; path?: string; closed?: SharedArrayBuffer }): boolean => {
+    try {
+      worker.postMessage(message);
+      return true;
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  };
+
+  const terminate = () => {
+    try {
+      worker.terminate();
+    } catch (error) {
+      logFailure("data.sqlite", "Stopping the WAL checkpointer failed")(error);
+    }
   };
 
   const schedule = () => {
@@ -123,8 +147,7 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
       timer = null;
       if (failed || stopped) return;
       pending = false;
-      running = true;
-      worker.postMessage({ type: "checkpoint" });
+      running = post({ type: "checkpoint" });
     }, CHECKPOINT_DELAY_MS);
     (timer as { unref?: () => void }).unref?.();
   };
@@ -147,7 +170,11 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
   worker.onerror = (event) => {
     fail(event.message);
   };
-  worker.postMessage({ type: "open", path: resolve(dbPath), closed });
+  if (!post({ type: "open", path: resolve(dbPath), closed })) {
+    terminate();
+    URL.revokeObjectURL(source);
+    return null;
+  }
 
   return {
     nudge() {
@@ -157,14 +184,14 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
     },
     close() {
       if (stopped) return;
-      stopped = true;
       if (timer) clearTimeout(timer);
       timer = null;
-      if (failed) {
-        worker.terminate();
+      const asked = !failed && post({ type: "close" });
+      stopped = true;
+      if (!asked) {
+        terminate();
         return;
       }
-      worker.postMessage({ type: "close" });
       Atomics.wait(new Int32Array(closed), 0, 0, CLOSE_WAIT_MS);
     },
   };

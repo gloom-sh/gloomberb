@@ -228,9 +228,17 @@ export class ResourceStore {
     return written;
   }
 
-  /** Writes the reads still held in memory; the connection closes after. */
+  /**
+   * Writes the reads still held in memory; the connection closes after. A
+   * failure loses only that order: the queued user writes and the
+   * connection still have to close.
+   */
   close(): void {
-    this.flushTouches();
+    try {
+      this.flushTouches();
+    } catch (error) {
+      logFailure("data.resource-store", "Saving the cache's eviction order at close failed")(error);
+    }
     if (this.touchTimer) clearTimeout(this.touchTimer);
     this.touchTimer = null;
   }
