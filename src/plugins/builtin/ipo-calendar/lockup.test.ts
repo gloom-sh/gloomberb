@@ -4,7 +4,7 @@ import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { validateIpoCalendar } from "./client";
 import { ipoCalendarHeadless, projectIpoCalendarHeadless } from "./headless";
 import { ipoDetailNotes, ipoDetailSentences, ipoMetricRows, loadIpoLockupNews, loadListingIpo } from "./listing-ipo";
-import { filterIpoDeals, formatIpoLockupEnd, formatIpoPrice, ipoKeyword, ipoLockupText, ipoReturnSince } from "./model";
+import { filterIpoDeals, formatIpoLockupEnd, formatIpoPrice, ipoKeyword, ipoLockupBasis, ipoLockupText, ipoReturnSince } from "./model";
 import { ipoDeal } from "./test-fixture";
 
 const NOW = new Date("2026-10-28T19:00:00Z");
@@ -105,10 +105,23 @@ test("ticker's IPO rows, and the lines under them", () => {
   ]);
   const typical = { ...HAWK, lockup: { ...HAWK.lockup!, basis: "typical" as const, prospectusDate: null, prospectusUrl: null, endsOn: "2026-11-03" } };
   expect(ipoDetailNotes(typical, [])).toEqual([
-    "Lockup estimate: the usual 180 days from the first session on 2026-05-07; the prospectus has not been read; underwriters can release shares early.",
+    "Lockup estimate: the typical 180 days from the first session on 2026-05-07; the prospectus has not been read; underwriters can release shares early.",
   ]);
   expect(ipoDetailSentences(typical, null, [], NOW)[1]).toBe(
-    "HAWK lockup ends ~2026-11-03 (estimate): the usual 180 days from the first session on 2026-05-07; the prospectus has not been read; underwriters can release shares early.");
+    "HAWK lockup ends ~2026-11-03 (estimate): the typical 180 days from the first session on 2026-05-07; the prospectus has not been read; underwriters can release shares early.");
+});
+
+test("the lock-up basis says what the server counted: the prospectus's period or the typical one, from the prospectus date or the first session", () => {
+  const basis = (lockup: Partial<NonNullable<IpoDeal["lockup"]>>) => ipoLockupBasis({ ...HAWK, lockup: { ...HAWK.lockup!, ...lockup } });
+  expect(basis({})).toBe("180 days from the prospectus dated 2026-05-06");
+  // A prospectus read with no lock-up period it states: the typical period from its date, read.
+  expect(basis({ basis: "typical", prospectusUrl: "https://www.sec.gov/x.htm" })).toBe("the typical 180 days from the prospectus dated 2026-05-06");
+  expect(basis({ basis: "typical", prospectusDate: null, prospectusUrl: "https://www.sec.gov/x.htm" }))
+    .toBe("the typical 180 days from the first session on 2026-05-07");
+  // A period the prospectus states, with no date read from it: counted from the first session, and never "the usual".
+  expect(basis({ days: 90, prospectusDate: null })).toBe("90 days from the first session on 2026-05-07, the period the prospectus states");
+  expect(basis({ basis: "typical", prospectusDate: null, prospectusUrl: null }))
+    .toBe("the typical 180 days from the first session on 2026-05-07; the prospectus has not been read");
 });
 
 test("the calendar asks for the listings from --from, and a lock-up estimate it cannot read is left off its deal only", async () => {

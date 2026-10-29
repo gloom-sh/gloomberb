@@ -436,14 +436,26 @@ export function ipoLockupText(deal: Pick<IpoDeal, "lockup">, now = new Date()): 
   return `lockup ${verb} ~${deal.lockup.endsOn} (estimate)`;
 }
 
-/** What the estimate counts from: "180 days from the prospectus dated 2026-05-06", or the usual period from the first session. */
+/**
+ * What the estimate counts from, as the server made it. The period is the
+ * prospectus's own (`prospectus`) or the typical 180 days; it counts from
+ * the prospectus date when one was read, else from the first session:
+ * - "180 days from the prospectus dated 2026-05-06"
+ * - "90 days from the first session on 2026-05-07, the period the prospectus states"
+ * - "the typical 180 days from the prospectus dated 2026-05-06"
+ * - "the typical 180 days from the first session on 2026-05-07; the prospectus has not been read"
+ */
 export function ipoLockupBasis(deal: Pick<IpoDeal, "lockup" | "listingDate">): string | null {
   const lockup = deal.lockup;
   if (!lockup) return null;
-  if (lockup.basis === "prospectus" && lockup.prospectusDate) {
-    return `${lockup.days} days from the prospectus dated ${lockup.prospectusDate}`;
-  }
-  return `the usual ${lockup.days} days from the first session${deal.listingDate ? ` on ${deal.listingDate}` : ""}; the prospectus has not been read`;
+  const stated = lockup.basis === "prospectus";
+  const from = lockup.prospectusDate
+    ? `from the prospectus dated ${lockup.prospectusDate}`
+    : `from the first session${deal.listingDate ? ` on ${deal.listingDate}` : ""}`;
+  if (stated) return `${lockup.days} days ${from}${lockup.prospectusDate ? "" : ", the period the prospectus states"}`;
+  // A prospectus read with no period it states (or none of a lock-up's length) is still read.
+  const read = lockup.prospectusDate != null || lockup.prospectusUrl != null;
+  return `the typical ${lockup.days} days ${from}${read ? "" : "; the prospectus has not been read"}`;
 }
 
 /** A price in the deal's own currency: "$26", "HK$7.20". */

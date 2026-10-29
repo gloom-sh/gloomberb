@@ -916,7 +916,7 @@ function corporateActionRows(data: CorporateActionsData) {
     ...declaredDividends(data).map((event) => ({
       type: "dividend",
       date: event.exDate,
-      detail: `declared ${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
+      detail: `declared ${event.special ? "special " : ""}${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
         + (event.payDate ? `, payable ${event.payDate}` : ""),
     })),
     ...data.splits.map((event) => ({

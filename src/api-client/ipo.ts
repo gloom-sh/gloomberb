@@ -38,7 +38,7 @@ export interface IpoLockup {
   /** YYYY-MM-DD. */
   endsOn: string;
   days: number;
-  /** `prospectus`: the period the final prospectus states; `typical`: 180 days, none read. */
+  /** `prospectus`: the period the final prospectus states; `typical`: 180 days, when it states none of a lock-up's length or was not read. */
   basis: "prospectus" | "typical";
   /** The date the final prospectus is dated, when it was read. */
   prospectusDate: string | null;

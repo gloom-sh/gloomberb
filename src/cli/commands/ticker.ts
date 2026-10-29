@@ -1265,7 +1265,9 @@ export async function buildTickerReport({
     for (const note of ipoDetailNotes(ipo.deal, ipo.news)) lines.push(cliStyles.muted(note));
   }
 
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
+  // A listing of the last year may have no statements yet: its IPO says how recent it is.
+  const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
+  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials, listing),
     { text: enterpriseValueText }, distributions, bondFund, codes);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];

@@ -6,9 +6,11 @@ import { createBaseConverter } from "../base-converter";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
 import { createTestTicker } from "../../test-support/ticker";
+import { ipoDeal } from "../../plugins/builtin/ipo-calendar/test-fixture";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
-const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
+const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11"),
+  listingExchangeName: "NYSE" };
 const plainText = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\u00a0/g, " ").replace(/ {2,}/g, " ");
 async function report(financials: TickerFinancials): Promise<string> {
   return (await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials, config, toBase: async value => value }))
@@ -16,7 +18,7 @@ async function report(financials: TickerFinancials): Promise<string> {
 }
 
 test("ticker monetary fundamentals keep reported units across foreign, minor and unknown currencies", async () => {
-  // Nothing declared and no statements (a recent IPO): the listing's own USD.
+  // Nothing declared and no statements, on a US listing in dollars: the listing's own USD.
   for (const [currency, eps] of [["CNY", "CN¥2.50"], ["GBp", "2.50 GBp"], ["GBX", "2.50 GBX"], ["ILA", "2.50 ILA"], ["ZAc", "2.50 ZAc"], [" ", "$2.50"]] as const) {
     const financials: TickerFinancials = { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
       fundamentals: { eps: 2.5, revenue: 1_000_000, netIncome: 0, freeCashFlow: -25_000, financialCurrency: currency },
@@ -207,8 +209,23 @@ test("trailing figures use the fundamentals' currency, then the statements' on a
   expect(fromStatements).not.toContain("(ccy?)");
   expect(plain(renderFundamentalsReport({ ...reportedIn("ZAR"), symbol: "UNITTEST" }, "valuation"))).toContain("EPS (TTM) ZAR 31.43");
   expect(plain(await report(reportedIn("ZAR", "USD")))).toContain("Revenue (TTM) 202.08B USD");
-  // Nothing declares a currency and there are no statements: the GBP listing's. The ZAR statements of a GBP listing do not.
-  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B GBP");
+  // Nothing declares a currency and there are no statements: a GBP listing's currency only when it listed in the last year.
+  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B (ccy?)");
+  const listedIn = (listingDate: string) => ({ deal: ipoDeal({ id: "ipo", symbol: "UNITTEST", status: "listed", listingDate }), news: [] });
+  const recent = plain(await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials: reportedIn(undefined, undefined, "GBP"),
+    config, toBase: async value => value, ipo: listedIn(new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)) }));
+  expect(recent).toContain("Revenue (TTM) 202.08B GBP");
+  const old = plain(await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials: reportedIn(undefined, undefined, "GBP"),
+    config, toBase: async value => value, ipo: listedIn(new Date(Date.now() - 500 * 86_400_000).toISOString().slice(0, 10)) }));
+  expect(old).toContain("Revenue (TTM) 202.08B (ccy?)");
+  // A dollar receipt, or a US listing whose statements read failed, does not say its figures are dollars.
+  expect(plain(await report({ ...reportedIn(undefined, undefined, "USD"), quote: { ...quote, isDepositaryReceipt: true } })))
+    .toContain("Revenue (TTM) 202.08B (ccy?)");
+  expect(plain(await report({ ...reportedIn(undefined, undefined, "USD"),
+    statementHistory: { mode: "extended", source: "sec", status: "retryable-failure", fetchedAt: "2026-10-28T00:00:00Z" } })))
+    .toContain("Revenue (TTM) 202.08B (ccy?)");
+  expect(plain(await report(reportedIn(undefined, undefined, "USD")))).toContain("Revenue (TTM) 202.08B USD");
+  // The ZAR statements of a GBP listing do not name its figures.
   const london = plain(await report(reportedIn("ZAR", undefined, "GBP")));
   expect(london).toContain("EPS (TTM) 31.43 (ccy?)");
   expect(london).toContain("Revenue (TTM) 202.08B (ccy?)");

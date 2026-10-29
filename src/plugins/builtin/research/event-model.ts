@@ -422,7 +422,8 @@ export function buildEventRows(
       date: dividend.exDate,
       status: "Dividend",
       period: "-",
-      detail: dividend.payDate ? `Declared, payable ${dividend.payDate}` : "Declared",
+      // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
+      detail: `Declared${dividend.special ? " special" : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
     });

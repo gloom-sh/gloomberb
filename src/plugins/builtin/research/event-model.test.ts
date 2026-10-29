@@ -120,7 +120,7 @@ test("a failed source reads as one short line in words, never its reason code (A
   // Declared, payable ahead of today whenever the test runs.
   const ahead = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
   const actions = { symbol: "AIOK", dividends: [], splits: [], earnings: [], coverage: { earnings: "unavailable" as const, dividends: "available" as const },
-    declaredDividends: [{ exDate: ahead(30), amount: 3.5, declarationDate: ahead(-5), recordDate: ahead(5), payDate: ahead(28) }] };
+    declaredDividends: [{ exDate: ahead(30), amount: 3.5, declarationDate: ahead(-5), recordDate: ahead(5), payDate: ahead(28), special: true as const }] };
   const state = { variant: "corporate-actions" as const, symbol: "AIOK", actionsError: null, estimates: null, actions };
   expect(eventSourceNotice({ ...state, estimatesError: "UPSTREAM_ERROR" })).toEqual({
     text: "Unavailable: earnings, analyst estimates (the source did not answer)", failed: true });
@@ -132,7 +132,7 @@ test("a failed source reads as one short line in words, never its reason code (A
   expect(sourceErrorText("Analyst source timed out")).toBe("Analyst source timed out");
   // The declared special dividend is a row of its own while the rest failed.
   const rows = buildEventRows(actions, null, null, "USD");
-  expect(rows).toEqual([expect.objectContaining({ id: `div-declared:${ahead(30)}`, date: ahead(30), detail: `Declared, payable ${ahead(28)}`, value: "$3.50" })]);
+  expect(rows).toEqual([expect.objectContaining({ id: `div-declared:${ahead(30)}`, date: ahead(30), detail: `Declared special, payable ${ahead(28)}`, value: "$3.50" })]);
 });
 
 test("EE ignores dividends, adjustments and pending announcements when assessing reported earnings coverage", () => {

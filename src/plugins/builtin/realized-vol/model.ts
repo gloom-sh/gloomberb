@@ -25,7 +25,7 @@ export interface RealizedVolatilityModel {
    */
   shortWindows: number[];
   /**
-   * What a short history leaves out, said once: "Listed 2026-05-07: 121
+   * What a short history leaves out, said once: "History starts 2026-05-07: 121
    * daily bars so far; the 180- and 260-bar windows need more". Null when the
    * history covers the lookback and every window.
    */
@@ -102,9 +102,9 @@ export function projectRealizedVolatility(
     warnings.push("Unavailable historical estimates reduce volatility-cone sample coverage");
   }
   const first = history[0]?.date.toISOString().slice(0, 10);
-  // A history that starts inside the lookback is the listing's whole life: it listed then.
+  // Where the history starts, never read as the listing date: a source's first bar is not proof of when it listed.
   const historyNote = !first || (!shortLookback && !shortWarmup && !shortWindows.length) ? null
-    : `${shortLookback ? "Listed" : "History starts"} ${first}: ${history.length} daily bars so far; ${shortWindows.length
+    : `History starts ${first}: ${history.length} daily bars so far; ${shortWindows.length
       ? `${windowsText(shortWindows)} need${shortWindows.length === 1 ? "s" : ""} more`
       : "the long windows' cone covers part of the lookback"}`;
   return { symbol: options.symbol.trim().toUpperCase(), estimator, lookbackYears, windows,
