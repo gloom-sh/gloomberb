@@ -505,10 +505,8 @@ export const ko: Record<string, string> = {
   "Pin Ticker": "종목 고정",
 
   // ── Help pane ────────────────────────────────────────────────
-  "How To Use Gloom": "Gloom 사용 방법",
   "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하거나 {key}을 누르고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
-  "Click anything to use it; the keys shown beside actions are shortcuts.": "무엇이든 클릭해서 사용하세요. 동작 옆에 표시된 키는 단축키입니다.",
   "Open Help": "도움말 열기",
   "Command Prefixes": "명령 접두사",
   "Window Templates": "창 템플릿",
@@ -518,7 +516,6 @@ export const ko: Record<string, string> = {
   "Scrolling": "스크롤",
   "Open Debug Log": "디버그 로그 열기",
   "GitHub Issues": "GitHub 이슈",
-  "Docked panes stay in the saved layout.": "도킹된 패널은 저장된 레이아웃에 유지됩니다.",
   "Floating panes can be dragged by the title bar and resized from the lower-right corner.": "플로팅 패널은 제목 표시줄로 이동하고 오른쪽 아래에서 크기를 조절할 수 있습니다.",
   "Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.": "레이아웃 작업에서 분할, 이동, 복제, 플로팅 패널 모두 닫기, 실행 취소, 다시 실행 및 프리셋을 관리합니다.",
   "Move through focused table and list rows.": "포커스된 표와 목록의 행을 이동합니다.",
@@ -563,7 +560,6 @@ export const ko: Record<string, string> = {
   "Go back from a nested command screen when the query is empty.": "쿼리가 비어 있으면 중첩된 명령 화면에서 돌아갑니다.",
   "Reorder ordered multi-select choices.": "순서가 있는 다중 선택 항목을 재정렬합니다.",
   "Submit multiline command forms.": "여러 줄 명령 양식을 제출합니다.",
-  "Layout Basics": "레이아웃 기본 사항",
 
   // ── Onboarding ───────────────────────────────────────────────
   "The open terminal for modern finance.": "현대 금융을 위한 오픈 소스 터미널.",

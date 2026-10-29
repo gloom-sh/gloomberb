@@ -79,7 +79,7 @@ import {
   removeTickerFromCollection,
   tickerRemovalSummary,
 } from "./remove-ticker";
-import { QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
+import { QUICK_ADD_KEY, QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
@@ -143,8 +143,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const [streamWindow, setStreamWindow] = useState({ start: 0, end: 24 });
   const [quickAddFocused, setQuickAddFocused] = useState(false);
-  // Bumped by the empty table's "+ ticker" button to open the add row.
-  const [quickAddRequest, setQuickAddRequest] = useState(0);
 
   const {
     cursorSymbol,
@@ -737,7 +735,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     return null;
   }, [activeCollectionId, config, currentPortfolio]);
   const showQuickAdd = !!(activeCollectionId && activeCollectionEntry && quickAddCollectionKind);
-  const requestQuickAdd = useCallback(() => setQuickAddRequest((count) => count + 1), []);
   const quickAddHeight = showQuickAdd ? 1 : 0;
   const selectedFinancials = cursorSymbol ? financialsMap.get(cursorSymbol) : undefined;
   const selectedCap = liveMarketCapitalization(selectedFinancials?.quote, selectedFinancials?.fundamentals);
@@ -765,7 +762,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       width={width}
       onAdded={handleTickerAdded}
       onFocusChange={setQuickAddFocused}
-      focusRequest={quickAddRequest}
     />
   ) : null;
 
@@ -807,7 +803,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           visibleRangeBuffer={3}
           resetScrollKey={activeCollectionId}
           onRowActivate={handleRowActivate}
-          onAddTicker={showQuickAdd ? requestQuickAdd : undefined}
+          addTickerShortcut={showQuickAdd ? QUICK_ADD_KEY : undefined}
           onOpenPerpetual={showsPerpetuals ? openPerpMarket : undefined}
           rootHeight={contentHeight}
         />

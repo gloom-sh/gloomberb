@@ -112,7 +112,6 @@ export function QuickAddTickerInput({
   width,
   onAdded,
   onFocusChange,
-  focusRequest = 0,
 }: {
   collectionId: string;
   collectionKind: QuickAddCollectionKind;
@@ -121,12 +120,6 @@ export function QuickAddTickerInput({
   width: number;
   onAdded: (symbol: string) => void;
   onFocusChange?: (focused: boolean) => void;
-  /**
-   * Bumped by a control outside the row, such as the empty table's
-   * "+ ticker" button, to open it. A click there focuses the pane in the same
-   * press, so the row opens once the pane is focused.
-   */
-  focusRequest?: number;
 }) {
   const dispatch = useAppDispatch();
   const { notify } = usePluginAppActions();
@@ -149,13 +142,6 @@ export function QuickAddTickerInput({
   const blurInput = useCallback(() => {
     setInputFocused(false);
   }, []);
-
-  const handledFocusRequestRef = useRef(focusRequest);
-  useEffect(() => {
-    if (focusRequest === handledFocusRequestRef.current || !focused) return;
-    handledFocusRequestRef.current = focusRequest;
-    focusInput();
-  }, [focusInput, focusRequest, focused]);
 
   // A symbol with no listing leaves the field, so the next one typed replaces
   // it instead of running on (OMV.VIREP.MC); the line under it still says what
