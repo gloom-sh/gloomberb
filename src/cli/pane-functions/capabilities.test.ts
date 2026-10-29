@@ -194,7 +194,7 @@ describe("pane function capabilities", () => {
   test("an option a function does not take is refused by the code the user typed, not its pane or capability id", () => {
     const comparison = capabilityFor("comparison-chart-pane");
     expect(() => normalizeCapabilityOptions(comparison, { tab: "cashflow" }, { code: "COMP" }))
-      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --total-return, --chart-resolution.");
+      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --from, --to, --total-return, --chart-resolution.");
     // A flag is named as it is typed, not as the parser keys it (`--as-of` reads as `asOf`).
     expect(() => normalizeCapabilityOptions(comparison, { asOf: "2026-10-14" }, { code: "COMP" }))
       .toThrow("COMP does not support --as-of.");
@@ -214,6 +214,10 @@ describe("pane function capabilities", () => {
     expect(() => normalizeCapabilityOptions(returns, { window: "1M", from: "2007" }, { code: "RETURN" })).toThrow("--from replaces --window; give one of them.");
     expect(() => normalizeCapabilityOptions(capabilityFor("historical-prices-pane"), { range: "5Y", from: "2007" }, { code: "HP" }))
       .toThrow("--from replaces --range; give one of them.");
+    // CMP too: `fn CMP IAG:LSE LHA:XETRA --from 2019-12-31` was refused.
+    const comparison = capabilityFor("comparison-chart-pane");
+    expect(normalizeCapabilityOptions(comparison, { from: "2019-12-31" }, { code: "CMP" })).toMatchObject({ from: "2019-12-31" });
+    expect(() => normalizeCapabilityOptions(comparison, { range: "5Y", from: "2019" }, { code: "CMP" })).toThrow("--from replaces --range; give one of them.");
   });
 
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {

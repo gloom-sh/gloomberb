@@ -209,7 +209,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `CALLS [ticker]` | Earnings calls and their transcripts; alone, the calendar of every company's calls |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
 | `QQ <tickers>` | Ticker quote monitor |
-| `CMP <tickers>` | Normalized price comparison (`fn CMP LMT RTX --range YTD`). A leveraged or inverse fund adds its daily objective and decay, see [Leveraged and inverse funds](#leveraged-and-inverse-funds) |
+| `CMP <tickers>` | Normalized price comparison (`fn CMP LMT RTX --range YTD`; `--from 2019-12-31`, with `--to`, measures each leg from its close on that day). A leveraged or inverse fund adds its daily objective and decay, see [Leveraged and inverse funds](#leveraged-and-inverse-funds) |
 | `CORR <tickers>` | Return correlations; `GEO:<name>` adds a map series (`CORR FRO, STNG, GEO:HORMUZ`) |
 | `ANR <ticker>` | Analyst targets and ratings |
 | `DIAG <ticker>` | Equity Diagnostic with cited flags and anomalies |
