@@ -1,5 +1,5 @@
 import { canonicalExchange } from "../../utils/exchanges";
-import { companyNameExtraWords, sameCompany } from "../company-name";
+import { companyNameExtraWords, namedByService, sameCompany } from "../company-name";
 import { answersOnlyByKeyword, isQualifiedTickerQuery } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
@@ -29,6 +29,54 @@ export function lineDistance(type: string, exchange: string, symbol: string): 0 
   return SECONDARY_VENUES.has(exchange) || /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
 }
 
+/** How the primary-listing choice weighs one of a company's lines. */
+export interface WeighedCompanyLine {
+  /** `listingDistance`: 0 its own line, 1 a line quoting shares listed elsewhere, 2 a receipt. */
+  distance: number;
+  /** The search score the service gives the listings people look up most; null when it gives none. */
+  score: number | null;
+}
+
+/**
+ * The line a company's search lists as its primary listing instead of `lead`,
+ * the line search put first, often the one-off cross-listing whose short name
+ * matched the query (LUFTHANSA on Budapest): its lines go by how far each is
+ * from being its own line, then by the search score. The lead gives way only
+ * to a closer line, or to one searched at least twice as often, or any scored
+ * line when it has no score. With `named` (the service marked the lead with
+ * the name as typed) no score outweighs the mark: only a closer line does.
+ * `lines` holds the lead. `search` and a company's name typed for a listing
+ * (`findListingOfCompanyName`) choose by this one rule, so both open the same
+ * listing.
+ */
+export function primaryCompanyLine<T>(
+  lead: T,
+  lines: readonly T[],
+  weigh: (line: T) => WeighedCompanyLine,
+  options: { named?: boolean } = {},
+): T {
+  const order = (line: T) => lines.indexOf(line);
+  const [home] = [...lines].sort((a, b) => weigh(a).distance - weigh(b).distance
+    || (weigh(b).score ?? -1) - (weigh(a).score ?? -1) || order(a) - order(b));
+  if (!home || home === lead) return lead;
+  const [best, first] = [weigh(home), weigh(lead)];
+  const closer = best.distance < first.distance;
+  const moreSearched = !options.named && best.distance === first.distance && best.score != null
+    && (first.score == null || best.score >= first.score * 2);
+  return closer || moreSearched ? home : lead;
+}
+
+/** `primaryCompanyLine` among `items` of `start`'s company, for the command bar's rows. */
+function primaryLineOf<T extends TickerSearchCandidate>(start: T, items: readonly T[], query: string): T {
+  const name = candidateName(start);
+  const named = !!start.result && namedByService(query, start.result);
+  const lines = items.filter((item) => item === start || (isListedEquity(item) && sameCompany(name, candidateName(item))
+    && (!named || companyNameExtraWords(candidateName(item), name) != null)));
+  return primaryCompanyLine(start, lines, (item) => ({
+    distance: listingDistance(item), score: item.result?.popularity ?? item.popularity ?? null,
+  }), { named });
+}
+
 function candidateName(candidate: TickerSearchCandidate): string {
   return candidate.result?.name || candidate.detail.split(" | ")[0] || "";
 }
@@ -51,7 +99,10 @@ function isListedEquity(candidate: TickerSearchCandidate): boolean {
  * service marks as the company's home (`homeListing`) takes the lead from
  * the company's first row. Without that mark, a receipt in the lead gives
  * way to the company's own shares on an exchange (`listingDistance` 0, not
- * an OTC or regional line), the name nearest the receipt's first. A query that names a venue (LVMH:TSX,
+ * an OTC or regional line), the name nearest the receipt's first. Then the
+ * line `search` calls the company's primary listing (`primaryCompanyLine`)
+ * takes the lead, so a name opens what `search` lists first: LHA on XETRA
+ * for "lufthansa", not LUFTHANSA on Budapest. A query that names a venue (LVMH:TSX,
  * 7203.T) asked for that line, and a saved row keeps the lead.
  */
 export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
@@ -64,11 +115,13 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
   const nearest = (candidates: T[]) => [...candidates].sort((a, b) => nameGap(name, candidateName(a)) - nameGap(name, candidateName(b))
     || items.indexOf(a) - items.indexOf(b))[0];
   const marked = lines.filter((item) => item.result?.homeListing === true);
+  const own = listingDistance(lead) === 2 ? nearest(lines.filter((item) => listingDistance(item) === 0)) : undefined;
   const home = lead.result?.homeListing === true ? undefined
     : marked.length ? nearest(marked)
-    : listingDistance(lead) === 2 ? nearest(lines.filter((item) => listingDistance(item) === 0))
-    : undefined;
-  if (!home) return items;
+    // A listing searched by its own symbol is that listing, as `search` keeps it.
+    : lead.symbol.toUpperCase() === query.trim().toUpperCase() ? own
+    : primaryLineOf(own ?? lead, [lead, ...lines], query);
+  if (!home || home === lead) return items;
   const rest = items.filter((item) => item !== home);
   const at = rest.indexOf(lead);
   return [...rest.slice(0, at), home, ...rest.slice(at)];

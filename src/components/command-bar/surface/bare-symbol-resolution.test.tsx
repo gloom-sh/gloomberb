@@ -23,19 +23,24 @@ const listings: Record<string, InstrumentSearchResult[]> = {
   ],
 };
 
-// Search relevance can lead with another company even though the bare quote
-// identifies the US listing. A delayed suggestion must not change what Enter opens.
+// Before its search answers, a typed ticker command opens the listing the shared
+// resolver reads (DES HFC is the former US line, as `quote HFC` reads it). Once
+// rows are up, Enter opens exactly the highlighted one: search relevance leads
+// with another company here, and that is the row Enter opens.
 for (const suggestionsReady of [false, true]) {
-  for (const [query, expectedSymbol, expectedName] of [
-    ["DES HFC", "HFC", "HollyFrontier Corporation"],
-    ["DES HFC:NYSE", "HFC:XNYS", "HollyFrontier Corporation"],
-    ["DES SAN", "SAN", "Banco Santander"],
-    ["HFC", "HFC", "HollyFrontier Corporation"],
+  for (const [query, expectedSymbol, expectedExchange, expectedName] of [
+    ["DES HFC", "HFC", "NYSE", "HollyFrontier Corporation"],
+    ["DES HFC:NYSE", "HFC:XNYS", "NYSE", "HollyFrontier Corporation"],
+    ["DES SAN", "SAN", "NYSE", "Banco Santander"],
+    ["HFC", "HFC", "NYSE", "HollyFrontier Corporation"],
   ] as const) {
     // A plain root query offers no ticker row until its search answers.
     if (!suggestionsReady && query === "HFC") continue;
-    test(`${query} resolves the typed listing with suggestions ${suggestionsReady ? "loaded" : "pending"}`, async () => {
-      const symbol = query.replace(/^DES /, "").split(":")[0]!;
+    const symbol = query.replace(/^DES /, "").split(":")[0]!;
+    // The highlighted row once the answer is in: the first, unless the query named the venue.
+    const highlighted = !suggestionsReady || query.includes(":") ? { exchange: expectedExchange, name: expectedName }
+      : { exchange: listings[symbol]![0]!.exchange, name: listings[symbol]![0]!.name };
+    test(`${query} with suggestions ${suggestionsReady ? "loaded opens the highlighted row" : "pending resolves the typed listing"}`, async () => {
       const opened: string[] = [];
       const saved: TickerRecord[] = [];
       const { promise: held, resolve: releaseSuggestions } = Promise.withResolvers<void>();
@@ -60,8 +65,8 @@ for (const suggestionsReady of [false, true]) {
         else await tui.setup().renderOnce();
         await tui.emitKeypress({ name: "return", sequence: "\r" });
         await tui.waitForFrameToContain("bar:closed");
-        expect(opened).toEqual([expectedSymbol]);
-        expect(saved.at(-1)?.metadata).toMatchObject({ ticker: expectedSymbol, exchange: "NYSE", name: expectedName });
+        expect(opened).toEqual([suggestionsReady ? symbol : expectedSymbol]);
+        expect(saved.at(-1)?.metadata).toMatchObject({ exchange: highlighted.exchange, name: highlighted.name });
       } finally {
         releaseSuggestions();
       }
@@ -69,7 +74,50 @@ for (const suggestionsReady of [false, true]) {
   }
 }
 
-test.each(["DES HFC", "HFC"])("Shift+Enter on untouched %s opens the resolved listing in a new pane", async (query) => {
+test("a late answer that reorders the rows moves the highlight with its row, and Enter opens that row", async () => {
+  const opened: string[] = [];
+  const saved: TickerRecord[] = [];
+  const { promise: fresh, resolve: answerFresh } = Promise.withResolvers<void>();
+  const [hampton, holly, hf] = listings.HFC!;
+  let answers = 0;
+  await tui.render(<CommandBarHarness
+    query=""
+    live
+    onAction={(action) => { if (action.type === "UPDATE_TICKER") saved.push(action.ticker); }}
+    configurePluginRegistry={(registry) => { registry.pinTicker = (key) => { opened.push(key); }; }}
+    dataProvider={createTestDataProvider({
+      search: async (query, context) => {
+        if (context?.limit !== LISTING_SEARCH_LIMIT || query.toUpperCase() !== "HFC") return [];
+        answers += 1;
+        if (answers === 1) return listings.HFC!;
+        // The fresher answer lists HollyFrontier first.
+        await fresh;
+        return [holly!, hampton!, hf!];
+      },
+    })}
+  />, { width: 110, height: 28 });
+  await act(async () => { await tui.setup().mockInput.typeText("HFC"); });
+  await tui.waitForFrameToContain("Hampton Financial");
+  // Back to HFC: the cached answer is up at once, Hampton highlighted, while the fresher search is out.
+  await tui.emitKeypress({ name: "backspace" });
+  await tui.waitForFrameToExclude("Hampton Financial");
+  await act(async () => { await tui.setup().mockInput.typeText("C"); });
+  await tui.waitForFrameToContain("Hampton Financial");
+  answerFresh();
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const frame = tui.frame();
+    if (frame.indexOf("HollyFrontier") >= 0 && frame.indexOf("HollyFrontier") < frame.indexOf("Hampton")) break;
+    await tui.renderFrames(1);
+    await Bun.sleep(10);
+  }
+  expect(tui.frame().indexOf("HollyFrontier")).toBeLessThan(tui.frame().indexOf("Hampton"));
+  await tui.emitKeypress({ name: "return", sequence: "\r" });
+  await tui.waitForFrameToContain("bar:closed");
+  expect(opened).toEqual(["HFC"]);
+  expect(saved.at(-1)?.metadata).toMatchObject({ exchange: "TSXV", name: "Hampton Financial Corporation" });
+});
+
+test.each(["DES HFC", "HFC"])("Shift+Enter on untouched %s opens the highlighted listing in a new pane", async (query) => {
   const opened: Array<{ symbol: string; options?: PinTickerOptions }> = [];
   const saved: TickerRecord[] = [];
   await tui.render(<CommandBarHarness
@@ -88,7 +136,7 @@ test.each(["DES HFC", "HFC"])("Shift+Enter on untouched %s opens the resolved li
   await tui.emitKeypress({ name: "return", sequence: "\r", shift: true });
   await tui.waitForFrameToContain("bar:closed");
   expect(opened).toEqual([{ symbol: "HFC", options: expect.objectContaining({ forceNewPane: true }) }]);
-  expect(saved.at(-1)?.metadata).toMatchObject({ ticker: "HFC", exchange: "NYSE", name: "HollyFrontier Corporation" });
+  expect(saved.at(-1)?.metadata).toMatchObject({ ticker: "HFC", exchange: "TSXV", name: "Hampton Financial Corporation" });
 });
 
 test.each(["keyboard", "mouse"] as const)("an explicit %s choice still opens the foreign listing", async (input) => {

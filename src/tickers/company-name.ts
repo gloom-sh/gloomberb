@@ -1,3 +1,5 @@
+import type { InstrumentSearchResult } from "../types/instrument";
+
 /**
  * Company names as venues spell them, compared and shortened for sentences.
  * One company's listings carry its name with different legal forms and share
@@ -233,4 +235,16 @@ export function companyNameCase(name: string): string {
       return part.split(/(\d+)/).map((run, at) => at % 2 === 1 ? run : nameWord(run, opening && index === 0 && at === 0, before === ".")).join("");
     }).join("");
   });
+}
+
+/** Letters and digits only, in capitals: "JP Morgan" and "JPMorgan" are JPMORGAN. */
+export function runTogether(text: string): string {
+  return text.normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/** Whether the service marked the row with the name as typed: the company it means by it. */
+export function namedByService(typed: string, result: Pick<InstrumentSearchResult, "searchAliases">): boolean {
+  const wanted = runTogether(typed);
+  return !!wanted && Array.isArray(result.searchAliases)
+    && result.searchAliases.some((alias) => typeof alias === "string" && runTogether(alias) === wanted);
 }

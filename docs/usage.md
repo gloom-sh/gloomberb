@@ -183,7 +183,7 @@ End a search with one of those codes, other than `DERIV`, to keep only that clas
 
 A symbol that trades in several places lists its exchanges after a colon. `NET:` shows each one, your saved listing first, and a symbol several companies use lists them all (`CAR:` offers CAR Group on ASX as well as Avis and Carrefour). Letters after the colon narrow the list (`NET:L`), and `NET:XLON` names one listing.
 
-Enter on a typed symbol or ticker command uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). To choose another listing, use the arrow keys or click a search row. A saved symbol keeps its saved listing.
+Enter opens exactly the highlighted row. Before a typed symbol or ticker command's search answers, there is no row yet and Enter uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). Once the rows are up, Enter opens the highlighted one; to choose another listing, use the arrow keys or click a search row. When a later answer reorders the rows, the highlight moves with its row. A company's name lists the listing `search` calls its primary first (`lufthansa` is LHA on XETRA), as `quote lufthansa` reads it. A saved symbol keeps its saved listing.
 
 When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloom search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
 
