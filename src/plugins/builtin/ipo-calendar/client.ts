@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal, IpoSourceHealth } from "../../../api-client/ipo";
+import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal, IpoLockup, IpoSourceHealth } from "../../../api-client/ipo";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
@@ -45,6 +45,21 @@ function validDeal(deal: IpoDeal): boolean {
     && validFirstDay(deal.firstDay);
 }
 
+function validLockup(value: unknown): value is IpoLockup {
+  const lockup = value as IpoLockup | null;
+  return !!lockup && typeof lockup === "object" && typeof lockup.endsOn === "string" && dayOrNull(lockup.endsOn)
+    && typeof lockup.days === "number" && Number.isFinite(lockup.days) && lockup.days > 0
+    && (lockup.basis === "prospectus" || lockup.basis === "typical")
+    && dayOrNull(lockup.prospectusDate ?? null) && textOrNull(lockup.prospectusUrl ?? null);
+}
+
+/** A lock-up estimate the client cannot read is left off its deal; the deal stays. */
+function withReadableLockup(deal: IpoDeal): IpoDeal {
+  if (deal.lockup == null || validLockup(deal.lockup)) return deal;
+  const { lockup: _unreadable, ...rest } = deal;
+  return rest;
+}
+
 function validSource(source: IpoSourceHealth): boolean {
   return !!source && text(source.id) && Array.isArray(source.mics) && source.mics.every(text)
     && typeof source.ok === "boolean" && textOrNull(source.asOf);
@@ -61,7 +76,8 @@ export function validateIpoCalendar(data: IpoCalendarPayload): IpoCalendarPayloa
   }
   return {
     asOf: data.asOf,
-    deals: data.deals.filter(validDeal).map((deal) => (REGIONS.has(deal.region) ? deal : { ...deal, region: "other" })),
+    deals: data.deals.filter(validDeal).map(withReadableLockup)
+      .map((deal) => (REGIONS.has(deal.region) ? deal : { ...deal, region: "other" })),
     sources: data.sources.filter(validSource),
   };
 }

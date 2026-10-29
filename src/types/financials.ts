@@ -539,6 +539,8 @@ export interface DeclaredDividendAction {
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
+  /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
+  special?: true;
 }
 
 export interface SplitAction {

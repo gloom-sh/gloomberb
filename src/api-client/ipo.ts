@@ -28,6 +28,24 @@ interface IpoFirstDay {
   returnPct: number | null;
 }
 
+/**
+ * When a US IPO's lock-up is estimated to end: the final prospectus's date
+ * plus the period it states, or the first session plus the usual 180 days
+ * until the prospectus is read. An estimate: underwriters can release
+ * shares early, and some holders agree to other periods.
+ */
+export interface IpoLockup {
+  /** YYYY-MM-DD. */
+  endsOn: string;
+  days: number;
+  /** `prospectus`: the period the final prospectus states; `typical`: 180 days, when it states none of a lock-up's length or was not read. */
+  basis: "prospectus" | "typical";
+  /** The date the final prospectus is dated, when it was read. */
+  prospectusDate: string | null;
+  /** The SEC document the period was read from. */
+  prospectusUrl: string | null;
+}
+
 export interface IpoDeal {
   /** Assigned when the deal is first seen and never changed. */
   id: string;
@@ -66,6 +84,8 @@ export interface IpoDeal {
   listingType: IpoListingType;
   filedDate: string | null;
   firstDay: IpoFirstDay | null;
+  /** A priced or listed US IPO's estimated lock-up end; absent elsewhere, and from a server without the estimate. */
+  lockup?: IpoLockup | null;
   updatedAt: string;
 }
 
@@ -86,11 +106,14 @@ export interface IpoCalendarPayload {
 
 /**
  * Narrows or moves the window. Without any, the server sends its default:
- * 90 days back to 180 ahead, filed and withdrawn deals left out, 500 at most.
+ * a year back (90 days on a server before that) to 180 days ahead, filed
+ * and withdrawn deals left out.
  */
 export interface IpoCalendarParams {
   region?: IpoRegion;
   status?: IpoStatus;
+  /** Company (in either script) or symbol the deals' names contain. */
+  q?: string;
   /** First listing date, YYYY-MM-DD. */
   from?: string;
   /** Last listing date, YYYY-MM-DD. */

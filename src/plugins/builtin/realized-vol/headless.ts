@@ -74,10 +74,12 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
               formatted: iv?.reference ? atmIvObservedLabel(iv.reference.date) : "--" },
           ] },
         ],
-        complete: model.cone.every((row) => row.current != null) && model.warnings.length === 0 && !history.stale && errors.length === 0
+        // A short history is whole: the windows it is too short for have no estimate yet, and the note says when it starts.
+        complete: model.cone.every((row) => row.current != null || model.shortWindows.includes(row.window))
+          && model.warnings.length === 0 && !history.stale && errors.length === 0
           && (!args.options.showIv || iv?.reference != null || iv?.noOptionChain === true),
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
-        notes: [barsPerYearLabel(model.barsPerYear)],
+        notes: [barsPerYearLabel(model.barsPerYear), ...model.historyNote ? [model.historyNote] : []],
         metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
           ...(abroad && args.options.showIv ? { notices: [`Options data covers US listings only, so ${args.symbols[0]} has no current IV.`] } : {}),
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,

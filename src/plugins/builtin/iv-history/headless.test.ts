@@ -184,7 +184,7 @@ describe("VCA backfill states", () => {
     expect(section.rows.map((row) => row.note ?? null)).toEqual([
       null,
       "TWTR stopped trading 2022-10-27; no history or options served",
-      "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
+      "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)",
     ]);
     expect(result.notes?.[0]).toBe("No options history: FB.");
   });
