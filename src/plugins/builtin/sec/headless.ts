@@ -20,6 +20,7 @@ import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fu
 import { REPORT_ROWS } from "../shared/headless-options";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
+import { companyDataNotes } from "../../../types/company-from";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -140,7 +141,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       return {
         rows,
         textColumns: secTextColumns(rows),
-        ...(note ? { notes: [note] } : {}),
+        ...(note || filings[0]?.companyFrom ? { notes: [...(note ? [note] : []), ...companyDataNotes(filings[0]?.companyFrom)] } : {}),
         ...(form ? { empty: `No ${form} filings found for ${symbol}.` }
           : page ? { empty: `${symbol} files no SEC reports. ${page.name}: ${page.url}` } : {}),
         metadata: {

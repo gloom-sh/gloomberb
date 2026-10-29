@@ -1,7 +1,7 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { displayWidth } from "../../../utils/format";
+import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
 import { parseEconFigure } from "./figures";
 import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
@@ -235,6 +235,51 @@ export function eventCountry(event: Pick<EconEvent, "country" | "event">): strin
   return euroAreaMember(event) ?? event.country;
 }
 
+/** What the feeds call the Fed's rate decision. */
+const FED_RATE_DECISION_NAMES = new Set(["federal funds rate", "fed interest rate decision"]);
+/** A figure that is a range (3.75-4.00%) rather than one level. */
+const RANGE_FIGURE = /\d\s*[-\u2013]\s*\d/;
+const FED_FUNDS_UPPER_BOUND = "Federal Funds Rate (upper bound)";
+
+/**
+ * A row's name as the calendar shows it. The Fed's decision is figured as one
+ * level, the top of the target range (4.00% for 3.75-4.00%), so it is named
+ * for that bound rather than read as the range or the effective rate; a row
+ * whose figures are the range keeps the feed's name. Whatever matches rows by
+ * name (alerts, the FRED history) reads the feed's own, `event.event`.
+ */
+export function econEventName(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string {
+  if ((event.country !== "US" && event.country !== "USD") || !FED_RATE_DECISION_NAMES.has(event.event.trim().toLowerCase())) return event.event;
+  return [event.actual, event.forecast, event.prior].some((figure) => !!figure && RANGE_FIGURE.test(figure)) ? event.event : FED_FUNDS_UPPER_BOUND;
+}
+
+/** Letters and digits only, lower case: "Non-Farm" and "nonfarm" read alike. */
+const compactName = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/**
+ * Whether a row's name carries every word of `query`, case, spaces and
+ * punctuation aside: `nonfarm` finds Non Farm Payrolls and Non-Farm
+ * Employment Change, `fed funds` the Federal Funds Rate. The name shown and the
+ * feed's own are both read.
+ */
+export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">, query: string): boolean {
+  const words = query.split(/\s+/).map(compactName).filter(Boolean);
+  if (words.length === 0) return true;
+  const names = [event.event, econEventName(event)].map(compactName);
+  return names.some((name) => words.every((word) => name.includes(word)));
+}
+
+/**
+ * A release still to come that has a prior and no forecast: the consensus is
+ * not in yet, which the calendar draws as a dash.
+ */
+export function awaitsConsensus(event: Pick<EconEvent, "actual" | "forecast" | "prior">): boolean {
+  return !event.actual?.trim() && !event.forecast?.trim() && !!event.prior?.trim();
+}
+
+/** What a dash under Forecast means on a row still to come. */
+export const NO_CONSENSUS_NOTE = `${MISSING_VALUE} forecast = no consensus yet`;
+
 /** A national euro-area release matches EU (and G7, as EU) and its own member's code. */
 export function matchesCountry(event: Pick<EconEvent, "country" | "event">, filter: CountryFilter): boolean {
   const member = euroAreaMember(event);
@@ -376,6 +421,8 @@ export function subscribeCalendar(listener: () => void): () => void {
 }
 
 export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
+  /** `stale-fallback`: the copy an earlier read saved, answering because its refresh failed. */
+  source?: "cache" | "network" | "stale-fallback";
   refreshError?: string;
 }
 

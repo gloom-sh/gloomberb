@@ -6,6 +6,7 @@ import type {
 } from "../../../api-client/market-movers";
 import type { DataProvider } from "../../../types/data-provider";
 import { logFailure } from "../../../utils/log-failure";
+import { savedCopyMark } from "../../../data/saved-copies";
 import {
   CATEGORY_MAP,
   moverRegularSession,
@@ -113,6 +114,7 @@ export async function loadMarketMoverTab(
     const trending = await dependencies.fetchTrending(LIST_ROWS, fetchOptions);
     const hydrated = await hydrateTrending(trending.data, provider);
     return {
+      ...savedCopyMark(trending),
       tab,
       ...hydrated,
       source: "gloom",

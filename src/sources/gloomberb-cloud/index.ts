@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { readCompanyFrom } from "../../types/company-from";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
@@ -42,7 +43,7 @@ import {
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
-import { isRoundTheClockCoin } from "../../utils/crypto-pair";
+import { exchangeLineCoinListing, isRoundTheClockCoin, withExchangeLinesAsCoinListings } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
@@ -315,12 +316,33 @@ function cloudResponseTargetKey(key: string, requested: Set<string>): string | u
 
 /**
  * The listing as Gloom Cloud knows it. A Hong Kong code goes out with its four
- * digits: Cloud has no 700 or 5 on HKEX, only 0700 and 0005.
+ * digits: Cloud has no 700 or 5 on HKEX, only 0700 and 0005. A crypto
+ * exchange's line of a coin pair (BTC/GBP on COINBASE PRO), which no source
+ * quotes, goes out as the crypto venue's listing of the pair, BTC-GBP on CCC.
  */
 function cloudInstrumentTarget(symbol: string, exchange?: string) {
   rejectPredictionMarket(symbol, exchange);
   const target = publicListingTarget(symbol, exchange);
+  const coin = exchangeLineCoinListing(target.symbol, target.exchange);
+  if (coin) return { symbol: coin.symbol, exchange: coin.exchange };
   return target.exchange ? { ...target, symbol: hongKongListingCode(target.symbol, target.exchange) } : target;
+}
+
+/**
+ * Whether a quote names a listing other than the one asked for: asked for BHP
+ * on Cboe Australia, Gloom Cloud has answered with BHP on NYSE, in dollars. A
+ * price for another instrument is worse than none. A quote that names no
+ * listing is judged by its symbol alone, as the router judges it.
+ */
+function pricesOtherListing(quote: Quote, target: ReturnType<typeof cloudInstrumentTarget>): boolean {
+  const metadata = quoteMetadataFromQuote(quote);
+  const named = !!(metadata.listingExchangeName || parsePublicTickerKey(quote.symbol).exchange);
+  return !quoteMetadataMatchesTarget(metadata, named ? target.symbol : parsePublicTickerKey(target.symbol).symbol, named ? target.exchange : undefined);
+}
+
+function otherListingMiss(ticker: string, quote: Quote) {
+  const venue = quote.listingExchangeName || quote.exchangeName || parsePublicTickerKey(quote.symbol).exchange;
+  return createProviderMiss(`Cloud quoted ${quote.symbol}${venue ? ` on ${venue}` : ""} for ${ticker}`);
 }
 
 function cloudHistoryRecovery(
@@ -520,10 +542,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return withCloudFallback(
       async () => {
         const response = await apiClient.getCloudQuote(target.symbol, target.exchange);
-        const quote = retainRequestedQuoteSymbol(mapQuote(
+        const answered = mapQuote(
           unwrapRequiredCloudResponse(response, `Cloud quotes are unavailable for ${ticker}`),
           response.providerMeta,
-        ), ticker);
+        );
+        if (pricesOtherListing(answered, target)) throw otherListingMiss(ticker, answered);
+        const quote = retainRequestedQuoteSymbol(answered, ticker);
         // A stale answer is the last price the service has. It stays flagged, so
         // no freshness check passes it and only a request with no current quote
         // from any source falls back to it.
@@ -585,7 +609,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
           return { target, quote: null, error: createProviderMiss(`Cloud quotes are stale for ${target.symbol}`) };
         }
         if ((item.status === "success" || item.status === "partial") && item.data) {
-          const quote = retainRequestedQuoteSymbol(mapQuote(item.data), target.symbol);
+          const answered = mapQuote(item.data);
+          if (pricesOtherListing(answered, cloudInstrumentTarget(target.symbol, target.exchange))) {
+            return { target, quote: null, error: otherListingMiss(target.symbol, answered) };
+          }
+          const quote = retainRequestedQuoteSymbol(answered, target.symbol);
           return { target, quote: item.stale === true ? { ...quote, stale: true } : quote };
         }
         return {
@@ -617,8 +645,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     // Perpetual markets are listings too, asked for beside the others. They are optional: a failed lookup leaves the
     // other results, and a keystroke waits for them only briefly once the listings are in, unless the query names one.
     const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
+    // A crypto exchange's line of a coin pair, which no source quotes, is offered as the crypto venue's listing.
     const listings = await withCloudFallback(
-      () => apiClient.searchInstruments(query, context?.limit ?? 10),
+      async () => withExchangeLinesAsCoinListings(await apiClient.searchInstruments(query, context?.limit ?? 10)),
       "Cloud search is unavailable",
     ).catch((error: unknown) => {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
@@ -637,9 +666,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const name = venue ? context?.listingName?.trim() || await this.listingName(ticker, venue) || undefined : undefined;
     const filings = await withCloudFallback(async () => {
       const response = await apiClient.getCloudSecFilings({ ticker, exchange, name, limit: count, offset: 0 });
-      return response.filings.map(mapCloudSecFiling);
+      // A foreign line's filings read from its company's home line say whose, each of them.
+      const companyFrom = readCompanyFrom(response.companyFrom);
+      return response.filings.map((filing) => companyFrom ? { ...mapCloudSecFiling(filing), companyFrom } : mapCloudSecFiling(filing));
     }, `Cloud SEC filings are unavailable for ${ticker}`);
-    if (!venue || filings.length === 0) return filings;
+    // The service matched a line read from its company's home line to the company itself.
+    if (!venue || filings.length === 0 || filings[0]!.companyFrom) return filings;
     const symbol = parsePublicTickerKey(ticker).symbol;
     // Without the listing's company the filings cannot be told apart from another company's.
     if (!name) throw createProviderMiss(`SEC filings for ${symbol} could not be matched to its ${venue} listing`);
@@ -732,6 +764,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   async searchBatch(queries: string[], options: { limit?: number; signal?: AbortSignal } = {}): Promise<Map<string, InstrumentSearchResult[]> | null> {
     const answers = await cloudSearchBatch(queries, options);
     if (!answers) return null;
+    for (const [query, rows] of answers) answers.set(query, withExchangeLinesAsCoinListings(rows));
     // Perpetual markets lead each answer, as `search` gives them, so a symbol in a list resolves as it does alone:
     // one read of the board answers every query's search of it. A query that found no listing is searched again
     // on its own, which finds them then; a board that does not answer leaves them out, as a search does.
@@ -965,6 +998,7 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
             articles: cloudNewsReadArticles(read, query.ticker),
             nextCursor: read.nextCursor ?? null,
             access: read.access ?? null,
+            companyFrom: readCompanyFrom(read.companyFrom),
           };
         },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {

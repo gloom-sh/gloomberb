@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { macroDayStats, matchesSurprise, projectMacroDays } from "./model";
+import { formatMacroDayMove, macroDayStats, matchesSurprise, projectMacroDays } from "./model";
 
 /** Weekday closes from `from` to `to`, skipping `closed`; each close is 1% above the one before unless `closes` says otherwise. */
 function weekdays(from: string, to: string, closed: string[], closes: Record<string, number> = {}): PricePoint[] {
@@ -122,5 +122,27 @@ describe("macro-day surprises", () => {
       releases: model.events.filter((event) => event.kind !== "ipca").map(({ kind, date }) => ({ kind, date })) });
     expect(usOnly.kinds).toEqual(["cpi", "jobs", "fomc"]);
     expect([model.normal, model.allEvents, model.byKind.cpi]).toEqual([usOnly.normal, usOnly.allEvents, usOnly.byKind.cpi]);
+  });
+});
+
+describe("macro-day moves on a yield", () => {
+  test("reads a Treasury yield index's move as the change in the yield, in basis points, and a price's as a return", () => {
+    // ^TNX's level is the 10-year yield in percent: 5.24 to 5.28 is +4bp, not +0.76%.
+    const closes = { "2026-10-01": 5.24, "2026-10-02": 5.28, "2026-10-05": 5.10 };
+    const history = weekdays("2026-09-28", "2026-10-09", [], closes);
+    const options = { lookbackYears: 1, coveredThrough: "2026-12-31", releases: [{ kind: "jobs", date: "2026-10-02" }] } as const;
+    const yieldDays = projectMacroDays(history, { ...options, symbol: "^TNX" });
+    expect(yieldDays.basis).toBe("yield");
+    expect(yieldDays.events[0]!.move).toBeCloseTo(0.04, 12);
+    expect(formatMacroDayMove(yieldDays.events[0]!.move, yieldDays.basis)).toBe("+4.0bp");
+    // An average size has no sign; a move that rounds to nothing has none either.
+    expect(formatMacroDayMove(0.065, "yield", { signed: false })).toBe("6.5bp");
+    // Under a column headed bp, the number alone.
+    expect(formatMacroDayMove(0.04, "yield", { unit: false })).toBe("+4.0");
+    expect(formatMacroDayMove(-0.0004, "yield")).toBe("0.0bp");
+
+    const priceDays = projectMacroDays(history, { ...options, symbol: "SPY" });
+    expect(priceDays.basis).toBe("return");
+    expect(formatMacroDayMove(priceDays.events[0]!.move, priceDays.basis)).toBe("+0.76%");
   });
 });

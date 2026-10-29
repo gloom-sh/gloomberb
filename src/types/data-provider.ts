@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "./company-from";
 import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
@@ -61,6 +62,12 @@ export interface SecFilingItem {
    * series list reaches).
    */
   fundSeries?: boolean;
+  /**
+   * The company's home line the filing was read from, when the listing asked
+   * is a receipt or a foreign line with no filer of its own (HY9H in
+   * Frankfurt reads SK hynix's). Absent on the listing's own filings.
+   */
+  companyFrom?: CompanyFrom;
 }
 
 export interface SecFilingDocument {

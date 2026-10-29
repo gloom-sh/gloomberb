@@ -74,4 +74,22 @@ describe("the live scanner report", () => {
     const items = serializeHeadlessPaneResult(liveScanHeadless, result).items as Array<Record<string, unknown>>;
     expect(items[0]).toMatchObject({ changePercent: 16.5674603175, relativeVolume: 3.06685236614 });
   });
+
+  test("prints prices at the pane's precision, whatever digits the feed sends", async () => {
+    const { result, text } = await report(payload({
+      matched: 3,
+      matches: [match({ price: 153.065 }), match({ symbol: "TEX", name: "Terex", price: 49.9105 }), match({ symbol: "PEN", name: "Penny", price: 0.51234 })],
+    }));
+    const prices = text.split("\n").filter((line) => /^(NN|TEX|PEN) /.test(line)).map((line) => line.split(/\s+/)[2]);
+    expect(prices).toEqual(["153.07", "49.91", "0.5123"]);
+    expect((serializeHeadlessPaneResult(liveScanHeadless, result).items as Array<Record<string, unknown>>)[1]).toMatchObject({ price: 49.9105 });
+  });
+
+  test("says the market is closed and when the scan last ran outside the session, not the feed's delay", async () => {
+    const closed = await report(payload({ status: "closed", asOf: Date.parse("2026-10-27T19:59:30Z") }));
+    expect(closed.text).toContain("Market closed; last scan 2026-10-27 19:59 UTC");
+    expect(closed.text).not.toContain("Delayed");
+    // In the session a delayed feed still says its delay.
+    expect((await report(payload({}))).text).toContain("Delayed 15 minutes");
+  });
 });

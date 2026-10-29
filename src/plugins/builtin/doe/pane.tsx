@@ -13,8 +13,10 @@ import {
   usePaneTabs,
   type ChartTableChart,
   type DataTableColumn,
+  type PaneFooterSegment,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -136,13 +138,21 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: setTab, focused, dense: true });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
+  // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
+  const savedAt = resource.data?.savedAt ?? null;
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,
-    notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
+    notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError && savedAt == null ? [resource.data.refreshError] : [])] });
   // What Vs 1Y and Vs 5Y are measured against on this tab: the EIA's published figures for gas storage.
   const basis = useMemo(() => data ? doeComparisonBasis(doeRows(data, tab)) : null, [data, tab]);
-  const info = useMemo(() => basis ? [{ id: "basis", parts: [{ text: basis, tone: "muted" as const }] }] : undefined, [basis]);
+  const info = useMemo(() => {
+    const segments: PaneFooterSegment[] = [
+      ...(basis ? [{ id: "basis", parts: [{ text: basis, tone: "muted" as const }] }] : []),
+      ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : []),
+    ];
+    return segments.length ? segments : undefined;
+  }, [basis, savedAt]);
   usePaneStatusFooter({ registrationId: "doe", loading: resource.loading, error: notAvailable ? null : resource.error,
-    stale: !!data && resource.data?.stale, info });
+    stale: !!data && !!resource.data?.stale && savedAt == null, info });
   return (
     <Box width={width} height={height} flexDirection="column">
       {strip}

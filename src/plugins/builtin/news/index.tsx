@@ -6,6 +6,7 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useCallback } from "react";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { EmptyState, PaneStatusBody, QueryBar, usePaneNoticeFooter } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { coinNewsFallbackNotice } from "../../../sources/gloomberb-cloud/news";
 import { newsMuteSettingsDef, newsMutesApplyToFeed, useNewsMuteFilter } from "./wire/mutes";
 import { newsListEmptyCopy } from "./wire/filter-articles";
@@ -114,6 +115,8 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     onPopOut: readableArticle ? popOutReadable : undefined,
     feedAccess: newsState.access,
   });
+  // A receipt's or foreign line's stories are its company's, read from the home line.
+  useCompanyDataFooter(newsState.companyFrom, !detailOpen);
 
   if (!ticker) {
     return (

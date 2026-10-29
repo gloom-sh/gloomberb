@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from"
 import { listingAbroad, type IssuerListingParams } from "./paths";
 
 type QuoteMatchMode = "exact" | "whitespace" | "nfkc_whitespace";
@@ -132,6 +133,8 @@ export interface KpiSeries {
 }
 export interface KpisPayload {
   symbol: string
+  /** The company's home line the data is read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom
   status: "available" | "unavailable"
   asOf: string | null
   coverage: KpiCoverage

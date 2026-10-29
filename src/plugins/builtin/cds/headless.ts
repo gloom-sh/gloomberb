@@ -9,6 +9,7 @@ import type {
 } from "../../../types/plugin";
 import {
   CDS_TRADE_DAYS,
+  coveredIssuersFrom,
   loadCdsActivity,
   loadCdsSpreadHistory,
   loadCdsSpreadLevels,
@@ -17,6 +18,7 @@ import {
   type CdsHistoryFetch,
   type CdsLevelsFetch,
   type CdsSpreadHistory,
+  type CoveredIssuers,
   type InstrumentSearch,
 } from "./client";
 import { formatContract } from "../credit-boards/model";
@@ -35,6 +37,7 @@ import {
   formatSpreadMove,
   formatSpreadRange,
   formatUpfront,
+  hasPointsQuotes,
   issuerListSort,
   quotedLevel,
   lastTradeOf,
@@ -154,7 +157,7 @@ function tradeForFormatting(row: Record<string, unknown>): CdsTrade {
   return row as unknown as CdsTrade;
 }
 
-const TRADE_COLUMNS = [
+const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "eventAt", header: "Time UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
   { key: "issuer", header: "Issuer" },
   { key: "maturity", header: "Maturity" },
@@ -174,6 +177,22 @@ const TRADE_COLUMNS = [
     format: (_value: unknown, row: Record<string, unknown>) => formatUpfront(tradeForFormatting(row)),
   },
 ];
+
+/**
+ * A print that quoted points upfront in its spread field reads in a Points
+ * column, shown when one did; exports write the number as quoted.
+ */
+const POINTS_COLUMN: HeadlessPaneColumn = {
+  key: "pointsUpfront",
+  header: "Points",
+  align: "right",
+  format: (value: unknown) => (typeof value === "number" ? String(value) : "--"),
+  textFormat: (value: unknown) => formatPoints(numberOrNull(value)),
+};
+
+const tradeColumns = (points: boolean): HeadlessPaneColumn[] => (
+  points ? [...TRADE_COLUMNS.slice(0, -1), POINTS_COLUMN, TRADE_COLUMNS.at(-1)!] : TRADE_COLUMNS
+);
 
 /**
  * The pane's figures over its 5Y chart, as label and value lines: the level,
@@ -227,24 +246,29 @@ interface CdsReportInputs {
 function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS.defaultValue }: CdsReportInputs): HeadlessBundleResult {
   const errors: string[] = [];
   const notes: string[] = [];
-  const empty = noTradesMessage({ query: activity.query, issuer: activity.issuer, days: activity.days });
   const metadata = { issuer: activity.issuer, days: activity.days };
   if (activity.query) {
     const line = history instanceof Error || !history ? null : history;
     if (history instanceof Error) errors.push("5Y spread history unavailable.");
+    // A name that matched no covered issuer, with no trades and no line under it on the tape either.
+    const unmatched = activity.unmatched && !activity.trades.length && line && !line.issuer ? activity.unmatched : null;
+    const empty = noTradesMessage({ query: activity.query, issuer: activity.issuer, days: activity.days, unmatched });
     const entries = line ? spreadEntries(line) : [];
-    // The name the tape was queried for heads the figures, as in the pane, so a ticker says what it became.
-    const name = displayIssuerName(activity.issuer ?? line?.issuer ?? activity.query);
+    // The name the tape was queried for heads the figures, as in the pane, so a ticker says what it became;
+    // a name sent as typed takes the one the tape answered with.
+    const name = displayIssuerName((activity.unmatched ? line?.issuer : null) ?? activity.issuer ?? line?.issuer ?? activity.query);
     const why = line ? noLevelMessage(line.noLevelReason, line.points.at(-1)?.date ?? null) : null;
     if (why) notes.push(`${why}.`);
-    else if (line && entries.length === 0) notes.push(`No 5Y spread level for ${name} in the last two years.`);
+    else if (unmatched) {
+      if (!unmatched.nearest.length) notes.push("fn CDS lists the covered issuers.");
+    } else if (line && entries.length === 0) notes.push(`No 5Y spread level for ${name} in the last two years.`);
     // The 5Y figures are dated by their level's day, each trade and each daily level by its own.
     const levelDate = line ? spreadSummary(line)?.date : undefined;
     const sections: HeadlessBundleSection[] = [
       ...(entries.length ? [{ title: name, entries, symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
       {
         title: "Trades",
-        columns: TRADE_COLUMNS,
+        columns: tradeColumns(hasPointsQuotes(activity.trades)),
         rows: sortTrades(activity.trades, DEFAULT_TRADE_SORT).map((trade) => ({ ...trade })),
         empty,
         rowSymbolKey: "issuer",
@@ -265,6 +289,7 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
       ...(notes.length ? { notes } : {}),
     };
   }
+  const empty = noTradesMessage({ query: null, issuer: null, days: activity.days });
   if (levels instanceof Error) errors.push("5Y spreads unavailable.");
   const issuers = withSpreadLevels(summarizeIssuers(activity.trades), levels instanceof Error ? null : levels ?? null);
   return {
@@ -294,14 +319,15 @@ export interface CdsHeadlessDependencies {
     issuer: string | null,
     fetchCds: CdsFetch,
     searchInstruments: InstrumentSearch,
+    coveredIssuers: CoveredIssuers,
   ): Promise<CdsActivity>;
   loadHistory?(issuer: string, fetchHistory: CdsHistoryFetch): Promise<CdsSpreadHistory>;
   loadLevels?: typeof loadCdsSpreadLevels;
 }
 
 const defaultDependencies: CdsHeadlessDependencies = {
-  load: (_args, issuer, fetchCds, searchInstruments) => (
-    loadCdsActivity(issuer, fetchCds, searchInstruments)
+  load: (_args, issuer, fetchCds, searchInstruments, coveredIssuers) => (
+    loadCdsActivity(issuer, fetchCds, searchInstruments, coveredIssuers)
   ),
   loadHistory: (issuer, fetchHistory) => loadCdsSpreadHistory(issuer, fetchHistory),
   loadLevels: loadCdsSpreadLevels,
@@ -353,6 +379,7 @@ export function createCdsHeadless(
         issuer,
         (params) => ctx.apiClient.getCloudCds(params),
         (query, limit) => ctx.apiClient.searchInstruments(query, limit),
+        coveredIssuersFrom(fetchLevels),
       );
       if (activity.query) {
         // The line follows the name the tape was queried for, as the pane's does.

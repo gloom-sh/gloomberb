@@ -326,16 +326,21 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     selectResearchTab(tabId);
     return true;
   }, [selectResearchTab, visibleTabIds]);
+  // Without a ticker the pane draws only its empty state, and the tab list has
+  // no Overview, so the fallback above lands on the first tab that needs no
+  // ticker. Nobody opened it, and keeping it mounted would load its data on
+  // every ticker switch.
+  const shownTabId = ticker && visibleTabIds.has(resolvedTabId) ? resolvedTabId : null;
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
     for (const tabId of mountedTabIds) {
       if (visibleTabIds.has(tabId)) next.add(tabId);
     }
-    if (visibleTabIds.has(resolvedTabId)) {
-      next.add(resolvedTabId);
+    if (shownTabId) {
+      next.add(shownTabId);
     }
     return next;
-  }, [mountedTabIds, resolvedTabId, visibleTabIds]);
+  }, [mountedTabIds, shownTabId, visibleTabIds]);
 
   const handlePluginCapture = useCallback((capturing: boolean) => {
     setPluginCaptured(capturing);
@@ -354,12 +359,12 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       for (const tabId of current) {
         if (visibleTabIds.has(tabId)) next.add(tabId);
       }
-      if (visibleTabIds.has(resolvedTabId)) {
-        next.add(resolvedTabId);
+      if (shownTabId) {
+        next.add(shownTabId);
       }
       return sameStringSet(current, next) ? current : next;
     });
-  }, [resolvedTabId, visibleTabIds]);
+  }, [shownTabId, visibleTabIds]);
 
   if (!ticker) {
     const isEmptyFollowCollection = paneInstance?.binding?.kind === "follow" && !!collectionId && collectionTickerCount === 0;

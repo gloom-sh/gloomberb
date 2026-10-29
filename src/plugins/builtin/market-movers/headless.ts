@@ -15,6 +15,7 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
 import { hasPartialFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "./min-float";
+import { savedCopyMark } from "../../../data/saved-copies";
 
 const rowPrice = (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow));
 
@@ -197,7 +198,8 @@ export function createMarketMoversHeadless(
         rows,
         ...(quoteError ? { complete: false, unavailableSymbols: result.unavailableSymbols, errors: [quoteError] } : {}),
         ...(notes.length > 0 ? { notes } : {}),
-        metadata: { list: tab, source: result.source, stale: result.stale, rankedBy, minFloat: floatFiltered ? minFloat : null },
+        // A list served from a saved copy ends with when it was saved.
+        metadata: { ...savedCopyMark(result), list: tab, source: result.source, stale: result.stale, rankedBy, minFloat: floatFiltered ? minFloat : null },
         // A Pro account's Gainers, Losers and Most Active are the real-time lists.
         ...(result.source === "cloud" ? { freshness: { status: "live" as const } } : {}),
       };

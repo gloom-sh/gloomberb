@@ -1,6 +1,8 @@
 import type { EarningsTiming } from "../../../api-client/earnings";
 import type { PricePoint } from "../../../types/financials";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
+import { toBasisPoints } from "../../../utils/basis-points";
+import { isYieldIndexSymbol } from "../../../tickers/index-roots";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, US_MACRO_EVENT_KINDS, type MacroEventKind, type MacroRelease, type MacroReleaseFigures,
   type MacroSurprise } from "./releases";
 
@@ -17,6 +19,35 @@ export interface MacroDayEarningsReport {
   reactionSession?: string | null;
 }
 
+/**
+ * How a day's move is measured: a price's return, or for a yield (^TNX, whose
+ * level is the yield in percent) the change in that yield, in percentage
+ * points, which the pane and the report read in basis points.
+ */
+export type MacroDayMoveBasis = "return" | "yield";
+
+/** A Treasury yield index moves by its level: 5.24 to 5.28 is +4bp, not +0.76%. */
+const macroDayMoveBasis = (symbol: string): MacroDayMoveBasis => isYieldIndexSymbol(symbol) ? "yield" : "return";
+
+/**
+ * A move as it reads: a return in percent (`+0.76%`), a yield's change in
+ * basis points (`+4.0bp`, or `+4.0` under a column headed bp). One that
+ * rounds to zero is unsigned.
+ */
+export function formatMacroDayMove(value: number | null | undefined, basis: MacroDayMoveBasis,
+  { signed = true, unit = true }: { signed?: boolean; unit?: boolean } = {}): string {
+  if (value == null) return "--";
+  if (basis === "yield") {
+    const bp = toBasisPoints(value, 1);
+    return `${signed && bp > 0 ? "+" : ""}${bp.toFixed(1)}${unit ? "bp" : ""}`;
+  }
+  const fixed = (value * 100).toFixed(2);
+  return /[1-9]/.test(fixed) ? `${signed && value > 0 ? "+" : ""}${fixed}%` : "0.00%";
+}
+
+/** The decimals a move shows in hundredths (percent of a return, basis points of a yield), for its sign and colour. */
+export const macroDayMoveDecimals = (basis: MacroDayMoveBasis) => basis === "yield" ? 1 : 2;
+
 export interface MacroDayEvent {
   kind: MacroEventKind;
   /** Release day, New York date. */
@@ -25,7 +56,7 @@ export interface MacroDayEvent {
   session: string;
   /** The session is also the reaction session of the ticker's own earnings report: the move is the report's, not the release's. */
   earnings: boolean;
-  /** Close before the release to the session's close. */
+  /** Close before the release to the session's close: a return, or a yield's change in percentage points (`basis`). */
   move: number;
   /** |move| over the normal day's average |move|. */
   multiple: number | null;
@@ -45,6 +76,7 @@ export interface MacroDayStats {
 
 export interface MacroDayModel {
   symbol: string;
+  basis: MacroDayMoveBasis;
   /** Newest first. */
   events: MacroDayEvent[];
   /** The kinds the list carries: the US releases, and IPCA when Gloom Cloud lists its days. */
@@ -140,17 +172,19 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   earnings?: readonly MacroDayEarningsReport[];
 }): MacroDayModel {
   const { coveredThrough } = options;
+  const basis = macroDayMoveBasis(options.symbol);
   const byDate = new Map<string, number>();
   for (const point of history) {
     const time = new Date(point.date).getTime();
-    if (!Number.isFinite(time) || !Number.isFinite(point.close) || point.close <= 0) continue;
+    // A yield can sit at zero or below it; a price cannot.
+    if (!Number.isFinite(time) || !Number.isFinite(point.close) || (basis === "return" && point.close <= 0)) continue;
     byDate.set(sessionDate(time), point.close);
   }
   const sessions = [...byDate.keys()].sort();
   const last = sessions.at(-1) ?? null;
   const empty = (): MacroDayStats => stats([], null);
   const kinds = MACRO_EVENT_KINDS.filter((kind) => US_KINDS.has(kind) || options.releases.some((release) => release.kind === kind));
-  if (!last) return { symbol: options.symbol, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty() },
+  if (!last) return { symbol: options.symbol, basis, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty() },
     allEvents: empty(), earnings: empty(), normal: empty(), start: null, asOf: null };
 
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.
@@ -166,7 +200,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   for (let index = 1; index < sessions.length; index++) {
     const date = sessions[index]!, previous = sessions[index - 1]!;
     if (date <= start || date > end || dayNumber(date) - dayNumber(previous) > MAX_SESSION_GAP_DAYS) continue;
-    moves.set(date, byDate.get(date)! / byDate.get(previous)! - 1);
+    moves.set(date, basis === "yield" ? byDate.get(date)! - byDate.get(previous)! : byDate.get(date)! / byDate.get(previous)! - 1);
   }
 
   const reactionSessions = new Set<string>();
@@ -191,7 +225,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const byKind = Object.fromEntries(MACRO_EVENT_KINDS.map((kind) =>
     [kind, stats(events.filter((event) => event.kind === kind && !event.earnings).map((event) => event.move), normalAbs)])) as Record<MacroEventKind, MacroDayStats>;
   const sessionMoves = (flagged: boolean) => [...reactionSessions].filter((session) => reacted.has(session) === flagged).map((session) => moves.get(session)!);
-  return { symbol: options.symbol, events, kinds, byKind, allEvents: stats(sessionMoves(false), normalAbs), earnings: stats(sessionMoves(true), normalAbs),
+  return { symbol: options.symbol, basis, events, kinds, byKind, allEvents: stats(sessionMoves(false), normalAbs), earnings: stats(sessionMoves(true), normalAbs),
     normal, start, asOf: end };
 }
 

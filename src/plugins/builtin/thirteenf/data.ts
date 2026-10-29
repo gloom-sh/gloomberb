@@ -115,7 +115,7 @@ export async function loadBrowserRows(
   tab: ThirteenFBrowserTab,
   query: string,
   signal?: AbortSignal,
-  options: { forceRefresh?: boolean; offset?: number; limit?: number } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { offset?: number; limit?: number } = {},
 ): Promise<BrowserLoadResult> {
   const warnings: string[] = [];
   const result = await loadBrowserPage(tab, query, signal, { ...options, onWarning: warning => warnings.push(warning) });
@@ -136,13 +136,13 @@ async function loadBrowserPage(
   const offset = Math.max(0, options.offset ?? 0);
   const browserLimit = Math.max(1, options.limit ?? BROWSER_PAGE_LIMIT);
   const latestLimit = Math.max(1, options.limit ?? LATEST_FILINGS_PAGE_LIMIT);
-  const apiOptions = { forceRefresh: options.forceRefresh, onWarning: options.onWarning };
+  const apiOptions = { forceRefresh: options.forceRefresh, onWarning: options.onWarning, onSavedCopy: options.onSavedCopy };
   const pageApiOptions = { ...apiOptions, offset };
 
   if (tab === "performance") {
     const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
     const quarters = priorQuarters(quarter);
-    const history = await loadRankingHistory(quarters, signal, { ...apiOptions, onWarning: options.onWarning });
+    const history = await loadRankingHistory(quarters, signal, apiOptions);
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
     const rows = buildBrowserRows({ topFunds, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) }));
     const result: BrowserLoadResult = {
@@ -437,10 +437,10 @@ export async function loadFundPerformance(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
-  options: { forceRefresh?: boolean; splitFactor?: SplitFactorLookup } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup } = {},
 ): Promise<FundPerformanceResult> {
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onWarning: (warning: string) => warnings.push(warning) };
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
   const detail = await loadFundDetail(cik, fallbackName, signal, options);
   const period = detail.latestForm?.periodOfReport;
   const quarter = period ? periodToQuarter(period) : null;
@@ -496,11 +496,11 @@ export async function loadFundDetail(
   fallbackName: string,
   signal?: AbortSignal,
   /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
-  options: { forceRefresh?: boolean; filingGap?: boolean } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { filingGap?: boolean } = {},
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onWarning: (warning: string) => warnings.push(warning) };
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
 
   const forms = await listThirteenFForms(
     cik,

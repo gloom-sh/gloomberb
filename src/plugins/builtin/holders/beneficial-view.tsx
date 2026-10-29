@@ -9,6 +9,7 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -233,6 +234,8 @@ export function BeneficialOwnersView({
     focused,
     title: "13D/13G coverage",
   });
+  // A foreign line's owners are its company's, read from the home line.
+  useCompanyDataFooter(payload?.companyFrom);
   usePaneFooter("holders-13dg", () => ({
     info: [
       ...(payload?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${payload.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []),

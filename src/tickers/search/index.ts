@@ -7,6 +7,7 @@ import { getListingSymbol, listingSuffixConflictsWithExchange, tickerHasListingS
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { currencyPairSpelling } from "../../utils/currency-pair";
+import { typedCoinPairListing } from "../../utils/crypto-pair";
 import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
 import { bareFuturesCode, futuresContractByCode } from "../../market-data/futures-board";
 import { searchContractKey, searchInstrumentKey } from "./identity";
@@ -387,9 +388,12 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   // JPY=X are EURUSD=X and USDJPY=X. USD-NGN and USDNGN, which a security could also be written as
   // (MNT-USD is a coin), are the pair only when nothing is listed under those letters.
   const pair = pickListing || future ? null : currencyPairSpelling(typed);
-  const symbol = future?.symbol ?? (pair && !pair.ambiguous ? pair.symbol : typed);
+  // A coin pair written as crypto exchanges write it (BTC/GBP, or BTC/GBP:KRAKEN) is the crypto venue's BTC-GBP,
+  // and what was typed when the venue has no such coin.
+  const coin = pickListing || future || pair || options.tickers.has(typed) ? null : typedCoinPairListing(typed);
+  const symbol = future?.symbol ?? coin?.symbol ?? (pair && !pair.ambiguous ? pair.symbol : typed);
   const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
-  const alternatives = pickListing ? [] : [...dottedVenueQueries(symbol), ...pair?.ambiguous ? [pair.symbol] : []];
+  const alternatives = pickListing ? [] : [...dottedVenueQueries(symbol), ...pair?.ambiguous ? [pair.symbol] : [], ...coin ? [typed] : []];
   // A listing suffix search does not carry (CEZ.PR) is read from its own quote, as `quote` reads it.
   const quoted = !pickListing && tickerHasListingSuffix(symbol) && !parsePublicTickerKey(symbol).exchange;
   // Most input has no venue code to retry: hand back the literal lookup

@@ -185,15 +185,19 @@ function positionSideLabel(ticker: TickerRecord, activeTab: string | undefined):
   return "MIX";
 }
 
-/** The currency a row is listed in: its position's, else its quote's; an index's level is in points and has none. */
+/**
+ * The currency a row is listed in: its position's, else its quote's or the one saved with it. An index's level is in
+ * points and has none, and a row whose currency no source gave (a coin pair before its quote) shows none, never the
+ * dollars it is valued in meanwhile: a row not held has no position currency, only that fallback.
+ */
 function listedCurrency(
-  positionCurrency: string | undefined,
-  quoteCurrency: string,
+  metrics: Pick<PortfolioPositionMetrics, "positionCount" | "positionCurrency">,
   ticker: TickerRecord,
   quote: TickerFinancials["quote"],
 ): string {
-  if (!positionCurrency && isIndexLevel(quote?.instrumentType || ticker.metadata.assetCategory)) return "";
-  return (positionCurrency || quoteCurrency || ticker.metadata.currency || "").toUpperCase();
+  const held = metrics.positionCount > 0 ? metrics.positionCurrency : "";
+  if (!held && isIndexLevel(quote?.instrumentType || ticker.metadata.assetCategory)) return "";
+  return (held || quote?.currency || ticker.metadata.currency || "").toUpperCase();
 }
 
 function compactText(value: string | null | undefined): string {
@@ -458,7 +462,7 @@ export function getColumnValue(
         ),
       };
     case "currency":
-      return { text: compactText(currencyCodeLabel(listedCurrency(positionCurrency, quoteCurrency, ticker, quote))) };
+      return { text: compactText(currencyCodeLabel(listedCurrency(positionMetrics, ticker, quote))) };
     case "sector":
       return { text: compactText(ticker.metadata.sector || financials?.profile?.sector) };
     case "industry":
@@ -713,7 +717,7 @@ export function getSortValue(
         ?? ticker.metadata.exchange
         ?? null;
     case "currency":
-      return listedCurrency(positionCurrency, quoteCurrency, ticker, quote) || null;
+      return listedCurrency(positionMetrics, ticker, quote) || null;
     case "sector":
       return ticker.metadata.sector || financials?.profile?.sector || null;
     case "industry":

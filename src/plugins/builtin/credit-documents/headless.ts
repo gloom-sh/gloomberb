@@ -31,10 +31,10 @@ export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
     const data = await fetchCreditDocuments(args.symbols[0]!, ctx.apiClient);
     const instrument = args.options.instrument ? await fetchCreditInstrument(data.symbol, String(args.options.instrument), ctx.apiClient) : null;
     const reason = instrument ? null : creditEmptyReason(data, args.symbols[0]!);
-    // Nothing on file says why once, instead of four empty sections.
+    // Nothing on file says why once, as the report's one reason, instead of four empty sections and a generic "not covered".
     if (reason) {
-      return { complete: false, errors: data.warnings, sections: [],
-        metadata: { symbol: data.symbol, issuer: data.issuer, asOf: data.asOf, access: data.access, lockedRows: data.lockedRows, status: data.status, reason, notices: [reason] } };
+      return { complete: false, errors: data.warnings, sections: [], empty: reason,
+        metadata: { symbol: data.symbol, issuer: data.issuer, asOf: data.asOf, access: data.access, lockedRows: data.lockedRows, status: data.status, reason } };
     }
     return { complete: data.status === "available" && data.lockedRows === 0, errors: [...data.warnings, ...(data.lockedRows ? ["Full credit documents and history require Gloom Pro"] : [])],
       sections: instrument ? instrumentSections(data, instrument) : [capitalSection(data), covenantSection(data), maturitySection(data), controlSection(data)],

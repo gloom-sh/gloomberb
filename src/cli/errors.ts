@@ -13,7 +13,7 @@ export const CLI_ERROR_CODE = "cli_error";
 /** The code of a command that ran, and the data service has nothing for what it asked. */
 export const NO_DATA_CODE = "no_data";
 /** The code of a command whose requests never reached the data service. */
-export const SERVICE_UNREACHABLE_CODE = "service_unreachable";
+const SERVICE_UNREACHABLE_CODE = "service_unreachable";
 
 /** What to check when nothing answered: the connection, and the proxy when one is set. */
 function unreachableHint(): string {
@@ -74,6 +74,21 @@ export function failRetryable(message: string, code: string): never {
   throw new CliFailure(message, undefined, code, true);
 }
 
+/**
+ * What a command says when its requests never reached the data service:
+ * `message` names what it could not get (by default only that), and the
+ * details what to check. `--json` marks it retryable.
+ */
+export function unreachableError(message = DATA_SERVICE_UNREACHABLE_MESSAGE): CliErrorObject {
+  return { code: SERVICE_UNREACHABLE_CODE, message, details: unreachableHint(), retryable: true };
+}
+
+/** Fails as a command whose requests never reached the data service (`unreachableError`). */
+export function failUnreachable(message?: string): never {
+  const error = unreachableError(message);
+  throw new CliFailure(error.message, error.details, error.code, error.retryable);
+}
+
 export function closeAndFail(persistence: AppPersistence, message: string, details?: string): never {
   persistence.close();
   fail(message, details);
@@ -104,7 +119,7 @@ function cliErrorObject(error: unknown): CliErrorObject {
   }
   // No answer came back at all: in Gloom's words, whichever fetch failed (Bun's "Unable to connect", a refused proxy).
   if (isNetworkFailure(error)) {
-    return { code: SERVICE_UNREACHABLE_CODE, message: DATA_SERVICE_UNREACHABLE_MESSAGE, details: unreachableHint(), retryable: true };
+    return unreachableError();
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {

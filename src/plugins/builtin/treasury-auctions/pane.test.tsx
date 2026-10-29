@@ -104,7 +104,7 @@ async function renderSettled() {
 const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
 
 describe("TreasuryAuctionsPane", () => {
-  test("renders auction metrics and keeps one placeholder for unpublished results", async () => {
+  test("renders auction metrics, and an announced auction's Rate as Pending", async () => {
     seedCache();
     await tui.render(<Harness />, { width: 92, height: 20 });
     await renderSettled();
@@ -119,10 +119,9 @@ describe("TreasuryAuctionsPane", () => {
     expect(frame).toContain("5.3bp");
     expect(frame).toContain("14.7%");
     expect(frame).toContain("8.6%");
-    // The 20-Year is announced but unpublished: every metric cell reads the
-    // same placeholder the reported-but-missing cells use.
-    expect(frame).toContain("20-Year");
-    expect(frame).not.toContain("pending");
+    // The 20-Year is announced but unpublished: its Rate says so, as its detail does, and its other figures read "—".
+    const announced = frame.split("\n").find((line) => line.includes("20-Year"));
+    expect(announced).toMatch(/20-Year\s+Pending\s+—/);
   });
 
   test("opens a detail view for the selected auction", async () => {

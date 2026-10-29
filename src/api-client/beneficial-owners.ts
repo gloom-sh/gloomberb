@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from";
 /**
  * Schedule 13D and 13G beneficial ownership reports about one issuer, as
  * `GET /cloud/sec/beneficial-owners` returns them. Percentages are percent
@@ -71,6 +72,8 @@ export interface BeneficialOwnersCoverage {
 
 export interface BeneficialOwnersPayload {
   ticker: string;
+  /** The company's home line the owners are read from, when not the listing asked (a foreign line). */
+  companyFrom?: CompanyFrom;
   cik: string;
   companyName: string;
   /** When the server assembled the list, an ISO time. */

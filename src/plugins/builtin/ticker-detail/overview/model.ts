@@ -1,9 +1,9 @@
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
-import type { CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
+import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
-import { ratioCount } from "../../../../market-data/depositary-pair";
+import { cedearRatioText, ratioCount } from "../../../../market-data/depositary-pair";
 import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
@@ -151,6 +151,7 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
+  cedearRatio = null,
   today,
   dividend,
   bond = null,
@@ -169,6 +170,8 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The receipt pair the listing is a side of, as Gloom Cloud serves it; `receiptSide` when the listing is the receipt. */
   depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
+  /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
+  cedearRatio?: CedearRatio | null;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
@@ -222,6 +225,11 @@ export function buildOverviewStats({
     stats.push(receiptSide
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio)!, `${count} sh per ADR`], link: ADR_PAIR }
       : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
+  }
+  if (cedearRatio) {
+    const receipts = ratioCount(cedearRatio.receipts);
+    const shares = ratioCount(cedearRatio.shares);
+    stats.push({ label: "CEDEAR Ratio", value: `${receipts}:${shares}`, detail: [cedearRatioText(cedearRatio), `${receipts} per ${shares} sh`] });
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {

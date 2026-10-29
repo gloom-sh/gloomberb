@@ -34,6 +34,7 @@ import {
 } from "./report-rows";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { fundHoldersAnswer } from "./fund-holders";
+import { companyDataNotes } from "../../../types/company-from";
 import {
   HOLDER_ROWS_MAX,
   indexedHoldersPartialNote,
@@ -212,6 +213,7 @@ export function createHoldersHeadless(
               [payload.companyName || symbol, ...beneficialListFacts(payload, form, rows.length, history)].join(" · "),
               ...(legend ? [legend] : []),
               ...beneficialCoverageNotices(payload.coverage),
+              ...companyDataNotes(payload.companyFrom),
             ],
             returned: limited.length,
             total: rows.length,

@@ -1672,6 +1672,8 @@ export const es: Record<string, string> = {
   "Guides": "Guías",
   "Academy": "Academia",
   "offline, saved copy": "sin conexión, copia guardada",
+  "company data from {listing}": "datos de la empresa de {listing}",
+  "from {listing}": "de {listing}",
   "Open in Browser": "Abrir en el navegador",
   "No docs match \"{query}\".": "Nada en la documentación coincide con \"{query}\".",
   "No docs for {name} yet.": "Aún no hay documentación para {name}.",
