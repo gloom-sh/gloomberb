@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -97,7 +97,10 @@ describe("DOE board boundary", () => {
 });
 
 describe("DOE report dates", () => {
-  afterEach(() => { (apiClient.getCloudDoeBoard as unknown as { mockRestore?: () => void }).mockRestore?.(); });
+  afterEach(() => {
+    (apiClient.getCloudDoeBoard as unknown as { mockRestore?: () => void }).mockRestore?.();
+    setSystemTime();
+  });
 
   const load = async (tab: string, argument = "") => {
     const args = { symbols: [], argument: argument ? [argument] : [], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
@@ -106,6 +109,8 @@ describe("DOE report dates", () => {
 
   test("the footer names what Vs 1Y and Vs 5Y avg are measured against, and the next storage line its consensus and prior", async () => {
     const petroleum = { ...board().reports[0]!, weekEnding: "2026-10-16", releasedAt: "2026-10-21T14:30:00.000Z", nextReleaseAt: "2026-10-28T14:30:00.000Z" };
+    // The load reads the clock: the day after the storage release, so its next one is still ahead ("next", not "due").
+    setSystemTime(new Date("2026-10-23T08:00:00Z"));
     spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(board({
       reports: [petroleum, { ...gasReport, nextConsensus: 80, nextPrior: 77 }],
       series: [crude({ basis: "computed" }), mountain()],
