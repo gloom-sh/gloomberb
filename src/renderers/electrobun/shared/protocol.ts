@@ -212,6 +212,8 @@ interface DesktopBackendRequestMap {
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
   "host.windowFullscreen": { request: null; response: boolean };
+  /** Windows: moves the window with the pointer through the system's own move loop. */
+  "host.startWindowDrag": { request: null; response: null };
   "host.openExternal": { request: { url: string }; response: boolean };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };

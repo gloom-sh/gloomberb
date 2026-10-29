@@ -41,12 +41,20 @@ function loadWin32() {
       args: [FFIType.ptr, FFIType.ptr, FFIType.int, FFIType.int, FFIType.int, FFIType.int, FFIType.u32],
       returns: FFIType.bool,
     },
+    GetCursorPos: {
+      args: [FFIType.ptr],
+      returns: FFIType.bool,
+    },
     GetClientRect: {
       args: [FFIType.ptr, FFIType.ptr],
       returns: FFIType.bool,
     },
     PostMessageW: {
       args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64],
+      returns: FFIType.bool,
+    },
+    GetGUIThreadInfo: {
+      args: [FFIType.u32, FFIType.ptr],
       returns: FFIType.bool,
     },
   });
@@ -80,6 +88,50 @@ export function fitPageToClientArea(windowHandle: Pointer): boolean {
   if (!win32.symbols.GetClientRect(windowHandle, ptr(client))) return false;
   const size = (((client[3]! - client[1]!) & 0xffff) << 16) | ((client[2]! - client[0]!) & 0xffff);
   return win32.symbols.PostMessageW(windowHandle, WM_SIZE, 0n, BigInt(size >>> 0));
+}
+
+const WM_NCLBUTTONDOWN = 0x00a1;
+const WM_CANCELMODE = 0x001f;
+const HTCAPTION = 2;
+/** GUITHREADINFO on 64-bit Windows: two DWORDs, six window handles, a RECT. */
+const GUI_THREAD_INFO_SIZE = 72;
+const GUI_THREAD_INFO_CAPTURE_OFFSET = 24;
+
+/**
+ * The window holding the mouse on `windowHandle`'s thread, if any. Chromium
+ * takes the mouse on every press, and Windows will not start a move while
+ * another window holds it.
+ */
+function mouseCaptureOnThreadOf(win32: Win32, windowHandle: Pointer): Pointer | null {
+  const thread = win32.symbols.GetWindowThreadProcessId(windowHandle, null);
+  if (!thread) return null;
+  const info = new DataView(new ArrayBuffer(GUI_THREAD_INFO_SIZE));
+  info.setUint32(0, GUI_THREAD_INFO_SIZE, true);
+  if (!win32.symbols.GetGUIThreadInfo(thread, ptr(info))) return null;
+  const capture = Number(info.getBigUint64(GUI_THREAD_INFO_CAPTURE_OFFSET, true));
+  return capture ? capture as Pointer : null;
+}
+
+/**
+ * Hands a press on the header to Windows as a press on a native title bar, from
+ * where the pointer is. Its move loop then moves the window until the button
+ * comes up: it snaps to the edges and corners of the screen and comes out of
+ * maximized, which a window moved by hand does not. Electrobun's own mover
+ * only moves. False off Windows.
+ *
+ * The page holds the mouse from the press, so it is asked to let go first, as
+ * a native title bar's window would have. Both messages go to the window's
+ * thread, which handles them in order.
+ */
+export function startSystemWindowMove(windowHandle: Pointer): boolean {
+  const win32 = win32OrNull();
+  if (!win32) return false;
+  const point = new Int32Array(2);
+  if (!win32.symbols.GetCursorPos(ptr(point))) return false;
+  const capture = mouseCaptureOnThreadOf(win32, windowHandle);
+  if (capture && capture !== windowHandle) win32.symbols.PostMessageW(capture, WM_CANCELMODE, 0n, 0n);
+  const position = ((point[1]! & 0xffff) << 16) | (point[0]! & 0xffff);
+  return win32.symbols.PostMessageW(windowHandle, WM_NCLBUTTONDOWN, BigInt(HTCAPTION), BigInt(position >>> 0));
 }
 
 export function wideString(value: string): Uint8Array {

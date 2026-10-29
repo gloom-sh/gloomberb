@@ -10,6 +10,7 @@ import { safeExternalUrl } from "../../../../utils/external-url";
 import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-menu/normalize";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
+import { startSystemWindowMove } from "../window/windows-native";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
 import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
@@ -111,6 +112,13 @@ export async function handleDesktopHostRequest(
     }
     case "host.windowFullscreen":
       return isWindowFullscreen(backend, backend.rpcs.getRpcWindowKey(rpc));
+    case "host.startWindowDrag": {
+      const targetWindow = windowForRpcKey(backend, backend.rpcs.getRpcWindowKey(rpc));
+      if (!targetWindow?.ptr || !startSystemWindowMove(targetWindow.ptr)) {
+        throw new Error("This window cannot be moved by the system.");
+      }
+      return null;
+    }
     case "host.openExternal": {
       if (typeof request.payload.url !== "string") {
         throw new Error("host.openExternal requires a URL.");
