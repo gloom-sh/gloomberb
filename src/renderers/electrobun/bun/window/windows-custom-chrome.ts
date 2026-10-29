@@ -7,7 +7,14 @@ const WS_SYSMENU = 0x00080000n;
 const WS_THICKFRAME = 0x00040000n;
 const WS_MINIMIZEBOX = 0x00020000n;
 const WS_MAXIMIZEBOX = 0x00010000n;
-const WINDOWS_NATIVE_CONTROL_STYLE_MASK = WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+/**
+ * Electrobun's "hiddenInset" window is captioned and sizable, with the caption
+ * cut out of its frame: its edges and corners resize it, it maximizes to the
+ * work area and keeps its shadow, while the header draws the buttons. Windows
+ * still reads the box bits: they let a click on the taskbar button minimize
+ * the window, and Win+Up, snapping and the window menu maximize it.
+ */
+const WINDOWS_FRAME_STYLE = WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 const SWP_NOSIZE = 0x0001;
 const SWP_NOMOVE = 0x0002;
 const SWP_NOZORDER = 0x0004;
@@ -22,7 +29,7 @@ function styleValue(value: number | bigint): bigint {
 
 function applyCustomChromeToWindow(win32: Win32, windowHandle: Pointer): boolean {
   const currentStyle = styleValue(win32.symbols.GetWindowLongPtrW(windowHandle, GWL_STYLE));
-  const nextStyle = currentStyle & ~WINDOWS_NATIVE_CONTROL_STYLE_MASK;
+  const nextStyle = currentStyle | WINDOWS_FRAME_STYLE;
   if (nextStyle !== currentStyle) {
     win32.symbols.SetWindowLongPtrW(windowHandle, GWL_STYLE, nextStyle);
   }
