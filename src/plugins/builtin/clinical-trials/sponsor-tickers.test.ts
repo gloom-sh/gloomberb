@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { OrganizationTicker } from "../../../api-client/organization-tickers";
+import type { ListingFinder } from "./sponsor-listing";
 import { SponsorTickerStore, sponsorTickerFrom } from "./sponsor-tickers";
 
 const answer = (name: string, fields: Partial<OrganizationTicker> = {}): OrganizationTicker => ({
@@ -57,5 +58,42 @@ describe("sponsor tickers", () => {
     controller.abort();
     await store.load(["Gilead Sciences"], controller.signal);
     expect(store.get("Gilead Sciences")).toEqual({ kind: "pending" });
+  });
+
+  test("searches only the companies Cloud has no name for, once, in one request, and a failed search says nothing", async () => {
+    const answers: Record<string, Partial<OrganizationTicker>> = {
+      Bayer: {},
+      Evolv: {},
+      Merck: { ambiguous: true },
+      "Mayo Clinic": { entityName: "Mayo Clinic", resolution: "alias" },
+      Pfizer: { ticker: "PFE", exchange: "NYSE", resolution: "alias" },
+    };
+    const store = new SponsorTickerStore(async (names) => names.map((name) => answer(name, answers[name])));
+    await store.load(Object.keys(answers));
+
+    const asked: string[][] = [];
+    let fail = true;
+    const find: ListingFinder = async (names) => {
+      asked.push([...names]);
+      if (fail) throw new Error("search is busy");
+      return new Map(names.map((name) => [name, name === "Bayer" ? { ticker: "BAYN", exchange: "XETRA", entityName: "Bayer AG" } : null]));
+    };
+
+    await store.searchListings(Object.keys(answers), find);
+    // Not Pfizer (listed), Mayo Clinic (a company Cloud knows) or Merck (ambiguous); and the failure is no answer.
+    expect(asked).toEqual([["Bayer", "Evolv"]]);
+    expect(store.get("Bayer")).toEqual({ kind: "none", entityName: null, ambiguous: false });
+    await store.searchListings(["Bayer", "Evolv"], find);
+    expect(asked).toHaveLength(1);
+
+    fail = false;
+    store.retryFailed();
+    await store.searchListings(["Bayer", "Evolv"], find);
+    expect(store.get("Bayer")).toEqual({ kind: "listed", ticker: "BAYN", exchange: "XETRA", entityName: "Bayer AG" });
+    // Searched and not found stays none, and is not searched again.
+    expect(store.get("Evolv")).toMatchObject({ kind: "none", listingSearch: "done" });
+    await store.searchListings(["Bayer", "Evolv"], find);
+    expect(asked).toEqual([["Bayer", "Evolv"], ["Bayer", "Evolv"]]);
+    expect(store.get("Merck")).toEqual({ kind: "none", entityName: null, ambiguous: true });
   });
 });

@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef } from "react";
-import { QUICK_ADD_KEY } from "./quick-add";
 import {
   TickerListTableView,
   type DataTableKeyEvent,
@@ -120,7 +119,7 @@ export function PortfolioTickerTable({
   visibleRangeBuffer,
   resetScrollKey,
   onRowActivate,
-  onAddTicker,
+  addTickerShortcut,
   onOpenPerpetual,
   rootHeight,
 }: {
@@ -146,8 +145,8 @@ export function PortfolioTickerTable({
   visibleRangeBuffer?: number;
   resetScrollKey?: unknown;
   onRowActivate?: (ticker: TickerRecord) => void;
-  /** Opens the add row; the empty table offers it as a button. */
-  onAddTicker?: () => void;
+  /** The key of the add row, which the empty table names. The pane shows the row itself, once. */
+  addTickerShortcut?: string;
   /** Opens PERP on a row's stock perpetual: its PERP% and FUND 8H cells link to it. */
   onOpenPerpetual?: (marketId: string) => void;
   rootHeight?: number;
@@ -243,8 +242,7 @@ export function PortfolioTickerTable({
       resetScrollKey={resetScrollKey}
       onRowActivate={onRowActivate}
       rowMenuAccelerators={PORTFOLIO_ROW_MENU_KEYS}
-      onAddTicker={onAddTicker}
-      addTickerShortcut={onAddTicker ? QUICK_ADD_KEY : undefined}
+      addTickerShortcut={addTickerShortcut}
       rootHeight={rootHeight}
     />
   );

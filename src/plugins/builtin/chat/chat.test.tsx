@@ -1719,7 +1719,7 @@ describe("ChatContent", () => {
     expect(openedQueries).toEqual(["Log In"]);
   });
 
-  test("shows an unread mention badge and opens chat from the status widget", async () => {
+  test("counts unread chatter as a dim number that opens the Unread list", async () => {
     const controller = createController({
       sessionToken: "token-123",
       user: { id: "u1", username: "ada", emailVerified: true },
@@ -1738,7 +1738,7 @@ describe("ChatContent", () => {
       (controller as any).mergeMessages([{
         id: "m1",
         channelId: "everyone",
-        content: "pinging @ada before the bell",
+        content: "CPI is out",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
@@ -1758,21 +1758,13 @@ describe("ChatContent", () => {
 
     await flushFrame();
 
-    const frame = tui.frame();
-    expect(frame).toContain("ada");
-    expect(frame).toContain("[1]");
-
-    const line = frame.split("\n")[0] ?? "";
-    const nameCol = line.indexOf("ada");
-    const badgeCol = line.indexOf("[1]");
-
-    expect(nameCol).toBeGreaterThanOrEqual(0);
-    expect(badgeCol).toBeGreaterThanOrEqual(0);
+    const line = tui.frame().split("\n")[0] ?? "";
+    expect(line.trimEnd()).toBe("@ ada 1");
 
     await act(async () => {
-      await tui.setup().mockMouse.click(nameCol, 0);
+      await tui.setup().mockMouse.click(line.indexOf("ada"), 0);
       await tui.setup().renderOnce();
-      await tui.setup().mockMouse.click(badgeCol + 1, 0);
+      await tui.setup().mockMouse.click(line.indexOf("1"), 0);
       await tui.setup().renderOnce();
     });
 
@@ -1782,7 +1774,7 @@ describe("ChatContent", () => {
     ]);
   });
 
-  test("opens an unread direct-message channel from the status widget", async () => {
+  test("names who wrote to you in a chip that opens the conversation, shows their message as it arrives, and folds it until read", async () => {
     const controller = createController({
       sessionToken: "token-123",
       user: { id: "u1", username: "ada", emailVerified: true },
@@ -1798,12 +1790,18 @@ describe("ChatContent", () => {
         dmUser: { id: "u2", username: "bob", displayName: "Bob" },
       },
     ]);
-    const openedTemplates: Array<{ templateId: string; options?: { arg?: string } }> = [];
+    const toasts: string[] = [];
+    controller.setNotifier((notification) => {
+      toasts.push(notification.body);
+      return { toastVisible: true, desktopRequested: false };
+    });
+    controller.statusPreview.durationMs = 30;
+    const openedTemplates: Array<{ templateId: string; options?: { arg?: string; values?: Record<string, string> } }> = [];
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
     state.config.disabledPlugins = [];
 
     const runtime = createTestPluginRuntime({
-      createPaneFromTemplate(templateId: string, options?: { arg?: string }) {
+      createPaneFromTemplate(templateId: string, options?: { arg?: string; values?: Record<string, string> }) {
         openedTemplates.push({ templateId, options });
       },
     });
@@ -1815,46 +1813,55 @@ describe("ChatContent", () => {
             <ChatStatusWidget controller={controller} />
           </PluginRenderProvider>
         </AppContext>,
-        { width: 40, height: 1 },
+        { width: 60, height: 1 },
       );
     });
-
     await flushFrame();
 
+    const message = {
+      id: "dm-m1",
+      channelId: dmChannelId,
+      content: "did you see the guide cut?",
+      replyToId: null,
+      createdAt: "2026-05-27T10:31:00.000Z",
+      user: { id: "u2", username: "bob", displayName: "Bob" },
+    } satisfies ChatMessage;
     await act(async () => {
-      (controller as any).mergeMessages(dmChannelId, [{
-        id: "dm-m1",
+      (controller as any).handleChatNotification({
+        id: "n1",
+        type: "channel",
         channelId: dmChannelId,
-        content: "private ping",
-        replyToId: null,
-        createdAt: "2026-05-27T10:31:00.000Z",
-        user: { id: "u2", username: "bob", displayName: "Bob" },
-      } satisfies ChatMessage]);
+        messageId: message.id,
+        createdAt: message.createdAt,
+        message,
+      });
     });
     await flushFrame();
 
-    const frame = tui.frame();
-    expect(frame).toContain("ada");
-    expect(frame).toContain("[1]");
+    // On arrival: the sender in the chip, then the message; no toast, and the DM is not counted again.
+    const arrival = tui.frame().split("\n")[0] ?? "";
+    expect(arrival.trimEnd()).toBe(` ${ICON_GLYPHS.mail} bob  did you see the guide cut?  @ ada`);
+    expect(toasts).toEqual([]);
 
-    const line = frame.split("\n")[0] ?? "";
-    const nameCol = line.indexOf("ada");
-    const badgeCol = line.indexOf("[1]");
-
-    expect(nameCol).toBeGreaterThanOrEqual(0);
-    expect(badgeCol).toBeGreaterThanOrEqual(0);
+    // Then it folds into the chip, which stays until the DM is read.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    await flushFrame();
+    const folded = tui.frame().split("\n")[0] ?? "";
+    expect(folded.trimEnd()).toBe(` ${ICON_GLYPHS.mail} bob  @ ada`);
 
     await act(async () => {
-      await tui.setup().mockMouse.click(nameCol, 0);
-      await tui.setup().renderOnce();
-      await tui.setup().mockMouse.click(badgeCol + 1, 0);
+      await tui.setup().mockMouse.click(folded.indexOf("bob"), 0);
       await tui.setup().renderOnce();
     });
+    expect(openedTemplates).toEqual([{ templateId: "new-chat-pane", options: { arg: dmChannelId, values: { messageId: message.id } } }]);
 
-    expect(openedTemplates).toEqual([
-      { templateId: "new-chat-pane", options: { arg: dmChannelId } },
-      { templateId: "unread-inbox-pane", options: undefined },
-    ]);
+    await act(async () => {
+      controller.markAllChannelsRead();
+    });
+    await flushFrame();
+    expect((tui.frame().split("\n")[0] ?? "").trimEnd()).toBe("@ ada");
   });
 
 });

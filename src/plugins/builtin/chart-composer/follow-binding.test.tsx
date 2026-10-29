@@ -11,10 +11,19 @@ import { setConfigStoreHost } from "../../../data/config/store";
 import { flushPendingPersistence } from "../../../state/persist-scheduler";
 import { getPaneDisplayTitle } from "../../../components/layout/pane/title";
 import { updatePaneInstance } from "../../../pane-settings";
-import { findPaneInstance, type AppConfig } from "../../../types/config";
+import { createDefaultConfig, createPaneInstance, findPaneInstance, type AppConfig } from "../../../types/config";
+import type { PaneDef } from "../../../types/plugin";
+import type { ContextMenuItem } from "../../../types/context-menu";
+import type { ChartSpec } from "../../../time-series/types";
+import { tickerLinkMenuItems } from "../../../components/layout/shell/ticker-link-menu";
+import { chartComposerModule } from "./index";
+import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
+import { appendChartSeries } from "./chart-spec-edit";
+import { buildPaneSharePayload } from "../../../shares/pane";
+import type { PluginRegistry } from "../../registry";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { ChartComposerPane } from "./pane";
-import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset } from "./presets";
+import { buildComparisonChartPreset, buildCustomChartPreset, buildFundamentalChartPreset, buildPriceChartPreset } from "./presets";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 
 const tui = createOpenTuiTestHarness();
@@ -313,4 +322,87 @@ test("follow projection preserves comparisons, studies, qualified venues and dis
   expect(publicNext.series[1]).toBe(brokerSpec.series[1]);
   expect(publicNext.series[0]!.label).toBe("SHOP:XNAS");
   expect(publicNext.series[1]!.label).toBe("Custom comparison");
+});
+
+function choose(items: ContextMenuItem[], id: string) {
+  const item = items.find((entry) => entry.id === id);
+  if (!item || item.type === "divider" || item.type === "role") throw new Error(`No menu item ${id}`);
+  void item.onSelect?.();
+}
+
+// GF of one ticker, revenue beside total debt (one series on its listing, one added bare), follows a
+// watchlist like GP: both lines move to the selected row with their fields, range and ids, and Unlink keeps
+// the ticker. GF of two tickers offers no Link at all.
+test("a one-ticker GF of several fields links to a watchlist, moves every field with the row and keeps the ticker on unlink", async () => {
+  const host = store(); setConfigStoreHost(host);
+  const chartDef = chartComposerModule.panes!.find((pane) => pane.id === "chart-composer")!;
+  const panes = new Map<string, PaneDef>([
+    ["portfolio-list", { id: "portfolio-list", name: "Portfolio", component: () => null, defaultPosition: "left", tickerSource: true }],
+    ["chart-composer", chartDef],
+  ]);
+  const revenue = buildFundamentalChartPreset(["AAPL:NASDAQ"]);
+  const withDebt = appendChartSeries(revenue, { kind: "security", symbol: "AAPL", fieldId: "fundamental.totalDebt" }).spec;
+  const authored = { ...withDebt, viewport: { ...withDebt.viewport, range: "ALL" as const } };
+  const gf = createPaneInstance("chart-composer", { instanceId: "chart-composer:gf", title: "GF AAPL",
+    binding: { kind: "fixed", symbol: "AAPL" }, settings: { [CHART_SPEC_SETTING_KEY]: authored } });
+  const pair = createPaneInstance("chart-composer", { instanceId: "chart-composer:pair", title: "GF AAPL · MSFT",
+    binding: { kind: "fixed", symbol: "AAPL" }, settings: { [CHART_SPEC_SETTING_KEY]: buildFundamentalChartPreset(["AAPL", "MSFT"]) } });
+  const base = createDefaultConfig("/tmp/gloom-gf-follow-test");
+  let layout = { ...base.layout, instances: [...base.layout.instances, gf, pair],
+    floating: [gf, pair].map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: index, width: 100, height: 25 })) };
+  const state = createInitialState({ ...base, layout });
+  state.paneState["portfolio-list:main"] = { collectionId: "main", cursorSymbol: "AAPL" };
+  const menu = (instanceId: string) => tickerLinkMenuItems({ instance: findPaneInstance(layout, instanceId)!, layout, panes,
+    state: { ...state, config: { ...state.config, layout } }, persistLayout: (next) => { layout = next; } });
+  expect(menu(pair.instanceId)).toEqual([]);
+  choose(menu(gf.instanceId), "link:portfolio-list:main");
+  expect(findPaneInstance(layout, gf.instanceId)).toMatchObject({ title: "GF", binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" } });
+
+  const fundamentals: string[] = [];
+  const provider = createTestDataProvider({
+    getTickerFinancials: async (symbol) => { fundamentals.push(symbol); return { annualStatements: [], quarterlyStatements: [], priceHistory: [] }; },
+  });
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  const linked = { ...state, config: { ...state.config, layout } };
+  function Harness() {
+    [latest, dispatch] = useReducer(appReducer, linked);
+    return <TestPaneProvider state={latest} dispatch={dispatch} paneId={gf.instanceId} pluginId="ticker-research" runtime={runtime}>
+      <ChartComposerPane paneId={gf.instanceId} paneType="chart-composer" focused width={100} height={25} />
+    </TestPaneProvider>;
+  }
+  await tui.render(<Harness />, { width: 100, height: 25 });
+  const saved = () => findPaneInstance(latest.config.layout, gf.instanceId)!.settings!;
+  const symbolsOf = () => (saved()[CHART_SPEC_SETTING_KEY] as ChartSpec).series.map((series) => series.source.kind === "security" ? series.source.instrument.symbol : null);
+  await settle(() => fundamentals.includes("AAPL"));
+  await act(async () => dispatch({ type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { cursorSymbol: "MSFT" } }));
+  await settle(() => symbolsOf().every((symbol) => symbol === "MSFT") && fundamentals.includes("MSFT"));
+  const moved = saved()[CHART_SPEC_SETTING_KEY] as ChartSpec;
+  expect(moved.series.map((series) => [series.id, series.source.kind === "security" && series.source.fieldId]))
+    .toEqual(authored.series.map((series) => [series.id, series.source.kind === "security" && series.source.fieldId]));
+  expect(moved.viewport.range).toBe("ALL");
+  expect(saved()[CHART_FOLLOW_SERIES_SETTING_KEY]).toEqual(authored.series.map((series) => series.id));
+
+  // A shared link pins what the pane shows: both fields of MSFT.
+  const registry = { panes, paneTemplates: new Map() } as unknown as PluginRegistry;
+  const shared = buildPaneSharePayload(registry, findPaneInstance(latest.config.layout, gf.instanceId)!, {}, "MSFT");
+  if (shared?.data.version !== 2) throw new Error("expected a portable pane share");
+  const sharedPane = shared.data.layout.layout.instances[0]!;
+  expect(sharedPane).toMatchObject({ title: "GF MSFT", binding: { kind: "fixed", symbol: "MSFT" } });
+  expect((sharedPane.settings?.[CHART_SPEC_SETTING_KEY] as ChartSpec).series.map((series) => series.source.kind === "security"
+    && [series.source.instrument.symbol, series.source.fieldId])).toEqual([["MSFT", "fundamental.totalRevenue"], ["MSFT", "fundamental.totalDebt"]]);
+
+  // A saved layout keeps the link and the moved chart; Unlink pins the chart on MSFT.
+  layout = latest.config.layout;
+  expect(findPaneInstance(layout, gf.instanceId)?.binding).toEqual({ kind: "follow", sourceInstanceId: "portfolio-list:main" });
+  const followed = { ...latest, config: { ...latest.config, layout } };
+  choose(tickerLinkMenuItems({ instance: findPaneInstance(layout, gf.instanceId)!, layout, panes, state: followed,
+    persistLayout: (next) => { layout = next; } }), "unlink:portfolio-list:main");
+  await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout } }));
+  for (let i = 0; i < 5; i++) await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
+  expect(findPaneInstance(latest.config.layout, gf.instanceId)).toMatchObject({ title: "GF MSFT", binding: { kind: "fixed", symbol: "MSFT" } });
+  expect(symbolsOf()).toEqual(["MSFT", "MSFT"]);
+  await act(async () => dispatch({ type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { cursorSymbol: "NVDA" } }));
+  for (let i = 0; i < 5; i++) await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
+  expect(symbolsOf()).toEqual(["MSFT", "MSFT"]);
+  expect(fundamentals).not.toContain("NVDA");
 });

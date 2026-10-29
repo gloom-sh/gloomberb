@@ -22,7 +22,7 @@ import {
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
-import { badgeCell, badgeColumnWidth } from "./table-cells";
+import { badgeCell } from "./table-cells";
 
 export interface ShortcutTableEntry {
   id: string;
@@ -38,6 +38,7 @@ type ShortcutRow = SectionedRow<ShortcutTableEntry>;
 export function ShortcutTable({
   sections,
   width,
+  keyWidth,
   height: fillHeight,
   after,
   keyLabel = "KEY",
@@ -46,6 +47,8 @@ export function ShortcutTable({
   sections: ReadonlyArray<TableSection<ShortcutTableEntry>>;
   /** Content width available inside the tab body. */
   width: number;
+  /** The key column's width, one for every table in Help so their descriptions line up. */
+  keyWidth: number;
   /** Fill this many rows and scroll, instead of growing to fit every row. */
   height?: number;
   /** Sits under a full-height table inside the same frame. */
@@ -59,10 +62,6 @@ export function ShortcutTable({
     () => buildSectionedRows(sections, (entry) => entry.id),
     [sections],
   );
-  const keyWidth = useMemo(
-    () => badgeColumnWidth(rows.filter(isSectionedItemRow).map((row) => row.item.badges), { min: 8, max: 24 }),
-    [rows],
-  );
   const columns = useMemo<ShortcutColumn[]>(() => [
     { id: "key", label: keyLabel, width: keyWidth, align: "left" },
     { id: "description", label: descriptionLabel, width: 20, align: "left", flexGrow: 1 },
@@ -72,7 +71,7 @@ export function ShortcutTable({
     if (!isSectionedItemRow(row)) return EMPTY_TABLE_CELL;
     const run = row.item.run;
     const cell: DataTableCell = column.id === "key"
-      ? badgeCell(row.item.badges, column.width)
+      ? badgeCell(row.item.badges, column.width, { wholeOnly: true })
       : { text: t(row.item.description), color: colors.text };
     if (!run) return cell;
     return {

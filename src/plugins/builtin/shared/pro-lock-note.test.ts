@@ -66,8 +66,8 @@ function routeData({ guided = [] as string[], eightKs = [] as string[], guidance
 }
 
 /**
- * GUID offered `fn GUIDE AAPL`, which answers "No data for AAPL:
- * not covered by GUIDE". A route is named only when it has data for the
+ * GUID offered `fn GUIDE AAPL`, which answers "No guidance on file for AAPL".
+ * A route is named only when it has data for the
  * symbol; otherwise the next one that does, or none.
  */
 test("GUID names GUIDE only where GUIDE has guidance, else the company's 8-Ks, else no route", async () => {

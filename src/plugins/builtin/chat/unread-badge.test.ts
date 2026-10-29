@@ -9,7 +9,7 @@ import {
 } from "../../../notifications/notification-log";
 import { summarizeUnreadMessages } from "./controller/unread-people";
 import type { ChatControllerSnapshot } from "./controller/state";
-import { unreadBadgeCount, unreadTotal, watchUnreadBadge } from "./unread-badge";
+import { unreadBadgeCount, unreadForYou, unreadTotal, watchUnreadBadge } from "./unread-badge";
 
 type Snapshot = Pick<
   ChatControllerSnapshot,
@@ -18,8 +18,8 @@ type Snapshot = Pick<
 
 const ME = { id: "u-me", username: "vince" };
 
-/** An unread message: who sent it and what it says. */
-type Unread = [from: string, text: string];
+/** An unread message: who sent it, what it says, and whose message it replies to. */
+type Unread = [from: string, text: string, replyTo?: string];
 
 function channelOf(id: string): ChatChannel {
   const kind = id.startsWith("dm:") ? "direct" : id.startsWith("grp:") ? "group" : id.startsWith("team:") ? "team" : "public";
@@ -30,13 +30,18 @@ function channelState(channelId: string, unreadCount: number): ChatChannelState 
   return { channelId, notificationsEnabled: false, lastReadMessageId: null, unreadCount };
 }
 
-function message(channelId: string, [from, text]: Unread, index: number): ChatMessage {
+/** Each message is sent after the one made before it. */
+let sentSeconds = 0;
+
+function message(channelId: string, [from, text, replyTo]: Unread, index: number): ChatMessage {
+  sentSeconds += 1;
   return {
     id: `${channelId}:${index}`,
     channelId,
     content: text,
-    replyToId: null,
-    createdAt: "2026-03-28T00:00:00.000Z",
+    replyToId: replyTo ? "earlier" : null,
+    ...(replyTo ? { replyTo: { content: "earlier", user: { id: replyTo === ME.username ? ME.id : replyTo, username: replyTo } } } : {}),
+    createdAt: new Date(Date.UTC(2026, 2, 28, 0, 0, sentSeconds)).toISOString(),
     user: { id: from, username: from, displayName: from },
   };
 }
@@ -50,7 +55,11 @@ function snapshot(unread: Record<string, Unread[]>, signedIn = true): Snapshot {
     unreadPeople: Object.fromEntries(
       entries
         .filter(([, messages]) => messages.length > 0)
-        .map(([id, messages]) => [id, summarizeUnreadMessages(messages.map((entry, index) => message(id, entry, index)), ME)]),
+        .map(([id, messages]) => [id, summarizeUnreadMessages(
+          messages.map((entry, index) => message(id, entry, index)),
+          ME,
+          { everyMessageForYou: /^(dm|grp):/.test(id) },
+        )]),
     ),
     hasSavedSession: signedIn,
     user: signedIn ? { id: ME.id, username: ME.username, emailVerified: true } : null,
@@ -151,6 +160,10 @@ describe("unreadBadgeCount", () => {
     })).toBe(3);
   });
 
+  test("counts whoever replied to your message, as a mention", () => {
+    expect(badge({ everyone: [["ann", "agreed", ME.username], ["bo", "agreed", "ann"]] })).toBe(1);
+  });
+
   test("counts every message of a group chat, since it is for the people in it", () => {
     expect(badge({ "grp:desk": [["ann", "lunch?"], ["bo", "yes"], ["ann", "ok"]] })).toBe(2);
   });
@@ -171,6 +184,29 @@ describe("unreadBadgeCount", () => {
   test("is zero signed out, even with notices waiting", () => {
     appendNotificationLog({ body: "NVDA above 120", refId: "price:a1" }, 1);
     expect(badge({ "dm:ann": [["ann", "hi"]] }, false)).toBe(0);
+  });
+});
+
+describe("unreadForYou", () => {
+  const forYou = (unread: Record<string, Unread[]>) => unreadForYou(snapshot(unread));
+
+  test("names the newest of the people who wrote to you or tagged you, and counts them once and their messages", () => {
+    expect(forYou({
+      "dm:ann": [["ann", "hi"], ["ann", "you there?"]],
+      everyone: [["bo", "@vince thoughts?"], ["ann", "@vince also"], ["cy", "morning"]],
+      "grp:desk": [["di", "lunch?"]],
+      macro: [["ed", "CPI is out"]],
+    })).toEqual({
+      latest: { channelId: "grp:desk", messageId: "grp:desk:0", senderName: "di", direct: true },
+      people: 3,
+      messages: 5,
+    });
+  });
+
+  test("names a reply to your message as for you, and nobody for chatter alone", () => {
+    expect(forYou({ everyone: [["bo", "agreed", ME.username], ["cy", "morning"]] }).latest)
+      .toEqual({ channelId: "everyone", messageId: "everyone:0", senderName: "bo", direct: false });
+    expect(forYou({ everyone: [["bo", "morning"]] })).toEqual({ latest: null, people: 0, messages: 0 });
   });
 });
 

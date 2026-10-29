@@ -507,10 +507,8 @@ export const ja: Record<string, string> = {
   "Pin Ticker": "銘柄を固定",
 
   // ── Help pane ────────────────────────────────────────────────
-  "How To Use Gloom": "Gloom の使用方法",
   "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "コードが分からない場合は、上部の検索バーをクリックするか {key} を押し、\"top news\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "コードが分からない場合は、上部の検索バーをクリックし、\"top news\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
-  "Click anything to use it; the keys shown beside actions are shortcuts.": "どこでもクリックして操作できます。操作の横に表示されるキーはショートカットです。",
   "Open Help": "ヘルプを開く",
   "Command Prefixes": "コマンド接頭辞",
   "Window Templates": "ウィンドウ テンプレート",
@@ -520,7 +518,6 @@ export const ja: Record<string, string> = {
   "Scrolling": "スクロール",
   "Open Debug Log": "デバッグ ログを開く",
   "GitHub Issues": "GitHub Issues",
-  "Docked panes stay in the saved layout.": "ドッキングされたペインは保存されたレイアウトに残ります。",
   "Floating panes can be dragged by the title bar and resized from the lower-right corner.": "フローティング ペインは、タイトル バーをドラッグして、右下隅からサイズを変更できます。",
   "Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.": "レイアウト アクションを使用して、分割、移動、複製、すべてのフローティング ペインを閉じる、元に戻す、やり直し、およびレイアウト プリセットを実行します。",
   "Move through focused table and list rows.": "フォーカスされたテーブルとリストの行を移動します。",
@@ -565,7 +562,6 @@ export const ja: Record<string, string> = {
   "Go back from a nested command screen when the query is empty.": "クエリが空の場合、ネストされたコマンド画面から戻ります。",
   "Reorder ordered multi-select choices.": "順序付けされた複数選択の選択肢を並べ替えます。",
   "Submit multiline command forms.": "複数行のコマンド フォームを送信します。",
-  "Layout Basics": "レイアウトの基本",
 
   // ── Onboarding ───────────────────────────────────────────────
   "The open terminal for modern finance.": "現代の金融に開かれたターミナル。",

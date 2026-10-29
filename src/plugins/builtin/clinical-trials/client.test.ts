@@ -3,6 +3,7 @@ import {
   buildStudiesUrl,
   parseClinicalTrial,
   parseClinicalTrialsPage,
+  trialDrug,
 } from "./client";
 import { normalizeTrialFilters, trialFiltersQuery } from "./model";
 
@@ -63,6 +64,21 @@ describe("clinical trials parsing", () => {
     expect(bare?.completionDateType).toBeUndefined();
   });
 
+  test("names the drug a study tests, never its placebo arm, a drug before a device, and nothing when there is none", () => {
+    const withInterventions = (interventions: unknown) =>
+      parseClinicalTrial(studyFixture({ armsInterventionsModule: { interventions } }))!;
+    const placeboFirst = withInterventions([
+      { type: "DRUG", name: "Placebo" },
+      { type: "DEVICE", name: "Pen injector" },
+      { type: "DRUG", name: "Enicepatide", otherNames: ["CT-388"] },
+    ]);
+    expect(placeboFirst.interventions).toEqual([{ name: "Pen injector", type: "DEVICE" }, { name: "Enicepatide", type: "DRUG" }]);
+    expect(trialDrug(placeboFirst)).toBe("Enicepatide");
+    expect(trialDrug(withInterventions([{ type: "PROCEDURE", name: "Sleeve gastrectomy" }, { type: "OTHER", name: "Sham feeding" }]))).toBe("Sleeve gastrectomy");
+    expect(trialDrug(withInterventions([{ type: "DRUG", name: "Saline" }]))).toBe("");
+    expect(trialDrug(parseClinicalTrial(studyFixture())!)).toBe("");
+  });
+
   test("keeps the next page token and drops studies without an NCT id", () => {
     const page = parseClinicalTrialsPage({
       totalCount: 806,
@@ -95,6 +111,12 @@ describe("clinical trials parsing", () => {
     const several = new URL(buildStudiesUrl({ statuses: ["recruiting", "NOT_YET_RECRUITING"], phases: ["PHASE2", "PHASE3", "PHASE2"] }));
     expect(several.searchParams.get("filter.overallStatus")).toBe("RECRUITING,NOT_YET_RECRUITING");
     expect(several.searchParams.get("filter.advanced")).toBe("AREA[Phase](PHASE2 OR PHASE3)");
+
+    // The sponsor classes to leave out ride along, so the rest of the list can follow the companies.
+    const rest = new URL(buildStudiesUrl({ phases: ["PHASE3"], excludedSponsorClasses: ["industry"] }));
+    expect(rest.searchParams.get("filter.advanced")).toBe("AREA[Phase]PHASE3 AND NOT AREA[LeadSponsorClass]INDUSTRY");
+    expect(new URL(buildStudiesUrl({ excludedSponsorClasses: ["NIH", "FED"] })).searchParams.get("filter.advanced"))
+      .toBe("NOT AREA[LeadSponsorClass](NIH OR FED)");
 
     // "All" adds nothing, and nothing that is not a registry code reaches the expression.
     const all = new URL(buildStudiesUrl(trialFiltersQuery(normalizeTrialFilters({ status: "all", phase: "PHASE3) OR (x", sponsorClass: "industry" }))));

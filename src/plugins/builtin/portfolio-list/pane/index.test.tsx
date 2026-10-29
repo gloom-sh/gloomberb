@@ -543,6 +543,25 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
   });
 
+  test.each(["watchlist", "main"])("an empty %s names its add row once and points at the key that reaches it", async (collectionId) => {
+    installQuickAddRegistry(createQuickAddProvider(true));
+    await tui.render(
+      <PortfolioHarness
+        config={createManualCollectionConfig(collectionId)}
+        collectionId={collectionId}
+        ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
+        paneHeight={12}
+      />,
+      { width: 100, height: 12 },
+    );
+    await flushFrame();
+    const frame = tui.frame();
+    expect(frame).toContain("No tickers.");
+    expect(frame).toContain("Press a to add one.");
+    // The add row is the one "+ ticker"; the empty table does not offer a second.
+    expect(frame.match(/\+ ticker/g)).toHaveLength(1);
+  });
+
   test("quick-add validates and adds an exact watchlist ticker", async () => {
     const config = createManualCollectionConfig("watchlist");
     const notifications: Array<{ type?: string; body: string }> = [];

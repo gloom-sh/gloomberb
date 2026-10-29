@@ -66,3 +66,19 @@ test("chart with too little comparable history reports collection state and keep
   await mount({ tab: "chart" });
   expect(await tui.waitForFrameToContain("Two comparable disclosures")).toContain("125.00M");
 });
+
+test("a company with no guidance says so plainly and names one that has some, in the shared empty state", async () => {
+  setCloudApiFetchTransport(async () => Response.json(guidancePayload({ guidance: [], history: [], totalRows: 0 })));
+  await mount({ guidance: true });
+  const frame = await tui.waitForFrameToContain("No guidance on file for EXAMPLE:LSE.");
+  expect(frame).toContain("Try GUIDE WMT.");
+  expect(frame).not.toContain("No disclosed observations");
+});
+
+test("the tracker keeps Issued in view at 90 cells and says what the guide did in plain words", async () => {
+  setCloudApiFetchTransport(async () => Response.json(guidancePayload()));
+  await mount({ guidance: true, width: 90 });
+  const frame = await tui.waitForFrameToContain("Raised");
+  expect(frame).toContain("ISSUED");
+  expect(frame).toContain("2026-02-01");
+});

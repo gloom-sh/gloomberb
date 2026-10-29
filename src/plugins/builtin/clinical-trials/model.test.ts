@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { getThemeColors } from "../../../theme/colors";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
-import { normalizeTrialFilters, trialLayout, trialPhaseLabel, trialStatus, trialStatusColor, trialStatusText } from "./model";
+import type { SponsorTicker } from "./sponsor-tickers";
+import {
+  hasTrialPhase,
+  normalizeTrialFilters,
+  orderTrials,
+  trialLayout,
+  trialPhaseLabel,
+  trialPhaseRank,
+  trialStatus,
+  trialStatusColor,
+  trialStatusText,
+} from "./model";
 
 describe("trial status", () => {
   test("reads in the registry's words with a tone per stage, and a new code still reads as words", () => {
@@ -68,18 +79,66 @@ test("filters keep only the registry's codes, whatever a saved layout or a share
   expect(normalizeTrialFilters(undefined)).toEqual({ status: "all", phase: "all", sponsorClass: "all" });
 });
 
-test("the columns fill the pane at 80 and 160 cells without scrolling sideways", () => {
-  for (const width of [78, 98, 158]) {
+test("a phase the table can show is told from one it blanks, and the later phase ranks first", () => {
+  expect([["PHASE3"], ["PHASE2", "PHASE3"], ["EARLY_PHASE1"]].map(hasTrialPhase)).toEqual([true, true, true]);
+  // Not applicable (a device study) and no phase (observational) are both blank in the table.
+  expect([[], ["NA"]].map(hasTrialPhase)).toEqual([false, false]);
+  expect([["PHASE4"], ["PHASE3"], ["PHASE2", "PHASE3"], ["PHASE2"], ["PHASE1"], ["EARLY_PHASE1"], ["NA"], []].map(trialPhaseRank))
+    .toEqual([4, 3, 3, 2, 1, 0.5, 0, 0]);
+});
+
+describe("trial order", () => {
+  const listed = (ticker: string): SponsorTicker => ({ kind: "listed", ticker, exchange: "NYSE", entityName: null });
+  const trial = (nctId: string, sponsor: string, sponsorClass: string, phases: string[] = []) => ({ nctId, sponsor, sponsorClass, phases });
+  const tickers: Record<string, SponsorTicker> = {
+    AbbVie: listed("ABBV"),
+    Bayer: listed("BAYN"),
+    "Biomea Fusion": { kind: "pending" },
+    "Acme Biotech": { kind: "none", entityName: null, ambiguous: false },
+  };
+  const order = (trials: ReturnType<typeof trial>[]) => orderTrials(trials, (entry) => tickers[entry.sponsor]).map((entry) => entry.nctId);
+
+  test("listed sponsors first, then other companies (one still being looked up reads as one), then everything else, the latest phase first in each", () => {
+    expect(order([
+      trial("uni-3", "University of Oxford", "OTHER", ["PHASE3"]),
+      trial("acme-4", "Acme Biotech", "INDUSTRY", ["PHASE4"]),
+      trial("nih-2", "NIH Institute", "NIH", ["PHASE2"]),
+      trial("abbv-1", "AbbVie", "INDUSTRY", ["PHASE1"]),
+      trial("bayer-3", "Bayer", "INDUSTRY", ["PHASE3"]),
+      trial("abbv-none", "AbbVie", "INDUSTRY"),
+      trial("biomea-2", "Biomea Fusion", "INDUSTRY", ["PHASE2"]),
+    ])).toEqual(["bayer-3", "abbv-1", "abbv-none", "acme-4", "biomea-2", "uni-3", "nih-2"]);
+  });
+
+  test("studies of one group and phase keep the registry's order, and the loaded rows are not touched", () => {
+    const rows = [
+      trial("a", "AbbVie", "INDUSTRY", ["PHASE2"]),
+      trial("b", "Bayer", "INDUSTRY", ["PHASE2"]),
+      trial("c", "AbbVie", "INDUSTRY", ["PHASE3"]),
+    ];
+    expect(order(rows)).toEqual(["c", "a", "b"]);
+    expect(rows.map((entry) => entry.nctId)).toEqual(["a", "b", "c"]);
+  });
+});
+
+test("the title keeps its room at every width: the date gives way first, then the drug, and the columns fill the pane", () => {
+  const ids = (width: number) => trialLayout(width).columns.map((column) => column.id);
+  for (const width of [66, 78, 90, 100, 120, 158]) {
     const { columns } = trialLayout(width);
     // Each column, the gap after it, and the table's padding.
     expect(columns.reduce((sum, column) => sum + column.width + 1, 0) + 2).toBeLessThanOrEqual(width);
-    expect(columns.map((column) => column.id)).toEqual(["updated", "phase", "status", "title", "sponsor", "ticker"]);
-    // "Updated", an ISO day wide, not a "Time" column of US dates.
-    expect(columns[0]).toMatchObject({ label: "Updated", width: 10 });
+    // The title reads before the date, which is the last column.
+    expect(ids(width).indexOf("title")).toBeLessThan(ids(width).indexOf("updated") === -1 ? Infinity : ids(width).indexOf("updated"));
   }
-  expect(trialLayout(78).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(20);
-  // Narrower still, the update date gives way before the title does.
-  expect(trialLayout(66).columns.map((column) => column.id)).toEqual(["phase", "status", "title", "sponsor", "ticker"]);
+  expect(ids(158)).toEqual(["phase", "status", "title", "drug", "sponsor", "ticker", "updated"]);
+  // 720 px is 90 cells: the drug is there, the date is not, and the title has more than it had with the date.
+  expect(ids(90)).toEqual(["phase", "status", "title", "drug", "sponsor", "ticker"]);
+  expect(trialLayout(90).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(28);
+  expect(ids(120)).toContain("updated");
+  // Narrower still, the drug goes too, and the title keeps 18 cells or more.
+  expect(ids(78)).toEqual(["phase", "status", "title", "sponsor", "ticker"]);
   expect(trialLayout(66).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(18);
   expect(trialLayout(158).columns.find((column) => column.id === "status")!.width).toBeGreaterThanOrEqual("Enrolling by invitation".length);
+  // With the date in, the title is never narrower than 36 cells.
+  for (const width of [120, 130, 158, 200]) expect(trialLayout(width).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(36);
 });
