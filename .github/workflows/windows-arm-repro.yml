@@ -8,53 +8,36 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   stays-up:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4, 5, 6]
+        attempt: [1, 2, 3, 4]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
 
-      # The diagnostic build from run 40891344583: it writes each startup step and a heartbeat.
-      - uses: actions/download-artifact@v4
-        with:
-          name: diag-installer
-          path: installer
-          run-id: 40891344583
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Open the diagnostic build and catch its crash late
+      - name: Open v0.19.1 with Windows Error Reporting on
         shell: pwsh
         run: |
-          $Tools = Join-Path $env:RUNNER_TEMP "procdump"
-          Invoke-WebRequest "https://download.sysinternals.com/files/Procdump.zip" -OutFile "$Tools.zip"
-          Expand-Archive "$Tools.zip" -DestinationPath $Tools
+          $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-v0.19.1.exe"
+          Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
           $Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe"
           $Failed = @()
-          foreach ($Launch in 1, 2) {
-            $Label = "a${{ matrix.attempt }}-$Launch"
-            $Trace = Join-Path $env:LOCALAPPDATA "gloom-diag-trace.log"
-            Remove-Item -LiteralPath $Trace -ErrorAction SilentlyContinue
-            $Out = Join-Path (Get-Location) "artifacts\windows-stays-up\$Label\freeze"
-            $Watcher = Start-Process pwsh -PassThru -NoNewWindow -ArgumentList @(
-              "-NoProfile", "-File", "scripts/diag-freeze-watch.ps1", "-Trace", $Trace,
-              "-ProcDump", (Join-Path $Tools "procdump64.exe"), "-Out", $Out, "-Seconds", "40")
+          foreach ($Launch in 1, 2, 3) {
+            $Label = "w${{ matrix.attempt }}-$Launch"
             try {
-              ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label $Label -Seconds 40
+              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 40
             } catch {
               $Failed += "${Label}: $($_.Exception.Message)"
             }
-            $Watcher.WaitForExit(60000) | Out-Null
-            Copy-Item -LiteralPath $Trace -Destination "artifacts/windows-stays-up/$Label/trace.log" -ErrorAction SilentlyContinue
-            foreach ($Dump in (Get-ChildItem $Out -Filter *.dmp -ErrorAction SilentlyContinue)) {
-              & $Cdb -z $Dump.FullName -c ".symfix; .reload; .effmach; .lastevent; .ecxr; r; kn 30; ~*kn 25; q" 2>&1 |
-                Out-File (Join-Path $Out "$($Dump.BaseName).stacks.txt")
+            foreach ($Dump in (Get-ChildItem "artifacts/windows-stays-up/$Label/dumps" -Filter *.dmp -ErrorAction SilentlyContinue)) {
+              $Stacks = Join-Path $Dump.DirectoryName "$($Dump.BaseName).stacks.txt"
+              & $Cdb -z $Dump.FullName -c ".symfix; .reload; .effmach; .lastevent; .exr -1; .ecxr; r; kn 40; .effmach amd64; kn 40; lmv m bun; lmv m libNativeWrapper; lmv m libcef; ~*kn 12; q" 2>&1 | Out-File $Stacks
               Write-Host "$($Dump.Name): $($Dump.Length) bytes"
+              Get-Content $Stacks | Select-String -Pattern "Last event|ExceptionCode|ExceptionAddress|Attempt to|^0[0-9] " | Select-Object -First 40 | ForEach-Object { Write-Host "  $_" }
               Remove-Item -LiteralPath $Dump.FullName
             }
           }
@@ -63,8 +46,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: freeze-${{ matrix.attempt }}
+          name: wer-${{ matrix.attempt }}
           path: |
             artifacts/windows-stays-up/**/stays-up.txt
-            artifacts/windows-stays-up/**/trace.log
-            artifacts/windows-stays-up/**/freeze/*.txt
+            artifacts/windows-stays-up/**/dumps/*.txt

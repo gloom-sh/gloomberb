@@ -67,6 +67,26 @@ function Get-InstallFolder {
 
 Write-Line "runner: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) $([System.Environment]::OSVersion.VersionString); installer $Installer"
 
+# Repro only: the runner image may switch Windows Error Reporting off, and with it LocalDumps.
+$WerKey = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting"
+$WerPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting"
+$AeDebug = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug"
+function Get-Values([string]$Path) { try { (Get-ItemProperty -LiteralPath $Path -ErrorAction Stop | Select-Object * -ExcludeProperty PS* | ConvertTo-Json -Compress) } catch { "none" } }
+$Wer = Get-Service WerSvc -ErrorAction SilentlyContinue
+Write-Line "WER: $(Get-Values $WerKey); policy $(Get-Values $WerPolicy); AeDebug $(Get-Values $AeDebug); WerSvc $($Wer.Status) $($Wer.StartType)"
+try {
+  New-Item -Force -Path $WerKey -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -LiteralPath $WerKey -Name Disabled -Value 0 -Type DWord
+  Set-ItemProperty -LiteralPath $WerKey -Name DontShowUI -Value 1 -Type DWord
+  if (Test-Path -LiteralPath $WerPolicy) { Remove-ItemProperty -LiteralPath $WerPolicy -Name Disabled -ErrorAction SilentlyContinue }
+  Set-Service WerSvc -StartupType Manual -ErrorAction SilentlyContinue
+  Start-Service WerSvc -ErrorAction SilentlyContinue
+  $Wer = Get-Service WerSvc -ErrorAction SilentlyContinue
+  Write-Line "WER now: $(Get-Values $WerKey); WerSvc $($Wer.Status) $($Wer.StartType)"
+} catch {
+  Write-Line "could not switch WER on: $($_.Exception.Message)"
+}
+
 # Windows Error Reporting keeps a minidump of each crash of the app's programs.
 $DumpDir = Join-Path $Evidence "dumps"
 New-Item -ItemType Directory -Force -Path $DumpDir | Out-Null
