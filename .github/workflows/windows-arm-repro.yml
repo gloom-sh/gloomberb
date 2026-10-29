@@ -10,48 +10,67 @@ permissions:
   contents: read
 
 jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build Windows desktop package
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diag-installer
+          path: artifacts/stable-win-x64-GloomSetup.exe
+
   stays-up:
+    needs: build
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4]
+        variant: [as-is, no-icon, no-frame, neither]
+        attempt: [1, 2]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install and open v0.19.1 under ProcDump
+      - uses: actions/download-artifact@v4
+        with:
+          name: diag-installer
+          path: installer
+
+      - name: Open the diagnostic build twice
         shell: pwsh
         run: |
-          $Tag = "v0.19.1"
-          $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-$Tag.exe"
-          Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/$Tag/stable-win-x64-GloomSetup.exe" -OutFile $Installer
-          $Tools = Join-Path $env:RUNNER_TEMP "procdump"
-          Invoke-WebRequest "https://download.sysinternals.com/files/Procdump.zip" -OutFile "$Tools.zip"
-          Expand-Archive "$Tools.zip" -DestinationPath $Tools
-          $Dumps = Join-Path (Get-Location) "artifacts\windows-stays-up\procdump"
-          New-Item -ItemType Directory -Force -Path $Dumps | Out-Null
-          # First-chance access violations too: whatever ends the process may handle the fault itself.
-          $Watcher = Start-Process -FilePath (Join-Path $Tools "procdump64.exe") -PassThru -NoNewWindow `
-            -RedirectStandardOutput (Join-Path $Dumps "procdump.txt") `
-            -ArgumentList @("-accepteula", "-e", "1", "-f", "C0000005", "-n", "10", "-w", "bun.exe", $Dumps)
-          try {
-            ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label "$Tag-${{ matrix.attempt }}" -Seconds 45 -Console
-          } finally {
-            Start-Sleep -Seconds 5
-            if (-not $Watcher.HasExited) { Stop-Process -Id $Watcher.Id -Force -ErrorAction SilentlyContinue }
-            $Cdb = @(Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers" -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-            "cdb found: $($Cdb -join ', ')" | Out-File (Join-Path $Dumps "cdb.txt")
-            $X64Cdb = $Cdb | Where-Object { $_ -match "\\x64\\" } | Select-Object -First 1
-            foreach ($Dump in (Get-ChildItem $Dumps -Filter *.dmp)) {
-              if ($X64Cdb) {
-                & $X64Cdb -z $Dump.FullName -c ".symfix; .reload; .ecxr; r; kn 40; ub @rip L8; u @rip L4; lmv m bun*; lm; q" 2>&1 |
-                  Out-File (Join-Path $Dumps "$($Dump.BaseName).cdb.txt")
-              }
+          $Variant = "${{ matrix.variant }}"
+          if ($Variant -in @("no-icon", "neither")) { $env:GLOOM_DIAG_NO_ICON = "1" }
+          if ($Variant -in @("no-frame", "neither")) { $env:GLOOM_DIAG_NO_CHROME = "1" }
+          $Failed = @()
+          foreach ($Launch in 1, 2) {
+            $Label = "$Variant-${{ matrix.attempt }}-$Launch"
+            $Trace = Join-Path $env:LOCALAPPDATA "gloom-diag-trace.log"
+            Remove-Item -LiteralPath $Trace -ErrorAction SilentlyContinue
+            try {
+              ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label $Label -Seconds 40 -Console
+            } catch {
+              $Failed += "${Label}: $($_.Exception.Message)"
             }
+            Copy-Item -LiteralPath $Trace -Destination "artifacts/windows-stays-up/$Label/trace.log" -ErrorAction SilentlyContinue
           }
+          if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stays-up-v0.19.1-${{ matrix.attempt }}
+          name: stays-up-${{ matrix.variant }}-${{ matrix.attempt }}
           path: artifacts/windows-stays-up

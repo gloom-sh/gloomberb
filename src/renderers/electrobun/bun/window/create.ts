@@ -1,3 +1,4 @@
+import { trace } from "../diag-trace";
 import { BrowserWindow } from "electrobun/bun";
 import {
   applyNativeWindowFrame,
@@ -95,8 +96,11 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     navigationRules: JSON.stringify(["views://*"]),
     sandbox: false,
   });
-  applyWindowsWindowIcon(title);
-  applyWindowsCustomChrome(title);
+  trace("BrowserWindow made");
+  if (!process.env.GLOOM_DIAG_NO_ICON) applyWindowsWindowIcon(title);
+  trace("icon done");
+  if (!process.env.GLOOM_DIAG_NO_CHROME) applyWindowsCustomChrome(title);
+  trace("frame done");
   if (process.platform === "win32") {
     loadAgainWhenTakenForCtrlClick(window);
     // The page exists once it has loaded; until then there is nothing to fit.

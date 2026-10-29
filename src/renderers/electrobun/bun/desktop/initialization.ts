@@ -1,3 +1,4 @@
+import { trace } from "../diag-trace";
 import { existsSync, mkdirSync } from "fs";
 import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
@@ -152,9 +153,13 @@ export function startDesktopBackend(
   if (running) return running;
   if (backend.config && backend.services) return Promise.resolve();
   const launch = (async () => {
+    trace("read config");
     const initialConfig = await steps.readConfig();
+    trace("restore plugins");
     const seed = await steps.restorePlugins();
+    trace("start services");
     await steps.startServices(seed ? { ...initialConfig, ...seed } : initialConfig);
+    trace("services started");
     steps.prefetchPluginBundles();
   })();
   launches.set(backend, launch);

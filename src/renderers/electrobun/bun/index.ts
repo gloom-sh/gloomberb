@@ -1,3 +1,4 @@
+import { trace } from "./diag-trace";
 import Electrobun, { ApplicationMenu, Screen, Utils } from "electrobun/bun";
 import { homedir } from "os";
 import { debugLog } from "../../../utils/debug-log";
@@ -52,6 +53,7 @@ installProcessCrashListeners();
 // Electrobun's updater installs an update into a folder of its own and opens
 // it from there: this build moves into the installer's folder and opens again
 // from it before any window shows.
+trace("settle installer folder");
 const installerFolderMove = await settleInstallerFolder({
   platform: process.platform,
   execPath: process.execPath,
@@ -69,6 +71,7 @@ if (installerFolderMove?.kind === "relaunching") {
 // An install from before the rename runs from Gloomberb.app, where its updater
 // put this build. It takes the new name and opens again from there before any
 // window shows. Anywhere else this returns without touching the disk.
+trace("rename legacy app");
 const appRename = await renameLegacyMacApp({
   execPath: process.execPath,
   platform: process.platform,
@@ -94,7 +97,9 @@ function readOpenUrlEvent(event: unknown): string | null {
   return typeof url === "string" && url ? url : null;
 }
 
+trace("new backend");
 const backend = new DesktopBackend();
+trace("backend made");
 
 Electrobun.events.on("context-menu-clicked", (event: unknown) => {
   const message = contextMenuSelectionMessage(event, ELECTROBUN_CONTEXT_MENU_ACTION);
@@ -115,7 +120,9 @@ ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
   backend.runApplicationMenuCommand(command);
 });
 
+trace("app menu");
 backend.installApplicationMenu();
+trace("app menu set");
 
 // The desktop app never starts a terminal player, but it is usually the next
 // thing launched after a terminal run left one behind, and until something
@@ -181,6 +188,7 @@ function scheduleRememberedWindow(): void {
   }, 300);
 }
 
+trace("create window");
 const mainWindow = createAppWindow({
   title: "Gloom",
   frame: initialMainWindowFrame,
@@ -191,11 +199,13 @@ const mainWindow = createAppWindow({
   // has loaded (dom/boot-frame.ts).
   preload: desktopBootFramePreload(readDesktopBootFrame(desktopBootFramePath())),
 });
+trace("window created");
 backend.mainWindow = mainWindow;
 quitWindowsEventLoopOnItsThread(mainWindow);
 // The window is loading its view; the services it will ask for start now
 // rather than when it asks. Its `init` reports a failure, and retries.
-startDesktopBackend(backend).catch((error) => {
+trace("start backend");
+startDesktopBackend(backend).then(() => trace("backend started")).catch((error) => {
   console.error("[desktop] startup failed", error instanceof Error ? error.stack ?? error.message : String(error));
 });
 // Windows has no way into fullscreen here, and builds whose frameless window
