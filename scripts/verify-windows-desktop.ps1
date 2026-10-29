@@ -1836,8 +1836,11 @@ try {
     -Path (Join-Path $GuiArtifactDir "windows-popout-diagnostics.json") `
     -Label "Detached pop-out"
 
-  Assert-WindowControlPaddingMeasurement ($ControlPaddingMeasurements | Where-Object { $_.Label -eq "Main window" })
-  Assert-WindowControlPaddingMeasurement ($ControlPaddingMeasurements | Where-Object { $_.Label -eq "Detached pop-out" })
+  # The page draws the buttons, so their padding is measured in the page's
+  # own pixels: a framed window's capture also holds the border Windows draws
+  # around it, whose lighter pixels read as part of a glyph.
+  Assert-WindowControlPaddingMeasurement ($ControlPaddingMeasurements | Where-Object { $_.Label -eq "Main window client area" })
+  Assert-WindowControlPaddingMeasurement ($ControlPaddingMeasurements | Where-Object { $_.Label -eq "Detached pop-out client area" })
 
   Assert-CustomWindowControls `
     -Window $DetachedWindow `
