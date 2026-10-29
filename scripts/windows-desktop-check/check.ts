@@ -102,23 +102,41 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object 
   });
 }
 
+/** Lets the Task Scheduler keep its own log, which says what a restart task did. */
+function keepTaskSchedulerLog(): void {
+  Bun.spawnSync(["wevtutil", "sl", "Microsoft-Windows-TaskScheduler/Operational", "/e:true"], { timeout: 30_000 });
+}
+
 /**
- * The app's processes and the shells around them, with the session each runs
- * in: a process in another session draws where this check cannot see.
+ * Why a restart brought no window back: the restart task as the Task Scheduler
+ * has it and what its log says it did, and the app's processes and the shells
+ * around them, with the session each runs in.
  */
-function appProcesses(): string {
+async function restartReport(out: string, oldPid: number): Promise<string> {
   const script = String.raw`
-$mine = (Get-Process -Id $PID).SessionId
-$lines = @(Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='launcher.exe' OR Name='powershell.exe'" | ForEach-Object {
+$ErrorActionPreference = 'Continue'
+"this check runs in session " + (Get-Process -Id $PID).SessionId
+"the old app (" + ${oldPid} + ") is " + $(if (Get-Process -Id ${oldPid} -ErrorAction SilentlyContinue) { 'still running' } else { 'gone' })
+$query = schtasks /Query /TN "Gloom restart ${oldPid}" /V /FO LIST 2>&1
+"task: " + (($query | Where-Object { $_ -match '^(Status|Last Run Time|Last Result|Task To Run|ERROR)' } | ForEach-Object { ([string]$_).Trim() }) -join ' | ')
+Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational -MaxEvents 200 -ErrorAction SilentlyContinue |
+  Where-Object { $_.Message -like '*Gloom restart*' } | Sort-Object TimeCreated | ForEach-Object {
+    "event {0:HH:mm:ss} {1}: {2}" -f $_.TimeCreated, $_.Id, ($_.Message -replace '\s+', ' ')
+  }
+Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='launcher.exe' OR Name='powershell.exe'" | ForEach-Object {
   $line = [string]$_.CommandLine
-  if ($line.Length -gt 160) { $line = $line.Substring(0, 160) + '...' }
-  "{0} {1} (parent {2}, session {3}): {4}" -f $_.Name, $_.ProcessId, $_.ParentProcessId, $_.SessionId, $line
-})
-$tasks = @(Get-ScheduledTask -TaskName 'Gloom*' -ErrorAction SilentlyContinue | ForEach-Object { "task {0}: {1}" -f $_.TaskName, $_.State })
-"this check runs in session $mine; " + (($lines + $tasks) -join '; ')
+  if ($line.Length -gt 200) { $line = $line.Substring(0, 200) + '...' }
+  "process {0} {1} (parent {2}, session {3}): {4}" -f $_.Name, $_.ProcessId, $_.ParentProcessId, $_.SessionId, $line
+}
 `;
-  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], { timeout: 60_000 });
-  return child.stdout.toString().trim() || child.stderr.toString().trim();
+  const path = join(out, "restart-report.ps1");
+  await writeFile(path, script);
+  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-File", path], { timeout: 120_000 });
+  const lines = `${child.stdout.toString()}\n${child.stderr.toString()}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (child.exitCode !== 0) lines.push(`the report exited ${child.exitCode ?? "on its timeout"}`);
+  const windows = win.topLevelWindows().filter((info) => info.className === "BasicWindowClass")
+    .map((info) => `window "${info.title}" of ${info.pid}, ${info.visible ? "visible" : "hidden"}`);
+  return [...lines, ...(windows.length ? windows : ["no app window on this desktop, hidden or not"])].join("; ");
 }
 
 /**
@@ -1195,7 +1213,9 @@ class Run {
       const after = win.visibleRect(window.hwnd);
       const fills = await this.contentFills(window, `${name}-title-double-click`, shots);
       if (maximized) {
-        await win.click(this.toScreen(window, point), { double: true });
+        // The header lays out anew at the maximized width: the same spot can be on the command prompt now.
+        const again = await evaluate<{ x: number; y: number } | null>(window.page.cdp, "window.__winCheck.titleBarPoint()");
+        await win.click(this.toScreen(window, again ?? point), { double: true });
         await sleep(900);
       }
       const restored = !win.isMaximized(window.hwnd);
@@ -1652,6 +1672,9 @@ class Run {
     await this.step("restart-itself", "The app restarts itself, as from the Restart button on its error screen", async (shots) => {
       await this.reset(this.main, this.baseRect);
       for (const info of win.topLevelWindows()) this.knownWindows.add(info.hwnd);
+      keepTaskSchedulerLog();
+      const mainHwnd = this.main.hwnd;
+      const oldPid = win.topLevelWindows().find((info) => info.hwnd === mainHwnd)?.pid ?? 0;
       const sent = await evaluate<boolean>(this.main.page.cdp, `(() => {
         if (!window.__electrobunBunBridge) return false;
         window.__electrobunBunBridge.postMessage(JSON.stringify({ type: "message", id: "host.restart", payload: { reason: "windows-check", source: "windows-check" } }));
@@ -1669,7 +1692,7 @@ class Run {
       }
       const desktop = this.shots.desktop(opened ? "restarted" : "restart-missing");
       if (desktop) shots.push(desktop);
-      if (!opened) return { status: "fail", detail: `no window came back within 60 s of the old one closing; ${appProcesses()}` };
+      if (!opened) return { status: "fail", detail: `no window came back within 60 s of the old one closing; ${await restartReport(this.out, oldPid)}` };
       const took = (Date.now() - closing) / 1000;
       // Not this run's launch: stopped by its window.
       Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
