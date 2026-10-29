@@ -21,6 +21,7 @@ export class AppPersistence {
   }
 
   close(): void {
+    this.resources.close();
     this.database.close();
   }
 }

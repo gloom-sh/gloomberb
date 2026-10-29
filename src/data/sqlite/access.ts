@@ -46,6 +46,11 @@ const sqliteLog = debugLog.createLogger("sqlite");
  * database. A write of user data flushes as before (`FULL`), which also
  * flushes everything committed ahead of it. Where WAL does not take (a
  * network share), every commit flushes.
+ *
+ * On the app's connection the cache writes of one turn of the event loop
+ * share a transaction and commit together once the turn is over: a batch of
+ * quotes, a list's touched rows. A write of user data, the queue and close
+ * commit them first, so a user write still commits on its own and flushes.
  */
 export interface SqliteAccess {
   /** A read of cached data; null when another program has it locked. */
@@ -94,6 +99,8 @@ export interface SqliteAccessOptions {
    * connection's own level is left alone.
    */
   relaxedCommits?: boolean;
+  /** After each commit of the app's connection (see checkpointer.ts). */
+  onCommit?: () => void;
 }
 
 interface QueuedWrite {
@@ -118,14 +125,51 @@ function now(): number {
 }
 
 export function createSqliteAccess(db: Database, options: SqliteAccessOptions = {}): SqliteAccess {
-  /** Commits `write` with a full flush when the connection's own level is NORMAL. */
-  const durable = <T>(write: () => T): T => {
-    if (!options.relaxedCommits || db.inTransaction) return write();
-    db.exec("PRAGMA synchronous=FULL");
+  /** The app's cache writes of this turn, committed together once it is over (interactive only). */
+  let cacheBatch: ReturnType<typeof setTimeout> | null = null;
+  /** User writes running now: a cache write inside one commits on its own, outside any batch. */
+  let durableWrites = 0;
+
+  const commitCacheBatch = (): void => {
+    if (!cacheBatch) return;
+    clearTimeout(cacheBatch);
+    cacheBatch = null;
+    // A failed statement can roll the whole transaction back; its writes are
+    // gone then, which a cache can afford.
+    if (!db.inTransaction) return;
     try {
-      return write();
+      db.exec("COMMIT");
+      options.onCommit?.();
+    } catch (error) {
+      logFailure("data.sqlite", "Committing cached writes failed")(error);
+      if (!db.inTransaction) return;
+      try {
+        db.exec("ROLLBACK");
+      } catch (rollbackError) {
+        logFailure("data.sqlite", "Rolling back cached writes failed")(rollbackError);
+      }
+    }
+  };
+
+  /**
+   * Commits `write` with a full flush when the connection's own level is
+   * NORMAL. The cache writes of the turn commit first, wherever they came
+   * from (a queued write's `settled`, the write before), so the user write
+   * never lands inside their batch at NORMAL.
+   */
+  const durable = <T>(write: () => T): T => {
+    commitCacheBatch();
+    durableWrites += 1;
+    try {
+      if (!options.relaxedCommits || db.inTransaction) return write();
+      db.exec("PRAGMA synchronous=FULL");
+      try {
+        return write();
+      } finally {
+        db.exec("PRAGMA synchronous=NORMAL");
+      }
     } finally {
-      db.exec("PRAGMA synchronous=NORMAL");
+      durableWrites -= 1;
     }
   };
 
@@ -169,6 +213,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
       const next = queue[0]!;
       try {
         durable(() => withSqliteLockWait(next.operationName, next.write, Math.min(lockWaitMs, leftMs)));
+        options.onCommit?.();
       } catch (error) {
         if (isSqliteBusyError(error)) return "locked";
         logFailure("data.sqlite", "A queued write failed")(error);
@@ -211,15 +256,30 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     }
   };
 
+  /** False when another program holds the lock, and the write is skipped. */
+  const joinCacheBatch = (): boolean => {
+    // Inside a user write, a batch would hold that write's own statements until the turn is over.
+    if (durableWrites > 0) return true;
+    if (cacheBatch && db.inTransaction) return true;
+    if (cacheBatch) commitCacheBatch();
+    // Inside a transaction a statement of this connection opened, the write is part of it.
+    if (db.inTransaction) return true;
+    if (!tryCache("begin cached writes", () => db.exec("BEGIN IMMEDIATE"))) return false;
+    cacheBatch = setTimeout(commitCacheBatch, 0);
+    (cacheBatch as { unref?: () => void }).unref?.();
+    return true;
+  };
+
   return {
     readCache: (operationName, read) => tryCache(operationName, read)?.value ?? null,
-    writeCache: (operationName, write) => tryCache(operationName, write) !== null,
+    writeCache: (operationName, write) => joinCacheBatch() && tryCache(operationName, write) !== null,
     run: (operationName, statement) => withSqliteLockWait(operationName, statement, SQLITE_APP_READ_WAIT_MS),
     write: (operationName, write, writeOptions = {}) => {
       const { key, settled } = writeOptions;
       if (queue.length === 0) {
         try {
           durable(() => withSqliteLockWait(operationName, write, SQLITE_APP_WRITE_WAIT_MS));
+          options.onCommit?.();
           settle({ settled });
           return true;
         } catch (error) {
@@ -242,6 +302,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     close: () => {
       if (closed) return;
       closed = true;
+      commitCacheBatch();
       if (timer) clearTimeout(timer);
       timer = null;
       if (drain(CLOSE_LOCK_WAIT_MS, CLOSE_LOCK_WAIT_MS) === "empty") return;

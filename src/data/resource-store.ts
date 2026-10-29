@@ -3,6 +3,7 @@ import type { CachePolicy, PersistedResourceValue } from "../types/persistence";
 import type { JsonValue } from "./sqlite/json";
 import { createSqliteAccess, type SqliteAccess } from "./sqlite/access";
 import { safeParseJson, serializeJson } from "./sqlite/json";
+import { logFailure } from "../utils/log-failure";
 
 const RESOURCE_CACHE_SOFT_ROW_LIMIT = 25_000;
 const RESOURCE_CACHE_SOFT_SIZE_LIMIT = 100 * 1024 * 1024;
@@ -13,6 +14,13 @@ const RESOURCE_CACHE_MAINTENANCE_BYTE_INTERVAL = Math.floor(
 const RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS = 5 * 60_000;
 /** Rows read per eviction pass, so a full cache is evicted in slices. */
 const RESOURCE_CACHE_PRUNE_BATCH_SIZE = 512;
+/**
+ * A read moves its row up the eviction order in memory, and the rows read
+ * since are written in one transaction this often, before an eviction and
+ * at close: a read writes nothing. A crash loses at most this much of the
+ * order, which only decides what is evicted first.
+ */
+const RESOURCE_CACHE_TOUCH_FLUSH_MS = 30_000;
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 const EMPTY_VARIANT_KEY = "";
 const EMPTY_SOURCE_KEY = "";
@@ -93,6 +101,10 @@ function isStale(staleAt: number): boolean {
   return staleAt < Date.now();
 }
 
+function rowMapKey(key: ResourceCacheKey): string {
+  return [key.namespace, key.kind, key.entityKey, normalizeVariantKey(key.variantKey), normalizeSourceKey(key.sourceKey)].join("\u0000");
+}
+
 function sortRows(rows: ResourceCacheRow[]): ResourceCacheRow[] {
   return [...rows].sort((a, b) => {
     if (a.expires_at !== b.expires_at) return b.expires_at - a.expires_at;
@@ -106,6 +118,9 @@ export class ResourceStore {
   private writesSinceMaintenance = 0;
   private bytesWrittenSinceMaintenance = 0;
   private lastMaintenanceAt = 0;
+  /** Reads not yet written to the eviction order, by row. */
+  private readonly pendingTouches = new Map<string, { key: ResourceCacheKey; touchedAt: number }>();
+  private touchTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Everything here can be fetched again, so no statement waits for another
@@ -139,6 +154,7 @@ export class ResourceStore {
   }
 
   private deleteExact(key: ResourceCacheKey): void {
+    this.pendingTouches.delete(rowMapKey(key));
     this.access.writeCache("delete cached resource", () => {
       this.db
         .query(
@@ -155,29 +171,76 @@ export class ResourceStore {
     });
   }
 
-  private touchDue(record: { lastAccessedAt: number }, options: GetResourceOptions): boolean {
-    return options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs;
+  /** Moves a read row up the eviction order, unless it moved within `touchIntervalMs`. */
+  private touchRead(record: CachedResourceRecord, options: GetResourceOptions): void {
+    const mapKey = rowMapKey(record);
+    record.lastAccessedAt = Math.max(record.lastAccessedAt, this.pendingTouches.get(mapKey)?.touchedAt ?? 0);
+    if (options.touch === false) return;
+    const now = Date.now();
+    if (options.touchIntervalMs != null && now - record.lastAccessedAt < options.touchIntervalMs) return;
+    const { namespace, kind, entityKey, variantKey, sourceKey } = record;
+    this.pendingTouches.set(mapKey, { key: { namespace, kind, entityKey, variantKey, sourceKey }, touchedAt: now });
+    record.lastAccessedAt = now;
+    if (this.touchTimer) return;
+    this.touchTimer = setTimeout(() => {
+      this.touchTimer = null;
+      try {
+        this.flushTouches();
+      } catch (error) {
+        logFailure("data.resource-store", "Saving the cache's eviction order failed")(error);
+      }
+    }, RESOURCE_CACHE_TOUCH_FLUSH_MS);
+    (this.touchTimer as { unref?: () => void }).unref?.();
   }
 
-  private touch(key: ResourceCacheKey): number | null {
-    const touchedAt = Date.now();
-    const touched = this.access.writeCache("touch cached resource", () => {
-      this.db
-        .query(
-          `UPDATE resource_cache
-           SET last_accessed_at = ?
-           WHERE namespace = ? AND kind = ? AND entity_key = ? AND variant_key = ? AND source_key = ?`,
-        )
-        .run(
-          touchedAt,
-          key.namespace,
-          key.kind,
-          key.entityKey,
-          normalizeVariantKey(key.variantKey),
-          normalizeSourceKey(key.sourceKey),
-        );
+  /**
+   * Writes the reads since the last flush into the eviction order, in one
+   * transaction. False when another program had the cache locked; they are
+   * kept for the next one.
+   */
+  flushTouches(): boolean {
+    if (this.touchTimer) {
+      clearTimeout(this.touchTimer);
+      this.touchTimer = null;
+    }
+    if (this.pendingTouches.size === 0) return true;
+    const touches = [...this.pendingTouches.values()];
+    const written = this.access.writeCache("touch cached resources", () => {
+      const update = this.db.query(
+        `UPDATE resource_cache
+         SET last_accessed_at = MAX(last_accessed_at, ?)
+         WHERE namespace = ? AND kind = ? AND entity_key = ? AND variant_key = ? AND source_key = ?`,
+      );
+      this.db.transaction(() => {
+        for (const { key, touchedAt } of touches) {
+          update.run(
+            touchedAt,
+            key.namespace,
+            key.kind,
+            key.entityKey,
+            normalizeVariantKey(key.variantKey),
+            normalizeSourceKey(key.sourceKey),
+          );
+        }
+      })();
     });
-    return touched ? touchedAt : null;
+    if (written) this.pendingTouches.clear();
+    return written;
+  }
+
+  /**
+   * Writes the reads still held in memory; the connection closes after. A
+   * failure loses only that order: the queued user writes and the
+   * connection still have to close.
+   */
+  close(): void {
+    try {
+      this.flushTouches();
+    } catch (error) {
+      logFailure("data.resource-store", "Saving the cache's eviction order at close failed")(error);
+    }
+    if (this.touchTimer) clearTimeout(this.touchTimer);
+    this.touchTimer = null;
   }
 
   /** Null when another program has the cache locked; maintenance waits for the next write. */
@@ -211,6 +274,8 @@ export class ResourceStore {
     if (!remaining) return false;
     let { count: remainingCount, totalSize: remainingSize } = remaining;
     if (this.withinSoftLimits(remainingCount, remainingSize)) return true;
+    // Eviction goes by the order on disk, which has to hold the latest reads.
+    if (!this.flushTouches()) return false;
 
     const candidates = this.db.query<{
       namespace: string;
@@ -309,12 +374,7 @@ export class ResourceStore {
       return null;
     }
 
-    if (options.touch !== false && this.touchDue(record, options)) {
-      const touchedAt = this.touch(key);
-      if (touchedAt != null) {
-        record.lastAccessedAt = touchedAt;
-      }
-    }
+    this.touchRead(record, options);
     return record;
   }
 
@@ -364,13 +424,7 @@ export class ResourceStore {
       }
       records.push(record);
     }
-    if (options.touch !== false) {
-      for (const record of records) {
-        if (!this.touchDue(record, options)) continue;
-        const touchedAt = this.touch(record);
-        if (touchedAt != null) record.lastAccessedAt = touchedAt;
-      }
-    }
+    for (const record of records) this.touchRead(record, options);
     return records;
   }
 
@@ -390,6 +444,7 @@ export class ResourceStore {
       sourceKey: normalizeSourceKey(key.sourceKey),
     };
 
+    this.pendingTouches.delete(rowMapKey(rowKey));
     const saved = this.access.writeCache("save cached resource", () => {
       this.db
         .query(
@@ -438,6 +493,7 @@ export class ResourceStore {
   /** Asked for by the user, so it waits for another program's lock, and throws when it cannot get it. */
   clear(namespace?: string): void {
     if (!namespace) {
+      this.pendingTouches.clear();
       this.access.run("clear cached resources", () => {
         this.db.query("DELETE FROM resource_cache").run();
       });

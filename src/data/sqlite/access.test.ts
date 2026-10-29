@@ -33,6 +33,73 @@ test("commits stop flushing only where WAL took, and user data always flushes", 
   }
 });
 
+// A batch of quotes or a list's rows used to commit one row at a time. A
+// user write does not wait in that batch: it commits on its own, and flushes.
+test("in the app, the cache writes of one turn commit together, and a user write commits them first", async () => {
+  const dbPath = createTempDbPath("cache-batch");
+  const database = new SqliteDatabase(dbPath, { interactive: true });
+  const { connection, access } = database;
+  connection.exec("CREATE TABLE batched (k TEXT PRIMARY KEY)");
+  const other = new Database(dbPath, { readonly: true });
+  const committed = () => other.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM batched").get()?.c;
+  const put = (k: string) => () => { connection.query("INSERT INTO batched (k) VALUES (?)").run(k); };
+  try {
+    expect(access.writeCache("put", put("a"))).toBe(true);
+    expect(access.writeCache("put", put("b"))).toBe(true);
+    expect(committed()).toBe(0);
+    await Bun.sleep(1);
+    expect(committed()).toBe(2);
+
+    access.writeCache("put", put("c"));
+    let level: number | undefined;
+    access.write("user write", () => {
+      level = synchronousLevel(connection);
+      put("user")();
+    });
+    expect(committed()).toBe(4);
+    expect(level).toBe(2);
+  } finally {
+    other.close();
+    database.close();
+  }
+});
+
+// A cache write made from a user write's callback, or from a queued write's
+// `settled`, opened a batch the next user write then ran inside, at NORMAL.
+test("in the app, a user write never lands in a cache batch, whatever opened it", async () => {
+  const dbPath = createTempDbPath("cache-batch-durable");
+  const database = new SqliteDatabase(dbPath, { interactive: true });
+  const { connection, access } = database;
+  connection.exec("CREATE TABLE rows (k TEXT PRIMARY KEY)");
+  const put = (k: string) => () => { connection.query("INSERT OR REPLACE INTO rows (k) VALUES (?)").run(k); };
+  const seen: Array<{ level: number | undefined; inTransaction: boolean }> = [];
+  const probe = (k: string) => () => {
+    seen.push({ level: synchronousLevel(connection), inTransaction: connection.inTransaction });
+    put(k)();
+  };
+  const locker = new Database(dbPath);
+  try {
+    access.write("user write", () => {
+      access.writeCache("cache write", put("cache-inside"));
+      probe("inside")();
+    });
+    locker.exec("BEGIN IMMEDIATE");
+    access.write("queued", put("first"), { settled: () => { access.writeCache("cache write", put("cache-settled")); } });
+    access.write("queued", probe("second"));
+    locker.exec("ROLLBACK");
+    await Bun.sleep(150);
+    expect(access.flush()).toBe(true);
+    expect(seen).toEqual([
+      { level: 2, inTransaction: false },
+      { level: 2, inTransaction: false },
+    ]);
+  } finally {
+    if (locker.inTransaction) locker.exec("ROLLBACK");
+    locker.close();
+    database.close();
+  }
+});
+
 // The queue runs on the app's only thread. Writes that piled up behind a
 // long lock must not land in one tick that freezes the app, and a row
 // written again while queued needs writing once, after what came before it.
