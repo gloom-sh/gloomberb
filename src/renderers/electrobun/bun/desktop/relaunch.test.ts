@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { desktopRelaunchCommand, scheduleDesktopRelaunch } from "./relaunch";
+import { desktopRelaunchCommand, scheduleDesktopRelaunch, windowsRelaunchScript } from "./relaunch";
 
 // The launcher starts the app inside `Gloomberb.app/Contents/MacOS`, and the
 // rename to Gloom.app takes that folder away. Spawning the relaunch script
@@ -47,32 +47,25 @@ describe("desktop relaunch", () => {
     }
   });
 
-  // Electrobun's job ends whatever the app starts when it exits, so a task
-  // waits for it: the script that registers it quotes a path twice over.
-  test("on Windows, has a task start the launcher once this process has exited", () => {
-    const command = desktopRelaunchCommand({
-      platform: "win32",
+  // The script runs from a scheduled task, as written here: every path sits
+  // in a single-quoted string, and it opens nothing until the app is gone.
+  test("on Windows, the restart script quotes its paths and opens the launcher after the app has exited", () => {
+    const script = windowsRelaunchScript({
       pid: 42,
-      execPath: "C:\\Users\\Ann O'Neil\\Gloom\\bin\\bun.exe",
-      args: ["C:\\Users\\Ann O'Neil\\Gloom\\Resources\\main.js"],
-      cwd: "C:\\Users\\Ann O'Neil\\Gloom\\bin",
-      pathEnv: "",
+      launcher: "C:\\Users\\Ann O'Neil\\Gloom\\bin\\launcher.exe",
+      log: "C:\\Users\\Ann O'Neil\\AppData\\Local\\Temp\\gloom-restart-42.log",
+      cancel: "C:\\Users\\Ann O'Neil\\AppData\\Local\\Temp\\gloom-restart-42.cancel",
+      taskName: "GloomRestart-42",
       home: "D:\\Gloom data",
     });
-    expect(command.waitForIt).toBe(true);
-    expect(command.cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand"]);
-    const handOff = Buffer.from(command.cmd.at(-1)!, "base64").toString("utf16le");
-    expect(handOff).toContain("$definition.Principal.LogonType = 3");
-    expect(handOff).toContain("RegisterTaskDefinition('Gloom restart 42', $definition, 6, $null, $null, 3)");
-    const taskArguments = /\$action\.Arguments = '((?:[^']|'')*)'/.exec(handOff)![1]!.replaceAll("''", "'");
-    expect(taskArguments).toBe(
-      "-NoProfile -NonInteractive -WindowStyle Hidden -Command \""
-      + "$until = (Get-Date).AddMinutes(5); "
-      + "while ((Get-Process -Id 42 -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }; "
-      + "$env:GLOOMBERB_HOME = 'D:\\Gloom data'; "
-      + "if (-not (Get-Process -Id 42 -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500; Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin' }; "
-      + "$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask('Gloom restart 42', 0)\"",
-    );
+    expect(script).toContain("$OldPid = 42");
+    expect(script).toContain("$Launcher = 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe'");
+    expect(script).toContain("$DataHome = 'D:\\Gloom data'");
+    const wait = script.indexOf("while ((Get-Process -Id $OldPid");
+    const open = script.indexOf("Start-Process -FilePath $Launcher");
+    expect(wait).toBeGreaterThan(script.indexOf("Write-Log ('started '"));
+    expect(open).toBeGreaterThan(wait);
+    expect(script.indexOf("Test-Path -LiteralPath $Cancel) { Write-Log")).toBeLessThan(open);
   });
 
   test("on a Mac, opens the bundle by the full path of open, from /", () => {
