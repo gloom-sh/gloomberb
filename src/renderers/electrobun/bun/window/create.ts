@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electrobun/bun";
+import { trackWindowAttention } from "./attention";
 import {
   applyNativeWindowFrame,
   applyWindowMoveEvent,
@@ -105,6 +106,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     });
   }
   updateWindowFrameCache(window, frame, minSize);
+  trackWindowAttention(window);
   const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
     if (readsNativeFrame) {

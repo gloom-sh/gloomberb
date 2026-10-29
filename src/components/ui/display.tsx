@@ -214,8 +214,18 @@ export interface BadgeProps {
 export const NATIVE_BADGE_STYLE = { height: "calc(100% - 2px)", borderRadius: "var(--gloom-radius-sm)" };
 /** How far a subtle chip's fill is tinted toward its tone. */
 export const BADGE_TINT = 0.28;
-const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
 const NATIVE_ICON_BADGE_STYLE = { ...NATIVE_BADGE_STYLE, gap: "var(--gloom-space-xs)" };
+const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
+/**
+ * A label with lowercase letters has them in the middle of the chip,
+ * wherever the font puts them in its line: the line is cut to x-height and
+ * baseline, and that is what the chip centres. Centred whole, SF Mono's
+ * lowercase sit a pixel and a half low. An icon centres in the chip, so it
+ * reads on the letters' line. A label in capitals and digits keeps the
+ * whole line, as ticker chips do; a browser without `text-box` keeps it too.
+ */
+const NATIVE_LOWERCASE_BADGE_TEXT_STYLE = { ...NATIVE_BADGE_TEXT_STYLE, textBox: "trim-both ex alphabetic" };
+const LOWERCASE = /\p{Ll}/u;
 
 export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true }: BadgeProps) {
   const colors = useThemeColors();
@@ -233,11 +243,12 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle", icon
   const chip = (
     <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
       data-gloom-ui="badge" {...(nativeIcon ? { flexDirection: "row", alignItems: "center" } as const : {})}
-      justifyContent={nativePaneChrome && !icon ? "center" : undefined}
-      style={nativePaneChrome ? icon ? NATIVE_ICON_BADGE_STYLE : NATIVE_BADGE_STYLE : undefined}>
-      {nativeIcon ? <Icon name={nativeIcon} color={foreground} /> : null}
+      justifyContent={nativePaneChrome && !nativeIcon ? "center" : undefined}
+      style={nativePaneChrome ? nativeIcon ? NATIVE_ICON_BADGE_STYLE : NATIVE_BADGE_STYLE : undefined}>
+      {nativeIcon ? <Icon name={nativeIcon} color={foreground} fullHeight /> : null}
       {shown || !nativeIcon ? (
-        <Text fg={foreground} attributes={TextAttributes.BOLD} style={nativePaneChrome ? NATIVE_BADGE_TEXT_STYLE : undefined}>{shown}</Text>
+        <Text fg={foreground} attributes={TextAttributes.BOLD}
+          style={nativePaneChrome ? LOWERCASE.test(text) ? NATIVE_LOWERCASE_BADGE_TEXT_STYLE : NATIVE_BADGE_TEXT_STYLE : undefined}>{shown}</Text>
       ) : null}
     </Box>
   );

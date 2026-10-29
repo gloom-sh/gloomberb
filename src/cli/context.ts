@@ -141,6 +141,7 @@ export async function initCliServices(options: CliServicesOptions = {}) {
     config,
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
     externalPlugins: options.externalPlugins ?? [],
+    interactive: false,
   });
   services.providerRouter.setConfigAccessor(() => config);
   services.providerRouter.setBackgroundRevalidation(false);

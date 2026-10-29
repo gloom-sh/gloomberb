@@ -3,9 +3,11 @@ import type { CrashReportsPayload } from "../api-client";
 import { flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "./crash-reports";
 import { forwardAttendedStalls } from "./stall-reports-dom";
 import {
+  formatStallReportDetails,
   installStallReporter,
   recordStall,
   resetStallReporterForTests,
+  setStallAttentionProbe,
   type StallReport,
   type StallReporterHost,
   type StallReportState,
@@ -51,17 +53,23 @@ describe("stall reports", () => {
     });
     const { log } = fakeReporter({ send: undefined });
 
-    recordStall("window", { blockedMs: 2_340, lastMeasured: "chart.resolve:AAPL /Users/alice/x", lastMeasuredEndedMsAgo: 12 });
+    recordStall("window", {
+      blockedMs: 2_340,
+      lastMeasured: "chart.resolve:AAPL /Users/alice/x",
+      lastMeasuredEndedMsAgo: 3_000,
+      uptimeMs: 95_000,
+      phase: "steady",
+    });
     await flushCrashReports();
 
-    expect(log).toEqual(["2026-10-27T14:43:00Z  window    froze  2.3 s  last measured: chart.resolve:AAPL /Users/alice/x, ended 12 ms before"]);
+    expect(log).toEqual(["2026-10-27T14:43:00Z  window    froze  2.3 s  last measured: chart.resolve:AAPL /Users/alice/x, ended 3000 ms before  [phase=steady up=30s-2m gap=<1s]"]);
     const errors = crashReports.flatMap((payload) => payload.errors);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({
       type: "MainThreadStall",
       message: "2-5s after chart.resolve",
       plugin: "stall-monitor",
-      pane: "process=window count=1 longest=2300ms platform=macos-arm64",
+      pane: "process=window count=1 longest=2300ms platform=macos-arm64 phase=steady up=30s-2m gap=<1s day=1",
     });
     expect(JSON.stringify(crashReports)).not.toMatch(/AAPL|alice/);
   });
@@ -85,6 +93,65 @@ describe("stall reports", () => {
       { process: "app", bucket: "1-2s", section: "unmeasured", count: 1, longestMs: 1_100 },
       { process: "window", bucket: "1-2s", section: "layout.save", count: 3, longestMs: 1_900 },
     ]);
+  });
+});
+
+describe("app stalls", () => {
+  // The desktop app's own process: a SQLite statement that held it names
+  // itself, says whether it waited on another program's lock, and the
+  // report says whether anyone was looking and how often it happened today.
+  test("a stall after a SQLite statement names the statement, its tries and the lock, with the app's attention", () => {
+    const { clock, sent, log } = fakeReporter();
+    setStallAttentionProbe(() => ({ active: false, visible: true }));
+    const event = {
+      blockedMs: 2_100,
+      lastMeasured: "sqlite.blocked",
+      lastMeasuredEndedMsAgo: 400,
+      sqlite: { operation: "touch cached resource", attempts: 3, lockWait: true },
+      uptimeMs: 40 * 60_000,
+      phase: "steady" as const,
+    };
+
+    recordStall("app", event);
+    clock.now += HOUR_MS;
+    recordStall("app", { blockedMs: 1_500, uptimeMs: 100 * 60_000, phase: "steady" });
+    clock.now += HOUR_MS;
+    recordStall("app", event);
+    // A sub-second stall is logged without asking the windows.
+    setStallAttentionProbe(() => { throw new Error("must not be read"); });
+    recordStall("app", { blockedMs: 600 });
+
+    expect(sent.map((report) => [report.section, formatStallReportDetails(report)])).toEqual([
+      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms platform=macos-arm64 phase=steady up=10-60m gap=in fg=0 vis=1 lock=1 try=3 day=1"],
+      ["unmeasured", "process=app count=1 longest=1500ms platform=macos-arm64 phase=steady up=1-6h gap=none fg=0 vis=1 day=2"],
+    ]);
+    expect(log[0]).toEndWith("last measured: sqlite.blocked, ended 400 ms before (touch cached resource, 3 tries, waited on a lock)  [phase=steady up=10-60m gap=in fg=0 vis=1]");
+    expect(log[3]).toEndWith("nothing measured before it  [phase=unknown up=unknown gap=none]");
+  });
+
+  // Error tracking keeps 120 characters of the details line.
+  test("the details line fits error tracking with every field at its longest", () => {
+    const details = formatStallReportDetails({
+      process: "app",
+      bucket: "15s+",
+      section: "sqlite.blocked.save-plugin-state",
+      appVersion: "0.19.1",
+      platform: "windows",
+      arch: "arm64",
+      count: 999,
+      longestMs: 123_400,
+      day: 500,
+      phase: "startup",
+      uptime: "30s-2m",
+      gap: "10-60s",
+      active: null,
+      visible: null,
+      attempts: 99,
+      lockWait: true,
+    });
+
+    expect(details.length).toBeLessThanOrEqual(120);
+    expect(details).toStartWith("process=app count=999 longest=123400ms platform=windows-arm64 phase=startup up=30s-2m gap=10-60s fg=? vis=? lock=1");
   });
 });
 

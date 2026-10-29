@@ -34,7 +34,8 @@
  * over an invented company, see DesPane), `header` (the app's top bar in
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
  * web app does), `tab-sweep` (what the layout sweep's tab visits are checked
- * against, tab-sweep-fixture.tsx), or `kit` (the kit page: every design-system family in every
+ * against, tab-sweep-fixture.tsx), `badge-ink` (the chips badge-ink.ts
+ * measures, badge-ink-fixture.tsx), or `kit` (the kit page: every design-system family in every
  * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
  * `&font=` as everywhere).
  */
@@ -97,6 +98,7 @@ import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 import { KitPage } from "./kit-fixture";
 import { TabSweepFixture } from "./tab-sweep-fixture";
+import { BadgeInkFixture } from "./badge-ink-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -1511,6 +1513,7 @@ createRoot(root).render(
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "kit" ? <KitPage family={params.get("family")} />
         : scenario === "tab-sweep" ? <TabSweepFixture />
+        : scenario === "badge-ink" ? <BadgeInkFixture />
         : scenario === "theme" || params.get("layoutReturn") === "1" ? <Box flexDirection="column" width="100%" height="100%">
           {scenario === "theme" && <Box data-theme-chrome="header"><Header /></Box>}
           <Shell pluginRegistry={paneRegistry} />

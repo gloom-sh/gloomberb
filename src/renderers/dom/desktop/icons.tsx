@@ -180,7 +180,7 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
 };
 
-export function WebIcon({ name, size = 12, color }: IconProps) {
+export function WebIcon({ name, size = 12, color, fullHeight }: IconProps) {
   return (
     <svg
       viewBox="0 0 12 12"
@@ -189,7 +189,8 @@ export function WebIcon({ name, size = 12, color }: IconProps) {
       fill="none"
       aria-hidden="true"
       data-gloom-icon={name}
-      style={{ flex: "none", display: "block", color }}
+      // The viewBox keeps its size and sits in the middle of the taller box (preserveAspectRatio's default).
+      style={{ flex: "none", display: "block", color, ...(fullHeight ? { height: "100%" } : {}) }}
     >
       {ICONS[name]}
     </svg>

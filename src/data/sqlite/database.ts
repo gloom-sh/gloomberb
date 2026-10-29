@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createSqliteAccess, type SqliteAccess } from "./access";
 import { SQLITE_BUSY_TIMEOUT_MS, withSqliteBusyRetry } from "./retry";
 
 const SCHEMA = `
@@ -60,21 +61,42 @@ const SCHEMA = `
   );
 `;
 
+export interface SqliteDatabaseOptions {
+  /**
+   * The app's own connection, on the thread that answers the user (the
+   * terminal, the desktop app's Bun process): statements do not wait on
+   * another program's lock (see access.ts). Commands and tests wait it out.
+   */
+  interactive?: boolean;
+}
+
 export class SqliteDatabase {
   readonly connection: Database;
+  readonly access: SqliteAccess;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
     this.connection = new Database(dbPath);
+    // Opening waits for another program's lock: it happens once, and the app
+    // has nothing to show without its data.
     this.connection.exec(`PRAGMA busy_timeout=${SQLITE_BUSY_TIMEOUT_MS}`);
-    withSqliteBusyRetry("enable sqlite wal", () => {
-      this.connection.exec("PRAGMA journal_mode=WAL");
-    });
+    const journalMode = withSqliteBusyRetry("enable sqlite wal", () => (
+      this.connection.query<{ journal_mode: string }, []>("PRAGMA journal_mode=WAL").get()?.journal_mode
+    ));
+    // In WAL mode commits can stop flushing the disk and the database stays
+    // whole; user data still flushes per write (access.ts). Where WAL does not
+    // take (a network share, an in-memory database), every commit flushes.
+    const wal = journalMode?.toLowerCase() === "wal";
+    this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);
     });
+    // The app's statements choose how long to wait for a lock themselves.
+    if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
+    this.access = createSqliteAccess(this.connection, { interactive: options.interactive, relaxedCommits: wal });
   }
 
   close(): void {
+    this.access.close();
     this.connection.close();
   }
 }

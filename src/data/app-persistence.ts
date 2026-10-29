@@ -1,7 +1,7 @@
 import { PluginStateStore } from "./plugin-state-store";
 import { ResourceStore } from "./resource-store";
 import { SessionStore } from "./session-store";
-import { SqliteDatabase } from "./sqlite/database";
+import { SqliteDatabase, type SqliteDatabaseOptions } from "./sqlite/database";
 import { TickerStore } from "./ticker-store";
 
 export class AppPersistence {
@@ -11,12 +11,13 @@ export class AppPersistence {
   readonly pluginState: PluginStateStore;
   readonly sessions: SessionStore;
 
-  constructor(dbPath: string) {
-    this.database = new SqliteDatabase(dbPath);
-    this.tickers = new TickerStore(this.database.connection);
-    this.resources = new ResourceStore(this.database.connection);
-    this.pluginState = new PluginStateStore(this.database.connection);
-    this.sessions = new SessionStore(this.database.connection);
+  constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
+    this.database = new SqliteDatabase(dbPath, options);
+    const { connection, access } = this.database;
+    this.tickers = new TickerStore(connection, access);
+    this.resources = new ResourceStore(connection, access);
+    this.pluginState = new PluginStateStore(connection, access);
+    this.sessions = new SessionStore(connection, access);
   }
 
   close(): void {
