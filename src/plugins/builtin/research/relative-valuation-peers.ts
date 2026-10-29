@@ -39,14 +39,22 @@ export class PeerPickError extends Error {
 /** How many peers `--peers` adds at most, and the fewest it settles for before it falls back. */
 const MOST_PEERS = 6;
 const FEWEST_PEERS = 4;
+/**
+ * A peer of comparable size is at most this many times smaller than the
+ * subject: an airline keeps its smaller airlines, a $5T company is not shown
+ * beside $2M ones. A larger peer always counts; a small company is compared
+ * with its industry's leaders.
+ */
+const COMPARABLE_CAP_FACTOR = 100;
 
 /**
  * How the peers were picked: the subject's own industry, the industry its
- * business belongs to when its profile files it under another, a curated
+ * business belongs to when its profile files it under another, its
+ * industry's peers of comparable size and then its sector's, a curated
  * group's core first (the subject is one of that core) and its industry
  * after, or a curated list when too few covered equities can be read.
  */
-type PeerMethod = "industry" | "related-industry" | "curated-core" | "curated";
+type PeerMethod = "industry" | "related-industry" | "sector" | "curated-core" | "curated";
 
 /** The peers `--peers` added to one symbol, and how; the pane and the report both read it. */
 export interface PeerSelection {
@@ -61,6 +69,10 @@ export interface PeerSelection {
   curatedPeers?: string[];
   /** The curated group, as the header and the note name it (`online learning`). */
   curatedGroup?: string;
+  /** The sector the rest of the peers come from, when too few in `industry` are of comparable size. */
+  sector?: string;
+  /** The peers of comparable size taken from `industry`, first in `peers`; the rest came from `sector`. */
+  industryPeers?: string[];
   /** How the peers were chosen, read after "Peers chosen automatically: ". */
   basis: string;
 }
@@ -110,6 +122,8 @@ export interface PeerCandidate {
   marketCapUsd: number | null;
   /** It reports revenue figures (growth or a margin): a shell or a treasury vehicle filed in an industry does not. */
   reportsOperations: boolean;
+  /** Its sector, as the screener names it. */
+  sector?: string | null;
 }
 
 /** Where the subject's peers come from: its own industry, or the related one its business belongs to. */
@@ -186,10 +200,76 @@ function listText(items: readonly string[]): string {
   return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
-/** The covered equities the screener returned for a subject's group: its industry's, and its curated core's. */
+/**
+ * The covered equities the screener returned for a subject's group: its
+ * industry's, its curated core's, and its sector's of comparable size when
+ * the industry has too few.
+ */
 export interface PeerCandidates {
   industry: readonly PeerCandidate[];
   core: readonly PeerCandidate[];
+  sector?: { name: string; candidates: readonly PeerCandidate[] } | null;
+}
+
+/** At least a hundredth of the subject's market cap. */
+function comparableCap(subjectCap: number | null, cap: number | null): boolean {
+  return subjectCap != null && subjectCap > 0 && cap != null && cap > 0 && cap * COMPARABLE_CAP_FACTOR >= subjectCap;
+}
+
+function comparablePeers(
+  subject: Pick<PeerSubject, "symbol" | "marketCapUsd">,
+  candidates: readonly PeerCandidate[],
+  options?: { limit?: number; exclude?: readonly string[] },
+): string[] {
+  return rankPeerCandidates(subject, candidates.filter((candidate) => comparableCap(subject.marketCapUsd, candidate.marketCapUsd)), options);
+}
+
+/**
+ * A subject of known size whose own industry (no curated group) has fewer
+ * than four covered equities of comparable size: a megacap among micro-caps,
+ * or a small industry. Its sector is asked for the rest.
+ */
+function needsSectorPeers(subject: PeerSubject, group: PeerGroup, industry: readonly PeerCandidate[]): boolean {
+  return !group.related && subject.marketCapUsd != null && subject.marketCapUsd > 0
+    && comparablePeers(subject, industry).length < FEWEST_PEERS;
+}
+
+/**
+ * The sector to widen to, as the screener files the subject, else as it files
+ * most of the subject's industry, else as the subject's profile names it.
+ */
+function peerSectorOf(subject: Pick<PeerSubject, "symbol">, industry: readonly PeerCandidate[], profileSector?: string | null): string | null {
+  const own = industry.find((candidate) => bareSymbol(candidate.symbol) === bareSymbol(subject.symbol))?.sector?.trim();
+  if (own) return own;
+  const counts = new Map<string, number>();
+  for (const candidate of industry) {
+    const sector = candidate.sector?.trim();
+    if (sector) counts.set(sector, (counts.get(sector) ?? 0) + 1);
+  }
+  return [...counts].sort((left, right) => right[1] - left[1])[0]?.[0] ?? (profileSector?.trim() || null);
+}
+
+/**
+ * The industry's peers of comparable size first, then the sector's closest in
+ * market cap, also of comparable size, to six. Null when industry and sector
+ * together still have fewer than four: the industry's closest stand, as they
+ * would without a sector.
+ */
+function sectorSelection(subject: PeerSubject, group: PeerGroup, sector: PeerCandidates["sector"], industryPeers: string[]): PeerSelection | null {
+  if (!sector) return null;
+  const fill = comparablePeers(subject, sector.candidates, { limit: MOST_PEERS - industryPeers.length, exclude: industryPeers });
+  const peers = [...industryPeers, ...fill];
+  if (fill.length === 0 || peers.length < FEWEST_PEERS) return null;
+  const count = (names: readonly string[]) => (names.length === 1 ? "the covered equity" : `the ${names.length} covered equities`);
+  const fromSector = `${count(fill)} in the ${sector.name} sector closest to ${subject.symbol} in market cap`;
+  return {
+    subject: subject.symbol, peers, method: "sector", industry: group.industry, subjectIndustry: subject.industry,
+    sector: sector.name, industryPeers,
+    basis: industryPeers.length === 0
+      ? `${fromSector}, as no other covered equity in ${group.industry} has a hundredth of its market cap`
+      : `${listText(industryPeers)}, ${count(industryPeers)} in ${group.industry} of at least a hundredth of ${subject.symbol}'s market cap; `
+        + `${listText(fill)}, ${fromSector}`,
+  };
 }
 
 /**
@@ -197,7 +277,10 @@ export interface PeerCandidates {
  * curated core is compared with the rest of that core first, closest in
  * market cap, and the industry's closest fill the table to six. Any other
  * subject takes the closest of its own industry, or of the related industry
- * its business belongs to with that core among the candidates. Fewer than
+ * its business belongs to with that core among the candidates. Its own
+ * industry's are the ones of at least a hundredth of its market cap; with
+ * fewer than four of those and the sector read, they come first and the
+ * sector's closest of comparable size fill the table. Fewer than
  * four, or no candidates at all (`candidates` null: the screener did not
  * answer), falls back to the related industry's curated core when it has
  * one; otherwise what was found, or null when nothing was.
@@ -206,10 +289,15 @@ export function selectPeers(subject: PeerSubject, group: PeerGroup, candidates: 
   const symbol = subject.symbol;
   const related = group.related;
   const curatedCore = group.inCore && related ? (candidates ? rankPeerCandidates(subject, candidates.core) : []) : [];
+  // Its own industry's peers of comparable size; too few, and the sector's fill in when it was read.
+  const comparable = candidates && !related ? comparablePeers(subject, candidates.industry) : [];
+  const widened = candidates && !related && comparable.length < FEWEST_PEERS ? sectorSelection(subject, group, candidates.sector, comparable) : null;
+  if (widened) return widened;
   const fill = candidates
     ? group.inCore
       ? rankPeerCandidates(subject, candidates.industry, { limit: MOST_PEERS - curatedCore.length, exclude: curatedCore })
-      : rankPeerCandidates(subject, [...candidates.industry, ...related ? candidates.core : []])
+      : comparable.length >= FEWEST_PEERS ? comparable
+        : rankPeerCandidates(subject, [...candidates.industry, ...related ? candidates.core : []])
     : [];
   const peers = [...curatedCore, ...fill];
   if (peers.length < FEWEST_PEERS && related) {
@@ -254,6 +342,10 @@ export function peerMethodTitle(selection: PeerSelection, { automatic = false }:
       return `${peers} by industry: ${selection.industry}`;
     case "related-industry":
       return `${peers} by related industry: ${selection.industry}`;
+    case "sector":
+      return selection.industryPeers?.length
+        ? `${peers} by industry: ${selection.industry}, then sector: ${selection.sector}`
+        : `${peers} by sector: ${selection.sector}`;
     case "curated-core":
       return selection.peers.length > (selection.curatedPeers?.length ?? 0)
         ? `${peers}: ${selection.curatedGroup} curated core, then ${selection.industry}`
@@ -285,12 +377,32 @@ function candidateOf(row: ScreenRow): PeerCandidate {
     marketCapUsd: metric("marketCap"),
     reportsOperations: metric("revenueGrowthPercent") != null || metric("grossMarginPercent") != null
       || metric("operatingMarginPercent") != null,
+    sector: row.sector,
   };
 }
 
-async function screenRows(criterion: ScreenDefinition["criteria"][number], ctx: PeerPickContext): Promise<ScreenRow[]> {
-  const definition: ScreenDefinition = { version: 1, criteria: [criterion], sort: { field: "marketCap", direction: "desc" }, currency: "USD" };
-  return (await fetchScreen(definition, null, ctx.signal, ctx.apiClient)).rows;
+async function screenRows(
+  criteria: ScreenDefinition["criteria"],
+  ctx: PeerPickContext,
+  { direction = "desc", limit }: { direction?: "asc" | "desc"; limit?: number } = {},
+): Promise<ScreenRow[]> {
+  const definition: ScreenDefinition = { version: 1, criteria, sort: { field: "marketCap", direction }, currency: "USD" };
+  return (await fetchScreen(definition, null, ctx.signal, ctx.apiClient, limit)).rows;
+}
+
+/**
+ * The sector's covered equities of comparable size nearest the subject's cap:
+ * the next larger and the next smaller, asked apart so a crowded sector
+ * cannot crowd out the closest.
+ */
+async function sectorCandidates(sector: string, capUsd: number, ctx: PeerPickContext): Promise<PeerCandidate[]> {
+  const inSector: ScreenDefinition["criteria"][number] = { field: "sector", op: "in", value: [sector] };
+  const [larger, smaller] = await Promise.all([
+    screenRows([inSector, { field: "marketCap", op: "gte", value: Math.floor(capUsd) }], ctx, { direction: "asc", limit: 25 }),
+    screenRows([inSector, { field: "marketCap", op: "between", value: [Math.floor(capUsd / COMPARABLE_CAP_FACTOR), Math.ceil(capUsd)] }],
+      ctx, { direction: "desc", limit: 25 }),
+  ]);
+  return [...larger, ...smaller].map(candidateOf);
 }
 
 /** The subject's market cap in US dollars, through the app's FX rates when it is quoted in another currency. */
@@ -306,8 +418,9 @@ async function subjectCapUsd(financials: TickerFinancials | null, ctx: PeerPickC
 /**
  * Picks the peers of `symbol` for `--peers`: its group from its symbol or
  * profile, the group's covered equities from the screener (its industry, and
- * a related industry's curated core), ranked as `selectPeers` says. Throws
- * a `PeerPickError` when nothing places the subject, or nothing can be found.
+ * a related industry's curated core, or its sector's of comparable size when
+ * the industry has too few), ranked as `selectPeers` says. Throws a
+ * `PeerPickError` when nothing places the subject, or nothing can be found.
  */
 export async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: PeerPickContext): Promise<PeerSelection> {
   const subject: PeerSubject = {
@@ -326,14 +439,24 @@ export async function pickPeers(symbol: string, financials: TickerFinancials | n
   try {
     const [capUsd, industryRows, coreRows] = await Promise.all([
       subjectCapUsd(financials, ctx).catch(() => null),
-      screenRows({ field: "industry", op: "in", value: [group.industry] }, ctx),
-      group.related ? screenRows({ field: "symbol", op: "in", value: [...group.related.core] }, ctx) : Promise.resolve([]),
+      screenRows([{ field: "industry", op: "in", value: [group.industry] }], ctx),
+      group.related ? screenRows([{ field: "symbol", op: "in", value: [...group.related.core] }], ctx) : Promise.resolve([]),
     ]);
     subject.marketCapUsd = capUsd;
     candidates = { industry: industryRows.map(candidateOf), core: coreRows.map(candidateOf) };
   } catch (error) {
     ctx.signal.throwIfAborted();
     failure = errorMessage(error);
+  }
+  // A megacap among micro-caps: the sector's companies of comparable size. Without them the industry's stand.
+  const sectorName = candidates && needsSectorPeers(subject, group, candidates.industry)
+    ? peerSectorOf(subject, candidates.industry, financials?.profile?.sector) : null;
+  if (candidates && sectorName) {
+    const sector = await sectorCandidates(sectorName, subject.marketCapUsd!, ctx).catch(() => {
+      ctx.signal.throwIfAborted();
+      return null;
+    });
+    if (sector) candidates = { ...candidates, sector: { name: sectorName, candidates: sector } };
   }
   const selection = selectPeers(subject, group, candidates);
   if (selection) return selection;
