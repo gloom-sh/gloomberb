@@ -49,7 +49,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
 - **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloom doctor` names them.
-- **Versions:** Windows 11 on x64 is the tested setup. Windows 10, and ARM PCs running the x64 build through Windows' built-in emulation, are untested.
+- **Versions:** Windows 11 on x64 is the tested setup. On ARM PCs the x64 build runs through Windows' built-in emulation; CI checks that it opens and stays open on Windows 11 on Arm, and nothing more. Windows 10 is untested.
 
 For a terminal-only setup on x64, install Bun and use the package:
 

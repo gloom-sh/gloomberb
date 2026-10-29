@@ -266,6 +266,41 @@ function embedWindowsIcons(runtimePath: string, resourcesPath: string): void {
   }
 }
 
+// Electrobun's launcher script (Resources/main.js) has no hook that runs before
+// it starts the app's worker and the browser engine. On Windows this adds one,
+// for src/renderers/electrobun/launcher/preload.ts.
+const LAUNCHER_PRELOAD = "gloom-launcher-preload.js";
+
+function installWindowsLauncherPreload(resourcesPath: string): void {
+  const build = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "build",
+      join(process.cwd(), "src", "renderers", "electrobun", "launcher", "preload.ts"),
+      "--target=bun",
+      `--outfile=${join(resourcesPath, LAUNCHER_PRELOAD)}`,
+    ],
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (build.exitCode !== 0) {
+    process.exit(1);
+  }
+
+  const launcherPath = join(resourcesPath, "main.js");
+  const launcher = readFileSync(launcherPath, "utf8");
+  const preloadLine = `import.meta.require("./${LAUNCHER_PRELOAD}");`;
+  if (launcher.includes(preloadLine)) return;
+  // Bun's "// @bun" marker has to stay the first line.
+  const firstLineEnd = launcher.indexOf("\n");
+  if (!launcher.startsWith("// @bun") || firstLineEnd < 0 || !launcher.includes("new Worker(")) {
+    console.error(`Electrobun's launcher script is not the one expected: ${launcherPath}`);
+    process.exit(1);
+  }
+  writeFileSync(launcherPath, `${launcher.slice(0, firstLineEnd + 1)}${preloadLine}\n${launcher.slice(firstLineEnd + 1)}`);
+  console.log(`Added the launcher preload: ${launcherPath}`);
+}
+
 const os = targetOs();
 const arch = targetArch();
 const nativeCorePackageName = `core-${nodePlatformForTarget(os)}-${arch}`;
@@ -325,6 +360,7 @@ for (const bundlePath of bundleCandidates(os)) {
   if (os === "win") {
     normalizeWindowsExecutableNames(runtimePath);
     embedWindowsIcons(runtimePath, resourcesPath);
+    installWindowsLauncherPreload(resourcesPath);
   }
 
   installShim(runtimePath, resourcesPath, os);
