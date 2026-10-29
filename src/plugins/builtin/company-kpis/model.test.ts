@@ -4,7 +4,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { allObservations, companyColumns, companyEmptyState, directionLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { allObservations, companyColumns, companyEmptyState, directionLabel, directionTone, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
@@ -140,6 +140,9 @@ test("the Action column says what a guide did in plain words, and a guide with n
   expect(word("not_comparable", "guide:previous")).toBe("Changed");
   // It drops it for another period: there is no earlier guide to set this one beside.
   expect(word("not_comparable")).toBe("New");
+  // A New guide reads as one whichever way the service reached it; a Changed one as no news.
+  expect(directionTone({ direction: "not_comparable", previousId: null })).toBe(directionTone({ direction: "initiated", previousId: null }));
+  expect(directionTone({ direction: "not_comparable", previousId: "guide:previous" })).toBe("muted");
 });
 
 test("a guidance table fits its pane: the columns narrow, the metric keeps the rest, and only a column the detail repeats goes", () => {

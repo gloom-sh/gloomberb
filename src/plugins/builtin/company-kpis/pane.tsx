@@ -220,7 +220,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       return { text: "", content: <PriceSparkline priceHistory={points} width={column.width} period="all" trend={tone === "muted" ? "neutral" : tone} /> };
     }
     if (column.id === "change") {
-      if (guide) return { text: directionLabel(guide), color: toneColor(directionTone(guide.direction), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
+      if (guide) return { text: directionLabel(guide), color: toneColor(directionTone(guide), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
       const change = observationChange(row as KpiObservation, observations);
       return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
     }

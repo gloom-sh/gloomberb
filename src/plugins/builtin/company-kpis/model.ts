@@ -91,9 +91,9 @@ function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): 
   if (row.unit === "currency_per_unit" || row.unit === "volume") return ` ${unitLabel(row)}`;
   return "";
 }
-/** Raised reads as good news, a cut as bad, a reiteration as no news. */
-export const directionTone = (direction: KpiGuidance["direction"]) => direction === "raised" ? "positive" as const : direction === "cut" ? "negative" as const
-  : direction === "withdrawn" ? "warning" as const : direction === "initiated" ? "text" as const : "muted" as const;
+/** Raised reads as good news, a cut as bad, a reiteration as no news, and a New guide as itself whichever way the service reached it. */
+export const directionTone = (guide: Pick<KpiGuidance, "direction" | "previousId">) => guide.direction === "raised" ? "positive" as const : guide.direction === "cut" ? "negative" as const
+  : guide.direction === "withdrawn" ? "warning" as const : directionLabel(guide) === "New" ? "text" as const : "muted" as const;
 /** A change is good when it moves the way the metric's owner wants it to. */
 export const changeTone = (row: KpiObservation, value: number | null) => value === null || value === 0 || row.metric.favorable === "neutral" ? "muted" as const
   : (value > 0) === (row.metric.favorable === "higher") ? "positive" as const : "negative" as const;
