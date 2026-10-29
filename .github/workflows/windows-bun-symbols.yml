@@ -29,5 +29,6 @@ jobs:
             "!dh -s bun_profile",
             "q"
           ) -join "; "
-          & $Cdb -z (Join-Path $Bin "bun-profile.exe") -y $Bin -c $Commands 2>&1 | Select-Object -Last 120
+          & $Cdb -z (Join-Path $Bin "bun-profile.exe") -y $Bin -c $Commands 2>&1 | Out-File cdb.txt
+          Get-Content cdb.txt | Select-String -Pattern "segfault|panic_stage|handleSegfault|SECTION HEADER|^\s+\S+ name$|virtual address|virtual size|Timestamp|ImageSize" | ForEach-Object { Write-Host "  $_" }
 
