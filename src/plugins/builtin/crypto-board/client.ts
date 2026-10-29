@@ -145,10 +145,10 @@ export async function fetchCryptoMarkets(
   try {
     return validateCryptoMarkets(await client.getCloudCryptoMarkets());
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 503) {
-      throw new Error("Crypto prices are temporarily unavailable");
-    }
-    throw unavailableOnServer(error, "Crypto markets are not available yet.");
+    // Each keeps its status: a 503 passes with time and a saved copy answers it; a 404 does not.
+    throw error instanceof ApiRequestError && error.status === 503
+      ? unavailableOnServer(error, "Crypto prices are temporarily unavailable", [503])
+      : unavailableOnServer(error, "Crypto markets are not available yet.");
   }
 }
 
@@ -248,7 +248,7 @@ function validateStablecoinSupplyHistory(data: StablecoinSupplyHistoryPayload): 
 }
 
 function supplyError(error: unknown, what: string): unknown {
-  if (error instanceof ApiRequestError && error.status === 503) return new Error(`${what} is temporarily unavailable`);
+  if (error instanceof ApiRequestError && error.status === 503) return unavailableOnServer(error, `${what} is temporarily unavailable`, [503]);
   return unavailableOnServer(error, `${what} is not available yet.`);
 }
 

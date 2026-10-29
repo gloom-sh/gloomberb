@@ -1,6 +1,6 @@
 import { logFailure } from "../../../utils/log-failure";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
-import type { PluginCacheResult } from "../../../data/plugin-cache";
+import { ApiRequestError } from "../../../api-client/errors";
+import { savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
 
 interface CloudCache<T> {
   get(key: string, options?: { allowExpired?: boolean }): PluginCacheResult<T> | null;
@@ -38,9 +38,11 @@ const isAbort = (error: unknown) => !!error && typeof error === "object" && (err
 
 /**
  * Loads through the cache, falling back to the cached copy when a refresh
- * fails. A refusal asking again will not change still throws: a refused
- * session, so the pane shows its sign-in wall instead of data the account can
- * no longer see, and any other permanent client error (an unknown series).
+ * fails for a reason asking again may get past (`isTransientFailure`). A
+ * refusal still throws: a refused session, so the pane shows its sign-in wall
+ * instead of data the account can no longer see, any other permanent client
+ * error (an unknown series, a route not served), and a reply that fails
+ * validation.
  *
  * Callers of one key share the request in flight, which runs on the first
  * caller's `signal`. When that caller goes away (a tab left while it loads,
@@ -60,8 +62,7 @@ export async function loadCloudResource<T>(
     throw error;
   });
   if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
-  const saved = result.source === "stale-fallback";
-  if (saved && isPermanentClientError(result.error)) throw result.error;
+  const saved = savedCopyForTransientFailure(result).source === "stale-fallback";
   // A copy served because its refresh failed is one by where it came from, whatever the failure said (or did not).
   return {
     payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
@@ -72,7 +73,11 @@ export async function loadCloudResource<T>(
 /**
  * Turns a route the server does not serve yet (404, or the given statuses)
  * into a message that says what is unavailable; other errors pass through.
+ * The status stays, so a 404 is still a refusal no saved copy answers for and
+ * a 503 still a failure one may.
  */
 export function unavailableOnServer(error: unknown, message: string, statuses: readonly number[] = [404]): unknown {
-  return error instanceof ApiRequestError && statuses.includes(error.status ?? 0) ? new Error(message) : error;
+  return error instanceof ApiRequestError && statuses.includes(error.status ?? 0)
+    ? new ApiRequestError(message, error.status, error.retryAfterMs, error.code, error.details)
+    : error;
 }

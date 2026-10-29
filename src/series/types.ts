@@ -92,6 +92,11 @@ export interface SeriesLoadResult {
   points: readonly SeriesPoint[];
   /** A note the chart shows above the plot, such as "cached data is stale". */
   warning?: string;
+  /**
+   * When the copy the points came from was saved (ms), when its refresh failed
+   * and that copy answered: the chart's footer says "saved copy from …".
+   */
+  savedAt?: number;
   /** What a report of this series cites in place of Gloom Cloud. */
   attribution?: SeriesAttribution;
 }

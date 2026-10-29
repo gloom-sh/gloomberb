@@ -11,7 +11,8 @@ const EMPTY_STATUS_INFO: PaneFooterSegment[] = [];
 // has no per-pane footer hint. Do not reintroduce one. See PR #589. Panes bind
 // it with `usePaneRefreshKey`.
 
-const STALE_SEGMENT: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
+/** The shared warning for data on screen older than it should be, for a pane composing its own footer. */
+export const STALE_SEGMENT: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
 
 interface PaneStatusInfoOptions {
   loading?: boolean;

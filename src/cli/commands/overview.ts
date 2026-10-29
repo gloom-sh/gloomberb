@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../api-client/errors";
+import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
@@ -646,16 +646,15 @@ function withSavedFredSeries<T>(ctx: Parameters<CliCommandDef["execute"]>[1], ru
 
 /**
  * A FRED series from Gloom Cloud, or the copy an earlier read saved when it
- * cannot be refreshed (marked as such). A refusal asking again will not change
- * (a series Gloom Cloud no longer serves, access denied) is said, not covered.
+ * cannot be refreshed (marked as such). A refusal (a series Gloom Cloud no
+ * longer serves, access denied) is said, not covered: `loadCachedFredSeries`
+ * throws it.
  */
 async function loadFredSeries(
   seriesId: string,
   params: { startDate?: string; limit?: number; sortOrder: "asc" | "desc" },
 ): Promise<CloudFredSeriesPayload> {
-  const result = await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params));
-  if (result.source === "stale-fallback" && isPermanentClientError(result.error)) throw result.error;
-  return result.data;
+  return (await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params))).data;
 }
 
 async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execute"]>[1]) {

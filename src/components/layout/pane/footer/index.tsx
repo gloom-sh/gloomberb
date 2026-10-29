@@ -29,6 +29,7 @@ export {
   DELAYED_SEGMENT,
   delayedFooterSegment,
   hasPaneFooterContent,
+  savedCopyFooterInfo,
   savedCopyFooterSegment,
   splitDelayedStatus,
   type CombinedPaneFooter,

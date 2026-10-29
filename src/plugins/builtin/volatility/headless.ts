@@ -2,6 +2,7 @@ import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneDefinition,
 import { createVolatilityDependencies, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { termStateLabel, type VolatilityData } from "./model";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 
 function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--"; }
 function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--"; }
@@ -60,6 +61,8 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
     async load(args, context) {
       const result = await dependencies.load(args, context);
       context.signal.throwIfAborted();
+      // A saved copy answering a failed refresh ends the report with when it was saved.
+      const savedCopy = <T>(value: T) => result.savedAt != null ? servedFromSavedCopy(value, result.savedAt) : value;
       // Daily index closes, dated by the newest index on the board; a sparse index shows as the oldest.
       const boardDates = result.data.board.filter((row) => row.value != null).map((row) => row.date);
       const freshness = { source: "Cboe and FRED", status: "not-a-feed" as const, basis: "daily index closes", cadence: "daily" as const,
@@ -67,10 +70,10 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
       return { ...projectVolatilityHeadless(result.data), freshness, errors: result.errors,
         complete: result.phase === "ready" && !result.stale && result.data.warnings.length === 0,
         unavailableSymbols: result.data.board.filter((row) => row.value == null).map((row) => row.symbol),
-        metadata: { stale: result.stale, phase: result.phase, loaded: result.loaded, total: result.total,
+        metadata: savedCopy({ stale: result.stale, phase: result.phase, loaded: result.loaded, total: result.total,
           data: result.data, unit: "index points", observations: "daily history or isolated index observation",
           percentile: "Midrank within last calendar year; at least 200 observations spanning 300 days",
-          vixFuturesAvailable: false, methodology: "docs/research-data.md#vix-curve-and-cross-asset-volatility-board" },
+          vixFuturesAvailable: false, methodology: "docs/research-data.md#vix-curve-and-cross-asset-volatility-board" }),
       };
     },
   };

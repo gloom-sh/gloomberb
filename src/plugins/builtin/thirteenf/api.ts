@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
 import { asRecord, finiteOrNull } from "../../../utils/guards";
 import { logFailure } from "../../../utils/log-failure";
@@ -30,11 +30,12 @@ const FORMS_13F_CACHE_POLICY = {
 } as const;
 
 export interface Forms13FReadOptions {
+  /** A part of the answer that could not be read, said beside what was. */
   onWarning?: (warning: string) => void;
   /**
    * A read answered from the copy saved at `savedAt` (ms) because its refresh
-   * failed, said by when it was saved (a command's closing line) instead of
-   * as an `onWarning` line.
+   * failed. Only a caller that says when its copy was saved (the footer's
+   * "saved copy from", a command's closing line) is answered from one.
    */
   onSavedCopy?: (savedAt: number) => void;
   forceRefresh?: boolean;
@@ -156,23 +157,17 @@ async function fetchForms13F<T>(
     } catch (error) {
       options.signal?.throwIfAborted();
       if (current()) failedRefreshes.add(key);
-      if (isPermanentClientError(error)) {
-        if (current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
+      // A saved copy answers only for a failure asking again may get past; a refusal or a reply that
+      // fails validation is the error, and a missing or denied resource also drops its copy.
+      if (!isTransientFailure(error)) {
+        if (isPermanentClientError(error) && current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
         throw error;
       }
       const retained = options.cache !== false
         ? store?.getResource<T>(CACHE_KIND, key, { ...cacheOptions, allowExpired: true }) : null;
-      // A caller may retain old research only when it can surface its provenance.
-      if (!retained) throw error;
-      if (options.onSavedCopy && Number.isFinite(retained.fetchedAt)) {
-        options.onSavedCopy(retained.fetchedAt);
-        return retained.value;
-      }
-      if (!options.onWarning) throw error;
-      const retrieved = new Date(retained.fetchedAt);
-      const age = Number.isFinite(retrieved.getTime()) ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
-      const reason = (error instanceof Error ? error.message : String(error)).trim() || "Request failed";
-      options.onWarning(`${key}: refresh failed: ${reason}. Retained data ${age}.`);
+      // A caller may retain old research only when it can say when it was saved.
+      if (!retained || !options.onSavedCopy || !Number.isFinite(retained.fetchedAt)) throw error;
+      options.onSavedCopy(retained.fetchedAt);
       return retained.value;
     } finally {
       if (activeRequests.get(key) === slot.promise) activeRequests.delete(key);

@@ -2,8 +2,11 @@ import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
 import { DataTableStackView } from "../../../components";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { ApiRequestError } from "../../../api-client/errors";
+import { attachFredSeriesPersistence, resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
+import { outage } from "../../../test-support/outage";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneProvider } from "../../../test-support/pane";
@@ -17,10 +20,11 @@ const rates = [3.7, 3.8, 3.9, 3.9, 3.8, 3.9, 4.0, 4.1, 4.3, 4.2, 4.1, 4.1, 4.2, 
 const observations = rates.map((value, index) => ({
   date: new Date(Date.UTC(2024, 8 + index, 1)).toISOString().slice(0, 10), value,
 }));
-const fredSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async () => ({
+const answer = async () => ({
   observations,
   info: { id: "UNRATE", title: "Unemployment Rate", units: "Percent", frequency: "Monthly", seasonalAdjustment: "Seasonally Adjusted" },
-}) as never);
+}) as never;
+const fredSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(answer);
 afterAll(() => fredSpy.mockRestore());
 
 const EVENT = {
@@ -31,6 +35,7 @@ const EVENT = {
 const tui = createOpenTuiTestHarness();
 afterEach(() => {
   resetFredSeriesPersistence();
+  fredSpy.mockImplementation(answer);
 });
 
 /** Paints outside act: resolving the related tickers keeps work queued that act would wait on. */
@@ -50,21 +55,22 @@ async function press(name: string) {
   await paint(60);
 }
 
-/** The calendar's stack with the release open: the back bar, then the detail one row shorter. */
-async function render(width: number, height: number, event: EconEvent = EVENT): Promise<string[]> {
+/** The calendar's stack with the release open: the back bar, then the detail one row shorter; `footerBar` draws the footer under it. */
+async function render(width: number, height: number, event: EconEvent = EVENT, footerBar = false): Promise<string[]> {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-detail-test"));
   await act(async () => {
     await tui.render(
       <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
-        <PaneFooterProvider>{() => (
+        <PaneFooterProvider>{(footer) => (<>
           <DataTableStackView<{ id: string }>
             focused rootWidth={width} rootHeight={height - 1} columns={[{ id: "event", label: "EVENT", width: 10, align: "left" }]} items={[{ id: "unrate" }]}
             getItemKey={(row) => row.id} renderCell={() => ({ text: "" })} selection={{ kind: "none" }} sortColumnId={null} sortDirection="asc"
             emptyStateTitle="No events" detailOpen onBack={() => {}} detailTitle={event.event}
             detailContent={<EconDetailView event={event} width={width} height={height - 1} focused />} />
-        )}</PaneFooterProvider>
+          {footerBar ? <PaneFooterBar footer={footer} focused width={width} /> : null}
+        </>)}</PaneFooterProvider>
       </TestPaneProvider>,
-      { width, height },
+      { width, height: footerBar ? height + 1 : height },
     );
   });
   await paint();
@@ -129,4 +135,32 @@ test("a bank's decision says it has no stated time and why, with the prior's dat
   expect(local).toMatch(/12:00 UTC\s+06:00 Mexico City/);
   expect(local.trimEnd().split("\n").at(-1)).toMatch(/^ INEGI · release calendar\s*$/);
   expect(local).not.toContain("inegi.org.mx");
+});
+
+// The footer said "saved copy from" over a series Gloom Cloud stopped serving, after its warning.
+test("a history a failed refresh left leads the footer with when it was saved; a refusal is the error", async () => {
+  // What the detail saves, saved again as a copy past its refresh time.
+  const fresh = new MemoryPluginPersistence();
+  const saves: Array<Parameters<MemoryPluginPersistence["setResource"]>> = [];
+  const setResource = fresh.setResource.bind(fresh);
+  fresh.setResource = ((...args: Parameters<MemoryPluginPersistence["setResource"]>) => { saves.push(args); return setResource(...args); }) as never;
+  attachFredSeriesPersistence(fresh);
+  await render(98, 28, EVENT, true);
+  const footer = () => tui.frame().replace(/\n+$/, "").split("\n").at(-1)!.replace(/^└\s*|┘$/g, "").trim();
+  expect(footer()).not.toContain("saved copy");
+  const [kind, key, value, options] = saves[0]!;
+  const saved = new MemoryPluginPersistence();
+  saved.seedResource(kind, key, value, { sourceKey: options.sourceKey, schemaVersion: options.schemaVersion, stale: true });
+  resetFredSeriesPersistence();
+  attachFredSeriesPersistence(saved);
+
+  fredSpy.mockImplementation(async () => { throw outage(); });
+  await render(98, 28, EVENT, true);
+  expect(tui.frame()).toContain("● Unemployment Rate 4.10%");
+  expect(footer()).toMatch(/^saved copy from \d\d:\d\d/);
+
+  fredSpy.mockImplementation(async () => { throw new ApiRequestError("Series not found", 404); });
+  await render(98, 28, EVENT, true);
+  expect(tui.frame()).toContain("Series not found");
+  expect(tui.frame()).not.toContain("saved copy");
 });

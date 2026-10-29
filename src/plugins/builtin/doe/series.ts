@@ -1,6 +1,6 @@
 import type { DoeSeriesRow, DoeUnit } from "../../../api-client/doe";
 import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDoeBoard } from "./client";
 import { DOE_SERIES_OPTIONS } from "./model";
 import { DOE_PRICE_SERIES } from "./prices";
@@ -56,8 +56,7 @@ const DOE_SERIES: readonly SeriesDefinition[] = DOE_SERIES_OPTIONS.map((option):
       const resource = await loadDoeBoard();
       const row = resource.payload.series.find((entry) => entry.id === option.value);
       if (!row) throw new Error(`${option.label} is not in this week's report.`);
-      const warning = cachedSeriesWarning(resource);
-      return { points: doeRowPoints(row), ...(warning ? { warning } : {}) };
+      return { points: doeRowPoints(row), ...cachedSeriesNote(resource) };
     },
   };
 });

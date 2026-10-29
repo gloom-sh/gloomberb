@@ -60,7 +60,7 @@ describe("13F API", () => {
   });
 });
 
-test("a failed forced refresh retains the original retrieval date only for consumers that disclose it, and reopening retries", async () => {
+test("a failed forced refresh retains the saved copy only for consumers that say when it was saved, and reopening retries", async () => {
   const store = new MemoryPluginPersistence();
   attachThirteenFApiPersistence(store);
   let unavailable = false;
@@ -75,13 +75,12 @@ test("a failed forced refresh retains the original retrieval date only for consu
   const original = store.getResource("forms13f-api", key, { sourceKey: "forms13f" })!;
   expect(original).not.toBeNull();
   unavailable = true;
-  const warnings: string[] = [];
+  await expect(searchThirteenFFunds("Berkshire", 1, undefined, { forceRefresh: true })).rejects.toThrow("503");
+  const saved: number[] = [];
   expect(await searchThirteenFFunds("Berkshire", 1, undefined, {
-    forceRefresh: true, onWarning: warning => warnings.push(warning),
+    forceRefresh: true, onSavedCopy: savedAt => saved.push(savedAt),
   })).toEqual(expected);
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain(new Date(original.fetchedAt).toISOString());
-  expect(warnings[0]).toContain("503");
+  expect(saved).toEqual([original.fetchedAt]);
   expect(store.getResource("forms13f-api", key, { sourceKey: "forms13f" })).toEqual(original);
   const callsAtReopen = calls;
   expect(await searchThirteenFFunds("Berkshire", 1)).toEqual(expected);
@@ -180,11 +179,11 @@ for (const status of [403, 404]) test(`authoritative public ${status} cannot ret
     : Response.json([{ cik: "1067983", name: "Berkshire Hathaway" }]));
   await searchThirteenFFunds("Berkshire", 1);
   denied = true;
-  const warnings: string[] = [];
+  const saved: number[] = [];
   await expect(searchThirteenFFunds("Berkshire", 1, undefined, {
-    forceRefresh: true, onWarning: warning => warnings.push(warning),
+    forceRefresh: true, onSavedCopy: savedAt => saved.push(savedAt),
   })).rejects.toThrow(String(status));
-  expect(warnings).toEqual([]);
+  expect(saved).toEqual([]);
   expect(store.getResource("forms13f-api", "/funds?name=Berkshire&offset=0&limit=1", {
     sourceKey: "forms13f", allowExpired: true,
   })).toBeNull();

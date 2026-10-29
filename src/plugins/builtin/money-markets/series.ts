@@ -1,6 +1,6 @@
 import type { MoneyMarketObservation } from "../../../api-client/money-markets";
 import type { SeriesDefinition } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadMoneyMarkets } from "./client";
 
 function observations(history: readonly MoneyMarketObservation[]) {
@@ -21,8 +21,7 @@ export const MONEY_MARKET_SERIES: readonly SeriesDefinition[] = [
     tags: ["liquidity", "Fed balance sheet", "TGA", "RRP", "money markets"],
     load: async () => {
       const resource = await loadMoneyMarkets();
-      const warning = cachedSeriesWarning(resource);
-      return { points: observations(resource.payload.netLiquidity.history), ...(warning ? { warning } : {}) };
+      return { points: observations(resource.payload.netLiquidity.history), ...cachedSeriesNote(resource) };
     },
   },
   {
@@ -34,8 +33,7 @@ export const MONEY_MARKET_SERIES: readonly SeriesDefinition[] = [
     tags: ["bills", "curve", "money markets"],
     load: async () => {
       const resource = await loadMoneyMarkets();
-      const warning = cachedSeriesWarning(resource);
-      return { points: observations(resource.payload.billsCurve.slope.history), ...(warning ? { warning } : {}) };
+      return { points: observations(resource.payload.billsCurve.slope.history), ...cachedSeriesNote(resource) };
     },
   },
 ];
