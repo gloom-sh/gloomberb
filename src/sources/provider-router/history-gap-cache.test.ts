@@ -6,10 +6,10 @@ import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
 
 const points = (dates: string[], value: number) => dates.map((date, index) => ({ date: new Date(date), close: value + index }));
-function record(symbol: string, range: string, value: PricePoint[], source = "cache-test", resolution = "") {
+function record(symbol: string, range: string, value: PricePoint[], source = "cache-test", resolution = "", fetchedAt = Date.now()) {
   return { namespace: "market", kind: "price-history", entityKey: symbol,
     variantKey: `exchange=NYSE;range=${range};${resolution ? `resolution=${resolution};` : ""}version=8`,
-    sourceKey: `provider:${source}`, value: { points: value, resolution: resolution || null }, schemaVersion: 1, fetchedAt: Date.now(), stale: false, expired: false };
+    sourceKey: `provider:${source}`, value: { points: value, resolution: resolution || null }, schemaVersion: 1, fetchedAt, stale: false, expired: false };
 }
 function memoryResources(initial: ReturnType<typeof record>[]) {
   let records = initial;
@@ -51,8 +51,12 @@ for (const mode of ["reported-missing", "transport-error", "independent-cache"] 
     calls++; if (mode === "transport-error") throw new Error("Temporary upstream unavailable"); return missing;
   } });
   const secondary = createTestDataProvider({ id: "independent", getPriceHistory: async () => { throw new Error("Temporary upstream unavailable"); } });
-  const resources = memoryResources([record("RET", "1Y", good),
-    ...(mode === "independent-cache" ? [record("RET", "1Y", alternate, "independent")] : [])]);
+  // Two copies fetched in the same millisecond tie, and one fetched a tick
+  // later wins, so which copy answers first depends on the clock. Stamp the
+  // other source's copy explicitly older.
+  const fetchedAt = Date.now();
+  const resources = memoryResources([record("RET", "1Y", good, "cache-test", "", fetchedAt),
+    ...(mode === "independent-cache" ? [record("RET", "1Y", alternate, "independent", "", fetchedAt - 60_000)] : [])]);
   const router = mode === "independent-cache" ? new AssetDataRouter(secondary, [provider], resources as any)
     : new AssetDataRouter(provider, [], resources as any);
   const coordinator = new MarketDataCoordinator(router);

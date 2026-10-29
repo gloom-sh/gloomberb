@@ -29,6 +29,7 @@ import { quitWindowsEventLoopOnItsThread } from "./window/windows-quit";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
+import { settleInstallerFolder } from "./desktop/installer-folder";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -45,6 +46,25 @@ setConfigStoreHost(nodeConfigStoreHost);
 // ahead of it and spools the report for the next launch. Nothing is sent
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
+
+// An install the Windows installer made lives in the installer's folder,
+// where its shortcuts, the gloom command and its uninstall entry lead.
+// Electrobun's updater installs an update into a folder of its own and opens
+// it from there: this build moves into the installer's folder and opens again
+// from it before any window shows.
+const installerFolderMove = await settleInstallerFolder({
+  platform: process.platform,
+  execPath: process.execPath,
+  homeDir: homedir(),
+  localAppData: process.env.LOCALAPPDATA,
+}).catch((error: unknown) => {
+  console.error("[desktop] could not move the app into the installer's folder", error instanceof Error ? error.message : String(error));
+  return null;
+});
+if (installerFolderMove?.kind === "relaunching") {
+  Utils.quit();
+  await new Promise<never>(() => {});
+}
 
 // An install from before the rename runs from Gloomberb.app, where its updater
 // put this build. It takes the new name and opens again from there before any

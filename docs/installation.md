@@ -34,7 +34,7 @@ curl -fsSL gloom.sh/install | bash
 
 This installs `gloom` to `~/.local/bin` by default. A Linux desktop package is not published yet.
 
-On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g gloomberb` works there too.
+On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g @gloom-sh/terminal` works there too.
 
 ## Windows
 
@@ -44,7 +44,7 @@ Install the desktop app:
 
 The installer is not code-signed yet, so Windows SmartScreen may stop it. Click **More info** on the "Windows protected your PC" screen, then **Run anyway**. To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).
 
-- **Folder:** `%LOCALAPPDATA%\Programs\Gloom`. Installers up to 0.18.4 used `Programs\Gloomberb`; running a new installer over such an install moves it, with its PATH entry.
+- **Folder:** `%LOCALAPPDATA%\Programs\Gloom`, where updates from inside the app install too. Installers up to 0.18.4 used `Programs\Gloomberb`; running a new installer over such an install moves it, with its PATH entry. Earlier versions installed an update from inside the app in `%LOCALAPPDATA%\com.vincelwt.gloomberb\stable\app` instead, and the Start menu kept opening the version before it. The first time a current version starts from there, it moves itself into the installer's folder and opens again. In a folder you picked that holds other files, such as `C:\Tools` with its own `bin`, updates replace only the app's files, and uninstalling removes only those.
 - **Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
@@ -54,7 +54,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 For a terminal-only setup on x64, install Bun and use the package:
 
 ```powershell
-bun install -g gloomberb
+bun install -g @gloom-sh/terminal
 ```
 
 ## Terminal Package
@@ -62,10 +62,10 @@ bun install -g gloomberb
 Already have Bun installed on any supported OS?
 
 ```bash
-bun install -g gloomberb
+bun install -g @gloom-sh/terminal
 ```
 
-`npm install -g gloomberb` works too. The package installs the `gloom` command, and `gloomberb`, its name before 0.18.4, which runs the same program. An install from before 0.18.4 gets `gloom` when it updates with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`).
+`npm install -g @gloom-sh/terminal` works too. An existing `gloomberb` install keeps updating as it is.
 
 Then run:
 
@@ -97,7 +97,7 @@ On first start, the app clones its missing official plugins from GitHub once a l
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloomberb`, `bun remove -g @gloom-sh/terminal` (or `gloomberb`, if that is what you installed), or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 

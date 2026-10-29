@@ -247,7 +247,7 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).not.toMatch(/gloomberb-linux-(x64|arm64)\.gz/);
     // Downloads fail here, as they would against a release without musl builds.
     expect(run.exitCode).not.toBe(0);
-    expect(run.stderr).toContain("bun install -g gloomberb");
+    expect(run.stderr).toContain("bun install -g @gloom-sh/terminal");
   });
 });
 
