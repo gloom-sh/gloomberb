@@ -422,7 +422,8 @@ export function buildEventRows(
       date: dividend.exDate,
       status: "Dividend",
       period: "-",
-      detail: dividend.payDate ? `Declared, payable ${dividend.payDate}` : "Declared",
+      // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
+      detail: `Declared${dividend.special ? " special" : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
     });
@@ -480,9 +481,14 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
   const unavailableSections = Object.entries(state.actions?.coverage ?? {})
     .filter(([section, status]) => status === "unavailable" && (state.variant !== "earnings-estimates" || section === "earnings"))
     .map(([section]) => section);
+  // Sections and estimates that a source failed to give share one line: "Unavailable: earnings, analyst estimates (the source did not answer)".
+  const estimatesCode = !!state.estimatesError && REASON_CODE.test(state.estimatesError.trim());
+  const sharedLine = !state.actionsError && unavailableSections.length > 0 && estimatesCode;
 
   if (state.actionsError) {
-    notices.push(`${actionsLabel} unavailable: ${state.actionsError}`);
+    notices.push(`${actionsLabel} unavailable: ${sourceErrorText(state.actionsError)}`);
+  } else if (sharedLine) {
+    notices.push(`Unavailable: ${unavailableSections.join(", ")}, analyst estimates (${sourceErrorText(state.estimatesError!)})`);
   } else if (unavailableSections.length > 0) {
     notices.push(`Unavailable: ${unavailableSections.join(", ")}`);
   } else if (state.actions && !(state.variant === "earnings-estimates"
@@ -497,7 +503,7 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
   if (state.estimates?.stale) notices.push(`Analyst estimates stale${state.estimates.fetchedAt ? ` (fetched ${state.estimates.fetchedAt})` : ""}`);
 
   if (state.estimatesError) {
-    notices.push(`Analyst estimates unavailable: ${state.estimatesError}`);
+    if (!sharedLine) notices.push(`Analyst estimates unavailable: ${sourceErrorText(state.estimatesError)}`);
   } else if (state.estimates && !hasAnalystEstimates(state.estimates)) {
     notices.push(`No analyst estimates for ${state.symbol}`);
   }
@@ -509,8 +515,28 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
   };
 }
 
+/** A data service's reason code (UPSTREAM_ERROR) rather than words. */
+const REASON_CODE = /^[A-Z][A-Z0-9_]+$/;
+
+/**
+ * A source's failure in words: a reason code reads as what happened
+ * ("UPSTREAM_ERROR" is "the source did not answer"); a sentence stands.
+ */
+export function sourceErrorText(error: string): string {
+  const text = error.trim();
+  if (!REASON_CODE.test(text)) return text;
+  switch (text) {
+    case "TIMEOUT": return "the source timed out";
+    case "NOT_FOUND":
+    case "NO_DATA": return "the source has none for this symbol";
+    case "RATE_LIMITED": return "the source is busy, try again shortly";
+    default: return "the source did not answer";
+  }
+}
+
 function hasCorporateActionRows(data: CorporateActionsData): boolean {
-  return data.dividends.length > 0 || data.splits.length > 0 || data.earnings.length > 0;
+  // A declared dividend is a row too: AIOK's $3.50 special with nothing paid yet.
+  return data.dividends.length > 0 || data.splits.length > 0 || data.earnings.length > 0 || declaredDividends(data).length > 0;
 }
 
 function hasAnalystEstimates(data: AnalystResearchData): boolean {

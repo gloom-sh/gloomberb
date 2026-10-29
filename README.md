@@ -50,7 +50,7 @@ The script downloads the prebuilt release from GitHub and checks its SHA-256 aga
 With [Bun](https://bun.sh), on any supported OS:
 
 ```bash
-bun install -g gloomberb
+bun install -g @gloom-sh/terminal
 ```
 
 Then run `gloom`. The command was called `gloomberb` before 0.18.4, and that name still works. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.

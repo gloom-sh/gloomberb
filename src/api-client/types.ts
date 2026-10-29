@@ -1563,6 +1563,11 @@ export interface CloudNewsListResponse {
   nextCursor: string | null;
   /** Which news the service answered with, when it says: the live wire, or the one held back for a free account. */
   access?: "realtime" | "delayed";
+  /**
+   * A search asked for its closest stories: `all` when stories have every
+   * word, `closest` when none does and these have the most of them.
+   */
+  match?: "all" | "closest";
   /** A receipt's or foreign line's feed is its company's: the home line it reads, when not the listing asked. */
   companyFrom?: CompanyFrom;
 }
