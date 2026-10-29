@@ -20,27 +20,34 @@ function now(): number {
     : Date.now();
 }
 
-// Two scalars rather than an object: every measured section writes them, and
-// only the stall monitor ever reads them.
+// Scalars rather than an object: every measured section writes them, and
+// only the stall monitor ever reads them. The metadata is the caller's own
+// object, kept by reference.
 let lastSampleName: string | null = null;
 let lastSampleEndedAt = 0;
+let lastSampleMetadata: Record<string, unknown> | undefined;
 
 /**
- * The most recent measured section and when it ended. The stall monitor reads
- * it so a report of "the app froze" carries the last thing the app is known to
- * have been doing.
+ * The most recent measured section, when it ended and what it was measured
+ * with. The stall monitor reads it so a report of "the app froze" carries the
+ * last thing the app is known to have been doing.
  */
-export function lastPerfSample(): { name: string; endedAt: number } | null {
-  return lastSampleName == null ? null : { name: lastSampleName, endedAt: lastSampleEndedAt };
+export function lastPerfSample(): { name: string; endedAt: number; metadata?: Record<string, unknown> } | null {
+  if (lastSampleName == null) return null;
+  return { name: lastSampleName, endedAt: lastSampleEndedAt, ...(lastSampleMetadata ? { metadata: lastSampleMetadata } : {}) };
 }
 
 function logSlowPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
+  lastStep = true,
 ): void {
-  lastSampleName = name;
-  lastSampleEndedAt = now();
+  if (lastStep) {
+    lastSampleName = name;
+    lastSampleEndedAt = now();
+    lastSampleMetadata = metadata;
+  }
   const payload = {
     durationMs: Math.round(durationMs * 10) / 10,
     ...(metadata ?? {}),
@@ -60,13 +67,18 @@ export function isPerfTraceEnabled(): boolean {
   return traceToStderr;
 }
 
-/** A sample measured elsewhere (a React Profiler callback, for instance). */
+/**
+ * A sample measured elsewhere (a React Profiler callback, for instance).
+ * `lastStep: false` logs it without making it the step a later stall names:
+ * the stall monitor's own samples, which measure no work.
+ */
 export function recordPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
+  options?: { lastStep?: boolean },
 ): void {
-  logSlowPerfSample(name, durationMs, metadata);
+  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false);
 }
 
 export function measurePerf<T>(

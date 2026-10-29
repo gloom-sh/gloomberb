@@ -31,7 +31,18 @@ function parseStallReportState(text: string): StallReportState {
       if (typeof at === "number" && Number.isFinite(at)) sent[key] = at;
     }
   }
-  return { sent, pending: readCounts(record.pending) };
+  return { sent, pending: readCounts(record.pending), recent: readTimes(record.recent) };
+}
+
+function readTimes(value: unknown): NonNullable<StallReportState["recent"]> {
+  const recent: NonNullable<StallReportState["recent"]> = {};
+  if (!value || typeof value !== "object") return recent;
+  for (const [process, times] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(times)) continue;
+    const kept = times.filter((at): at is number => typeof at === "number" && Number.isFinite(at));
+    if (kept.length > 0) recent[process] = kept;
+  }
+  return recent;
 }
 
 function trimLog(path: string): void {
@@ -62,7 +73,7 @@ export function createNodeStallReporterHost(options: {
     },
     load: () => {
       const path = pathFor(STATE_FILE);
-      if (!path || !existsSync(path)) return { sent: {}, pending: {} };
+      if (!path || !existsSync(path)) return { sent: {}, pending: {}, recent: {} };
       return parseStallReportState(readFileSync(path, "utf-8"));
     },
     save: (state) => {
