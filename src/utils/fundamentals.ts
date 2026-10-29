@@ -101,7 +101,8 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
     || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
   const source = `${formatCompact(check.source)} ${check.currency}`;
   const computed = formatCompact(check.computed);
-  const basis = `market cap + total debt - cash${check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : ""}`;
+  const leases = finiteNumber(check.leases) && check.leases > 0 ? " + leases" : "";
+  const basis = `market cap + total debt${leases} - cash${check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : ""}`;
   if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}.`;

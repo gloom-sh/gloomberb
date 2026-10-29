@@ -51,7 +51,7 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 | | ROA | Net income ÷ average total assets |
 | | ROIC | NOPAT ÷ average invested capital |
 | | Gross, operating and net margin | Gross profit, operating income or net income ÷ revenue |
-| Leverage | Net debt / EBITDA | (Total debt − cash and short-term investments) ÷ EBITDA |
+| Leverage | Net debt / EBITDA | (Total debt + lease liabilities − cash and short-term investments) ÷ EBITDA; leases as in [Leases](#leases) |
 | | Debt / equity | Total debt ÷ equity, at the period end |
 | | Interest coverage | EBIT (operating income) ÷ interest expense |
 | | FCF / debt | Free cash flow ÷ total debt |
@@ -80,7 +80,18 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 - **Receivables** are trade accounts receivable, or total receivables where trade is not reported; **payables** likewise. Apple's total receivables include vendor non-trade receivables, which is why DSO uses the trade line.
 - **Free cash flow** is the reported figure, or operating cash flow plus (negative) capital expenditure.
 - **EBITDA** is the statements' line; in SEC-derived periods it is operating income plus depreciation and amortization.
-- **Enterprise value** is market cap + total debt − cash and short-term investments. Minority interest and preferred equity are not added.
+- **Enterprise value** is market cap + net debt: total debt, lease liabilities as in [Leases](#leases), less cash and short-term investments. Minority interest and preferred equity are not added.
+
+## Leases
+
+Net debt, and the enterprise value built on it, adds the balance sheet's lease liabilities to total debt when the company reports under IFRS or a similar standard. IFRS 16 puts every lessee lease on the balance sheet and reports EBITDA before lease costs, so net debt / EBITDA with the leases in is like for like. The row under Net Debt says so: `incl. leases` with the amount added. IAG's June 2026 balance sheet holds 6.96bn of borrowings, 6.91bn of leases and 9.18bn of cash: 4.69bn of net debt, where total debt alone gave -2.21bn.
+
+- **US GAAP.** A filer whose statements are dated by its SEC filings keeps its operating leases out. Its finance leases are already in total debt, and its operating lease cost is in EBITDA. The row reads `excl. op. leases`, with the amount left out (Delta's 5.98bn in September 2026).
+- **A missing lease line.** When a listing's balance sheets report lease liabilities, a period without that line reads `not reported` for net debt and EV. It is not computed without leases beside periods that have them.
+- **Totals that hold leases.** A data vendor's total that already holds the lease line (long-term debt + current debt + leases) is read as the borrowings beside it, so the leases count once.
+- **No lease line anywhere.** Net debt is total debt less cash, with no row about leases.
+
+Gloom Cloud's check of the provider's enterprise value (`EV (provider) vs … computed`, and `EV unavailable` beside a figure far from it) bridges the same way and says `market cap + total debt + leases - cash` when it added them. Debt / equity and FCF / debt keep total debt alone.
 
 ## Cash runway
 

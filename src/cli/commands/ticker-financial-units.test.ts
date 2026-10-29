@@ -150,6 +150,9 @@ test("an EV off market cap + debt - cash is labelled as the provider's with the 
   expect(valuation(withdrawn)).toContain("Enterprise Value unavailable");
   expect(valuation(withdrawn)).toContain(
     "EV unavailable: the provider's 128B USD is 2.0x the 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  // An IFRS balance sheet's leases are in the bridge, and the line says so.
+  const leased = withCheck({ enterpriseValue: 70e9, enterpriseValueCheck: { ...check, leases: 1.5e9, computed: 65.4e9, status: "differs", source: 70e9 } });
+  expect(valuation(leased)).toContain("EV 70B USD (provider) vs 65.4B computed from market cap + total debt + leases - cash (balance sheet 2026-06-30).");
   // A matching EV, or a check beside another source's EV, prints as before.
   for (const fundamentals of [
     { enterpriseValue: 63e9, enterpriseValueCheck: { ...check, status: "matches" as const, source: 63e9 } },
