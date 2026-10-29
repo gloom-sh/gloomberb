@@ -344,12 +344,26 @@ function Capture-DesktopScreenshot {
   Save-ScreenRegion ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds) $Path
 }
 
+# The window as it shows on screen. A sizable window's rect also holds its
+# invisible resize borders, where whatever is behind it shows through, so the
+# frame Windows draws comes first, and the rect only when it has none.
 function Get-WindowBounds {
   param([object]$Window)
 
   $Handle = [IntPtr]::new([long]$Window.Handle)
   $Rect = New-Object GloomberbWindowRect
-  if (-not [GloomberbWin32]::GetWindowRect($Handle, [ref]$Rect)) {
+  $Drawn = $false
+  try {
+    $Drawn = [GloomberbWin32]::DwmGetWindowAttribute(
+      $Handle,
+      9,
+      [ref]$Rect,
+      [System.Runtime.InteropServices.Marshal]::SizeOf([type][GloomberbWindowRect])
+    ) -eq 0
+  } catch {
+    $Drawn = $false
+  }
+  if (-not $Drawn -and -not [GloomberbWin32]::GetWindowRect($Handle, [ref]$Rect)) {
     throw "Could not read window bounds for $($Window.ProcessName) $($Window.Handle)."
   }
 
