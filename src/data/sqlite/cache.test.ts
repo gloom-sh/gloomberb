@@ -66,46 +66,49 @@ describe("AppPersistence", () => {
     }
   });
 
-  test("returns cached resources when last-access touch is locked", () => {
-    const dbPath = createTempDbPath("resource-touch-lock");
+  // A read used to write too: one commit per row read, many a second. The
+  // eviction order still has to hold every read, and reach the disk.
+  test("reads move rows up the eviction order in memory, and close writes it in one go", () => {
+    const dbPath = createTempDbPath("resource-touch-batch");
     const persistence = new AppPersistence(dbPath);
-    const key = {
-      namespace: "market",
-      kind: "quote",
-      entityKey: "AAPL",
-      sourceKey: "provider:gloom",
-    };
-
-    persistence.database.connection.exec("PRAGMA busy_timeout=1");
-    persistence.resources.set(key, {
-      price: 123,
-    }, {
-      cachePolicy: { staleMs: 60_000, expireMs: 120_000 },
-      schemaVersion: 1,
-    });
-
-    const locker = new Database(dbPath);
-    locker.exec("PRAGMA busy_timeout=1");
-    locker.exec("BEGIN IMMEDIATE");
+    const onDisk = new Database(dbPath, { readonly: true });
+    const lastAccessedOnDisk = (entityKey: string) => onDisk
+      .query<{ last_accessed_at: number }, [string]>("SELECT last_accessed_at FROM resource_cache WHERE entity_key = ?")
+      .get(entityKey)?.last_accessed_at;
     try {
-      const record = persistence.resources.get<{ price: number }>(key, { allowExpired: true });
-      expect(record?.value.price).toBe(123);
-    } finally {
-      locker.exec("ROLLBACK");
-      locker.close();
+      setSystemTime(new Date("2026-10-14T10:00:00Z"));
+      const written = Date.now();
+      const policy = { cachePolicy: { staleMs: 60_000, expireMs: 3_600_000 }, schemaVersion: 1 };
+      persistence.resources.set({ namespace: "market", kind: "quote", entityKey: "AAPL" }, { price: 1 }, policy);
+      persistence.resources.set({ namespace: "market", kind: "quote", entityKey: "MSFT" }, { price: 2 }, policy);
+
+      setSystemTime(new Date("2026-10-14T10:05:00Z"));
+      const read = Date.now();
+      expect(persistence.resources.get({ namespace: "market", kind: "quote", entityKey: "AAPL" })?.lastAccessedAt).toBe(read);
+      expect(persistence.resources.list({ namespace: "market", kind: "quote", entityKey: "MSFT" })[0]?.lastAccessedAt).toBe(read);
+      expect(lastAccessedOnDisk("AAPL")).toBe(written);
+      expect(lastAccessedOnDisk("MSFT")).toBe(written);
+      expect(persistence.resources.get({ namespace: "market", kind: "quote", entityKey: "AAPL" }, { touch: false })?.lastAccessedAt).toBe(read);
+
       persistence.close();
+      expect(lastAccessedOnDisk("AAPL")).toBe(read);
+      expect(lastAccessedOnDisk("MSFT")).toBe(read);
+    } finally {
+      setSystemTime();
+      onDisk.close();
     }
   });
 
   // The app runs SQLite on the thread that answers the user. Another program
   // holding the write lock (a second copy of the app, the gloom command) used
   // to freeze it for up to eight seconds per statement.
-  test("in the app, another program's lock never holds a cache read, touch or write", () => {
+  test("in the app, another program's lock never holds a cache read, touch or write", async () => {
     const dbPath = createTempDbPath("resource-interactive-lock");
     const persistence = new AppPersistence(dbPath, { interactive: true });
     const key = { namespace: "market", kind: "quote", entityKey: "AAPL", sourceKey: "provider:gloom" };
     const policy = { cachePolicy: { staleMs: 60_000, expireMs: 120_000 }, schemaVersion: 1 };
     persistence.resources.set(key, { price: 1 }, policy);
+    await Bun.sleep(1);
     const locker = new Database(dbPath);
     locker.exec("BEGIN IMMEDIATE");
     try {

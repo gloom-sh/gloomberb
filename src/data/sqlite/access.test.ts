@@ -33,6 +33,37 @@ test("commits stop flushing only where WAL took, and user data always flushes", 
   }
 });
 
+// A batch of quotes or a list's rows used to commit one row at a time. A
+// user write does not wait in that batch: it commits on its own, and flushes.
+test("in the app, the cache writes of one turn commit together, and a user write commits them first", async () => {
+  const dbPath = createTempDbPath("cache-batch");
+  const database = new SqliteDatabase(dbPath, { interactive: true });
+  const { connection, access } = database;
+  connection.exec("CREATE TABLE batched (k TEXT PRIMARY KEY)");
+  const other = new Database(dbPath, { readonly: true });
+  const committed = () => other.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM batched").get()?.c;
+  const put = (k: string) => () => { connection.query("INSERT INTO batched (k) VALUES (?)").run(k); };
+  try {
+    expect(access.writeCache("put", put("a"))).toBe(true);
+    expect(access.writeCache("put", put("b"))).toBe(true);
+    expect(committed()).toBe(0);
+    await Bun.sleep(1);
+    expect(committed()).toBe(2);
+
+    access.writeCache("put", put("c"));
+    let level: number | undefined;
+    access.write("user write", () => {
+      level = synchronousLevel(connection);
+      put("user")();
+    });
+    expect(committed()).toBe(4);
+    expect(level).toBe(2);
+  } finally {
+    other.close();
+    database.close();
+  }
+});
+
 // The queue runs on the app's only thread. Writes that piled up behind a
 // long lock must not land in one tick that freezes the app, and a row
 // written again while queued needs writing once, after what came before it.

@@ -1,5 +1,11 @@
 import { Database } from "bun:sqlite";
 import { createSqliteAccess, type SqliteAccess } from "./access";
+import {
+  SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
+  SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
+  startWalCheckpointer,
+  type WalCheckpointer,
+} from "./checkpointer";
 import { SQLITE_BUSY_TIMEOUT_MS, withSqliteBusyRetry } from "./retry";
 
 const SCHEMA = `
@@ -73,6 +79,7 @@ export interface SqliteDatabaseOptions {
 export class SqliteDatabase {
   readonly connection: Database;
   readonly access: SqliteAccess;
+  private readonly checkpointer: WalCheckpointer | null = null;
 
   constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
     this.connection = new Database(dbPath);
@@ -92,11 +99,25 @@ export class SqliteDatabase {
     });
     // The app's statements choose how long to wait for a lock themselves.
     if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
-    this.access = createSqliteAccess(this.connection, { interactive: options.interactive, relaxedCommits: wal });
+    // The app's commits leave copying the WAL into the database to a thread
+    // of its own, and only do it themselves past a WAL ten times the usual.
+    if (options.interactive && wal && dbPath !== ":memory:") {
+      this.checkpointer = startWalCheckpointer(dbPath, () => {
+        this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
+      });
+      if (this.checkpointer) this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
+    }
+    const checkpointer = this.checkpointer;
+    this.access = createSqliteAccess(this.connection, {
+      interactive: options.interactive,
+      relaxedCommits: wal,
+      ...(checkpointer ? { onCommit: () => checkpointer.nudge() } : {}),
+    });
   }
 
   close(): void {
     this.access.close();
+    this.checkpointer?.close();
     this.connection.close();
   }
 }

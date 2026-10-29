@@ -46,6 +46,11 @@ const sqliteLog = debugLog.createLogger("sqlite");
  * database. A write of user data flushes as before (`FULL`), which also
  * flushes everything committed ahead of it. Where WAL does not take (a
  * network share), every commit flushes.
+ *
+ * On the app's connection the cache writes of one turn of the event loop
+ * share a transaction and commit together once the turn is over: a batch of
+ * quotes, a list's touched rows. A write of user data, the queue and close
+ * commit them first, so a user write still commits on its own and flushes.
  */
 export interface SqliteAccess {
   /** A read of cached data; null when another program has it locked. */
@@ -94,6 +99,8 @@ export interface SqliteAccessOptions {
    * connection's own level is left alone.
    */
   relaxedCommits?: boolean;
+  /** After each commit of the app's connection (see checkpointer.ts). */
+  onCommit?: () => void;
 }
 
 interface QueuedWrite {
@@ -163,12 +170,14 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
    */
   const drain = (budgetMs: number, lockWaitMs: number): "empty" | "locked" | "budget" => {
     const startedAt = now();
+    commitCacheBatch();
     while (queue.length > 0) {
       const leftMs = budgetMs - (now() - startedAt);
       if (leftMs <= 0) return "budget";
       const next = queue[0]!;
       try {
         durable(() => withSqliteLockWait(next.operationName, next.write, Math.min(lockWaitMs, leftMs)));
+        options.onCommit?.();
       } catch (error) {
         if (isSqliteBusyError(error)) return "locked";
         logFailure("data.sqlite", "A queued write failed")(error);
@@ -211,15 +220,53 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     }
   };
 
+  /** The cache writes of this turn, committed together once it is over. */
+  let cacheBatch: ReturnType<typeof setTimeout> | null = null;
+
+  const commitCacheBatch = (): void => {
+    if (!cacheBatch) return;
+    clearTimeout(cacheBatch);
+    cacheBatch = null;
+    // A failed statement can roll the whole transaction back; its writes are
+    // gone then, which a cache can afford.
+    if (!db.inTransaction) return;
+    try {
+      db.exec("COMMIT");
+      options.onCommit?.();
+    } catch (error) {
+      logFailure("data.sqlite", "Committing cached writes failed")(error);
+      if (!db.inTransaction) return;
+      try {
+        db.exec("ROLLBACK");
+      } catch (rollbackError) {
+        logFailure("data.sqlite", "Rolling back cached writes failed")(rollbackError);
+      }
+    }
+  };
+
+  /** False when another program holds the lock, and the write is skipped. */
+  const joinCacheBatch = (): boolean => {
+    if (cacheBatch && db.inTransaction) return true;
+    if (cacheBatch) commitCacheBatch();
+    // Inside a transaction a statement of this connection opened, the write is part of it.
+    if (db.inTransaction) return true;
+    if (!tryCache("begin cached writes", () => db.exec("BEGIN IMMEDIATE"))) return false;
+    cacheBatch = setTimeout(commitCacheBatch, 0);
+    (cacheBatch as { unref?: () => void }).unref?.();
+    return true;
+  };
+
   return {
     readCache: (operationName, read) => tryCache(operationName, read)?.value ?? null,
-    writeCache: (operationName, write) => tryCache(operationName, write) !== null,
+    writeCache: (operationName, write) => joinCacheBatch() && tryCache(operationName, write) !== null,
     run: (operationName, statement) => withSqliteLockWait(operationName, statement, SQLITE_APP_READ_WAIT_MS),
     write: (operationName, write, writeOptions = {}) => {
       const { key, settled } = writeOptions;
+      commitCacheBatch();
       if (queue.length === 0) {
         try {
           durable(() => withSqliteLockWait(operationName, write, SQLITE_APP_WRITE_WAIT_MS));
+          options.onCommit?.();
           settle({ settled });
           return true;
         } catch (error) {
@@ -242,6 +289,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     close: () => {
       if (closed) return;
       closed = true;
+      commitCacheBatch();
       if (timer) clearTimeout(timer);
       timer = null;
       if (drain(CLOSE_LOCK_WAIT_MS, CLOSE_LOCK_WAIT_MS) === "empty") return;
