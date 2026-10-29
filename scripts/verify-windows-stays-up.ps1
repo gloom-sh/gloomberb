@@ -92,7 +92,10 @@ if ($AddChromiumFlag) {
   $BuildJson = Join-Path $Folder "Resources\build.json"
   $Build = Get-Content -LiteralPath $BuildJson -Raw | ConvertFrom-Json
   if (-not $Build.PSObject.Properties["chromiumFlags"]) { $Build | Add-Member -NotePropertyName chromiumFlags -NotePropertyValue ([pscustomobject]@{}) }
-  $Build.chromiumFlags | Add-Member -Force -NotePropertyName $AddChromiumFlag -NotePropertyValue $true
+  foreach ($Item in $AddChromiumFlag.Split(";")) {
+    $Name, $Value = $Item.Split("=", 2)
+    $Build.chromiumFlags | Add-Member -Force -NotePropertyName $Name -NotePropertyValue $(if ($null -ne $Value) { $Value } else { $true })
+  }
   [System.IO.File]::WriteAllText($BuildJson, ($Build | ConvertTo-Json -Depth 20 -Compress), (New-Object System.Text.UTF8Encoding $false))
   Write-Line "chromiumFlags now $($Build.chromiumFlags | ConvertTo-Json -Compress)"
 }

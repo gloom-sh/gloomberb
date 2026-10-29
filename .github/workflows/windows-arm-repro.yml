@@ -14,8 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [no-profiler, as-released]
-        attempt: [1, 2, 3, 4]
+        variant: [control, no-jit, chromium-watchers, no-gpu]
+        attempt: [1, 2]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +25,17 @@ jobs:
         run: |
           $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-v0.19.1.exe"
           Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
-          $Flag = if ("${{ matrix.variant }}" -eq "no-profiler") { "disable-stack-profiler" } else { "" }
+          $Flags = ""
+          switch ("${{ matrix.variant }}") {
+            "no-jit" { $env:BUN_JSC_useJIT = "0" }
+            "chromium-watchers" { $Flags = "disable-features=VizDisplayCompositor,EnableHangWatcher;disable-stack-profiler" }
+            "no-gpu" { $Flags = "disable-gpu;disable-gpu-compositing" }
+          }
           $Failed = @()
           foreach ($Launch in 1, 2) {
             $Label = "${{ matrix.variant }}-${{ matrix.attempt }}-$Launch"
             try {
-              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 45 -AddChromiumFlag $Flag
+              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 45 -AddChromiumFlag $Flags
             } catch {
               $Failed += "${Label}: $($_.Exception.Message)"
             }
