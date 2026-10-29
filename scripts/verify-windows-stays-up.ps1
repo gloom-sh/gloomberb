@@ -10,6 +10,9 @@ param(
   [Parameter(Mandatory = $true)][string]$Installer,
   [string]$Label = "app",
   [int]$Seconds = 90,
+  # A release build sends the app's output nowhere; with this the launcher
+  # passes it through, here to files beside the report.
+  [switch]$Console,
   [string]$EvidenceDir = (Join-Path (Get-Location) "artifacts\windows-stays-up")
 )
 
@@ -85,7 +88,16 @@ $Version = try { (Get-Content (Join-Path $Folder "Resources\version.json") -Raw 
 Write-Line "installed $Version in $Folder"
 
 $Started = Get-Date
-$LauncherProcess = Start-Process -FilePath $Launcher -WorkingDirectory (Split-Path $Launcher) -PassThru
+$Output = Join-Path $Evidence "app-stdout.txt"
+$Errors = Join-Path $Evidence "app-stderr.txt"
+if ($Console) {
+  $env:ELECTROBUN_CONSOLE = "1"
+  $LauncherProcess = Start-Process -FilePath $Launcher -WorkingDirectory (Split-Path $Launcher) -PassThru `
+    -RedirectStandardOutput $Output -RedirectStandardError $Errors
+  Remove-Item Env:ELECTROBUN_CONSOLE
+} else {
+  $LauncherProcess = Start-Process -FilePath $Launcher -WorkingDirectory (Split-Path $Launcher) -PassThru
+}
 $null = $LauncherProcess.Handle
 Write-Line "opened $Launcher (pid $($LauncherProcess.Id))"
 
@@ -148,7 +160,18 @@ foreach ($Process in (Get-AppProcesses $Folder)) {
   Stop-Process -Id $Process.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+# What the launcher said about itself, such as how it set up under emulation.
+if (Test-Path -LiteralPath $Output) {
+  Get-Content -LiteralPath $Output -ErrorAction SilentlyContinue | Where-Object { $_.StartsWith("[launcher]") } | ForEach-Object { Write-Line "app: $_" }
+}
+
 if ($Problems.Count -gt 0) {
+  foreach ($Path in @($Output, $Errors)) {
+    if (Test-Path -LiteralPath $Path) {
+      Write-Line "last lines of $(Split-Path -Leaf $Path):"
+      Get-Content -LiteralPath $Path -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { Write-Line "  $_" }
+    }
+  }
   foreach ($Problem in $Problems) { Write-Line "FAIL: $Problem" }
   throw "Gloom $Version did not stay up: $($Problems -join '; ')"
 }
