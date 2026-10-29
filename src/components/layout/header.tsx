@@ -870,9 +870,9 @@ export function Header({
   // bar itself wears the prompt's fill and reads as a single strip.
   const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
 
-  const startWindowDrag = useCallback(() => {
+  const startWindowDrag = useCallback((press?: { detail?: number }) => {
     if (!titleBarOverlay || !nativeWindowChrome) return;
-    void rendererHost.startWindowDrag?.();
+    void rendererHost.startWindowDrag?.(press);
   }, [nativeWindowChrome, rendererHost, titleBarOverlay]);
 
   const openCommandBar = useCallback((event?: HeaderActionEvent) => {
