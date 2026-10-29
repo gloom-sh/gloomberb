@@ -14,28 +14,44 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tag:
-          - v0.18.5
-          - v0.18.6-nightly.20261026.16.g28bcbdf
-          - v0.18.6-nightly.20261027.17.g0581716
-          - v0.18.6-nightly.20261028.18.gf453cea
-          - v0.19.0
-          - v0.19.1
+        attempt: [1, 2, 3, 4]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install and open the release
+      - name: Install and open v0.19.1 under ProcDump
         shell: pwsh
         run: |
-          $Tag = "${{ matrix.tag }}"
-          $Asset = if ($Tag -like "*-nightly.*") { "nightly-win-x64-GloomSetup.exe" } else { "stable-win-x64-GloomSetup.exe" }
+          $Tag = "v0.19.1"
           $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-$Tag.exe"
-          Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/$Tag/$Asset" -OutFile $Installer
-          ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Tag -Seconds 60 -Console
+          Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/$Tag/stable-win-x64-GloomSetup.exe" -OutFile $Installer
+          $Tools = Join-Path $env:RUNNER_TEMP "procdump"
+          Invoke-WebRequest "https://download.sysinternals.com/files/Procdump.zip" -OutFile "$Tools.zip"
+          Expand-Archive "$Tools.zip" -DestinationPath $Tools
+          $Dumps = Join-Path (Get-Location) "artifacts\windows-stays-up\procdump"
+          New-Item -ItemType Directory -Force -Path $Dumps | Out-Null
+          # First-chance access violations too: whatever ends the process may handle the fault itself.
+          $Watcher = Start-Process -FilePath (Join-Path $Tools "procdump64.exe") -PassThru -NoNewWindow `
+            -RedirectStandardOutput (Join-Path $Dumps "procdump.txt") `
+            -ArgumentList @("-accepteula", "-e", "1", "-f", "C0000005", "-n", "10", "-w", "bun.exe", $Dumps)
+          try {
+            ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label "$Tag-${{ matrix.attempt }}" -Seconds 45 -Console
+          } finally {
+            Start-Sleep -Seconds 5
+            if (-not $Watcher.HasExited) { Stop-Process -Id $Watcher.Id -Force -ErrorAction SilentlyContinue }
+            $Cdb = @(Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers" -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+            "cdb found: $($Cdb -join ', ')" | Out-File (Join-Path $Dumps "cdb.txt")
+            $X64Cdb = $Cdb | Where-Object { $_ -match "\\x64\\" } | Select-Object -First 1
+            foreach ($Dump in (Get-ChildItem $Dumps -Filter *.dmp)) {
+              if ($X64Cdb) {
+                & $X64Cdb -z $Dump.FullName -c ".symfix; .reload; .ecxr; r; kn 40; ub @rip L8; u @rip L4; lmv m bun*; lm; q" 2>&1 |
+                  Out-File (Join-Path $Dumps "$($Dump.BaseName).cdb.txt")
+              }
+            }
+          }
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stays-up-${{ matrix.tag }}
+          name: stays-up-v0.19.1-${{ matrix.attempt }}
           path: artifacts/windows-stays-up

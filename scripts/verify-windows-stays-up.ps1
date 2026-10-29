@@ -164,7 +164,7 @@ if ($Problems.Count -gt 0) {
   foreach ($Path in @($Output, $Errors)) {
     if (Test-Path -LiteralPath $Path) {
       Write-Line "last lines of $(Split-Path -Leaf $Path):"
-      Get-Content -LiteralPath $Path -Tail 40 | ForEach-Object { Write-Line "  $_" }
+      Get-Content -LiteralPath $Path -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { Write-Line "  $_" }
     }
   }
   foreach ($Problem in $Problems) { Write-Line "FAIL: $Problem" }
