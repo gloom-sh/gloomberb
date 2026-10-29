@@ -1,6 +1,11 @@
 name: Windows CLI capture repro
 
 on:
+  push:
+    branches:
+      - chore/windows-arm-repro
+    paths:
+      - .github/workflows/windows-cli-capture-repro.yml
   workflow_dispatch:
     inputs:
       installer_run:
@@ -26,7 +31,7 @@ jobs:
         with:
           name: windows-x64-installer
           path: installer
-          run-id: ${{ inputs.installer_run }}
+          run-id: ${{ inputs.installer_run || '40912105186' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install, then draw panes from the CLI in a loop
@@ -47,7 +52,7 @@ jobs:
 
           $Work = Join-Path $env:RUNNER_TEMP "v"
           $Fails = 0; $Total = 0
-          foreach ($Round in 1..${{ inputs.rounds }}) {
+          foreach ($Round in 1..${{ inputs.rounds || '12' }}) {
             Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
             $Caller = Join-Path $Work "caller with spaces"; $Profile = Join-Path $Work ".gloomberb"; $Temp = Join-Path $Work "t"
             New-Item -ItemType Directory -Force -Path $Caller, $Profile, $Temp | Out-Null
