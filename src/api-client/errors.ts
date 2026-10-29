@@ -63,6 +63,18 @@ export function isRetryableApiError(error: unknown): boolean {
   return error.code === "retryable_error" || status === 408 || status === 429 || (status !== undefined && status >= 500);
 }
 
+/**
+ * A 200 reply saying its data is unavailable this time (a board's `unavailable`
+ * status, a market answer's `retryable_error`): the server's own source did
+ * not answer. Like a 5xx it may pass, so a saved copy answers it with its note.
+ * A permanent reason (a route not served yet, an unsupported symbol or series,
+ * sign-in or entitlement) comes as its status, or as a plain error, and stays
+ * the error.
+ */
+export function sourceDidNotAnswer(message: string): ApiRequestError {
+  return new ApiRequestError(message, undefined, undefined, "retryable_error");
+}
+
 /** Codes of a connection that dropped or stalled after it opened: Node's and the system's, then Bun's. */
 const INTERRUPTED_CODES = new Set(["ECONNRESET", "ECONNABORTED", "EPIPE", "ETIMEDOUT", "ConnectionClosed"]);
 

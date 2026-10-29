@@ -1,4 +1,5 @@
 import { resolvePlanAccess } from "../../../api-client/plan-rules";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import { apiClient } from "../../../api-client";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery, GpuObservation } from "../../../api-client/gpu";
 import { createPluginCache } from "../../../data/plugin-cache";
@@ -94,7 +95,9 @@ export async function fetchGpuBoard(client: Pick<GpuApi, "getCloudGpuBoard"> = a
   try { payload = await client.getCloudGpuBoard(); }
   catch (error) { throw unavailableOnServer(error, GPU_NOT_AVAILABLE, [404, 503]); }
   const board = validateBoard(payload);
-  if (board.status === "unavailable" || !board.rows.length) throw new Error(GPU_NOT_AVAILABLE);
+  // The server's source did not answer this time: a saved copy answers, as it does a 5xx.
+  if (board.status === "unavailable") throw sourceDidNotAnswer(GPU_NOT_AVAILABLE);
+  if (!board.rows.length) throw new Error(GPU_NOT_AVAILABLE);
   return board;
 }
 

@@ -304,7 +304,10 @@ the origin of a number. The one count the kit draws is the
   14:37`. The footer draws it first, wherever the pane registers it, and
   once: the oldest copy when a list and the report it opens each show one.
   The copy answers only a failure asking again may get past (no connection,
-  a timeout, 408, 429, 5xx, `isTransientFailure`); a refusal and a reply that
+  a timeout, 408, 429, 5xx, `isTransientFailure`), and a reply saying its
+  source did not answer this time (a board's `unavailable`,
+  `sourceDidNotAnswer`). A permanent reason (a route not served yet, an
+  unsupported symbol or series, sign-in or entitlement) and a reply that
   fails validation are the pane's error, saved copy or not.
 - Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
   `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`. Every hint is

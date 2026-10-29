@@ -5,7 +5,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { savedCopyMark, servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
-import { isTransientFailure } from "../../../api-client/errors";
+import { isTransientFailure, sourceDidNotAnswer } from "../../../api-client/errors";
 import type {
   CloudMarketResponse,
   CloudMarketScreenerCategory,
@@ -275,6 +275,8 @@ export async function fetchScreenerResult(
   const session = category === "most_actives" ? undefined : options?.session;
   const load = async () => {
     const response = await api.getMarketMovers(category, count, options?.forceRefresh, session);
+    // The service's own source did not answer this time: a saved list answers, as it does a 5xx.
+    if (!response.data && response.status === "retryable_error") throw sourceDidNotAnswer("Market movers temporarily unavailable");
     if (!response.data) throw new Error("Invalid market movers response");
     return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true };
   };
@@ -462,6 +464,7 @@ export async function fetchTrendingResult(
   const load = async () => {
     const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
     if (response.status === "empty") return { data: [], stale: response.stale === true };
+    if (!response.data && response.status === "retryable_error") throw sourceDidNotAnswer("Market trends temporarily unavailable");
     if (!response.data) throw new Error("Market trends unavailable");
     return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };

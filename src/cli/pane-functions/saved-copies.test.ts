@@ -148,6 +148,51 @@ test("fn 13F and fn MOST answer a failed refresh from what an earlier run read, 
   }
 });
 
+const MOVERS = { status: "success", stale: false, data: { quotes: [{ symbol: "STLA", name: "Stellantis N.V.", price: 4.68, change: 0.54,
+  changePercent: 12.92, volume: 94_550_000, avgVolume: 32_600_000 }] } } as never;
+
+// A 200 reply saying its source did not answer this time was refused like a broken reply, so the copy an
+// earlier run saved never answered it.
+test("a board or list whose source did not answer this time is answered by the saved copy, with its note", async () => {
+  const board = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(BOARD);
+  const movers = spyOn(apiClient, "getMarketMovers").mockResolvedValue(MOVERS);
+  spies.push(board, movers);
+  const saved = profile();
+  await fn(["DOE", "--tab", "gas"], saved);
+  await fn(["MOST"], saved);
+
+  board.mockResolvedValue({ ...BOARD, status: "unavailable", series: [] });
+  movers.mockResolvedValue({ status: "retryable_error", reasonCode: "UPSTREAM_TIMEOUT", data: null } as never);
+  for (const [args, shown] of [[["DOE", "--tab", "gas"], /Lower 48 +Bcf +3,644/], [["MOST"], /Stellantis/]] as const) {
+    const answer = await fn([...args], saved);
+    expect(answer.error).toBeNull();
+    expect(answer.text).toMatch(shown);
+    expect(answer.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
+  }
+});
+
+// Only a permanent reason stays the error over a saved copy: a route not served yet, an unsupported list, sign-in.
+test("a reply with a permanent reason is the error whatever copy an earlier run saved", async () => {
+  const board = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(BOARD);
+  const movers = spyOn(apiClient, "getMarketMovers").mockResolvedValue(MOVERS);
+  spies.push(board, movers);
+  const saved = profile();
+  await fn(["DOE", "--tab", "gas"], saved);
+  await fn(["MOST"], saved);
+
+  for (const [refusal, said] of [[new ApiRequestError("Not found", 404), "Oil and gas inventories are not available yet."],
+    [new ApiRequestError("Sign in to continue", 401), "Sign in to continue"]] as const) {
+    board.mockRejectedValue(refusal);
+    const answer = await fn(["DOE", "--tab", "gas"], saved);
+    expect((answer.error as Error | null)?.message).toBe(said);
+    expect(answer.text).not.toContain("saved copy");
+  }
+  movers.mockResolvedValue({ status: "unsupported", reasonCode: "UNSUPPORTED_LIST", data: null } as never);
+  const unsupported = await fn(["MOST"], saved);
+  expect(`${unsupported.text}${(unsupported.error as Error | null)?.message ?? ""}`).toContain("Invalid market movers response");
+  expect(unsupported.text).not.toContain("saved copy");
+});
+
 // Offline, AUCT listed the failed refresh under "Errors:" above the closing line that already named its saved copy.
 test("fn AUCT answers a failed refresh from the board an earlier run read, saying so only in the closing line", async () => {
   const offline = { now: false };

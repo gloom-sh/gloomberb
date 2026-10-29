@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -67,7 +68,9 @@ export async function fetchDoeBoard(client: Pick<typeof apiClient, "getCloudDoeB
     throw unavailableOnServer(error, DOE_NOT_AVAILABLE, [404, 503]);
   }
   const board = validateDoeBoard(payload);
-  if (board.status === "unavailable" || !board.series.some((row) => row.value != null)) throw new Error(DOE_NOT_AVAILABLE);
+  // The server's source did not answer this time: a saved copy answers, as it does a 5xx.
+  if (board.status === "unavailable") throw sourceDidNotAnswer(DOE_NOT_AVAILABLE);
+  if (!board.series.some((row) => row.value != null)) throw new Error(DOE_NOT_AVAILABLE);
   return board;
 }
 

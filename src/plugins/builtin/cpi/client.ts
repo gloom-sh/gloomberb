@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { CpiBoardPayload, CpiRow } from "../../../api-client/cpi";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -56,7 +57,9 @@ export async function fetchCpiBoard(client: Pick<typeof apiClient, "getCloudCpiB
     throw unavailableOnServer(error, CPI_NOT_AVAILABLE, [404, 503]);
   }
   const board = validateCpiBoard(payload);
-  if (board.status === "unavailable" || !board.release.period || !board.rows.length) throw new Error(CPI_NOT_AVAILABLE);
+  // The server's source did not answer this time: a saved copy answers, as it does a 5xx.
+  if (board.status === "unavailable") throw sourceDidNotAnswer(CPI_NOT_AVAILABLE);
+  if (!board.release.period || !board.rows.length) throw new Error(CPI_NOT_AVAILABLE);
   return board;
 }
 

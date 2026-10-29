@@ -17,9 +17,10 @@ export interface PluginCacheResult<T> {
  * `result`, or the failure of the refresh it stands in for when a saved copy
  * may not answer for it. A saved copy covers only a failure asking again may
  * get past (`isTransientFailure`: no connection, a timeout, a rate-limited or
- * overloaded server); a refusal (another 4xx, such as a series no longer
- * served or a signed-out session) and an answer that failed validation are
- * thrown, so they show as the errors they are instead of as old data.
+ * overloaded server, a reply whose source did not answer this time); a
+ * refusal (another 4xx, such as a series no longer served or a signed-out
+ * session) and an answer that failed validation are thrown, so they show as
+ * the errors they are instead of as old data.
  */
 export function savedCopyForTransientFailure<R extends { source?: PluginCacheResult<unknown>["source"]; error?: unknown }>(result: R): R {
   if (result.source === "stale-fallback" && !isTransientFailure(result.error)) throw result.error;
