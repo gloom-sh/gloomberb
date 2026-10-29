@@ -86,7 +86,36 @@ jobs:
           path: artifacts/windows-cli-verification
 
       - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: artifacts/stable-win-x64-GloomSetup.exe
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: gloomberb-windows-x64-package
           path: artifacts/*
+
+  # Windows on Arm runs the x64 app under emulation, where a build can open its
+  # window and crash seconds later while it runs fine on x64.
+  desktop-arm:
+    needs: desktop
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: installer
+
+      - name: Open the installed app and check it stays up
+        shell: pwsh
+        run: ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label arm64 -Seconds 90
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-stays-up
+          path: artifacts/windows-stays-up
