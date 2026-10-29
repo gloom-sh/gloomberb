@@ -14,8 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [control, no-jit, chromium-watchers, no-gpu]
-        attempt: [1, 2]
+        variant: [control, no-gpu-watchdog, in-process-gpu]
+        attempt: [1, 2, 3]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -27,9 +27,8 @@ jobs:
           Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
           $Flags = ""
           switch ("${{ matrix.variant }}") {
-            "no-jit" { $env:BUN_JSC_useJIT = "0" }
-            "chromium-watchers" { $Flags = "disable-features=VizDisplayCompositor,EnableHangWatcher;disable-stack-profiler" }
-            "no-gpu" { $Flags = "disable-gpu;disable-gpu-compositing" }
+            "no-gpu-watchdog" { $Flags = "disable-gpu-watchdog" }
+            "in-process-gpu" { $Flags = "in-process-gpu" }
           }
           $Failed = @()
           foreach ($Launch in 1, 2) {

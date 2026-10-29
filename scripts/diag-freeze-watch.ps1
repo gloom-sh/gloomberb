@@ -12,7 +12,7 @@ while ((Get-Date) -lt $Deadline) {
   $Quiet = ((Get-Date) - (Get-Item -LiteralPath $Trace).LastWriteTime).TotalMilliseconds
   if ($Quiet -lt 2500) { continue }
   Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) heartbeat quiet for $([int]$Quiet) ms, pid $($Bun.ProcessId); snapshotting"
-  & $ProcDump -accepteula -n 2 -s 3 $Bun.ProcessId $Out 2>&1 | Out-File -Append $Log
+  & $ProcDump -accepteula -mc 1000 -n 3 -s 2 $Bun.ProcessId $Out 2>&1 | Out-File -Append $Log
   Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) snapshots done"
   break
 }

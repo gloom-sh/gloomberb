@@ -101,6 +101,23 @@ if ($AddChromiumFlag) {
 }
 
 $Started = Get-Date
+# Repro only: every exit of the app's programs with its exit code, in order.
+$Stops = Join-Path $Evidence "process-stops.txt"
+$StopWatcher = Start-Job -ArgumentList $Stops -ScriptBlock {
+  param($Path)
+  Register-CimIndicationEvent -ClassName Win32_ProcessStopTrace -SourceIdentifier stops
+  while ($true) {
+    $Event = Wait-Event -SourceIdentifier stops -Timeout 2
+    if ($Event) {
+      $Stop = $Event.SourceEventArgs.NewEvent
+      if ($Stop.ProcessName -match "bun|launcher") {
+        Add-Content -LiteralPath $Path -Value ("{0:HH:mm:ss.fff} {1} pid {2} exit 0x{3:X8}" -f (Get-Date), $Stop.ProcessName, $Stop.ProcessID, [uint32]$Stop.ExitStatus)
+      }
+      Remove-Event -EventIdentifier $Event.EventIdentifier
+    }
+  }
+}
+Start-Sleep -Seconds 2
 $Output = Join-Path $Evidence "app-stdout.txt"
 $Errors = Join-Path $Evidence "app-stderr.txt"
 if ($Console) {
@@ -123,7 +140,9 @@ for ($Second = 1; $Second -le $Seconds; $Second++) {
   foreach ($Process in $Running) {
     if (-not $Seen.ContainsKey($Process.ProcessId)) {
       $Seen[$Process.ProcessId] = $Process.Name
-      Write-Line ("{0,3} s: {1} started (pid {2}, parent {3})" -f $Second, $Process.Name, $Process.ProcessId, $Process.ParentProcessId)
+      $Type = if ($Process.CommandLine -match "--type=([a-z-]+)") { " type $($Matches[1])" } else { "" }
+      $Service = if ($Process.CommandLine -match "--utility-sub-type=([A-Za-z.]+)") { " $($Matches[1])" } else { "" }
+      Write-Line ("{0,3} s: {1} started (pid {2}, parent {3}){4}{5}" -f $Second, $Process.Name, $Process.ProcessId, $Process.ParentProcessId, $Type, $Service)
     }
   }
   foreach ($ProcessId in @($Seen.Keys)) {
@@ -167,6 +186,11 @@ foreach ($Root in @($Folder, $env:LOCALAPPDATA, $env:APPDATA, $env:TEMP)) {
     }
 }
 Get-ChildItem -LiteralPath $DumpDir -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Line "minidump $($_.Name), $($_.Length) bytes" }
+
+Start-Sleep -Seconds 3
+Stop-Job $StopWatcher -ErrorAction SilentlyContinue
+Remove-Job $StopWatcher -Force -ErrorAction SilentlyContinue
+if (Test-Path -LiteralPath $Stops) { Get-Content -LiteralPath $Stops | ForEach-Object { Write-Line "stop: $_" } }
 
 # Leave nothing running for the next install.
 foreach ($Process in (Get-AppProcesses $Folder)) {
