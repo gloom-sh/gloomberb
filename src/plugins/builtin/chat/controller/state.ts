@@ -46,12 +46,34 @@ export interface PersistedTranscript {
   messages: ChatMessage[];
 }
 
+/** An unread message for you: who sent it, and when. */
+export interface UnreadMessageForYou {
+  /** Null for a DM whose unread messages are not on this device: only the sender is known. */
+  messageId: string | null;
+  senderId: string;
+  /** The sender's username, or their name without one. */
+  senderName: string;
+  /** When it was sent, in ms; zero when not known. */
+  at: number;
+}
+
 /** Who the unread messages of one channel are from, by account id. */
 export interface ChannelUnreadPeople {
   /** Everyone who sent an unread message there. */
   senders: string[];
-  /** The ones among them with an unread message that mentions you. */
+  /** The ones among them with an unread message that mentions you or replies to you. */
   mentioners: string[];
+  /**
+   * The newest unread message for you: in a DM or group chat the newest
+   * unread message, elsewhere the newest that mentions or replies to you.
+   * Null when none is known on this device.
+   */
+  latestForYou: UnreadMessageForYou | null;
+  /**
+   * How many unread messages are for you: every one in a DM or group chat,
+   * the ones known to mention or reply to you elsewhere.
+   */
+  forYouCount: number;
 }
 
 export interface ChatControllerSnapshot {
@@ -83,7 +105,8 @@ export interface ChatControllerSnapshot {
   unreadMentionCount: number;
   /**
    * Who sent the unread messages of each channel with any, by channel id: what
-   * the app badge counts people from. Empty unless the badge asked for it
+   * the app badge counts people from and the status bar names them from.
+   * Empty unless one of them asked for it
    * ({@link ChatController.trackUnreadPeople}). A channel whose unread messages
    * are not on this device yet lists only the ones that are, until they load.
    */

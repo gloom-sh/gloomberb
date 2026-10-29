@@ -165,6 +165,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M7.3 2.9l1.8 1.8" stroke="currentColor" strokeWidth="1.1" />
     </>
   ),
+  // An envelope: a message written to you.
+  mail: (
+    <>
+      <rect x="1.5" y="2.75" width="9" height="6.5" rx="1.1" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M2 3.4 6 6.5l4-3.1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

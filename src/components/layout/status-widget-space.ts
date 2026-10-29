@@ -53,6 +53,15 @@ export function usePublishStatusWidgetRoom(columns: number): void {
   }, []);
 }
 
+/**
+ * Extra columns the other widgets claim, for a widget that sizes itself to
+ * what they leave rather than run into them.
+ */
+export function useOtherStatusWidgetClaims(id: string): number {
+  const others = () => claimedColumns() - (claims.get(id) ?? 0);
+  return useSyncExternalStore(subscribe, others, others);
+}
+
 /** The columns the widgets can use, as the status bar last published them. */
 export function useStatusWidgetRoom(): number {
   return useSyncExternalStore(subscribe, () => room, () => room);

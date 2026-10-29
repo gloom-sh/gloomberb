@@ -2136,17 +2136,19 @@ In chat, a Gloom share link is a chip instead of an address: the share's title a
 
 A reply, a mention, a direct or group message, or a message in a channel whose notifications you turned on shows a toast while the app is in front, and a desktop notification when it is not. A message you have already read, on this device or another, never notifies again, on your phone or by email either.
 
+- **Status bar:** while the app is in front, a DM, a group message, a mention or a reply shows in the status bar instead of a toast, for about nine seconds: the sender's name in a chip, then the message on one line. It then folds into the chip, which stays until you read it: `✉ alex` for a DM or group message, `@ sam` for a mention or a reply, `✉ alex +2` when others want you too. A click opens that conversation at the message. Where the bar has no room for the message, as in a narrow window, the toast shows instead; the chip drops the count, then the name, before it goes. A conversation you are reading never shows there.
+
 - **Phone:** a push about 15 seconds after the message unless you read it in that time.
 - **Email:** with chat emails on, the email for a message nothing else reached goes about two minutes after it, only when you have not read it.
 - Reading a channel on one device clears its unread count and the Dock badge on the others.
 
 ### Unread
 
-The unread count in the status bar opens Unread (also in the command bar): one row per channel with unread messages, the count of a channel that mentions you in green. Counts are your account's, the same on every device. Opening a row shows that channel in your chat pane, and `m` marks everything read.
+The dim count in the status bar, everything unread that the chip does not name (channel messages and missed notices), opens Unread (also in the command bar): one row per channel with unread messages, the count of a channel that mentions you in green. Counts are your account's, the same on every device. Opening a row shows that channel in your chat pane, and `m` marks everything read.
 
 Unread also keeps the price alerts, catalyst alerts, economic release prints and team notices whose toast you may have missed, newest first, the last 300. Opening one selects the price rule in ALRT, opens the catalyst or ECO, or goes where the team card's toast goes. This list is kept on this device only.
 
-**The Dock badge.** In the macOS desktop app the Dock icon counts people, not messages: each person who sent you an unread DM or group message, each person with an unread channel message that mentions you (`@username`), plus every missed notice not yet read. It reads `99+` above 99 and shows nothing at zero, signed out or with Gloom Cloud off.
+**The Dock badge.** In the macOS desktop app the Dock icon counts people, not messages: each person who sent you an unread DM or group message, each person with an unread channel message that mentions you (`@username`) or replies to you, plus every missed notice not yet read. The status bar's chip names the newest of them. It reads `99+` above 99 and shows nothing at zero, signed out or with Gloom Cloud off.
 
 ## Ask Gloom
 
