@@ -11,6 +11,7 @@ const STUDY_FIELDS = [
   "protocolSection.designModule.phases",
   "protocolSection.designModule.enrollmentInfo",
   "protocolSection.conditionsModule.conditions",
+  "protocolSection.armsInterventionsModule.interventions",
   "protocolSection.descriptionModule.briefSummary",
 ].join(",");
 const CLINICAL_TRIALS_API_BASE_URL = "https://clinicaltrials.gov/api/v2";
@@ -45,6 +46,8 @@ export interface ClinicalTrial {
   /** Lead sponsor class, e.g. "INDUSTRY". */
   sponsorClass: string;
   conditions: string[];
+  /** What is tested, in the registry's order: a drug, a device, a procedure; a placebo arm is left out. */
+  interventions: TrialIntervention[];
   summary: string;
   studyType: string;
   enrollment: number | null;
@@ -62,10 +65,16 @@ export interface ClinicalTrial {
   firstSubmitDate: Date | null;
   /** When the registry first posted the study. */
   firstPostDate: Date | null;
-  /** When the registry last posted a change to the study; the list is newest first by it. */
+  /** When the registry last posted a change to the study; the registry hands studies over newest first by it. */
   lastUpdatePostDate: Date | null;
   /** Deep link to the study page for [o]pen. */
   url: string;
+}
+
+interface TrialIntervention {
+  name: string;
+  /** Raw registry type, e.g. "DRUG" or "DEVICE". */
+  type: string;
 }
 
 export type DatePrecision = "year" | "month" | "day";
@@ -107,6 +116,28 @@ function asDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/** Arms that test nothing: a placebo, a sham or the usual treatment. */
+const CONTROL_INTERVENTION = /^(?:placebo|sham|vehicle|saline|standard (?:of )?care|usual care|no intervention|control)\b/i;
+
+function parseInterventions(value: unknown): TrialIntervention[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const name = asString(record.name);
+    if (!name || CONTROL_INTERVENTION.test(name)) return [];
+    return [{ name, type: asString(record.type) ?? "" }];
+  });
+}
+
+/** Kinds of intervention that are a product being tested, ahead of a device, a procedure or a behaviour. */
+const PRODUCT_TYPES = new Set(["DRUG", "BIOLOGICAL", "COMBINATION_PRODUCT", "GENETIC", "DIETARY_SUPPLEMENT"]);
+
+/** The one intervention the list names: the first drug or biologic, else the first thing tested; empty when none. */
+export function trialDrug(trial: Pick<ClinicalTrial, "interventions">): string {
+  return (trial.interventions.find((item) => PRODUCT_TYPES.has(item.type)) ?? trial.interventions[0])?.name ?? "";
+}
+
 function moduleOf(record: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = record[key];
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -144,6 +175,7 @@ export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
   const conditionsModule = moduleOf(protocol, "conditionsModule");
   const description = moduleOf(protocol, "descriptionModule");
   const enrollmentInfo = moduleOf(design, "enrollmentInfo");
+  const armsInterventions = moduleOf(protocol, "armsInterventionsModule");
 
   const start = trialDate(moduleOf(statusModule, "startDateStruct"));
   const primaryCompletion = trialDate(moduleOf(statusModule, "primaryCompletionDateStruct"));
@@ -161,6 +193,7 @@ export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
     sponsor: asString(leadSponsor.name) ?? "Unknown sponsor",
     sponsorClass: asString(leadSponsor.class) ?? "",
     conditions: asStringArray(conditionsModule.conditions),
+    interventions: parseInterventions(armsInterventions.interventions),
     summary: asString(description.briefSummary) ?? "",
     studyType: asString(design.studyType) ?? "",
     enrollment: asCount(enrollmentInfo.count),
@@ -204,6 +237,8 @@ export interface StudiesQuery {
   phases?: readonly string[];
   /** Lead sponsor classes, any of, e.g. `INDUSTRY`. */
   sponsorClasses?: readonly string[];
+  /** Lead sponsor classes to leave out, e.g. `INDUSTRY` for everything but companies. */
+  excludedSponsorClasses?: readonly string[];
   pageSize?: number;
   /** The previous page's `nextPageToken`; without it, the first page. */
   pageToken?: string;
@@ -222,10 +257,16 @@ function areaClause(area: string, values: string[]): string | null {
   return values.length === 1 ? `AREA[${area}]${values[0]}` : `AREA[${area}](${values.join(" OR ")})`;
 }
 
+/** `NOT AREA[LeadSponsorClass]INDUSTRY`, or `NOT AREA[LeadSponsorClass](NIH OR FED)` for several. */
+function excludeClause(area: string, values: string[]): string | null {
+  const clause = areaClause(area, values);
+  return clause ? `NOT ${clause}` : null;
+}
+
 /**
  * Build the v2 studies URL. Pure: no network, no API key. The most recently
- * updated studies come first, the order the pane lists them in, so each page
- * continues the one before it. Filters go to the registry with the search, so
+ * updated studies come first, so each page continues the one before it; the
+ * pane orders what has loaded. Filters go to the registry with the search, so
  * every page it returns already matches them.
  */
 export function buildStudiesUrl(query: StudiesQuery = {}): string {
@@ -240,7 +281,11 @@ export function buildStudiesUrl(query: StudiesQuery = {}): string {
   if (sponsor) params.set("query.spons", sponsor);
   const statuses = codes(query.statuses);
   if (statuses.length > 0) params.set("filter.overallStatus", statuses.join(","));
-  const advanced = [areaClause("Phase", codes(query.phases)), areaClause("LeadSponsorClass", codes(query.sponsorClasses))]
+  const advanced = [
+    areaClause("Phase", codes(query.phases)),
+    areaClause("LeadSponsorClass", codes(query.sponsorClasses)),
+    excludeClause("LeadSponsorClass", codes(query.excludedSponsorClasses)),
+  ]
     .filter((clause): clause is string => clause !== null);
   if (advanced.length > 0) params.set("filter.advanced", advanced.join(" AND "));
   if (query.pageToken) params.set("pageToken", query.pageToken);
