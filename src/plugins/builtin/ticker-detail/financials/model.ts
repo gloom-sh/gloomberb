@@ -513,7 +513,7 @@ const OUTSTANDING_COUNT_FIELDS = ["basicShares", "dilutedShares", "shareIssued",
  * typical count (IAG's 4,642 for Q3 2025, millions read as shares, which shows
  * as 0.00 bn and a fall of 100%). They are missing, not a value to grow from.
  */
-export function withoutImpossibleShareCounts(
+function withoutImpossibleShareCounts(
   annualStatements: FinancialStatement[],
   quarterlyStatements: FinancialStatement[],
 ): { annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] } {
