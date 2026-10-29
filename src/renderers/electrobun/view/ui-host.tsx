@@ -40,6 +40,13 @@ export const webRendererHost: RendererHost = {
     if (action === "close") await flushUsageCounts({ timeoutMs: 1_000 });
     await backendRequest("host.windowControl", { action });
   },
+  startWindowResize(edge) {
+    // Windows resizes the window itself, as it does from a native frame's edge.
+    if (detectPlatform() !== "win32") return;
+    void backendRequest("host.startWindowResize", { edge }).catch((error: unknown) => {
+      console.error("[desktop] could not start resizing the window", error instanceof Error ? error.message : String(error));
+    });
+  },
   async openExternal(url) {
     return await backendRequest("host.openExternal", { url });
   },

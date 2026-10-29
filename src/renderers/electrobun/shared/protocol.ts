@@ -60,6 +60,9 @@ export interface DesktopRestartMessage {
 
 export type DesktopWindowControlAction = "minimize" | "toggle-maximize" | "close";
 
+/** The window edges the page pulls itself: the frame's own stop under its top. */
+export type DesktopWindowResizeEdge = "top" | "top-left" | "top-right";
+
 export type DesktopContextMenuItem =
   | { type: "divider" }
   | {
@@ -214,6 +217,8 @@ interface DesktopBackendRequestMap {
   "host.windowFullscreen": { request: null; response: boolean };
   /** Windows: moves the window with the pointer through the system's own move loop. */
   "host.startWindowDrag": { request: null; response: null };
+  /** Windows: resizes the window from its top edge through the system's own size loop. */
+  "host.startWindowResize": { request: { edge: DesktopWindowResizeEdge }; response: null };
   "host.openExternal": { request: { url: string }; response: boolean };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };

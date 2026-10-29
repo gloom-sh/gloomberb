@@ -711,6 +711,8 @@ export interface RendererHost {
   requestExit(): void;
   startWindowDrag?(): Promise<void> | void;
   controlWindow?(action: "minimize" | "toggle-maximize" | "close"): Promise<void> | void;
+  /** From a press on the page's top edge, where its own window frame has none to pull. */
+  startWindowResize?(edge: "top" | "top-left" | "top-right"): Promise<void> | void;
   /**
    * Opens a link in the person's browser. Resolves false when no browser could
    * be shown from here (a terminal over SSH, or no opener installed), so the

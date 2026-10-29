@@ -565,6 +565,7 @@ export class DesktopBackend {
       case "host.windowControl":
       case "host.windowFullscreen":
       case "host.startWindowDrag":
+      case "host.startWindowResize":
       case "host.openExternal":
       case "host.copyText":
       case "host.focusWindow":
