@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electrobun/bun";
 import {
+  applyNativeWindowFrame,
   applyWindowMoveEvent,
   applyWindowResizeEvent,
   updateWindowFrameCache,
@@ -9,6 +10,7 @@ import {
 import type { WindowFrame, WindowMinimumSize } from "./frame";
 import { applyWindowsCustomChrome } from "./windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./windows-icons";
+import { fitPageToClientArea } from "./windows-native";
 
 type DesktopTitleBarStyle = "default" | "hidden" | "hiddenInset";
 type DesktopWindowRenderer = "native" | "cef";
@@ -20,8 +22,13 @@ type DesktopWindowStyleMask = {
   FullSizeContentView?: boolean;
 };
 
+/**
+ * No native title bar: the header is the title bar. On Windows "hidden" is a
+ * bare popup with no frame to resize by, which Windows also takes for
+ * fullscreen; "hiddenInset" keeps the sizing frame and cuts out the caption.
+ */
 function desktopTitleBarStyle(): DesktopTitleBarStyle {
-  return process.platform === "darwin" ? "hiddenInset" : "hidden";
+  return process.platform === "linux" ? "hidden" : "hiddenInset";
 }
 
 function desktopWindowRenderer(): DesktopWindowRenderer {
@@ -41,6 +48,22 @@ function desktopWindowStyleMask(): DesktopWindowStyleMask {
     Titled: false,
     FullSizeContentView: true,
   };
+}
+
+const APP_VIEW_URL = "views://mainview/index.html";
+
+/**
+ * Electrobun's Windows webview takes a page load that starts while Ctrl is
+ * down for a Ctrl+click on a link: it cancels the load and asks for a new
+ * window instead. A window opened from a Ctrl chord, as Ctrl+Shift+O pops a
+ * pane out, stayed blank. Its page is loaded again, which Electrobun lets
+ * through within half a second of the one it cancelled.
+ */
+function loadAgainWhenTakenForCtrlClick(window: BrowserWindow): void {
+  (window.webview as { on: (name: string, handler: (event: unknown) => void) => void }).on("new-window-open", (event) => {
+    const detail = (event as { data?: { detail?: { url?: unknown } } }).data?.detail;
+    if (detail?.url === APP_VIEW_URL) window.webview.loadURL(APP_VIEW_URL);
+  });
 }
 
 interface AppWindowOptions {
@@ -63,7 +86,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   const window = new BrowserWindow({
     title,
     frame,
-    url: "views://mainview/index.html",
+    url: APP_VIEW_URL,
     ...(preload ? { preload } : {}),
     renderer: desktopWindowRenderer(),
     rpc,
@@ -74,13 +97,29 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   });
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
+  if (process.platform === "win32") {
+    loadAgainWhenTakenForCtrlClick(window);
+    // The page exists once it has loaded; until then there is nothing to fit.
+    window.webview.on("dom-ready", () => {
+      fitPageToClientArea(window.ptr);
+    });
+  }
   updateWindowFrameCache(window, frame, minSize);
+  const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
-    applyWindowMoveEvent(window, event);
+    if (readsNativeFrame) {
+      if (!applyNativeWindowFrame(window, minSize)) return;
+    } else {
+      applyWindowMoveEvent(window, event);
+    }
     onFrameChange?.();
   });
   (window as any).on?.("resize", (event: WindowResizeEvent) => {
-    applyWindowResizeEvent(window, event, minSize);
+    if (readsNativeFrame) {
+      if (!applyNativeWindowFrame(window, minSize)) return;
+    } else {
+      applyWindowResizeEvent(window, event, minSize);
+    }
     onFrameChange?.();
   });
   return window;

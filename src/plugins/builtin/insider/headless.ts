@@ -20,7 +20,7 @@ import {
 } from "./model";
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
-import { SEC_FILINGS } from "../shared/report-freshness";
+import { SEC_FILING_ROWS } from "../shared/report-freshness";
 import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -329,7 +329,7 @@ export function createInsiderHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
-    freshness: { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" },
+    freshness: { ...SEC_FILING_ROWS, basis: "Form 4 filings" },
     argument: {
       kind: "ticker",
       optional: true,

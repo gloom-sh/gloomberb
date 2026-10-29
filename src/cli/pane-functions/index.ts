@@ -36,8 +36,8 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
-import { CLI_ERROR_CODE, failWithError, isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
-import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
+import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, unreachableError } from "../errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables, type CliReportTables } from "../report-tables";
@@ -264,7 +264,7 @@ export function reportFailure(
   const reasons = [...data.errors ?? [], ...typeof data.reason === "string" ? [data.reason] : []];
   const unreached = reasons.filter((reason) => reason.includes(DATA_SERVICE_UNREACHABLE_MESSAGE));
   if (unreached.length > 0 && (data.empty || data.unavailableSymbols.length > 0)) {
-    return { code: SERVICE_UNREACHABLE_CODE, message: `${asked}: ${unreached.join("; ")}.`.replace(/\.\.$/, "."), retryable: true };
+    return unreachableError(`${asked}: ${unreached.join("; ")}.`.replace(/\.\.$/, "."));
   }
   if (!data.empty && !(noListing && noValues) && !(failsWithoutData && foundNothing(data))) return null;
   const unavailable = data.unavailableSymbols.length > 0 ? `no data for ${data.unavailableSymbols.join(", ")}` : "no data";
@@ -618,6 +618,9 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
     const message = error instanceof Error ? error.message : String(error);
+    // Nothing answered: said as every command says it, with what to check.
+    if (message.includes(DATA_SERVICE_UNREACHABLE_MESSAGE)) failUnreachable(message);
+    if (isNetworkFailure(error)) failUnreachable();
     // A failure the command already worded keeps its advice line.
     const stated = error instanceof Error ? (error as Error & { details?: unknown }).details : undefined;
     const details = typeof stated === "string" ? stated : undefined;

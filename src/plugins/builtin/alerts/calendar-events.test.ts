@@ -54,6 +54,14 @@ test("a release named by some of its words is the headline one, with the others 
   expect(cpi.kind === "match" && [cpi.choice.name, cpi.choice.next]).toEqual(["Inflation Rate YoY", null]);
 });
 
+test("the Fed's rate is found under the name econ shows it by, and kept under the feed's", () => {
+  const fed = [...calendar, row("2026-10-28T18:00:00.000Z", "US", "high", "Federal Funds Rate", { forecast: "4.00%", prior: "4.00%" })];
+  for (const query of ["Federal Funds Rate (upper bound)", "Federal Funds Rate"]) {
+    const match = matchCalendarEvent(query, "US", fed, now);
+    expect(match.kind === "match" && match.choice.name, query).toBe("Federal Funds Rate");
+  }
+});
+
 test("a name in several countries asks which, and a country narrows it", () => {
   const pmi = matchCalendarEvent("PMI", null, calendar, now);
   expect(pmi.kind === "countries" && names(pmi.choices)).toEqual(["NBS Manufacturing PMI (CN)", "ISM Manufacturing PMI (US)", "Ivey PMI s.a (CA)"]);

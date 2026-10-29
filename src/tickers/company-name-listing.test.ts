@@ -100,6 +100,40 @@ test("with quoted, a listing with no quote gives way to the next of its company'
     .toMatchObject({ symbol: "SIE", exchange: "XETRA" });
 });
 
+test("with quoted, a company that moved off its US line is followed to the symbol it took before any line abroad, and says so", async () => {
+  // Trimmed from the service's answers on 2026-10-28, after Getty Images' NYSE line became GETYQ.
+  const getty = { "GETTY IMAGES": [
+    "GETY | Getty Images Holdings, Inc. | NYSE | Common Stock | home",
+    "GETY | Getty Images Holdings Inc | PNK | EQUITY",
+    "GETYQ | Getty Images Holdings, Inc. | OTC | Common Stock",
+    "L2S | Getty Images Holdings, Inc. | MUNICH | Common Stock",
+  ] };
+  const asked: string[] = [];
+  const service = {
+    ...answering(getty),
+    // Munich still quotes the old shares; the NYSE line has none.
+    getQuote: async (symbol: string, exchange?: string): Promise<Quote> => {
+      if (`${symbol}:${exchange}` !== "L2S:MUNICH") throw new Error(`No quote provider available for ${symbol}`);
+      return { symbol, price: 0.019, currency: "EUR", change: 0, changePercent: 0, lastUpdated: 1 };
+    },
+  };
+  const movedLine = async ({ symbol, exchange, quote, name }: { symbol: string; exchange: string; quote: Quote | null; name: string | null }) => {
+    asked.push(`${symbol}:${exchange}:${quote ? "quoted" : "none"}:${name}`);
+    return symbol === "GETY" ? { symbol: "GETYQ", note: "GETY became GETYQ on 2026-10-22" } : null;
+  };
+  expect(await findListingOfCompanyName(service, "getty images", { quoted: true, movedLine })).toEqual({
+    symbol: "GETYQ", exchange: "", name: "Getty Images Holdings, Inc.", moved: "GETY became GETYQ on 2026-10-22",
+  });
+  expect(asked).toEqual(["GETY:NYSE:none:Getty Images Holdings, Inc."]);
+  // With no change to follow, the next line with a quote, as before.
+  expect(await findListingOfCompanyName(service, "getty images", { quoted: true, movedLine: async () => null })).toMatchObject({ symbol: "L2S", exchange: "MUNICH" });
+  // A first line abroad is not a US line a company leaves for another symbol: no lookup.
+  asked.length = 0;
+  const volvo = { "VOLVO AB": ["VOLV | Volvo AB (B) | WSE | Common Stock", "VOLV.B | Volvo AB | SFB | Common Stock"] };
+  await findListingOfCompanyName({ ...answering(volvo), getQuote: service.getQuote }, "VOLVO AB", { quoted: true, movedLine });
+  expect(asked).toEqual([]);
+});
+
 test("a company's name is its own common stock on its US line, never a subsidiary sharing the word, a line abroad, or a preferred or note", async () => {
   // Search order puts the subsidiary and the line abroad first.
   const whirlpool = [

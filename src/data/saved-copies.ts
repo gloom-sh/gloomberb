@@ -56,6 +56,14 @@ export function savedCopyMark(value: unknown): object {
   return savedAt != null ? { [SAVED_AT]: savedAt } : {};
 }
 
+/**
+ * The refresh failure a command still prints for `result`: none when a saved
+ * copy answered for it (`servedFromSavedCopy`), whose closing line says so.
+ */
+export function unansweredRefreshError(result: { refreshError?: string | null } | null | undefined): string | null {
+  return result?.refreshError && savedCopyAt(result) == null ? result.refreshError : null;
+}
+
 /** When `value` itself was saved, if it is a saved copy served after a failed refresh; null otherwise. */
 export function savedCopyAt(value: unknown): number | null {
   const savedAt = value && typeof value === "object" ? (value as Marked)[SAVED_AT] : undefined;

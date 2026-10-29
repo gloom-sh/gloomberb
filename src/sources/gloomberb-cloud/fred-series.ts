@@ -42,6 +42,8 @@ export interface FredSeriesCacheEntry {
 export interface FredSeriesLoadResult extends FredSeriesCacheEntry {
   source: "cache" | "network" | "stale-fallback";
   refreshError?: string;
+  /** What the failed refresh threw, when a saved copy answered (`stale-fallback`). */
+  error?: unknown;
 }
 
 const cache = createPluginCache<FredSeriesData>({
@@ -197,6 +199,6 @@ export async function loadCachedFredSeries(
   if (!options?.force && !pending && cached && !cached.stale) return { ...cached, source: "cache" };
   const result = await cache.load(cacheKey(request), loader, pending ? { ...options, force: true } : options);
   // An early re-read is opportunistic: a failure keeps the still-fresh copy as it was.
-  if (pending && result.refreshError && cached && !cached.stale && !options?.force) return { ...cached, source: "cache" };
+  if (pending && result.source === "stale-fallback" && cached && !cached.stale && !options?.force) return { ...cached, source: "cache" };
   return withFredSourceFreshness(result);
 }

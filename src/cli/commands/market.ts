@@ -3,6 +3,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
+import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
@@ -165,6 +166,7 @@ import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
 import {
+  closestStoriesReason,
   commodityNewsRoute,
   commonWordCandidate,
   METALS_NEWS_TOPIC,
@@ -179,6 +181,7 @@ import {
   noMetalStoriesMessage,
   noStoriesMessage,
   quotedSearchCommand,
+  searchClosestNewsStories,
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
@@ -189,7 +192,7 @@ import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
-import { depositaryPairText, isReceiptSide, listingDepositaryPair } from "../../market-data/depositary-pair";
+import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -199,6 +202,7 @@ import {
   cloudNewsFreshness,
   cloudRealtimeAccess,
   REPORTED_DATA,
+  SEC_FILING_ROWS,
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
@@ -242,7 +246,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
-import { isYieldIndexSymbol } from "../index-roots";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
@@ -913,7 +917,7 @@ function corporateActionRows(data: CorporateActionsData) {
     ...declaredDividends(data).map((event) => ({
       type: "dividend",
       date: event.exDate,
-      detail: `declared ${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
+      detail: `declared ${event.special ? "special " : ""}${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
         + (event.payDate ? `, payable ${event.payDate}` : ""),
     })),
     ...data.splits.map((event) => ({
@@ -1105,8 +1109,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const quiet = ended ? null : noPrintsTodayText(row.quote, now);
         return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
       }),
-      // A receipt and its home line each say the ratio, as `ticker` does.
+      // A receipt and its home line each say the ratio, as `ticker` does; a CEDEAR names itself in its own.
       ...data.flatMap((row) => {
+        const cedear = listingCedearRatio({ quote: row.quote });
+        if (cedear) return [`${cedearRatioText(cedear)}.`];
         const pair = listingDepositaryPair({ quote: row.quote });
         return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
       }),
@@ -1932,26 +1938,29 @@ const NEWS_COLUMNS = [
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty, commodity = true, failure, ticker = null }: {
+  { reason, empty, commodity = true, failure, ticker = null, closest = false }: {
     reason?: string;
     empty?: string;
     commodity?: boolean;
     failure?: string;
     /** The listing a coin pair's search stands in for. */
     ticker?: string | null;
+    /** No story has every word: these are the ones with the most. */
+    closest?: boolean;
   },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
   const searched = failure === undefined;
   const named = searched && commodity && articles.length === 0 && commodityNamedIn(text) !== null;
   const route = named ? await commodityNewsRoute(text) : null;
+  const closestReason = closest && articles.length > 0 ? closestStoriesReason(text) : null;
   ctx.printResult({
     data: articles,
     ...(searched ? {} : { warnings: [`Searching stories for "${text}" failed: ${failure}`] }),
-    metadata: { ticker, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
+    metadata: { ticker, search: text, feed: null, ...(closestReason ? { match: "closest" } : {}), ...(route ? { futuresNews: route.command } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
-    heading: newsSearchHeading(text, reason),
+    heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
     columns: NEWS_COLUMNS,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
@@ -2013,7 +2022,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
-    await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
+    const answer = await searchClosestNewsStories(text, limit);
+    await printNewsSearch(text, answer.found, { closest: answer.closest }, ctx);
     return;
   }
   // A metal's future or name is its market's news, not a company's: GOLD in capitals stays Gold.com's.
@@ -2193,7 +2203,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           ...listingMetadata(resolved), ...(form ? { form } : {}),
           ...(page ? { announcementsPage: page.url } : {}),
         },
-        freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
+        freshness: rowsFreshness(filingRows(filings), SEC_FILING_ROWS),
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
         heading: listingHeading(resolved),
@@ -2205,7 +2215,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         empty: [form ? `No ${form} filings found for ${listingTitle(resolved)}.`
           : identity ? noSecReportsNotice(resolved)
           : `No SEC filings found for ${listingTitle(resolved)}.`, pageLine].filter(Boolean).join("\n"),
-        ...(pageLine ? { footnote: pageLine, exportNotes: [pageLine] } : {}),
+        ...filingsFootnote(pageLine, filings[0]?.companyFrom),
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -2221,6 +2231,16 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       }, { rows: filingRows, columns: FILING_COLUMNS, textColumns: FILING_TEXT_COLUMNS, empty: [message, pageLine].filter(Boolean).join("\n") });
     }
   });
+}
+
+/**
+ * The lines `filings` prints under its rows and CSV writes as notes: an ASX
+ * listing's announcements page, and whose filings a foreign line shows when
+ * they are its company's home line's.
+ */
+function filingsFootnote(pageLine: string | null | undefined, companyFrom: CompanyFrom | undefined): { footnote?: string; exportNotes?: string[] } {
+  const lines = [...(pageLine ? [pageLine] : []), ...companyDataNotes(companyFrom)];
+  return lines.length ? { footnote: lines.join("\n"), exportNotes: lines } : {};
 }
 
 /**
@@ -2393,7 +2413,8 @@ async function printBeneficialOwners(
     heading: `${listingHeading(identity)}${cliStyles.muted(beneficialListFacts(payload, form, rows.length, history).map((fact) => `  ·  ${fact}`).join(""))}`,
     // Text draws each column as the HDS report does; CSV and JSON keep the raw values.
     textColumns: BENEFICIAL_REPORT_COLUMNS.map((column) => ({ ...column, format: column.textFormat ?? column.format })),
-    ...(legend ? { footnote: legend } : {}),
+    // A foreign line's owners read from its company's home line say whose.
+    ...(legend || payload.companyFrom ? { footnote: [legend, ...companyDataNotes(payload.companyFrom)].filter(Boolean).join("\n") } : {}),
     columns: [
       ...BENEFICIAL_REPORT_COLUMNS.map(({ key, header, align }) => ({ key, header, ...(align ? { align } : {}) })),
       { key: "otherPersons", header: "Other persons" },
@@ -2494,7 +2515,7 @@ async function runHolders(
     const columns = holderReportColumns(shownRows, valueCurrency);
     // Dated as HDS dates it: by the list's as-of; an insider report of Form 4 filings alone as INS dates it, by the newest.
     const freshness = form4Only
-      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" })
+      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILING_ROWS, basis: "Form 4 filings" })
       : rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
@@ -2564,6 +2585,8 @@ async function runHolders(
         insiderCommand ? insiderSummary(data, listing, identity, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
+      // Holders read from the company's home line say whose; the SEC index's are the listing's own.
+      ...(!indexed && data.companyFrom ? { footnote: companyDataNotes(data.companyFrom).join("\n") } : {}),
     });
   });
 }

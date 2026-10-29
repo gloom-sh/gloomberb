@@ -1668,6 +1668,8 @@ export const zhTW: Record<string, string> = {
   "Guides": "指南",
   "Academy": "學院",
   "offline, saved copy": "離線，已儲存的副本",
+  "company data from {listing}": "公司資料來自 {listing}",
+  "from {listing}": "來自 {listing}",
   "Open in Browser": "在瀏覽器中開啟",
   "No docs match \"{query}\".": "沒有符合「{query}」的文件。",
   "No docs for {name} yet.": "{name} 尚無文件。",

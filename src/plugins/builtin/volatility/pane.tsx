@@ -107,7 +107,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     await coordinator.loadQuotesBatch(quiet.map((target) => ({ symbol: target.symbol, exchange: "" })), { forceRefresh: true });
   }, [liveTargets]);
   // With streaming off the quote layer already polls every minute.
-  useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveStreaming && liveTargets.length > 0);
+  const levelRefresh = useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveStreaming && liveTargets.length > 0);
   const liveLevels = useThrottledValue(useMemo(() => {
     const levels = new Map<VolatilityIndexId, VolatilityLiveLevel>();
     for (const definition of VOLATILITY_INDICES) {
@@ -139,7 +139,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   }, [data?.board, sort, loading]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   useVolatilityEvidence(result, tab, selected, resource.loading);
-  const notices = [resource.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
+  const notices = [resource.error, levelRefresh.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
     ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
   // From the tab the press finds, so the footer's hint never holds an old one.
@@ -171,8 +171,11 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
-    ...(asOf ? [{ id: "date", parts: [{ text: observationTime ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
+    // One fact, "close 2026-09-25": the basis and its date read as one segment.
+    ...(data || asOf ? [{ id: "basis", parts: [
+      ...(data ? [{ text: observationBasis, tone: "muted" as const }] : []),
+      ...(asOf ? [{ text: observationTime ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] : []),
+    ] }] : []),
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, cycleTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);

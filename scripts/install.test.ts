@@ -247,7 +247,7 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).not.toMatch(/gloomberb-linux-(x64|arm64)\.gz/);
     // Downloads fail here, as they would against a release without musl builds.
     expect(run.exitCode).not.toBe(0);
-    expect(run.stderr).toContain("bun install -g gloomberb");
+    expect(run.stderr).toContain("bun install -g @gloom-sh/terminal");
   });
 });
 
@@ -557,6 +557,7 @@ describe("install.sh on an Apple Silicon Mac", () => {
   // while the new one is taken.
   test.skipIf(!hasZip).each([
     ["this app's", "com.vincelwt.gloomberb", ["Gloom.app"], "Gloom.app"],
+    ["this app's, under the identifier it moves to", "sh.gloom.desktop", ["Gloom.app"], "Gloom.app"],
     ["another program's", "com.example.gloom", ["Gloom.app", "Gloomberb.app"], "Gloomberb.app"],
   ] as const)("an existing Gloom.app that is %s", async (_, identifier, apps, installedAs) => {
     const run = await runInstall(mac, {

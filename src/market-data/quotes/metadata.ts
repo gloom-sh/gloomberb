@@ -2,6 +2,7 @@ import type { Quote, QuoteMetadata } from "../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { getListingSymbolsToTry } from "../../sources/listing-symbols";
 import { currencyPairCode } from "../../utils/currency-pair";
+import { exchangeLineCoinListing } from "../../utils/crypto-pair";
 
 export function quoteMetadataFromQuote(quote: Quote): QuoteMetadata {
   return {
@@ -44,6 +45,12 @@ export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, load
 
 /** Qualified listings must agree; provider suffix spellings use the existing exact-listing normalizer. */
 export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
+  // A crypto exchange's line of a pair (BTC/GBP on COINBASE PRO) is priced as the crypto venue's listing, BTC-GBP on
+  // CCC, and a quote kept under the line's key is that listing's.
+  const line = exchangeLineCoinListing(symbol, exchange);
+  if (line) return quoteMetadataMatchesTarget(metadata, line.symbol, line.exchange);
+  const quotedLine = exchangeLineCoinListing(metadata.symbol, parsePublicTickerKey(metadata.symbol).exchange ? undefined : metadata.listingExchangeName);
+  if (quotedLine) metadata = { ...metadata, symbol: quotedLine.symbol, listingExchangeName: quotedLine.exchange };
   const target = parsePublicTickerKey(symbol);
   const actual = parsePublicTickerKey(metadata.symbol);
   // An index is one series whatever its venue is called: search files ^VIX under CXI and ^RUT under WCB, while

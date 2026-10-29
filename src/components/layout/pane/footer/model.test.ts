@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -35,7 +35,12 @@ describe("footer hint row", () => {
     const full = "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate";
     const line: PaneFooterSegment = { id: "line", parts: [{ text: full }], variants: [[{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed" }]] };
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale" }] };
-    expect(fitPaneFooterInfo([line, stale], full.length + 6)).toEqual([line, stale]);
+    // The two and the separator between them (" · ").
+    expect(fitPaneFooterInfo([line, stale], full.length + 8)).toEqual([line, stale]);
+    // The status after it gives way before it shortens.
+    const tight = fitPaneFooterInfo([line, stale], full.length + 7);
+    expect(tight[0]).toEqual(line);
+    expect(tight[1]!.parts[0]!.text).toBe("st…");
     const narrow = fitPaneFooterInfo([line, stale], 70);
     expect(narrow.map((segment) => segment.parts[0]!.text)).toEqual(["Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed", "stale"]);
     expect(narrow[0]!.title).toBe(full);
@@ -47,11 +52,40 @@ describe("footer hint row", () => {
     const trade: PaneFooterSegment = { id: "trade", parts: [{ text: "trade" }, { text: "12h" }] };
     expect(fitPaneFooterInfo([contract, quote, trade], 32).map((segment) => segment.id)).toEqual(["contract", "quote"]);
     const line: PaneFooterSegment = { id: "line", parts: [{ text: "Fri 9 Oct close" }, { text: "· 15 min delayed", tone: "muted" }] };
-    const cut = fitPaneFooterInfo([contract, line], 46).at(-1)!;
+    const cut = fitPaneFooterInfo([contract, line], 48).at(-1)!;
     expect(cut.parts).toEqual([{ text: "Fri 9 Oct close" }, { text: "· 15 min…", tone: "muted" }]);
     expect(cut.title).toBe("Fri 9 Oct close · 15 min delayed");
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
     expect(fitPaneFooterInfo([contract, stale], 20).map((segment) => segment.id)).toEqual(["contract", "stale"]);
+  });
+
+  test("segments are set apart by the separator, an icon by one column, and the fit counts both", () => {
+    expect(PANE_FOOTER_SEPARATOR).toBe(" · ");
+    const note: PaneFooterSegment = { id: "note", parts: [{ text: "company data from PBR" }] };
+    const status: PaneFooterSegment = { id: "status", parts: [{ text: "as of 2026-06-30" }] };
+    const warning: PaneFooterSegment = { id: "warning", icon: "warning", parts: [{ text: "!", tone: "warning" }] };
+    expect(separatesPaneFooterSegments(note, status)).toBe(true);
+    expect(separatesPaneFooterSegments(warning, note)).toBe(false);
+    const both = note.parts[0]!.text.length + 3 + status.parts[0]!.text.length;
+    expect(fitPaneFooterInfo([note, status], both)).toEqual([note, status]);
+    expect(fitPaneFooterInfo([note, status], both - 1).at(-1)!.parts[0]!.text).toEndWith("…");
+    // The icon and its one column, then the note.
+    expect(fitPaneFooterInfo([warning, note], 1 + 1 + note.parts[0]!.text.length)).toEqual([warning, note]);
+  });
+
+  test("a note with a shorter form keeps its full text while the status after it can give way", () => {
+    const listed: PaneFooterSegment = { id: "listed", parts: [{ text: "No events listed after Mon Aug 24", tone: "warning" }] };
+    const note: PaneFooterSegment = { id: "note", parts: [{ text: "-- forecast = no consensus yet" }], variants: [[{ text: "no consensus yet" }]] };
+    const updated: PaneFooterSegment = { id: "updated", parts: [{ text: "updated 1m ago" }] };
+    const all = 33 + 3 + 30 + 3 + 14;
+    expect(fitPaneFooterInfo([listed, note, updated], all)).toEqual([listed, note, updated]);
+    // A column short: the update time goes, and the note stays whole.
+    expect(fitPaneFooterInfo([listed, note, updated], all - 9).map((segment) => segment.parts[0]!.text))
+      .toEqual(["No events listed after Mon Aug 24", "-- forecast = no consensus yet"]);
+    // Only once the note alone does not fit does it take its shorter form.
+    const short = fitPaneFooterInfo([listed, note, updated], 33 + 3 + 20);
+    expect(short.map((segment) => segment.parts[0]!.text)).toEqual(["No events listed after Mon Aug 24", "no consensus yet"]);
+    expect(short[1]!.title).toBe("-- forecast = no consensus yet");
   });
 
   test("a failure keeps more of its sentence than a status word does", () => {

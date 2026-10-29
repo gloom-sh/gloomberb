@@ -233,9 +233,13 @@ main() {
     ' "$plist"
   }
 
-  # Whether the app at $1 is a build of Gloom, under either name.
+  # Whether the app at $1 is a build of Gloom, under either name and either
+  # bundle identifier: the one it has carried, and the one it moves to.
   is_our_app() {
-    [ "$(app_identifier "$1")" = "com.vincelwt.gloomberb" ]
+    case "$(app_identifier "$1")" in
+      com.vincelwt.gloomberb|sh.gloom.desktop) return 0 ;;
+      *) return 1 ;;
+    esac
   }
 
   # Points a `gloom` or `gloomberb` link that leads into the old bundle at the
@@ -413,7 +417,7 @@ main() {
       fi
       if [ "$variant" = "-musl" ]; then
         echo "musl systems such as Alpine need a release that ships ${ASSET}." >&2
-        echo "Install with Bun meanwhile: bun install -g gloomberb" >&2
+        echo "Install with Bun meanwhile: bun install -g @gloom-sh/terminal" >&2
       fi
       exit 1
     fi

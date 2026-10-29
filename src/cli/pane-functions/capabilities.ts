@@ -48,6 +48,7 @@ const NON_DATA_PANE_IDS = new Set([
   "local-agent-workspace",
   "macro-tv",
   "plugin-marketplace",
+  "roadmap",
   "world-venue-map",
 ]);
 

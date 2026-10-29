@@ -3,7 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { createSurfaceDependencies } from "../vol-surface/client";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
-import { projectRealizedVolatility, type CurrentAtmIvSnapshot } from "./model";
+import { atmIvObservedLabel, projectRealizedVolatility, type CurrentAtmIvSnapshot } from "./model";
 import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { DAILY_CLOSES } from "../shared/report-freshness";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -69,13 +69,17 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
               formatted: iv?.reference ? new Date(iv.reference.expiration * 1000).toISOString().slice(0, 10) : "--" },
             { label: "Days", value: iv?.reference?.daysToExpiry ?? null,
               formatted: iv?.reference ? String(Math.round(iv.reference.daysToExpiry)) : "--" },
-            { label: "Observed", value: iv?.reference?.date.toISOString() ?? null },
+            // To the minute, as the pane reads it; the JSON keeps the chain's read time whole.
+            { label: "Observed", value: iv?.reference?.date.toISOString() ?? null,
+              formatted: iv?.reference ? atmIvObservedLabel(iv.reference.date) : "--" },
           ] },
         ],
-        complete: model.cone.every((row) => row.current != null) && model.warnings.length === 0 && !history.stale && errors.length === 0
+        // A short history is whole: the windows it is too short for have no estimate yet, and the note says when it starts.
+        complete: model.cone.every((row) => row.current != null || model.shortWindows.includes(row.window))
+          && model.warnings.length === 0 && !history.stale && errors.length === 0
           && (!args.options.showIv || iv?.reference != null || iv?.noOptionChain === true),
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
-        notes: [barsPerYearLabel(model.barsPerYear)],
+        notes: [barsPerYearLabel(model.barsPerYear), ...model.historyNote ? [model.historyNote] : []],
         metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
           ...(abroad && args.options.showIv ? { notices: [`Options data covers US listings only, so ${args.symbols[0]} has no current IV.`] } : {}),
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,

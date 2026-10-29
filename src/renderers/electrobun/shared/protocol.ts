@@ -33,7 +33,12 @@ export interface ElectrobunBackendInit {
   pluginSeedNotice?: { body: string; type: "error" | "info" };
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
+  /** The copy on disk of the ids the view keeps in its own storage (view/view-ids.ts). */
+  viewIds: DesktopViewIds;
 }
+
+/** Ids the view keeps in its WebView storage, by storage key. */
+export type DesktopViewIds = Record<string, string>;
 
 interface ElectrobunTelemetryInit {
   /** Random per-install id from `<dataDir>/install-id`; null when the file could not be written. */
@@ -223,6 +228,8 @@ interface DesktopBackendRequestMap {
   "host.showContextMenu": { request: { menu: DesktopContextMenuItem[] }; response: boolean };
   /** The layout the main window draws at the next launch before its script loads (dom/boot-frame.ts). Only the main window's is kept. */
   "host.saveBootFrame": { request: { frame: BootFrame }; response: null };
+  /** The ids the view keeps in its storage, for the copy on disk. Only the main window's are kept. */
+  "host.saveViewIds": { request: { ids: DesktopViewIds }; response: null };
   /** The unread count for the Dock icon badge: `""` (none), `"1"` to `"99"` or `"99+"`. Only the main window's is applied. */
   "host.setAppBadge": { request: { label: string }; response: null };
   /** `channel` absent (an older view) means stable. */

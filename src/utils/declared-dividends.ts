@@ -34,6 +34,6 @@ export function declaredDividends(
     const at = Date.parse(`${exDate}T00:00:00Z`);
     if (paid.some((time) => Math.abs(time - at) <= SAME_DISTRIBUTION_DAYS * DAY_MS)) return [];
     return [{ exDate, amount: row.amount, ...declarationDate ? { declarationDate } : {},
-      ...recordDate ? { recordDate } : {}, ...payDate ? { payDate } : {} }];
+      ...recordDate ? { recordDate } : {}, ...payDate ? { payDate } : {}, ...row.special === true ? { special: true as const } : {} }];
   }).sort((left, right) => left.exDate.localeCompare(right.exDate));
 }

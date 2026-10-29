@@ -15,3 +15,16 @@ export const LEGACY_DESKTOP_APP_NAME = "Gloomberb";
  * to it.
  */
 export const DESKTOP_APP_IDENTIFIER = "com.vincelwt.gloomberb";
+
+/**
+ * The identifiers a build of this app carries: the one above, and the one a
+ * later release moves to. Until every install has moved, either one can be
+ * on disk (an app bundle, an install the script or Homebrew replaces), so
+ * anything that asks whether a copy is this app accepts both.
+ */
+export const DESKTOP_APP_IDENTIFIERS: readonly string[] = [DESKTOP_APP_IDENTIFIER, "sh.gloom.desktop"];
+
+/** Whether `identifier` is one a build of this app carries. */
+export function isDesktopAppIdentifier(identifier: string | null | undefined): boolean {
+  return !!identifier && DESKTOP_APP_IDENTIFIERS.includes(identifier);
+}

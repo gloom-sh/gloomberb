@@ -287,6 +287,46 @@ test("a bare symbol several companies list names, in one line, the company it wa
   expect(source.searches()).toBe(searched);
 });
 
+test("a company's name whose US line moved to another symbol is quoted there, never on a line abroad, and says why", async () => {
+  const name = "Getty Images Holdings, Inc.";
+  const line = (symbol: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD" });
+  const hop = { from: "GETY", to: "GETYQ", date: "2026-10-22" };
+  const quotes: Record<string, ReturnType<typeof createTestQuote>> = {
+    GETYQ: createTestQuote({ symbol: "GETYQ", name, price: 0.031, listingExchangeName: "OTC", exchangeName: "OTC" }),
+    "L2S:MUNICH": createTestQuote({ symbol: "L2S", name, price: 0.019, currency: "EUR", listingExchangeName: "MUNICH", exchangeName: "MUNICH" }),
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /getty/i.test(query) ? [line("GETY", "NYSE"), line("GETYQ", "OTC"), line("L2S", "MUNICH")] : [],
+    getQuote: async (symbol, exchange) => {
+      const quote = quotes[exchange ? `${symbol}:${exchange}` : symbol];
+      if (!quote) throw new Error(`No quote provider available for ${symbol}`);
+      return quote;
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => quotes[target.symbol]
+      ? { target, quote: quotes[target.symbol]! }
+      : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+    getTickerChanges: async (symbol) => symbol === "GETY"
+      ? { symbol, moved: { symbol: "GETYQ", name, hops: [hop] }, formerly: null, listedName: null, changes: [hop] }
+      : null,
+  });
+  const quoted = await runQuote(["getty images"], { dataProvider, batches: [], searches: () => 0 });
+  expect(quoted.failure).toBeNull();
+  expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["GETYQ"]);
+  expect(quoted.warnings).toContain(`Read "getty images" as GETYQ (${name}). GETY became GETYQ on 2026-10-22.`);
+
+  // A reused symbol: the change on record is the company that held GETY before, not Getty Images, so it is not followed.
+  const reused = createTestDataProvider({
+    ...dataProvider,
+    getTickerChanges: async (symbol) => symbol === "GETY"
+      ? { symbol, moved: { symbol: "GTYQ", name: "Gentry Yards Corp", hops: [{ from: "GETY", to: "GTYQ", date: "2009-03-02" }] }, formerly: null, listedName: null,
+        changes: [{ from: "GETY", to: "GTYQ", date: "2009-03-02" }] }
+      : null,
+  });
+  const other = await runQuote(["getty images"], { dataProvider: reused, batches: [], searches: () => 0 });
+  expect(other.rows.map((row) => row.target.symbol)).not.toContain("GTYQ");
+  expect(other.warnings.join("\n")).not.toContain("GTYQ");
+});
+
 test("a symbol whose company moved says so in one line and in its JSON row; the symbol it moved to, one with no change or no service print nothing", async () => {
   const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", exchangeName: "BATS" });
   const meta = createTestQuote({ symbol: "META", name: "Meta Platforms, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
@@ -302,7 +342,7 @@ test("a symbol whose company moved says so in one line and in its JSON row; the 
   };
 
   const moved = await quote(["FB", "META", "AAPL"], async (symbol) => changes[symbol] ?? null);
-  expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; FB was Meta Platforms before, now META (changed 2022-06-09)"]);
   // META is what was typed: its change stays in the row as data, with no line.
   expect(moved.rows.map((row) => (row as { tickerChange?: { kind: string } }).tickerChange?.kind ?? null)).toEqual(["moved", "formerly", null]);
   // Offline: the quote still answers, with nothing extra.
@@ -400,7 +440,7 @@ test("search lists a symbol it no longer finds as no longer trading with its las
   }
 
   const fb = await json("FB");
-  expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
+  expect(fb.warnings).toEqual([`FB now lists ${fund}; FB was Meta Platforms before, now META (changed 2022-06-09)`]);
   expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
   // A symbol with no change and no quote says nothing more.
   expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloom catalog "ZZZZ"']);

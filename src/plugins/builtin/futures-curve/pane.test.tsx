@@ -222,7 +222,7 @@ describe("crypto basis against spot", () => {
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload());
     reads.length = 0;
     // The quote has moved on to 80,150 since the trades; the cells still read the 80,000 of their minute.
-    const lines = await render(130, 30, "curve", { root: "BTC", quote: spot(1), bars });
+    const lines = await render(136, 30, "curve", { root: "BTC", quote: spot(1), bars });
     expect(reads[0]).toBe("BTC-USD 1D 1m");
     const header = lines.find((line) => line.includes("CONTRACT"))!;
     expect(header).toContain("VS SPOT");

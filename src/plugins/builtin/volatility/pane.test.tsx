@@ -5,10 +5,12 @@ import { setSharedMarketDataCoordinator, type MarketDataCoordinator } from "../.
 import type { ChartRequest } from "../../../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { setAppVisible } from "../../../state/app/activity";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PricePoint } from "../../../types/financials";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 import { VolatilityPane } from "./pane";
 
 const DAY_MS = 86_400_000;
@@ -36,15 +38,23 @@ function ready(data: PricePoint[]): QueryEntry<PricePoint[]> {
 
 const tui = createOpenTuiTestHarness();
 let spies: Array<{ mockRestore(): void }> = [];
+/** The live re-reads of index levels in session, which fail while `levelReadFails` is set. */
+let levelReads = 0;
+let levelReadFails = false;
 
 beforeEach(() => {
+  levelReads = 0;
+  levelReadFails = false;
   setSharedMarketDataCoordinator({
     subscribe: () => () => {},
     subscribeKeys: () => () => {},
     getVersion: () => 1,
     subscribeQuotes: () => () => {},
     getQuoteEntry: () => createIdleEntry(),
-    loadQuotesBatch: async () => {},
+    loadQuotesBatch: async () => {
+      levelReads += 1;
+      if (levelReadFails) throw new DataServiceUnreachableError(new Error("offline"));
+    },
     getChartEntry: () => createIdleEntry(),
     loadChart: async (request: ChartRequest) => ready(history(request.instrument.symbol)),
   } as unknown as MarketDataCoordinator);
@@ -56,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setSystemTime();
+  setAppVisible(true);
   setSharedMarketDataCoordinator(null);
   for (const spy of spies) spy.mockRestore();
 });
@@ -171,4 +182,36 @@ test("a day still trading is no close: the session so far until Cboe settles it 
   setSystemTime(new Date("2026-09-25T20:16:00Z"));
   await renderPane(108, 32);
   expect(footer()).toMatch(/^close 2026-09-25 /);
+});
+
+// In session the index levels are re-read every 15 seconds; one that fails leaves the old levels on screen.
+test("a failed live re-read of the index levels is a data warning until one succeeds", async () => {
+  let now = Date.parse("2026-09-25T15:00:00Z");
+  setSystemTime(new Date(now));
+  await renderPane(108, 32);
+  const warnings = async () => {
+    await tui.emitKeypress({ name: "!", sequence: "!" });
+    await settle();
+    const frame = tui.frame();
+    await tui.emitKeypress({ name: "escape" });
+    await settle();
+    return frame;
+  };
+  // Back after a stretch longer than the interval, the cycle re-reads at once.
+  const reread = async () => {
+    now += 20_000;
+    setSystemTime(new Date(now));
+    await act(async () => setAppVisible(false));
+    await act(async () => setAppVisible(true));
+    await settle();
+  };
+  expect(await warnings()).not.toContain("Gloom couldn't reach its data service");
+  levelReadFails = true;
+  await reread();
+  expect(levelReads).toBe(1);
+  expect(await warnings()).toContain("Gloom couldn't reach its data service");
+  levelReadFails = false;
+  await reread();
+  expect(levelReads).toBe(2);
+  expect(await warnings()).not.toContain("Gloom couldn't reach its data service");
 });

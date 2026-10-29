@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from";
 import type {
   AnalystResearchData,
   CorporateActionsData,
@@ -1060,6 +1061,8 @@ export interface CloudEarningsCallListPayload {
   pending?: boolean;
   /** Set when the requested symbol is not one the SEC knows. */
   unknownTicker?: boolean;
+  /** The company's home line the calls are read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom;
 }
 
 /** One row of a proxy statement's Summary Compensation Table, in dollars. */
@@ -1456,6 +1459,8 @@ export interface CloudSecFilingsResponse {
   filings: CloudSecFilingPayload[];
   hasMore: boolean;
   nextOffset: number;
+  /** The company's home line the filings are read from, when not the listing asked (a foreign line). */
+  companyFrom?: CompanyFrom;
 }
 
 export interface CloudSecDocumentsResponse {
@@ -1558,6 +1563,13 @@ export interface CloudNewsListResponse {
   nextCursor: string | null;
   /** Which news the service answered with, when it says: the live wire, or the one held back for a free account. */
   access?: "realtime" | "delayed";
+  /**
+   * A search asked for its closest stories: `all` when stories have every
+   * word, `closest` when none does and these have the most of them.
+   */
+  match?: "all" | "closest";
+  /** A receipt's or foreign line's feed is its company's: the home line it reads, when not the listing asked. */
+  companyFrom?: CompanyFrom;
 }
 
 interface CloudTweetUserPayload {

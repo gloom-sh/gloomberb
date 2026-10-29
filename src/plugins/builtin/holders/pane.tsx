@@ -12,6 +12,7 @@ import {
   type DataTableKeyEvent,
   type PageRequest,
 } from "../../../components";
+import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -321,6 +322,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     }
   }, [currency, fundMatches, marketCap]);
 
+  // Holders read from the company's home line say whose; the SEC index's rows are the listing's own.
+  useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg");
   // The 13D/G tab registers its own footer.
   usePaneFooter("holders", () => {
     if (viewMode === "13dg") return null;
