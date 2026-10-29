@@ -9,7 +9,8 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
+  priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
@@ -501,7 +502,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const drawdown = maxDrawdown(shown);
     const drawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${historyBarSizeWord(size)} closes`, price: (value) => formatBarPrice(value, decimals),
       date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }) : null;
-    const reportNotices = [drawdownLine, notice].filter((line): line is string => line != null);
+    // A wick left out of the range is said, though the bar's close still counts.
+    const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
+    const reportNotices = [drawdownLine, notice, wickNotice].filter((line): line is string => line != null);
     return {
       rows: shown,
       columns: historyColumns(size, marked, false, false, decimals),

@@ -14,7 +14,9 @@ import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
-import { latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
+import {
+  isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
+} from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
@@ -253,10 +255,17 @@ function flagCodes(row: Pick<HistoryRow, "flag">): string[] {
   return row.flag ? row.flag.split(",") : [];
 }
 
+/** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick. */
+function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
+  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code));
+}
+
 /**
  * Intraday bars keep their UTC time; daily and longer bars are trading dates.
  * A bar whose prices contradict each other is blanked exactly as HP blanks it,
- * and says why in `flag`. A bar after a gap or a jump in the series keeps its
+ * and says why in `flag`. A low or high too far from the open and close to
+ * have traded is left blank, the rest of the bar kept, flagged `low<close/2`
+ * or `high>2*open`. A bar after a gap or a jump in the series keeps its
  * prices and is flagged `gap` or `jump`.
  */
 export function historyRows(
@@ -277,7 +286,7 @@ export function historyRows(
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
     const values = pricePointValues(point);
-    const flags = pricePointIntegrityFlags(point);
+    const flags = [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point)];
     const price = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     return {
       date: intraday ? iso.replace(".000Z", "Z") : iso.slice(0, 10),
@@ -448,7 +457,7 @@ export function historyMissingVolumeNote(
   if (!historyReportsVolume(rows)) return null;
   const latestTrade = latestTradeIndex(rows.map((row) => Date.parse(row.date)));
   const missing = rows.filter((row, index) => row.volume == null && row.venueVolume == null && !row.partial && !row.filled
-    && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code)) && index !== latestTrade).length;
+    && blankingCodes(row).length === 0 && index !== latestTrade).length;
   return missingVolumeNotice(missing, rows.length) ?? null;
 }
 
@@ -833,10 +842,9 @@ export function historyGapNote(
  * keep their prices and are not counted.
  */
 export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag">[]): string | null {
-  const contradictions = (row: Pick<HistoryRow, "flag">) => flagCodes(row).filter((code) => !BREAK_FLAGS.has(code));
-  const flagged = rows.filter((row) => contradictions(row).length > 0);
+  const flagged = rows.filter((row) => blankingCodes(row).length > 0);
   if (flagged.length === 0) return null;
-  const codes = new Set(flagged.flatMap(contradictions));
+  const codes = new Set(flagged.flatMap(blankingCodes));
   const kinds = [
     codes.has("high<open") || codes.has("high<close") ? "high below open or close" : "",
     codes.has("low>open") || codes.has("low>close") ? "low above open or close" : "",
@@ -844,4 +852,24 @@ export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag">[]): stri
   ].filter(Boolean);
   const count = `${flagged.length} of ${rows.length} ${flagged.length === 1 && rows.length === 1 ? "bar" : "bars"}`;
   return `${count} ${flagged.length === 1 ? "has" : "have"} ${kinds.join(", or ")} in the source data; their prices are left blank`;
+}
+
+/**
+ * "The low of 2021-11-29 is under half its open and close, too far to have
+ * traded; left blank and out of ranges", or null when no bar has such a wick
+ * (pricePointWickFlags). Three or more bars are counted.
+ */
+export function historyWickNote(rows: readonly Pick<HistoryRow, "date" | "flag">[]): string | null {
+  const flagged = rows.filter((row) => flagCodes(row).some(isWickFlag));
+  if (flagged.length === 0) return null;
+  const sides = new Set(flagged.flatMap((row) => flagCodes(row).filter(isWickFlag).map((code) => code.slice(0, code.indexOf(code.startsWith("low") ? "<" : ">")))));
+  const reason = "too far to have traded; left blank and out of ranges";
+  const only = flagged[0]!;
+  if (flagged.length === 1 && sides.size === 1) {
+    return sides.has("low") ? `The low of ${only.date} is under half its open and close, ${reason}`
+      : `The high of ${only.date} is over twice its open and close, ${reason}`;
+  }
+  const kinds = [sides.has("low") ? "a low under half" : "", sides.has("high") ? "a high over twice" : ""].filter(Boolean).join(" or ");
+  const dates = flagged.length <= LISTED_GAPS ? ` (${listItems(flagged.map((row) => row.date))})` : "";
+  return `${flagged.length} of ${rows.length} bars have ${kinds} their open and close${dates}, ${reason}`;
 }
