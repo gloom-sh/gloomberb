@@ -269,6 +269,24 @@ function Write-SeededConfig {
 
 # The release as the app reads it: its manifest, naming a build other than the
 # installed one, and that build's archive.
+# A release build keeps Chromium's DevTools port closed (its Chromium flags in
+# Resources\build.json set remote-debugging-port to -1). This check finds the
+# app's page and presses U through that port, so it opens it on the builds it
+# runs, as a dev build has it.
+function Open-DevToolsPort {
+  param([string]$AppFolder)
+
+  $Path = Join-Path $AppFolder "Resources\build.json"
+  $Build = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+  $Flags = $Build.chromiumFlags
+  if (-not $Flags) { return }
+  $Flags.PSObject.Properties.Remove("remote-debugging-port")
+  $Flags.PSObject.Properties.Remove("remote-allow-origins")
+  if (@($Flags.PSObject.Properties).Count -eq 0) { $Build.PSObject.Properties.Remove("chromiumFlags") }
+  [IO.File]::WriteAllText($Path, ($Build | ConvertTo-Json -Depth 10 -Compress), (New-Object System.Text.UTF8Encoding $false))
+  Write-Host "DevTools port open in $AppFolder for this check"
+}
+
 function Write-Release {
   param([string]$ReleaseDir, [string]$Prefix, [string]$AppName)
 
@@ -283,6 +301,7 @@ function Write-Release {
 
   $UpdateApp = Join-Path $Unpacked $AppName
   Set-BuildHash $UpdateApp $UpdateHash
+  Open-DevToolsPort $UpdateApp
   # A file the installer never installed: its uninstall entry must remove it too.
   Set-Content -Path (Join-Path $UpdateApp "Resources\verify-added-by-update.txt") -Value "added by the update"
   Set-Content -Path (Join-Path $UpdateApp "bin\verify-added-by-update.txt") -Value "added by the update"
@@ -328,6 +347,7 @@ function Install-App {
   if ($Install.ExitCode -ne 0) {
     throw "The installer failed: $($Install.ExitCode)"
   }
+  Open-DevToolsPort $InstallDir
   foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
     if ((Get-ShortcutTarget $Shortcut) -ne (Join-Path $InstallDir "bin\launcher.exe")) {
       throw "The installer's shortcut $Shortcut opens $(Get-ShortcutTarget $Shortcut)"
