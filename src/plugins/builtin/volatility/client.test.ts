@@ -139,7 +139,9 @@ describe("volatility source loader", () => {
     expect(result.data.curve).toMatchObject({ source: "fred", date: "2026-09-18", ratio: 1.2 });
     expect(result.data.fred.metrics.every((metric) => metric.stale)).toBe(true);
     expect(result.data.fred.metrics[0]).toMatchObject({ date: "2026-09-18", observationEnd: "2026-09-17", value: 20 });
-    expect(result.errors.join(" ")).toContain("Unexpected FRED series identity or units");
+    // The saved copy answering the refused refresh says when it was saved instead of listing the failure.
+    expect(result.savedAt).toBeNumber();
+    expect(result.errors.join(" ")).not.toContain("Unexpected FRED series identity or units");
     const cached = getCachedVolatilityData(dependencies);
     expect(cached?.data.fred.metrics[0]?.title).toBe("VIXCLS");
   });
@@ -200,9 +202,9 @@ describe("volatility source loader", () => {
     expect(getCachedVolatilityData(dependencies)?.data.fred.termDate).toBe("2026-09-18");
   });
 
-  test("the ratio history names FRED when it stands in for Cboe, whose cached closes it reads, and fails with both reasons when neither has a pair", async () => {
+  test("the ratio history names FRED when it stands in for Cboe, dates the saved closes it reads, and fails with both reasons when neither has a pair", async () => {
     const cboe = (data: PricePoint[]) => ({ ...ready(data), source: "test" });
-    const fredPoints = (stale = false, refreshError?: string) => async (id: string) => ({ stale, ...(refreshError ? { refreshError } : {}),
+    const fredPoints = (stale = false, savedAt?: number) => async (id: string) => ({ stale, ...(savedAt ? { refreshError: "offline", savedAt } : {}),
       points: [{ date: "2026-09-17", value: id === "VIXCLS" ? 20 : 24 }, { date: "2026-09-18", value: id === "VIXCLS" ? 20 : 25 }] });
     const load = (dependencies: Partial<NonNullable<Parameters<typeof loadVolatilityTermHistory>[1]>>) => loadVolatilityTermHistory({}, {
       now: () => now, loadFred: async () => { throw new Error("unused"); }, loadChart: async () => cboe(points), loadFredPoints: fredPoints(), ...dependencies });
@@ -216,9 +218,12 @@ describe("volatility source loader", () => {
     // FRED down: Cboe's year alone, starting where it starts.
     expect((await load({ loadFredPoints: async () => { throw new Error("FRED offline"); } })).warning)
       .toBe("FRED closes unavailable (FRED offline); showing Cboe's from 2026-09-18.");
-    // A cached pair names whose closes it is and why they were not refreshed.
+    // Closes a failed refresh left in place say when they were saved, as every pane's saved copy does.
     const cached = await load({ loadChart: async () => ({ ...cboe(points), error: { reasonCode: "UPSTREAM_ERROR", message: "router failed" } }) });
-    expect(cached.warning).toBe("Refresh failed (router failed); showing cached Cboe closes.");
+    expect(cached).toMatchObject({ savedAt: now - 1000 });
+    expect(cached.warning).toBeUndefined();
+    const savedFred = await load({ loadChart: async () => { throw new Error("timeout"); }, loadFredPoints: fredPoints(true, now - 5000) });
+    expect(savedFred).toMatchObject({ savedAt: now - 5000, warning: "Cboe closes unavailable (timeout); showing FRED's, through 2026-09-18." });
     expect((await load({ loadChart: async () => cboe([]), loadFredPoints: fredPoints(true) })).warning)
       .toBe("Cboe closes unavailable (Daily index history unavailable); showing FRED's, through 2026-09-18. Showing cached FRED closes; the source has not updated since.");
     // Neither: an error, never an empty series.

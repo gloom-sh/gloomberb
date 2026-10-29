@@ -61,7 +61,13 @@ export async function fetchSocialMentions(symbol: string, range: SocialMentionsR
     throw error;
   }
 }
-export interface SocialMentionsResource { payload: SocialMentionsPayload; stale: boolean; refreshError: string | null }
+export interface SocialMentionsResource {
+  payload: SocialMentionsPayload;
+  stale: boolean;
+  refreshError: string | null;
+  /** When the copy shown was saved, when it is one because its refresh failed. */
+  savedAt?: number;
+}
 const cacheKey = (symbol: string, range: SocialMentionsRange) => `${range}:${symbol}`;
 export function cachedSocialMentions(symbol: string, range: SocialMentionsRange): SocialMentionsResource | null {
   const cached = socialMentionsCache.get(cacheKey(symbol, range), { allowExpired: true });
@@ -72,7 +78,8 @@ export function cachedSocialMentions(symbol: string, range: SocialMentionsRange)
 export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
   const result = await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force });
   if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ?? null };
+  return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ?? null,
+    ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) };
 }
 
 /**

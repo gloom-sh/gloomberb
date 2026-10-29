@@ -35,6 +35,8 @@ export type FearGreedCacheEntry = {
 export interface FearGreedLoadResult extends FearGreedCacheEntry {
   /** Set when the network failed and cached data was served instead. */
   refreshError?: string;
+  /** `stale-fallback` when a saved copy answered a failed refresh. */
+  source?: "cache" | "network" | "stale-fallback";
 }
 
 const cache = createPluginCache<FearGreedData, PersistedFearGreedData>({

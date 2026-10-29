@@ -1,4 +1,5 @@
 import { createPluginCache } from "../../../data/plugin-cache";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
@@ -87,11 +88,16 @@ export async function loadTreasuryAuctions(
 ): Promise<TreasuryAuctionsResult> {
   if (window === AUCTION_HISTORY_ALL) return loadAllTreasuryAuctions(force, loader);
   const result = await cache.load(`recent:${window}`, walk(loader, () => auctionWindowQuery(window)), { force });
-  return {
+  return answered({
     auctions: result.data, fetchedAt: result.fetchedAt, stale: result.stale,
     ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}),
     ...(result.refreshError ? { refreshError: result.refreshError } : {}),
-  };
+  });
+}
+
+/** A board a saved copy answered: marked as one, so a command ends by saying when it was saved, not with its failure. */
+function answered(result: TreasuryAuctionsResult): TreasuryAuctionsResult {
+  return result.savedAt != null ? servedFromSavedCopy(result, result.savedAt) : result;
 }
 
 /**
@@ -112,9 +118,9 @@ async function loadAllTreasuryAuctions(force: boolean, loader: AuctionLoader): P
   const auctions = [...recent.data, ...archive.data].filter((auction) => !seen.has(auction.id) && Boolean(seen.add(auction.id)));
   const refreshError = recent.refreshError ?? archive.refreshError;
   const savedAt = Math.min(...[recent, archive].map((part) => part.source === "stale-fallback" ? part.fetchedAt : Infinity));
-  return {
+  return answered({
     auctions, fetchedAt: recent.fetchedAt, stale: recent.stale || archive.stale,
     ...(Number.isFinite(savedAt) ? { savedAt } : {}),
     ...(refreshError ? { refreshError } : {}),
-  };
+  });
 }

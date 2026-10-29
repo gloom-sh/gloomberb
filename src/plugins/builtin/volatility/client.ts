@@ -22,6 +22,8 @@ export interface VolatilityLoadResult {
   /** The daily inputs the data was built from, so live index levels can be laid over them. */
   inputs: VolatilityInputs;
   stale: boolean;
+  /** The oldest copy a failed refresh left answering, by when it was saved (ms); its failure is not in `errors`. */
+  savedAt?: number;
   errors: string[];
   phase: "loading" | "partial" | "ready" | "error";
   loaded: number;
@@ -76,14 +78,16 @@ const legError = (legs: ReadonlyArray<{ error?: string | null } | undefined>) =>
  * The 3M/30D ratio's history as the board builds it: the board's own VIX and
  * VIX 3M daily closes (one year, the same request and cache), FRED's
  * republished closes from `start` on the dates those lack. When Cboe's closes
- * fail FRED stands in, a day behind, and the warning says so; a ratio read
- * from cached closes names whose. With neither publisher's pair it rejects
- * with both reasons rather than return an empty history.
+ * fail FRED stands in, a day behind, and the warning says so. A ratio read
+ * from closes a failed refresh left in place carries when they were saved
+ * (`savedAt`), which the chart dates as every pane does; other cached closes
+ * name whose. With neither publisher's pair it rejects with both reasons
+ * rather than return an empty history.
  */
 export async function loadVolatilityTermHistory(
   { start, signal }: { start?: Date; signal?: AbortSignal } = {},
   dependencies: VolatilityLoaderDependencies & { loadFredPoints?: typeof loadFredPoints } = termDependencies(),
-): Promise<{ term: VolatilityTermHistory; warning?: string }> {
+): Promise<{ term: VolatilityTermHistory; warning?: string; savedAt?: number }> {
   const loadFred = dependencies.loadFredPoints ?? loadFredPoints;
   const now = dependencies.now?.() ?? Date.now();
   const history: NonNullable<VolatilityInputs["history"]> = {};
@@ -101,7 +105,7 @@ export async function loadVolatilityTermHistory(
       try {
         const loaded = await loadFred(seriesId, start);
         fred[seriesId] = { observations: loaded.points, info: null, stale: loaded.points.length > 0 && loaded.stale,
-          error: loaded.refreshError ?? null };
+          error: loaded.refreshError ?? null, ...(loaded.savedAt != null && loaded.points.length ? { savedAt: loaded.savedAt } : {}) };
       } catch (error) {
         fred[seriesId] = { observations: [], info: null, error: errorMessage(error) };
       }
@@ -119,12 +123,14 @@ export async function loadVolatilityTermHistory(
   } else if (fredError && !term.ratioHistory.some((point) => point.publisher === "FRED")) {
     notes.push(`FRED closes unavailable (${fredError}); showing Cboe's from ${term.ratioHistory[0]!.date}.`);
   }
-  if (term.stale) {
+  const legs = term.publisher === "FRED" ? VOLATILITY_SERIES.map(({ seriesId }) => fred[seriesId]) : [history.vix, history.vix3m];
+  const savedAt = term.stale ? oldestSavedAt(legs) : undefined;
+  if (term.stale && savedAt == null) {
     const error = term.publisher === "FRED" ? fredError : cboeError;
     notes.push(error ? `Refresh failed (${error}); showing cached ${term.publisher} closes.`
       : `Showing cached ${term.publisher} closes; the source has not updated since.`);
   }
-  return notes.length ? { term, warning: notes.join(" ") } : { term };
+  return { term, ...(notes.length ? { warning: notes.join(" ") } : {}), ...(savedAt != null ? { savedAt } : {}) };
 }
 
 /** A CBOE daily close as a daily bar dated at the 16:15 New York settlement. */
@@ -141,23 +147,34 @@ function validateFredData(seriesId: VolatilitySeriesId, data: FredSeriesData): F
   }
   return data;
 }
-function fredInput(result: Pick<FredSeriesLoadResult, "data" | "stale" | "fetchedAt"> & { refreshError?: string }): VolatilitySeriesInput {
+function fredInput(result: Pick<FredSeriesLoadResult, "data" | "stale" | "fetchedAt"> & Partial<Pick<FredSeriesLoadResult, "source">>
+  & { refreshError?: string }): VolatilitySeriesInput {
+  const saved = result.source === "stale-fallback" && result.data.observations.length > 0;
   return { observations: result.data.observations, info: result.data.info, fetchedAt: result.fetchedAt,
     stale: result.data.observations.length > 0 && result.stale,
-    error: result.refreshError ?? (result.data.observations.length ? null : "Daily FRED observations unavailable") };
+    error: result.refreshError ?? (result.data.observations.length ? null : "Daily FRED observations unavailable"),
+    ...(saved ? { savedAt: result.fetchedAt } : {}) };
 }
+/** A history a failed refresh left in place answers from the copy saved when it was fetched. */
 function historyInput(entry: QueryEntry<PricePoint[]>, now: number): VolatilityHistoryInput {
   const history = resolveEntryValue(entry) ?? [];
+  const saved = !!entry.error && history.length > 0 && entry.fetchedAt != null;
   return { history, source: entry.source, fetchedAt: entry.fetchedAt,
     stale: history.length > 0 && (!!entry.error || (entry.staleAt != null && entry.staleAt <= now)),
-    error: entry.error?.message ?? (history.length ? null : "Daily index history unavailable") };
+    error: entry.error?.message ?? (history.length ? null : "Daily index history unavailable"),
+    ...(saved ? { savedAt: entry.fetchedAt } : {}) };
+}
+/** The oldest of `inputs`' saved copies, by when each was saved. */
+function oldestSavedAt(inputs: ReadonlyArray<{ savedAt?: number | null } | undefined>): number | undefined {
+  const saved = inputs.flatMap((input) => input?.savedAt != null ? [input.savedAt] : []);
+  return saved.length ? Math.min(...saved) : undefined;
 }
 /** Seeds the first paint; the load that replaces each input settles its freshness, so cache age is not stale. */
 function cachedInputs(dependencies: VolatilityLoaderDependencies, now: number): VolatilityInputs {
   const inputs: VolatilityInputs = { history: {}, fred: {} };
   for (const definition of VOLATILITY_INDICES) {
     const entry = dependencies.getChartEntry?.(volatilityHistoryRequest(definition.symbol));
-    if (entry && resolveEntryValue(entry) != null) inputs.history![definition.id] = { ...historyInput(entry, now), stale: false };
+    if (entry && resolveEntryValue(entry) != null) inputs.history![definition.id] = { ...historyInput(entry, now), stale: false, savedAt: null };
   }
   for (const { seriesId } of VOLATILITY_SERIES) {
     const cached = getCachedFredSeries(requestFor(seriesId), { allowExpired: true });
@@ -176,12 +193,16 @@ function historyError(id: string, error: string): string {
 }
 function project(inputs: VolatilityInputs, loaded: number, total: number, pending: boolean): VolatilityLoadResult {
   const data = buildVolatilityData(inputs);
-  const errors = [...Object.entries(inputs.history ?? {}).flatMap(([id, value]) => value.error ? [historyError(id, value.error)] : []),
-    ...Object.entries(inputs.fred ?? {}).flatMap(([id, value]) => value.error ? [`${id}: ${value.error}`] : [])];
-  const stale = [...Object.values(inputs.history ?? {}), ...Object.values(inputs.fred ?? {})].some((value) => value.stale);
+  // A saved copy answering a failed refresh says when it was saved (`savedAt`) instead of the failure.
+  const errors = [...Object.entries(inputs.history ?? {}).flatMap(([id, value]) => value.error && value.savedAt == null ? [historyError(id, value.error)] : []),
+    ...Object.entries(inputs.fred ?? {}).flatMap(([id, value]) => value.error && value.savedAt == null ? [`${id}: ${value.error}`] : [])];
+  const all = [...Object.values(inputs.history ?? {}), ...Object.values(inputs.fred ?? {})];
+  const stale = all.some((value) => value.stale);
+  const savedAt = oldestSavedAt(all);
   const phase = pending ? hasValues(data) ? "partial" : "loading" : !hasValues(data) ? "error"
     : errors.length || stale || data.warnings.length || data.board.some((row) => row.status !== "available") ? "partial" : "ready";
-  return { data, inputs: { history: { ...inputs.history }, fred: { ...inputs.fred } }, stale, errors, phase, loaded, total };
+  return { data, inputs: { history: { ...inputs.history }, fred: { ...inputs.fred } }, stale, ...(savedAt != null ? { savedAt } : {}),
+    errors, phase, loaded, total };
 }
 export function getCachedVolatilityData(dependencies: VolatilityLoaderDependencies = createVolatilityDependencies()): VolatilityLoadResult | null {
   const inputs = cachedInputs(dependencies, dependencies.now?.() ?? Date.now());

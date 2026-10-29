@@ -174,16 +174,24 @@ describe("ThirteenFPane", () => {
     ).toBeUndefined();
   });
 
-  test("a refresh that fails shows the funds' saved copy and says when it was saved, as every pane does", async () => {
+  test("a refresh that fails shows the funds' saved copy, its filing columns filled, and says when it was saved", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     let offline = false;
     setHttpFetchTransport(async (url) => {
       if (offline) throw new Error("Unable to connect");
-      return new URL(String(url)).pathname.endsWith("/topfunds")
-        ? json([{ cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: null }])
-        : json([]);
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/funds")) return json([{ cik: "1067983", name: "BERKSHIRE HATHAWAY INC" }]);
+      // The filings answer after the rows are drawn, as they do from the network.
+      if (path.endsWith("/forms")) {
+        await Bun.sleep(30);
+        return json([{ accession_number: "0001067983-26-000001", cik: "1067983", company_name: "BERKSHIRE HATHAWAY INC",
+          period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 299_250_000_000, table_entry_total: 89 }]);
+      }
+      return json([]);
     });
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-thirteenf-pane-test"));
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-thirteenf-pane-test", {
+      instanceId: PANE_ID, paneId: "thirteenf-funds", settings: { query: "Berkshire Hathaway" },
+    }));
     state.focusedPaneId = PANE_ID;
     await act(async () => {
       await tui.render(
@@ -193,18 +201,19 @@ describe("ThirteenFPane", () => {
         { width: 100, height: 20 },
       );
     });
-    await renderFrames();
-    expect(tui.frame()).toContain("Alpha Capital");
+    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
 
     offline = true;
     await emitKeypress({ name: "r", sequence: "r" });
-    const saved = await tui.waitForFrameToContain("saved copy from");
-    expect(saved).toContain("Alpha Capital");
+    await tui.waitForFrameToContain("saved copy from");
+    const saved = await tui.waitForFrameToContain("2026-06-30");
+    expect(saved).toContain("$299.25B");
     expect(saved).not.toMatch(/refresh failed|Retained data|Unable to connect/);
 
     offline = false;
     await emitKeypress({ name: "r", sequence: "r" });
-    expect(await tui.waitForFrameToExclude("saved copy")).toContain("Alpha Capital");
+    await tui.waitForFrameToExclude("saved copy");
+    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
   });
 
   test("moves from the first fund row to search with Up", async () => {

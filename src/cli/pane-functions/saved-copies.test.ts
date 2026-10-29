@@ -127,6 +127,26 @@ test("fn 13F and fn MOST answer a failed refresh from what an earlier run read, 
   }
 });
 
+// Offline, AUCT listed the failed refresh under "Errors:" above the closing line that already named its saved copy.
+test("fn AUCT answers a failed refresh from the board an earlier run read, saying so only in the closing line", async () => {
+  const offline = { now: false };
+  const auctionDate = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+  setHttpFetchTransport(async () => {
+    if (offline.now) throw unreachable();
+    return Response.json({ data: [{ cusip: "91282CNH3", security_type: "Note", security_term: "10-Year", auction_date: auctionDate,
+      high_yield: "4.6830", bid_to_cover_ratio: "2.530000", offering_amt: "42000000000" }], meta: { "total-pages": 1 } });
+  });
+  const saved = profile();
+  expect((await fn(["AUCT"], saved)).text).toContain("10-Year");
+
+  offline.now = true;
+  const answer = await fn(["AUCT"], saved);
+  expect(answer.error).toBeNull();
+  expect(answer.text).toContain("10-Year");
+  expect(answer.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
+  expect(answer.text).not.toContain("Errors:");
+});
+
 test("a plugin that keeps a command's persistence past the command never reaches the store the command closed", () => {
   const store = new AppPersistence(":memory:");
   const kept = createCommandPluginPersistence(store.resources, "plugin:test");

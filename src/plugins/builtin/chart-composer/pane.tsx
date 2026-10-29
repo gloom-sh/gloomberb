@@ -20,6 +20,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
 import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
@@ -1116,9 +1117,12 @@ function ChartComposerSurface({
     }
     return newest > end ? formatCompositeDatasetDate(new Date(newest), end) : null;
   }, [activeRuntimeViewport, plottedSeries, spec, viewport]);
+  // A series a failed refresh left on a saved copy says when that copy was saved, as every pane does.
+  const savedAt = resolution.savedAt;
   usePaneFooter(footerId, () => ({
     info: [
       ...(delistingKey ? [{ id: "delisted", parts: [{ text: delistingKey, tone: "warning" as const }] }] : []),
+      ...savedCopyFooterInfo([savedAt]),
       ...(loading
         ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
         : pickingAnchor
@@ -1136,7 +1140,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "b", label: "ars", title: "Bar Size", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
+  }), [delistingKey, savedAt, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {

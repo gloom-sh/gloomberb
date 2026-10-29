@@ -169,7 +169,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, { allowEditable: true });
 
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
-  const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort, reportPaint]);
+  // The rows' reports fill the rows in place after their page answers (from the network or a saved copy);
+  // a row the table drew before then is drawn again only as a new object.
+  const sortedRows = useMemo(() => sortBrowserRows(rows.map((row) => ({ ...row })), browserSort), [rows, browserSort, reportPaint]);
   const columns = useMemo(() => {
     if (browserMode !== "performance") return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];

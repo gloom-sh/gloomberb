@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { servedFromSavedCopy } from "../data/saved-copies";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { delistingLabel } from "../market-data/quotes/delisting";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
@@ -827,7 +828,7 @@ async function resolveChartSpecPass(
           cache.capabilitySeriesByRequest.set(key, pending);
           cache.revision += 1;
         }
-        return baseCapabilitySeries(seriesSpec, await pending, index);
+        return asSavedCopy(baseCapabilitySeries(seriesSpec, await pending, index));
       }
       if (seriesSpec.source.kind === "economic") {
         const request: FredSeriesRequest = {
@@ -845,6 +846,8 @@ async function resolveChartSpecPass(
           priorityWarnings.push(`${result.label}: ${coverageNotice}`);
           coverageNotices.push(`${result.label}: ${coverageNotice}`);
         }
+        // A saved copy that answered for a failed refresh is dated in the footer, as every pane's is.
+        if (result && fred.source === "stale-fallback") return asSavedCopy({ ...result, savedAt: fred.fetchedAt });
         const freshnessWarning = staleFredWarning(fred);
         if (result && freshnessWarning) priorityWarnings.push(`${result.label}: ${freshnessWarning}`);
         return result;
@@ -1180,6 +1183,7 @@ async function resolveChartSpecPass(
     loading: false,
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],
+    ...savedCopyOf(rawSeries.filter((entry) => visibleSeriesIds.has(entry.id))),
     ...(coverageNotices.length ? { coverageNotices: [...new Set(coverageNotices)] } : {}),
     ...(returnBasisNotice ? { returnBasisNotice } : {}),
     ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
@@ -1187,4 +1191,19 @@ async function resolveChartSpecPass(
     resolution,
     ...(builtBarSize && rawSeries.some((entry) => entry.barSize === builtBarSize) ? { barSize: builtBarSize } : {}),
   };
+}
+
+/**
+ * A series drawn from a copy a failed refresh left answering (`savedAt`),
+ * marked as one, so a command charting it ends with "couldn't refresh; saved
+ * copy from …" as the app's footer says.
+ */
+function asSavedCopy(series: ResolvedSeries): ResolvedSeries {
+  return series.savedAt != null ? servedFromSavedCopy(series, series.savedAt) : series;
+}
+
+/** The oldest saved copy among `series` that answered for a failed refresh, which the chart's footer dates. */
+function savedCopyOf(series: readonly ResolvedSeries[]): { savedAt?: number } {
+  const saved = series.flatMap((entry) => entry.savedAt != null && Number.isFinite(entry.savedAt) ? [entry.savedAt] : []);
+  return saved.length ? { savedAt: Math.min(...saved) } : {};
 }
