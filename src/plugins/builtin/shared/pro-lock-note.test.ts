@@ -4,6 +4,7 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { estimateRevisionsLockNote } from "../estimate-revisions/lock-note";
 import { explainRefusal, refusedLock } from "./cloud-denied";
 import { proLockNote, type FreeRoute } from "./pro-lock-note";
+import { flowLockNote } from "../scanner/lock-note";
 
 const free: FreeRoute[] = [{ text: (ticker, company) => `gloom events ${ticker} lists ${company}'s earnings dates.` }];
 
@@ -125,6 +126,43 @@ test("a route check that stalls past the deadline or fails is no data for that n
   } finally {
     jest.useRealTimers();
   }
+});
+
+/**
+ * FLOW offered `options LHA:XETRA`, which answers "Options are not available", and `fn FLOW LHA:XETRA` once
+ * unlocked; RISK's note on IAG:LSE named a 10-K route it files none of. A note names only what reads the listing.
+ */
+test("a function whose free routes all answer that the listing has none says so, and names no command for that listing", async () => {
+  const chains: Record<string, () => Promise<unknown>> = {
+    AAPL: async () => ({ underlyingSymbol: "AAPL", expirationDates: [1_800_000_000], calls: [], puts: [] }),
+    LHA: async () => { throw new Error("No options provider available for LHA"); },
+    SAP: async () => { throw new Error("Service unavailable"); },
+  };
+  const context = {
+    marketData: { getOptionsChain: (ticker: string) => chains[ticker]!() },
+  } as unknown as HeadlessPaneContext;
+  const flow = (symbol: string) => flowLockNote({ gate: "sign-in", symbol, context });
+  const apple = await flow("AAPL");
+  expect(apple).toContain("Free, with no sign-in: gloom options AAPL lists AAPL's option chain");
+  expect(apple).toContain("gloom fn FLOW AAPL then reads");
+  expect((await flow("LHA:XETRA")).split("\n")).toEqual([
+    "FLOW is part of Gloom Cloud Pro: it streams real-time sweeps, blocks and large premium prints across US options exchanges. Signed out it shows none of it.",
+    "Options are not available for LHA:XETRA, so FLOW has no prints of it.",
+    "To read it in FLOW, open the app (gloom), log in or sign up from the command bar (Ctrl+P, Log In or Sign Up), then upgrade (Ctrl+P, UPGRADE); gloom fn FLOW then reads with that session.",
+  ]);
+  // A check that failed is not known to have none: no route is named, and the command keeps the ticker.
+  const failed = await flow("SAP:XETRA");
+  expect(failed).not.toContain("gloom options");
+  expect(failed).not.toContain("not available");
+  expect(failed).toContain("gloom fn FLOW SAP:XETRA then reads");
+
+  // A ticker function says so too, and names its command only with a placeholder.
+  const pane = { token: "RISK", does: "it groups risk factors", shows: "it", free: [{ text: () => "gloom filings", answers: async () => false }],
+    noneFor: (ticker: string) => `${ticker}'s company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.` } as const;
+  const risk = await proLockNote({ gate: "sign-in", symbol: "IAG:LSE", context }, pane);
+  expect(risk).toContain("IAG:LSE's company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.");
+  expect(risk).toContain("gloom fn RISK <ticker> then reads");
+  expect(risk).not.toContain("gloom filings");
 });
 
 async function flushMicrotasks() {
