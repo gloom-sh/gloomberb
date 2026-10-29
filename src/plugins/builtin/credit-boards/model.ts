@@ -106,7 +106,7 @@ export const SETTLEMENT_TEXT = "settlement";
  * level from the day's trades. Shown only when a row is one, and each row
  * then carries `kind`.
  */
-export const levelKindColumn: HeadlessPaneColumn = {
+const levelKindColumn: HeadlessPaneColumn = {
   key: "kind", header: "Level",
   description: "Blank for a level from the day's trades. settlement for the day's end-of-day settlement price, which stands in "
     + "on a day without enough agreeing trades; its prints are 0.",
