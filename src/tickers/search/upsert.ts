@@ -11,6 +11,7 @@ import {
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { scopedBrokerContractIdentityKey } from "../../utils/instrument-identity";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
+import { coinPairQuoteCurrency, exchangeLineCoinListing, isCoinRowType } from "../../utils/crypto-pair";
 
 /**
  * The key a result is saved under when its symbol is already saved for
@@ -36,6 +37,18 @@ export async function upsertTickerFromSearchResult(
   result: InstrumentSearchResult,
   options: { tickerSymbol?: string } = {},
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
+  // A crypto exchange's line of a coin pair (BTC/GBP on COINBASE PRO), which no source quotes, is saved as the
+  // crypto venue's listing of the pair (BTC-GBP on CCC), in the currency the pair is quoted in.
+  const coin = result.brokerContract ? null
+    : exchangeLineCoinListing(getSearchResultSymbol(result), listingVenue(result), { coinRow: isCoinRowType(result.type) });
+  if (coin) {
+    result = { ...result, symbol: coin.symbol, exchange: coin.exchange, primaryExchange: undefined, currency: coin.currency };
+    if (options.tickerSymbol) options = { ...options, tickerSymbol: publicTickerKey(coin.symbol, coin.exchange) };
+  } else if (!result.currency && !result.brokerContract && canonicalExchange(listingVenue(result)) === "CCC") {
+    // The venue's own row of a pair (BTC-GBP) often comes without its currency, which the pair names.
+    const currency = coinPairQuoteCurrency(getSearchResultSymbol(result));
+    if (currency) result = { ...result, currency };
+  }
   let symbol = options.tickerSymbol ?? getSearchResultSymbol(result);
   // A vendor's suffixed symbol (GARAN.IS) is saved as the listing it is (GARAN on BIST), under the key
   // GARAN:BIST is saved under, so one listing is one row. A key the caller names is kept as given.

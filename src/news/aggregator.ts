@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from";
 import { logFailure } from "../utils/log-failure";
 import type { NewsCapability } from "../capabilities";
 import type { ConnectionHealthRegistry } from "../core/connection-health";
@@ -63,6 +64,7 @@ interface SourceFetchResult {
   errors: string[];
   nextCursor: string | null;
   access: NewsAccess | null;
+  companyFrom?: CompanyFrom | null;
 }
 
 interface NewsQueryEntry {
@@ -451,6 +453,7 @@ export class NewsService {
           loadingMore: entry.state.loadingMore,
           // A page that does not say keeps what this session's earlier answer said.
           access: result.access ?? (sameSession ? entry.state.access ?? null : null),
+          companyFrom: result.companyFrom ?? null,
         };
         entry.state = state;
         entry.generation = generation;
@@ -550,7 +553,7 @@ export class NewsService {
   private async readSourcePage(
     source: NewsCapability,
     query: NewsQuery,
-  ): Promise<{ articles: NewsArticle[]; nextCursor: string | null; error?: string | null; access?: NewsAccess | null }> {
+  ): Promise<{ articles: NewsArticle[]; nextCursor: string | null; error?: string | null; access?: NewsAccess | null; companyFrom?: CompanyFrom | null }> {
     if (source.provider.fetchNewsPage) {
       const page = await this.trackSourceRequest(
         source,
@@ -562,6 +565,7 @@ export class NewsService {
         nextCursor: page.nextCursor ?? null,
         error: page.error,
         access: page.access,
+        companyFrom: page.companyFrom ?? null,
       };
     }
     const articles = (await this.trackSourceRequest(
@@ -585,6 +589,7 @@ export class NewsService {
           errors: page.error ? [page.error] : [],
           nextCursor: page.nextCursor,
           access: page.access ?? null,
+          companyFrom: page.companyFrom ?? null,
         };
         if (page.articles.length > 0) return result;
         firstEmpty ??= result;
@@ -654,6 +659,7 @@ export class NewsService {
         nextCursor: entry.state.nextCursor,
         loadingMore: false,
         access: entry.state.access ?? null,
+        companyFrom: entry.state.companyFrom ?? null,
       };
       changed = true;
     }

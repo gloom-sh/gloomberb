@@ -28,10 +28,10 @@ export function usePaneCaptureStamp(paneId: string): string | null {
 
 export function captureStampFooter(footer: CombinedPaneFooter, text: string | null): CombinedPaneFooter {
   if (!text) return footer;
-  // Set apart from what the pane says about its data, which may itself be a time.
+  // The footer sets it apart from what the pane says about its data, which may itself be a time.
   const segment: PaneFooterSegment = {
     id: "capture-stamp",
-    parts: [...(footer.info.length > 0 ? [{ text: "· ", tone: "muted" as const }] : []), { text, tone: "label" }],
+    parts: [{ text, tone: "label" }],
   };
   return {
     ...footer,

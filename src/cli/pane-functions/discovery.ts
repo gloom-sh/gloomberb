@@ -12,7 +12,9 @@ import type {
   PluginPersistence,
 } from "../../types/plugin";
 import { createPluginTeamState } from "../../plugins/team-state";
+import { bindPluginContextNamespaces } from "../../plugins/registry/plugin-state";
 import type { MarketContext } from "../types";
+import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import type { PaneFunctionCatalog } from "./catalog";
 
 export interface PaneDiscoveryOptions {
@@ -173,23 +175,41 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     brokers,
   });
 
+  // Each plugin's caches save what a command fetches where the app keeps them, so a failed refresh answers from them.
+  const resources = context.persistence?.resources;
+  const persistences: Array<ReturnType<typeof createCommandPluginPersistence>> = [];
+  const commandPersistence = (stateId: string) => {
+    const persistence = createCommandPluginPersistence(resources, `plugin:${stateId}`);
+    persistences.push(persistence);
+    return persistence;
+  };
+
   const destroy = () => {
     let failure: unknown;
     for (const plugin of setupPlugins.splice(0).reverse()) {
       try { plugin.dispose?.(); } catch (error) { failure ??= error; }
     }
+    // A plugin that keeps its persistence past dispose must not reach a store the command closes.
+    for (const persistence of persistences.splice(0)) persistence.release();
     brokers.clear();
     if (context.resolveBroker === resolveBroker) context.resolveBroker = previousResolver;
     if (failure) throw failure;
   };
 
+  const namespaced = (stateId: string) => ({
+    persistence: commandPersistence(stateId),
+    resume: discoveryContext.resume,
+    configState: discoveryContext.configState,
+    teamState: discoveryContext.teamState,
+  });
   try {
     for (const plugin of plugins) {
       for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
       for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
       if (plugin.setup) {
         setupPlugins.push(plugin);
-        await plugin.setup(discoveryContext);
+        const stateId = plugin.stateId ?? plugin.id;
+        await plugin.setup(bindPluginContextNamespaces({ ...discoveryContext, ...namespaced(stateId) }, namespaced));
       }
     }
   } catch (error) {

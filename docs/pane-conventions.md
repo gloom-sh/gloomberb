@@ -290,6 +290,11 @@ the origin of a number. The one count the kit draws is the
   `o` hint opening the current item's URL), `usePaneNoticeFooter` (warnings).
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
+- The footer sets info segments apart with a muted ` · ` (`PANE_FOOTER_SEPARATOR`),
+  and an icon (`⚠`, `◷15m`) with one column, so two segments never read as one
+  sentence. A pane neither adds its own `·` between segments nor starts one
+  with it; what reads as one fact (`close 2026-09-25`) is one segment. A row
+  too narrow cuts from its end.
 - A short status (up to 24 cells, as much as a warning keeps) is never cut
   against the hints: the hints that no longer fit go under More first. A
   longer one gives way to the hints. This is the footer's own layout

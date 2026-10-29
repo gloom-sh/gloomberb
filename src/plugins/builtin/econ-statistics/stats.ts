@@ -144,6 +144,9 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "flat" },
     staleAfterMs: MONTHLY_EARLY,
     note: "Jobs added or lost last month, the single most watched release.",
+    // The jobs report as it is called: `ECST nfp` opens it.
+    aliases: ["nfp", "nonfarm", "nonfarm payrolls", "jobs report"],
+    keywords: ["jobs report", "nfp", "nonfarm"],
     limit: 900,
   }),
   stat({

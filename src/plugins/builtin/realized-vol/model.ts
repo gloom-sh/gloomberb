@@ -107,6 +107,11 @@ export interface CurrentAtmIvSnapshot {
   noOptionChain?: boolean;
 }
 
+/** When an IV was observed, to the minute in UTC (`2026-10-27 20:14 UTC`), in the pane and the report alike. */
+export function atmIvObservedLabel(date: Date): string {
+  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 /** A LEAPS ATM IV is not comparable with a 10 to 260 session realized cone. */
 const MAX_CURRENT_ATM_IV_DAYS = 90;
 

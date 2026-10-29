@@ -4,6 +4,16 @@ import { DESKTOP_APP_IDENTIFIER, DESKTOP_APP_NAME } from "./src/renderers/electr
 
 const RELEASE_BASE_URL = "https://github.com/gloom-sh/gloomberb/releases/latest/download";
 const GENERATE_RELEASE_PATCH = process.platform !== "win32";
+const RELEASE_BUILD = process.argv.some((arg) => arg === "--env=stable" || arg === "--env=canary");
+/**
+ * Electrobun gives every Windows build Chromium's DevTools port. A release
+ * has none: `-1` is no port, so Chromium starts no debugging server. Dev
+ * builds keep it.
+ */
+const WINDOWS_RELEASE_CHROMIUM_FLAGS = {
+  "remote-debugging-port": "-1",
+  "remote-allow-origins": false,
+};
 
 const config: ElectrobunConfig = {
   app: {
@@ -49,6 +59,7 @@ const config: ElectrobunConfig = {
       bundleCEF: true,
       defaultRenderer: "cef",
       icon: "src/assets/gloomberb-logo-windows.ico",
+      ...(RELEASE_BUILD ? { chromiumFlags: WINDOWS_RELEASE_CHROMIUM_FLAGS } : {}),
     },
   },
   scripts: {

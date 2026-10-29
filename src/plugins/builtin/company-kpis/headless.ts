@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { optionFlag } from "../../../cli/pane-functions/capabilities";
+import { companyDataNotes } from "../../../types/company-from";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
@@ -107,7 +108,8 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       const latest = ("series" in data ? data.series.map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
       const notes = [ageNote(data, latest, mode),
-        ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null].filter((note): note is string => !!note);
+        ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null,
+        ...companyDataNotes(data.companyFrom)].filter((note): note is string => !!note);
       return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
         ...(notes.length ? { notes } : {}),
         sections: "series" in data ? [

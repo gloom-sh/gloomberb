@@ -182,7 +182,7 @@ export function describeListingFate(
  * ended long ago. Only such a line can be a company that moved away, so only
  * its change lookup is waited for.
  */
-function mayHaveMoved(quote: Quote | null, now = Date.now()): boolean {
+export function lineMayHaveMoved(quote: Quote | null, now = Date.now()): boolean {
   return !!quote && (isQuoteBeforeLatestSession(quote, now) || endedTradingDate(quote, now) != null);
 }
 
@@ -206,7 +206,7 @@ export async function loadListingFate(
     // A lookup started beside the command's request gets a short grace once that is ready, so a slow
     // one never holds a symbol that trades. A line that stopped is waited for: only its company can
     // have moved, and then the answer decides whether the command serves anything at all.
-    const changes = await lookup.settle(!options.changes || mayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
+    const changes = await lookup.settle(!options.changes || lineMayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
     return describeListingFate(listing, quote, changes);
   } catch (error) {
     logFailure("tickers-listing-fate", "Could not resolve listing fate")(error);

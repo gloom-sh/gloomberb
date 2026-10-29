@@ -5,6 +5,7 @@ import {
 } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
 
@@ -78,13 +79,14 @@ function loadCached<T extends object>(
     }
     const fallback = store?.getResource<T>(kind, key, { ...options, allowExpired: true });
     if (!fallback) throw error;
-    return {
+    // A command that shows it ends with when the copy was saved, not with the failure.
+    return servedFromSavedCopy({
       ...fallback.value,
       fetchedAt: fallback.fetchedAt,
       stale: true,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
       errorStatus: error instanceof ApiRequestError ? error.status : undefined,
-    };
+    }, fallback.fetchedAt);
   }).finally(() => { if (active.get(key) === request) active.delete(key); });
   active.set(key, request);
   return request.promise;

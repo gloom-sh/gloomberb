@@ -73,6 +73,11 @@ export interface ResultItem {
   action: () => void | Promise<void>;
 }
 
+/** A row plain Enter can run, so the untouched selection may rest on it. */
+export function isDefaultSelectable(item: ResultItem): boolean {
+  return item.disabled !== true && item.defaultSelectable !== false;
+}
+
 type ListScreenKind = "root" | "mode" | "picker";
 
 export interface ListScreenState {

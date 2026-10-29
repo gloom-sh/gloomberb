@@ -1,3 +1,5 @@
+import type { CompanyFrom } from "../types/company-from";
+
 type NewsQueryScope = "global" | "ticker";
 export type NewsFeed = "latest" | "top" | "breaking" | "ticker" | "sector" | "topic";
 type NewsSentiment = "positive" | "neutral" | "negative";
@@ -95,6 +97,8 @@ export interface NewsPage {
   nextCursor?: string | null;
   /** Which news the source answered with; null or absent when the answer does not say. */
   access?: NewsAccess | null;
+  /** The company's home line the stories are read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom | null;
 }
 
 export interface NewsQueryState {
@@ -107,4 +111,6 @@ export interface NewsQueryState {
   loadingMore: boolean;
   /** Which news the stories are, from the last answer; null or absent when it did not say. */
   access?: NewsAccess | null;
+  /** The company's home line the stories are read from, when not the listing asked. */
+  companyFrom?: CompanyFrom | null;
 }

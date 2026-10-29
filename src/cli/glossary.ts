@@ -438,6 +438,12 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "A receipt's price compares with its home price only once the home price is multiplied by the ratio.",
   },
   {
+    term: "CEDEAR ratio", aliases: ["cedear", "cedears", "certificado de deposito argentino"],
+    functions: ["DES"], shown: ["CEDEAR ratio", "CEDEAR Ratio"],
+    definition: "How many Buenos Aires CEDEARs make the company's shares they stand for, from BYMA's published list: 20 AAPL:BYMA = 1 Apple Inc. share. "
+      + "A CEDEAR's market cap is its company's, in the currency of the listing it stands for (Apple's in dollars), not the certificate's peso price times a share count.",
+  },
+  {
     term: "ADR premium", aliases: ["adr discount", "adr vs home", "receipt premium", "adr premium/discount"],
     functions: ["ADR"], shown: ["ADR vs home", "premium", "discount"],
     definition: "How far a receipt trades above (a premium) or below (a discount) the home shares it holds, at the spot rate: spot / implied rate - 1. "
