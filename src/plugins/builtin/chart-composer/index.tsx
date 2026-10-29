@@ -10,7 +10,6 @@ import { parseTickerListInput } from "../../../tickers/list";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { tickerInstrumentLabel } from "../../../tickers/instrument-label";
 import type { ChartSpec } from "../../../time-series/types";
-import { isPriceOnlyMarketFieldId } from "../../../time-series/field-catalog";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
 import { DataCatalogPane } from "./data-catalog-pane";
 import { listFieldSeries } from "./field-series";
@@ -484,9 +483,10 @@ const chartComposerTemplates: PaneTemplateDef[] = [
 ];
 
 /**
- * A price chart of one security (GP, GIP, a custom price chart of one ticker) can follow a list.
- * A comparison would move only its first ticker, a FRED-only chart has no ticker to follow, and
- * fundamental and valuation graphs (GF, GE) stay out even for one ticker.
+ * A chart whose securities are all one ticker can follow a list: GP, GIP, and GF or GE of one
+ * ticker, whatever fields it shows (revenue beside total debt). Every series of that ticker moves
+ * to the selected one and keeps its field; FRED and other series stay as they are. A comparison
+ * of several tickers would move only one of them, and a FRED-only chart has no ticker to follow.
  */
 function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
   const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
@@ -495,7 +495,6 @@ function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
   const symbols = new Set<string>();
   for (const series of spec.series) {
     if (series.source.kind !== "security") continue;
-    if (!isPriceOnlyMarketFieldId(series.source.fieldId)) return false;
     symbols.add(parsePublicTickerKey(series.source.instrument.symbol).symbol.toUpperCase());
   }
   return symbols.size === 1;

@@ -8,11 +8,10 @@ import {
   RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
 } from "./relative-valuation-model";
 import { paneSchemas } from "./headless-schema";
-import { isRecord } from "../../../utils/guards";
-import { errorMessage } from "../../../utils/errors";
-import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { pickPeers, peerMethodTitle, type PeerSelection } from "./relative-valuation-peers";
+import {
+  AUTO_PEERS_SETTING, findPeers, peerMethodTitle, peerSelectionOf, PEER_SELECTION_SETTING, relativeValuationTitle, type PeerSelection,
+} from "./relative-valuation-peers";
 import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
 import { fundamentalsBasisParts } from "./relative-valuation-basis";
 import { conversionNote, convertMarketCaps, loadFxLegs } from "./relative-valuation-currency";
@@ -103,32 +102,13 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   })),
 ];
 
-/** Peers `--peers` chose, as the expansion left them in the settings or the load picked them. */
-function peerSelectionOf(value: unknown, symbols: readonly string[]): PeerSelection | null {
-  if (!isRecord(value) || typeof value.subject !== "string" || !Array.isArray(value.peers)) return null;
-  const selection = value as unknown as PeerSelection;
-  const expected = [selection.subject, ...selection.peers];
-  return expected.length === symbols.length && expected.every((symbol, index) => symbol.toUpperCase() === symbols[index]?.toUpperCase())
-    ? selection : null;
-}
-
 /** The peers of the one symbol `--peers` was given; several symbols are already a peer list. */
 async function choosePeers(symbols: readonly string[], ctx: HeadlessPaneContext): Promise<PeerSelection> {
   if (symbols.length !== 1) {
     throw new Error(`--peers picks the peers of one symbol, such as RV ${symbols[0] ?? "DUOL"} --peers; with several symbols, leave it out.`);
   }
-  const subject = symbols[0]!;
-  const financials = await loadHeadlessFinancials(ctx, subject).catch((error: unknown) => {
-    ctx.signal.throwIfAborted();
-    // A word that is no ticker is said as `fn RV duolingo lrn` says it, which the CLI follows with the search to run.
-    if (notATickerSymbol(errorMessage(error))) throw error;
-    // Any other failure leaves the peers to what the symbol alone places (a curated core's member).
-    return null;
-  });
-  return pickPeers(subject, financials, ctx);
+  return findPeers(symbols[0]!, ctx);
 }
-
-const PEER_SELECTION_SETTING = "peerSelection";
 
 export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["relative-valuation-pane"],
@@ -149,9 +129,12 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       argument: [selection.subject, ...selection.peers].join(", "),
       settings: { [PEER_SELECTION_SETTING]: selection },
-      title: `RV ${selection.subject} + ${peerMethodTitle(selection, { automatic: true })}`,
+      title: relativeValuationTitle([], selection),
     };
   },
+  // The app adds the peers of a pane opened on one ticker; a capture draws the tickers given, as the report does,
+  // unless --peers widened them.
+  shotState: (args) => args.options.peers === true ? {} : { settings: { [AUTO_PEERS_SETTING]: false } },
   async load(args, ctx) {
     // --peers picked in advance (fn and shot) reads the same peers; any other caller picks them here.
     const preset = args.options.peers === true ? peerSelectionOf(ctx.settings?.[PEER_SELECTION_SETTING], args.symbols) : null;

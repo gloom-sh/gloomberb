@@ -46,8 +46,9 @@ describe("chart composer presets", () => {
     expect(followed).toEqual(price);
   });
 
-  // GF and GE stay out of list linking even for one ticker; only price charts of one security follow.
-  test("only a price chart of one security can follow a list", () => {
+  // Any fields of one ticker follow a list (GF revenue beside total debt, FRED beside it stays put); a
+  // comparison would move only one of its tickers.
+  test("a chart of one ticker can follow a list whatever its fields; one of two tickers or none cannot", () => {
     const follower = chartComposerModule.panes![0]!.tickerFollower as (pane: ReturnType<typeof createPaneInstance>) => boolean;
     const canFollow = (spec: ChartSpec) => follower(createPaneInstance("chart-composer", {
       binding: { kind: "fixed", symbol: "AAPL" },
@@ -55,10 +56,11 @@ describe("chart composer presets", () => {
     }));
     expect(canFollow(buildPriceChartPreset("AAPL"))).toBe(true);
     expect(canFollow(buildIntradayPriceChartPreset("AAPL"))).toBe(true);
-    expect(canFollow(buildCustomChartPreset("AAPL, AAPL:volume"))).toBe(true);
-    expect(canFollow(buildFundamentalChartPreset(["AAPL"]))).toBe(false);
-    expect(canFollow(buildValuationChartPreset(["AAPL"]))).toBe(false);
-    expect(canFollow(buildCustomChartPreset("AAPL, AAPL:revenue"))).toBe(false);
+    expect(canFollow(buildFundamentalChartPreset(["AAPL"]))).toBe(true);
+    expect(canFollow(buildValuationChartPreset(["AAPL"]))).toBe(true);
+    expect(canFollow(buildCustomChartPreset("AAPL:revenue, AAPL:totalDebt, FRED:GDP"))).toBe(true);
+    expect(canFollow(buildFundamentalChartPreset(["AAPL", "MSFT"]))).toBe(false);
+    expect(canFollow(buildCustomChartPreset("FRED:GDP"))).toBe(false);
     expect(canFollow(buildComparisonChartPreset(["AAPL", "MSFT"]))).toBe(false);
   });
 });

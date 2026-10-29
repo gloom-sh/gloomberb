@@ -3,9 +3,38 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import type { TickerFinancials } from "../../../types/financials";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
+import { isRecord } from "../../../utils/guards";
+import { formatTickerListInput } from "../../../tickers/list";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import { fetchScreen } from "../equity-screener/client";
+import { loadHeadlessFinancials } from "../shared/headless-market-data";
 import { loadFxLegs } from "./relative-valuation-currency";
+
+/** The pane setting holding the peers chosen for its subject (`PeerSelection`), which the report reads back too. */
+export const PEER_SELECTION_SETTING = "peerSelection";
+/** The pane setting `--peers` sets, and a pane opened on one ticker: pick that ticker's peers. */
+export const AUTO_PEERS_SETTING = "autoPeers";
+
+/**
+ * What picking peers reads through: the subject's financials and FX rates
+ * from the market data client, the covered equities from the screener. The
+ * report passes its own context, the pane the app's clients, so both pick
+ * the same peers.
+ */
+export type PeerPickContext = Pick<HeadlessPaneContext, "signal" | "marketData" | "apiClient" | "resolveInstrument">;
+
+/**
+ * No peers could be picked. The message is the report's, which names
+ * `--peers` and the command that lists peers instead; `reason` is the pane's,
+ * which says only why.
+ */
+export class PeerPickError extends Error {
+  constructor(readonly reason: string, reportReason: string, symbol: string) {
+    super(`${reportReason} List them yourself: gloom fn RV ${symbol} <tickers>.`);
+    this.name = "PeerPickError";
+  }
+}
 
 /** How many peers `--peers` adds at most, and the fewest it settles for before it falls back. */
 const MOST_PEERS = 6;
@@ -234,6 +263,17 @@ export function peerMethodTitle(selection: PeerSelection, { automatic = false }:
   }
 }
 
+/**
+ * An RV pane's title: the subject and how its peers were chosen
+ * (`RV AAPL + auto peers by industry: Consumer Electronics`), as a capture
+ * of `--peers` is titled, or the tickers as listed.
+ */
+export function relativeValuationTitle(symbols: readonly string[], selection: PeerSelection | null): string {
+  return selection
+    ? `RV ${selection.subject} + ${peerMethodTitle(selection, { automatic: true })}`
+    : `RV ${formatTickerListInput([...symbols])}`;
+}
+
 function screenSymbol(row: ScreenRow): string {
   return isUsListingExchange(row.exchange) ? row.symbol : `${row.symbol}:${row.exchange}`;
 }
@@ -248,13 +288,13 @@ function candidateOf(row: ScreenRow): PeerCandidate {
   };
 }
 
-async function screenRows(criterion: ScreenDefinition["criteria"][number], ctx: HeadlessPaneContext): Promise<ScreenRow[]> {
+async function screenRows(criterion: ScreenDefinition["criteria"][number], ctx: PeerPickContext): Promise<ScreenRow[]> {
   const definition: ScreenDefinition = { version: 1, criteria: [criterion], sort: { field: "marketCap", direction: "desc" }, currency: "USD" };
   return (await fetchScreen(definition, null, ctx.signal, ctx.apiClient)).rows;
 }
 
 /** The subject's market cap in US dollars, through the app's FX rates when it is quoted in another currency. */
-async function subjectCapUsd(financials: TickerFinancials | null, ctx: HeadlessPaneContext): Promise<number | null> {
+async function subjectCapUsd(financials: TickerFinancials | null, ctx: PeerPickContext): Promise<number | null> {
   const cap = selectMarketCapitalization(financials?.quote, financials?.fundamentals);
   if (!cap) return null;
   if (cap.currency === "USD") return cap.value;
@@ -267,19 +307,20 @@ async function subjectCapUsd(financials: TickerFinancials | null, ctx: HeadlessP
  * Picks the peers of `symbol` for `--peers`: its group from its symbol or
  * profile, the group's covered equities from the screener (its industry, and
  * a related industry's curated core), ranked as `selectPeers` says. Throws
- * when nothing places the subject, or nothing can be found, saying how to
- * list peers instead.
+ * a `PeerPickError` when nothing places the subject, or nothing can be found.
  */
-export async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: HeadlessPaneContext): Promise<PeerSelection> {
+export async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: PeerPickContext): Promise<PeerSelection> {
   const subject: PeerSubject = {
     symbol,
     industry: financials?.profile?.industry?.trim() || null,
     description: financials?.profile?.description ?? null,
     marketCapUsd: null,
   };
-  const listYourOwn = `List them yourself: gloom fn RV ${symbol} <tickers>.`;
   const group = peerGroupOf(subject);
-  if (!group) throw new Error(`${symbol}'s profile names no industry, so --peers cannot pick its peers. ${listYourOwn}`);
+  if (!group) {
+    throw new PeerPickError(`No peers: ${symbol}'s profile names no industry.`,
+      `${symbol}'s profile names no industry, so --peers cannot pick its peers.`, symbol);
+  }
   let candidates: PeerCandidates | null = null;
   let failure: string | null = null;
   try {
@@ -296,7 +337,40 @@ export async function pickPeers(symbol: string, financials: TickerFinancials | n
   }
   const selection = selectPeers(subject, group, candidates);
   if (selection) return selection;
-  throw new Error(failure
-    ? `--peers could not read the covered equities in ${group.industry}: ${failure} ${listYourOwn}`
-    : `No other covered equity is in ${group.industry}, so --peers found no peers for ${symbol}. ${listYourOwn}`);
+  throw failure
+    ? new PeerPickError(`No peers: the covered equities in ${group.industry} could not be read (${failure}).`,
+      `--peers could not read the covered equities in ${group.industry}: ${failure}`, symbol)
+    : new PeerPickError(`No peers: no other covered equity is in ${group.industry}.`,
+      `No other covered equity is in ${group.industry}, so --peers found no peers for ${symbol}.`, symbol);
+}
+
+/**
+ * The peers of one symbol, as `fn RV <symbol> --peers` and the RV pane opened
+ * on one ticker both pick them: its financials for its industry, profile and
+ * market cap, then `pickPeers`. A word that is no ticker fails as such; any
+ * other failure to read the financials leaves the peers to what the symbol
+ * alone places (a curated core's member).
+ */
+export async function findPeers(symbol: string, ctx: PeerPickContext): Promise<PeerSelection> {
+  const financials = await loadHeadlessFinancials(ctx, symbol).catch((error: unknown) => {
+    ctx.signal.throwIfAborted();
+    // A word that is no ticker is said as `fn RV duolingo lrn` says it, which the CLI follows with the search to run.
+    if (notATickerSymbol(errorMessage(error))) throw error;
+    return null;
+  });
+  return pickPeers(symbol, financials, ctx);
+}
+
+/**
+ * The peers chosen for a list, as the expansion or the pane left them in its
+ * settings: null unless `symbols` is still the subject followed by those
+ * peers, in order.
+ */
+export function peerSelectionOf(value: unknown, symbols: readonly string[]): PeerSelection | null {
+  if (!isRecord(value) || typeof value.subject !== "string" || !Array.isArray(value.peers)
+    || typeof value.method !== "string" || typeof value.basis !== "string") return null;
+  const selection = value as unknown as PeerSelection;
+  const expected = [selection.subject, ...selection.peers];
+  return expected.length === symbols.length && expected.every((symbol, index) => symbol.toUpperCase() === symbols[index]?.toUpperCase())
+    ? selection : null;
 }
