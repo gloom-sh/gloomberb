@@ -1,0 +1,95 @@
+name: Windows CLI capture repro
+
+on:
+  workflow_dispatch:
+    inputs:
+      installer_run:
+        description: A Verify Windows run whose installer to use
+        default: "40912105186"
+      rounds:
+        description: How many shot/fn rounds
+        default: "12"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  capture:
+    strategy:
+      fail-fast: false
+      matrix:
+        machine: [1, 2, 3]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: installer
+          run-id: ${{ inputs.installer_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install, then draw panes from the CLI in a loop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $InstallDir = Join-Path $env:RUNNER_TEMP "Gloom"
+          $Install = Start-Process -FilePath installer/stable-win-x64-GloomSetup.exe -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=`"$InstallDir`"")
+          if ($Install.ExitCode -ne 0) { throw "install failed" }
+          $Cli = Join-Path $InstallDir "bin\gloom.cmd"
+          $Excluded = netsh interface ipv4 show excludedportrange protocol=tcp | Out-String
+          Write-Host "excluded TCP port ranges:"; Write-Host $Excluded
+          $Ranges = @([regex]::Matches($Excluded, "(\d+)\s+(\d+)") | ForEach-Object { ,@([int]$_.Groups[1].Value, [int]$_.Groups[2].Value) })
+          $Covered = 0; foreach ($R in $Ranges) { $Lo = [Math]::Max($R[0], 43000); $Hi = [Math]::Min($R[1], 52999); if ($Hi -ge $Lo) { $Covered += $Hi - $Lo + 1 } }
+          Write-Host "ports 43000-52999 inside excluded ranges: $Covered of 10000"
+          (Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion | ForEach-Object { Write-Host "chrome $_" }
+
+          $Work = Join-Path $env:RUNNER_TEMP "v"
+          $Fails = 0; $Total = 0
+          foreach ($Round in 1..${{ inputs.rounds }}) {
+            Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
+            $Caller = Join-Path $Work "caller with spaces"; $Profile = Join-Path $Work ".gloomberb"; $Temp = Join-Path $Work "t"
+            New-Item -ItemType Directory -Force -Path $Caller, $Profile, $Temp | Out-Null
+            Set-Content (Join-Path $Profile "config.json") '{"telemetry":{"crashReports":false}}'
+            $Steps = [ordered]@{
+              "shot-docs" = @("shot", "DOCS", "--output", "docs shot.png", "--json")
+              "fn-docs" = @("fn", "DOCS", "--json")
+              "fn-diag" = @("fn", "DIAG", "--json")
+            }
+            foreach ($Name in $Steps.Keys) {
+              $CliArgs = $Steps[$Name]; $Total++
+              $Watch = Join-Path $Work "$Name-watch.txt"
+              $Watcher = Start-Job -ArgumentList $Watch -ScriptBlock {
+                param($Path)
+                $Seen = @{}
+                for ($i = 0; $i -lt 45; $i++) {
+                  Start-Sleep -Seconds 1
+                  $Main = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { $_.CommandLine -match "gloom-pane-shot" -and $_.CommandLine -notmatch "--type=" }
+                  foreach ($P in $Main) {
+                    if ($P.CommandLine -match "--remote-debugging-port=(\d+)") { $Port = [int]$Matches[1] } else { continue }
+                    $Listen = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { "$($_.LocalAddress) pid $($_.OwningProcess)" }) -join ","
+                    $List = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$Port/json/list").Content -replace "\s+", " " } catch { "ERR $($_.Exception.Message)" }
+                    $Children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $($P.ProcessId)" | ForEach-Object { if ($_.CommandLine -match "--type=([a-z-]+)") { $Matches[1] } }) -join ","
+                    Add-Content $Path ("{0,2}s pid {1} port {2} listen [{3}] children [{4}] list {5}" -f $i, $P.ProcessId, $Port, $Listen, $Children, $List.Substring(0, [Math]::Min(400, $List.Length)))
+                  }
+                }
+              }
+              $Started = Get-Date
+              $env:GLOOMBERB_HOME = $Profile; $env:GLOOMBERB_API_URL = "http://127.0.0.1:9"; $env:TMPDIR = $Temp; $env:TMP = $Temp; $env:TEMP = $Temp; $env:NO_COLOR = "1"
+              Push-Location $Caller
+              $Out = & $Cli @CliArgs 2>&1 | Out-String
+              $Code = $LASTEXITCODE
+              Pop-Location
+              $env:TMP = $env:RUNNER_TEMP; $env:TEMP = $env:RUNNER_TEMP
+              $Seconds = [int]((Get-Date) - $Started).TotalSeconds
+              Stop-Job $Watcher; Remove-Job $Watcher -Force
+              $Bad = $Out -match "Timed out waiting for Chrome DevTools"
+              Write-Host ("round {0} {1}: exit {2} in {3} s{4}" -f $Round, $Name, $Code, $Seconds, $(if ($Bad) { " TIMED OUT" } else { "" }))
+              if ($Bad) {
+                $Fails++
+                if (Test-Path $Watch) { Get-Content $Watch | ForEach-Object { Write-Host "   $_" } } else { Write-Host "   (no chrome seen)" }
+              }
+            }
+          }
+          Write-Host "timed out: $Fails of $Total captures"
