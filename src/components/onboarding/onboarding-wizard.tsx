@@ -322,12 +322,15 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     return <OnboardingCoach step={t("YOUR WORKSPACE")}
       title={tf("Built around {ticker}", { ticker })}
       actions={<>
-        {/* The card has no room for both keys: like a toast, the dismiss key
-            is in the desktop tooltip. F10 also dismisses it. */}
+        {/* Each button shows its key, as Connect shows Alt+Enter; in the
+            terminal the second wraps under the first. The desktop card has no
+            room for both: like a toast, its dismiss key is in the tooltip.
+            F10 also dismisses it. */}
         <OnboardingButton
           label="Keep exploring"
           variant="ghost"
-          title={notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
+          shortcut={!desktop && notificationDismissShortcut ? notificationDismissShortcut : undefined}
+          title={desktop && notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
           onPress={() => { void finish(); }}
         />
         <OnboardingButton
