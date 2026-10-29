@@ -16,8 +16,8 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const requested: string[] = [];
   const ctx = {
     marketData: createTestDataProvider({
-      async getTickerFinancials(symbol, exchange) {
-        requested.push(`${symbol}:${exchange}`);
+      async getTickerFinancials(symbol, exchange, context) {
+        requested.push(`${symbol}:${exchange}${context?.statementHistory ? ` ${context.statementHistory}` : ""}`);
         return {
           financialCurrency: "USD",
           annualStatements: [
@@ -32,7 +32,8 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const result = await financialStatementsHeadless.load(args(["AAPL:NASDAQ"], { period: "annual", statement: "income" }), ctx);
   const revenue = result.rows.find((row) => String(row.metric).includes("Revenue"))!;
   const cells = revenue.cells as Array<{ date: string; value: number; growth: number; formatted: string }>;
-  expect(requested).toEqual(["AAPL:NASDAQ"]);
+  // The extended history is read only to tell whether GF goes further back.
+  expect(requested).toEqual(["AAPL:NASDAQ", "AAPL:NASDAQ extended"]);
   expect(result.metadata).toMatchObject({ symbol: "AAPL:NASDAQ", period: "annual", statement: "income" });
   expect(revenue["2025-12-31"]).toBe(150);
   expect(cells[0]).toMatchObject({ date: "2025-12-31", value: 150, growth: 0.5 });

@@ -1,31 +1,77 @@
-import type { FinancialStatement, StatementFill, StatementFillField } from "../types/financials";
+import type { FinancialStatement, StatementFill, StatementFillField, TickerFinancials } from "../types/financials";
+import { logFailure } from "./log-failure";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
 import { mergeStatementGaps } from "./statement-gaps";
 
 export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include restatements. Historical as-of values are not reconstructed.";
 
+/** The oldest dated period of a report's columns (a TTM column has no date), or null when none has one. */
+function oldestPeriod(dates: readonly string[]): string | null {
+  return dates.filter((date) => /^\d{4}-\d{2}-\d{2}/.test(date)).map((date) => date.slice(0, 10)).sort()[0] ?? null;
+}
+
 /**
  * The closing lines of a statements report that say how far back it goes, from
- * the oldest period it served: the report holds no older ones, and `GF` reads
- * one metric over more periods, as far as its own history reaches. Empty when
- * no period has a date, so a report with nothing in it says nothing.
+ * the oldest period it served: the report holds no older ones. `older` says
+ * whether `GF`, which reads one metric from the listing's extended history
+ * (`hasOlderStatements`), goes further back: it is pointed to only then, and
+ * when it does not, the listing has no older ones at all (IAG on LSE: its
+ * statements start in 2022, in GF too). Null when that could not be told.
+ * Empty when no period has a date, so a report with nothing in it says nothing.
  */
 export function statementHistoryNotes(
   period: "annual" | "quarterly",
   dates: readonly string[],
   symbol: string,
+  older: boolean | null,
 ): string[] {
-  const oldest = dates.filter((date) => /^\d{4}-\d{2}-\d{2}/.test(date)).map((date) => date.slice(0, 10)).sort()[0];
+  const oldest = oldestPeriod(dates);
   if (!oldest) return [];
-  return period === "annual"
-    ? [
-      `annual history from ${oldest.slice(0, 4)}; older years not served`,
-      `earlier years, one metric at a time: gloom fn GF ${symbol} --period annual --periods 40`,
-    ]
-    : [
-      `quarterly history from ${oldest}; older quarters not served`,
-      `earlier quarters, one metric at a time: gloom fn GF ${symbol} --period quarterly --periods 40`,
-    ];
+  const [from, unit] = period === "annual" ? [oldest.slice(0, 4), "years"] : [oldest, "quarters"];
+  if (older === false) return [`${period} history from ${from}; older ${unit} not available for this listing`];
+  return [
+    `${period} history from ${from}; older ${unit} not served`,
+    ...older ? [`earlier ${unit}, one metric at a time: gloom fn GF ${symbol} --period ${period} --periods 40`] : [],
+  ];
+}
+
+/**
+ * Whether the listing's extended statement history, which `GF` reads, has a
+ * period older than the oldest of `dates`, a report's columns: a US filer's
+ * filings reach years back; a listing abroad has nothing past what the report
+ * served. Null when the history could not be read.
+ */
+export async function hasOlderStatements(
+  loadExtended: () => Promise<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>,
+  period: "annual" | "quarterly",
+  dates: readonly string[],
+): Promise<boolean | null> {
+  const oldest = oldestPeriod(dates);
+  if (!oldest) return null;
+  try {
+    const extended = await loadExtended();
+    const rows = period === "annual" ? extended.annualStatements : extended.quarterlyStatements;
+    return rows.some((row) => /^\d{4}-\d{2}-\d{2}/.test(row.date) && row.date.slice(0, 10) < oldest);
+  } catch (error) {
+    logFailure("utils.financial-statements", "Reading the extended statement history failed")(error);
+    return null;
+  }
+}
+
+/** Venues whose companies report half-yearly and yearly, with no quarterly statements: Australia's (ASX, and Cboe Australia, which trades ASX companies) and New Zealand's. */
+const HALF_YEARLY_VENUES = new Set(["ASX", "CXA", "NZX"]);
+const DAY_MS = 86_400_000;
+
+/**
+ * Whether a listing's company reports half-yearly rather than quarterly: it
+ * lists on a venue whose companies do (Qantas on ASX), or the periods of its
+ * "quarterly" statements are half a year apart.
+ */
+export function reportsHalfYearly(exchange: string | null | undefined, quarterly: readonly Pick<FinancialStatement, "date">[]): boolean {
+  if (exchange && HALF_YEARLY_VENUES.has(exchange.toUpperCase())) return true;
+  const times = quarterly.map(({ date }) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite).sort((a, b) => a - b);
+  const gaps = times.slice(1).map((time, index) => (time - times[index]!) / DAY_MS);
+  return gaps.length > 0 && gaps.every((days) => days > 150 && days < 215);
 }
 
 /** How old a statement's latest period may be before a report says how old it is. */
