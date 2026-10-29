@@ -232,21 +232,37 @@ function rceditExecutablePath(): string {
   return existsSync(rceditX64Path) ? rceditX64Path : join(rceditBinDir, "rcedit.exe");
 }
 
+/**
+ * What Windows shows for the app's processes, in Task Manager, a file's
+ * properties and its firewall and security prompts. The runtime is Bun's, and
+ * otherwise carries Bun's name and publisher.
+ */
+function windowsVersionStrings(): string[] {
+  const version = (JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string }).version;
+  return [
+    "--set-version-string", "FileDescription", "Gloom",
+    "--set-version-string", "ProductName", "Gloom",
+    "--set-version-string", "CompanyName", "Gloom",
+    "--set-product-version", version,
+  ];
+}
+
 function embedWindowsIcons(runtimePath: string, resourcesPath: string): void {
   const iconPath = createWindowsIcon(resourcesPath);
   const rceditPath = rceditExecutablePath();
+  const versionStrings = windowsVersionStrings();
   for (const exeName of ["launcher.exe", "bun.exe"]) {
     const exePath = join(runtimePath, exeName);
     if (!existsSync(exePath)) continue;
     const edited = Bun.spawnSync({
-      cmd: [rceditPath, exePath, "--set-icon", iconPath],
+      cmd: [rceditPath, exePath, "--set-icon", iconPath, ...versionStrings],
       stdout: "inherit",
       stderr: "inherit",
     });
     if (edited.exitCode !== 0) {
       process.exit(edited.exitCode ?? 1);
     }
-    console.log(`Embedded Windows icon: ${exePath}`);
+    console.log(`Embedded Windows icon and name: ${exePath}`);
   }
 }
 
