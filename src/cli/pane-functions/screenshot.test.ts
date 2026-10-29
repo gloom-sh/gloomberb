@@ -495,6 +495,38 @@ describe("realized volatility screenshot evidence", () => {
     expect(shotUnavailableSymbols(hvt, source, nodes(cone))).toEqual([]);
   });
 
+  test("a window a short history is too short for leaves the capture whole: HAWK listed in May has no HV180 yet", () => {
+    const windows = { ...request, options: { ...request.options, windows: "10,180" } } as ResolvedPaneFunction;
+    const short = realizedChartSeries({ history: dates.map((date) => ({ date, close: 100 })),
+      rolling: dates.map((date, index) => ({ date, values: { 10: index ? 0.2 : null, 180: null } })), windows: [10, 180], priceUnit: "USD",
+      iv: { value: 0.22, date: new Date(status.currentIv.date), label: status.currentIv.label } }, ["green", "red"], "white");
+    const listed = realizedVolSemanticEvidence(short, { ...status, windows: [10, 180], shortWindows: [180] });
+    expect(listed.complete).toBe(true);
+    expect(shotUnavailableSymbols(windows, source, nodes(listed))).toEqual([]);
+    expect(shotDataEvidenceFor(windows, source, nodes(listed))).not.toBeNull();
+    // A window with no values for any other reason still is not.
+    const failed = realizedVolSemanticEvidence(short, { ...status, windows: [10, 180] });
+    expect(failed.complete).toBe(false);
+    expect(shotUnavailableSymbols(windows, source, nodes(failed))).toEqual(["AAPL"]);
+  });
+
+  test("a chart drawn without the current IV matches its data and is partial for the IV alone", () => {
+    const noIv = realizedChartSeries({ history: dates.map((date) => ({ date, close: 100 })),
+      rolling: dates.map((date, index) => ({ date, values: { 10: index ? 0.2 : null } })), windows: [10], priceUnit: "USD", iv: null },
+    ["green"], "white");
+    const ivErrors = ["Current ATM IV unavailable from cleaned option quotes", "Current ATM IV unavailable"];
+    const drawn = realizedVolSemanticEvidence(noIv, { ...status, currentIv: null, errors: ivErrors, ivErrors });
+    expect(drawn.complete).toBe(false);
+    expect(paneEvidenceMismatches(request, source, { semanticUi: nodes(drawn) })).toEqual([]);
+    expect(shotSemanticRowCount(request, source, nodes(drawn))).toBe(3);
+    // It names what is missing: the IV, not the symbol's data.
+    expect(shotUnavailableSymbols(request, source, nodes(drawn))).toEqual(["AAPL current ATM IV"]);
+    // Any other error beside it still leaves the symbol unavailable.
+    expect(shotUnavailableSymbols(request, source, nodes({ ...drawn, errors: [...ivErrors, "History unavailable"] }))).toEqual(["AAPL"]);
+    // An IV the pane names must still be the point it drew.
+    expect(shotDataEvidenceFor(request, source, nodes({ ...drawn, currentIv: status.currentIv }))).toBeNull();
+  });
+
   test("rejects invented counts, price-only charts, mismatched settings and stale or pending data", () => {
     expect(shotDataEvidenceFor(request, source, [])).toBeNull();
     expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, plottedValueCount: 200 }))).toBeNull();

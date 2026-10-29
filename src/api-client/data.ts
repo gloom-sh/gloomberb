@@ -1284,8 +1284,9 @@ export class CloudDataApi {
     query: string,
     limit?: number,
     topics?: readonly string[],
+    options: { closest?: boolean; tickers?: readonly string[] } = {},
   ): Promise<CloudNewsListResponse> {
-    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit, topics));
+    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit, topics, options));
   }
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
