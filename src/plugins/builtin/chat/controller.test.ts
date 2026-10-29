@@ -2264,6 +2264,59 @@ describe("ChatController", () => {
     }]);
   });
 
+  test("shows a DM, a mention or a reply in the status bar in place of its toast while it has room, and tells the server it was seen", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const toasts: string[] = [];
+    const delivered: Array<{ ids: string[]; seen?: boolean }> = [];
+    const bob = { id: "u2", username: "bob", displayName: "Bob" };
+    const directChannel: ChatChannel = { id: "dm:u2", name: "u2", kind: "direct", created_at: "2026-03-28T00:00:00.000Z", dmUser: bob };
+    const channels = [...SERVER_CHAT_CHANNELS, directChannel];
+    apiClient.getChatState = async () => ({
+      channels,
+      onlineCount: 0,
+      channelStates: channels.map((channel) => ({ channelId: channel.id, notificationsEnabled: false, lastReadMessageId: null, unreadCount: 0 })),
+      notifications: [],
+    });
+    apiClient.markChatNotificationsDelivered = async (ids, options) => {
+      delivered.push({ ids, seen: options?.seen });
+      return { delivered: ids.length };
+    };
+    persistSession(persistence, { emailVerified: true });
+    controller.setNotifier((entry) => {
+      toasts.push(entry.body);
+      return { toastVisible: true, desktopRequested: false };
+    });
+    controller.attachPersistence(persistence);
+    await controller.refreshChatState();
+    const arrive = (id: number, type: ChatNotification["type"], channelId: string, content: string) => {
+      const message = chatMessage({ id: `m${id}`, channelId, content, createdAt: `2026-03-28T00:0${id}:00.000Z`, user: bob });
+      (controller as any).handleChatNotification(mentionNotification({ id: `n${id}`, type, channelId, messageId: message.id, createdAt: message.createdAt, message }));
+    };
+
+    // No status bar with room: the toast, as before.
+    arrive(1, "channel", directChannel.id, "first");
+    expect(toasts).toEqual(["first"]);
+
+    let room = true;
+    const release = controller.statusPreview.attach(() => room);
+    arrive(2, "channel", directChannel.id, "lunch?");
+    expect(controller.statusPreview.get()).toMatchObject({ channelId: directChannel.id, messageId: "m2", senderName: "bob", direct: true, text: "lunch?" });
+    arrive(3, "reply", "everyone", "agreed");
+    expect(controller.statusPreview.get()).toMatchObject({ messageId: "m3", direct: false, text: "agreed" });
+    // Channel chatter you asked to hear about keeps its toast, and so does a message when the bar has no room for it.
+    arrive(4, "channel", "everyone", "CPI is out");
+    room = false;
+    arrive(5, "mention", "everyone", "@ada look");
+    expect(toasts).toEqual(["first", "@bob: CPI is out", "@bob mentioned you: @ada look"]);
+    expect(controller.statusPreview.get()?.messageId).toBe("m3");
+    // Shown in the bar counts as seen, as a toast does.
+    expect(delivered).toEqual([1, 2, 3, 4, 5].map((id) => ({ ids: [`n${id}`], seen: true })));
+
+    release();
+    expect(controller.statusPreview.get()).toBeNull();
+  });
+
   test("tracks unread channel messages and clears them when the channel opens", () => {
     const persistence = new MemoryPersistence();
     const controller = createController();

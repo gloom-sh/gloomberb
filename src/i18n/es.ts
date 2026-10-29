@@ -506,10 +506,8 @@ export const es: Record<string, string> = {
   "Pin Ticker": "Fijar ticker",
 
   // ── Help pane ────────────────────────────────────────────────
-  "How To Use Gloom": "Cómo usar Gloom",
   "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba, o pulsa {key}, y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
-  "Click anything to use it; the keys shown beside actions are shortcuts.": "Haz clic en cualquier cosa para usarla; las teclas junto a las acciones son atajos.",
   "Open Help": "Abrir la ayuda",
   "Command Prefixes": "Prefijos de comandos",
   "Window Templates": "Plantillas de ventana",
@@ -519,7 +517,6 @@ export const es: Record<string, string> = {
   "Scrolling": "Desplazamiento",
   "Open Debug Log": "Abrir registro de depuración",
   "GitHub Issues": "GitHub Issues",
-  "Docked panes stay in the saved layout.": "Los paneles anclados permanecen en el diseño guardado.",
   "Floating panes can be dragged by the title bar and resized from the lower-right corner.": "Los paneles flotantes se arrastran por la barra de título y se redimensionan desde la esquina inferior derecha.",
   "Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.": "Usa Acciones de diseño para dividir, mover, duplicar, cerrar paneles flotantes, deshacer, rehacer y diseños predefinidos.",
   "Move through focused table and list rows.": "Moverse por las filas de tablas y listas activas.",
@@ -564,7 +561,6 @@ export const es: Record<string, string> = {
   "Go back from a nested command screen when the query is empty.": "Volver de una pantalla de comando anidada cuando la consulta está vacía.",
   "Reorder ordered multi-select choices.": "Reordenar opciones de selección múltiple ordenadas.",
   "Submit multiline command forms.": "Enviar formularios de comando multilínea.",
-  "Layout Basics": "Fundamentos del diseño",
 
   // ── Onboarding ───────────────────────────────────────────────
   "The open terminal for modern finance.": "La terminal abierta para las finanzas modernas.",

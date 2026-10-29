@@ -507,10 +507,8 @@ export const zhCN: Record<string, string> = {
   "Pin Ticker": "固定股票",
 
   // ── Help pane ────────────────────────────────────────────────
-  "How To Use Gloom": "如何使用 Gloom",
   "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，或按 {key}，用日常语言输入你想要的，比如 \"top news\"。“功能”标签列出了全部功能。",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，用日常语言输入你想要的，比如 \"top news\"。“功能”标签列出了全部功能。",
-  "Click anything to use it; the keys shown beside actions are shortcuts.": "点击任意内容即可使用；操作旁显示的按键是快捷键。",
   "Open Help": "打开帮助",
   "Command Prefixes": "命令前缀",
   "Window Templates": "窗口模板",
@@ -520,7 +518,6 @@ export const zhCN: Record<string, string> = {
   "Scrolling": "滚动",
   "Open Debug Log": "打开调试日志",
   "GitHub Issues": "GitHub 问题反馈",
-  "Docked panes stay in the saved layout.": "停靠面板会保留在已存布局中。",
   "Floating panes can be dragged by the title bar and resized from the lower-right corner.": "浮动面板可拖动标题栏移动，右下角调整大小。",
   "Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.": "用布局操作完成拆分、移动、复制、关闭全部浮动面板、撤销、重做与布局预设。",
   "Move through focused table and list rows.": "在聚焦的表格与列表行间移动。",
@@ -565,7 +562,6 @@ export const zhCN: Record<string, string> = {
   "Go back from a nested command screen when the query is empty.": "查询为空时从嵌套命令界面返回。",
   "Reorder ordered multi-select choices.": "调整有序多选项的顺序。",
   "Submit multiline command forms.": "提交多行命令表单。",
-  "Layout Basics": "布局基础",
 
   // ── Onboarding ───────────────────────────────────────────────
   "The open terminal for modern finance.": "面向现代金融的开源终端。",

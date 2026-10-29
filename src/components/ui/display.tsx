@@ -7,6 +7,7 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { CountryFlagLead } from "./country-flag";
 import { usePaneLinkMenuEntry } from "./external-link";
+import { ICON_GLYPHS, Icon, type IconName } from "./icon";
 import { titleCase } from "./header-case";
 import { statToneColor, type StatTone } from "./stat-grid";
 
@@ -199,6 +200,10 @@ export interface BadgeProps {
   /** For a domain scale, such as a sentiment score or chart series. */
   color?: string;
   variant?: "subtle" | "solid";
+  /** A mark before the label, in its colour: an SVG on the desktop, its glyph in the terminal. */
+  icon?: IconName;
+  /** False for a label that is not English to translate, such as a username. */
+  translate?: boolean;
 }
 
 /**
@@ -210,8 +215,9 @@ export const NATIVE_BADGE_STYLE = { height: "calc(100% - 2px)", borderRadius: "v
 /** How far a subtle chip's fill is tinted toward its tone. */
 export const BADGE_TINT = 0.28;
 const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
+const NATIVE_ICON_BADGE_STYLE = { ...NATIVE_BADGE_STYLE, gap: "var(--gloom-space-xs)" };
 
-export function Badge({ label, tone = "neutral", color, variant = "subtle" }: BadgeProps) {
+export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true }: BadgeProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const accent = color ?? (tone === "neutral" ? colors.textDim : tone === "accent" ? colors.borderFocused : colors[tone]);
@@ -220,10 +226,19 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle" }: Ba
   const background = neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, BADGE_TINT);
   const baseForeground = neutral ? colors.selectedText : solid ? colors.bg : accent;
   const foreground = blendForContrast(baseForeground, background, higherContrast("#000000", "#ffffff", background), 4.5);
+  const text = translate ? t(label) : label;
+  const nativeIcon = nativePaneChrome && icon;
+  // The terminal draws the icon's glyph as text in front of the label.
+  const shown = icon && !nativePaneChrome ? [ICON_GLYPHS[icon], text].filter(Boolean).join(" ") : text;
   const chip = (
     <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
-      data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined} style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
-      <Text fg={foreground} attributes={TextAttributes.BOLD} style={nativePaneChrome ? NATIVE_BADGE_TEXT_STYLE : undefined}>{t(label)}</Text>
+      data-gloom-ui="badge" {...(nativeIcon ? { flexDirection: "row", alignItems: "center" } as const : {})}
+      justifyContent={nativePaneChrome && !icon ? "center" : undefined}
+      style={nativePaneChrome ? icon ? NATIVE_ICON_BADGE_STYLE : NATIVE_BADGE_STYLE : undefined}>
+      {nativeIcon ? <Icon name={nativeIcon} color={foreground} /> : null}
+      {shown || !nativeIcon ? (
+        <Text fg={foreground} attributes={TextAttributes.BOLD} style={nativePaneChrome ? NATIVE_BADGE_TEXT_STYLE : undefined}>{shown}</Text>
+      ) : null}
     </Box>
   );
   return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;

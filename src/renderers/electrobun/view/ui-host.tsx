@@ -5,6 +5,7 @@ import { backendRequest } from "./backend-rpc";
 import { NATIVE_CONTEXT_MENU_SUPPORTED, showDesktopContextMenu } from "./host/native";
 import { startElectrobunWindowDrag } from "./host/window-move";
 import { createDomUiHost } from "../../dom/dom-ui-host";
+import { detectPlatform } from "../../../utils/platform";
 
 export function createWebUiHost(desktopPlatform?: string): UiHost {
   return createDomUiHost(desktopPlatform, {
@@ -25,6 +26,13 @@ export const webRendererHost: RendererHost = {
     });
   },
   startWindowDrag() {
+    // Windows moves the window itself, as it does from a native title bar.
+    if (detectPlatform() === "win32") {
+      void backendRequest("host.startWindowDrag").catch((error: unknown) => {
+        console.error("[desktop] could not start moving the window", error instanceof Error ? error.message : String(error));
+      });
+      return;
+    }
     startElectrobunWindowDrag();
   },
   async controlWindow(action) {

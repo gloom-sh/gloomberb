@@ -1806,7 +1806,7 @@
     },
     {
      "type": "code",
-     "code": "bun install -g gloomberb"
+     "code": "bun install -g @gloom-sh/terminal"
     },
     {
      "type": "heading",
@@ -1860,9 +1860,13 @@
       ],
       [
        "Bun",
-       "`bun install -g gloomberb@latest`"
+       "`bun install -g @gloom-sh/terminal@latest`"
       ]
      ]
+    },
+    {
+     "type": "paragraph",
+     "text": "An existing `gloomberb` install keeps updating as it is."
     },
     {
      "type": "paragraph",
@@ -5476,7 +5480,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-10-12",
+   "updatedAt": "2026-10-27",
    "blocks": [
     {
      "type": "paragraph",
@@ -5648,14 +5652,30 @@
        "Ticker and quick notes"
       ],
       [
-       "`alerts list`, `alerts add <symbol> <above|below|crosses> <price>`, `alerts delete|rearm <id>`",
-       "Price alerts"
+       "`alerts list`, `alerts add ...`, `alerts delete|rearm <id>`",
+       "Price, valuation, daily technical and event alerts, every kind the `ALRT` pane offers; the forms are below"
       ]
      ]
     },
     {
      "type": "paragraph",
      "text": "[Portfolios and rebalancing](/docs/portfolio) walks through targets and the drift table. `CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately and ignore `--dry-run`. Sign-in, account management and chat are app-only."
+    },
+    {
+     "type": "paragraph",
+     "text": "The alerts commands, as `gloom help alerts` lists them:"
+    },
+    {
+     "type": "code",
+     "code": "gloom alerts list\ngloom alerts add <symbol> <above|below|crosses> <price>\ngloom alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>\ngloom alerts add <symbol> ma(50) crosses <above|below> ma(200)\ngloom alerts add <symbol> closes <above|below> ma(200)\ngloom alerts add <symbol>/<benchmark> <above|below|crosses> <ratio>\ngloom alerts add <symbol> rrg <leading|weakening|lagging|improving> [--benchmark <symbol>]\ngloom alerts add <symbol> earnings [--days <n> | results]\ngloom alerts add <calendar event> [--country <code>] [--days <n>]\ngloom alerts add [symbol] news <keyword>\ngloom alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]\ngloom alerts add <symbol> <iv|rr> <above|below> <level>\ngloom alerts add <OCC contract> iv spike <points>\ngloom alerts add <symbol> 52-week <high|low>\ngloom alerts add <symbol> unusual volume [<multiple>x]\ngloom alerts add <symbol> filing [8-K|10-K|10-Q|S-1|13D|13D/A|13G|13G/A|6-K|20-F]\ngloom alerts add <symbol> insider [buy|sell]\ngloom alerts add <symbol> short interest [increase|decrease] [<percent>%]\ngloom alerts add <symbol> analyst [upgrade|downgrade]\ngloom alerts add <symbol> hiring [accelerating|slowing]\ngloom alerts add perps <market> <funding|oi|premium|closed-premium> <above|below> <percent>\ngloom alerts add catalyst [type <type> | agency <agency> | country <code>]\ngloom alerts add <symbol> catalyst\ngloom alerts add congress [member name]\ngloom alerts add 13f <fund CIK>\ngloom alerts delete <id>\ngloom alerts rearm <id>"
+    },
+    {
+     "type": "paragraph",
+     "text": "Words none of these forms read are refused with the list of kinds. Adding a rule that already exists names the existing alert's ID and adds nothing, and `rearm` on an alert that has not gone off says it is already active. An RSI or moving-average alert is always saved: it reads the same daily closes `history` shows as final and says when it is first checked."
+    },
+    {
+     "type": "paragraph",
+     "text": "`alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`) and when it was created, in ISO 8601 UTC. `alerts list --csv` keeps its columns in order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. Creating, re-arming and deleting an alert go in the app's alert log beside the alerts that fired (`gloom fn ALRT --tab history`)."
     },
     {
      "type": "heading",

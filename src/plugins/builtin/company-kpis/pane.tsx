@@ -21,7 +21,7 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, fiscalLabel,
   isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
@@ -48,7 +48,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
     <KeyValueRow label="Revision" value={`${row.revision}${row.current ? " · current" : " · superseded"}${!isGuidance(row) && (row.conflict || row.contested) ? " · conflicting disclosures" : ""}`} labelWidth={18} />
     {row.revisionReason ? <KeyValueRow label="Correction" value={row.revisionReason} labelWidth={18} /> : null}
     {isGuidance(row) ? <>
-      <KeyValueRow label="Issued" value={row.issuedDate} detail={directionLabel(row.direction)} labelWidth={18} />
+      <KeyValueRow label="Issued" value={row.issuedDate} detail={directionLabel(row)} labelWidth={18} />
       <KeyValueRow label="Source range" value={row.rangeText} labelWidth={18} />
       {row.conditions ? <KeyValueRow label="Conditions" value={row.conditions} labelWidth={18} /> : null}
       <KeyValueRow label="Later actual" value={row.actual ? valueText(row, row.actual.value) : "Pending"} detail={row.actual ? outcomeLabel(row) : undefined} labelWidth={18} />
@@ -131,7 +131,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
         : sort.column === "actual" ? guide?.actual?.value ?? null : sort.column === "outcome" ? guide ? outcomeLabel(guide) : null
         : sort.column === "basis" ? row.basis : sort.column === "unit" ? unitLabel(row) : sort.column === "scope" ? dimensionLabel(row.dimensions)
         : sort.column === "published" ? row.evidence[0]!.publishedAt : sort.column === "revision" ? row.revision
-        : sort.column === "quote" ? row.evidence[0]!.quote : sort.column === "change" ? guide ? guide.direction : observationChange(row as KpiObservation, observations).value
+        : sort.column === "quote" ? row.evidence[0]!.quote : sort.column === "change" ? guide ? directionLabel(guide) : observationChange(row as KpiObservation, observations).value
         : periodOrder(row);
     };
     const direction = sort.direction === "asc" ? 1 : -1;
@@ -159,8 +159,13 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     }
     return map;
   }, [kpis]);
-  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0 && width >= 100, desktop),
-    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows, width, desktop]);
+  const columns = useMemo(() => {
+    const shown = withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0 && width >= 100, desktop),
+      rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS);
+    // Evidence is a wide ledger that scrolls; the other tabs fit the pane.
+    return tab === "evidence" ? shown : fitCompanyColumns(shown, width, tab === "history");
+  }, [mode, tab, trends, rows, width, desktop]);
+  const emptyState = companyEmptyState(mode, symbol ?? "", { tab, hasRows: allRows.length > 0 });
   const metricOptions = useMemo(() => [{ value: "all", label: "All metrics" }, ...[...new Map(allRows.map((row) => [row.metricId, { value: row.metricId, label: row.metric.name }])).values()]], [allRows]);
   const kpiChart = useMemo(() => observationChart(rows.filter((row): row is KpiObservation => !isGuidance(row)), colors.warning), [rows, colors.warning]);
   const series = useMemo(() => tab !== "chart" ? [] : mode === "kpis" ? kpiChart.series
@@ -215,7 +220,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       return { text: "", content: <PriceSparkline priceHistory={points} width={column.width} period="all" trend={tone === "muted" ? "neutral" : tone} /> };
     }
     if (column.id === "change") {
-      if (guide) return { text: directionLabel(guide.direction), color: toneColor(directionTone(guide.direction), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
+      if (guide) return { text: directionLabel(guide), color: toneColor(directionTone(guide), colors), keepColorWhenSelected: guide.direction === "raised" || guide.direction === "cut" };
       const change = observationChange(row as KpiObservation, observations);
       return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
     }
@@ -247,7 +252,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
         detailScrollRef={detailScrollRef} detailContent={openRow ? <DetailScrollBody ref={detailScrollRef} resetScrollKey={openRow.id}><DisclosureEvidence row={openRow} sourceId={sourceId} onSource={setSource} width={width} /></DetailScrollBody> : null}
         sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((previous) => ({ column, direction: previous.column === column && previous.direction === "desc" ? "asc" : "desc" }))}
         resetScrollKey={`${mode}:${symbol}:${tab}:${metric}:${activePlot}`}
-        emptyStateTitle={tab === "history" ? "Actuals have not been matched to these guidance periods yet." : "No disclosed observations for this selection yet."}
+        emptyStateTitle={emptyState.title} emptyStateHint={emptyState.hint}
         rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query}
           chart={tab === "chart" ? { series, ...(mode === "kpis" ? { xAxis: kpiChart.xAxis, viewport: kpiChart.viewport } : {}), empty: preview ? "Full history is available with Pro." : "History is accumulating. Two comparable disclosures are needed for a trend.",
             formatValue: (value) => selected ? `${valueText(selected, value)}${selected.currency ? ` ${unitLabel(selected)}` : ""}` : String(value),

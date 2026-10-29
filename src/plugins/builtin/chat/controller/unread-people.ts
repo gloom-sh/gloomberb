@@ -1,5 +1,5 @@
 import { apiClient, type ChatChannel, type ChatMessage } from "../../../../api-client";
-import type { ChannelRuntimeState, ChannelUnreadPeople } from "./state";
+import type { ChannelRuntimeState, ChannelUnreadPeople, UnreadMessageForYou } from "./state";
 import { chatMessageMentionsUsername, normalizeChatUsername } from "./utils";
 
 /** The most messages the server returns for one request. */
@@ -18,38 +18,73 @@ interface Reader {
   username: string | null;
 }
 
-/** What the app badge needs of one unread message: who sent it, and whether it mentions you. */
-interface UnreadFact {
-  senderId: string;
+/** What the app badge and the status bar need of one unread message. */
+interface UnreadFact extends Omit<UnreadMessageForYou, "messageId"> {
+  messageId: string;
+  /** It mentions you, or replies to a message of yours. */
   mentionsYou: boolean;
+}
+
+function sentAt(createdAt: string | null | undefined): number {
+  const time = createdAt ? Date.parse(createdAt) : Number.NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
+/** Whether the message answers one of `reader`'s, by account or, from a server that leaves the id out, by username. */
+function repliesTo(message: ChatMessage, reader: Reader): boolean {
+  const author = message.replyTo?.user;
+  if (!author) return false;
+  if (author.id) return author.id === reader.id;
+  return !!reader.username && normalizeChatUsername(author.username) === reader.username;
 }
 
 function unreadFact(message: ChatMessage, reader: Reader): UnreadFact {
   return {
+    messageId: message.id,
     senderId: message.user.id,
-    mentionsYou: !!reader.username && chatMessageMentionsUsername(message.content, reader.username),
+    senderName: message.user.username?.trim() || message.user.displayName,
+    at: sentAt(message.createdAt),
+    mentionsYou: (!!reader.username && chatMessageMentionsUsername(message.content, reader.username))
+      || repliesTo(message, reader),
   };
 }
 
-function peopleOf(facts: Iterable<UnreadFact>): ChannelUnreadPeople {
+/**
+ * The people behind unread messages, and the newest one for you. In a DM or
+ * group chat (`everyMessageForYou`) every message is for you; elsewhere only
+ * the ones that mention or reply to you are.
+ */
+function peopleOf(facts: Iterable<UnreadFact>, everyMessageForYou: boolean): ChannelUnreadPeople {
   const senders = new Set<string>();
   const mentioners = new Set<string>();
+  let latestForYou: UnreadMessageForYou | null = null;
+  let forYouCount = 0;
   for (const fact of facts) {
     senders.add(fact.senderId);
     if (fact.mentionsYou) mentioners.add(fact.senderId);
+    if (!everyMessageForYou && !fact.mentionsYou) continue;
+    forYouCount += 1;
+    if (!latestForYou || fact.at >= latestForYou.at) {
+      latestForYou = { messageId: fact.messageId, senderId: fact.senderId, senderName: fact.senderName, at: fact.at };
+    }
   }
-  return { senders: [...senders], mentioners: [...mentioners] };
+  return { senders: [...senders], mentioners: [...mentioners], latestForYou, forYouCount };
 }
 
 /**
- * The people behind unread messages: who sent them and who mentioned
- * `reader`. Your own messages are never unread.
+ * The people behind unread messages: who sent them, who mentioned or replied
+ * to `reader`, and the newest message for them. Your own messages are never
+ * unread.
  */
 export function summarizeUnreadMessages(
   messages: readonly ChatMessage[],
   reader: { id: string; username: string | null },
+  { everyMessageForYou = false }: { everyMessageForYou?: boolean } = {},
 ): ChannelUnreadPeople {
-  return peopleOf(messages.filter((message) => message.user.id !== reader.id).map((message) => unreadFact(message, reader)));
+  return peopleOf(
+    messages.filter((message) => message.user.id !== reader.id).map((message) => unreadFact(message, reader)),
+    everyMessageForYou,
+  );
 }
 
 /** Messages read from the server for a channel whose unread messages are not all on this device. */
@@ -75,15 +110,16 @@ interface UnreadPeopleOptions {
 }
 
 /**
- * Who each channel's unread messages are from, for the app badge. The server
- * keeps a count per channel and a read marker, not the senders, so they come
- * from the messages after the marker: the ones this device holds, and for a
- * channel whose unread messages are not all here, the newest 300 of the rest
- * read from the server once (then only what is new). Nothing is guessed: a
- * channel that has not loaded yet reports the unread messages it does hold.
+ * Who each channel's unread messages are from, for the app badge and the
+ * status bar. The server keeps a count per channel and a read marker, not
+ * the senders, so they come from the messages after the marker: the ones
+ * this device holds, and for a channel whose unread messages are not all
+ * here, the newest 300 of the rest read from the server once (then only what
+ * is new). Nothing is guessed: a channel that has not loaded yet reports the
+ * unread messages it does hold.
  *
- * Only a host that keeps an app badge needs this, so it does nothing, and
- * makes no request, until something asks to {@link track} it.
+ * It does nothing, and makes no request, until something asks to
+ * {@link track} it: the app badge, and the status bar while signed in.
  */
 export class ChatControllerUnreadPeople {
   private readonly loaded = new Map<string, LoadedUnread>();
@@ -113,11 +149,21 @@ export class ChatControllerUnreadPeople {
     const people: Record<string, ChannelUnreadPeople> = {};
     for (const [channelId, state] of this.options.getChannelStates()) {
       if (state.unreadCount <= 0) continue;
-      const otherPerson = directPerson(channels.get(channelId));
+      const channel = channels.get(channelId);
+      const conversation = channel?.kind === "direct" || channel?.kind === "group";
+      const known = peopleOf(this.knownFacts(channelId, state, reader).values(), conversation);
+      // In a DM or group every unread message is for you, held here or not.
+      if (conversation) known.forYouCount = state.unreadCount;
+      const otherPerson = directPerson(channel);
       // Everything unread in a DM is from the one person on the other side.
       people[channelId] = otherPerson
-        ? { senders: [otherPerson], mentioners: [] }
-        : peopleOf(this.knownFacts(channelId, state, reader).values());
+        ? {
+          senders: [otherPerson.id],
+          mentioners: [],
+          latestForYou: known.latestForYou ?? newestFrom(otherPerson, state, channel),
+          forYouCount: known.forYouCount,
+        }
+        : known;
     }
     return people;
   }
@@ -216,9 +262,29 @@ export class ChatControllerUnreadPeople {
   }
 }
 
+/**
+ * The newest unread message of a DM whose read marker is not on this device:
+ * unread messages are the newest ones, so it is the newest message held from
+ * the other person, or failing one, just them as of the conversation's last
+ * message.
+ */
+function newestFrom(
+  person: NonNullable<ChatChannel["dmUser"]>,
+  state: ChannelRuntimeState,
+  channel: ChatChannel | undefined,
+): UnreadMessageForYou {
+  const held = state.messages.findLast((message) => message.user.id === person.id && !message.clientStatus);
+  return {
+    messageId: held?.id ?? null,
+    senderId: person.id,
+    senderName: person.username?.trim() || person.displayName,
+    at: Math.max(sentAt(held?.createdAt), sentAt(channel?.lastMessageAt)),
+  };
+}
+
 /** The one other person in a direct message, when the channel says who. */
-function directPerson(channel: ChatChannel | undefined): string | null {
-  return channel?.kind === "direct" ? channel.dmUser?.id ?? null : null;
+function directPerson(channel: ChatChannel | undefined): NonNullable<ChatChannel["dmUser"]> | null {
+  return channel?.kind === "direct" ? channel.dmUser ?? null : null;
 }
 
 /**

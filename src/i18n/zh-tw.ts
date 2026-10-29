@@ -507,10 +507,8 @@ export const zhTW: Record<string, string> = {
   "Pin Ticker": "固定股票",
 
   // ── Help pane ────────────────────────────────────────────────
-  "How To Use Gloom": "如何使用 Gloom",
   "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代碼？點擊頂部的搜尋列，或按 {key}，用日常用語輸入你想要的，例如 \"top news\"。「功能」標籤列出了全部功能。",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代碼？點擊頂部的搜尋列，用日常用語輸入你想要的，例如 \"top news\"。「功能」標籤列出了全部功能。",
-  "Click anything to use it; the keys shown beside actions are shortcuts.": "點擊任何內容即可使用；動作旁顯示的按鍵是快捷鍵。",
   "Open Help": "開啟說明",
   "Command Prefixes": "命令字首",
   "Window Templates": "視窗範本",
@@ -520,7 +518,6 @@ export const zhTW: Record<string, string> = {
   "Scrolling": "捲動",
   "Open Debug Log": "開啟除錯日誌",
   "GitHub Issues": "GitHub 問題回報",
-  "Docked panes stay in the saved layout.": "停靠面板會保留在已儲存的版面設定中。",
   "Floating panes can be dragged by the title bar and resized from the lower-right corner.": "拖曳標題列可移動浮動面板，從右下角可調整大小。",
   "Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.": "用版面設定操作完成拆分、移動、複製、關閉全部浮動面板、撤銷、重做與版面設定預設。",
   "Move through focused table and list rows.": "在目前表格與清單的各列之間移動。",
@@ -565,7 +562,6 @@ export const zhTW: Record<string, string> = {
   "Go back from a nested command screen when the query is empty.": "查詢為空時，從巢狀命令畫面回到上一層。",
   "Reorder ordered multi-select choices.": "調整有序多選項的順序。",
   "Submit multiline command forms.": "提交多行命令表單。",
-  "Layout Basics": "版面設定基礎",
 
   // ── Onboarding ───────────────────────────────────────────────
   "The open terminal for modern finance.": "現代金融的開源終端機。",

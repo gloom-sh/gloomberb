@@ -6,6 +6,8 @@ import { CorporateActionsView } from "./corporate-actions-pane";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
+import { AUTO_PEERS_SETTING, relativeValuationTitle } from "./relative-valuation-peers";
+import { buildRelativeValuationSettingsDef, MAX_RELATIVE_VALUATION_TICKERS } from "./relative-valuation-settings";
 import { analystResearchHeadless } from "./analyst-headless";
 import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
@@ -95,6 +97,7 @@ export const researchModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 24 },
       tableExport: true,
+      settings: buildRelativeValuationSettingsDef,
     },
     {
       id: "earnings-estimates",
@@ -168,14 +171,15 @@ export const researchModule: PluginModule = {
         try {
           symbols = options?.symbols?.length
             ? options.symbols
-            : parseTickerListInput(options?.arg ?? context.activeTicker ?? "", 12);
+            : parseTickerListInput(options?.arg ?? context.activeTicker ?? "", MAX_RELATIVE_VALUATION_TICKERS);
         } catch {
           return null;
         }
         return {
-          title: `RV ${formatTickerListInput(symbols)}`,
+          title: relativeValuationTitle(symbols, null),
           placement: "floating",
-          settings: { symbols, symbolsText: formatTickerListInput(symbols) },
+          // One ticker is compared with the peers `--peers` picks, which the pane finds once it opens.
+          settings: { symbols, symbolsText: formatTickerListInput(symbols), ...(symbols.length === 1 ? { [AUTO_PEERS_SETTING]: true } : {}) },
         };
       },
     },
