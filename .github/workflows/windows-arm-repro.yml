@@ -1,0 +1,70 @@
+name: Windows on Arm launch repro
+
+on:
+  push:
+    branches:
+      - chore/windows-arm-repro
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  stays-up:
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6]
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      # The diagnostic build from run 40891344583: it writes each startup step and a heartbeat.
+      - uses: actions/download-artifact@v4
+        with:
+          name: diag-installer
+          path: installer
+          run-id: 40891344583
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Open the diagnostic build and catch its crash late
+        shell: pwsh
+        run: |
+          $Tools = Join-Path $env:RUNNER_TEMP "procdump"
+          Invoke-WebRequest "https://download.sysinternals.com/files/Procdump.zip" -OutFile "$Tools.zip"
+          Expand-Archive "$Tools.zip" -DestinationPath $Tools
+          $Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe"
+          $Failed = @()
+          foreach ($Launch in 1, 2) {
+            $Label = "a${{ matrix.attempt }}-$Launch"
+            $Trace = Join-Path $env:LOCALAPPDATA "gloom-diag-trace.log"
+            Remove-Item -LiteralPath $Trace -ErrorAction SilentlyContinue
+            $Out = Join-Path (Get-Location) "artifacts\windows-stays-up\$Label\freeze"
+            $Watcher = Start-Process pwsh -PassThru -NoNewWindow -ArgumentList @(
+              "-NoProfile", "-File", "scripts/diag-freeze-watch.ps1", "-Trace", $Trace,
+              "-ProcDump", (Join-Path $Tools "procdump64.exe"), "-Out", $Out, "-Seconds", "40")
+            try {
+              ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label $Label -Seconds 40
+            } catch {
+              $Failed += "${Label}: $($_.Exception.Message)"
+            }
+            $Watcher.WaitForExit(60000) | Out-Null
+            Copy-Item -LiteralPath $Trace -Destination "artifacts/windows-stays-up/$Label/trace.log" -ErrorAction SilentlyContinue
+            foreach ($Dump in (Get-ChildItem $Out -Filter *.dmp -ErrorAction SilentlyContinue)) {
+              & $Cdb -z $Dump.FullName -c ".symfix; .reload; .effmach; .lastevent; .ecxr; r; kn 30; ~*kn 25; q" 2>&1 |
+                Out-File (Join-Path $Out "$($Dump.BaseName).stacks.txt")
+              Write-Host "$($Dump.Name): $($Dump.Length) bytes"
+              Remove-Item -LiteralPath $Dump.FullName
+            }
+          }
+          if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: freeze-${{ matrix.attempt }}
+          path: |
+            artifacts/windows-stays-up/**/stays-up.txt
+            artifacts/windows-stays-up/**/trace.log
+            artifacts/windows-stays-up/**/freeze/*.txt
