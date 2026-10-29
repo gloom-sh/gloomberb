@@ -1064,7 +1064,8 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
   const undated = detail.date === "none";
   return [
     ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
-      : freshness.unreached && !freshness.asOf ? []
+      // Undated, a saved copy is not "retrieved" now: its own part says when it was saved.
+      : (freshness.unreached || freshness.savedAt) && !freshness.asOf ? []
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     // A list dated by its newest filing says when it was read as well.
     ...(freshness.retrievedToo && freshness.asOf && !freshness.savedAt ? [`retrieved ${timeText(freshness.retrievedAt, local)}`] : []),

@@ -1,6 +1,7 @@
 import type { MnaDealsParams, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter } from "../../../api-client/mna";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchMnaDeals } from "./client";
+import { companyDataNotes } from "../../../types/company-from";
 import { dealsSymbol, formatDealValue, formatExpectedClose, stageLabel, termsLabel } from "./model";
 import { REPORT_ROWS } from "../shared/headless-options";
 
@@ -92,6 +93,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
         headline: deal.headline,
       })),
       errors: payload.lockedDeals > 0 ? [`${payload.lockedDeals} deals from the last ${payload.delayDays} days need Gloom Pro`] : [],
+      ...(payload.companyFrom ? { notes: companyDataNotes(payload.companyFrom) } : {}),
       metadata: {
         asOf: payload.asOf, access: payload.access, delayDays: payload.delayDays, hasMore: payload.hasMore,
       },

@@ -46,6 +46,10 @@ import {
   type TranscriptSection,
 } from "./model";
 import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { companyDataNotes } from "../../../types/company-from";
+import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
+
+const optionalErrors = (error: string | null) => error ? [error] : undefined;
 
 const CALL_COLUMNS = [
   { key: "ticker", header: "Ticker" },
@@ -170,9 +174,12 @@ function projectEarningsCallsHeadless(
     columns: CALL_COLUMNS,
     rows,
     ...(next ? { textRows: rows.filter((row) => row.id !== next.id) } : {}),
-    errors: result.refreshError ? [result.refreshError] : undefined,
+    errors: optionalErrors(unansweredRefreshError(result)),
     ...(sourceLimitReached || result.pending ? { complete: false } : {}),
+    ...(result.companyFrom ? { notes: companyDataNotes(result.companyFrom) } : {}),
     metadata: {
+      // A list served from a saved copy ends with when it was saved, instead of its refresh failure.
+      ...savedCopyMark(result),
       ...(next ? { notices: [nextCallNotice(next, now)], nextCall: { id: next.id, callAt: next.callAt, timeKnown: callTimeKnown(next), in: callCountdown(next, now) } } : {}),
       fetchedAt: result.fetchedAt,
       stale: result.stale,
@@ -211,9 +218,11 @@ function transcriptResult(
   return {
     columns: TRANSCRIPT_COLUMNS,
     rows,
-    errors: calls.refreshError ? [calls.refreshError] : undefined,
+    errors: optionalErrors(unansweredRefreshError(calls)),
     ...(calls.stale || calls.pending ? { complete: false } : {}),
+    ...(calls.companyFrom ? { notes: companyDataNotes(calls.companyFrom) } : {}),
     metadata: {
+      ...savedCopyMark(calls),
       stale: calls.stale,
       callListFetchedAt: calls.fetchedAt,
       callListPending: calls.pending ?? false,
@@ -283,10 +292,11 @@ function projectCalendar(
     columns: CALENDAR_COLUMNS,
     textColumns: sameClock ? CALENDAR_TEXT_COLUMNS.filter((column) => column.key !== "local") : CALENDAR_TEXT_COLUMNS,
     rows,
-    errors: result.refreshError ? [result.refreshError] : undefined,
+    errors: optionalErrors(unansweredRefreshError(result)),
     ...(result.stale || result.truncated ? { complete: false } : {}),
     empty: "No calls on the calendar these days.",
     metadata: {
+      ...savedCopyMark(result),
       view: "upcoming",
       fetchedAt: result.fetchedAt,
       stale: result.stale,

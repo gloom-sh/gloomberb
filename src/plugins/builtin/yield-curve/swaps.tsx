@@ -9,7 +9,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { FILL_REST } from "../../../components/ui/fill";
-import { isAccessDenied } from "../../../api-client/errors";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -38,7 +38,7 @@ export function SwapsTab({ focused, width, height }: { focused: boolean; width: 
   const tenor = selectedSwapTenor(selected);
   const loader = useCallback((force: boolean) => loadSwapCurve(tenor, force), [tenor]);
   const resource = useAsyncResource(loader, {
-    initialData: () => getCachedSwapCurve(tenor), keepPreviousData: true, clearOnError: isAccessDenied,
+    initialData: () => getCachedSwapCurve(tenor), keepPreviousData: true, clearOnError: isPermanentClientError,
   });
   const payload = resource.data?.payload;
   const rows = payload?.asOf ? payload.points : EMPTY_ROWS;

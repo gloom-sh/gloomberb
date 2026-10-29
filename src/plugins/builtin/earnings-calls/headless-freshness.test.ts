@@ -5,6 +5,7 @@ import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from ".
 import { earningsCallsHeadless } from "./headless";
 import { buildHeadlessFunctionReport } from "../../../cli/pane-functions/headless";
 import { createDefaultConfig } from "../../../types/config";
+import { collectSavedCopies } from "../../../data/saved-copies";
 const call = {id:"FIRST-q1",ticker:"FIRST",companyName:"First Corp",fiscalYear:2026,fiscalQuarter:1,callAt:"2026-05-01T20:00:00Z",status:"published",durationSeconds:3600,wordCount:50,hasTranscript:true,sentiment:null};
 const transcript = {...call,timing:null,webcastUrl:null,fullText:"Management expects 20% growth.",turns:[],participants:[],summary:null,guidance:"Management expects 20% growth.",riskFactors:null,analystFocus:null,notable:null,sentimentRationale:null,qaStartTurn:null,asrModel:null,updatedAt:"2026-05-02T00:00:00Z"};
 
@@ -39,3 +40,18 @@ for (const stale of [false, true]) {
     });
   }
 }
+
+test("in a command, a call list answered from its saved copy ends with when it was saved instead of the outage", async () => {
+  const store = new MemoryPluginPersistence();
+  attachEarningsCallsPersistence(store);
+  store.seedResource("calls", JSON.stringify(["FIRST", 200]), { calls: [call] }, { sourceKey: "earnings-calls", schemaVersion: 3, stale: true, expired: true });
+  apiClient.setSessionToken("controlled-test-session");
+  setCloudApiFetchTransport(async () => Response.json({ error: "Controlled call discovery outage" }, { status: 503 }));
+  const report = await collectSavedCopies(() => buildHeadlessFunctionReport({
+    headless: earningsCallsHeadless, token: "CALLS", label: "Earnings Calls",
+    options: { limit: 20 }, instance: { settings: {} }, capability: { id: "transcript" },
+  } as never, { config: createDefaultConfig("/tmp/unused-offline-call-list"), store: { loadTicker: async () => null } } as never, "FIRST"));
+  expect(report.text).toContain("First Corp");
+  expect(report.text).toMatch(/couldn't refresh; saved copy from \d\d:\d\d UTC/);
+  expect(report.text).not.toContain("Controlled call discovery outage");
+});

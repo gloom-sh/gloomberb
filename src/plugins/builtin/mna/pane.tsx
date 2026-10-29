@@ -12,7 +12,7 @@ import {
   type PaneHint,
   type SelectControl,
 } from "../../../components";
-import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { useCompanyDataFooter, usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { isAccessDenied } from "../../../api-client/errors";
 import type {
@@ -337,6 +337,8 @@ function MnaDealsView({ focused, width, height, symbol }: {
     hints,
   });
   usePaneFooter("mna:access", () => (access.segment && !openId ? { order: 5, info: [access.segment] } : null), [access.segment, openId]);
+  // A receipt's or foreign line's deals include its company's, read from the home line.
+  useCompanyDataFooter(data?.companyFrom, !openId);
 
   const placeholder = blendHex(colors.bg, colors.textMuted, 0.35);
   const renderCell = useCallback((item: Item, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {

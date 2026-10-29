@@ -45,6 +45,7 @@ import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
+import { roadmapModule } from "./builtin/roadmap";
 import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
 import { relativeRotationModule } from "./builtin/relative-rotation";
@@ -126,7 +127,7 @@ import { FIXED_INCOME_HOSTS } from "./builtin/fixed-income/model";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule],
+  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule, roadmapModule],
 });
 
 const runtimeOnly = (module: PluginModule): PluginModule => {

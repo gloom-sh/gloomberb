@@ -421,6 +421,8 @@ export function subscribeCalendar(listener: () => void): () => void {
 }
 
 export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
+  /** `stale-fallback`: the copy an earlier read saved, answering because its refresh failed. */
+  source?: "cache" | "network" | "stale-fallback";
   refreshError?: string;
 }
 

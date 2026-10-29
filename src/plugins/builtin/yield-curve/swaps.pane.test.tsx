@@ -9,6 +9,8 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { swapCurveCache } from "./client";
 import { SwapsTab } from "./swaps";
 import { swapFixture } from "./test-fixture-swaps";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 
 const tui = createOpenTuiTestHarness();
 const id = "swap-test";
@@ -64,4 +66,19 @@ test("an undated empty response shows the empty state without a table or stale w
   await tui.waitForFrameToContain("No swap rates yet.");
   expect(tui.frame()).not.toMatch(/stale/i);
   expect(tui.frame()).not.toContain("10Y");
+});
+
+test("offline, the board stays and its footer says when the saved copy is from, not a refresh error and stale", async () => {
+  swapCurveCache.attach(new MemoryPluginPersistence());
+  request = spyOn(apiClient, "getCloudSwapCurve").mockImplementation(async (tenor) => swapFixture(tenor));
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 32 }); });
+  await settle();
+  expect(tui.frame()).toMatch(/10Y +\d\.\d+%/);
+
+  request.mockRejectedValue(new DataServiceUnreachableError(Object.assign(new Error("Unable to connect"), { code: "ConnectionRefused" })));
+  await tui.emitKeypress({ name: "r" });
+  await settle();
+  expect(tui.frame()).toMatch(/10Y +\d\.\d+%/);
+  expect(tui.frame()).toMatch(/saved copy from \d\d:\d\d/);
+  expect(tui.frame()).not.toMatch(/stale|couldn't reach/i);
 });

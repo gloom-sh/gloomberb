@@ -25,6 +25,7 @@ import {
 import { HOLDER_ROWS_MAX } from "./index-holders";
 import { buildRows, DEFAULT_SORT, sortRows } from "./table-model";
 import type { HolderColumnId, SortPreference } from "./types";
+import { companyDataNotes } from "../../../types/company-from";
 
 /**
  * A holder as `holders` and `fn HDS` report it; the keys are the JSON
@@ -231,7 +232,9 @@ export function holderReportNotices({
       ? `The source lists its ${reported} largest holders; fn 13F ${requested} lists all ${total.toLocaleString("en-US")}.`
       : null;
   return {
-    notices: [header, basis, cut, positionsBasis, holderShareBasisNote(data, shown), unvaluedHoldersNote(shown, sort)]
+    notices: [header, basis, cut, positionsBasis, holderShareBasisNote(data, shown), unvaluedHoldersNote(shown, sort),
+      // The SEC index's rows are the listing's own; the source's, its company's home line's when it says so.
+      ...(indexed ? [] : companyDataNotes(data.companyFrom))]
       .filter((line): line is string => !!line),
     valueBasis,
     positionsBasis,

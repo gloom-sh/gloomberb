@@ -8,6 +8,7 @@ import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve
 import { curveLookbackLabel } from "../../../components/chart/curve/model";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../../public/react";
 import { priceColor } from "../../../theme/colors";
@@ -174,10 +175,11 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   const compareField = useDraftField(compareInput);
   const editing = dateField.active || compareField.active;
 
-  // The saved copy paints first and answers when a refresh fails; a failed refresh never empties the tab.
+  // The saved copy paints first and answers when a refresh fails; a failed refresh never empties the tab, unless
+  // asking again cannot help (access denied), which is said instead.
   const loadCurve = useCallback(async () => loadSavedCurve(curve, requestedDate), [curve, requestedDate]);
   const { data: answer, loading, error, updatedAt: lastUpdated, load } = useAsyncResource(loadCurve, {
-    initialData: () => cachedCurve(curve, requestedDate),
+    initialData: () => cachedCurve(curve, requestedDate), clearOnError: isPermanentClientError,
   });
   const data = answer?.data ?? null;
   const savedInfo = useSavedCopyInfo(answer?.savedAt);
@@ -429,7 +431,9 @@ function WorldTab({ onOpen, focused, width, height }: {
   const colors = useThemeColors();
   const [selected, setSelected] = usePluginPaneState<string | null>("yield-curve:market", null);
   const loadWorld = useCallback(() => loadSavedWorldRows(), []);
-  const { data: answer, loading, error, updatedAt, load } = useAsyncResource(loadWorld, { initialData: cachedWorldRows });
+  const { data: answer, loading, error, updatedAt, load } = useAsyncResource(loadWorld, {
+    initialData: cachedWorldRows, clearOnError: isPermanentClientError,
+  });
   const data = answer?.data ?? null;
   useAutoRefresh(updatedAt, load);
   usePaneRefreshKey(() => void load(), { focused });

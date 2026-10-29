@@ -760,6 +760,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
 | `CHG` | Changelog |
+| `ROADMAP` | What is being built, planned and shipped; Pro members vote ([Roadmap](#roadmap)) |
 | `HELP` | Open shortcut and layout help |
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio. `AW` also takes a pasted list of tickers |
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
@@ -1725,7 +1726,7 @@ The status is one of four:
 | Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
-A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`). A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. In the app, a pane whose quotes are such copies says `saved copy from 15:31` in its footer until a refresh answers.
+A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`), instead of listing the failed refresh as an error. A refusal that asking again will not change, such as signing out or a series Gloom Cloud no longer serves, is reported as an error even when a saved copy exists. A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. In the app, a pane whose quotes are such copies says `saved copy from 15:31` in its footer until a refresh answers.
 
 **Venues polled apart.** A report over such venues dates each by its own newest observation and says how old its oldest price is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · funding = current estimate, pays 08:00 UTC`.
 
@@ -2223,6 +2224,14 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions with no thesis yet. `THESIS NVDA AMD` starts one on a basket or a pair. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.
 - Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team (teammates can challenge a pillar). Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision.
 - Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`v`), need Pro.
+
+## Roadmap
+
+`ROADMAP` (or `RMAP`) lists what is being built, what is planned and what shipped, each with a one-line summary and its votes; shipped items show the day they shipped. Enter opens an item.
+
+- Anyone can read it, signed in or not.
+- Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
+- A vote that did not go through says so on its row, and the item's detail says why.
 
 ## Localized interface
 

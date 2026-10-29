@@ -25,6 +25,7 @@ import {
   type RememberedDesktopWindow,
 } from "./window/remembered-frame";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
+import { quitWindowsEventLoopOnItsThread } from "./window/windows-quit";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
@@ -171,6 +172,7 @@ const mainWindow = createAppWindow({
   preload: desktopBootFramePreload(readDesktopBootFrame(desktopBootFramePath())),
 });
 backend.mainWindow = mainWindow;
+quitWindowsEventLoopOnItsThread(mainWindow);
 // The window is loading its view; the services it will ask for start now
 // rather than when it asks. Its `init` reports a failure, and retries.
 startDesktopBackend(backend).catch((error) => {
