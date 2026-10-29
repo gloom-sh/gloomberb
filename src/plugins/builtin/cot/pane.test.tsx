@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { CotBoardPayload, CotBoardRow, CotClass, CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -235,4 +236,29 @@ test("the Financial (TFF) tab reads leveraged funds, and Positions switches the 
   await press("return");
   expect(contracts.mock.calls.at(-1)).toEqual(["13874A", "tff", "combined"]);
   expect(tui.frame()).toContain("Leveraged Funds");
+});
+
+test("a slow answer for the contract terms leaves the chart drawn, and the price's unit joins its legend when it comes", async () => {
+  useChartedContract();
+  resetFuturesPriceUnits();
+  const terms = Promise.withResolvers<unknown>();
+  spies.push(spyOn(apiClient, "getCloudFuturesContract").mockImplementation(() => terms.promise as never));
+  await tui.render(<Harness width={104} height={28} />, { width: 104, height: 28 });
+  await settle();
+
+  // The contract and the price history are in, the terms are not: the chart and its legend draw, the price bare.
+  const lines = tui.frame().split("\n");
+  const legend = lines.findIndex((line) => line.includes("• Noncommercial net +159,000"));
+  expect(legend).toBeGreaterThan(0);
+  expect(lines[legend]).toContain("+ Front price 73.9");
+  expect(lines[legend]).not.toContain("$");
+  expect(lines.findIndex((line) => line.includes("CLASS"))).toBeGreaterThan(legend + 6);
+
+  await act(async () => {
+    terms.resolve({ symbol: "CL=F", root: "CL", name: "Crude Oil", contract: null, contractSymbol: null, deliveryMonth: null,
+      spec: { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1_000, tick: 0.01, tickValue: 10, settlement: "physical" },
+      lastTrade: null, firstNotice: null, inDelivery: false, settlement: null });
+  });
+  await settle();
+  expect(tui.frame().split("\n").find((line) => line.includes("• Noncommercial net +159,000"))).toContain("+ Front price $73.9/bbl");
 });
