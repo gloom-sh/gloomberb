@@ -5,7 +5,9 @@ import type {
 import { apiClient, type ChatChannel, type ChatMessage, type ChatNotification } from "../../../../api-client";
 import type { ChannelRuntimeState, MergeMessagesOptions } from "./state";
 import { formatChatPaneTitle } from "../channel-labels";
+import type { ChatStatusPreview } from "../status-preview";
 import {
+  chatMessageLine,
   formatChannelToast,
   formatMentionToast,
   formatReplyToast,
@@ -28,6 +30,8 @@ interface ChatNotificationAlertsOptions {
   getChannel: (channelId: string) => ChatChannel | undefined;
   getNotify: () => Notify;
   getOpenMessage: () => ((channelId: string, messageId: string) => void) | undefined;
+  /** Where a message for you shows on arrival instead of a toast, while the status bar has room. */
+  statusPreview: ChatStatusPreview;
 }
 
 /** Whether this window holds the message as read: its read marker is at or after it. */
@@ -53,9 +57,9 @@ function acknowledge(notification: ChatNotification, seen: boolean): void {
 }
 
 /**
- * Decides, once per message, whether a chat notification becomes a toast or
- * a desktop banner. A message already read here or on another device stays
- * quiet, whether it arrives live or again on reconnect.
+ * Decides, once per message, whether a chat notification shows in the status
+ * bar, as a toast or as a desktop banner. A message already read here or on
+ * another device stays quiet, whether it arrives live or again on reconnect.
  */
 export class ChatNotificationAlerts {
   private readonly notifiedMessageIds = new Set<string>();
@@ -94,6 +98,7 @@ export class ChatNotificationAlerts {
     for (const timer of this.waiting.values()) clearTimeout(timer);
     this.waiting.clear();
     this.notifiedMessageIds.clear();
+    this.options.statusPreview.dismiss();
   }
 
   /** Read here, or open in front of the reader: nothing to raise, and the server hears it was seen. */
@@ -124,8 +129,33 @@ export class ChatNotificationAlerts {
     this.present(notification);
   }
 
+  /**
+   * A DM or group message, a mention or a reply, while the app is in front:
+   * the status bar shows it in place of the toast when it has room, and the
+   * server hears it was seen, as for a toast. Channel chatter never shows there.
+   */
+  private presentInStatusBar(notification: ChatNotification, channel: ChatChannel | undefined): boolean {
+    const direct = channel?.kind === "direct" || channel?.kind === "group";
+    if (!this.options.getAppActive() || (notification.type === "channel" && !direct)) return false;
+    const { message } = notification;
+    const sentAt = Date.parse(message.createdAt);
+    const shown = this.options.statusPreview.offer({
+      channelId: notification.channelId,
+      messageId: notification.messageId,
+      senderName: message.user.username?.trim() || message.user.displayName,
+      direct,
+      text: chatMessageLine(message),
+      at: Number.isFinite(sentAt) ? sentAt : Date.now(),
+    });
+    if (!shown) return false;
+    this.notifiedMessageIds.add(notification.messageId);
+    acknowledge(notification, true);
+    return true;
+  }
+
   private present(notification: ChatNotification): void {
     const channel = this.options.getChannel(notification.channelId);
+    if (this.presentInStatusBar(notification, channel)) return;
     const body = notification.type === "reply"
       ? formatReplyToast(notification.message)
       : notification.type === "mention"

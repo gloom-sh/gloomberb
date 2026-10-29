@@ -20,9 +20,14 @@ export function chatMessageMentionsUsername(content: string, username: string): 
   return false;
 }
 
-/** The message as one short line, its images as `[image]` in front of the text. */
+/** The message on one line, its images as `[image]` in front of the text. */
+export function chatMessageLine(message: ChatMessage): string {
+  return chatTextWithImages(message.content, message.attachments?.length ?? 0).replace(/\s+/g, " ").trim();
+}
+
+/** The message as one short line. */
 function formatMessageSnippet(message: ChatMessage): string {
-  const normalized = chatTextWithImages(message.content, message.attachments?.length ?? 0).replace(/\s+/g, " ").trim();
+  const normalized = chatMessageLine(message);
   return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
 }
 
