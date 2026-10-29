@@ -1,5 +1,5 @@
 import { type ComponentType } from "react";
-import { Box, Span, Text, useUiHost } from "../../ui";
+import { Box, Text, useUiHost } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { t } from "../../i18n";
@@ -95,18 +95,18 @@ export interface IconProps {
   size?: number;
   color?: string;
   /**
-   * Set inside a Text, in front of its words: the desktop centres it on the
-   * text's capitals, wherever the font puts them, and leaves a small gap after it.
+   * Desktop: takes its row's full height and draws in the middle of it. A
+   * box centred in a row an odd number of pixels taller lands on a whole
+   * pixel, half a pixel off; the drawing inside the box does not.
    */
-  inline?: boolean;
+  fullHeight?: boolean;
 }
 
 /** One glyph from the app's icon set. */
-export function Icon({ name, size = 12, color, inline }: IconProps) {
+export function Icon({ name, size = 12, color, fullHeight }: IconProps) {
   const colors = useThemeColors();
   const HostIcon = useUiHost().Icon as ComponentType<IconProps> | undefined;
-  if (HostIcon) return <HostIcon name={name} size={size} color={color} inline={inline} />;
-  if (inline) return <Span fg={color ?? colors.textDim}>{`${ICON_GLYPHS[name]} `}</Span>;
+  if (HostIcon) return <HostIcon name={name} size={size} color={color} fullHeight={fullHeight} />;
   return <Text fg={color ?? colors.textDim} selectable={false}>{ICON_GLYPHS[name]}</Text>;
 }
 

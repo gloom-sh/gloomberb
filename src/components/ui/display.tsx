@@ -214,7 +214,18 @@ export interface BadgeProps {
 export const NATIVE_BADGE_STYLE = { height: "calc(100% - 2px)", borderRadius: "var(--gloom-radius-sm)" };
 /** How far a subtle chip's fill is tinted toward its tone. */
 export const BADGE_TINT = 0.28;
+const NATIVE_ICON_BADGE_STYLE = { ...NATIVE_BADGE_STYLE, gap: "var(--gloom-space-xs)" };
 const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
+/**
+ * A label with lowercase letters has them in the middle of the chip,
+ * wherever the font puts them in its line: the line is cut to x-height and
+ * baseline, and that is what the chip centres. Centred whole, SF Mono's
+ * lowercase sit a pixel and a half low. An icon centres in the chip, so it
+ * reads on the letters' line. A label in capitals and digits keeps the
+ * whole line, as ticker chips do; a browser without `text-box` keeps it too.
+ */
+const NATIVE_LOWERCASE_BADGE_TEXT_STYLE = { ...NATIVE_BADGE_TEXT_STYLE, textBox: "trim-both ex alphabetic" };
+const LOWERCASE = /\p{Ll}/u;
 
 export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true }: BadgeProps) {
   const colors = useThemeColors();
@@ -229,18 +240,16 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle", icon
   const nativeIcon = nativePaneChrome && icon;
   // The terminal draws the icon's glyph as text in front of the label.
   const shown = icon && !nativePaneChrome ? [ICON_GLYPHS[icon], text].filter(Boolean).join(" ") : text;
-  // The desktop sets the icon in the label's own line, so the label sits where
-  // every other chip's does and the icon centres on its capitals. Alone, it
-  // centres in the chip.
   const chip = (
     <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
-      data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined}
-      style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
-      {nativeIcon && !shown ? <Icon name={nativeIcon} color={foreground} /> : (
-        <Text fg={foreground} attributes={TextAttributes.BOLD} style={nativePaneChrome ? NATIVE_BADGE_TEXT_STYLE : undefined}>
-          {nativeIcon ? <><Icon name={nativeIcon} color={foreground} inline />{shown}</> : shown}
-        </Text>
-      )}
+      data-gloom-ui="badge" {...(nativeIcon ? { flexDirection: "row", alignItems: "center" } as const : {})}
+      justifyContent={nativePaneChrome && !nativeIcon ? "center" : undefined}
+      style={nativePaneChrome ? nativeIcon ? NATIVE_ICON_BADGE_STYLE : NATIVE_BADGE_STYLE : undefined}>
+      {nativeIcon ? <Icon name={nativeIcon} color={foreground} fullHeight /> : null}
+      {shown || !nativeIcon ? (
+        <Text fg={foreground} attributes={TextAttributes.BOLD}
+          style={nativePaneChrome ? LOWERCASE.test(text) ? NATIVE_LOWERCASE_BADGE_TEXT_STYLE : NATIVE_BADGE_TEXT_STYLE : undefined}>{shown}</Text>
+      ) : null}
     </Box>
   );
   return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;

@@ -1,7 +1,7 @@
 import { copyFile, mkdir, rm } from "fs/promises";
 import { dirname, join, resolve } from "path";
 
-const FIXTURE = join(import.meta.dir, "fixture.tsx");
+export const FIXTURE = join(import.meta.dir, "fixture.tsx");
 
 /**
  * Stands in for the native side of the desktop window. The renderer host
@@ -40,7 +40,7 @@ function describeFailure(error: unknown): string {
  * sources and node_modules. The fixture imports `../../src`, so one from
  * another tree is copied to the same place in `root` for the build.
  */
-async function buildFixture(root: string, fixture: string, outdir: string): Promise<void> {
+export async function buildFixture(root: string, fixture: string, outdir: string): Promise<void> {
   await rm(outdir, { recursive: true, force: true });
   await mkdir(outdir, { recursive: true });
   const inPlace = resolve(dirname(fixture)) === join(root, dirname(FIXTURE_PATH));

@@ -196,7 +196,11 @@ export async function initializeDesktopBackend(
     backend.detachedWindows.reconcile();
   }
   const init = buildInitializationPayload(backend, config, services, windowTarget);
-  // The main window has what it needs to draw: this process is up.
-  if (windowTarget.kind === "main") markStartupComplete();
+  // The main window has what it needs to draw: this process is up, and the
+  // popped-out windows open next.
+  if (windowTarget.kind === "main") {
+    markStartupComplete();
+    backend.detachedWindows.openAfterMainWindow();
+  }
   return init;
 }

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseRemoteHead } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseRemoteHead, readPluginRemoteAsync } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -73,6 +73,17 @@ function shallowCheckout(origin: string, ref: string, wanted: string): { dir: st
   return { dir, head: git(dir, ["rev-parse", "HEAD"]), fetched: git(dir, ["rev-parse", "FETCH_HEAD^{commit}"]) };
 }
 
+// The update check knows an official plugin by its GitHub remote, so a
+// remote read wrong stops that plugin's updates without a word.
+test("the update check reads a clone's GitHub repo, and none from a repository without an origin", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gloom-plugin-"));
+  scratch.push(dir);
+  git(dir, ["init", "-q"]);
+  expect(await readPluginRemoteAsync(dir)).toBeNull();
+  git(dir, ["remote", "add", "origin", "git@github.com:gloom-sh/gloom-polls.git"]);
+  expect(await readPluginRemoteAsync(dir)).toBe("gloom-sh/gloom-polls");
+});
+
 /**
  * The registry pins tags, and a checkout installed from the default branch
  * can be ahead of the newest one. Checking that tag out would downgrade it.
@@ -80,19 +91,19 @@ function shallowCheckout(origin: string, ref: string, wanted: string): { dir: st
  * there and the checkout itself has to say which commit is older.
  */
 describe("describeOlderCommit", () => {
-  test("keeps a checkout that is ahead of the registry's tag", () => {
+  test("keeps a checkout that is ahead of the registry's tag", async () => {
     const { dir, head, fetched } = shallowCheckout(remote(["1.1.0", "1.2.0"]), "main", "v1");
-    expect(describeOlderCommit(dir, head, fetched, "v1")).toBe("the registry's v1 is older than the installed 1.2.0");
+    expect(await describeOlderCommit(dir, head, fetched, "v1")).toBe("the registry's v1 is older than the installed 1.2.0");
   });
 
-  test("tells commits apart by date when every commit has the same version", () => {
+  test("tells commits apart by date when every commit has the same version", async () => {
     const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "main", "v1");
-    expect(describeOlderCommit(dir, head, fetched, "v1")).toBe(`the registry's v1 is older than the installed ${head.slice(0, 7)}`);
+    expect(await describeOlderCommit(dir, head, fetched, "v1")).toBe(`the registry's v1 is older than the installed ${head.slice(0, 7)}`);
   });
 
-  test("lets a newer commit through", () => {
+  test("lets a newer commit through", async () => {
     const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "v1", "main");
-    expect(describeOlderCommit(dir, head, fetched)).toBeNull();
+    expect(await describeOlderCommit(dir, head, fetched)).toBeNull();
   });
 });
 

@@ -91,6 +91,7 @@
     "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
     "check:ui-tokens": "bun run scripts/pane-chrome/ui-tokens.ts",
     "ui:benchmark": "bun run scripts/pane-chrome/ui-benchmark.ts",
+    "ui:badge-ink": "bun run scripts/pane-chrome/badge-ink.ts",
     "audit:ui": "bun run scripts/pane-chrome/ui-audit.ts",
     "check:call-player": "bun run scripts/pane-chrome/call-player.ts",
     "check:chart-axis-zoom": "bun run scripts/pane-chrome/chart-axis-zoom.ts",
