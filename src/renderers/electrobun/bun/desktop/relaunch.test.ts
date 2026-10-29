@@ -67,9 +67,10 @@ describe("desktop relaunch", () => {
     const taskArguments = /\$action\.Arguments = '((?:[^']|'')*)'/.exec(handOff)![1]!.replaceAll("''", "'");
     expect(taskArguments).toBe(
       "-NoProfile -NonInteractive -WindowStyle Hidden -Command \""
-      + "Wait-Process -Id 42 -Timeout 300 -ErrorAction SilentlyContinue; "
+      + "$until = (Get-Date).AddMinutes(5); "
+      + "while ((Get-Process -Id 42 -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }; "
       + "$env:GLOOMBERB_HOME = 'D:\\Gloom data'; "
-      + "if (-not (Get-Process -Id 42 -ErrorAction SilentlyContinue)) { Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin' }; "
+      + "if (-not (Get-Process -Id 42 -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500; Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin' }; "
       + "$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask('Gloom restart 42', 0)\"",
     );
   });

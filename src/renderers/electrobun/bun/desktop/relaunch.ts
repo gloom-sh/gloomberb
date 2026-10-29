@@ -102,10 +102,13 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
     const bin = unquotedWindowsPath(win32.dirname(context.execPath));
     const launcher = win32.join(bin, "launcher.exe");
     const task = `Gloom restart ${context.pid}`;
+    // Polled rather than waited on: a wait needs a handle on the old process,
+    // which a task may not be given.
     const relaunch = [
-      `Wait-Process -Id ${context.pid} -Timeout 300 -ErrorAction SilentlyContinue`,
+      "$until = (Get-Date).AddMinutes(5)",
+      `while ((Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }`,
       ...(context.home ? [`$env:GLOOMBERB_HOME = ${powershellQuote(unquotedWindowsPath(context.home))}`] : []),
-      `if (-not (Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue)) { Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)} }`,
+      `if (-not (Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)} }`,
       `$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask(${powershellQuote(task)}, 0)`,
     ].join("; ");
     // Electrobun puts this process in a job that ends every process it starts
