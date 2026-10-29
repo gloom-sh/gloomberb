@@ -41,6 +41,14 @@ function loadWin32() {
       args: [FFIType.ptr, FFIType.ptr, FFIType.int, FFIType.int, FFIType.int, FFIType.int, FFIType.u32],
       returns: FFIType.bool,
     },
+    GetClientRect: {
+      args: [FFIType.ptr, FFIType.ptr],
+      returns: FFIType.bool,
+    },
+    PostMessageW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64],
+      returns: FFIType.bool,
+    },
   });
 }
 
@@ -54,6 +62,24 @@ function win32OrNull(): Win32 | null {
     cachedWin32 = null;
   }
   return cachedWin32;
+}
+
+const WM_SIZE = 0x0005;
+
+/**
+ * Electrobun opens a window's page at the size of the whole window and fits it
+ * to the client area on each WM_SIZE. A framed window's client area is smaller
+ * than the window, so until the window first changed size its page ran past
+ * the right and bottom edges, the Close button with it. Sends the window the
+ * WM_SIZE that fits the page. False off Windows.
+ */
+export function fitPageToClientArea(windowHandle: Pointer): boolean {
+  const win32 = win32OrNull();
+  if (!win32) return false;
+  const client = new Int32Array(4);
+  if (!win32.symbols.GetClientRect(windowHandle, ptr(client))) return false;
+  const size = (((client[3]! - client[1]!) & 0xffff) << 16) | ((client[2]! - client[0]!) & 0xffff);
+  return win32.symbols.PostMessageW(windowHandle, WM_SIZE, 0n, BigInt(size >>> 0));
 }
 
 export function wideString(value: string): Uint8Array {

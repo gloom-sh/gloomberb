@@ -417,7 +417,7 @@ main() {
       fi
       if [ "$variant" = "-musl" ]; then
         echo "musl systems such as Alpine need a release that ships ${ASSET}." >&2
-        echo "Install with Bun meanwhile: bun install -g gloomberb" >&2
+        echo "Install with Bun meanwhile: bun install -g @gloom-sh/terminal" >&2
       fi
       exit 1
     fi
