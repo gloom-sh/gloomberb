@@ -678,6 +678,8 @@ class Run {
   launches = 0;
   /** Page errors from apps this run already closed. */
   pastErrors: string[] = [];
+  /** Chromium GPU process exits already reported, by launch. */
+  gpuExitsSeen = new Map<number, number>();
 
   constructor(readonly app: string, readonly out: string, readonly only: string | undefined) {
     this.shots = new Shots(join(out, "shots"));
@@ -704,10 +706,26 @@ class Run {
     // Its own result, not on the known list even where the step is.
     const barShots: string[] = [];
     const opened = id === "command-bar-typing" ? null : await this.commandBarOpenedSince(started, id, barShots);
+    const gpuExit = await this.gpuProcessExited();
     await this.shots.flush();
     this.record({ id, title, ...outcome, shots, ms: Date.now() - started });
     if (opened) this.record({ id: `${id}-opened-command-bar`, title: `${title}: the command bar stays closed`, status: "fail", detail: opened, shots: barShots, ms: 0 });
+    if (gpuExit) this.record({ id: `${id}-gpu-process-exited`, title: `${title}: Chromium's GPU process keeps running`, status: "fail", detail: gpuExit, shots: [], ms: 0 });
     return outcome.status;
+  }
+
+  /**
+   * Chromium's GPU process exiting under the app since the last step, as its
+   * log says. The windows can come out of it changed, so what the steps after
+   * it find in this launch reads against it.
+   */
+  async gpuProcessExited(): Promise<string | null> {
+    const log = await readFile(join(this.out, `app-stderr-${this.launches}.log`), "utf8").catch(() => "");
+    const exits = log.split(/\r?\n/).filter((line) => line.includes("GPU process exited unexpectedly"));
+    const seen = this.gpuExitsSeen.get(this.launches) ?? 0;
+    if (exits.length <= seen) return null;
+    this.gpuExitsSeen.set(this.launches, exits.length);
+    return `during this step, in launch ${this.launches}: ${exits.slice(seen).map((line) => line.replace(/^\[[^\]]*\]\s*/, "").slice(0, 200)).join("; ")}`;
   }
 
   /**
