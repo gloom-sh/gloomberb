@@ -1,4 +1,7 @@
+import { rm } from "fs/promises";
+import { tmpdir } from "os";
 import { dirname, win32 } from "path";
+import { psString, runScriptAfterExit, writePowerShellScript } from "./windows-script";
 
 /**
  * The folders the relaunch script finds `sleep` in, after whatever PATH the
@@ -8,18 +11,6 @@ const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function powershellQuote(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-/** A PowerShell command line for `script`, with no quoting left to get wrong. */
-function hiddenPowershell(script: string): string[] {
-  return [
-    "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-    "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64"),
-  ];
 }
 
 function findMacAppBundle(execPath: string): string | null {
@@ -51,11 +42,6 @@ interface RelaunchCommand {
   cwd?: string;
   /** PATH for it; unset keeps this process's. */
   pathEnv?: string;
-  /**
-   * It hands the relaunch on and exits, and this process may only exit after
-   * it has: anything this process starts dies with it.
-   */
-  waitForIt?: boolean;
 }
 
 function currentProcess(): RelaunchContext {
@@ -70,17 +56,12 @@ function currentProcess(): RelaunchContext {
   };
 }
 
-/** A Windows path for a command line in double quotes, which no Windows path holds. */
-function unquotedWindowsPath(value: string): string {
-  return value.replaceAll('"', "");
-}
-
 /**
- * What opens the app again once `context.pid` has exited. The script runs in
- * `/` with the shell and `open` named by their full paths: the launcher starts
- * the app inside its bundle's `Contents/MacOS`, which a rename to the app's
- * new name takes away, and a spawn into a folder that is gone fails as if the
- * shell were missing (`ENOENT, posix_spawn 'sh'`).
+ * What opens the app again once `context.pid` has exited, on a Mac or Linux.
+ * The script runs in `/` with the shell and `open` named by their full paths:
+ * the launcher starts the app inside its bundle's `Contents/MacOS`, which a
+ * rename to the app's new name takes away, and a spawn into a folder that is
+ * gone fails as if the shell were missing (`ENOENT, posix_spawn 'sh'`).
  */
 export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string): RelaunchCommand {
   const pathEnv = context.pathEnv ? `${context.pathEnv}:${SYSTEM_PATH}` : SYSTEM_PATH;
@@ -95,51 +76,6 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
     };
   }
 
-  if (context.platform === "win32") {
-    // Chromium's profile stays held until this process has exited: an app
-    // started before then hands itself to this one and crashes. It starts as
-    // the Start menu starts it, from the launcher beside the runtime.
-    const bin = unquotedWindowsPath(win32.dirname(context.execPath));
-    const launcher = win32.join(bin, "launcher.exe");
-    const task = `Gloom restart ${context.pid}`;
-    // Polled rather than waited on: a wait needs a handle on the old process,
-    // which a task may not be given.
-    const relaunch = [
-      "$until = (Get-Date).AddMinutes(5)",
-      `while ((Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }`,
-      ...(context.home ? [`$env:GLOOMBERB_HOME = ${powershellQuote(unquotedWindowsPath(context.home))}`] : []),
-      `if (-not (Get-Process -Id ${context.pid} -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500; Start-Process -FilePath ${powershellQuote(launcher)} -WorkingDirectory ${powershellQuote(bin)} }`,
-      `$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask(${powershellQuote(task)}, 0)`,
-    ].join("; ");
-    // Electrobun puts this process in a job that ends every process it starts
-    // when it exits, so the waiting is done by a task: the Task Scheduler
-    // starts it in this person's session, outside the job, and it removes
-    // itself once it has started the app.
-    return {
-      cmd: hiddenPowershell([
-        "$ErrorActionPreference = 'Stop'",
-        "$service = New-Object -ComObject Schedule.Service",
-        "$service.Connect()",
-        "$definition = $service.NewTask(0)",
-        "$definition.RegistrationInfo.Description = 'Opens Gloom again once it has restarted.'",
-        "$definition.Settings.DisallowStartIfOnBatteries = $false",
-        "$definition.Settings.StopIfGoingOnBatteries = $false",
-        "$definition.Settings.ExecutionTimeLimit = 'PT10M'",
-        // TASK_LOGON_INTERACTIVE_TOKEN: as this person, in the session they are in.
-        "$definition.Principal.LogonType = 3",
-        "$action = $definition.Actions.Create(0)",
-        "$action.Path = 'powershell.exe'",
-        `$action.Arguments = ${powershellQuote(`-NoProfile -NonInteractive -WindowStyle Hidden -Command "${relaunch}"`)}`,
-        `$action.WorkingDirectory = ${powershellQuote(bin)}`,
-        // TASK_CREATE_OR_UPDATE, with no user or password: the one running this.
-        `$registered = $service.GetFolder('\\').RegisterTaskDefinition(${powershellQuote(task)}, $definition, 6, $null, $null, 3)`,
-        "$null = $registered.Run($null)",
-        "exit 0",
-      ].join("; ")),
-      waitForIt: true,
-    };
-  }
-
   const args = context.args.map(shellQuote).join(" ");
   return {
     cmd: ["/bin/sh", "-c", `${waitForExit}; cd ${shellQuote(context.cwd)} 2>/dev/null; ${shellQuote(context.execPath)}${args ? ` ${args}` : ""}`],
@@ -148,7 +84,89 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
   };
 }
 
-const HAND_OFF_TIMEOUT_MS = 20_000;
+export interface WindowsRelaunch {
+  /** The app's process, which the script waits out. */
+  pid: number;
+  /** `bin\launcher.exe` beside the runtime: what the Start menu opens. */
+  launcher: string;
+  log: string;
+  cancel: string;
+  taskName: string;
+  /** GLOOMBERB_HOME for the app it opens; a task has the user's environment, not the app's. */
+  home?: string;
+}
+
+/**
+ * The PowerShell 5.1 script that opens the Windows app again. It answers
+ * `started` in its log, waits for the app's process to be gone (Chromium's
+ * profile stays held until then, and an app opened before hands itself to the
+ * closing one and crashes), then opens the launcher. An app that stopped
+ * waiting for it writes `cancel` and stays open, so the script opens nothing.
+ */
+export function windowsRelaunchScript({ pid, launcher, log, cancel, taskName, home }: WindowsRelaunch): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$OldPid = ${pid}`,
+    `$Launcher = ${psString(launcher)}`,
+    `$Log = ${psString(log)}`,
+    `$Cancel = ${psString(cancel)}`,
+    `$TaskName = ${psString(taskName)}`,
+    `$DataHome = ${psString(home ?? "")}`,
+    String.raw`
+$LogEncoding = New-Object System.Text.UTF8Encoding $false
+function Write-Log([string]$Message) {
+  for ($Attempt = 0; $Attempt -lt 10; $Attempt += 1) {
+    try { [IO.File]::AppendAllText($Log, (Get-Date).ToString('o') + ' ' + $Message + [Environment]::NewLine, $LogEncoding); return } catch { Start-Sleep -Milliseconds 100 }
+  }
+}
+
+try {
+  if (-not (Test-Path -LiteralPath $Launcher)) { Write-Log ('declined: no ' + $Launcher); return }
+  Write-Log ('started ' + $PID)
+  $Deadline = (Get-Date).AddMinutes(5)
+  while ((Get-Process -Id $OldPid -ErrorAction SilentlyContinue) -and -not (Test-Path -LiteralPath $Cancel) -and (Get-Date) -lt $Deadline) {
+    Start-Sleep -Milliseconds 250
+  }
+  if (Test-Path -LiteralPath $Cancel) { Write-Log 'the app stopped waiting; it stays open'; return }
+  if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { Write-Log 'the app did not quit'; return }
+  Start-Sleep -Milliseconds 500
+  if ($DataHome) { $env:GLOOMBERB_HOME = $DataHome }
+  Start-Process -FilePath $Launcher -WorkingDirectory (Split-Path -Parent $Launcher)
+  Write-Log ('opened ' + $Launcher)
+} catch {
+  Write-Log ('could not open the app: ' + $_.Exception.Message)
+} finally {
+  $ErrorActionPreference = 'Continue'
+  schtasks.exe /delete /tn $TaskName /f | Out-Null
+  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+}
+`,
+  ].join("\n");
+}
+
+/**
+ * Electrobun puts the Windows app in a job that ends every process it starts
+ * when it exits, so the script runs from a scheduled task, which outlives it.
+ * Resolves once the script has started: the app may quit then.
+ */
+async function scheduleWindowsRelaunch(context: RelaunchContext): Promise<void> {
+  const name = `gloom-restart-${context.pid}`;
+  const script = win32.join(tmpdir(), `${name}.ps1`);
+  const log = win32.join(tmpdir(), `${name}.log`);
+  const cancel = win32.join(tmpdir(), `${name}.cancel`);
+  await rm(log, { force: true });
+  await rm(cancel, { force: true });
+  await writePowerShellScript(script, windowsRelaunchScript({
+    pid: context.pid,
+    launcher: win32.join(win32.dirname(context.execPath), "launcher.exe"),
+    log,
+    cancel,
+    taskName: `GloomRestart-${context.pid}`,
+    home: context.home,
+  }));
+  const answer = await runScriptAfterExit(script, log, cancel, `GloomRestart-${context.pid}`);
+  if (answer.kind !== "started") throw new Error(`the restart script did not start: ${answer.reason}`);
+}
 
 /**
  * Opens the app again once this process has exited. On a Mac, `bundle` opens
@@ -156,20 +174,16 @@ const HAND_OFF_TIMEOUT_MS = 20_000;
  * the name it was just given. Resolves once this process may exit.
  */
 export async function scheduleDesktopRelaunch(bundle?: string, context: RelaunchContext = currentProcess()): Promise<void> {
-  const { cmd, cwd, pathEnv, waitForIt } = desktopRelaunchCommand(context, bundle);
+  if (context.platform === "win32") {
+    await scheduleWindowsRelaunch(context);
+    return;
+  }
+  const { cmd, cwd, pathEnv } = desktopRelaunchCommand(context, bundle);
   const child = Bun.spawn(cmd, {
     ...(cwd ? { cwd } : {}),
     ...(pathEnv ? { env: { ...process.env, PATH: pathEnv } } : {}),
     detached: true,
     stdio: ["ignore", "ignore", "ignore"],
   });
-  if (!waitForIt) {
-    child.unref();
-    return;
-  }
-  const code = await Promise.race([child.exited, Bun.sleep(HAND_OFF_TIMEOUT_MS).then(() => null)]);
-  if (code !== 0) {
-    child.kill();
-    throw new Error(code === null ? "the relaunch was not handed on in time" : `the relaunch was not handed on (${code})`);
-  }
+  child.unref();
 }
