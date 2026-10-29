@@ -294,8 +294,15 @@ export interface EnterpriseValueCheck {
   computed?: number;
   /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
   investmentsKept?: true;
-  /** Why the EV is not meaningful (`not-meaningful`). */
+  /** Why the EV is not meaningful (`not-meaningful`), or why a withdrawn EV no balance sheet checked is withdrawn. */
   reason?: string;
+  /** A balance sheet in another currency than the market cap: its currency and the rate at its date
+   * (`currency` per unit of `from`) that `totalDebt`, `leases` and `cash` were converted at. */
+  fx?: { from: string; rate: number };
+  /** The provider converted its EV from the statements' currency. */
+  convertedFrom?: string;
+  /** Withdrawn because the provider applied that conversion twice: its EV over `computed` is the conversion rate. */
+  convertedTwice?: true;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
