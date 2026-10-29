@@ -219,7 +219,8 @@ export function OnboardingCoach({
       </Box>
       <Box height={1} />
       <Box flexGrow={1} minHeight={0}>{children}</Box>
-      <Box height={1} flexDirection="row" gap={1}>{actions}</Box>
+      {/* As OnboardingActions: a button that does not fit beside the one before it wraps under it. */}
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1} flexShrink={0}>{actions}</Box>
     </Box>
   );
 }

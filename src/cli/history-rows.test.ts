@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
-  historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote,
+  historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
 } from "./history-rows";
+import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
-import { latestTradeIndex, missingVolumeCount, pricePointValues } from "../utils/price-history-integrity";
+import { latestTradeIndex, missingVolumeCount, pricePointValues, pricePointWickFlags } from "../utils/price-history-integrity";
 import type { ManualChartResolution } from "../time-series/resolution";
 import { rowsFreshness } from "./freshness";
 import { formatFreshnessLine } from "./pane-functions/freshness";
@@ -75,6 +76,30 @@ describe("history rows", () => {
     expect(rows[2]).toMatchObject({ close: 254.02, currency: "ZAR", interval: "1d" });
     expect(historyFlagNote(rows)).toBe("2 of 3 bars have high below open or close, or low above open or close in the source data; their prices are left blank");
     expect(historyFlagNote([rows[2]!])).toBeNull();
+  });
+
+  test("a low under half the body or a high over twice it is flagged and left out of ranges, the close kept", () => {
+    // IAG on LSE as served for 2021-11-29: a low of 0.0155 between days trading 1.22 to 1.41.
+    const points = [
+      { date: new Date("2021-11-26"), open: 1.225, high: 1.4138, low: 1.2206, close: 1.314, volume: 177520453 },
+      { date: new Date("2021-11-29"), open: 1.34, high: 1.385371, low: 0.0155, close: 1.3164, volume: 54408860 },
+      { date: new Date("2021-11-30"), open: 1.29, high: 2.9, low: 1.2604, close: 1.2746, volume: 78051066 },
+      // A real wide day: a low just over half the close stays.
+      { date: new Date("2021-12-01"), open: 1.298, high: 1.358, low: 0.66, close: 1.3176, volume: 62147896 },
+    ];
+    const rows = historyRows(points, "1d", "GBP");
+    expect(rows.map((row) => row.flag)).toEqual([null, "low<close/2", "high>2*open", null]);
+    expect(rows.map((row) => [row.low, row.high, row.close])).toEqual([[1.2206, 1.4138, 1.314], [null, 1.385371, 1.3164], [1.2604, null, 1.2746], [0.66, 1.358, 1.3176]]);
+    // The bars keep their prices: no blanking note, no volume counted as missing.
+    expect(historyFlagNote(rows)).toBeNull();
+    expect(historyMissingVolumeNote(rows)).toBeNull();
+    expect(historyWickNote(rows.slice(0, 2))).toBe("The low of 2021-11-29 is under half its open and close, too far to have traded; left blank and out of ranges");
+    expect(historyWickNote(rows)).toBe("2 of 4 bars have a low under half or a high over twice their open and close (2021-11-29 and 2021-11-30), too far to have traded; left blank and out of ranges");
+    // Weekly bars and range estimators read the kept wicks only.
+    const week = extractPriceSeries(points, { kind: "security", instrument: { symbol: "IAG" }, fieldId: "market.low", period: "weekly" } as never);
+    expect(Math.min(...week.map((point) => point.value ?? Infinity))).toBe(0.66);
+    // A bar whose prices contradict each other is blanked whole, flagged for that alone.
+    expect(pricePointWickFlags({ date: new Date(), open: 2, high: 1, low: 0.1, close: 2 })).toEqual([]);
   });
 
   test("a coin's 0 volume is missing, never 0, and counted once; a stock's 0 is a real 0", () => {

@@ -4,6 +4,7 @@ import { formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { debtAndLeases, leaseBasis, type LeaseBasis } from "../../../../utils/lease-liabilities";
 import { cashAndShortTermInvestments, excludesCashRunway, formatRunwayMonths, SHORT_RUNWAY_HISTORY, monthlyOperatingBurn, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
 import {
   buildPreviousStatementMap,
@@ -58,6 +59,8 @@ export interface RatioPeriod {
   price: RatioAmount;
   /** The filer reports cash and short-term investments as a total in some period on file (utils/cash-runway). */
   shortTermTotalOnFile?: boolean;
+  /** How net debt treats the lease liabilities the listing's balance sheets report; absent when none do. */
+  leaseBasis?: LeaseBasis;
 }
 
 interface RatioInputDef {
@@ -75,6 +78,13 @@ interface RatioInputDef {
   trailing?: boolean;
   /** A shorter name for quarterly columns, so the label, TTM and its unit fit the label column. */
   trailingLabel?: string;
+  /** Debt net of cash: where the listing reports lease liabilities, a row naming them follows it (withLeaseRow). */
+  netDebt?: boolean;
+  /**
+   * Not an operand: a line the input before it includes or leaves out, shown under it. Neither its value nor
+   * its gap enters the ratio.
+   */
+  memo?: boolean;
   value: (period: RatioPeriod) => RatioAmount;
 }
 
@@ -245,12 +255,41 @@ function marketCap(period: RatioPeriod): RatioAmount {
   return period.price * shares;
 }
 
+/**
+ * Total debt less cash and short-term investments, with the balance sheet's lease liabilities where the listing's
+ * are included (utils/lease-liabilities). A balance sheet without its lease line then has no net debt.
+ */
+function netDebt({ statement, leaseBasis: basis }: RatioPeriod): RatioAmount {
+  const cash = cashAndShortTerm(statement);
+  if (basis === "included") {
+    const lines = debtAndLeases(statement);
+    return lines === undefined || cash === undefined ? "not-reported" : lines.totalDebt + lines.leases - cash;
+  }
+  const debt = finite(statement.totalDebt);
+  return debt === undefined || cash === undefined ? "not-reported" : debt - cash;
+}
+
 function enterpriseValue(period: RatioPeriod): RatioAmount {
-  const debt = finite(period.statement.totalDebt);
-  const cash = cashAndShortTerm(period.statement);
-  if (debt === undefined || cash === undefined) return "not-reported";
+  const debt = netDebt(period);
+  if (isGap(debt)) return debt;
   const cap = marketCap(period);
-  return isGap(cap) ? cap : cap + debt - cash;
+  return isGap(cap) ? cap : cap + debt;
+}
+
+/** The lease liabilities net debt includes, or a US GAAP filer's operating leases it leaves out. */
+const LEASE_ROW_LABEL: Record<LeaseBasis, string> = { included: "incl. leases", excluded: "excl. op. leases" };
+
+/** The ratio with a row naming the listing's lease liabilities under its net debt, when it reports any. */
+function withLeaseRow(def: RatioDef, basis: LeaseBasis | undefined): RatioDef {
+  const at = def.inputs.findIndex((input) => input.netDebt);
+  if (!basis || at < 0) return def;
+  const row: RatioInputDef = {
+    label: LEASE_ROW_LABEL[basis],
+    format: "money",
+    memo: true,
+    value: ({ statement }) => reported(finite(statement.capitalLeaseObligations)),
+  };
+  return { ...def, inputs: [...def.inputs.slice(0, at + 1), row, ...def.inputs.slice(at + 1)] };
 }
 
 const DSO: RatioDef = {
@@ -378,15 +417,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         label: "Net Debt / EBITDA",
         format: "multiple",
         inputs: [
-          {
-            label: "Net Debt",
-            format: "money",
-            value: ({ statement }) => {
-              const debt = finite(statement.totalDebt);
-              const cash = cashAndShortTerm(statement);
-              return debt === undefined || cash === undefined ? "not-reported" : debt - cash;
-            },
-          },
+          { label: "Net Debt", format: "money", netDebt: true, value: netDebt },
           trailingFlow("EBITDA", line("ebitda"), "÷"),
         ],
         compute: ([debt, ebitda]) => over(debt!, ebitda!),
@@ -517,7 +548,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         label: "EV / EBITDA",
         format: "multiple",
         inputs: [
-          { label: "Enterprise Value", format: "money", value: enterpriseValue },
+          { label: "Enterprise Value", format: "money", netDebt: true, value: enterpriseValue },
           trailingFlow("EBITDA", line("ebitda"), "÷"),
         ],
         // A negative enterprise value makes the multiple meaningless too.
@@ -568,10 +599,11 @@ function inputAmount(input: RatioInputDef, period: RatioPeriod): RatioAmount {
 
 export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
   const inputs = def.inputs.map((input) => inputAmount(input, period));
-  const gap = GAP_ORDER.find((candidate) => inputs.includes(candidate));
+  const operands = inputs.filter((_, index) => !def.inputs[index]!.memo);
+  const gap = GAP_ORDER.find((candidate) => operands.includes(candidate));
   if (gap) return { value: gap, inputs };
-  const values = inputs.map((amount, index) => (
-    def.inputs[index]!.annualized && period.quarterly ? (amount as number) * QUARTERS_PER_YEAR : amount as number
+  const values = def.inputs.flatMap((input, index) => (
+    input.memo ? [] : [input.annualized && period.quarterly ? (inputs[index] as number) * QUARTERS_PER_YEAR : inputs[index] as number]
   ));
   const value = def.compute(values, period);
   return { value: isGap(value) || Number.isFinite(value) ? value : "not-meaningful", inputs };
@@ -702,6 +734,7 @@ export function ratioPeriods(
   onFile: { annual: readonly FinancialStatement[]; quarterly: readonly FinancialStatement[] } = { annual: [], quarterly: [] },
 ): RatioPeriod[] {
   const shortTermTotalOnFile = reportsShortTermTotal([...onFile.annual, ...onFile.quarterly, ...statements]);
+  const leases = leaseBasis([...onFile.annual, ...onFile.quarterly, ...statements]);
   return statements.map((statement) => {
     const quarterly = period === "quarterly" && statement.date !== "TTM";
     return {
@@ -711,6 +744,7 @@ export function ratioPeriods(
       ...(quarterly ? { trailing: trailingYear(statement, onFile.annual, onFile.quarterly) } : {}),
       price: price(statement),
       shortTermTotalOnFile,
+      ...(leases ? { leaseBasis: leases } : {}),
     };
   });
 }
@@ -758,11 +792,12 @@ export function buildRatioTableModel(
 ): RatioTableModel {
   const quarterly = periods.some((period) => period.quarterly);
   const totalOnFile = periods.some((period) => period.shortTermTotalOnFile);
+  const leases = periods.find((period) => period.leaseBasis)?.leaseBasis;
   const ratios = visibleRatios(tab, quarterly)
     .filter((def) => def.format !== "months" || !excludesCashRunway(profile))
     .map((def) => def.format === "months" && !totalOnFile
       ? { ...def, inputs: def.inputs.map((input, index) => index === 0 ? { ...input, label: "Cash" } : input) }
-      : def);
+      : withLeaseRow(def, leases));
   const cells = new Map(ratios.map((def) => [def.id, periods.map((period) => evaluateRatio(def, period))]));
   const inputs = ratios.flatMap((def) => def.inputs.map((input, index) => {
     const values = cells.get(def.id)!.map((cell) => cell.inputs[index]).filter((value) => typeof value === "number");

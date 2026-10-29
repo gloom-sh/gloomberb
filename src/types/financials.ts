@@ -268,7 +268,8 @@ export interface TtmConversion {
 }
 
 /**
- * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
+ * How a served enterprise value ties to market cap + total debt (+ leases, `leases`) - cash from the latest balance sheet
+ * served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
  * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
@@ -284,15 +285,24 @@ export interface EnterpriseValueCheck {
   /** The market cap the EV is measured on; absent only on a not-meaningful source EV served without one. */
   marketCap?: number;
   totalDebt?: number;
+  /** The balance sheet's lease liabilities the bridge adds to total debt, as FA's net debt does (utils/lease-liabilities); absent when none were added. */
+  leases?: number;
   cash?: number;
   /** YYYY-MM-DD of the balance sheet the debt and cash come from. */
   balanceSheetDate?: string;
-  /** marketCap + totalDebt - cash. */
+  /** marketCap + totalDebt + leases - cash. */
   computed?: number;
   /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
   investmentsKept?: true;
-  /** Why the EV is not meaningful (`not-meaningful`). */
+  /** Why the EV is not meaningful (`not-meaningful`), or why a withdrawn EV no balance sheet checked is withdrawn. */
   reason?: string;
+  /** A balance sheet in another currency than the market cap: its currency and the rate at its date
+   * (`currency` per unit of `from`) that `totalDebt`, `leases` and `cash` were converted at. */
+  fx?: { from: string; rate: number };
+  /** The provider converted its EV from the statements' currency. */
+  convertedFrom?: string;
+  /** Withdrawn because the provider applied that conversion twice: its EV over `computed` is the conversion rate. */
+  convertedTwice?: true;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */

@@ -183,7 +183,7 @@ End a search with one of those codes, other than `DERIV`, to keep only that clas
 
 A symbol that trades in several places lists its exchanges after a colon. `NET:` shows each one, your saved listing first, and a symbol several companies use lists them all (`CAR:` offers CAR Group on ASX as well as Avis and Carrefour). Letters after the colon narrow the list (`NET:L`), and `NET:XLON` names one listing.
 
-Enter on a typed symbol or ticker command uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). To choose another listing, use the arrow keys or click a search row. A saved symbol keeps its saved listing.
+Enter opens exactly the highlighted row. Before a typed symbol or ticker command's search answers, there is no row yet and Enter uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). Once the rows are up, Enter opens the highlighted one; to choose another listing, use the arrow keys or click a search row. When a later answer reorders the rows, the highlight moves with its row. A company's name lists the listing `search` calls its primary first (`lufthansa` is LHA on XETRA), as `quote lufthansa` reads it. A saved symbol keeps its saved listing.
 
 When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloom search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
 
@@ -209,7 +209,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `CALLS [ticker]` | Earnings calls and their transcripts; alone, the calendar of every company's calls |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
 | `QQ <tickers>` | Ticker quote monitor |
-| `CMP <tickers>` | Normalized price comparison (`fn CMP LMT RTX --range YTD`). A leveraged or inverse fund adds its daily objective and decay, see [Leveraged and inverse funds](#leveraged-and-inverse-funds) |
+| `CMP <tickers>` | Normalized price comparison (`fn CMP LMT RTX --range YTD`; `--from 2019-12-31`, with `--to`, measures each leg from its close on that day). A leveraged or inverse fund adds its daily objective and decay, see [Leveraged and inverse funds](#leveraged-and-inverse-funds) |
 | `CORR <tickers>` | Return correlations; `GEO:<name>` adds a map series (`CORR FRO, STNG, GEO:HORMUZ`) |
 | `ANR <ticker>` | Analyst targets and ratings |
 | `DIAG <ticker>` | Equity Diagnostic with cited flags and anomalies |
@@ -1169,7 +1169,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - The line under the heading names the currency the prices are in (an FX pair reads `ZAR per USD`, an index `Index points`, a sub-unit `ILA (agorot, 1/100 ILS)`, `Currency unknown` when no source states one), the bar size served, the first and last bar and the bar count.
 - `--json` carries the same in `metadata` (`currency`, `unit`, `interval`, `firstDate`, `lastDate`, `bars`, `requestedRange`, `asOf`). Every row has `currency`, `unit` (what one price is: `USD`, `index points`, `ZAR per USD`), `interval` and `flag`.
 - Every `--csv` has one header, whatever the symbol, range or market state: `Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,status`, then the [five fixed columns](#what-every-exported-row-says) every export ends with. Prices are plain numbers, `Partial`, `Filled` and `Unsettled` are `true` or `false` on every bar, and `status` says why a row has no prices (`prices left blank: high<open`). Files of different symbols, or taken before and after the open, line up when joined.
-- **Warnings** (stderr for text and CSV, `warnings` in JSON) say when the bars are coarser than the range is served in or start well after the start asked for (`Asked 5Y, data starts 2023-09-11 (first available bar)`), and for a coin name days with no daily bar. A bar whose prices contradict each other (high below the open or close, low above them) is left blank, with a code such as `high<open` in `flag`.
+- **Warnings** (stderr for text and CSV, `warnings` in JSON) say when the bars are coarser than the range is served in or start well after the start asked for (`Asked 5Y, data starts 2023-09-11 (first available bar)`), and for a coin name days with no daily bar. A bar whose prices contradict each other (high below the open or close, low above them) is left blank, with a code such as `high<open` in `flag`. A low under half the bar's open and close, or a high over twice them, is too far to have traded (IAG on LSE, 2021-11-29: a low of 0.0155 against a 1.316 close): that low or high alone is left blank and out of ranges, weekly bars and range volatility, flagged `low<close/2` or `high>2*open`, while the bar's open and close stand.
 
 **Breaks.** A break in the series flags the bar after it, which keeps its prices:
 
@@ -1683,7 +1683,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 `fundamentals` and `valuation` follow the same rules: `Metric,Value` rows with the unit in each label (`Market Cap (ZAR)`, `Dividend Yield (forward) (%)`), and for `fundamentals` a second `Profile` table. `financials --csv` writes the statement table with plain amounts under its displayed columns. All three end with the source line.
 
-**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds.
+**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more when there is one: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds. A listing whose `GF` history goes no further back (most listings outside the US start in 2022) says `older years not available for this listing` instead. Quarterly growth is vs prior quarter. A company that reports half-yearly (Qantas on ASX) has no quarters: `--period quarterly` says so and names `--period annual`. A share count of zero, or one a thousandth of the company's usual count, is shown as missing.
 
 **An old latest period.** A latest period over 15 months old is said first (`Latest period 2024-06-30 is 27 months old.`), and a newer column with only some figures (an EPS alone) is named instead of read as current. FA's ratio tabs say it too, and it is a `# note:` in `--csv` and `notes` in `--json`.
 

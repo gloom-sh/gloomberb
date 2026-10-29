@@ -3,6 +3,7 @@ import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-ga
 import { CHART_BAR_SIZE_PRESETS, parseChartBarSize } from "../../../time-series/resolution";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
+import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -138,6 +139,10 @@ export const paneSchemas = {
         ],
         defaultValue: "percent",
       },
+      // A window of dates, each leg rebased at its first close in it: --from 2019-12-31 compares since then.
+      { key: "from", type: "string", placeholder: "year|date", description: `${PRICE_WINDOW_FROM_HELP}; the returns are measured from its first shared close`,
+        example: "--from 2019-12-31", replaces: ["rangePreset"] },
+      { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP },
       {
         key: "totalReturn",
         description: "Reinvest each cash distribution at its ex-date close, so the returns are total returns, not price returns.",

@@ -54,7 +54,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
-export { candidateExchange, listingDistance } from "./home-listing";
+export { candidateExchange, listingDistance, primaryCompanyLine } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 

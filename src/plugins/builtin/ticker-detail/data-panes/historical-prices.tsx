@@ -24,7 +24,8 @@ import {
   barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
+  priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
@@ -257,6 +258,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     [points, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
+  const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);
   const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({
     ...row.point, date: row.time, partial: row.partial, filled: row.filled,
   }))), [rows]);
@@ -356,7 +358,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    notices: [integrityNotice, wickNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -404,6 +406,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],
         ...(allStart ? [["Source starts", allStart]] : []),
         ...(integrityNotice ? [["Warning", integrityNotice]] : []),
+        ...(wickNotice ? [["Warning", wickNotice]] : []),
         ...gapNotices.map((notice) => ["Gap note", notice]),
         ...(volumeNotice ? [["Volume note", volumeNotice]] : []),
         ...(error ? [["Error", error]] : []),

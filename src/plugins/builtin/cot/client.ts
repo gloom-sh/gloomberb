@@ -3,7 +3,9 @@ import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, Co
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
-import { COT_CLASSES, cotPriceMapping } from "./model";
+import { COT_CLASSES, cotFrontPriceUnit, cotPriceMapping } from "./model";
+import { futuresPriceUnit, loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
+import { futuresBoardContract } from "../../../market-data/futures-board";
 
 export const cotBoardCache = createPluginCache<CotBoardPayload>({ kind: "cot-board", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 15 * 60_000, expireMs: 8 * 24 * 60 * 60_000 } });
@@ -87,13 +89,24 @@ export async function fetchCotContract(contractCode: string, family: CotFamily, 
   try { return validateCotContract(await client.getCloudCotContract(contractCode, family, positions), family, contractCode, positions); }
   catch (error) { throw unavailable(error); }
 }
-export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null }
-export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient,
+/** `priceUnit` is the front price's, as its legend writes it after the price (cotFrontPriceUnit): `USD/gal` for heating oil. */
+export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null;
+  priceUnit?: string | null }
+/**
+ * A market's report and its front price. The price's unit is the contract's,
+ * from its terms where the client reads them, else the futures catalog's.
+ */
+export async function loadCotDetail(contractCode: string, family: CotFamily,
+  client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> & Partial<Pick<typeof apiClient, "getCloudFuturesContract">> = apiClient,
   positions: CotPositions = "futures-only"): Promise<CotDetailData> {
   const payload = await fetchCotContract(contractCode, family, client, positions);
   const mapping = cotPriceMapping(contractCode);
   // An unmapped market simply has no price panel; that is not a data failure.
   if (!mapping?.priceSymbol) return { payload, price: [], priceSymbol: null, priceAsOf: null, priceWarning: null };
+  const terms = client.getCloudFuturesContract;
+  const priceUnit = (terms ? loadFuturesPriceUnit(mapping.priceSymbol, (symbol) => loadFuturesContractTerms(symbol, { getCloudFuturesContract: terms }))
+    : Promise.resolve(futuresPriceUnit(futuresBoardContract(mapping.priceSymbol), null)))
+    .then((unit) => cotFrontPriceUnit(contractCode, unit));
   try {
     const result = await client.getCloudHistory(mapping.priceSymbol, mapping.exchange, { interval: "1day", rangeKey: "5Y", outputsize: 1500 });
     if (!Array.isArray(result.data)) throw new Error("Front-price history unavailable");
@@ -106,6 +119,6 @@ export async function loadCotDetail(contractCode: string, family: CotFamily, cli
     }
     const price = [...seen.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
     return { payload, price, priceSymbol: mapping.priceSymbol, priceAsOf: price.at(-1)?.date.toISOString().slice(0, 10) ?? null,
-      priceWarning: result.stale ? "Front-price history is stale." : price.length ? null : "Front-price history unavailable." };
+      priceWarning: result.stale ? "Front-price history is stale." : price.length ? null : "Front-price history unavailable.", priceUnit: await priceUnit };
   } catch { return { payload, price: [], priceSymbol: mapping.priceSymbol, priceAsOf: null, priceWarning: "Front-price history unavailable. Positioning remains available." }; }
 }

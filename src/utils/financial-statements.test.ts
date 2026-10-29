@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { coalesceFinancialPeriodAliases, filledPeriodsNote, mergeFinancialStatementRows, stalePeriodNote, statementHistoryNotes } from "./financial-statements";
+import {
+  coalesceFinancialPeriodAliases, filledPeriodsNote, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+} from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import type { FinancialStatement } from "../types/financials";
 
@@ -211,22 +213,47 @@ test("filing-backed fiscal dates coalesce proven month-end aliases, including ol
 });
 
 describe("statementHistoryNotes", () => {
-  test("names the oldest period a report served and how to read further back, from the dates it holds", () => {
+  test("names the oldest period a report served, and points to GF only when its history goes further back", () => {
     // A trailing-twelve-months column has no date; the oldest year is the oldest period end.
-    expect(statementHistoryNotes("annual", ["TTM", "2025-12-31", "2024-12-31", "2023-12-31"], "KO")).toEqual([
+    expect(statementHistoryNotes("annual", ["TTM", "2025-12-31", "2024-12-31", "2023-12-31"], "KO", true)).toEqual([
       "annual history from 2023; older years not served",
       "earlier years, one metric at a time: gloom fn GF KO --period annual --periods 40",
     ]);
-    // The year is not a constant: a company with two years served says 2024, and the order of the dates does not matter.
-    expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA")[0]).toBe("annual history from 2024; older years not served");
-    expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO")).toEqual([
+    // GF holds nothing older (IAG on LSE starts in 2022 there too): no pointer to the same years.
+    expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA", false))
+      .toEqual(["annual history from 2024; older years not available for this listing"]);
+    expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO", true)).toEqual([
       "quarterly history from 2025-03-28; older quarters not served",
       "earlier quarters, one metric at a time: gloom fn GF KO --period quarterly --periods 40",
     ]);
+    // Unknown (the history could not be read): the report says what it holds and points nowhere.
+    expect(statementHistoryNotes("quarterly", ["2025-03-28"], "KO", null)).toEqual(["quarterly history from 2025-03-28; older quarters not served"]);
     // A report with no dated period has nothing to say about its history.
-    expect(statementHistoryNotes("annual", [], "KO")).toEqual([]);
-    expect(statementHistoryNotes("annual", ["TTM"], "KO")).toEqual([]);
+    expect(statementHistoryNotes("annual", [], "KO", true)).toEqual([]);
+    expect(statementHistoryNotes("annual", ["TTM"], "KO", true)).toEqual([]);
   });
+
+  test("hasOlderStatements reads the extended history for a period older than the report's oldest", async () => {
+    const extended = { annualStatements: [{ date: "2019-12-31" }, { date: "2023-12-31" }], quarterlyStatements: [{ date: "2025-03-31" }] };
+    const load = async () => extended;
+    expect(await hasOlderStatements(load, "annual", ["TTM", "2024-12-31", "2023-12-31"])).toBe(true);
+    expect(await hasOlderStatements(load, "annual", ["2019-12-31", "2023-12-31"])).toBe(false);
+    expect(await hasOlderStatements(load, "quarterly", ["2025-03-31"])).toBe(false);
+    // Nothing dated to compare against, or a failed read: unknown.
+    expect(await hasOlderStatements(load, "annual", ["TTM"])).toBeNull();
+    expect(await hasOlderStatements(async () => { throw new Error("down"); }, "annual", ["2023-12-31"])).toBeNull();
+  });
+});
+
+test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a year apart", () => {
+  expect(reportsHalfYearly("ASX", [])).toBe(true);
+  expect(reportsHalfYearly("nzx", [{ date: "2025-06-30" }])).toBe(true);
+  // Qantas served under a venue the app does not know: its periods say it.
+  expect(reportsHalfYearly(null, [{ date: "2026-06-30" }, { date: "2025-06-30" }, { date: "2025-12-31" }])).toBe(true);
+  expect(reportsHalfYearly("LSE", [{ date: "2025-03-31" }, { date: "2025-06-30" }, { date: "2025-09-30" }])).toBe(false);
+  // One quarter missing between two is still a quarterly reporter.
+  expect(reportsHalfYearly("LSE", [{ date: "2025-03-31" }, { date: "2025-09-30" }, { date: "2025-12-31" }])).toBe(false);
+  expect(reportsHalfYearly("XETRA", [{ date: "2025-06-30" }])).toBe(false);
 });
 
 describe("stalePeriodNote", () => {

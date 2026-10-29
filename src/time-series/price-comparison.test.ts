@@ -363,4 +363,15 @@ describe("normalized market price comparison", () => {
     const limited = spec(); limited.viewport.maxPoints = 2;
     expect(resolvePriceComparison(limited, rawResult.series, { start: null, end: null })).toBeNull();
   });
+
+  test("a window in monthly bars is measured from the close of the month it starts in, as --from 2019-12-31 asks", async () => {
+    // `fn CMP IAG:LSE LHA:XETRA --from 2019-12-31` comes back in monthly bars, dated by each month's 1st: the
+    // December bar's close is 31 Dec 2019's, and the comparison is measured from it, not from January's.
+    const monthly = (closes: number[]) => rows(closes.map((close, index) => [`20${19 + Math.floor((index + 11) / 12)}-${String((index + 11) % 12 + 1).padStart(2, "0")}-01`, close]));
+    const window = spec("1d");
+    window.viewport = { range: "ALL", resolution: "1mo", dateWindow: { start: "2019-12-31", end: "2020-03-31" } };
+    const result = await resolveChartSpecData(window, sources({ OLDER: monthly([100, 80, 50, 40]), NEWER: monthly([10, 9, 6, 5]) }));
+    expect(result.priceComparison?.notice).toContain("From Tue 31 Dec 2019 close");
+    expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([-60, -50]);
+  });
 });

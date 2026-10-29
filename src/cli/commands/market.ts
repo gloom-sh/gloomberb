@@ -40,7 +40,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, hasOlderStatements, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
@@ -131,6 +131,7 @@ import {
   historyCoverageWarning,
   historyFacts,
   historyFlagNote,
+  historyWickNote,
   historyGapNote,
   historyJumpNote,
   historyUnbrokenFrom,
@@ -1464,7 +1465,7 @@ async function loadListingHistory(
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-    gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
+    gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
   ].flat();
@@ -1881,7 +1882,11 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // Years filled from the listing's exchange, for the revenue and net income columns.
     const filled = filledPeriodsNote(financials.annualStatements.filter((statement) => rows.some((row) => row.date === statement.date)),
       new Set(["totalRevenue", "netIncome"]));
-    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
+    // GF is pointed to only when the listing's extended history goes further back than these years.
+    const dates = rows.map((row) => row.date);
+    const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
+      { statementHistory: "extended" }), "annual", dates);
+    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
@@ -3280,7 +3285,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Bars",
         lines: [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
-          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. --json rows carry currency, unit, interval and flag.",
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. A low under half the open and close, or a high over twice them, is left blank alone and flagged low<close/2 or high>2*open. --json rows carry currency, unit, interval and flag.",
           "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
           "The heading's last line is the max drawdown of the bars shown: the largest fall from a close to a later close, with the peak and the trough, their dates, and the date a close got back to the peak, if one did (maxDrawdown in --json).",
         ],

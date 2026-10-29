@@ -16,6 +16,7 @@ import {
   candidateExchange,
   LISTING_SEARCH_LIMIT,
   listingDistance,
+  primaryCompanyLine,
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
@@ -34,8 +35,7 @@ import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { companyNameExtraWords, groupByCompany, sameCompany } from "../../tickers/company-name";
-import { namedByService } from "../../tickers/company-name-listing";
+import { companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
@@ -286,14 +286,10 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
   const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"
     && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company)
     && (!marked || companyNameExtraWords(resolveSearchName(candidate), company) != null));
-  const score = (candidate: TickerSearchCandidate) => candidate.result?.popularity ?? candidate.popularity ?? null;
-  const [home] = [...lines].sort((a, b) => listingDistance(a) - listingDistance(b) || (score(b) ?? -1) - (score(a) ?? -1) || candidates.indexOf(a) - candidates.indexOf(b));
-  if (!home || home === primary) return candidates;
-  const closer = listingDistance(home) < listingDistance(primary);
-  const [homeScore, primaryScore] = [score(home), score(primary)];
-  const moreSearched = !marked && listingDistance(home) === listingDistance(primary) && homeScore != null
-    && (primaryScore == null || homeScore >= primaryScore * 2);
-  if (!closer && !moreSearched) return candidates;
+  const home = primaryCompanyLine(primary, lines, (candidate) => ({
+    distance: listingDistance(candidate), score: candidate.result?.popularity ?? candidate.popularity ?? null,
+  }), { named: marked });
+  if (home === primary) return candidates;
   const rest = candidates.filter((candidate) => candidate !== home);
   const at = rest.indexOf(primary);
   return [...rest.slice(0, at), { ...home, category: "Primary Listing" as const }, { ...primary, category: "Other Listings" as const }, ...rest.slice(at + 1)];

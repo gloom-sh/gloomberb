@@ -50,7 +50,8 @@ const DOE_SERIES: readonly SeriesDefinition[] = DOE_SERIES_OPTIONS.map((option):
     unit: UNITS[unit].unit,
     frequency: "weekly",
     group: "Energy",
-    tags: gas ? ["natural gas", "storage", "inventories"] : ["oil", "petroleum", "inventories", "US"],
+    // Jet fuel is kerosene, the word a reader may search it by.
+    tags: gas ? ["natural gas", "storage", "inventories"] : ["oil", "petroleum", "inventories", "US", ...option.value === "jet" ? ["kerosene"] : []],
     publisher: "EIA",
     load: async () => {
       const resource = await loadDoeBoard();

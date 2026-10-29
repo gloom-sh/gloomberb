@@ -154,6 +154,13 @@ export function useCommandBarRootRuntime({
 } {
   const previousRootSelectionContextRef = useRef<{ query: string; mode: string } | null>(null);
   const previousRootResultIdsRef = useRef<string[]>([]);
+  /**
+   * The row the untouched highlight rests on once the query's answer is in,
+   * and the answer it was on. A later answer that reorders the rows (a
+   * fresher search over a cached one, a broker's) moves the highlight with
+   * its row, so Enter opens the row that was highlighted.
+   */
+  const pinnedRootRowRef = useRef<{ id: string; answer: string | null } | null>(null);
   const activeMatch = matchPrefix(rootQuery, availableCommands);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
@@ -326,6 +333,7 @@ export function useCommandBarRootRuntime({
     previousRootSelectionContextRef.current = { query: rootQuery, mode: rootModeKind };
     if (selectionContextChanged) {
       rootSelectionNavigatedRef.current = false;
+      pinnedRootRowRef.current = null;
     }
 
     setRootSelectedIdx((current) => {
@@ -338,15 +346,23 @@ export function useCommandBarRootRuntime({
         if (shiftedIdx >= 0) return shiftedIdx;
         return clampIndex(current, resultIds.length);
       }
-      // Untouched, the selection follows the best row on offer. When every row
-      // is an offer or a placeholder, none of them is the answer and none is
-      // selected: Enter must not take one of them for the ticker still being
-      // searched.
+      const pinnedIdx = pinnedRootRowRef.current ? resultIds.indexOf(pinnedRootRowRef.current.id) : -1;
+      if (pinnedIdx >= 0) return pinnedIdx;
+      // Untouched, the selection follows the best row on offer until the
+      // answer is in. When every row is an offer or a placeholder, none of
+      // them is the answer and none is selected: Enter must not take one of
+      // them for the ticker still being searched.
       const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
       if (defaultIdx < 0) return -1;
-      return clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+      const selected = clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+      pinnedRootRowRef.current = rootResultsCurrent && resultIds[selected]
+        ? { id: resultIds[selected]!, answer: activeRootProviderResultsKey }
+        : null;
+      return selected;
     });
   }, [
+    activeRootProviderResultsKey,
+    rootResultsCurrent,
     activeMatch?.command.id,
     currentRoute,
     orderedRootResults,
@@ -360,7 +376,13 @@ export function useCommandBarRootRuntime({
 
   useEffect(() => {
     if (!activeRootProviderResultsKey) return;
+    // A later answer that only reorders the rows leaves the highlight on its row.
+    const pinned = pinnedRootRowRef.current;
+    if (pinned && pinned.answer !== activeRootProviderResultsKey
+      && orderedRootResults.some((item) => item.id === pinned.id)) return;
     setRootSelectedIdx(0);
+    const top = orderedRootResults[0];
+    pinnedRootRowRef.current = top ? { id: top.id, answer: activeRootProviderResultsKey } : null;
     setRootHoveredIdx(null);
     nativeListScrollRef.current?.scrollTo(0);
   }, [activeRootProviderResultsKey, nativeListScrollRef, setRootHoveredIdx, setRootSelectedIdx]);

@@ -4,6 +4,9 @@ import type { Quote } from "../types/financials";
 import { ProviderBusyError } from "../sources/provider-errors";
 import { findListingOfCompanyName } from "./company-name-listing";
 import { buildTickerSearchCandidates } from "./search";
+import { search } from "../cli/commands/search";
+import { createTestDataProvider } from "../test-support/data-provider";
+import type { PrintedCliResult } from "../test-support/cli-context";
 
 const listing = (symbol: string, name: string, exchange: string, type = "Common Stock"): InstrumentSearchResult =>
   ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
@@ -76,6 +79,38 @@ test("a European company typed with its legal form is its primary listing, as th
     expect(await findListingOfCompanyName(answering({ "PDD HOLDINGS": rows(pdd) }), "PDD Holdings")).toMatchObject({ symbol: "PDD", exchange: "NASDAQ" });
     expect(await findListingOfCompanyName(answering({ APPLE: rows(apple) }), "Apple", { oneWord: true })).toMatchObject({ symbol: "AAPL", exchange: "NASDAQ" });
   }
+});
+
+test("a company's name opens the listing search calls its primary, not a one-off line abroad whose short name matched", async () => {
+  // `search lufthansa` against the service, 2026-10-29: no home line marked, Budapest's LUFTHANSA has no search score.
+  const scored = (line: string, popularity?: number) => ({ ...row(line), ...popularity ? { popularity } : {} });
+  const answer = [
+    scored("DLAKY | Lufthansa Sponsored ADR | OTC | American Depositary Receipt", 20071),
+    scored("LUFTH | LUFTHANSA | BUD | Common Stock"),
+    scored("LHAB | Lufthansa AG Sponsored ADR | FWB2 | American Depositary Receipt"),
+    scored("LHA | Deutsche Lufthansa AG | XETRA | Common Stock", 20989),
+    scored("LHA | Deutsche Lufthansa AG | FWB2 | Common Stock", 20037),
+    scored("DLAKF | Deutsche Lufthansa AG | OTC | Common Stock", 20006),
+    scored("4LHA | DEUTSCHE LUFTHANSA | BIT | Common Stock"),
+  ];
+  const service = { search: async () => answer };
+  const initMarketData = async () => ({
+    store: { loadAllTickers: async () => [] }, dataProvider: createTestDataProvider({ search: service.search }), persistence: { close() {} },
+  }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("lufthansa", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const primary = (printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>)
+    .find((item) => item.category === "Primary Listing");
+  expect(primary).toMatchObject({ symbol: "LHA", exchange: "XETRA" });
+  for (const [typed, options] of [["lufthansa", { oneWord: true }], ["Lufthansa", {}], ["Deutsche Lufthansa", {}]] as const) {
+    expect(await findListingOfCompanyName(service, typed, options), typed).toMatchObject({ symbol: "LHA", exchange: "XETRA" });
+  }
+  // The command bar lists it first too, so Enter on the name opens it.
+  const [lead] = buildTickerSearchCandidates({ query: "lufthansa", tickers: new Map(), providerResults: answer });
+  expect({ symbol: lead?.symbol, exchange: lead?.result?.exchange }).toEqual({ symbol: "LHA", exchange: "XETRA" });
+  // A line the service marks with the name keeps the lead over a line searched more: the mark is the company.
+  const marked = [scored("SIEME | SIEMENS AG | BUD | Common Stock | - | SIEMENS AG"), scored("SIE | SIEMENS AG | WSE | Common Stock", 30000)];
+  expect(await findListingOfCompanyName({ search: async () => marked }, "SIEMENS AG")).toMatchObject({ symbol: "SIEME", exchange: "BUD" });
 });
 
 test("with quoted, a listing with no quote gives way to the next of its company's lines that has one, never to another company's home line", async () => {

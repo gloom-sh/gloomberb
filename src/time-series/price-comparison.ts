@@ -63,7 +63,24 @@ export function observationDate(time: number, series: Pick<ResolvedSeries, "time
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/** Date-only research windows select local sessions; runtime timestamps remain exact. */
+/**
+ * The day the weekly or monthly bar holding `date` is dated by: its week's
+ * Monday or its month's 1st, as `history --from` keeps the week or month its
+ * first date falls in. A daily bar is its own day.
+ */
+function windowBarStart(date: string, resolution: "1d" | "1wk" | "1mo"): string {
+  if (resolution === "1mo") return `${date.slice(0, 7)}-01`;
+  if (resolution === "1d") return date;
+  const day = Date.parse(`${date}T00:00:00Z`);
+  return new Date(day - ((new Date(day).getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Date-only research windows select local sessions; runtime timestamps remain
+ * exact. Weekly and monthly bars keep the bar the window starts in: a window
+ * from 2019-12-31 in monthly bars starts with December 2019's, whose close is
+ * that day's, so a comparison is measured from it.
+ */
 export function priceObservationWindowFilter(
   series: ResolvedSeries,
   bounds: { start: number | null; end: number | null },
@@ -74,11 +91,12 @@ export function priceObservationWindowFilter(
   const calendarWindow = calendarBars && dateWindow
     && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start)
     && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end) ? dateWindow : null;
+  const start = calendarWindow ? windowBarStart(calendarWindow.start, resolution as "1d" | "1wk" | "1mo") : null;
   return (time) => {
     if (!Number.isFinite(time)) return false;
     const key = calendarWindow ? observationDate(time, series) : null;
     return key !== null
-      ? key >= calendarWindow!.start && key <= calendarWindow!.end
+      ? key >= start! && key <= calendarWindow!.end
       : (bounds.start === null || time >= bounds.start) && (bounds.end === null || time <= bounds.end);
   };
 }
