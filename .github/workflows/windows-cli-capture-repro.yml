@@ -13,7 +13,7 @@ on:
         default: "40912105186"
       rounds:
         description: How many shot/fn rounds
-        default: "12"
+        default: "20"
 
 permissions:
   contents: read
@@ -51,8 +51,8 @@ jobs:
           (Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion | ForEach-Object { Write-Host "chrome $_" }
 
           $Work = Join-Path $env:RUNNER_TEMP "v"
-          $Fails = 0; $Total = 0
-          foreach ($Round in 1..${{ inputs.rounds || '12' }}) {
+          $Fails = 0; $Total = 0; $AllPorts = @()
+          foreach ($Round in 1..${{ inputs.rounds || '20' }}) {
             Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
             $Caller = Join-Path $Work "caller with spaces"; $Profile = Join-Path $Work ".gloomberb"; $Temp = Join-Path $Work "t"
             New-Item -ItemType Directory -Force -Path $Caller, $Profile, $Temp | Out-Null
@@ -73,6 +73,10 @@ jobs:
                   $Main = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { $_.CommandLine -match "gloom-pane-shot" -and $_.CommandLine -notmatch "--type=" }
                   foreach ($P in $Main) {
                     if ($P.CommandLine -match "--remote-debugging-port=(\d+)") { $Port = [int]$Matches[1] } else { continue }
+                    if ($Port -eq 0 -and $P.CommandLine -match '--user-data-dir=("[^"]+"|\S+)') {
+                      $Active = Join-Path $Matches[1].Trim('"') "DevToolsActivePort"
+                      $Port = if (Test-Path $Active) { [int]((Get-Content $Active -TotalCount 1)) } else { 0 }
+                    }
                     $Listen = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { "$($_.LocalAddress) pid $($_.OwningProcess)" }) -join ","
                     $List = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$Port/json/list").Content -replace "\s+", " " } catch { "ERR $($_.Exception.Message)" }
                     $Children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $($P.ProcessId)" | ForEach-Object { if ($_.CommandLine -match "--type=([a-z-]+)") { $Matches[1] } }) -join ","
@@ -91,10 +95,13 @@ jobs:
               Stop-Job $Watcher; Remove-Job $Watcher -Force
               $Bad = $Out -match "Timed out waiting for Chrome DevTools"
               Write-Host ("round {0} {1}: exit {2} in {3} s{4}" -f $Round, $Name, $Code, $Seconds, $(if ($Bad) { " TIMED OUT" } else { "" }))
+              if (Test-Path $Watch) { $Ports = @(Get-Content $Watch | ForEach-Object { if ($_ -match " port (\d+) ") { [int]$Matches[1] } } | Where-Object { $_ -gt 0 } | Select-Object -Unique); $AllPorts += $Ports }
               if ($Bad) {
                 $Fails++
                 if (Test-Path $Watch) { Get-Content $Watch | ForEach-Object { Write-Host "   $_" } } else { Write-Host "   (no chrome seen)" }
               }
             }
           }
+          $InRange = @($AllPorts | Where-Object { $Port = $_; @($Ranges | Where-Object { $Port -ge $_[0] -and $Port -le $_[1] }).Count -gt 0 })
+          Write-Host "DevTools ports seen: $($AllPorts.Count), inside excluded ranges: $($InRange.Count) ($($AllPorts | Select-Object -First 12))"
           Write-Host "timed out: $Fails of $Total captures"
