@@ -10,7 +10,23 @@ permissions:
   contents: read
 
 jobs:
+  recorder:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build the exception recorder
+        shell: cmd
+        run: cl /nologo /O2 /LD /MT scripts\diag-veh\veh.c /Fe:veh.dll /link kernel32.lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veh-dll
+          path: veh.dll
+
   stays-up:
+    needs: recorder
     strategy:
       fail-fast: false
       matrix:
@@ -18,27 +34,33 @@ jobs:
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veh-dll
+          path: veh
 
-      - name: Open v0.19.1 with Windows Error Reporting on
+      - name: Open v0.19.1 with the exception recorder loaded first
         shell: pwsh
         run: |
           $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-v0.19.1.exe"
           Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
-          $Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe"
+          $env:GLOOM_DIAG_VEH_DLL = (Resolve-Path veh/veh.dll).Path
+          $Prelude = 'try { import.meta.require("bun:ffi").dlopen(process.env.GLOOM_DIAG_VEH_DLL, { veh_installed: { args: [], returns: "i32" } }).symbols.veh_installed(); } catch (e) { console.error("veh", e); }'
           $Failed = @()
           foreach ($Launch in 1, 2, 3) {
-            $Label = "w${{ matrix.attempt }}-$Launch"
+            $Label = "v${{ matrix.attempt }}-$Launch"
+            New-Item -ItemType Directory -Force -Path "artifacts/windows-stays-up/$Label" | Out-Null
+            $env:GLOOM_DIAG_VEH_LOG = Join-Path (Get-Location) "artifacts/windows-stays-up/$Label/exceptions.txt"
             try {
-              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 40
+              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 40 -Prelude $Prelude
             } catch {
               $Failed += "${Label}: $($_.Exception.Message)"
             }
-            foreach ($Dump in (Get-ChildItem "artifacts/windows-stays-up/$Label/dumps" -Filter *.dmp -ErrorAction SilentlyContinue)) {
-              $Stacks = Join-Path $Dump.DirectoryName "$($Dump.BaseName).stacks.txt"
-              & $Cdb -z $Dump.FullName -c ".symfix; .reload; .effmach; .lastevent; .exr -1; .ecxr; r; kn 40; .effmach amd64; kn 40; lmv m bun; lmv m libNativeWrapper; lmv m libcef; ~*kn 12; q" 2>&1 | Out-File $Stacks
-              Write-Host "$($Dump.Name): $($Dump.Length) bytes"
-              Get-Content $Stacks | Select-String -Pattern "Last event|ExceptionCode|ExceptionAddress|Attempt to|^0[0-9] " | Select-Object -First 40 | ForEach-Object { Write-Host "  $_" }
-              Remove-Item -LiteralPath $Dump.FullName
+            if (Test-Path $env:GLOOM_DIAG_VEH_LOG) {
+              Write-Host "---- $Label exceptions"
+              Get-Content $env:GLOOM_DIAG_VEH_LOG | Where-Object { $_ -notmatch "^module " -or $_ -match "bun\.exe|libNativeWrapper|libcef|ntdll|KERNELBASE|xtajit" } | Select-Object -First 120 | ForEach-Object { Write-Host "  $_" }
+            } else {
+              Write-Host "---- $Label no exception log"
             }
           }
           if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
@@ -46,7 +68,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: wer-${{ matrix.attempt }}
+          name: veh-${{ matrix.attempt }}
           path: |
             artifacts/windows-stays-up/**/stays-up.txt
-            artifacts/windows-stays-up/**/dumps/*.txt
+            artifacts/windows-stays-up/**/exceptions.txt

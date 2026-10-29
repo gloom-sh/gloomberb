@@ -17,6 +17,8 @@ param(
   [string]$AddChromiumFlag = "",
   # Repro only: a bun.exe to put in place of the installed one.
   [string]$ReplaceBun = "",
+  # Repro only: a line of JS run first in the installed Resources\main.js.
+  [string]$Prelude = "",
   [string]$EvidenceDir = (Join-Path (Get-Location) "artifacts\windows-stays-up")
 )
 
@@ -115,6 +117,13 @@ if ($ReplaceBun) {
   Write-Line "bin\bun.exe replaced by $ReplaceBun ($((Get-FileHash -Algorithm SHA256 $ReplaceBun).Hash.Substring(0, 16)))"
 }
 Write-Line "bin\bun.exe sha256 $((Get-FileHash -Algorithm SHA256 (Join-Path $Folder 'bin\bun.exe')).Hash.Substring(0, 16)), $((Get-Item (Join-Path $Folder 'bin\bun.exe')).Length) bytes"
+if ($Prelude) {
+  $MainJs = Join-Path $Folder "Resources\main.js"
+  $Lines = [System.Collections.Generic.List[string]]([System.IO.File]::ReadAllLines($MainJs))
+  $Lines.Insert($(if ($Lines[0] -like "// @bun*") { 1 } else { 0 }), $Prelude)
+  [System.IO.File]::WriteAllLines($MainJs, $Lines, (New-Object System.Text.UTF8Encoding $false))
+  Write-Line "main.js starts: $(($Lines | Select-Object -First 3) -join ' | ')"
+}
 if ($AddChromiumFlag) {
   $BuildJson = Join-Path $Folder "Resources\build.json"
   $Build = Get-Content -LiteralPath $BuildJson -Raw | ConvertFrom-Json
