@@ -1,13 +1,15 @@
 name: Windows on Arm launch repro
 
 on:
-  push:
-    branches:
-      - chore/windows-arm-repro
   workflow_dispatch:
+    inputs:
+      installer_run:
+        description: A Verify Windows run whose installer to open (empty for the v0.19.1 release)
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   recorder:
@@ -38,12 +40,23 @@ jobs:
         with:
           name: veh-dll
           path: veh
+      - uses: actions/download-artifact@v4
+        if: inputs.installer_run != ''
+        with:
+          name: windows-x64-installer
+          path: installer
+          run-id: ${{ inputs.installer_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Open v0.19.1 with the exception recorder loaded first
         shell: pwsh
         run: |
           $Installer = Join-Path $env:RUNNER_TEMP "GloomSetup-v0.19.1.exe"
-          Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
+          if ("${{ inputs.installer_run }}") {
+            $Installer = (Resolve-Path installer/stable-win-x64-GloomSetup.exe).Path
+          } else {
+            Invoke-WebRequest "https://github.com/gloom-sh/gloomberb/releases/download/v0.19.1/stable-win-x64-GloomSetup.exe" -OutFile $Installer
+          }
           $env:GLOOM_DIAG_VEH_DLL = (Resolve-Path veh/veh.dll).Path
           $Prelude = 'try { import.meta.require("bun:ffi").dlopen(process.env.GLOOM_DIAG_VEH_DLL, { veh_installed: { args: [], returns: "i32" } }).symbols.veh_installed(); } catch (e) { console.error("veh", e); }'
           $Failed = @()
@@ -52,7 +65,7 @@ jobs:
             New-Item -ItemType Directory -Force -Path "artifacts/windows-stays-up/$Label" | Out-Null
             $env:GLOOM_DIAG_VEH_LOG = Join-Path (Get-Location) "artifacts/windows-stays-up/$Label/exceptions.txt"
             try {
-              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 40 -Prelude $Prelude
+              ./scripts/verify-windows-stays-up.ps1 -Installer $Installer -Label $Label -Seconds 40 -Prelude $Prelude -Console
             } catch {
               $Failed += "${Label}: $($_.Exception.Message)"
             }

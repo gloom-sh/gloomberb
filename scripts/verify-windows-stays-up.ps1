@@ -233,6 +233,11 @@ foreach ($Process in (Get-AppProcesses $Folder)) {
   Stop-Process -Id $Process.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+# What the launcher said about itself, such as how it set up under emulation.
+if (Test-Path -LiteralPath $Output) {
+  Get-Content -LiteralPath $Output -ErrorAction SilentlyContinue | Where-Object { $_.StartsWith("[launcher]") } | ForEach-Object { Write-Line "app: $_" }
+}
+
 if ($Problems.Count -gt 0) {
   foreach ($Path in @($Output, $Errors)) {
     if (Test-Path -LiteralPath $Path) {
