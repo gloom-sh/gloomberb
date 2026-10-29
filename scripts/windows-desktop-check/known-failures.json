@@ -9,7 +9,6 @@
     "main-drag-maximized": "a maximized window moves at full size",
     "detached-snap-drag": "dragging to a screen edge does not snap",
     "main-snap-drag": "dragging to a screen edge does not snap",
-    "pop-out@150": "no window opened at 150%, most likely because a floating pane covered the pane the check pressed",
     "restart-itself": "the app's restart brings no window back"
   }
 }

@@ -653,6 +653,35 @@ function commonestColor(bitmap: Bitmap): { color: number; share: number } {
 
 const isLight = (color: number) => ((color >> 16) & 0xff) > 230 && ((color >> 8) & 0xff) > 230 && (color & 0xff) > 230;
 
+/**
+ * Waits for a new window to paint its page. Before it does, it can show what
+ * was behind it for a moment, so its page counts as drawn once two looks a
+ * second apart agree.
+ */
+async function waitForPaint(hwnd: number, timeoutMs = 20_000): Promise<{ drawn: boolean; said: string }> {
+  const openedAt = Date.now();
+  let colors = 0;
+  let drawnLooks = 0;
+  let commonest = { color: 0xffffff, share: 1 };
+  while (Date.now() - openedAt < timeoutMs && drawnLooks < 2) {
+    await sleep(1_000);
+    try {
+      const bitmap = win.captureScreen(win.clientRect(hwnd));
+      colors = distinctColors(bitmap);
+      commonest = commonestColor(bitmap);
+    } catch { colors = 0; commonest = { color: 0xffffff, share: 1 }; }
+    const blank = commonest.share > 0.97 && isLight(commonest.color);
+    drawnLooks = colors >= 6 && !blank ? drawnLooks + 1 : 0;
+  }
+  const drawn = drawnLooks >= 2;
+  return {
+    drawn,
+    said: drawn
+      ? `painted after ${((Date.now() - openedAt) / 1000).toFixed(1)} s`
+      : `still blank after ${timeoutMs / 1000} s (${Math.round(commonest.share * 100)}% #${commonest.color.toString(16).padStart(6, "0")})`,
+  };
+}
+
 // --- The run ---------------------------------------------------------------
 
 const RESIZE_CURSORS: Record<string, string> = {
@@ -1611,27 +1640,7 @@ class Run {
         const seen = describeInputs(await inputsSince(main.page, pressedAt), pressedAt);
         return { status: "fail", detail: `no new window opened for ${target.id}, clicked at ${Math.round(target.point.x)},${Math.round(target.point.y)}; the main page saw: ${seen}` };
       }
-      // A new window paints its page once that has loaded.
-      const openedAt = Date.now();
-      let colors = 0;
-      // Before it paints, a window can show what was behind it for a moment,
-      // so its page counts as drawn once two looks a second apart agree.
-      let drawnLooks = 0;
-      let commonest = { color: 0xffffff, share: 1 };
-      while (Date.now() - openedAt < 20_000 && drawnLooks < 2) {
-        await sleep(1_000);
-        try {
-          const bitmap = win.captureScreen(win.clientRect(opened.hwnd));
-          colors = distinctColors(bitmap);
-          commonest = commonestColor(bitmap);
-        } catch { colors = 0; commonest = { color: 0xffffff, share: 1 }; }
-        const blank = commonest.share > 0.97 && isLight(commonest.color);
-        drawnLooks = colors >= 6 && !blank ? drawnLooks + 1 : 0;
-      }
-      const drawn = drawnLooks >= 2;
-      const painted = drawn
-        ? `painted after ${((Date.now() - openedAt) / 1000).toFixed(1)} s`
-        : `still blank after 20 s (${Math.round(commonest.share * 100)}% #${commonest.color.toString(16).padStart(6, "0")})`;
+      const { drawn, said: painted } = await waitForPaint(opened.hwnd);
       const rect = win.windowRect(opened.hwnd);
       const mainRect = win.windowRect(main.hwnd);
       const overMain = rect.left < mainRect.right && rect.right > mainRect.left && rect.top < mainRect.bottom && rect.bottom > mainRect.top;
@@ -1746,14 +1755,22 @@ class Run {
         await sleep(500);
         opened = this.appWindows().find((info) => !this.knownWindows.has(info.hwnd));
       }
-      const desktop = this.shots.desktop(opened ? "restarted" : "restart-missing");
-      if (desktop) shots.push(desktop);
-      if (!opened) return { status: "fail", detail: `no window came back within 60 s of the old one closing; ${await restartReport(this.out, oldPid)}` };
+      if (!opened) {
+        const desktop = this.shots.desktop("restart-missing");
+        if (desktop) shots.push(desktop);
+        return { status: "fail", detail: `no window came back within 60 s of the old one closing; ${await restartReport(this.out, oldPid)}` };
+      }
       const took = (Date.now() - closing) / 1000;
+      // Back means the app's page is on it, not only a window.
+      const { drawn, said: painted } = await waitForPaint(opened.hwnd, 30_000);
+      const shot = this.shots.take("restarted-window", win.windowRect(opened.hwnd));
+      if (shot) shots.push(shot);
+      const desktop = this.shots.desktop("restarted");
+      if (desktop) shots.push(desktop);
       // Not this run's launch: stopped by its window.
       Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
       await sleep(1_500);
-      return { status: "pass", detail: `a new window opened ${took.toFixed(1)} s after the old one closed` };
+      return { status: drawn ? "pass" : "fail", detail: `"${opened.title}" opened ${took.toFixed(1)} s after the old one closed and ${painted}` };
     });
   }
 
