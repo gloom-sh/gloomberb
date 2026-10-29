@@ -110,9 +110,14 @@ test("in the app, a queue tick writes only its budget's worth, in order, and a l
   connection.exec("CREATE TABLE queued (k TEXT PRIMARY KEY, v INTEGER NOT NULL)");
   const put = connection.query("INSERT OR REPLACE INTO queued (k, v) VALUES (?, ?)");
   const ran: string[] = [];
+  /** How many of the slow writes each tick ran. */
+  const slowWritesPerTick: number[] = [];
+  let tick = 0;
   const write = (k: string, v: number, spinMs = 0) => () => {
     put.run(k, v);
     ran.push(`${k}=${v}`);
+    if (spinMs === 0) return;
+    slowWritesPerTick[tick] = (slowWritesPerTick[tick] ?? 0) + 1;
     const until = performance.now() + spinMs;
     while (performance.now() < until) { /* stand in for a slow commit */ }
   };
@@ -127,17 +132,16 @@ test("in the app, a queue tick writes only its budget's worth, in order, and a l
     locker.exec("ROLLBACK");
     held = false;
 
-    const ticks: number[] = [];
-    for (let tick = 0; tick < 50; tick += 1) {
-      const startedAt = performance.now();
-      const empty = access.flush();
-      ticks.push(performance.now() - startedAt);
-      if (empty) break;
+    for (; tick < 50; tick += 1) {
+      if (access.flush()) break;
     }
 
-    // 150 ms of writes took several ticks, none much past its budget plus the write it was in.
-    expect(ticks.length).toBeGreaterThanOrEqual(3);
-    expect(Math.max(...ticks)).toBeLessThan(120);
+    // A tick starts writes for 40 ms. Each slow write takes at least 15 ms,
+    // so a tick starts at most three; a slow disk only lowers that. Without
+    // the budget one tick would run all ten.
+    const counts = Array.from(slowWritesPerTick, (count) => count ?? 0);
+    expect(Math.max(...counts)).toBeLessThanOrEqual(3);
+    expect(counts.filter((count) => count > 0).length).toBeGreaterThanOrEqual(4);
     expect(ran).toEqual(["clear", "a=2", ...Array.from({ length: 10 }, (_, index) => `n${index}=${index}`)]);
     expect(connection.query("SELECT v FROM queued WHERE k = 'a'").get()).toEqual({ v: 2 });
     expect(connection.query("SELECT COUNT(*) AS count FROM queued").get()).toEqual({ count: 11 });
