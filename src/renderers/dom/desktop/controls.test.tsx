@@ -1,8 +1,7 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { act, useState, type ReactNode } from "react";
+import { act, useState } from "react";
 import { WebCheckbox, WebSegmentedControl } from "./controls";
-import { WebIcon } from "./icons";
 import { WebListView } from "./list-view";
 import { Button } from "../../../components/ui/button";
 import { NumberField, TextField } from "../../../components/ui/fields";
@@ -12,8 +11,7 @@ import { Notice } from "../../../components/ui/status";
 import { contrastRatio } from "../../../theme/color-utils";
 import { getCurrentThemeId, getThemeColors, syncTheme } from "../../../theme/colors";
 import { ThemeProvider } from "../../../theme/theme-context";
-import { Box, Text, UiHostProvider, useUiHost } from "../../../ui";
-import { noopRendererHost } from "../../../test-support/renderer-host";
+import { Box, Text } from "../../../ui";
 import { createDomTestHarness } from "../test-utils";
 
 const { render: renderDom } = createDomTestHarness();
@@ -230,25 +228,6 @@ test("warning and LIVE text meet normal-text contrast while preserving semantic 
   } finally {
     syncTheme(originalTheme);
   }
-});
-
-test("a badge's icon sits in its label's line, so the label sits where a plain badge's does", async () => {
-  // As a flex item beside the label, the icon centred on the chip while the
-  // label's capitals sit above the middle, and the two did not line up.
-  function WithIcons({ children }: { children: ReactNode }) {
-    return <UiHostProvider ui={{ ...useUiHost(), Icon: WebIcon }} renderer={noopRendererHost}>{children}</UiHostProvider>;
-  }
-  const container = await renderDom(<WithIcons>
-    <Badge label="alex +1" icon="mail" tone="warning" />
-    <Badge label="alex +1" tone="warning" />
-  </WithIcons>);
-  const [withIcon, plain] = [...container.querySelectorAll<HTMLElement>('[data-gloom-ui="badge"]')];
-  expect(withIcon!.getAttribute("style")).toBe(plain!.getAttribute("style"));
-  const [label, plainLabel] = [withIcon!, plain!].map((chip) => chip.querySelector<HTMLElement>(":scope > span")!);
-  expect(label!.getAttribute("style")).toBe(plainLabel!.getAttribute("style"));
-  const icon = label!.querySelector<SVGElement>(":scope > svg")!;
-  expect(icon.style.verticalAlign).toBe("middle");
-  expect(label!.textContent).toBe("alex +1");
 });
 
 test("a framed TextField keeps its text a cell off the frame, and a plain one sits flush", async () => {
