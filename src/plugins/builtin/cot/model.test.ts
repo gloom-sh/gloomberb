@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotContractUnitText, cotLegendValue, cotNetPoints, cotPriceMapping, cotScope, cotUnknownMarketMessage } from "./model";
+import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
+import {
+  COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotContractUnitText, cotFrontPriceUnit, cotLegendValue,
+  cotNetPoints, cotPriceMapping, cotProxyFor, cotProxyNote, cotScope, cotUnknownMarketMessage,
+} from "./model";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { cotModule } from "./index";
 import { cotHeadless } from "./headless";
@@ -141,6 +145,42 @@ test("legend values stay exact without the float32 tail of price bars", () => {
   expect(cotLegendValue(7765.25, { id: "price" })).toBe("7,765.25");
   expect(cotLegendValue(112.640625, { id: "price" })).toBe("112.640625");
   expect(cotLegendValue(-100461, { id: "net" })).toBe("-100,461");
+});
+
+test("the front price reads in its contract's unit, as a quote of the future does: heating oil per gallon", async () => {
+  resetFuturesPriceUnits();
+  // HO's "Front price 4.8221" said nothing of dollars or gallons.
+  expect(cotFrontPriceUnit("022651", "USD / gallon")).toBe("USD/gal");
+  expect(cotLegendValue(Math.fround(4.8221), { id: "price", unit: "USD/gal" })).toBe("$4.8221/gal");
+  // Gold reads as a dollar price, as `quote GC=F` does; a unit with no currency (index points) leaves the number bare.
+  expect(cotFrontPriceUnit("088691", "USD / troy ounce")).toBe("USD");
+  expect(cotLegendValue(4346.3, { id: "price", unit: "USD" })).toBe("$4,346.3");
+  expect(cotFrontPriceUnit("13874A", "index points")).toBeNull();
+  // The unit comes from the contract's terms where the client reads them.
+  const ho = payload(); ho.contract = { ...ho.contract!, contractCode: "022651", marketName: "NY HARBOR ULSD - NEW YORK MERCANTILE EXCHANGE" };
+  const detail = await loadCotDetail("022651", "legacy", { getCloudCotContract: async () => ho,
+    getCloudHistory: async () => ({ status: "success", data: [{ date: "2026-09-15", close: 4.8221 }] }) as never,
+    getCloudFuturesContract: async () => ({ symbol: "HO=F", root: "HO", name: "Heating Oil", contract: null, contractSymbol: null, deliveryMonth: null,
+      spec: { unit: "USD / gallon", size: "42,000 gallons", pointValue: 42_000, tick: 0.0001, tickValue: 4.2, settlement: "physical" },
+      lastTrade: null, firstNotice: null, inDelivery: false, settlement: null }) });
+  expect(detail.priceUnit).toBe("USD/gal");
+  const series = cotChartSeries(ho, "noncommercial", detail.price, { positive: "#0f0", warning: "#fa0" }, detail.priceUnit);
+  expect(series.find((entry) => entry.id === "price")?.unit).toBe("USD/gal");
+});
+
+test("jet fuel and kerosene open heating oil, the usual proxy, and say so", async () => {
+  for (const name of ["jet fuel", "Jet Fuel", "kerosene", "aviation fuel"]) {
+    expect(cotContractCode(name), name).toBe("022651");
+    expect(cotProxyFor(name), name).toEqual({ subject: "jet fuel", root: "HO" });
+  }
+  // A market the CFTC reports is no proxy, by name or root.
+  expect(cotProxyFor("heating oil")).toBeNull();
+  expect(cotProxyFor("HO")).toBeNull();
+  expect(cotProxyNote({ subject: "jet fuel", root: "HO" })).toBe("Jet fuel has no CFTC market: heating oil (NY Harbor ULSD, HO) is the usual proxy. "
+    + "Its price: gloom quote HO=F; US jet fuel stocks (EIA, weekly): gloom fn G CAP:doe:jet");
+  const template = cotModule.paneTemplates![0]!;
+  expect(await template.createInstance!({ activeTicker: null } as never, { arg: "jet fuel" } as never))
+    .toMatchObject({ title: "COT HO (jet fuel proxy)", params: { code: "022651" } });
 });
 
 test("the class's net leads the chart series, ahead of the front price", () => {

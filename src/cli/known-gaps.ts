@@ -223,6 +223,17 @@ const TOPIC_POINTERS: ReadonlyArray<{
     closest: [["CTM", "gloom fn CTM HG for copper, gloom fn CTM ALI for aluminium"]],
   },
   {
+    // No source serves a jet fuel (kerosene) price. Heating oil, NY Harbor ULSD, is what airlines hedge it with and
+    // analysts read it by; the EIA's weekly US stocks are a catalog series (checked 2026-10-29: quote HO=F,
+    // fn COT HO and fn G CAP:doe:jet all answer).
+    topic: "Jet fuel (kerosene)",
+    availability: "no price series; heating oil (NY Harbor ULSD) is the usual proxy, its price: gloom quote HO=F. "
+      + "US jet fuel stocks (EIA, weekly): gloom fn G CAP:doe:jet",
+    phrases: ["jet fuel", "jet fuels", "kerosene", "kerosine", "jet kerosene", "aviation fuel", "aviation fuels", "avtur"],
+    closestLabel: "positioning",
+    closest: [["COT", "heating oil, the usual jet fuel proxy: gloom fn COT HO"]],
+  },
+  {
     // "exchange reserves" alone reads as crypto's; "foreign exchange reserves" is a central bank's, so only whole.
     topic: "Crypto exchange reserves and exchange flows",
     availability: "not covered (no source for coins held on exchanges)",

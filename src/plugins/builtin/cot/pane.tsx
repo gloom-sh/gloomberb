@@ -162,7 +162,7 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   const data = resource.data;
   const payload = data?.payload;
   const current = payload?.positions.find((row) => row.id === traderClass);
-  const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors) : [], [data, traderClass, colors]);
+  const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors, data.priceUnit) : [], [data, traderClass, colors]);
   // The selected class row already carries the net and both ranks, and the
   // legend names the class it charts, so the detail opens on the chart. A rank
   // over a short history is a limitation, so it sits behind the warning.

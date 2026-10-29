@@ -42,6 +42,17 @@ test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves
   expect(knownGapMessage("copper")).toBeNull();
 });
 
+test("jet fuel and kerosene lead to heating oil's price and COT, and the EIA's jet fuel stocks, not POWER", () => {
+  // `catalog "jet fuel"` opened POWER, and `catalog kerosene` found nothing.
+  const gap = knownGapMessage("jet fuel")!;
+  expect(gap).toStartWith("Jet fuel (kerosene): no price series; heating oil (NY Harbor ULSD) is the usual proxy");
+  for (const route of ["gloom quote HO=F", "gloom fn G CAP:doe:jet", "gloom fn COT HO"]) expect(gap).toContain(route);
+  for (const query of ["kerosene", "Jet Fuel", "jet fuel prices", "aviation fuel", "airline jet fuel"]) expect(knownGapMessage(query), query).toBe(gap);
+  for (const query of ["fuel", "jet", "fuel cells"]) expect(knownGapMessage(query), query).toBeNull();
+  // A topic pointer: catalog lists COT in place of the loose matches "fuel" finds (POWER's fuel filter).
+  expect(topicPointer("kerosene")?.codes).toEqual(["COT"]);
+});
+
 test("freight rates and the Baltic indices are said to be uncovered, naming what is; BDI alone is also a ticker", () => {
   const gap = knownGapMessage("freight")!;
   expect(gap).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");

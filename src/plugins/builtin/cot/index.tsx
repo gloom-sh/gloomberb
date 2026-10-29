@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { cotBoardCache } from "./client";
 import { cotHeadless } from "./headless";
-import { COT_ROOT_OPTIONS, cotContractCode, cotContractCodeForTicker, cotRoot, cotUnknownMarketMessage } from "./model";
+import { COT_ROOT_OPTIONS, cotContractCode, cotContractCodeForTicker, cotProxyFor, cotRoot, cotUnknownMarketMessage } from "./model";
 import { CotPane } from "./pane";
 import { COT_SERIES } from "./series";
 
@@ -19,7 +19,9 @@ export const cotModule: PluginModule = {
       const input = options?.arg?.trim();
       const code = input ? cotContractCode(input) : cotContractCodeForTicker(context.activeTicker);
       if (input && !code) throw new Error(cotUnknownMarketMessage(input));
-      return { title: code ? `COT ${cotRoot(code) ?? code}` : "CFTC Positioning", params: code ? { code } : undefined,
+      // "jet fuel" opens heating oil, and the title says which market stands in.
+      const proxy = input ? cotProxyFor(input) : null;
+      return { title: code ? `COT ${cotRoot(code) ?? code}${proxy ? ` (${proxy.subject} proxy)` : ""}` : "CFTC Positioning", params: code ? { code } : undefined,
         settings: { report: options?.values?.report ?? "legacy" }, placement: "floating" as const };
     },
   }],
