@@ -105,6 +105,9 @@ function secTypeColor(secType: string, selected: boolean): string {
   }
 }
 
+/** An announced auction's Rate in the table, the word other panes use for a figure not out yet (KPI's Later actual). */
+const RESULTS_PENDING = "Pending";
+
 // Stable table adapter so memoized rows survive pane re-renders.
 const auctionKey = (auction: TreasuryAuction) => auction.id;
 
@@ -119,8 +122,8 @@ function renderAuctionCell(
 
   switch (column.id) {
     case "date":
-      // Announced auctions have no results yet; every metric cell reads "—",
-      // so the date carries the distinction instead of a second placeholder.
+      // Announced auctions have no results yet: Rate reads Pending, the other
+      // metric cells "—", and the date is bright.
       return {
         text: showYear ? auction.auctionDate : formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
@@ -134,7 +137,10 @@ function renderAuctionCell(
     case "term":
       return { text: auction.securityTerm, color: selected ?? colors.text };
     case "rate":
-      return { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
+      // An announced auction says its results are pending, as its detail does; other metric cells stay "—".
+      return isPendingAuction(auction)
+        ? { text: RESULTS_PENDING, color: dimmed }
+        : { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
     case "stopOut":
       return { text: formatBp(stopOutVsAverageBp(auction)), color: selected ?? colors.text };
     case "btc":

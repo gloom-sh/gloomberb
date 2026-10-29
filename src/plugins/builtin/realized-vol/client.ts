@@ -4,6 +4,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
+import type { SurfaceSnapshot } from "../vol-surface/model";
 import { projectCurrentAtmIv, type CurrentAtmIvSnapshot } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
@@ -70,7 +71,9 @@ export interface CurrentAtmIvRequest extends RealizedHistoryRequest {
  * Re-read the current reference's own expiry at the live spot: that one chain
  * is refetched and refitted, the catalogue comes from cache, and the other
  * slices of the full load are not touched. When the refreshed slice cannot
- * price an ATM level, the previous dated reference stands.
+ * price an ATM level, the refresh rejects with why ("ATM IV 31d not
+ * refreshed: ..."): the dated reference already shown stays, and the pane
+ * warns that it is not moving.
  */
 export async function refreshCurrentAtmIv(
   request: CurrentAtmIvRequest,
@@ -80,14 +83,19 @@ export async function refreshCurrentAtmIv(
   const reference = previous.reference;
   if (!reference || !(request.spot > 0) || !Number.isFinite(request.spot)) return previous;
   if (request.signal?.aborted) throw abortError(CANCELLED);
+  const notRefreshed = (reason: string) => new Error(`${reference.label} not refreshed: ${reason}`);
+  let surface: SurfaceSnapshot;
   try {
-    const next = projectCurrentAtmIv(await loadVolatilitySurface({ ...request, forceRefresh: true, expiries: [reference.expiration],
-      settings: { ivSource: reference.ivSource } }, dependencies));
-    return next.reference?.expiration === reference.expiration ? { ...previous, reference: next.reference } : previous;
+    surface = await loadVolatilitySurface({ ...request, forceRefresh: true, expiries: [reference.expiration],
+      settings: { ivSource: reference.ivSource } }, dependencies);
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
-    return previous;
+    throw notRefreshed(errorMessage(error));
   }
+  const next = projectCurrentAtmIv(surface);
+  if (next.reference?.expiration === reference.expiration) return { ...previous, reference: next.reference };
+  const reasons = [...new Set(surface.failures.map((failure) => failure.message))];
+  throw notRefreshed(reasons.join("; ") || "no clean quote at the money");
 }
 
 /** Options are independent of daily history and use the existing surface chain cache. */

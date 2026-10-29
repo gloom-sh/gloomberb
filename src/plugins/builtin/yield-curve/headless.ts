@@ -4,16 +4,17 @@ import type {
 } from "../../../types/plugin";
 import {
   compareDate, curveCutoff, CURVE_OPTIONS, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
-  loadCurveData, parseCompareInput, parseCurveArgument, type CurveData, type CurveId,
+  parseCompareInput, parseCurveArgument, type CurveData, type CurveId,
 } from "./curves";
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
 import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
-import { loadWorldRows, type WorldRow } from "./world";
+import type { WorldRow } from "./world";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { SWAP_TENORS, type SwapCurvePayload, type SwapTenor } from "../../../api-client/swap-curve";
-import { fetchSwapCurve } from "./client";
+import { fetchSwapCurve, loadSavedCurve, loadSavedWorldRows } from "./client";
+import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
@@ -87,13 +88,14 @@ export interface YieldCurveHeadlessDependencies {
 }
 
 const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
-  load: (curve, requestedDate, context) => loadCurveData(curve, requestedDate, context.apiClient),
+  // A curve that cannot be read is the copy an earlier read saved, marked so the report says so.
+  load: async (curve, requestedDate, context) => (await loadSavedCurve(curve, requestedDate, context.apiClient)).data,
   compare: (curve, date, context) => loadComparePoints(curve, date, context.apiClient),
   lookbacks: async (session, context) => Object.fromEntries(
     (await loadYieldCurveLookbacks(session, (id, options) => context.apiClient.getCloudFredSeries(id, options)))
       .map((lookback) => [lookback.id, lookback.points]),
   ),
-  world: (context) => loadWorldRows(context.apiClient),
+  world: async (context) => (await loadSavedWorldRows(context.apiClient)).data,
   swaps: (tenor, context) => fetchSwapCurve(tenor, context.apiClient),
 };
 
@@ -184,7 +186,7 @@ export function createYieldCurveHeadless(
         return {
           freshness: { source: "Government bond publishers", status: "not-a-feed", basis: "daily curves" },
           columns: WORLD_COLUMNS,
-          rows: rows.map((row) => ({ market: row.market, twoYear: row.twoYear, tenYear: row.tenYear, thirtyYear: row.thirtyYear,
+          rows: rows.map((row) => ({ ...savedCopyMark(row), market: row.market, twoYear: row.twoYear, tenYear: row.tenYear, thirtyYear: row.thirtyYear,
             twosTensBasisPoints: bp(row.twosTens), tenYearChangeBasisPoints: bp(row.tenYearChange), asOf: row.asOf })),
           metadata: { units: "Percent" },
         };
@@ -244,6 +246,7 @@ export function createYieldCurveHeadless(
           const day = ranked ? curveTenorMove(data, point.maturity, "1D") : null;
           const week = ranked ? curveTenorMove(data, point.maturity, "1W") : null;
           return {
+            ...savedCopyMark(data),
             ...point,
             change1dBasisPoints: change == null ? null : toBasisPoints(change, 1),
             ...(ranked ? {

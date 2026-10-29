@@ -3,6 +3,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
 } from "../../../types/plugin";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fredSourceLabel } from "../../../sources/gloomberb-cloud/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { formatNumber } from "../../../utils/format";
@@ -10,6 +11,7 @@ import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
   loadStatsBundle,
+  unansweredErrors,
   type StatsBundle,
 } from "./client";
 import { historyStartNotice } from "../shared/history-span";
@@ -82,6 +84,11 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
     { label: "Source", value: fredSourceLabel(view.stat.seriesId) },
   ];
+}
+
+/** A statistic answered from the copy saved by an earlier read, its refresh having failed, says so in its row. */
+function savedCopyRow<T extends object>(view: StatViewModel, row: T): T {
+  return view.cacheSource === "stale-fallback" && view.fetchedAt != null ? servedFromSavedCopy(row, view.fetchedAt) : row;
 }
 
 /** The window the %ile column counts over, in words. */
@@ -163,7 +170,7 @@ export function projectStatsHeadlessBundle(
       textColumns: columns(true),
       // `as_of` is the release; a figure with none stated is as of its own day when it is observed daily or weekly, never its period's first day.
       rowAsOfKey: "exportAsOf",
-      rows: categoryViews.map((view) => ({
+      rows: categoryViews.map((view) => savedCopyRow(view, {
         id: view.stat.id,
         indicator: view.stat.shortLabel,
         latest: view.latest.value,
@@ -208,7 +215,8 @@ export function projectStatsHeadlessBundle(
         ...exportDating(selected),
       }] : []),
     ],
-    errors: bundle.errors,
+    // A statistic answered from its saved copy says so in the source line, not as an error.
+    errors: unansweredErrors(bundle),
     notes: [
       `%ile is the share of past readings at or below the latest one, over ${PERCENTILE_WINDOW[range]}.`
       + (range === "ALL" ? "" : " Full history: --range ALL."),

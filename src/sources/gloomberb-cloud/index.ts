@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { readCompanyFrom } from "../../types/company-from";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
@@ -665,9 +666,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const name = venue ? context?.listingName?.trim() || await this.listingName(ticker, venue) || undefined : undefined;
     const filings = await withCloudFallback(async () => {
       const response = await apiClient.getCloudSecFilings({ ticker, exchange, name, limit: count, offset: 0 });
-      return response.filings.map(mapCloudSecFiling);
+      // A foreign line's filings read from its company's home line say whose, each of them.
+      const companyFrom = readCompanyFrom(response.companyFrom);
+      return response.filings.map((filing) => companyFrom ? { ...mapCloudSecFiling(filing), companyFrom } : mapCloudSecFiling(filing));
     }, `Cloud SEC filings are unavailable for ${ticker}`);
-    if (!venue || filings.length === 0) return filings;
+    // The service matched a line read from its company's home line to the company itself.
+    if (!venue || filings.length === 0 || filings[0]!.companyFrom) return filings;
     const symbol = parsePublicTickerKey(ticker).symbol;
     // Without the listing's company the filings cannot be told apart from another company's.
     if (!name) throw createProviderMiss(`SEC filings for ${symbol} could not be matched to its ${venue} listing`);
@@ -994,6 +998,7 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
             articles: cloudNewsReadArticles(read, query.ticker),
             nextCursor: read.nextCursor ?? null,
             access: read.access ?? null,
+            companyFrom: readCompanyFrom(read.companyFrom),
           };
         },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {

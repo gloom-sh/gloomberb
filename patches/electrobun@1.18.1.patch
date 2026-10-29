@@ -1,3 +1,16 @@
+diff --git a/dist/api/browser/index.ts b/dist/api/browser/index.ts
+index 3e309b18fdbcec84a4a56f97df4debe7fb8246f8..03420222c1d9ba897835c5e7376c7153ede294fc 100644
+--- a/dist/api/browser/index.ts
++++ b/dist/api/browser/index.ts
+@@ -50,7 +50,7 @@ class Electroview<T extends RPCWithTransport> {
+ 		// Note: Using ws:// for localhost is intentional - all RPC messages are
+ 		// encrypted with per-webview AES-GCM keys, making TLS redundant
+ 		const socket = new WebSocket(
+-			`ws://localhost:${RPC_SOCKET_PORT}/socket?webviewId=${WEBVIEW_ID}`,
++			`ws://127.0.0.1:${RPC_SOCKET_PORT}/socket?webviewId=${WEBVIEW_ID}`,
+ 		);
+ 
+ 		this.bunSocket = socket;
 diff --git a/dist/api/bun/core/BrowserWindow.ts b/dist/api/bun/core/BrowserWindow.ts
 index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd19ee13e02 100644
 --- a/dist/api/bun/core/BrowserWindow.ts
@@ -54,7 +67,7 @@ index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd1
  				width: this.frame.width,
  				height: this.frame.height,
 diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
-index cdaa2bca0fabe577cb667056aa6f8f84211189c2..3839e5232742c2467180c344f51a30f1ff3c797f 100644
+index cdaa2bca0fabe577cb667056aa6f8f84211189c2..e9cdd82c934f6da58055dc8343ee3b953ec1ee81 100644
 --- a/dist/api/bun/core/Socket.ts
 +++ b/dist/api/bun/core/Socket.ts
 @@ -3,13 +3,8 @@ import { BrowserView } from "./BrowserView";
@@ -73,6 +86,15 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..3839e5232742c2467180c344f51a30f1
  }
  
  // Encrypt function
+@@ -65,6 +60,8 @@ const startRPCServer = () => {
+ 	while (port <= endPort) {
+ 		try {
+ 			server = Bun.serve<{ webviewId: number }>({
++				// Only this machine's webviews connect.
++				hostname: "127.0.0.1",
+ 				port,
+ 				fetch(req: Request, server: Server<{ webviewId: number }>) {
+ 					const url = new URL(req.url);
 diff --git a/dist/api/bun/core/Updater.ts b/dist/api/bun/core/Updater.ts
 index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd700879a5db 100644
 --- a/dist/api/bun/core/Updater.ts

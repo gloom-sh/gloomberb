@@ -1,4 +1,4 @@
-import type { DepositaryPair, Fundamentals, Quote } from "../types/financials";
+import type { CedearRatio, DepositaryPair, Fundamentals, Quote } from "../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { formatNumber } from "../utils/format";
 import { formatUtcDayTime } from "../utils/utc-time";
@@ -39,6 +39,30 @@ export function isReceiptSide(records: PairRecords | null | undefined): boolean 
 /** `10`, `0.25`: a ratio without float noise. */
 export function ratioCount(ratio: number): string {
   return Number.isInteger(ratio) ? String(ratio) : String(Number(ratio.toPrecision(6)));
+}
+
+type CedearRecords = { quote?: Pick<Quote, "cedearRatio"> | null; fundamentals?: Pick<Fundamentals, "cedearRatio"> | null };
+
+const positiveCount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/** A served CEDEAR ratio, when it is whole. */
+function readCedearRatio(value: unknown): CedearRatio | null {
+  if (!value || typeof value !== "object") return null;
+  const ratio = value as Partial<CedearRatio>;
+  if (typeof ratio.listing !== "string" || !ratio.listing.trim()) return null;
+  if (typeof ratio.company !== "string" || !ratio.company.trim()) return null;
+  if (!positiveCount(ratio.receipts) || !positiveCount(ratio.shares)) return null;
+  return ratio as CedearRatio;
+}
+
+/** The CEDEAR ratio a listing's records state: the quote's, else the fundamentals'. */
+export function listingCedearRatio(records: CedearRecords | null | undefined): CedearRatio | null {
+  return readCedearRatio(records?.quote?.cedearRatio) ?? readCedearRatio(records?.fundamentals?.cedearRatio);
+}
+
+/** A CEDEAR's ratio in its company's shares: `20 AAPL:BYMA = 1 Apple Inc. share`. */
+export function cedearRatioText(ratio: CedearRatio): string {
+  return `${ratioCount(ratio.receipts)} ${ratio.listing} = ${ratioCount(ratio.shares)} ${ratio.company.trim()} share${ratio.shares === 1 ? "" : "s"}`;
 }
 
 /** What a home line says of its receipt: `1 GGAL ADR = 10 of these shares`, and `1 of these shares` for one. */

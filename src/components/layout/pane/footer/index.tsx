@@ -11,7 +11,9 @@ import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { nativePaneFooterRows } from "../sizing";
 import {
   EMPTY_FOOTER,
+  PANE_FOOTER_SEPARATOR,
   fitPaneFooterInfo,
+  separatesPaneFooterSegments,
   hasPaneFooterContent,
   layoutPaneFooterHintRow,
   totalHintsWidth,
@@ -22,6 +24,7 @@ import {
 } from "./model";
 
 export {
+  companyDataFooterSegment,
   datesPaneData,
   DELAYED_SEGMENT,
   delayedFooterSegment,
@@ -267,6 +270,7 @@ function FooterContent({
   // A segment with shorter forms takes the longest that fits beside the hints, gaps and terminal keys included.
   const keysWidth = nativePaneChrome ? 0 : footer.info.reduce((total, segment) => total + terminalSegmentKey(segment, focused).length, 0);
   const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth, { besideHints: hasHints }) : footer.info;
+  const lastTextIndex = info.findLastIndex((segment) => !segment.icon);
 
   if (!hasInfo && !hasHints) {
     return <Box flexGrow={1} height={1} />;
@@ -291,12 +295,24 @@ function FooterContent({
           flexShrink={1}
           {...(infoWidth != null ? { width: infoWidth } : {})}
         >
-          {info.map((segment, index) => (
-            // An icon is a few cells that mean nothing cut: the text beside it gives way first.
-            <Box key={segment.id} flexDirection="row" flexShrink={segment.icon ? 0 : undefined} marginRight={index === info.length - 1 ? 0 : 1}>
-              <SegmentView segment={segment} focused={focused} />
-            </Box>
-          ))}
+          {info.map((segment, index) => {
+            // Every pane's segments are set apart the same way, so two never read as one sentence.
+            const separated = index > 0 && separatesPaneFooterSegments(info[index - 1]!, segment);
+            return (
+              <Box
+                key={segment.id}
+                flexDirection="row"
+                overflow="hidden"
+                // A row too narrow cuts from its end: the last text segment gives way, then the row clips the
+                // one before it. An icon is a few cells that mean nothing cut, and earlier text says more.
+                flexShrink={!segment.icon && index === lastTextIndex ? 1 : 0}
+                marginLeft={index > 0 && !separated ? 1 : 0}
+              >
+                {separated && <Box flexShrink={0}><Text fg={colors.textMuted}>{PANE_FOOTER_SEPARATOR}</Text></Box>}
+                <SegmentView segment={segment} focused={focused} />
+              </Box>
+            );
+          })}
         </Box>
       )}
       {hasHints && (

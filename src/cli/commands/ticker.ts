@@ -83,7 +83,7 @@ import { movedAwayChange } from "../../tickers/ticker-changes";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
-import { depositaryPairText, isReceiptSide, listingDepositaryPair } from "../../market-data/depositary-pair";
+import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { cliFreshnessFooter } from "../result";
 import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
@@ -1165,6 +1165,9 @@ export async function buildTickerReport({
   if (depositaryPair) {
     lines.push(cliStyles.muted(`ADR ratio ${depositaryPairText(depositaryPair, isReceiptSide(financials))}. Implied FX and premium: gloom fn ADR ${quote?.symbol ?? symbol}`));
   }
+  // A CEDEAR states its ratio in its company's shares, as a receipt does.
+  const cedearRatio = listingCedearRatio(financials);
+  if (cedearRatio) lines.push(cliStyles.muted(`CEDEAR ratio ${cedearRatioText(cedearRatio)}.`));
 
   // A list that holds the company as another of its listings says which: "Watchlists R (as RCI.B:TSX)".
   const lists = memberships ?? companyMemberships(config, tickerFile, [], null);
@@ -1462,6 +1465,8 @@ function buildTickerStructuredData({
 }
 
 function depositaryPairJson(financials: TickerFinancials) {
+  const cedear = listingCedearRatio(financials);
+  if (cedear) return { cedearRatio: { ...cedear, text: cedearRatioText(cedear) } };
   const pair = listingDepositaryPair(financials);
   if (!pair) return {};
   const receipt = isReceiptSide(financials);

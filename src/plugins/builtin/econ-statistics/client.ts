@@ -101,6 +101,17 @@ function bundleFrom(unaligned: StatBuild[], errors: string[]): StatsBundle {
   };
 }
 
+/**
+ * The bundle's errors less the refresh failures of statistics the copy an
+ * earlier read saved answered for: those say when that copy is from instead.
+ */
+export function unansweredErrors(bundle: StatsBundle): string[] {
+  const answered = new Set(bundle.builds.flatMap(({ stat, cache }) => (
+    cache?.source === "stale-fallback" && cache.refreshError ? [`${stat.seriesId}: ${cache.refreshError}`] : []
+  )));
+  return bundle.errors.filter((error) => !answered.has(error));
+}
+
 /** Builds whatever the on-disk cache can already answer, for an instant first paint. */
 export function getCachedStatsBundle(stats: readonly StatDef[] = STATS): StatsBundle | null {
   const builds: StatBuild[] = [];

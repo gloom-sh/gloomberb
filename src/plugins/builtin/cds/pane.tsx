@@ -40,7 +40,6 @@ import {
   DEFAULT_ISSUER_SORT,
   DEFAULT_TRADE_SORT,
   ISSUER_SORT_COLUMN_IDS,
-  TRADE_SORT_COLUMN_IDS,
   buildIssuerColumns,
   buildTradeColumns,
   cdsFreshness,
@@ -48,9 +47,11 @@ import {
   formatEventTime,
   formatMaturity,
   formatNotional,
+  formatPoints,
   formatQuoted,
   formatQuotedMove,
   formatUpfront,
+  hasPointsQuotes,
   issuerListSort,
   lastTradeOf,
   noLevelMessage,
@@ -63,6 +64,7 @@ import {
   spreadChartPoints,
   spreadFigures,
   summarizeIssuers,
+  tradeSortColumnIds,
   tradesForIssuer,
   withSpreadLevels,
   type CdsIssuerSummary,
@@ -138,6 +140,11 @@ function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: strin
         text: formatBp(row.spreadBp),
         color: dimmed ?? (row.spreadBp == null ? colors.textDim : colors.textBright),
       };
+    case "points":
+      return {
+        text: formatPoints(row.pointsUpfront),
+        color: dimmed ?? (row.pointsUpfront == null ? colors.textDim : colors.textBright),
+      };
     case "upfront":
       return {
         text: formatUpfront(row),
@@ -175,7 +182,8 @@ function CdsTradeTable({
   /** What an empty table says: the window and the name searched. */
   emptyMessage: string;
 }) {
-  const columns = useMemo(() => buildTradeColumns(width), [width]);
+  const points = hasPointsQuotes(trades);
+  const columns = useMemo(() => buildTradeColumns(width, points), [points, width]);
   const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn) => (
     renderTradeCell(trade, column, lineMaturity)
   ), [lineMaturity]);
@@ -276,7 +284,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   });
   return (
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
-      tableColumns={buildTradeColumns(width)}
+      tableColumns={buildTradeColumns(width, hasPointsQuotes(trades))}
       chart={points.length >= 2 || loading || why ? {
         series,
         formatValue: (value: number) => formatQuoted(unit, value),
@@ -388,12 +396,13 @@ export function CdsPane({
     setDetailOpen(false);
   }, [issuerQuery, issuers, selectedIssuerKey]);
 
+  const tradePoints = hasPointsQuotes(visibleTrades);
   const cycleTradeSort = useCallback((step: 1 | -1) => {
     setTradeSort((current) => {
-      const next = cycleSortPreference<TradeColumnId>(TRADE_SORT_COLUMN_IDS, current, step);
+      const next = cycleSortPreference<TradeColumnId>(tradeSortColumnIds(tradePoints), current, step);
       return { columnId: next.columnId ?? DEFAULT_TRADE_SORT.columnId, direction: next.direction };
     });
-  }, []);
+  }, [tradePoints]);
   const cycleIssuerSort = useCallback((step: 1 | -1) => {
     setIssuerSort((current) => {
       const next = cycleSortPreference<IssuerColumnId>(ISSUER_SORT_COLUMN_IDS, current, step);
@@ -451,6 +460,8 @@ export function CdsPane({
     query: issuerQuery ? activity?.query ?? issuerQuery : selectedSummary?.issuer ?? null,
     issuer: issuerQuery ? activity?.issuer ?? null : selectedSummary?.issuer ?? null,
     days: activity?.days ?? CDS_TRADE_DAYS,
+    // A name the covered issuers do not have, once the tape has neither trades nor a line under it.
+    unmatched: issuerQuery && activity?.unmatched && !trades.length && history.data && !history.data.issuer ? activity.unmatched : null,
   });
 
   if (status === "loading" && !activity) {

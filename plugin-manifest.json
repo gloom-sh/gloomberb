@@ -147,7 +147,8 @@
           "docs",
           "help",
           "layout-marketplace",
-          "plugin-marketplace"
+          "plugin-marketplace",
+          "roadmap"
         ],
         "capabilities": [],
         "broker": false,
@@ -176,6 +177,11 @@
             "code": "DOCS",
             "name": "Docs",
             "description": "Read the docs and Academy lessons in the app: search them, or open a function's entry."
+          },
+          {
+            "code": "ROADMAP",
+            "name": "Roadmap",
+            "description": "What is being built, what is planned and what shipped. Pro members vote on what comes next."
           }
         ]
       },

@@ -31,6 +31,12 @@ const FORMS_13F_CACHE_POLICY = {
 
 export interface Forms13FReadOptions {
   onWarning?: (warning: string) => void;
+  /**
+   * A read answered from the copy saved at `savedAt` (ms) because its refresh
+   * failed, said by when it was saved (a command's closing line) instead of
+   * as an `onWarning` line.
+   */
+  onSavedCopy?: (savedAt: number) => void;
   forceRefresh?: boolean;
 }
 
@@ -157,7 +163,12 @@ async function fetchForms13F<T>(
       const retained = options.cache !== false
         ? store?.getResource<T>(CACHE_KIND, key, { ...cacheOptions, allowExpired: true }) : null;
       // A caller may retain old research only when it can surface its provenance.
-      if (!retained || !options.onWarning) throw error;
+      if (!retained) throw error;
+      if (options.onSavedCopy && Number.isFinite(retained.fetchedAt)) {
+        options.onSavedCopy(retained.fetchedAt);
+        return retained.value;
+      }
+      if (!options.onWarning) throw error;
       const retrieved = new Date(retained.fetchedAt);
       const age = Number.isFinite(retrieved.getTime()) ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
       const reason = (error instanceof Error ? error.message : String(error)).trim() || "Request failed";
