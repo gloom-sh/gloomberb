@@ -18,6 +18,8 @@ import type { DesktopBackend } from "./backend";
 
 const INITIAL_DOCK_SUPPRESSION_MS = 800;
 const WINDOW_CONTROL_DOCK_SUPPRESSION_MS = 5_000;
+/** How long after the main window has its data the popped-out windows of the last session open. */
+const LAUNCH_WINDOWS_DELAY_MS = 300;
 
 export class DesktopDetachedWindowManager {
   private readonly windows = new Map<string, BrowserWindow>();
@@ -27,8 +29,28 @@ export class DesktopDetachedWindowManager {
   private readonly pendingMoveFlush = new Set<string>();
   private readonly suppressDockUntil = new Map<string, number>();
   private readonly windowControlDockSuppressed = new Set<string>();
+  /**
+   * At launch, popped-out windows wait for the main window. Opening a window
+   * holds this process until the system has made it (on Windows, its
+   * browser too), and the main window's `init` used to wait behind each one.
+   */
+  private windowsAllowed = false;
+  private windowsTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly backend: DesktopBackend) {}
+
+  /**
+   * The main window has its data: the popped-out windows open shortly
+   * after, once it has had a moment to draw and ask for what it shows.
+   */
+  openAfterMainWindow(): void {
+    if (this.windowsAllowed || this.windowsTimer) return;
+    this.windowsTimer = setTimeout(() => {
+      this.windowsTimer = null;
+      this.windowsAllowed = true;
+      this.reconcile();
+    }, LAUNCH_WINDOWS_DELAY_MS);
+  }
 
   focusDetachedPane(instanceId: string): boolean {
     return this.focusWindowForRpcKey(detachedRpcKey(instanceId));
@@ -88,7 +110,7 @@ export class DesktopDetachedWindowManager {
     for (const [instanceId, entry] of desiredEntries) {
       const existingWindow = this.windows.get(instanceId);
       if (!existingWindow) {
-        this.createWindow(instanceId, entry);
+        if (this.windowsAllowed) this.createWindow(instanceId, entry);
         continue;
       }
 
