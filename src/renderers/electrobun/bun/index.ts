@@ -79,7 +79,7 @@ const appRename = await renameLegacyMacApp({
   return null;
 });
 if (appRename?.kind === "renamed") {
-  scheduleDesktopRelaunch(appRename.bundle);
+  await scheduleDesktopRelaunch(appRename.bundle);
   Utils.quit();
   // The process is exiting; nothing below may open a window meanwhile.
   await new Promise<never>(() => {});
