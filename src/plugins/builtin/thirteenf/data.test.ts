@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -377,7 +378,7 @@ test("browser, reconciled report and individual filing say when the copy a faile
   const started = Date.now();
   let fail = false;
   setHttpFetchTransport(async url => {
-    if (fail) throw new Error("Controlled network outage");
+    if (fail) throw outage("Controlled network outage");
     if (new URL(String(url)).pathname.endsWith("/forms")) return json([{
       accession_number: "0001067983-26-000001", cik: "1067983", company_name: "Fund",
       period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR",

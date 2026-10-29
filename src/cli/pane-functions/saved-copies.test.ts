@@ -1,10 +1,13 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
 import type { DoeBoardPayload } from "../../api-client/doe";
+import { ApiRequestError } from "../../api-client/errors";
+import type { MoneyMarketRow, MoneyMarketsPayload } from "../../api-client/money-markets";
 import { AppPersistence } from "../../data/app-persistence";
 import { collectSavedCopies } from "../../data/saved-copies";
 import { TickerRepository } from "../../data/ticker-repository";
 import { getLoadablePlugins } from "../../plugins/catalog";
+import { standaloneSeriesCatalog, standaloneSeriesInvoker } from "../../series/standalone";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { captureConsole } from "../../test-support/console";
 import { createTestDataProvider } from "../../test-support/data-provider";
@@ -45,12 +48,30 @@ function profile(): AppPersistence {
 
 /** `gloom fn <args>` against a profile, as the command line runs it: its text, or what it failed with. */
 async function fn(args: string[], persistence: AppPersistence) {
-  const cli = createTestCliContext({ config, persistence, store: new TickerRepository(persistence.tickers), dataProvider: createTestDataProvider() });
-  (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+  const plugins = getLoadablePlugins();
+  // The catalog series `fn G` charts, as the command line reads them where no plugin runtime runs.
+  const cli = createTestCliContext({ config, persistence, store: new TickerRepository(persistence.tickers), dataProvider: createTestDataProvider(),
+    seriesCapabilities: standaloneSeriesInvoker(plugins, "/tmp/gloom-fn-saved-copies"), findCatalogSeries: standaloneSeriesCatalog(plugins) });
+  (cli.context as { plugins?: unknown }).plugins = plugins;
   const error = await collectSavedCopies(() => runPaneFunction(args, cli.context)).then(() => null, (failure: unknown) => failure);
   const printed = cli.printed[0];
   return { error, text: printed ? serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, color: false }, printed.options) : "" };
 }
+
+const MONEY_MARKETS_ROW = {
+  id: "net-liquidity", label: "Net liquidity", seriesId: "WALCL", sourceSeriesIds: ["WALCL"], sourceUrl: null,
+  group: "liquidity", unit: "usd-billions", frequency: "weekly", value: 5_808, asOf: "2026-09-16", previousValue: 5_790,
+  previousAsOf: "2026-09-09", change: 18, changeUnit: "usd-billions",
+  percentile: { value: 50, rank: 2, sampleCount: 4, windowStart: "2025-09-16", windowEnd: "2026-09-16", min: 5_700, max: 5_900, mean: 5_800 },
+  history: [{ date: "2026-09-09", value: 5_790 }, { date: "2026-09-16", value: 5_808 }], status: "available",
+  fetchedAt: "2026-09-17T10:00:00Z", unavailableReason: null, notes: [],
+} satisfies MoneyMarketRow;
+const MONEY_MARKETS: MoneyMarketsPayload = {
+  generatedAt: "2026-09-17T10:00:00Z", status: "available", rows: [], netLiquidity: MONEY_MARKETS_ROW,
+  billsCurve: { asOf: "2026-09-16", status: "available", basis: "discount",
+    points: [{ tenor: "4W", maturityYears: 28 / 365, seriesId: "DTB4WK", value: 4.1 }], comparisons: [],
+    slope: { valueBps: null, asOf: null, percentile: MONEY_MARKETS_ROW.percentile, history: [] } },
+};
 
 const BOARD: DoeBoardPayload = {
   source: "EIA", generatedAt: "2026-10-22T15:00:00.000Z", status: "available", gaps: [],
@@ -145,6 +166,46 @@ test("fn AUCT answers a failed refresh from the board an earlier run read, sayin
   expect(answer.text).toContain("10-Year");
   expect(answer.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
   expect(answer.text).not.toContain("Errors:");
+});
+
+// Both said "saved copy from" over a refusal: VIX over a FRED series Gloom Cloud no longer serves or a
+// refused session, G over a board route the server stopped serving ("not available yet" before).
+test("fn VIX and fn G end with the saved-copy line after an outage, and say a refusal instead of covering it", async () => {
+  let failure: unknown = null;
+  const history = (id: string) => [17, 18, 19].map((value, day) => ({ date: `2026-09-${16 + day}`, value: id === "VIXCLS" ? value : value + 3 }));
+  const fred = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id: string) => {
+    if (failure) throw failure;
+    return { info: null, observations: history(id) };
+  });
+  const markets = spyOn(apiClient, "getCloudMoneyMarkets").mockImplementation(async () => {
+    if (failure) throw failure;
+    return MONEY_MARKETS;
+  });
+  spies.push(fred, markets);
+  const saved = profile();
+  const chart = ["G", "CAP:money-markets:net-liquidity"];
+  expect((await fn(["VIX"], saved)).text).toContain("3M / 30D");
+  expect((await fn(chart, saved)).text).toContain("Net liquidity");
+
+  failure = unreachable();
+  for (const args of [["VIX"], chart]) {
+    const answer = await fn(args, saved);
+    expect(answer.error).toBeNull();
+    expect(answer.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
+    // The test provider has no Cboe closes; what VIX lists for them is not the outage.
+    expect(answer.text).not.toMatch(/Unable to connect|couldn't reach|Refresh failed|refresh failed|VIXCLS:|VXVCLS:/);
+  }
+
+  for (const refusal of [new ApiRequestError("Series not found", 404), new ApiRequestError("Sign in to continue", 401)]) {
+    failure = refusal;
+    const vix = await fn(["VIX"], saved);
+    expect(`${vix.text}${vix.error ?? ""}`).toContain(refusal.message);
+    expect(vix.text).not.toContain("saved copy");
+  }
+  failure = new ApiRequestError("Not found", 404);
+  const stopped = await fn(chart, saved);
+  expect(`${stopped.text}${stopped.error ?? ""}`).toContain("Money markets are not available yet.");
+  expect(stopped.text).not.toContain("saved copy");
 });
 
 test("a plugin that keeps a command's persistence past the command never reaches the store the command closed", () => {

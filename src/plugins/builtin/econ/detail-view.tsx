@@ -181,9 +181,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       }),
     )
       .then((entry) => {
+        // A refusal or a reply that fails validation is thrown by the load, never covered by a saved copy.
         const saved = entry.source === "stale-fallback";
-        // A refusal asking again will not change is said, not covered by a saved copy.
-        if (saved && isPermanentClientError(entry.error)) throw entry.error;
         setData(entry.data);
         // A copy a failed refresh left says when it was saved, in the footer as every pane does;
         // a series its source has not updated since is a note.

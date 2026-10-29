@@ -1,8 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { CpiBoardPayload, CpiRow } from "../../../api-client/cpi";
-import { ApiRequestError } from "../../../api-client/errors";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 /** What the pane says while the server has no months to serve: before the backend ships, or before its first read. */
 export const CPI_NOT_AVAILABLE = "US consumer prices are not available yet.";
@@ -54,8 +53,7 @@ export async function fetchCpiBoard(client: Pick<typeof apiClient, "getCloudCpiB
   try {
     payload = await client.getCloudCpiBoard();
   } catch (error) {
-    if (error instanceof ApiRequestError && (error.status === 404 || error.status === 503)) throw new Error(CPI_NOT_AVAILABLE);
-    throw error;
+    throw unavailableOnServer(error, CPI_NOT_AVAILABLE, [404, 503]);
   }
   const board = validateCpiBoard(payload);
   if (board.status === "unavailable" || !board.release.period || !board.rows.length) throw new Error(CPI_NOT_AVAILABLE);

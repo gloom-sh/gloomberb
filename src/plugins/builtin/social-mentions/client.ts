@@ -1,9 +1,10 @@
 import { unavailableText } from "../../../components/ui/status";
 import { apiClient } from "../../../api-client";
-import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, SocialMentionsRange } from "../../../api-client/social-mentions";
-import { createPluginCache } from "../../../data/plugin-cache";
+import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
+import { unavailableOnServer } from "../shared/cloud-resource";
 
 export const socialMentionsCache = createPluginCache<SocialMentionsPayload>({
   kind: "social-mentions", source: "gloom-cloud", schemaVersion: 1,
@@ -56,10 +57,7 @@ export function validateSocialMentions(payload: SocialMentionsPayload, symbol: s
 export async function fetchSocialMentions(symbol: string, range: SocialMentionsRange = "1y",
   client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient): Promise<SocialMentionsPayload> {
   try { return validateSocialMentions(await client.getCloudSocialMentions(symbol, range), symbol, range); }
-  catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error(unavailableText("social mentions"));
-    throw error;
-  }
+  catch (error) { throw unavailableOnServer(error, unavailableText("social mentions")); }
 }
 export interface SocialMentionsResource {
   payload: SocialMentionsPayload;
@@ -76,8 +74,8 @@ export function cachedSocialMentions(symbol: string, range: SocialMentionsRange)
   catch { return null; }
 }
 export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
-  const result = await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
+  // A refusal (a signed-out session, any other 4xx but 408 and 429) or a reply that fails validation shows as itself.
+  const result = savedCopyForTransientFailure(await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force }));
   return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ?? null,
     ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) };
 }

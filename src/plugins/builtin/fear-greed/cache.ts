@@ -37,6 +37,8 @@ export interface FearGreedLoadResult extends FearGreedCacheEntry {
   refreshError?: string;
   /** `stale-fallback` when a saved copy answered a failed refresh. */
   source?: "cache" | "network" | "stale-fallback";
+  /** The failure a `stale-fallback` copy answered. */
+  error?: unknown;
 }
 
 const cache = createPluginCache<FearGreedData, PersistedFearGreedData>({

@@ -1,3 +1,5 @@
+import { isNetworkFailure } from "../utils/network-failure";
+
 const HARD_SESSION_INVALID_PATTERNS = [
   /\b(user|account)\b.*\b(not found|deleted|removed|disabled|deactivated|suspended)\b/i,
   /\b(user|account)\b.*\bdoes(?:\s+not|n't)\s+exist\b/i,
@@ -59,6 +61,30 @@ export function isRetryableApiError(error: unknown): boolean {
   if (!(error instanceof ApiRequestError)) return false;
   const status = error.status;
   return error.code === "retryable_error" || status === 408 || status === 429 || (status !== undefined && status >= 500);
+}
+
+/** Codes of a connection that dropped or stalled after it opened: Node's and the system's, then Bun's. */
+const INTERRUPTED_CODES = new Set(["ECONNRESET", "ECONNABORTED", "EPIPE", "ETIMEDOUT", "ConnectionClosed"]);
+
+/**
+ * A failure asking again later may get past, which a copy saved earlier may
+ * answer for: no connection, a connection that dropped, a timeout, or a server
+ * that was rate limited or overloaded (408, 429, 5xx). Anything else the
+ * server answered (another 4xx) and an answer that failed validation are
+ * refusals to show as errors, saved copy or not. A bare throw with nothing to
+ * classify is not taken for a refusal.
+ */
+export function isTransientFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return typeof error !== "string" || isNetworkFailure(error);
+  if (isNetworkFailure(error) || isRetryableApiError(error)) return true;
+  for (let current: unknown = error, depth = 0; current && typeof current === "object" && depth < 4; depth += 1) {
+    if (current instanceof ApiRequestError) return false;
+    const { name, code } = current as { name?: unknown; code?: unknown };
+    if (name === "AbortError" || name === "TimeoutError") return true;
+    if (typeof code === "string" && INTERRUPTED_CODES.has(code)) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /** Reads `Retry-After` as milliseconds, accepting seconds or an HTTP date. */

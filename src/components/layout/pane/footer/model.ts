@@ -52,6 +52,13 @@ export interface PaneFooterSegment {
    */
   capture?: boolean;
   /**
+   * When the copy the pane shows was saved, on the saved-copy segment
+   * ({@link savedCopyFooterSegment}). The footer draws that segment first,
+   * wherever a pane registers it, and once: the oldest when several parts of
+   * the pane show a saved copy.
+   */
+  savedCopyAt?: number;
+  /**
    * Shorter forms of `parts`, longest first. When the row is too narrow for
    * `parts` beside the hints, it shows the first that fits, or the last, and
    * keeps the full text as the segment's title.
@@ -113,6 +120,7 @@ export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.n
   return {
     id,
     quoteStatus: true,
+    savedCopyAt: savedAt,
     title: `${t("Couldn't refresh")}: ${text}`,
     parts: [{ text, tone: "warning" }],
     variants: [[{ text: t("saved copy"), tone: "warning" }]],
@@ -460,7 +468,20 @@ export function combinePaneFooterRegistrations(registrations: Map<string, PaneFo
   const shown = yielded.length > 0 ? hints.filter((hint) => !yielded.includes(hint)) : hints;
 
   if (info.length === 0 && shown.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
-  return { info, hints: shown, menu, keys };
+  return { info: savedCopyFirst(info), hints: shown, menu, keys };
+}
+
+/**
+ * The saved-copy segment in its one place: first, so it reads the same in
+ * every pane and is the last a narrow row cuts, and once, the oldest copy,
+ * when a list and the report it opens each register one.
+ */
+function savedCopyFirst(info: PaneFooterSegment[]): PaneFooterSegment[] {
+  let oldest: PaneFooterSegment | undefined;
+  for (const segment of info) {
+    if (segment.savedCopyAt != null && (oldest?.savedCopyAt == null || segment.savedCopyAt < oldest.savedCopyAt)) oldest = segment;
+  }
+  return oldest ? [oldest, ...info.filter((segment) => segment.savedCopyAt == null)] : info;
 }
 
 function sameFooterParts(left: PaneFooterPart[], right: PaneFooterPart[]): boolean {
@@ -517,6 +538,7 @@ export function samePaneFooterRegistration(
         && segment.shortcut === other.shortcut
         && !!segment.onPress === !!other.onPress
         && segment.disabled === other.disabled
+        && segment.savedCopyAt === other.savedCopyAt
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));

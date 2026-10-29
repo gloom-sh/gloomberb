@@ -14,6 +14,7 @@ import { buildVolatilityData, buildVolatilityTermHistory, IMPLIED_CORRELATION_RO
   type VolatilitySeriesId, type VolatilitySeriesInput, type VolatilityTermHistory } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
+import { savedCopyAt } from "../../../data/saved-copies";
 
 const VOLATILITY_LOAD_CONCURRENCY = 4;
 const VOLATILITY_HISTORY_LIMIT = 400;
@@ -155,14 +156,19 @@ function fredInput(result: Pick<FredSeriesLoadResult, "data" | "stale" | "fetche
     error: result.refreshError ?? (result.data.observations.length ? null : "Daily FRED observations unavailable"),
     ...(saved ? { savedAt: result.fetchedAt } : {}) };
 }
-/** A history a failed refresh left in place answers from the copy saved when it was fetched. */
+/**
+ * A history answered from the copy saved before its refetch failed is one only
+ * when the router says so (its saved-copy mark, which a command's answers
+ * carry): closes kept from an earlier answer, or a fresh answer with no data,
+ * say their error instead.
+ */
 function historyInput(entry: QueryEntry<PricePoint[]>, now: number): VolatilityHistoryInput {
   const history = resolveEntryValue(entry) ?? [];
-  const saved = !!entry.error && history.length > 0 && entry.fetchedAt != null;
+  const savedAt = history.length > 0 ? savedCopyAt(entry.history) : null;
   return { history, source: entry.source, fetchedAt: entry.fetchedAt,
-    stale: history.length > 0 && (!!entry.error || (entry.staleAt != null && entry.staleAt <= now)),
+    stale: history.length > 0 && (savedAt != null || !!entry.error || (entry.staleAt != null && entry.staleAt <= now)),
     error: entry.error?.message ?? (history.length ? null : "Daily index history unavailable"),
-    ...(saved ? { savedAt: entry.fetchedAt } : {}) };
+    ...(savedAt != null ? { savedAt } : {}) };
 }
 /** The oldest of `inputs`' saved copies, by when each was saved. */
 function oldestSavedAt(inputs: ReadonlyArray<{ savedAt?: number | null } | undefined>): number | undefined {

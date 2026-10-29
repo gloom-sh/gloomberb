@@ -1,4 +1,5 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -192,11 +193,11 @@ test("a list and statement answered from their saved copies say when they were s
   const original = persistence.getResource("proxy", "ALPHA:2026", cacheOptions)!;
   let unavailable = true;
   const list = spyOn(apiClient, "getProxyStatements").mockImplementation(async () => {
-    if (unavailable) throw new Error("Discovery outage");
+    if (unavailable) throw outage("Discovery outage");
     return payload;
   });
   const detail = spyOn(apiClient, "getProxyStatement").mockImplementation(async () => {
-    if (unavailable) throw new Error("Statement outage");
+    if (unavailable) throw outage("Statement outage");
     return report;
   });
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
@@ -271,7 +272,7 @@ test("failed forced refresh of fresh cached discovery is retried on reopen witho
   const { persistence, list: payload } = seedCache(false);
   const original = persistence.getResource("proxies", "ALPHA", { sourceKey: "executives" })!;
   const list = spyOn(apiClient, "getProxyStatements")
-    .mockRejectedValueOnce(new Error("Temporary discovery outage")).mockResolvedValue(payload);
+    .mockRejectedValueOnce(outage("Temporary discovery outage")).mockResolvedValue(payload);
   restore.push(() => list.mockRestore());
   const retained = await loadProxyStatements("ALPHA", { force: true });
   expect(retained.fetchedAt).toBe(original.fetchedAt);

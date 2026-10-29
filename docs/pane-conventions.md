@@ -299,6 +299,13 @@ the origin of a number. The one count the kit draws is the
   against the hints: the hints that no longer fit go under More first. A
   longer one gives way to the hints. This is the footer's own layout
   (`layoutPaneFooterHintRow`); a pane does not shorten its status for it.
+- Data a failed refresh left answering from its saved copy says so with
+  `savedCopyFooterInfo` (or `savedCopyFooterSegment`): `saved copy from
+  14:37`. The footer draws it first, wherever the pane registers it, and
+  once: the oldest copy when a list and the report it opens each show one.
+  The copy answers only a failure asking again may get past (no connection,
+  a timeout, 408, 429, 5xx, `isTransientFailure`); a refusal and a reply that
+  fails validation are the pane's error, saved copy or not.
 - Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
   `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`. Every hint is
   clickable. Hints follow the selection: a different array when a row is

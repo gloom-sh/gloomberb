@@ -5,6 +5,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { savedCopyMark, servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
+import { isTransientFailure } from "../../../api-client/errors";
 import type {
   CloudMarketResponse,
   CloudMarketScreenerCategory,
@@ -121,10 +122,12 @@ async function loadCached<T>(
       return result;
     })
     .catch((error) => {
-      // Serving the expired copy is right; hiding that it is expired is not. A command that shows it
-      // ends with when the copy was saved.
-      if (fallback) {
-        failedFetches.add(key);
+      // The next read asks again rather than read the saved copy as current.
+      if (fallback) failedFetches.add(key);
+      // Serving the expired copy is right for a failure asking again may get past; hiding that it is
+      // expired is not. A command that shows it ends with when the copy was saved. A refusal or a
+      // reply that fails validation is the error, saved copy or not.
+      if (fallback && isTransientFailure(error)) {
         return servedFromSavedCopy({ data: fallback.data, stale: true, savedAt: fallback.fetchedAt }, fallback.fetchedAt);
       }
       throw error;

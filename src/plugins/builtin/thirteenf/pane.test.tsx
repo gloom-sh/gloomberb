@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -178,7 +179,7 @@ describe("ThirteenFPane", () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     let offline = false;
     setHttpFetchTransport(async (url) => {
-      if (offline) throw new Error("Unable to connect");
+      if (offline) throw outage();
       const path = new URL(String(url)).pathname;
       if (path.endsWith("/funds")) return json([{ cik: "1067983", name: "BERKSHIRE HATHAWAY INC" }]);
       // The filings answer after the rows are drawn, as they do from the network.

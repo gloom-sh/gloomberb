@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { combinePaneFooterRegistrations, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -130,6 +130,17 @@ describe("combining footer registrations", () => {
     const bound = combine({ keys: [{ id: "window", key: "p", label: "eriod" }] });
     expect(bound.hints).toEqual([]);
     expect(bound.menu.map((item) => item.type === "divider" ? null : [item.label, item.accelerator ?? null])).toEqual([["Pin Crosshair", null]]);
+  });
+
+  // Each pane put its saved copy where it built its footer: after `loading`, after `delisted`, last.
+  test("the saved-copy segment comes first wherever a pane registers it, and once, for the oldest copy", () => {
+    const loading: PaneFooterSegment = { id: "loading", parts: [{ text: "loading", tone: "muted" }] };
+    const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
+    const footer = combinePaneFooterRegistrations(new Map<string, PaneFooterRegistration>([
+      ["list", { info: [loading, savedCopyFooterSegment("list-saved", Date.UTC(2026, 9, 28, 14, 5))] }],
+      ["report", { order: 1, info: [stale, savedCopyFooterSegment("report-saved", Date.UTC(2026, 9, 28, 9, 30))] }],
+    ]));
+    expect(footer.info.map((segment) => segment.id)).toEqual(["report-saved", "loading", "stale"]);
   });
 });
 

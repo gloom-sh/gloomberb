@@ -5,7 +5,7 @@ import {
   type CloudEarningsCallPayload,
   type CloudEarningsTranscriptPayload,
 } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isTransientFailure } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
@@ -257,14 +257,14 @@ export async function loadEarningsCallsWithClient(
     .catch((error: unknown) => {
       const refreshError = error instanceof Error ? error.message : String(error);
       const errorStatus = statusOf(error);
-      // A refusal asking again will not change (signed out, no Pro, a route the server stopped
-      // serving) is said rather than covered by a cached list.
+      // A refusal (signed out, no Pro, a route the server stopped serving) or a reply that fails
+      // validation is said rather than covered by a cached list.
       const expired = store?.getResource<CloudEarningsCallListPayload>(LIST_KIND, key, {
         sourceKey: CACHE_SOURCE,
         schemaVersion: LIST_CACHE_SCHEMA_VERSION,
         allowExpired: true,
       });
-      if (expired && !isPermanentClientError(error)) {
+      if (expired && isTransientFailure(error)) {
         // A command that shows it ends with when the copy was saved, not with the failure.
         return servedFromSavedCopy({
           ...expired.value,
@@ -372,7 +372,7 @@ export async function loadUpcomingCallsWithClient(
       const errorStatus = statusOf(error);
       // Losing Pro access re-gates the calendar, as it does the list.
       const expired = read(true);
-      if (expired && !isPermanentClientError(error)) {
+      if (expired && isTransientFailure(error)) {
         return servedFromSavedCopy({
           ...upcomingFromCache(expired.value, expired.fetchedAt, true),
           savedAt: expired.fetchedAt,
@@ -463,7 +463,7 @@ export async function loadTranscriptWithClient(
         },
       );
       // Losing Pro access must re-gate the transcript, not serve it from cache.
-      if (expired && !isPermanentClientError(error)) {
+      if (expired && isTransientFailure(error)) {
         return servedFromSavedCopy({ ...expired.value, savedAt: expired.fetchedAt }, expired.fetchedAt);
       }
       throw error;

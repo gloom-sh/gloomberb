@@ -1,8 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
-import { ApiRequestError } from "../../../api-client/errors";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 /** What the pane says while the server has no EIA weeks to serve: before the backend ships, or before its first read. */
 export const DOE_NOT_AVAILABLE = "Oil and gas inventories are not available yet.";
@@ -65,8 +64,7 @@ export async function fetchDoeBoard(client: Pick<typeof apiClient, "getCloudDoeB
   try {
     payload = await client.getCloudDoeBoard();
   } catch (error) {
-    if (error instanceof ApiRequestError && (error.status === 404 || error.status === 503)) throw new Error(DOE_NOT_AVAILABLE);
-    throw error;
+    throw unavailableOnServer(error, DOE_NOT_AVAILABLE, [404, 503]);
   }
   const board = validateDoeBoard(payload);
   if (board.status === "unavailable" || !board.series.some((row) => row.value != null)) throw new Error(DOE_NOT_AVAILABLE);

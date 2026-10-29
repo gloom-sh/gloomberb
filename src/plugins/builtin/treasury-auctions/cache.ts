@@ -1,4 +1,4 @@
-import { createPluginCache } from "../../../data/plugin-cache";
+import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
@@ -87,7 +87,8 @@ export async function loadTreasuryAuctions(
   window: AuctionHistoryWindow = AUCTION_HISTORY_DAYS,
 ): Promise<TreasuryAuctionsResult> {
   if (window === AUCTION_HISTORY_ALL) return loadAllTreasuryAuctions(force, loader);
-  const result = await cache.load(`recent:${window}`, walk(loader, () => auctionWindowQuery(window)), { force });
+  // A saved board answers only for a failure asking again may get past; a refusal or an invalid page is the error.
+  const result = savedCopyForTransientFailure(await cache.load(`recent:${window}`, walk(loader, () => auctionWindowQuery(window)), { force }));
   return answered({
     auctions: result.data, fetchedAt: result.fetchedAt, stale: result.stale,
     ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}),
@@ -109,10 +110,10 @@ function answered(result: TreasuryAuctionsResult): TreasuryAuctionsResult {
 async function loadAllTreasuryAuctions(force: boolean, loader: AuctionLoader): Promise<TreasuryAuctionsResult> {
   const boundary = auctionArchiveBoundary();
   const [recent, archive] = await Promise.all([
-    cache.load(`since:${boundary}`, walk(loader, () => ({ from: boundary })), { force }),
+    cache.load(`since:${boundary}`, walk(loader, () => ({ from: boundary })), { force }).then(savedCopyForTransientFailure),
     archiveCache.load(`archive:${boundary}`, walk(loader, () => ({
       from: AUCTION_HISTORY_START, before: boundary, pageSize: AUCTION_ARCHIVE_PAGE_SIZE,
-    }))),
+    }))).then(savedCopyForTransientFailure),
   ]);
   const seen = new Set<string>();
   const auctions = [...recent.data, ...archive.data].filter((auction) => !seen.has(auction.id) && Boolean(seen.add(auction.id)));

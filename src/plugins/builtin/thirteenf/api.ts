@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
 import { asRecord, finiteOrNull } from "../../../utils/guards";
 import { logFailure } from "../../../utils/log-failure";
@@ -157,8 +157,10 @@ async function fetchForms13F<T>(
     } catch (error) {
       options.signal?.throwIfAborted();
       if (current()) failedRefreshes.add(key);
-      if (isPermanentClientError(error)) {
-        if (current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
+      // A saved copy answers only for a failure asking again may get past; a refusal or a reply that
+      // fails validation is the error, and a missing or denied resource also drops its copy.
+      if (!isTransientFailure(error)) {
+        if (isPermanentClientError(error) && current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
         throw error;
       }
       const retained = options.cache !== false

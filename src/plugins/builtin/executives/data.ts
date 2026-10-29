@@ -3,7 +3,7 @@ import {
   type CloudProxyStatementListPayload,
   type CloudProxyStatementPayload,
 } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import type { PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
@@ -107,6 +107,8 @@ function loadCached<T>(
       }
       throw error;
     }
+    // A saved copy answers only for a failure asking again may get past, not for a reply that fails validation.
+    if (!isTransientFailure(error)) throw error;
     const fallback = store?.getResource<T>(kind, key, { ...options, allowExpired: true });
     if (!fallback || tierOf(fallback.value) !== tier) throw error;
     return {
