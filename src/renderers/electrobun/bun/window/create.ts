@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electrobun/bun";
 import {
+  applyNativeWindowFrame,
   applyWindowMoveEvent,
   applyWindowResizeEvent,
   updateWindowFrameCache,
@@ -75,12 +76,21 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
   updateWindowFrameCache(window, frame, minSize);
+  const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
-    applyWindowMoveEvent(window, event);
+    if (readsNativeFrame) {
+      if (!applyNativeWindowFrame(window, minSize)) return;
+    } else {
+      applyWindowMoveEvent(window, event);
+    }
     onFrameChange?.();
   });
   (window as any).on?.("resize", (event: WindowResizeEvent) => {
-    applyWindowResizeEvent(window, event, minSize);
+    if (readsNativeFrame) {
+      if (!applyNativeWindowFrame(window, minSize)) return;
+    } else {
+      applyWindowResizeEvent(window, event, minSize);
+    }
     onFrameChange?.();
   });
   return window;
