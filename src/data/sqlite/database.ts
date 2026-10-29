@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createSqliteAccess, type SqliteAccess } from "./access";
 import { SQLITE_BUSY_TIMEOUT_MS, withSqliteBusyRetry } from "./retry";
 
 const SCHEMA = `
@@ -60,21 +61,39 @@ const SCHEMA = `
   );
 `;
 
+export interface SqliteDatabaseOptions {
+  /**
+   * The app's own connection, on the thread that answers the user (the
+   * terminal, the desktop app's Bun process): statements do not wait on
+   * another program's lock (see access.ts). Commands and tests wait it out.
+   */
+  interactive?: boolean;
+}
+
 export class SqliteDatabase {
   readonly connection: Database;
+  readonly access: SqliteAccess;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
     this.connection = new Database(dbPath);
+    // Opening waits for another program's lock: it happens once, and the app
+    // has nothing to show without its data.
     this.connection.exec(`PRAGMA busy_timeout=${SQLITE_BUSY_TIMEOUT_MS}`);
     withSqliteBusyRetry("enable sqlite wal", () => {
       this.connection.exec("PRAGMA journal_mode=WAL");
     });
+    // Commits stop flushing the disk; user data flushes per write (access.ts).
+    this.connection.exec("PRAGMA synchronous=NORMAL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);
     });
+    // The app's statements choose how long to wait for a lock themselves.
+    if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
+    this.access = createSqliteAccess(this.connection, { interactive: options.interactive });
   }
 
   close(): void {
+    this.access.close();
     this.connection.close();
   }
 }

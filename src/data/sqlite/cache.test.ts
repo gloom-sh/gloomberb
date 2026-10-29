@@ -97,6 +97,92 @@ describe("AppPersistence", () => {
     }
   });
 
+  // The app runs SQLite on the thread that answers the user. Another program
+  // holding the write lock (a second copy of the app, the gloom command) used
+  // to freeze it for up to eight seconds per statement.
+  test("in the app, another program's lock never holds a cache read, touch or write", () => {
+    const dbPath = createTempDbPath("resource-interactive-lock");
+    const persistence = new AppPersistence(dbPath, { interactive: true });
+    const key = { namespace: "market", kind: "quote", entityKey: "AAPL", sourceKey: "provider:gloom" };
+    const policy = { cachePolicy: { staleMs: 60_000, expireMs: 120_000 }, schemaVersion: 1 };
+    persistence.resources.set(key, { price: 1 }, policy);
+    const locker = new Database(dbPath);
+    locker.exec("BEGIN IMMEDIATE");
+    try {
+      const startedAt = performance.now();
+      const read = persistence.resources.get<{ price: number }>(key);
+      const listed = persistence.resources.list({ namespace: "market", kind: "quote", entityKey: "AAPL" });
+      persistence.resources.set(key, { price: 2 }, policy);
+      expect(performance.now() - startedAt).toBeLessThan(50);
+      expect(read?.value.price).toBe(1);
+      expect(listed).toHaveLength(1);
+    } finally {
+      locker.exec("ROLLBACK");
+      locker.close();
+    }
+    // The skipped write was the cache's to skip; the next one lands.
+    expect(persistence.resources.get<{ price: number }>(key)?.value.price).toBe(1);
+    persistence.resources.set(key, { price: 3 }, policy);
+    expect(persistence.resources.get<{ price: number }>(key)?.value.price).toBe(3);
+    persistence.close();
+  });
+
+  test("in the app, a user write that finds the database locked is read back, then lands in order once the lock is gone", async () => {
+    const dbPath = createTempDbPath("user-write-queue");
+    const persistence = new AppPersistence(dbPath, { interactive: true });
+    const locker = new Database(dbPath);
+    locker.exec("BEGIN IMMEDIATE");
+    let held = true;
+    try {
+      const startedAt = performance.now();
+      persistence.pluginState.set("notes", "draft", { text: "first" });
+      persistence.sessions.set("app", { focusedPaneId: "chart:1" });
+      persistence.pluginState.set("notes", "draft", { text: "second" });
+      persistence.tickers.save("AAPL", { ticker: "AAPL", portfolios: ["main"] });
+      persistence.tickers.delete("MSFT");
+      // The first waits a moment for the lock; the rest queue behind it at once.
+      expect(performance.now() - startedAt).toBeLessThan(1_000);
+
+      expect(persistence.pluginState.get<{ text: string }>("notes", "draft")?.value.text).toBe("second");
+      expect(persistence.pluginState.keys("notes")).toEqual(["draft"]);
+      expect(persistence.sessions.get<{ focusedPaneId: string }>("app")?.value.focusedPaneId).toBe("chart:1");
+      expect(persistence.tickers.getAll().map((row) => row.symbol)).toEqual(["AAPL"]);
+
+      locker.exec("ROLLBACK");
+      held = false;
+      await Bun.sleep(400);
+      const reader = new Database(dbPath, { readonly: true });
+      try {
+        expect(reader.query("SELECT value FROM plugin_state WHERE plugin_id = 'notes'").all()).toEqual([{ value: "{\"text\":\"second\"}" }]);
+        expect(reader.query("SELECT symbol FROM tickers").all()).toEqual([{ symbol: "AAPL" }]);
+        expect(reader.query("SELECT COUNT(*) AS count FROM session_snapshots").get()).toEqual({ count: 1 });
+      } finally {
+        reader.close();
+      }
+    } finally {
+      if (held) locker.exec("ROLLBACK");
+      locker.close();
+      persistence.close();
+    }
+  });
+
+  // A power cut may cost the cache its last few commits, never user data.
+  test("user data commits with a full flush and the cache without one", () => {
+    const persistence = new AppPersistence(createTempDbPath("sync-levels"), { interactive: true });
+    const { connection, access } = persistence.database;
+    const level = () => connection.query<{ synchronous: number }, []>("PRAGMA synchronous").get()?.synchronous;
+    let during: number | undefined;
+    try {
+      access.write("probe user write", () => { during = level(); });
+      expect(during).toBe(2);
+      access.writeCache("probe cache write", () => { during = level(); });
+      expect(during).toBe(1);
+      expect(level()).toBe(1);
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("runs resource maintenance on the first write and at write, byte, or time intervals", () => {
     const dbPath = createTempDbPath("resource-maintenance-frequency");
     const persistence = new AppPersistence(dbPath);

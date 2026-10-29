@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import type { CachePolicy, PersistedResourceValue } from "../types/persistence";
 import type { JsonValue } from "./sqlite/json";
+import { createSqliteAccess, type SqliteAccess } from "./sqlite/access";
 import { safeParseJson, serializeJson } from "./sqlite/json";
-import { trySqliteBusyOperation, withSqliteBusyRetry } from "./sqlite/retry";
 
 const RESOURCE_CACHE_SOFT_ROW_LIMIT = 25_000;
 const RESOURCE_CACHE_SOFT_SIZE_LIMIT = 100 * 1024 * 1024;
@@ -107,7 +107,14 @@ export class ResourceStore {
   private bytesWrittenSinceMaintenance = 0;
   private lastMaintenanceAt = 0;
 
-  constructor(private readonly db: Database) {}
+  /**
+   * Everything here can be fetched again, so no statement waits for another
+   * program's lock: a locked read is a miss, and a locked write is skipped.
+   */
+  constructor(
+    private readonly db: Database,
+    private readonly access: SqliteAccess = createSqliteAccess(db),
+  ) {}
 
   private toCachedResource<T>(row: ResourceCacheRow): CachedResourceRecord<T> | null {
     const value = safeParseJson<T>(row.payload);
@@ -132,7 +139,7 @@ export class ResourceStore {
   }
 
   private deleteExact(key: ResourceCacheKey): void {
-    withSqliteBusyRetry("delete cached resource", () => {
+    this.access.writeCache("delete cached resource", () => {
       this.db
         .query(
           `DELETE FROM resource_cache
@@ -154,7 +161,7 @@ export class ResourceStore {
 
   private touch(key: ResourceCacheKey): number | null {
     const touchedAt = Date.now();
-    const result = trySqliteBusyOperation("touch cached resource", () => {
+    const touched = this.access.writeCache("touch cached resource", () => {
       this.db
         .query(
           `UPDATE resource_cache
@@ -169,36 +176,41 @@ export class ResourceStore {
           normalizeVariantKey(key.variantKey),
           normalizeSourceKey(key.sourceKey),
         );
-      return touchedAt;
     });
-    return result;
+    return touched ? touchedAt : null;
   }
 
-  private readCacheFootprint(operationName: string): { count: number; totalSize: number } {
-    const stats = withSqliteBusyRetry(operationName, () => (
+  /** Null when another program has the cache locked; maintenance waits for the next write. */
+  private readCacheFootprint(operationName: string): { count: number; totalSize: number } | null {
+    const stats = this.access.readCache(operationName, () => (
       this.db
         .query<{ count: number; total_size: number }, []>(
           "SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM resource_cache",
         )
         .get()
     ));
-    return { count: stats?.count ?? 0, totalSize: stats?.total_size ?? 0 };
+    return stats ? { count: stats.count ?? 0, totalSize: stats.total_size ?? 0 } : null;
   }
 
   private withinSoftLimits(count: number, totalSize: number): boolean {
     return count <= RESOURCE_CACHE_SOFT_ROW_LIMIT && totalSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT;
   }
 
-  private pruneIfNeeded(): void {
-    const { count, totalSize } = this.readCacheFootprint("read resource cache size");
-    if (this.withinSoftLimits(count, totalSize)) return;
+  /** False when another program had the cache locked and pruning has to try again later. */
+  private pruneIfNeeded(): boolean {
+    const footprint = this.readCacheFootprint("read resource cache size");
+    if (!footprint) return false;
+    if (this.withinSoftLimits(footprint.count, footprint.totalSize)) return true;
 
-    withSqliteBusyRetry("prune expired cached resources", () => {
+    const prunedExpired = this.access.writeCache("prune expired cached resources", () => {
       this.db.query("DELETE FROM resource_cache WHERE expires_at < ?").run(Date.now());
     });
+    if (!prunedExpired) return false;
 
-    let { count: remainingCount, totalSize: remainingSize } = this.readCacheFootprint("read pruned resource cache size");
-    if (this.withinSoftLimits(remainingCount, remainingSize)) return;
+    const remaining = this.readCacheFootprint("read pruned resource cache size");
+    if (!remaining) return false;
+    let { count: remainingCount, totalSize: remainingSize } = remaining;
+    if (this.withinSoftLimits(remainingCount, remainingSize)) return true;
 
     const candidates = this.db.query<{
       namespace: string;
@@ -223,10 +235,11 @@ export class ResourceStore {
     // for more only if it is still over. Reading every row first turned the
     // moment the cache filled up into a multi-second pause.
     while (!this.withinSoftLimits(remainingCount, remainingSize)) {
-      const batch = withSqliteBusyRetry("select cached resources to prune", () => (
+      const batch = this.access.readCache("select cached resources to prune", () => (
         candidates.all(RESOURCE_CACHE_PRUNE_BATCH_SIZE)
       ));
-      if (batch.length === 0) return;
+      if (!batch) return false;
+      if (batch.length === 0) return true;
 
       const rowsToDelete = [] as typeof batch;
       for (const row of batch) {
@@ -235,9 +248,9 @@ export class ResourceStore {
         remainingCount -= 1;
         remainingSize -= row.size_bytes;
       }
-      if (rowsToDelete.length === 0) return;
+      if (rowsToDelete.length === 0) return true;
 
-      withSqliteBusyRetry("prune least recently used cached resources", () => {
+      const pruned = this.access.writeCache("prune least recently used cached resources", () => {
         const tx = this.db.transaction(() => {
           for (const row of rowsToDelete) {
             remove.run(row.namespace, row.kind, row.entity_key, row.variant_key, row.source_key);
@@ -245,7 +258,9 @@ export class ResourceStore {
         });
         tx();
       });
+      if (!pruned) return false;
     }
+    return true;
   }
 
   private maintainCacheAfterWrite(now: number, sizeBytes: number): void {
@@ -257,14 +272,14 @@ export class ResourceStore {
       || now - this.lastMaintenanceAt >= RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS;
     if (!maintenanceDue) return;
 
-    this.pruneIfNeeded();
+    if (!this.pruneIfNeeded()) return;
     this.writesSinceMaintenance = 0;
     this.bytesWrittenSinceMaintenance = 0;
     this.lastMaintenanceAt = now;
   }
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
-    const row = withSqliteBusyRetry("load cached resource", () => (
+    const row = this.access.readCache("load cached resource", () => (
       this.db
         .query<ResourceCacheRow, [string, string, string, string, string]>(
           `SELECT namespace, kind, entity_key, variant_key, source_key, schema_version, payload, provenance,
@@ -307,7 +322,7 @@ export class ResourceStore {
     key: Pick<ResourceCacheKey, "namespace" | "kind" | "entityKey">,
     options: ListResourceOptions = {},
   ): CachedResourceRecord<T>[] {
-    const rows = withSqliteBusyRetry("list cached resources", () => (
+    const rows = this.access.readCache("list cached resources", () => (
       this.db
         .query<ResourceCacheRow, [string, string, string]>(
           `SELECT namespace, kind, entity_key, variant_key, source_key, schema_version, payload, provenance,
@@ -316,7 +331,7 @@ export class ResourceStore {
            WHERE namespace = ? AND kind = ? AND entity_key = ?`,
         )
         .all(key.namespace, key.kind, key.entityKey)
-    ));
+    )) ?? [];
 
     const allowedVariantKeys = options.variantKeys ? new Set(options.variantKeys.map(normalizeVariantKey)) : null;
     const allowedSourceKeys = options.sourceKeys ? new Set(options.sourceKeys.map(normalizeSourceKey)) : null;
@@ -375,7 +390,7 @@ export class ResourceStore {
       sourceKey: normalizeSourceKey(key.sourceKey),
     };
 
-    withSqliteBusyRetry("save cached resource", () => {
+    const saved = this.access.writeCache("save cached resource", () => {
       this.db
         .query(
           `INSERT OR REPLACE INTO resource_cache (
@@ -400,7 +415,7 @@ export class ResourceStore {
         );
     });
 
-    this.maintainCacheAfterWrite(Date.now(), sizeBytes);
+    if (saved) this.maintainCacheAfterWrite(Date.now(), sizeBytes);
     return {
       ...rowKey,
       value: JSON.parse(payload) as T,
@@ -420,14 +435,15 @@ export class ResourceStore {
     this.deleteExact(key);
   }
 
+  /** Asked for by the user, so it waits for another program's lock, and throws when it cannot get it. */
   clear(namespace?: string): void {
     if (!namespace) {
-      withSqliteBusyRetry("clear cached resources", () => {
+      this.access.run("clear cached resources", () => {
         this.db.query("DELETE FROM resource_cache").run();
       });
       return;
     }
-    withSqliteBusyRetry("clear namespaced cached resources", () => {
+    this.access.run("clear namespaced cached resources", () => {
       this.db.query("DELETE FROM resource_cache WHERE namespace = ?").run(namespace);
     });
   }

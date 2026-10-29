@@ -1876,6 +1876,14 @@ try {
   Close-TrackedProcessHandles $TrackedGuiProcesses.ToArray()
 
   if ($SeededDesktopConfig) {
+    # The app's freeze log, so a run says what held the app up and when.
+    $StallLog = Join-Path $SeededDesktopConfig.DataDir "stall-log.txt"
+    if (Test-Path $StallLog) {
+      Write-Host "Stall log of the desktop smoke run:"
+      Get-Content $StallLog -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+    } else {
+      Write-Host "Stall log of the desktop smoke run: no stalls."
+    }
     Remove-Item -Path $SeededDesktopConfig.GlobalConfigPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $SeededDesktopConfig.DataDir -Recurse -Force -ErrorAction SilentlyContinue
   }

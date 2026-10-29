@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
-import { startMainThreadStallMonitor } from "./main-thread-stall";
-import { measurePerf } from "./perf-marks";
+import {
+  markStartupComplete,
+  resetStartupCompleteForTests,
+  setStallSink,
+  startMainThreadStallMonitor,
+  type StallEvent,
+} from "./main-thread-stall";
+import { measurePerf, recordPerfSample } from "./perf-marks";
 
 function createHarness() {
   let clock = 0;
@@ -56,4 +62,36 @@ test("stopping the monitor ends the reports", () => {
   harness.fire();
 
   expect(harness.reports).toEqual([]);
+});
+
+// The monitor logs each stall as a sample of its own. Were that the step the
+// next stall names, every stall after the first would read "after
+// runtime.stall" and hide what really ran before it.
+test("stalls keep naming the work before them, with a SQLite statement's facts and the startup phase", () => {
+  const events: StallEvent[] = [];
+  const disposeSink = setStallSink((event) => { events.push(event); });
+  let clock = 0;
+  let tick: (() => void) | null = null;
+  const stop = startMainThreadStallMonitor({
+    now: () => clock,
+    schedule: (callback) => { tick = callback; return 1; },
+    cancel: () => { tick = null; },
+  });
+  try {
+    recordPerfSample("sqlite.blocked", 900, { operation: "touch cached resource", attempts: 2, lockWait: true });
+    clock += 1_250;
+    tick!();
+    markStartupComplete();
+    clock += 1_250;
+    tick!();
+  } finally {
+    stop();
+    disposeSink();
+    resetStartupCompleteForTests();
+  }
+
+  expect(events.map(({ lastMeasured, sqlite, phase, uptimeMs }) => ({ lastMeasured, sqlite, phase, uptimeMs }))).toEqual([
+    { lastMeasured: "sqlite.blocked", sqlite: { operation: "touch cached resource", attempts: 2, lockWait: true }, phase: "startup", uptimeMs: 1_250 },
+    { lastMeasured: "sqlite.blocked", sqlite: { operation: "touch cached resource", attempts: 2, lockWait: true }, phase: "steady", uptimeMs: 2_500 },
+  ]);
 });
