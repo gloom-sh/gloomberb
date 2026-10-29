@@ -1668,6 +1668,8 @@ export const zhCN: Record<string, string> = {
   "Guides": "指南",
   "Academy": "学院",
   "offline, saved copy": "离线，已保存的副本",
+  "company data from {listing}": "公司数据来自 {listing}",
+  "from {listing}": "来自 {listing}",
   "Open in Browser": "在浏览器中打开",
   "No docs match \"{query}\".": "没有与“{query}”匹配的文档。",
   "No docs for {name} yet.": "{name} 暂无文档。",

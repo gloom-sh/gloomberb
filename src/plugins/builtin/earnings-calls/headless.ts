@@ -46,6 +46,7 @@ import {
   type TranscriptSection,
 } from "./model";
 import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { companyDataNotes } from "../../../types/company-from";
 import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
 
 const optionalErrors = (error: string | null) => error ? [error] : undefined;
@@ -175,6 +176,7 @@ function projectEarningsCallsHeadless(
     ...(next ? { textRows: rows.filter((row) => row.id !== next.id) } : {}),
     errors: optionalErrors(unansweredRefreshError(result)),
     ...(sourceLimitReached || result.pending ? { complete: false } : {}),
+    ...(result.companyFrom ? { notes: companyDataNotes(result.companyFrom) } : {}),
     metadata: {
       // A list served from a saved copy ends with when it was saved, instead of its refresh failure.
       ...savedCopyMark(result),
@@ -218,6 +220,7 @@ function transcriptResult(
     rows,
     errors: optionalErrors(unansweredRefreshError(calls)),
     ...(calls.stale || calls.pending ? { complete: false } : {}),
+    ...(calls.companyFrom ? { notes: companyDataNotes(calls.companyFrom) } : {}),
     metadata: {
       ...savedCopyMark(calls),
       stale: calls.stale,

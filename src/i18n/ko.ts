@@ -1666,6 +1666,8 @@ export const ko: Record<string, string> = {
   "Guides": "가이드",
   "Academy": "아카데미",
   "offline, saved copy": "오프라인, 저장된 사본",
+  "company data from {listing}": "{listing}의 기업 데이터",
+  "from {listing}": "{listing}에서",
   "Open in Browser": "브라우저에서 열기",
   "No docs match \"{query}\".": "\"{query}\"와 일치하는 문서가 없습니다.",
   "No docs for {name} yet.": "{name} 문서가 아직 없습니다.",

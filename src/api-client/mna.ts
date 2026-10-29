@@ -1,3 +1,4 @@
+import type { CompanyFrom } from "../types/company-from";
 /**
  * Mergers and acquisitions read from news, press releases and SEC filings.
  * A deal is one target and one buyer; a target with competing bidders has a
@@ -84,6 +85,8 @@ export interface MnaDealsParams {
 
 export interface MnaDealsPayload {
   deals: MnaDeal[];
+  /** The company's home line the data is read from, when not the listing asked (a receipt, a foreign line). */
+  companyFrom?: CompanyFrom;
   hasMore: boolean;
   nextOffset: number;
   /** "delayed" hides deals first reported within `delayDays` from a free account. */

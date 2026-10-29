@@ -157,6 +157,19 @@ test("a listing abroad never shares calls with its US namesake, and refuses the 
   ]);
 });
 
+test("a foreign line's calls read from its company's home line are kept whatever the line's name, and say whose", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  const companyFrom = { symbol: "000660", exchange: "KRX", name: "SK hynix Inc." };
+  let home = false;
+  const client = clientWith(async () => ({ calls: [{ ...calls[0]!, id: "home", companyName: "SK hynix Inc." }], ...(home ? { companyFrom } : {}) }));
+  // A line named unlike the call's company drops the call, unless the service says it read the company's home line.
+  const listing = { exchange: "FWB2", name: "Hynix Semiconductor GDR" };
+  expect((await loadEarningsCallsWithClient(client, "HY9H", listing)).calls).toEqual([]);
+  home = true;
+  const read = await loadEarningsCallsWithClient(client, "HY9H", { ...listing, force: true });
+  expect([read.calls.map((call) => call.id), read.companyFrom]).toEqual([["home"], companyFrom]);
+});
+
 test("an older response cannot overwrite a force-refreshed list in persistence", async () => {
   attachEarningsCallsPersistence(new MemoryPluginPersistence());
   let finishOld!: (value: CloudEarningsCallListPayload) => void;

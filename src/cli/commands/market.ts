@@ -3,6 +3,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
+import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
@@ -2207,7 +2208,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         empty: [form ? `No ${form} filings found for ${listingTitle(resolved)}.`
           : identity ? noSecReportsNotice(resolved)
           : `No SEC filings found for ${listingTitle(resolved)}.`, pageLine].filter(Boolean).join("\n"),
-        ...(pageLine ? { footnote: pageLine, exportNotes: [pageLine] } : {}),
+        ...filingsFootnote(pageLine, filings[0]?.companyFrom),
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -2223,6 +2224,16 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       }, { rows: filingRows, columns: FILING_COLUMNS, textColumns: FILING_TEXT_COLUMNS, empty: [message, pageLine].filter(Boolean).join("\n") });
     }
   });
+}
+
+/**
+ * The lines `filings` prints under its rows and CSV writes as notes: an ASX
+ * listing's announcements page, and whose filings a foreign line shows when
+ * they are its company's home line's.
+ */
+function filingsFootnote(pageLine: string | null | undefined, companyFrom: CompanyFrom | undefined): { footnote?: string; exportNotes?: string[] } {
+  const lines = [...(pageLine ? [pageLine] : []), ...companyDataNotes(companyFrom)];
+  return lines.length ? { footnote: lines.join("\n"), exportNotes: lines } : {};
 }
 
 /**
@@ -2395,7 +2406,8 @@ async function printBeneficialOwners(
     heading: `${listingHeading(identity)}${cliStyles.muted(beneficialListFacts(payload, form, rows.length, history).map((fact) => `  ·  ${fact}`).join(""))}`,
     // Text draws each column as the HDS report does; CSV and JSON keep the raw values.
     textColumns: BENEFICIAL_REPORT_COLUMNS.map((column) => ({ ...column, format: column.textFormat ?? column.format })),
-    ...(legend ? { footnote: legend } : {}),
+    // A foreign line's owners read from its company's home line say whose.
+    ...(legend || payload.companyFrom ? { footnote: [legend, ...companyDataNotes(payload.companyFrom)].filter(Boolean).join("\n") } : {}),
     columns: [
       ...BENEFICIAL_REPORT_COLUMNS.map(({ key, header, align }) => ({ key, header, ...(align ? { align } : {}) })),
       { key: "otherPersons", header: "Other persons" },
@@ -2566,6 +2578,8 @@ async function runHolders(
         insiderCommand ? insiderSummary(data, listing, identity, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
+      // Holders read from the company's home line say whose; the SEC index's are the listing's own.
+      ...(!indexed && data.companyFrom ? { footnote: companyDataNotes(data.companyFrom).join("\n") } : {}),
     });
   });
 }
