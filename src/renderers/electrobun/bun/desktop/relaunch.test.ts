@@ -47,6 +47,34 @@ describe("desktop relaunch", () => {
     }
   });
 
+  // Electrobun's job ends whatever the app starts when it exits, so a task
+  // waits for it: the script that registers it quotes a path twice over.
+  test("on Windows, has a task start the launcher once this process has exited", () => {
+    const command = desktopRelaunchCommand({
+      platform: "win32",
+      pid: 42,
+      execPath: "C:\\Users\\Ann O'Neil\\Gloom\\bin\\bun.exe",
+      args: ["C:\\Users\\Ann O'Neil\\Gloom\\Resources\\main.js"],
+      cwd: "C:\\Users\\Ann O'Neil\\Gloom\\bin",
+      pathEnv: "",
+      home: "D:\\Gloom data",
+    });
+    expect(command.waitForIt).toBe(true);
+    expect(command.cmd.slice(0, -1)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand"]);
+    const handOff = Buffer.from(command.cmd.at(-1)!, "base64").toString("utf16le");
+    expect(handOff).toContain("$definition.Principal.LogonType = 3");
+    expect(handOff).toContain("RegisterTaskDefinition('Gloom restart 42', $definition, 6, $null, $null, 3)");
+    const taskArguments = /\$action\.Arguments = '((?:[^']|'')*)'/.exec(handOff)![1]!.replaceAll("''", "'");
+    expect(taskArguments).toBe(
+      "-NoProfile -NonInteractive -WindowStyle Hidden -Command \""
+      + "$until = (Get-Date).AddMinutes(5); "
+      + "while ((Get-Process -Id 42 -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }; "
+      + "$env:GLOOMBERB_HOME = 'D:\\Gloom data'; "
+      + "if (-not (Get-Process -Id 42 -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500; Start-Process -FilePath 'C:\\Users\\Ann O''Neil\\Gloom\\bin\\launcher.exe' -WorkingDirectory 'C:\\Users\\Ann O''Neil\\Gloom\\bin' }; "
+      + "$service = New-Object -ComObject Schedule.Service; $service.Connect(); $service.GetFolder('\\').DeleteTask('Gloom restart 42', 0)\"",
+    );
+  });
+
   test("on a Mac, opens the bundle by the full path of open, from /", () => {
     const context = { platform: "darwin", pid: 42, execPath: "/Applications/Gloomberb.app/Contents/MacOS/bun", args: [], cwd: "/Applications/Gloomberb.app/Contents/MacOS", pathEnv: "" };
     const renamed = desktopRelaunchCommand(context, "/Applications/Gloom.app");

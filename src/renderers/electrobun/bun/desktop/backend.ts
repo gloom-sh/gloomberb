@@ -352,16 +352,14 @@ export class DesktopBackend {
       execPath: process.execPath,
       argv: process.argv,
     });
-    try {
-      scheduleDesktopRelaunch();
-    } catch (error) {
-      this.restartInProgress = false;
-      console.error("[desktop-recovery] failed to schedule restart", summarizeError(error));
-      throw error;
-    }
-    this.detachedWindows.closeAll();
-    this.teardownServices();
-    Utils.quit();
+    scheduleDesktopRelaunch().then(
+      // As a quit does: an app whose windows are gone ends at once on Windows.
+      () => this.quit(),
+      (error: unknown) => {
+        this.restartInProgress = false;
+        console.error("[desktop-recovery] failed to schedule restart", summarizeError(error));
+      },
+    );
   }
 
   private syncConfigAccessors(): void {
