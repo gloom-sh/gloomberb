@@ -1,4 +1,4 @@
-import { lastPerfSample, recordPerfSample } from "./perf-marks";
+import { lastPerfSample, recordPerfSample, withoutLastStep } from "./perf-marks";
 
 /** How often the monitor checks in. Short enough to date a stall precisely. */
 const SAMPLE_INTERVAL_MS = 250;
@@ -18,7 +18,21 @@ interface StallSqliteDetail {
   lockWait: boolean;
 }
 
+/**
+ * What a platform's own clocks say at one instant (telemetry/stall-clocks.ts),
+ * in ms from any origin. Null where the platform cannot say.
+ */
+export interface StallClockReading {
+  /** Time the computer was awake: sleep and suspend do not count. */
+  awakeMs: number | null;
+  /** CPU time this thread has used. */
+  threadCpuMs: number | null;
+  /** CPU time the whole process has used, every thread together. */
+  processCpuMs: number | null;
+}
+
 export interface StallEvent {
+  /** How long the thread could not run while the computer was awake. */
   blockedMs: number;
   /** The last measured section before the stall (perf-marks), if any. */
   lastMeasured?: string;
@@ -30,9 +44,18 @@ export interface StallEvent {
   uptimeMs?: number;
   /** Whether the process had finished starting (`markStartupComplete`). */
   phase?: "startup" | "steady";
+  /**
+   * Share of the stall the thread spent on the CPU, 0 to 1: near 1 it was
+   * busy (script, a collection), near 0 it waited (the disk, a lock, a
+   * native call answered on another thread).
+   */
+  threadCpu?: number;
+  /** CPU the process's other threads used meanwhile, in cores (1: one core throughout). */
+  otherCpu?: number;
 }
 
 let stallSink: ((event: StallEvent) => void) | null = null;
+let stallClocks: (() => StallClockReading) | null = null;
 let startupComplete = false;
 
 /**
@@ -45,6 +68,32 @@ export function setStallSink(next: ((event: StallEvent) => void) | null): () => 
   return () => {
     if (stallSink === next) stallSink = null;
   };
+}
+
+/**
+ * How this process reads its platform's clocks (telemetry/stall-clocks.ts):
+ * a stall then says whether the thread was busy or waiting, and the time
+ * the computer slept is not counted as one.
+ */
+export function setStallClocks(next: (() => StallClockReading) | null): () => void {
+  stallClocks = next;
+  return () => {
+    if (stallClocks === next) stallClocks = null;
+  };
+}
+
+function readStallClocks(read: (() => StallClockReading) | null): StallClockReading | null {
+  if (!read) return null;
+  try {
+    return read();
+  } catch {
+    // Intentional ignore: a clock that cannot be read leaves the stall's cause unknown, never the stall unseen.
+    return null;
+  }
+}
+
+function delta(after: number | null | undefined, before: number | null | undefined): number | null {
+  return after == null || before == null ? null : after - before;
 }
 
 /**
@@ -63,7 +112,7 @@ export function resetStartupCompleteForTests(): void {
 
 function noteStall(event: StallEvent): void {
   try {
-    stallSink?.(event);
+    withoutLastStep(() => stallSink?.(event));
   } catch {
     // Intentional ignore: reporting a freeze must never become one.
   }
@@ -84,6 +133,8 @@ export interface MainThreadStallMonitorOptions {
   schedule?: (callback: () => void, delayMs: number) => unknown;
   cancel?: (handle: unknown) => void;
   report?: (blockedMs: number, context: Omit<StallEvent, "blockedMs">) => void;
+  /** Defaults to the clocks `setStallClocks` installed. */
+  clocks?: () => StallClockReading;
 }
 
 function defaultNow(): number {
@@ -101,6 +152,12 @@ function defaultNow(): number {
  * did it" in a report that only says the app hung for a few seconds, and how
  * long the process had been up, so a slow start reads apart from a hang
  * hours in.
+ *
+ * Where the platform's clocks can be read, the time the computer slept is
+ * taken out (a timer cannot fire then either, and a laptop's lid is not a
+ * freeze), and the stall says how much of it the thread spent on the CPU
+ * and how busy the process's other threads were: busy is script or a
+ * collection, idle on both is a wait on the disk or another program.
  */
 export function startMainThreadStallMonitor(
   options: MainThreadStallMonitorOptions = {},
@@ -117,14 +174,25 @@ export function startMainThreadStallMonitor(
       noteStall({ blockedMs, ...context });
     });
 
+  const clocks = () => readStallClocks(options.clocks ?? stallClocks);
   let previous = now();
+  let previousClocks = clocks();
   const handle = schedule(() => {
     const current = now();
-    const blockedMs = current - previous - intervalMs;
+    const currentClocks = clocks();
+    const elapsedMs = current - previous;
+    const before = previousClocks;
     previous = current;
+    previousClocks = currentClocks;
+    const awakeMs = delta(currentClocks?.awakeMs, before?.awakeMs);
+    // Asleep, the computer runs nothing; only the awake part of the gap was a freeze.
+    const asleepMs = awakeMs == null ? 0 : Math.max(0, elapsedMs - awakeMs);
+    const blockedMs = elapsedMs - asleepMs - intervalMs;
     if (blockedMs < thresholdMs) return;
     const sample = lastPerfSample();
     const sqlite = sample?.name === "sqlite.blocked" ? sqliteDetail(sample.metadata) : undefined;
+    const threadCpuMs = delta(currentClocks?.threadCpuMs, before?.threadCpuMs);
+    const processCpuMs = delta(currentClocks?.processCpuMs, before?.processCpuMs);
     report(blockedMs, {
       ...(sample
         ? { lastMeasured: sample.name, lastMeasuredEndedMsAgo: Math.round(current - sample.endedAt) }
@@ -132,6 +200,10 @@ export function startMainThreadStallMonitor(
       ...(sqlite ? { sqlite } : {}),
       uptimeMs: Math.round(current),
       phase: startupComplete ? "steady" : "startup",
+      ...(threadCpuMs == null ? {} : { threadCpu: Math.min(1, Math.max(0, threadCpuMs / blockedMs)) }),
+      ...(threadCpuMs == null || processCpuMs == null
+        ? {}
+        : { otherCpu: Math.max(0, (processCpuMs - threadCpuMs) / (elapsedMs - asleepMs)) }),
     });
   }, intervalMs);
   if (handle && typeof (handle as { unref?: () => void }).unref === "function") {

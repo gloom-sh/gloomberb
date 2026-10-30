@@ -28,8 +28,12 @@ import { reportCrash } from "./crash-reports";
  * for the desktop app's own process, whether the app was in front and had a
  * window on screen: a hidden app's slowed timers read like a freeze. A stall
  * after a SQLite statement names the statement (a fixed name), its tries and
- * whether it waited on another program's lock. All of it is buckets and
- * flags.
+ * whether it waited on another program's lock. Where the platform's clocks
+ * can be read, it says how much of the stall the thread spent on the CPU
+ * and how busy the process's other threads were, which tells script or a
+ * collection (busy) from a wait on the disk, a lock or another thread
+ * (idle); the time the computer slept never counts as a stall (see
+ * utils/main-thread-stall.ts). All of it is buckets and flags.
  *
  * One report per process, bucket, section and app version a day; stalls of
  * the same kind after that are counted and carried in the next report, and
@@ -66,6 +70,10 @@ export interface StallReport {
   attempts?: number;
   /** After a SQLite statement: whether it waited on another connection's lock. */
   lockWait?: boolean;
+  /** Where the platform says: the share of the stall the thread was on the CPU, in percent, by tens. */
+  cpuPercent?: number;
+  /** Where the platform says: the CPU the process's other threads used meanwhile, in percent of one core, by tens. */
+  otherCpuPercent?: number;
 }
 
 type StallBucket = "1-2s" | "2-5s" | "5-15s" | "15s+";
@@ -115,6 +123,8 @@ const MAX_KINDS_KEPT = 200;
 const MAX_RECENT_KEPT = 500;
 /** What error tracking keeps of the details line; fields that do not fit are left out. */
 const MAX_DETAILS_LENGTH = 120;
+/** Other threads' CPU past this many percent of a core reads as this. */
+const MAX_OTHER_CPU_PERCENT = 990;
 
 let host: StallReporterHost | null = null;
 let attentionProbe: (() => StallAttention) | null = null;
@@ -198,20 +208,32 @@ function flag(value: boolean | null | undefined): string {
   return value == null ? "?" : value ? "1" : "0";
 }
 
+/** A share or a core count in percent, by tens. */
+function tens(value: number | undefined, max: number): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(0, Math.round(value * 10) * 10));
+}
+
 /** The context a report carries, also written at the end of the log line. */
 interface StallContext {
   phase: StallReport["phase"];
   uptime: StallReport["uptime"];
   gap: GapBucket;
   attention: StallAttention | null;
+  cpuPercent?: number;
+  otherCpuPercent?: number;
 }
 
 function stallContext(event: StallEvent, attention: StallAttention | null): StallContext {
+  const cpuPercent = tens(event.threadCpu, 100);
+  const otherCpuPercent = tens(event.otherCpu, MAX_OTHER_CPU_PERCENT);
   return {
     phase: event.phase ?? "unknown",
     uptime: uptimeBucket(event.uptimeMs),
     gap: gapBucket(event),
     attention,
+    ...(cpuPercent === undefined ? {} : { cpuPercent }),
+    ...(otherCpuPercent === undefined ? {} : { otherCpuPercent }),
   };
 }
 
@@ -229,6 +251,8 @@ function formatStallLogLine(process: StallProcess, event: StallEvent, context: S
     `up=${context.uptime}`,
     `gap=${context.gap}`,
     ...(context.attention ? [`fg=${flag(context.attention.active)}`, `vis=${flag(context.attention.visible)}`] : []),
+    ...(context.cpuPercent === undefined ? [] : [`cpu=${context.cpuPercent}`]),
+    ...(context.otherCpuPercent === undefined ? [] : [`oth=${context.otherCpuPercent}`]),
   ].join(" ");
   return `${time}  ${process.padEnd(8)}  froze ${formatSeconds(event.blockedMs).padStart(6)}  ${last}${sqlite}  [${facts}]`;
 }
@@ -245,23 +269,26 @@ function reportArch(arch: string): StallReport["arch"] {
 }
 
 /**
- * The details line error tracking keeps, most telling first: the original
- * four fields, then the new ones. One that would not fit is left out.
+ * The details line error tracking keeps, most telling first. The platform
+ * comes last: error tracking has the system and its architecture already.
+ * One that would not fit is left out.
  */
 export function formatStallReportDetails(report: StallReport): string {
   const fields = [
     `process=${report.process}`,
     `count=${report.count}`,
     `longest=${report.longestMs}ms`,
-    `platform=${report.platform}-${report.arch}`,
     `phase=${report.phase}`,
     `up=${report.uptime}`,
     `gap=${report.gap}`,
     ...(report.active === undefined ? [] : [`fg=${flag(report.active)}`]),
     ...(report.visible === undefined ? [] : [`vis=${flag(report.visible)}`]),
+    ...(report.cpuPercent === undefined ? [] : [`cpu=${report.cpuPercent}`]),
+    ...(report.otherCpuPercent === undefined ? [] : [`oth=${report.otherCpuPercent}`]),
     ...(report.lockWait === undefined ? [] : [`lock=${flag(report.lockWait)}`]),
     ...(report.attempts === undefined ? [] : [`try=${report.attempts}`]),
     `day=${report.day}`,
+    `platform=${report.platform}-${report.arch}`,
   ];
   let details = "";
   for (const field of fields) {
@@ -357,6 +384,8 @@ export function recordStall(process: StallProcess, event: StallEvent): void {
         uptime: context.uptime,
         gap: context.gap,
         ...(context.attention ? { active: context.attention.active, visible: context.attention.visible } : {}),
+        ...(context.cpuPercent === undefined ? {} : { cpuPercent: context.cpuPercent }),
+        ...(context.otherCpuPercent === undefined ? {} : { otherCpuPercent: context.otherCpuPercent }),
         ...(event.sqlite && section.startsWith("sqlite.blocked")
           ? { attempts: Math.max(1, Math.min(99, Math.round(event.sqlite.attempts))), lockWait: event.sqlite.lockWait }
           : {}),
