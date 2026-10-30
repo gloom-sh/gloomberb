@@ -122,8 +122,11 @@ function isListedEquity(candidate: TickerSearchCandidate): boolean {
  * Siemens AG). The row the service marks with the word as typed is the
  * company the word means, ahead of a line abroad whose symbol is the word:
  * "siemens" is SIE on XETRA, not SIEMENS on NSE (Siemens Ltd.); a US line
- * keeps its ticker. A query that names a venue (LVMH:TSX, 7203.T) asked for
- * that line, and a saved row keeps the lead.
+ * keeps its ticker. A symbol typed whose first row is another company's
+ * regional line abroad leads with the line the service marks as a home under
+ * that symbol (YAR is Yara on OSL, not Americold on Hanover). A query that
+ * names a venue (LVMH:TSX, 7203.T) asked for that line, and a saved row keeps
+ * the lead.
  */
 export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   if (isQualifiedTickerQuery(query)) return items;
@@ -137,6 +140,14 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
       && item.symbol.toUpperCase() !== lead.symbol.toUpperCase() && namedByService(query, item.result))
     : undefined;
   if (meant) return moveAhead(items, meant, lead);
+  // A line abroad that only quotes shares listed elsewhere (a German regional venue) gives way to the line the
+  // service marks as a company's home under the same symbol: YAR is Yara on Oslo, not Americold on Hanover.
+  const homeOfSymbol = typedSymbol && lead.result?.homeListing !== true && listingDistance(lead) === 1
+    && !isUsListingExchange(candidateExchange(lead))
+    ? items.find((item) => item !== lead && isListedEquity(item) && item.result?.homeListing === true
+      && item.symbol.toUpperCase() === lead.symbol.toUpperCase())
+    : undefined;
+  if (homeOfSymbol) return moveAhead(items, homeOfSymbol, lead);
   const name = candidateName(lead);
   const lines = companyRows(lead, items).filter((item) => item !== lead);
   const nearest = (candidates: T[]) => [...candidates].sort((a, b) => nameGap(name, candidateName(a)) - nameGap(name, candidateName(b))

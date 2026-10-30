@@ -1334,6 +1334,22 @@ describe("ticker-search utilities", () => {
       expect(primary("LVMH", lvmh)).toBe("MC");
       expect(symbols("LVMH", lvmh).slice(0, 2)).toEqual(["MC", "LVMH"]);
     });
+
+    test("a symbol's home listing leads another company's German regional line of it", () => {
+      // /market/search?q=YAR on 2026-10-30: Americold's lines in Germany came first, Yara's home line on Oslo seventh.
+      const yar = [
+        listing("YAR", "Americold Realty Trust, Inc.", "MUNICH", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust, Inc.", "FWB2", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust Inc.", "HANOVER", undefined, "Common Stock"),
+        listing("YAR", "Yari Minerals Limited", "ASX", undefined, "Common Stock"),
+        { ...listing("YAR", "Yara International ASA", "OSL", undefined, "Common Stock"), homeListing: true },
+      ];
+      const ranked = build("YAR", yar);
+      expect(ranked.find((item) => item.category === "Primary Listing")?.result?.exchange).toBe("OSL");
+      // A home line of its own leads only a regional line: a symbol's line on its home exchange keeps the lead.
+      const yari = [yar[3]!, yar[4]!];
+      expect(build("YAR", yari)[0]?.result?.exchange).toBe("ASX");
+    });
   });
 
   test("normalizes legal suffixes in literal company-name queries", () => {
