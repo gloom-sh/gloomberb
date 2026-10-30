@@ -14,6 +14,7 @@ import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import {
   attachMarketMoversPersistence,
   MARKET_SUMMARY_SYMBOLS,
@@ -62,6 +63,8 @@ import {
 const NO_SAVED_SELECTION: string[] = [];
 const SESSION_CHECK_MS = 30_000;
 const NO_QUOTES: MoverQuote[] = [];
+/** A list without Pro is the one built a delay before: the delayed clock reads it as one late price. */
+const DELAYED_LIST = [{ dataSource: "delayed" as const }];
 const moverKey = (row: Pick<ScreenerQuote, "symbol" | "exchange">) => publicTickerKey(row.symbol, row.exchange);
 
 /** What is trading in New York, re-read every half minute so the pane follows 04:00, 09:30 and 16:00. */
@@ -285,6 +288,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     handleRefreshKey(event, () => loadTab(activeTab, { forceRefresh: true }), { stopPropagation: true })
   ), [activeTab, loadTab]);
 
+  // Without Pro the lists are the delayed ones (with Pro the real-time ones), and say so.
+  const quoteDelay = useQuoteDelayFooter(rows.length > 0 ? DELAYED_LIST : [], "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
@@ -299,8 +304,9 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
       ...(moversStale && moversSavedAt == null && loadedKey === listKey ? [STALE_SEGMENT] : []),
       // The FLOAT column shows while a minimum is set; a float the source does not date says so once.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
+      ...(quoteDelay ? [quoteDelay] : []),
     ],
-  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, moversSavedAt, rows, summaryQuotes]);
+  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, moversSavedAt, quoteDelay, rows, summaryQuotes]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>

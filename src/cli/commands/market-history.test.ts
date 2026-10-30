@@ -172,6 +172,11 @@ test("history shows today's session from the quote in every range, partial, whet
       expect(text.find((line) => line.startsWith("Source:"))).toContain("(daily bars) \u00b7 the newest bar is today so far");
       expect(result.freshness).toMatchObject({ basis: "daily bars", asOf: "2026-10-16T18:59:30.000Z" });
     }
+    // Signed out or free, the day so far is read from the delayed quote, and the status line says how late, not "not a live feed".
+    const delayed = await run([...finished, snapshot], { dataSource: "delayed" });
+    expect(delayed.result.freshness).toMatchObject({ status: "delayed", delayMinutes: 15 });
+    expect(delayed.text.find((line) => line.startsWith("Source:"))).toContain("15 min delayed");
+    expect(delayed.text.find((line) => line.startsWith("Source:"))).not.toContain("not a live feed");
     // Without a current quote the snapshot is not today's row, and a source with no bar for today shows none.
     for (const points of [[...finished, snapshot], finished]) {
       const { result } = await run(points, { stale: true });

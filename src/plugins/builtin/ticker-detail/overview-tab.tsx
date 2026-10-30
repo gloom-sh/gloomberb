@@ -62,6 +62,8 @@ import { describeFundamentalMarketCap } from "../../../utils/market-capitalizati
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
+import { DelayedMark, delayedMarkWidth } from "../../../components/ui/delayed-mark";
+import { useFreeQuoteDelay } from "../../../api-client/plan-access";
 import { safeExternalUrl } from "../../../utils/external-url";
 import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
@@ -126,6 +128,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const figureCells = useFigureCells();
 
   const quote = financials?.quote;
+  const quoteDelayMinutes = useFreeQuoteDelay(quote);
   const fundamentals = financials?.fundamentals;
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
@@ -251,7 +254,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const sessionLabel = quoteSessionLabel(quote);
   const marketStateText = sessionLabel ? t(sessionLabel) : "";
-  const hasIdentityLine = Boolean(companyName || venueText || marketStateText);
+  // Signed out or free, the headline price is the delayed one: the mark says so after the session.
+  const delayMinutes = sessionQuote ? quoteDelayMinutes : null;
+  const delayCells = delayMinutes != null ? delayedMarkWidth(delayMinutes) + 1 : 0;
+  const hasIdentityLine = Boolean(companyName || venueText || marketStateText || delayMinutes != null);
   // The desktop logo is a square from the top of the company name's capitals down to the
   // price's baseline, so its edges meet the text's and the three read as one block. The
   // extended-hours line hangs below, as it comes and goes with the session. Without a
@@ -290,7 +296,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     + quoteChangeCells + 1 + displayWidth(changeBasisText) <= quoteTextWidth;
   const companyNameWidth = Math.max(8, quoteTextWidth
     - displayWidth(venueText)
-    - (marketStateText ? displayWidth(marketStateText) + 1 : 0));
+    - (marketStateText ? displayWidth(marketStateText) + 1 : 0)
+    - delayCells);
   // A listing that no longer trades keeps its delisting date whole on a narrow pane: the venue gives way, then the name.
   const delistedRoom = quote?.delisting && marketStateText ? quoteTextWidth - displayWidth(marketStateText) - 1 : null;
   const identityVenue = delistedRoom !== null && delistedRoom - displayWidth(venueText) < 8 ? "" : venueText;
@@ -410,6 +417,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                   <Text flexShrink={0} fg={quoteSessionColor(quote)}>
                     {identityName || identityVenue ? " " : ""}{marketStateText}
                   </Text>
+                )}
+                {delayMinutes != null && (
+                  <Box flexShrink={0} paddingLeft={identityName || identityVenue || marketStateText ? 1 : 0}>
+                    <DelayedMark minutes={delayMinutes} />
+                  </Box>
                 )}
               </Box>
             )}

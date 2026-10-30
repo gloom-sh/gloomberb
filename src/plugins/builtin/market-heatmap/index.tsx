@@ -70,6 +70,7 @@ import {
   type HeatmapSizeBy,
 } from "./portfolio";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   useLiveStreamingSetting,
@@ -635,6 +636,13 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(board?.checkedAt ?? null, autoRefresh, { intervalMs: heatmapCheckIntervalMs(board) });
 
   usePaneStatusFooter({ registrationId: "market-heatmap-retained", stale: hasBoard && stale && !portfolioTab });
+  // Signed out or free, a market board is the delayed one, and the holdings' quotes are delayed ones.
+  const quoteDelay = useQuoteDelayFooter(
+    portfolioTab
+      ? Array.from(financials.values(), (entry) => entry?.quote)
+      : shownBoard ? [{ dataSource: shownBoard.access === "realtime" ? "live" as const : "delayed" as const }] : [],
+    "heatmap-delay",
+  );
   usePaneNoticeFooter({
     registrationId: "market-heatmap-omitted",
     notices: portfolioTab && portfolioBoard.omitted > 0
@@ -677,7 +685,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     // The caption takes the room the rest leaves, with "loading" counted in
     // always, so a refresh never squeezes the row; a narrow pane drops its
     // least important parts rather than truncating every segment.
-    const others = [...selected, ...failed, ...feed];
+    const others = [...selected, ...failed, ...feed, ...(quoteDelay ? [quoteDelay] : [])];
     const room = width - others.reduce((total, segment) => total + footerSegmentWidth(segment) + 1, 0) - LOADING_FOOTER_WIDTH - 1;
     const caption = shownBoard ? heatmapBoardCaption(shownBoard, { now: Date.now(), checked, failed: failed.length > 0, maxWidth: room }) : null;
     return {
@@ -687,9 +695,10 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
         ...(caption ? [{ id: "board", parts: [{ text: caption, tone: "muted" as const }] }] : []),
         ...feed,
         ...loadingSegment,
+        ...(quoteDelay ? [quoteDelay] : []),
       ],
     };
-  }, [checked, feedStatus, hasBoard, loadError, loading, portfolioTab, selectedAsset, shownBoard, width]);
+  }, [checked, feedStatus, hasBoard, loadError, loading, portfolioTab, quoteDelay, selectedAsset, shownBoard, width]);
 
   return (
     <Box flexDirection="column" width={width} height={height}>

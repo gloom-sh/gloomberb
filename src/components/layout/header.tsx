@@ -36,6 +36,7 @@ import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 import { Button, terminalButtonColumns } from "../ui/button";
+import { DelayedMark, delayedMarkWidth } from "../ui/delayed-mark";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
 /** Kept clear after the terminal update status, so its last character never touches the Help pill. */
@@ -768,7 +769,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
     available: width,
     baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
     countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
-    spyWidth: summary.spyText.length + 1,
+    spyWidth: summary.spyText.length + 1 + (summary.spyDelayMinutes != null ? delayedMarkWidth(summary.spyDelayMinutes) + 1 : 0),
     stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
   });
   const marketLabel = fit.showCountdown ? summary.marketLabel : summary.marketLabelShort;
@@ -783,8 +784,9 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
         </Box>
       ) : null}
       {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
+        <Box paddingRight={1} flexShrink={0} flexDirection="row" alignItems="center" gap={1} data-gloom-role="header-market">
           <Text fg={summary.spyColor}>{summary.spyText}</Text>
+          {summary.spyDelayMinutes != null ? <DelayedMark minutes={summary.spyDelayMinutes} /> : null}
         </Box>
       ) : null}
       {fit.showBaseCurrency ? (

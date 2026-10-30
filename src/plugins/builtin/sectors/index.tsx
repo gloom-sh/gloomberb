@@ -16,6 +16,7 @@ import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { isStreamCarryingQuote, useVisibleBoardSymbols } from "../shared/use-quote-board";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { SectorMoveBar } from "./move-bar";
 import {
   SECTOR_COLLECTIONS,
@@ -345,16 +346,21 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     .map((row) => `${row.etf}: ${sectorRowIssues(row).join(" · ")}`);
   usePaneNoticeFooter({ registrationId: "sectors:row-issues", notices: rowIssueNotices, focused });
 
+  // Signed out or free, the ETFs' quotes are delayed ones.
+  const quoteDelay = useQuoteDelayFooter(rows.map((row) => (row.loading ? null : { dataSource: row.quoteDataSource })), "sectors-delay");
   usePaneFooter("sectors", () => {
     const info = loadingErrorFooterInfo(loading, loadError);
     if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
     if (updatedAgo) info.push({ id: "updated", parts: [{ text: `checked ${updatedAgo}`, tone: "muted" }] });
     // Keep the leading current failure readable when the pane is narrow; separate
     // flex children would each shrink it to a few characters beside routine status.
-    return { info: info.length > 0 ? [{ id: "status", parts: info.flatMap((segment, index) => [
-      ...(index > 0 ? [{ text: "·", tone: "muted" as const }] : []), ...segment.parts,
-    ]) }] : [] };
-  }, [loadError, loading, returnAsOfDate, updatedAgo]);
+    return { info: [
+      ...(info.length > 0 ? [{ id: "status", parts: info.flatMap((segment, index) => [
+        ...(index > 0 ? [{ text: "·", tone: "muted" as const }] : []), ...segment.parts,
+      ]) }] : []),
+      ...(quoteDelay ? [quoteDelay] : []),
+    ] };
+  }, [loadError, loading, quoteDelay, returnAsOfDate, updatedAgo]);
 
   return (
     <DataTableView<SectorRow, SectorColumn>

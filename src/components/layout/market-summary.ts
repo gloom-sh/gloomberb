@@ -12,6 +12,7 @@ import { formatPercentRaw } from "../../utils/format";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../market-data/market/format";
 import { getSessionMoveDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 import type { Quote } from "../../types/financials";
+import { useFreeQuoteDelay } from "../../api-client/plan-access";
 
 /**
  * SPY rides the shared feed. The snapshot poll only runs while the feed has
@@ -42,6 +43,8 @@ export interface MarketSummary {
   marketLabelShort: string;
   spyColor: string;
   spyText: string;
+  /** Minutes SPY's price is late for this account (signed out or free), drawn as the delayed mark beside it; null when live. */
+  spyDelayMinutes: number | null;
 }
 
 export interface MarketSummaryFit {
@@ -136,6 +139,7 @@ export function useMarketSummary(): MarketSummary {
   }, [appActive]);
 
   const { spyColor, spyText } = spySummary(spyQuote, colors);
+  const spyDelayMinutes = useFreeQuoteDelay(spyQuote);
 
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
   const marketLabelShort = mktState ? t(marketStateLabel(mktState)) : "";
@@ -150,5 +154,6 @@ export function useMarketSummary(): MarketSummary {
     marketLabelShort,
     spyColor,
     spyText,
+    spyDelayMinutes,
   };
 }

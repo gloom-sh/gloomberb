@@ -155,9 +155,11 @@ test("signed out during the pre-market, the pane opens the pre-market list as it
     expect(tui.frame()).not.toContain("Sign in");
     expect(tui.frame()).toContain("EARLY");
     expect(lists).toEqual(["premarket"]);
-    // Dated by when the list was built, never called real-time.
+    // Dated by when the list was built, never called real-time, and marked delayed.
+    const info = (footer as { info: Array<{ id: string; parts: Array<{ text: string }> }> }).info;
     expect(JSON.stringify(footer)).toContain("as of 07:45 ET");
-    expect(JSON.stringify(footer)).not.toContain("live");
+    expect(info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ")).not.toContain("live");
+    expect(info.find((segment) => segment.id === "quote-delay")?.parts[0]?.text).toBe("◷15m");
     await clickLabel("Gaps");
     expect(tui.frame()).toContain("Sign in");
     expect(lists).toEqual(["premarket"]);

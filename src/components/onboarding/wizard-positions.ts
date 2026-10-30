@@ -302,7 +302,7 @@ export function useOnboardingPositions({
         const costBasis = avgCost ?? result.quote?.price;
         if (costBasis === undefined || costBasis === null || !Number.isFinite(costBasis)) {
           setFieldIdx(2);
-          setError(t("No live price yet. Enter the average cost."));
+          setError(t("No price yet. Enter the average cost."));
           return false;
         }
         // A future is entered in contracts, sized by its terms; a cost typed as corn is quoted counts cents.

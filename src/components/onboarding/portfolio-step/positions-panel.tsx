@@ -7,6 +7,8 @@ import { formatMarketPrice } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { formatPercentRaw } from "../../../utils/format";
 import { Button, NumberField, TextField } from "../../ui";
+import { DelayedMark } from "../../ui/delayed-mark";
+import { useFreeQuoteDelay } from "../../../api-client/plan-access";
 import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 import {
   POSITION_FIELDS,
@@ -31,7 +33,7 @@ const FIELD_LABELS: Record<PositionFieldId, string> = {
 const FIELD_PLACEHOLDERS: Record<Exclude<PositionFieldId, "currency">, string> = {
   ticker: "e.g. AAPL",
   shares: "optional",
-  avgCost: "current price",
+  avgCost: "last price",
 };
 
 /** A field's label; the size counts contracts once the symbol is a future. */
@@ -47,6 +49,8 @@ function fieldPlaceholder(field: PositionFieldId, state: OnboardingPositionsStat
 /** Company name and last price for the symbol being typed, or why it will not resolve. */
 function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview" | "error">) {
   const colors = useThemeColors();
+  // Signed out or free, the price is the delayed one, and says so.
+  const delay = useFreeQuoteDelay(preview.status === "ready" ? preview.quote : null);
   if (error) return <Text fg={colors.negative} wrapText>{error}</Text>;
   if (preview.status === "idle") return null;
   if (preview.status === "checking") {
@@ -63,6 +67,7 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
       {preview.name ? <Text fg={colors.textDim}>{`  ${preview.name}`}</Text> : null}
       {price != null ? <Text fg={colors.text}>{`  ${formatMarketPrice(price, { maxWidth: 12 })}`}</Text> : null}
       {change != null ? <Text fg={shownPriceColor(change, 2, colors)}>{` ${formatPercentRaw(change)}`}</Text> : null}
+      {price != null && delay != null ? <Box flexShrink={0} paddingLeft={1}><DelayedMark minutes={delay} /></Box> : null}
       {preview.duplicate ? <Text fg={colors.textMuted}>{t("  already added")}</Text> : null}
     </Box>
   );
