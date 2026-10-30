@@ -482,7 +482,6 @@ async function capturePageScreenshot({
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
-  const port = 43000 + Math.floor(Math.random() * 10000);
   const proc = Bun.spawn([
     chrome,
     "--headless=new",
@@ -500,7 +499,10 @@ async function capturePageScreenshot({
     "--no-first-run",
     "--no-default-browser-check",
     "--allow-file-access-from-files",
-    `--remote-debugging-port=${port}`,
+    // Chrome picks a free port and writes it to DevToolsActivePort in the
+    // profile. A port picked here can be one Windows has reserved, where
+    // Chrome runs on without DevTools until the wait below times out.
+    "--remote-debugging-port=0",
     `--user-data-dir=${userDataDir}`,
     `--window-size=${widthPx},${heightPx}`,
     url,
@@ -511,7 +513,7 @@ async function capturePageScreenshot({
 
   let session: CdpSession | null = null;
   try {
-    const wsUrl = await waitForPageWebSocket(port, url);
+    const wsUrl = await waitForPageWebSocket(userDataDir, url);
     session = await CdpSession.connect(wsUrl);
     await session.send("Page.enable");
     await session.send("Runtime.enable");
@@ -878,11 +880,23 @@ async function fitShotStatusLine(session: CdpSession, { variants, dates }: ShotS
   return typeof value === "string" ? value : null;
 }
 
-async function waitForPageWebSocket(port: number, targetUrl: string): Promise<string> {
+/**
+ * The port Chrome's DevTools listen on: 0 while the file's first line is
+ * incomplete, and a rejection before Chrome has written the file at all.
+ */
+async function readDevToolsPort(userDataDir: string): Promise<number> {
+  const text = await Bun.file(join(userDataDir, "DevToolsActivePort")).text();
+  const lineEnd = text.indexOf("\n");
+  const port = lineEnd > 0 ? Number(text.slice(0, lineEnd)) : 0;
+  return Number.isInteger(port) && port > 0 ? port : 0;
+}
+
+async function waitForPageWebSocket(userDataDir: string, targetUrl: string): Promise<string> {
   for (let attempt = 0; attempt < CHROME_POLL_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-      if (response.ok) {
+      const port = await readDevToolsPort(userDataDir);
+      const response = port ? await fetch(`http://127.0.0.1:${port}/json/list`) : null;
+      if (response?.ok) {
         const targets = await response.json() as Array<{ url?: string; type?: string; webSocketDebuggerUrl?: string }>;
         const page = targets.find((target) => (
           target.type === "page"
