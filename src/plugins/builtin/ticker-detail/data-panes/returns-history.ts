@@ -125,7 +125,8 @@ async function withSessionCloses(
   const official = quoteOfficialClose(quote);
   if (official) closes.set(official.date, official.close);
   const result = withOfficialCloses(points, closes, { venue: target.venue || undefined, now });
-  return { points: result.points, ...(result.pending ? { closingPrintPending: result.pending } : {}) };
+  // Without a quote there is no saying whether the print is in.
+  return { points: result.points, ...(result.pending && quote ? { closingPrintPending: result.pending } : {}) };
 }
 
 /**

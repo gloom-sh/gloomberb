@@ -378,3 +378,81 @@ describe("normalized market price comparison", () => {
     expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([-60, -50]);
   });
 });
+
+describe("a fund compared with a coin", () => {
+  const HOUR = 60 * 60_000;
+  // IBIT's daily closes and BTC-USD's UTC-day closes, Mon 19 to Fri 23 Oct 2026; the US session closes 20:00 UTC.
+  const days = ["2026-10-16", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23"];
+  const fund = rows(days.map((day, index) => [day, 50 + index]));
+  const coinDaily = rows(days.map((day, index) => [day, 100_000 + index * 1_000]));
+  // Hourly coin bars by open time: the one opening 19:00 UTC closes at the US close, at 90k plus 2k a day.
+  const coinHourly = (from: string, to: string): PricePoint[] => {
+    const points: PricePoint[] = [];
+    for (let time = Date.parse(from); time < Date.parse(to); time += HOUR) {
+      const day = days.indexOf(new Date(time).toISOString().slice(0, 10));
+      const atUsClose = new Date(time).getUTCHours() === 19;
+      points.push({ date: new Date(time), close: atUsClose && day >= 0 ? 90_000 + day * 2_000 : 95_000 });
+    }
+    return points;
+  };
+  function chart(window: { start: string; end: string }, resolution: "1d" | "1h" = "1d"): ChartSpec {
+    return {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1M", resolution, dateWindow: window },
+      panels: [{ id: "main" }], studies: [],
+      series: [["IBIT", "NASDAQ"], ["BTC-USD", "CCC"]].map(([symbol, exchange]) => ({
+        id: symbol!, source: { kind: "security", instrument: { symbol: symbol!, exchange: exchange! }, fieldId: "market.close" },
+        style: "line", transform: "percent", axis: "left", panelId: "main", interpolation: "none",
+      })),
+    };
+  }
+  function coinSources(hourly: (from: string, to: string) => PricePoint[] = coinHourly, intraday?: Record<string, PricePoint[]>) {
+    const daily: Record<string, PricePoint[]> = { IBIT: fund, "BTC-USD": coinDaily };
+    const history = async (symbol: string) => (intraday ?? daily)[symbol] ?? [];
+    return {
+      now: date("2026-10-30T22:00:00Z"),
+      dataProvider: createTestDataProvider({
+        getQuote: async (symbol) => ({ symbol, currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-10-30T22:00:00Z") }),
+        getTickerFinancials: async (symbol) => ({ annualStatements: [], quarterlyStatements: [], priceHistory: daily[symbol] ?? [] }),
+        getPriceHistory: history,
+        getPriceHistoryForResolution: history,
+        getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
+          points: intraday?.[symbol] ?? (symbol === "BTC-USD" ? hourly(start.toISOString(), end.toISOString()) : []), resolution: "1h" as const,
+        }),
+      }),
+      loadFredSeries: async () => ({ data: { observations: [], info: null }, fetchedAt: 0, stale: false, source: "network" as const }),
+    };
+  }
+
+  test("the coin is measured at the fund's close when its hourly bars reach both ends, and the notice says so", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources());
+    expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");
+    // From Fri 16 Oct's 20:00 UTC price (90k) to Fri 23 Oct's (100k), not the UTC-day closes (100k to 105k).
+    expect(result.series.map((entry) => entry.points.at(-1)?.value)).toEqual([10, 100 / 9]);
+  });
+
+  test("without hourly bars the coin keeps its UTC close, and the notice names both close times", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources(() => []));
+    expect(result.priceComparison?.notice).toContain("BTC-USD to 00:00 UTC, 4 h after the US close");
+    expect(result.series.map((entry) => entry.points.at(-1)?.value)).toEqual([10, 5]);
+  });
+
+  test("an explicit --from is measured from the close before that date, as RETURN is", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources(() => []));
+    expect(result.priceComparison?.notice).toContain("From Fri 16 Oct close");
+    expect(result.series[0]!.points[0]).toMatchObject({ value: 0, rawValue: 50 });
+  });
+
+  test("hourly legs stamped at different minutes are matched by the hour; legs that never share one name the bar that compares them", async () => {
+    // IBIT's hourly bars open on the half hour, BTC-USD's on the hour.
+    const fundHours = rows([["2026-10-29T13:30:00Z", 50], ["2026-10-29T14:30:00Z", 51], ["2026-10-29T15:30:00Z", 55]]);
+    const coinHours = rows([["2026-10-29T13:00:00Z", 100], ["2026-10-29T14:00:00Z", 104], ["2026-10-29T15:00:00Z", 110]]);
+    const window = { start: "2026-10-29", end: "2026-10-29" };
+    const matched = await resolveChartSpecData(chart(window, "1h"), coinSources(coinHourly, { IBIT: fundHours, "BTC-USD": coinHours }));
+    expect(matched.series.map((entry) => entry.points.at(-1)?.value)).toEqual([10, 10]);
+    const apart = await resolveChartSpecData(chart(window, "1h"), coinSources(coinHourly, {
+      IBIT: fundHours, "BTC-USD": rows([["2026-10-29T03:00:00Z", 100], ["2026-10-29T04:00:00Z", 104]]),
+    }));
+    expect(apart.priceComparison?.notice).toContain("IBIT and BTC-USD share no 1H bar times in this range; daily bars (1D) compare them.");
+  });
+});

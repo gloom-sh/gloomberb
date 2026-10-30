@@ -742,9 +742,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         await Promise.all(histories.map(async (history) => {
           // A future settles rather than closing on an auction print; its bars stay as traded.
           if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null) return;
-          const quote = history.quote ?? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
-            { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
-            .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null));
+          // A captured shot's source can have no quotes: its bars are drawn as captured.
+          const quote = history.quote ?? (typeof context.marketData.getQuote === "function"
+            ? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
+              { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
+              .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null))
+            : null);
           const official = quoteOfficialClose(quote);
           const closes = new Map(official ? [[official.date, official.close] as const] : []);
           const venue = history.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
@@ -752,7 +755,8 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const shown = withOfficialCloses(history.points, closes, { venue, now });
           history.points = shown.points;
           history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now }).points;
-          if (shown.pending) closingPrintsPending.push(history.symbol);
+          // Without a quote there is no saying whether the print is in.
+          if (shown.pending && quote) closingPrintsPending.push(history.symbol);
         }));
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);

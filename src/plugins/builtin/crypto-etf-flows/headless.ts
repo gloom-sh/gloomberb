@@ -120,7 +120,7 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
     limitations: [
       "US spot bitcoin and ether ETFs only, net creations and redemptions in US$ millions as Farside Investors publishes them.",
       "The newest day fills in fund by fund; a fund that has not reported shows as pending.",
-      "0.0 is a day the fund reported no creations or redemptions; a dash is a day with no figure published for it.",
+      "0.0 is the publisher's zero for the fund that day; a dash is a day it published no figure for.",
       "Price % is the funds' price move that day: the median of their close-to-close changes.",
     ],
   },

@@ -112,3 +112,31 @@ test("the headless report rejects 503 and retains stale rows with incomplete cov
     stub.mockRestore();
   }
 });
+
+test("a dated window lists its days, a fund with no figure reads as none, and the report is dated by the server's read", async () => {
+  const priced = payload([
+    { ...day("2026-10-23", { IBIT: -110.3, FBTC: null, GBTC: 0 }, -110.3), priceChangePct: -1.25 },
+    { ...day("2026-10-22", { IBIT: -254.1, FBTC: -217.5, GBTC: -29.5 }, -501.1), priceChangePct: null },
+    day("2026-10-21", { IBIT: 235, FBTC: 212.7, GBTC: 32.6 }, 480.3),
+    day("2026-10-20", { IBIT: 29.9, FBTC: 3.6, GBTC: 0 }, 33.5),
+  ]);
+  const stub = spyOn(apiClient, "getCloudCryptoEtfFlows").mockImplementation(async () => priced);
+  try {
+    expect(validateCryptoEtfFlows(priced, "BTC").days[0]!.priceChangePct).toBe(-1.25);
+    expect(() => validateCryptoEtfFlows(payload([{ ...day("2026-10-20", {}, 1), priceChangePct: "1%" as never }]), "BTC")).toThrow();
+    const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: { asset: "btc", limit: 20, from: "2026-10-21", to: "2026-10-23" } };
+    const result = await cryptoEtfFlowsHeadless.load(args, {} as HeadlessPaneContext) as HeadlessRowsResult;
+    expect(result.rows.map((row) => row.date)).toEqual(["2026-10-23", "2026-10-22", "2026-10-21"]);
+    // Not reported stays null (a dash), never 0; the publisher's own 0.0 stays 0.
+    expect(result.rows[0]).toMatchObject({ FBTC: null, GBTC: 0, priceChangePct: -1.25 });
+    const freshness = deriveHeadlessFreshness(cryptoEtfFlowsHeadless, result);
+    // When the server last read the publisher's table, not when the report ran.
+    expect(freshness?.retrievedAt).toBe("2026-10-21T02:09:34.743Z");
+    const text = renderHeadlessPaneText(cryptoEtfFlowsHeadless, result, args, "ETFF", freshness);
+    expect(text.split("\n").find((line) => line.startsWith("2026-10-23"))).toMatch(/2026-10-23\s+-110\.3\s+-1\.25%\s+-110\.3\s+—\s+0\.0/);
+    expect(text.split("\n").find((line) => line.startsWith("2026-10-22"))).toMatch(/2026-10-22\s+-501\.1\s+—\s+-254\.1/);
+    expect(text).toContain("2026-10-21 to 2026-10-23: -$131.10M over 3 trading days.");
+  } finally {
+    stub.mockRestore();
+  }
+});

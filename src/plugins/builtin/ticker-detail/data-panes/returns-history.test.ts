@@ -65,3 +65,31 @@ test("a dated window keeps the week its first date falls in, and a source with n
   expect(hourly.resolution).toBe("1d");
   expect(asked).toEqual(["1wk", "1h", "1d"]);
 });
+
+test("each closed session ends on its official close: earlier ones from the daily bars, the newest from the quote", async () => {
+  const days = ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"];
+  // The daily closes differ from the last hourly bar's trade (…+0.6), as an auction print does.
+  const daily: PricePoint[] = days.map((date, day) => ({ date: new Date(`${date}T00:00:00Z`), close: 378 + day + 0.65 }));
+  const quote = (regularClose: number | undefined) => createTestDataProvider({
+    getQuoteMetadata: async (symbol) => ({ symbol, listingExchangeName: "ARCA", source: {} }),
+    getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => (
+      interval === "1d" ? { points: daily, resolution: "1d" } : { points: VTI_1H, resolution: "1h" }),
+    getQuote: async (symbol) => ({
+      symbol, price: 383.9, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "ARCA",
+      marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z"),
+      ...(regularClose ? { regularClose, regularCloseSessionDate: "2026-10-09" } : {}),
+    }),
+  });
+  const now = Date.parse("2026-10-11T15:00:00Z");
+  const request = { symbol: "VTI", exchange: "", range: "5D" as const, resolution: "1h" as const, support: [], now };
+  const closes = (points: PricePoint[]) => points.filter((point) => new Date(point.date).getUTCHours() === 19).map((point) => point.close);
+
+  const series = await loadReturnSeries(quote(384), request);
+  expect(closes(series.points)).toEqual([378.65, 379.65, 380.65, 381.65, 382.65, 384]);
+  expect(series.closingPrintPending).toBeUndefined();
+  // Without the quote's close the newest session keeps its last trade, and says its print is not in yet;
+  // its daily bar may be a copy taken while it traded.
+  const waiting = await loadReturnSeries(quote(undefined), request);
+  expect(closes(waiting.points).at(-1)).toBeCloseTo(383.6);
+  expect(waiting.closingPrintPending).toBe("2026-10-09");
+});

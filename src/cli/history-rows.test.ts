@@ -3,7 +3,7 @@ import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
-  historyContractDrawdown, historyRollNote, historyThinNote,
+  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeText,
 } from "./history-rows";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
@@ -177,6 +177,20 @@ describe("history rows", () => {
     expect(historyMissingVolumeNote(rows)).toBeNull();
     expect(historyVenueVolumeNote(rows)).toBe("2 of 2 bars count IEX trades only, not the market's volume");
     expect(historyVenueVolumeNote(historyRows([mapPricePoint({ ...served[0]!, volume: 600_000 }, 1, "NYSE")], "5m"))).toBeNull();
+  });
+
+  test("a coin's daily and hourly volumes say what they count, since the two differ tenfold", () => {
+    // BTC-USD as Gloom Cloud serves it: hourly bars summed over a few spot venues, the daily bar every venue's total.
+    const hourly = [{ date: "2026-10-30T20:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 86_000_000, volumeBasis: "3 spot venues" },
+      { date: "2026-10-30T21:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 91_000_000, volumeBasis: "3 spot venues" }];
+    const hourRows = historyRows(hourly.map((point) => mapPricePoint(point, 1, "CCC", true)), "1h");
+    expect(historyVolumeText({ unit: "USD" }, "1h", historyVolumeBasis(hourRows))).toBe("volume in USD summed over 3 spot venues");
+    const dayRows = historyRows([mapPricePoint({ ...hourly[0]!, date: "2026-10-30", volume: 24_470_000_000, volumeBasis: "aggregate" }, 1, "CCC", true)], "1d");
+    expect(historyVolumeText({ unit: "USD" }, "1d", historyVolumeBasis(dayRows))).toBe("volume in USD per UTC day, aggregate across venues");
+    // Bars that disagree, or a server that does not say, keep the plain unit.
+    expect(historyVolumeBasis([...hourRows, ...dayRows])).toBeNull();
+    expect(historyVolumeText({ unit: "USD" }, "1d", historyVolumeBasis(historyRows([mapPricePoint({ ...hourly[0]!, volumeBasis: undefined }, 1, "CCC", true)], "1d"))))
+      .toBe("volume in USD per UTC day");
   });
 
   test("the latest trade a coin's intraday history ends with is part of the bar before it, never a bar without volume", () => {

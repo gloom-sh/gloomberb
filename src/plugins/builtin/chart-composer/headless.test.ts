@@ -217,6 +217,32 @@ test("a chart of daily bars is as of its newest point: the closed session's day,
   }
 });
 
+test("a window that ended before today is the history asked for: dated through its last close, never stale", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+    getPriceHistoryForResolution: async () => daily,
+    getDetailedPriceHistory: async () => daily,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE"), "chart-composer", { rangePreset: "1M", chartResolution: "1d" });
+  spec.viewport.dateWindow = { start: "2026-10-21", end: "2026-10-23" };
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE", rawArgument: "DHI:NYSE", symbols: [], options: {} };
+  try {
+    // A week later: the window's last close is a week old, and that is what was asked for.
+    setSystemTime(new Date("2026-10-30T22:00:00Z"));
+    const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toContain("not a live feed (daily closes through Fri 23 Oct)");
+    expect(text).not.toContain("stale");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a chart of daily bars beside a monthly FRED series draws the newest figure at its period and is as of the closed day, the series' period the oldest", async () => {
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");
   const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");

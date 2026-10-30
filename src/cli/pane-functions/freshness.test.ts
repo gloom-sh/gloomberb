@@ -14,6 +14,15 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("an intraday history names its newest bar's span, not the time the bar opened", () => {
+    const hourly = rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null, barMinutes: 60 });
+    const bars = { rows: [{ date: "2026-10-09T02:00:00Z" }, { date: "2026-10-09T03:00:00Z" }] };
+    expect(line(hourly, bars)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026, last bar 03:00–04:00 UTC · not a live feed (hourly bars)");
+    // A bar that ends at midnight ends at 00:00, and a report without the span keeps the bar's open.
+    expect(line(hourly, { rows: [{ date: "2026-10-08T23:00:00Z" }] })).toContain("Thu 8 Oct 2026, last bar 23:00–00:00 UTC");
+    expect(line(rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null }), bars)).not.toContain("last bar");
+  });
+
   test("a monthly, quarterly or annual observation is the period it starts, not a day; a daily one keeps its date", () => {
     const fred = (periodicity: "monthly" | "quarterly" | "annual" | undefined) => rows({
       source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null, ...(periodicity ? { periodicity } : {}),

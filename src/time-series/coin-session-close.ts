@@ -46,20 +46,23 @@ export function sessionMarketName(venue: string): string {
 }
 
 type HourlyRead = Awaited<ReturnType<typeof fetchHistoryResult>>;
-/** Recent reads by listing and span: a chart resolves again on every live quote, and asks for the same hours. */
-const hourlyReads = new Map<string, { at: number; read: Promise<HourlyRead> }>();
+type HourlyProvider = Pick<DataProvider, "getDetailedPriceHistory" | "getDetailedPriceHistoryWithMetadata">;
+/** Recent reads by source, listing and span: a chart resolves again on every live quote, and asks for the same hours. */
+const hourlyReadsBySource = new WeakMap<HourlyProvider, Map<string, { at: number; read: Promise<HourlyRead> }>>();
 const HOURLY_READ_LIMIT = 64;
 /** A span reaching the last hour is read again after this long; an older one is kept until it falls out. */
 const RECENT_READ_TTL_MS = 60_000;
 
 function hourlyBars(
-  provider: Pick<DataProvider, "getDetailedPriceHistory" | "getDetailedPriceHistoryWithMetadata">,
+  provider: HourlyProvider,
   symbol: string,
   exchange: string,
   start: number,
   end: number,
   now: number,
 ): Promise<HourlyRead> {
+  let hourlyReads = hourlyReadsBySource.get(provider);
+  if (!hourlyReads) hourlyReadsBySource.set(provider, hourlyReads = new Map());
   // A span ending now is keyed by its minute, so a chart redrawn within it reads it once.
   end = Math.ceil(end / 60_000) * 60_000;
   const key = `${symbol}:${exchange}:${start}:${end}`;
@@ -69,7 +72,7 @@ function hourlyBars(
     .catch(logFailure("time-series.coin-session-close", "Read a coin's hourly bars for a comparison failed", null))
     .then((result) => {
       // A failed read is asked again next time.
-      if (!result && hourlyReads.get(key)?.read === read) hourlyReads.delete(key);
+      if (!result && hourlyReads!.get(key)?.read === read) hourlyReads!.delete(key);
       return result;
     });
   hourlyReads.delete(key);
@@ -104,7 +107,7 @@ export interface SessionCloseTiming {
 export async function coinLegsAtSessionClose(
   comparison: PriceComparison | null,
   series: readonly ResolvedSeries[],
-  provider: Pick<DataProvider, "getDetailedPriceHistory" | "getDetailedPriceHistoryWithMetadata">,
+  provider: HourlyProvider,
   now: number,
 ): Promise<{ timing: SessionCloseTiming; series: ResolvedSeries[] } | null> {
   if (comparison?.alignment !== "session-date" || !comparison.legs) return null;
