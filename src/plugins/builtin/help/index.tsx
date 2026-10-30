@@ -425,7 +425,7 @@ export const helpModule: PluginModule = {
       name: "Help",
       icon: "?",
       component: HelpPane,
-      reportFreshness: { status: "not-a-feed", basis: "documentation" },
+      reportFreshness: { status: "not-a-feed", basis: "documentation", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 88, height: 32 },

@@ -1749,6 +1749,8 @@ The venues publish in real time and Gloom Cloud reads each about once a minute, 
 
 A pane of quotes (`QQ`, a price chart, `HP`, `DES`) shows the market line without the source. In a narrow image the line keeps the date and the delay and shortens the rest first.
 
+A capture with nothing to date has no line, and the footer row goes back to the pane: a sign-in or Pro wall over the whole pane (`shot RISK AAPL` signed out), and an empty, loading or failed pane with no rows, labeled values or chart beside it. The quotes `shot` loads for the symbol are not on screen there, so their delay and market hours would say something the image does not show. A pane of your own state (`NOTE`, `LAY`, `CONN`, `DOCS`, `HELP`, `ACM`, `BR`, the chat panes) has no market or feed to date, so it never has one. `Status line` and `freshness` are then left out of the verification output, and `fn` still ends with its source line.
+
 **Dataset panes.** A pane whose data is observed and published days later (`CHOKE`, `POWER`, `HIRE`, `APPS`, `GPU`) has no market part. Its line names the source, the newest observation's date and its age in days (`Source: IMF PortWatch · observed Sun 4 Oct · lag 6d` for `CHOKE`; `freshness.lagDays` in `--json`).
 
 A monthly, quarterly or annual figure counts from the last day of its period (`observed Sep 2026 (monthly) · lag 10d` on 10 Oct). `CDS` is dated by its rows: `Source: DTCC · last trade 2026-10-09 · lag 2 days`.

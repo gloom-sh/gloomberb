@@ -209,6 +209,39 @@ export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKe
 }
 
 /**
+ * Whether a capture shows nothing that was loaded: a wall that needs an
+ * account, or an empty, loading or failed state, with no rows, labeled values
+ * or plotted chart beside it. Its footer carries no status line then, as it
+ * has no data to date: the quotes the capture loaded for its symbol are not on
+ * screen. A pane that only locks or fails part of what it shows keeps it.
+ */
+export function shotLoadedNothing(
+  render: Pick<DesktopPaneShotRenderResult, "accessGate" | "emptyStateDetected" | "loadingStateDetected" | "errorStateDetected" | "rows" | "visibleKeyValues" | "semanticUi">,
+): boolean {
+  const stated = !!render.accessGate || render.emptyStateDetected || render.loadingStateDetected || render.errorStateDetected;
+  return stated
+    && render.rows.length === 0
+    && filledKeyValueCount(render.visibleKeyValues) === 0
+    && !render.semanticUi.some(plotsData);
+}
+
+/**
+ * A pane's chart evidence node that says it plotted something: a count of
+ * plotted values, or series with points. A node that is neither (a shape this
+ * does not know) counts as plotted, so its pane keeps its line.
+ */
+function plotsData(node: RemoteUiNodeSnapshot): boolean {
+  if (node.role !== "chart-data") return false;
+  const metadata = node.metadata;
+  if (!isRecord(metadata)) return true;
+  const counts = [metadata.plottedValueCount, metadata.projectedPointCount].filter((count): count is number => typeof count === "number");
+  if (counts.length > 0) return counts.some((count) => count > 0);
+  const lists = [metadata.series, metadata.baseSeries, metadata.resolvedSeries].filter(Array.isArray);
+  if (lists.length === 0) return true;
+  return lists.some((list) => list.some((series) => isRecord(series) && typeof series.pointCount === "number" && series.pointCount > 0));
+}
+
+/**
  * A 3D surface that is not the real drawing: the frame has no mesh, or the 2D
  * grid stands in for it. Both are fine for a person using the pane and wrong
  * for a capture of it.

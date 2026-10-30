@@ -39,7 +39,7 @@ export const docsModule: PluginModule = {
       name: "Docs",
       icon: "?",
       component: DocsPane,
-      reportFreshness: { status: "not-a-feed", basis: "documentation" },
+      reportFreshness: { status: "not-a-feed", basis: "documentation", local: true },
       // A page reads whole in a report, not cut at the first screen.
       shotFitsReader: true,
       defaultPosition: "right",

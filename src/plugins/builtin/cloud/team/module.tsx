@@ -24,7 +24,7 @@ export const teamModule: PluginModule = {
   capabilities: [createCloudTeamCapability(), createCloudViewsCapability()],
   panes: [{
     id: TEAM_PANE_ID,
-    reportFreshness: { status: "not-a-feed", basis: "account data" },
+    reportFreshness: { status: "not-a-feed", basis: "account data", local: true },
     name: "Team",
     icon: "T",
     personalData: "account",

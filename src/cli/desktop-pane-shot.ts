@@ -172,7 +172,8 @@ export interface DesktopPaneShotRenderResult {
 
 /**
  * The status line variants for a capture, longest first, worked out from what
- * the pane rendered; null leaves the footer row empty. `dates` says what the
+ * the pane rendered; null gives the footer row back to the pane, for a capture
+ * with nothing loaded to date (a wall, an empty state). `dates` says what the
  * line dates (`CaptureStatusLine`): the pane's own data, whose `as of` text is
  * then left out rather than repeat the date, or the quotes on screen.
  */
@@ -531,7 +532,7 @@ async function capturePageScreenshot({
     const rendered = await readRenderedPaneState(session);
     if (captureImage && statusLine) {
       const line = await statusLine(rendered);
-      rendered.statusLine = line?.variants.length ? await fitShotStatusLine(session, line) : null;
+      rendered.statusLine = (await fitShotStatusLine(session, line ?? { variants: [] })) || null;
     }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {

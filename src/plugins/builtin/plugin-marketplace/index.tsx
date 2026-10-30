@@ -10,7 +10,7 @@ export const pluginMarketplaceModule: PluginModule = {
       name: "Plugins",
       icon: "P",
       component: PluginMarketplacePane,
-      reportFreshness: { status: "not-a-feed", basis: "plugin listings" },
+      reportFreshness: { status: "not-a-feed", basis: "plugin listings", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 118, height: 34 },

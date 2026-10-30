@@ -8,7 +8,7 @@ export const roadmapModule: PluginModule = {
       name: "Roadmap",
       icon: "R",
       component: RoadmapPane,
-      reportFreshness: { status: "not-a-feed", basis: "curated list" },
+      reportFreshness: { status: "not-a-feed", basis: "curated list", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },

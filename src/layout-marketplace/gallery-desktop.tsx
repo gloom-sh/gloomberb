@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getPaneSidebarWidth,
+  getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarRow,
 } from "../components/layout/pane/sidebar";
@@ -14,6 +15,7 @@ import { useShortcut } from "../react/input";
 import { t, tf } from "../i18n";
 import { useThemeColors } from "../theme/theme-context";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../ui";
+import { clipToDisplayWidth, displayWidth } from "../utils/format";
 import { isPlainKey } from "../utils/keyboard";
 import type { GallerySearchState, LayoutGalleryController } from "./gallery";
 import { MiniWorkspace } from "./mini-workspace";
@@ -50,6 +52,24 @@ function useCursorRowInView(selected: boolean) {
 /** Every sidebar row starts at the pane's inset; the row's fill still runs to the edge. */
 const ROW_INSET = { paddingLeft: "var(--gloom-inset)", boxSizing: "border-box" } as const;
 
+/** Cells a section header spends beside its label: the pane's inset, the disclosure marker and the gap after it. */
+const SECTION_HEADER_CHROME = 4;
+
+function sectionLabel(title: string, count: number): string {
+  return tf("{title} ({count})", { title: t(title), count: String(count) });
+}
+
+/**
+ * A header's label in `room` cells with its count kept: a long name gives up
+ * its own end, so the row never reads `Your layouts (1`.
+ */
+function fitSectionLabel(title: string, count: number, room: number): string {
+  const label = sectionLabel(title, count);
+  if (displayWidth(label) <= room) return label;
+  const total = displayWidth(` (${count})`);
+  return `${clipToDisplayWidth(t(title), Math.max(1, room - total))} (${count})`;
+}
+
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({
   title,
@@ -68,7 +88,7 @@ function SidebarSection({
   return (
     <Box height={1} width={width} flexDirection="row" flexShrink={0} style={ROW_INSET}>
       <ActionRow
-        label={tf("{title} ({count})", { title: t(title), count: String(count) })}
+        label={fitSectionLabel(title, count, width - SECTION_HEADER_CHROME)}
         expanded={expanded}
         width={Math.max(1, width - 1)}
         onPress={onToggle}
@@ -232,19 +252,15 @@ function TeamStatus({ controller }: { controller: LayoutGalleryController }) {
 }
 
 function PreviewEmpty({ controller }: { controller: LayoutGalleryController }) {
-  const colors = useThemeColors();
   const searching = controller.query.trim().length > 0;
   return (
     <Box
       flexGrow={1}
-      alignItems="center"
-      justifyContent="center"
+      paddingX={1}
+      paddingY={1}
       data-gloom-role="layout-gallery-preview-empty"
-      padding={2}
     >
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-        {searching ? t("No layouts match this search.") : t("No layout selected.")}
-      </Text>
+      <EmptyState title={searching ? "No layouts match this search." : "No layout selected."} />
     </Box>
   );
 }
@@ -256,6 +272,7 @@ function PreviewEmpty({ controller }: { controller: LayoutGalleryController }) {
  */
 function PreviewPane({ controller, entry }: { controller: LayoutGalleryController; entry: GalleryEntry }) {
   const colors = useThemeColors();
+  const panes = summarizeLayoutPanes(entry.layout, controller.panes);
   const linked = entry.kind === "owned" ? entry.linked ?? null : null;
   const metadata = [
     entry.team ? `${entry.team.shortName}· ${entry.team.name}` : null,
@@ -296,13 +313,17 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
       </Box>
 
       <Box flexGrow={1} minWidth={0} minHeight={8} overflow="hidden" padding={1}>
-        <MiniWorkspace
-          layout={entry.layout}
-          panes={controller.panes}
-          width={PREVIEW.width}
-          height={PREVIEW.height}
-          detail
-        />
+        {panes.length === 0 ? (
+          <EmptyState title="No panes in this layout." />
+        ) : (
+          <MiniWorkspace
+            layout={entry.layout}
+            panes={controller.panes}
+            width={PREVIEW.width}
+            height={PREVIEW.height}
+            detail
+          />
+        )}
       </Box>
     </Box>
   );
@@ -323,8 +344,16 @@ export function LayoutGalleryDesktop({
   height?: number;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
-  const sidebarWidth = getPaneSidebarWidth(width, !!nativePaneChrome);
   const selected = resolvePreviewEntry(controller);
+  // Wide enough for the fixed headers with their counts, which the default width cuts in a narrow pane.
+  const headerWidth = Math.max(
+    displayWidth(sectionLabel("Your layouts", controller.owned.length)),
+    displayWidth(sectionLabel("Discover", controller.community.length)),
+  ) + SECTION_HEADER_CHROME;
+  const sidebarWidth = Math.max(
+    getPaneSidebarWidth(width, !!nativePaneChrome),
+    Math.min(headerWidth, getPaneSidebarWidthRange(width).max),
+  );
   const inputRef = useRef<InputRenderable | null>(null);
   const [localSearchActive, setLocalSearchActive] = useState(false);
   const searchActive = search?.active ?? localSearchActive;

@@ -8,7 +8,7 @@ export const accountManagementModule: PluginModule = {
     icon: "A",
     personalData: "account",
     component: AccountManagementPane,
-    reportFreshness: { status: "not-a-feed", basis: "account data" },
+    reportFreshness: { status: "not-a-feed", basis: "account data", local: true },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 72, height: 36 },

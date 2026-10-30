@@ -88,7 +88,7 @@ const askgModule: PluginModule = {
   },
   panes: [{
     id: ASKG_PANE_ID,
-    reportFreshness: { status: "not-a-feed", basis: "generated answer" },
+    reportFreshness: { status: "not-a-feed", basis: "generated answer", local: true },
     reportLockNote: askgLockNote,
     name: "Ask Gloom",
     personalData: "messages",

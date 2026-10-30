@@ -404,7 +404,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       "positioning",
     ],
     shortcut: { prefix: "CAT", argPlaceholder: "query", argKind: "text", argOptional: true },
-    reportFreshness: { status: "not-a-feed", basis: "series catalog" },
+    reportFreshness: { status: "not-a-feed", basis: "series catalog", local: true },
     canCreate: () => true,
     createInstance: (_context, options) => {
       const query = options?.arg?.trim() ?? options?.values?.query?.trim() ?? "";
