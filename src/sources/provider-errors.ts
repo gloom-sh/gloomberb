@@ -153,6 +153,15 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
 }
 
 /**
+ * The router's answer that no source served a read because one failed (a
+ * timeout, a rate limit, a refused session), not because none has it: asked
+ * again shortly it may answer.
+ */
+export function isSourceFailure(error: unknown): boolean {
+  return error instanceof NoProviderError && error.failure !== undefined;
+}
+
+/**
  * Whether a failed read means no source has what was asked for: a source's
  * miss, or the router's answer that none served it when none failed another
  * way. A refused session, a rate limit or a timeout is not, as asked again it may answer.

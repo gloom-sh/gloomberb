@@ -100,11 +100,15 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   let result;
   try {
     // Exact bounds first, then the interval's range history, as charts do
-    // when a source keeps no bars for the exact window.
-    result = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start, end, interval }, context);
+    // when a source keeps no bars for the exact window or failed to load it
+    // (the range history may answer from a saved copy); the failure stands when that has none either.
+    let detailFailure: unknown = null;
+    result = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start, end, interval }, context)
+      .catch((error: unknown) => { detailFailure = error; return null; });
     if (!result?.points.length) {
       result = await fetchHistoryResult(provider, symbol, exchange, { kind: "resolution", range: returnSupportRange(range), resolution: interval }, context) ?? result;
     }
+    if (!result?.points.length && detailFailure) throw detailFailure;
   } catch (error) {
     throw historyErrorMessage(error, interval);
   }

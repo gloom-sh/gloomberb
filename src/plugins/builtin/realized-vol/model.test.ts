@@ -37,6 +37,18 @@ describe("realized-volatility projection", () => {
     expect(result.series[0]!.values[30]).toBeCloseTo(realizedVolatility(points.slice(0, 671), 30)!, 12);
   });
 
+  /** `fn HVG BTC-USD` on 30 Oct 2026: the 10-bar value (35.00%) counted that day's forming bar, and nothing said so. */
+  test("a forming last bar is left out of every estimate, as BT leaves it out, and the model says so", () => {
+    const complete = history(1400, Date.UTC(2026, 9, 29));
+    const forming = { ...complete.at(-1)!, date: new Date(Date.UTC(2026, 9, 30)), close: complete.at(-1)!.close * 1.08, partial: true };
+    const result = projectRealizedVolatility([...complete, forming], { symbol: "BTC-USD", windows: [10] });
+    expect(result.asOf?.toISOString().slice(0, 10)).toBe("2026-10-29");
+    for (const row of result.cone) expect(row.current).toBeCloseTo(realizedVolatility(complete, row.window)!, 12);
+    expect(result.formingNote).toBe("2026-10-30 is still forming (partial) and left out: the estimates run through 2026-10-29, the last complete session");
+    expect(result.warnings).toEqual([]);
+    expect(projectRealizedVolatility(complete, { symbol: "BTC-USD", windows: [10] }).formingNote).toBeNull();
+  });
+
   test("applies estimator and leap-year cutoff, and anchors on the source's last date", () => {
     const points = history(1200, Date.UTC(2024, 1, 29));
     const result = projectRealizedVolatility(points, { symbol: "AAPL", estimator: "yang-zhang", windows: [30] });
