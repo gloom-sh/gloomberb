@@ -219,9 +219,25 @@ export function newerQuarter(data: DebtMaturitiesPayload): DebtQuarter | null {
   const quarter = data.latestQuarter ?? null;
   return quarter && data.latest && quarter.asOf > data.latest.asOf ? quarter : null;
 }
+/** The newest filing the payload reports: the 10-Q when it is newer, else the annual schedule's. */
+function newestDebtFiling(data: DebtMaturitiesPayload): Pick<DebtQuarter, "form" | "asOf" | "filed"> | null {
+  return newerQuarter(data) ?? data.latest ?? null;
+}
 /** The newest balance date the payload reports: the 10-Q's when it is newer, else the schedule's. */
 export function debtNewestAsOf(data: DebtMaturitiesPayload): string | null {
-  return newerQuarter(data)?.asOf ?? data.latest?.asOf ?? null;
+  return newestDebtFiling(data)?.asOf ?? null;
+}
+/** The form of the filing `debtNewestAsOf` dates, which names that date: `10-Q`, `10-K`. */
+export function debtNewestForm(data: DebtMaturitiesPayload): string | null {
+  return newestDebtFiling(data)?.form ?? null;
+}
+/**
+ * Which filing the pane's date is, as its footer says it, longest first:
+ * `10-Q 2026-09-30, filed 2026-10-27`, then `10-Q 2026-09-30`.
+ */
+export function debtNewestFilingText(data: DebtMaturitiesPayload): string[] {
+  const filing = newestDebtFiling(data);
+  return filing ? [`${filing.form} ${filing.asOf}, filed ${filing.filed}`, `${filing.form} ${filing.asOf}`] : [];
 }
 /** The 10-Q's debt in one line, `Current 212.00M · Non-current 6.84B USD`. */
 export function quarterDebtText(quarter: DebtQuarter): string {

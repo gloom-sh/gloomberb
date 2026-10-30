@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { DetailReader } from "../../../components/reader/detail-reader";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
@@ -40,7 +41,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: kind, focused, loading: resource.loading, error: resource.error,
     url: selected?.sourceUrl ?? data?.source.url ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
     stale: !!data && resource.data?.stale,
   });
   if (!symbol) return <EmptyState title="No ticker selected." message={`Select a US stock to view ${subject}.`} />;

@@ -73,6 +73,25 @@ describe("chartTableLayout", () => {
       .toMatchObject({ mode: "none", chartRows: 0, figureRows: FIGURE_ROWS_90 });
   });
 
+  test("a whole-row figure wraps rather than cut its date, keeping the figures a line each kept; a one-row band cuts it", () => {
+    // DDIS at 45 columns: four figures, then the newer 10-Q's row, which takes four lines wrapped.
+    const debt: StatItem[] = [
+      { id: "principal", label: "Principal total", value: "6.17B USD", detail: "68 pctl 10Y" },
+      { id: "next12", label: "Due next 12 months", value: "9.5%", detail: "41 pctl 10Y" },
+      { id: "next3", label: "Due next 3 years", value: "30.4%", detail: "50 pctl 10Y" },
+      { id: "as-of", label: "As of", value: "2025-12-31" },
+      { id: "10q", label: "Latest 10-Q", value: "Current 0 · Non-current 6.84B USD", detail: "2026-09-30 · filed 2026-10-27", wide: true },
+    ];
+    // A quarter of 28 rows is 7, enough for the five a line each; wrapped they take 8, within a third.
+    const tall = chartTableLayout({ width: 43, height: 28, figures: debt, tableRows: 6, chart: CHART });
+    expect(tall).toMatchObject({ wrapFigures: true, figureRows: 8 });
+    expect(tall.figures).toHaveLength(5);
+    // A short pane's one row keeps the leading figure on its line, cut, rather than none.
+    const short = chartTableLayout({ width: 36, height: 10, figures: debt, tableRows: 250, chart: CHART });
+    expect(short).toMatchObject({ wrapFigures: false, figureRows: 1 });
+    expect(short.figures.map((item) => item.id)).toEqual(["principal"]);
+  });
+
   test("never gives a full band fewer rows than the chart can draw in", () => {
     // Six table rows leave seven spare rows: more than the 40% share, fewer than a nine-row curve needs.
     const layout = chartTableLayout({ width: 90, height: 14, tableRows: 6, chart: { minRows: 9 } });

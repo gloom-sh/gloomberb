@@ -192,7 +192,9 @@ describe("report freshness", () => {
       "Source: Gloom Cloud · observed Sun 4 Oct (oldest Sun 27 Sep) · lag 6d · 1 of 2 stale",
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 of 2 stale",
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 stale",
-      "Observed Sun 4 Oct · lag 6d · 1 stale",
+      // The lag goes before the source and the date, which stay.
+      "Source: Gloom Cloud · observed Sun 4 Oct · 1 stale",
+      "Gloom Cloud · observed Sun 4 Oct · 1 stale",
     ]);
     // The fn footer keeps its wording, with the day a dataset observes stated as a day.
     expect(formatFreshnessLine(dataset)).toBe("Source: Gloom Cloud · Sun 4 Oct 2026 (oldest Sun 27 Sep 2026) · 1 of 2 stale");
@@ -374,7 +376,7 @@ describe("report freshness", () => {
     const one = "Source: DTCC \u00b7 last trade 2026-10-09 \u00b7 lag 2 days";
     expect(formatFreshnessLine(freshness)).toBe(one);
     expect(paneStatusLine(freshness)).toBe(one);
-    expect(statusLineVariants(freshness)).toEqual([one, "Last trade 2026-10-09 \u00b7 lag 2 days"]);
+    expect(statusLineVariants(freshness)).toEqual([one, "Source: DTCC \u00b7 last trade 2026-10-09", "DTCC \u00b7 last trade 2026-10-09"]);
     // The equity session of the ticker on screen does not date it.
     const quoted = deriveHeadlessFreshness(rows(), { rows: [
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NYSE", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T20:00:00Z") },

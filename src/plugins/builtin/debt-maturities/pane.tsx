@@ -24,6 +24,7 @@ import {
   type DataTableCell,
   type StatItem,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import type {
   DebtFact,
@@ -53,6 +54,7 @@ import {
   debtFilingUrl,
   debtMetricCaption,
   debtMetricValue,
+  debtNewestFilingText,
   debtNotices,
   debtPercent,
   historyAxis,
@@ -445,6 +447,15 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       label: "Principal total", values, value: debtAmount(last), color: colors.warning,
     };
   }, [bars]);
+  // Which filing the pane's date is, then how long ago it loaded: the age goes first in a narrow footer.
+  const filingFooter = useMemo(() => {
+    const [filing, ...shorter] = data ? debtNewestFilingText(data) : [];
+    return [
+      ...(filing ? [{ id: "filing", asOf: true, parts: [{ text: filing, tone: "muted" as const }],
+        variants: shorter.map((text) => [{ text, tone: "muted" as const }]) }] : []),
+      ...(data && updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+    ];
+  }, [data, updatedAgo]);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({
@@ -465,7 +476,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         ? debtFilingUrl(data.cik, selectedHistoryRow.accession)
         : (latest?.filingUrl ?? data?.source.url ?? null),
     showOpenHint: true,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: filingFooter,
     stale: !!data && resource.data?.stale,
   });
   const renderBucket = (

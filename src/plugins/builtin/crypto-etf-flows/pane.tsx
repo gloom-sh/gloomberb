@@ -12,6 +12,7 @@ import {
   type DataTableCell,
   type StatItem,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { useChartViewReset } from "../../../components/chart/core/view-reset";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -100,7 +101,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   const footerInfo = useMemo(() => data ? [
     { id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" as const }] },
-    ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
+    ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
   ] : [], [data, updatedAgo]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const refresh = useCallback(() => void resource.reload(), [resource.reload]);

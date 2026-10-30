@@ -85,26 +85,32 @@ export function sortBonds(bonds: readonly CorporateBond[], sort: BondSort): Corp
   });
 }
 
+/**
+ * What a sale says leads: its price, yield and CUSIP, after the issuer when
+ * the rows are several issuers', before what describes the bond (coupon,
+ * maturity) and the rest of the sale.
+ */
 const BOND_COLUMNS: readonly BondColumn[] = [
   { id: "issuer", label: "Issuer", width: 18, align: "left", flexGrow: 1 },
+  { id: "price", label: "Price", width: 9, align: "right" },
+  { id: "yield", label: "Yield", width: 8, align: "right" },
   { id: "cusip", label: "CUSIP", width: 10, align: "left" },
   { id: "coupon", label: "Coupon", width: 7, align: "right" },
   { id: "maturity", label: "Maturity", width: 11, align: "left" },
-  { id: "price", label: "Price", width: 9, align: "right" },
-  { id: "yield", label: "Yield", width: 8, align: "right" },
   { id: "change", label: "Chg", width: 8, align: "right" },
   { id: "traded", label: "Traded", width: 11, align: "left" },
   { id: "grade", label: "Grade", width: 6, align: "left" },
 ];
 
 /**
- * What a narrow tape gives up first. The issuer, coupon and maturity name a
- * bond, so two of one issuer's issues stay told apart, and its price is
- * what was printed; they never go. The trade date, the default sort and
- * how old a last sale is, outlasts the CUSIP and yield. The headless report
- * moves its columns under the rows in the same order (`bondStackPriority`).
+ * What a narrow tape gives up first. The price and yield are what was printed
+ * and the CUSIP tells two issues with one coupon and maturity apart, so they
+ * never go, nor does the issuer while it names the row; the descriptive
+ * columns go before them, the coupon last as it is the narrowest. The
+ * headless report moves its columns under the rows in the same order
+ * (`bondStackPriority`).
  */
-const BOND_NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "cusip", "yield", "traded"];
+const BOND_NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "traded", "maturity", "coupon"];
 
 /** `stackPriority` of each column in the text report: the higher, the sooner it moves under its row. */
 export function bondStackPriority(columnId: BondColumnId): number {
@@ -112,6 +118,25 @@ export function bondStackPriority(columnId: BondColumnId): number {
   return index < 0 ? 0 : BOND_NARROW_DROP_ORDER.length - index;
 }
 
-export function buildBondColumns(width: number): BondColumn[] {
-  return fitChartTableColumns(BOND_COLUMNS, width, BOND_NARROW_DROP_ORDER);
+/** The tape's symbol root of an issue (`WHR` of `WHR4800338` and `WHR.GM`), or null without one. */
+function symbolRoot(symbol: string | null): string | null {
+  return symbol?.match(/^[A-Z]+/)?.[0] ?? null;
+}
+
+/**
+ * Whether every row is the same issuer's, so an issuer column would only
+ * repeat it: more than one row, all under one symbol root, or all one name
+ * where a row has no symbol. One row keeps the name, the only thing naming it.
+ */
+export function sharesOneIssuer(bonds: readonly Pick<CorporateBond, "issuerName" | "symbol">[]): boolean {
+  if (bonds.length < 2) return false;
+  const roots = bonds.map((bond) => symbolRoot(bond.symbol));
+  if (roots.every((root) => root != null)) return new Set(roots).size === 1;
+  return new Set(bonds.map((bond) => bond.issuerName.trim().toUpperCase())).size === 1;
+}
+
+/** The columns at `width`, without the issuer's when every row shares it (`sharesOneIssuer`). */
+export function buildBondColumns(width: number, { sharedIssuer = false }: { sharedIssuer?: boolean } = {}): BondColumn[] {
+  const columns = sharedIssuer ? BOND_COLUMNS.filter((column) => column.id !== "issuer") : BOND_COLUMNS;
+  return fitChartTableColumns(columns, width, BOND_NARROW_DROP_ORDER);
 }

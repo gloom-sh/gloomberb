@@ -6,7 +6,7 @@ import { setCliWidthOverride, visibleLength } from "../../../utils/cli-output";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { bondTapeRequests, fetchBondTape, isCusip, noPrintsText, parseBondQuery, tapeIssuerName } from "./client";
 import { traceBondsHeadless } from "./headless";
-import { buildBondColumns } from "./model";
+import { buildBondColumns, sharesOneIssuer } from "./model";
 
 type Row = Record<string, unknown>;
 type Filter = { fieldName: string; compareType: string; fieldValue: string | null };
@@ -205,13 +205,22 @@ test.each(["abort error", "caller signal", "resolved after cancellation"])("a ca
   expect(posted).toHaveLength(4);
 });
 
-test("a narrow tape keeps coupon and maturity, and the trade date outlasts the CUSIP and yield", async () => {
-  const ids = (width: number) => buildBondColumns(width).map((column) => column.id);
-  expect(ids(56)).toEqual(["issuer", "coupon", "maturity", "price"]);
-  expect(ids(72)).toEqual(["issuer", "coupon", "maturity", "price", "traded"]);
-  expect(ids(80)).toEqual(["issuer", "coupon", "maturity", "price", "yield", "traded"]);
-  expect(ids(95)).toEqual(["issuer", "cusip", "coupon", "maturity", "price", "yield", "traded"]);
+test("a narrow tape keeps price, yield and CUSIP ahead of what describes the bond, and one issuer's rows drop its name", async () => {
+  const ids = (width: number, sharedIssuer = false) => buildBondColumns(width, { sharedIssuer }).map((column) => column.id);
+  // A 45-column window: the sale and the CUSIP that tells two 7.875% 2034 issues apart, then the coupon.
+  expect(ids(43, true)).toEqual(["price", "yield", "cusip", "coupon"]);
+  expect(ids(56, true)).toEqual(["price", "yield", "cusip", "coupon", "maturity"]);
+  expect(ids(78, true)).toEqual(["price", "yield", "cusip", "coupon", "maturity", "change", "traded"]);
+  // Several issuers' rows keep the name that tells them apart, first.
+  expect(ids(56)).toEqual(["issuer", "price", "yield", "cusip"]);
   expect(ids(120)).toHaveLength(9);
+
+  const whirlpool = { issuerName: "WHIRLPOOL CORP", symbol: "WHR6415676" };
+  expect(sharesOneIssuer([whirlpool, { issuerName: "WHIRLPOOL CORP MEDIUM TERM NTS", symbol: "WHR.GM" }])).toBe(true);
+  expect(sharesOneIssuer([whirlpool, { issuerName: "WHIRLPOOL FINANCE", symbol: "WHRF4800338" }])).toBe(false);
+  // One row is the only thing naming its issuer; rows without symbols go by the name.
+  expect(sharesOneIssuer([whirlpool])).toBe(false);
+  expect(sharesOneIssuer([{ issuerName: "ACME", symbol: null }, { issuerName: "ACME ", symbol: null }])).toBe(true);
 
   fakeTape((request) => perpetual(request) ? [] : [
     bond("963320BG0", "WHR6415676", "WHIRLPOOL CORP", "2026-10-16"),
@@ -221,10 +230,9 @@ test("a narrow tape keeps coupon and maturity, and the trade date outlasts the C
   const { text } = await report("whirlpool");
   const lines = text.split("\n");
   const header = lines.find((line) => line.includes("Issuer"))!;
-  for (const name of ["Coupon", "Maturity", "Price"]) expect(header).toContain(name);
-  // Two issues of one issuer stay apart by coupon and maturity, the CUSIP moved under each.
-  expect(lines.find((line) => line.includes("7.875"))).toContain("2034-07-01");
-  expect(lines.find((line) => line.includes("7.500"))).toContain("2031-07-01");
-  expect(text).toContain("CUSIP 963320BG0");
+  for (const name of ["Price", "Yield", "CUSIP"]) expect(header).toContain(name);
+  // Two issues of one issuer stay apart by CUSIP, the coupon and maturity moved under each.
+  expect(lines.find((line) => line.includes("963320BG0"))).toContain("88.055");
+  expect(text).toContain("Maturity 2031-07-01");
   expect(lines.filter((line) => visibleLength(line) > 56)).toEqual([]);
 });

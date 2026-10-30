@@ -13,7 +13,7 @@ import {
   type DataTableRootKeyContext,
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -309,7 +309,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     if (savedAt != null) info.push(...savedCopyFooterInfo([savedAt]));
     else if (stale) info.push(STALE_SEGMENT);
     if (fetchedAt && savedAt == null) {
-      info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
+      info.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
     }
     return {
       info,

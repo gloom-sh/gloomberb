@@ -40,6 +40,7 @@ import {
   formatBondChange,
   formatBondDecimal,
   isBondColumnId,
+  sharesOneIssuer,
   sortBonds,
   type BondColumn,
   type BondSort,
@@ -74,7 +75,9 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   usePaneRefreshKey(() => void reload(), { focused, enabled: !searchActive });
 
   const rows = useMemo(() => sortBonds(bonds, sort), [bonds, sort]);
-  const columns = useMemo(() => buildBondColumns(width), [width]);
+  // One issuer's tape says its name once, in what was asked, not on every row.
+  const sharedIssuer = useMemo(() => sharesOneIssuer(bonds), [bonds]);
+  const columns = useMemo(() => buildBondColumns(width, { sharedIssuer }), [sharedIssuer, width]);
   const tradeDate = answered ? data.tradeDate : null;
   const footerInfo = useMemo(
     () => (tradeDate ? [{ id: "trade-date", parts: [{ text: tradeDate }] }] : []),

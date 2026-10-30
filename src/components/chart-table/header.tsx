@@ -257,7 +257,7 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   return (
     <Box flexDirection="column" flexShrink={0}>
       {query}
-      {layout.figureRows ? <StatGrid items={layout.figures} width={width} /> : null}
+      {layout.figureRows ? <StatGrid items={layout.figures} width={width} wrap={layout.wrapFigures} /> : null}
       {band}
     </Box>
   );
