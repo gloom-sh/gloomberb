@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { ageFooterSegment, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { usePaneInstance } from "../../../state/app/context";
@@ -96,7 +96,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
   const updatedAgo = useUpdatedAgo(updatedAt);
   const info = useMemo<PaneFooterSegment[]>(() => {
     const year = data?.marketYear;
-    const updated: PaneFooterSegment[] = updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" }] }] : [];
+    const updated: PaneFooterSegment[] = updatedAgo ? [ageFooterSegment(updatedAgo)] : [];
     return year ? [...updated, { id: "year", parts: [{ text: year, tone: "muted" }] }] : updated;
   }, [data?.marketYear, updatedAgo]);
 

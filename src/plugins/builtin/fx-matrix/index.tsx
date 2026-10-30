@@ -9,7 +9,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import { ageFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
@@ -244,7 +244,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
     if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
-    else if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
+    else if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
     return { info };
   }, [savedAt, status.loading, statusText, updatedAgo]);
 

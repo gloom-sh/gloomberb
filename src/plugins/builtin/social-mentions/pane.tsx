@@ -3,6 +3,7 @@ import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import type { SocialMentionPost, SocialMentionsRange } from "../../../api-client/social-mentions";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -117,7 +118,7 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
   usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: signInWall ? null : resource.error,
     url: selected?.topPost?.url ?? (symbol ? `https://x.com/search?q=%24${symbol}` : null), showOpenHint: true,
     info: data ? [
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ] : [],
   });

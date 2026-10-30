@@ -8,6 +8,7 @@ import {
   usePaneStatusFooter,
   type ChartTableChart,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { staticSeries } from "../../../components/chart/static/series";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
@@ -107,7 +108,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     error: historyError,
     stale: !!resource.data?.stale,
     info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US listings only", tone: "muted" as const }] }]
-      : payload && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+      : payload && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
   });
 
   return (

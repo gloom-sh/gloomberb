@@ -355,6 +355,11 @@ the origin of a number. The one count the kit draws is the
   lines: a short label, the value, muted `detail` (percentile, date,
   window). Drop sample sizes ("252 obs"), dates the footer already carries,
   and anything the title, the active tab or the selected row shows.
+- A figure that spans its row (a `wide` one, or any in a one-column band)
+  and does not fit one line takes a second, never more: the detail under the
+  value, cut where it has no date, so a date is never what gives way. A pane
+  that sizes the content below by `statGridRows` passes the same `maxLines`
+  to both, the rows that content's least leaves, so a wrap never spills it.
 - Compact controls: `Button compact` with `displayLabel`, `Tabs dense` in
   narrow panes, `KeyValueRow`, `Badge` for a state word.
 - Empty states are one line plus an optional `hint`.

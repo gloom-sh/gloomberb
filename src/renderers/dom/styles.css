@@ -1441,6 +1441,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset -1px 0 0 var(--sg-hairline);
 }
 [data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+/* A whole-row cell too narrow for its value and detail on one line: the label
+   stays on the first line, the value and the detail run down beside it. */
+[data-gloom-role="stat-grid-cell"][data-wrapped="true"] { align-items: flex-start; }
+[data-gloom-role="stat-grid-cell"][data-wrapped="true"] [data-gloom-role="stat-grid-detail"] { flex: none; }
 /* Column grid text whose track can be narrower than it, and the grid itself: clipped
    without a scroll container where the engine has `overflow: clip`. A text box sets its
    own overflow inline, hence !important. The margin keeps the antialiased edge of a glyph

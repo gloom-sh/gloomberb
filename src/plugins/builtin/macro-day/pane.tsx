@@ -152,7 +152,9 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     return { text: times(event.multiple), value: event.multiple };
   }, [colors, model?.basis, release]);
 
-  const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width));
+  // A figure wraps only into rows the table's least leaves, so the pane never spills.
+  const statMaxLines = height - 1 - 4;
+  const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width, undefined, { maxLines: statMaxLines }));
   const key = (event: MacroDayEvent) => `${event.kind}:${event.date}`;
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
@@ -164,7 +166,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="macro-day moves" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.events.length}>
       {model ? <>
-        <StatGrid items={stats} width={width} />
+        <StatGrid items={stats} width={width} maxLines={statMaxLines} />
         <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
           getItemKey={key} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
           selection={{ kind: "id", selectedId: selectedRow, getId: key, onChange: (id) => setSelectedRow(id) }}

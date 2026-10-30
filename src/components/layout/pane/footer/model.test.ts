@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { combinePaneFooterRegistrations, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { ageFooterSegment, combinePaneFooterRegistrations, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -57,6 +57,21 @@ describe("footer hint row", () => {
     expect(cut.title).toBe("Fri 9 Oct close · 15 min delayed");
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
     expect(fitPaneFooterInfo([contract, stale], 20).map((segment) => segment.id)).toEqual(["contract", "stale"]);
+  });
+
+  test("how long ago the data loaded goes first, whole, so the source and the date stay; a saved copy stays first", () => {
+    const filing: PaneFooterSegment = { id: "filing", parts: [{ text: "10-Q 2026-09-30, filed 2026-10-27", tone: "muted" }] };
+    const age = ageFooterSegment("5m ago");
+    const rates: PaneFooterSegment = { id: "rates", parts: [{ text: "oldest rate 2026-10-28 05:35 UTC", tone: "muted" }] };
+    const fetched = ageFooterSegment("just now", { verb: "fetched" });
+    // Wide enough: both, in the pane's order.
+    expect(fitPaneFooterInfo([age, filing], 33 + 3 + 6)).toEqual([age, filing]);
+    // Leading or trailing, beside hints or not, the age leaves whole rather than cut the date or itself.
+    expect(fitPaneFooterInfo([age, filing], 37)).toEqual([filing]);
+    expect(fitPaneFooterInfo([rates, fetched], 41, { besideHints: false })).toEqual([rates]);
+    // A saved copy is no age: it stays first, whole, beside the date.
+    const saved = savedCopyFooterSegment("saved", Date.UTC(2026, 9, 28, 12), Date.UTC(2026, 9, 28, 12, 30));
+    expect(fitPaneFooterInfo([saved, rates, fetched], 60)).toEqual([saved, rates]);
   });
 
   test("segments are set apart by the separator, an icon by one column, and the fit counts both", () => {

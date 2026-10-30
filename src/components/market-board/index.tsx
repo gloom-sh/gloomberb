@@ -215,9 +215,10 @@ export interface StatChartDetailProps {
 export function StatChartDetail({ items, width, height, empty, emptySubject, emptyTitle, renderChart }: StatChartDetailProps) {
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <StatGrid items={items} width={width} />
+      {/* A figure wraps only into rows the chart's least leaves, so the detail never spills. */}
+      <StatGrid items={items} width={width} maxLines={height - 3} />
       <PaneStatusBody empty={empty} subject={emptySubject} emptyTitle={emptyTitle}>
-        {renderChart(Math.max(3, height - statGridRows(items, width)))}
+        {renderChart(Math.max(3, height - statGridRows(items, width, undefined, { maxLines: height - 3 })))}
       </PaneStatusBody>
     </Box>
   );

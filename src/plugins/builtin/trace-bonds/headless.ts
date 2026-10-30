@@ -8,7 +8,7 @@ import {
   quotedCompanyName,
   type CorporateBond,
 } from "./client";
-import { bondStackPriority, formatBondChange, formatBondDecimal, type BondColumnId } from "./model";
+import { bondStackPriority, formatBondChange, formatBondDecimal, sharesOneIssuer, type BondColumnId } from "./model";
 
 const decimal = (digits: number) => (value: unknown) => (
   typeof value === "number" ? formatBondDecimal(value, digits) : "—"
@@ -32,6 +32,15 @@ const COLUMNS: HeadlessPaneColumn[] = [
   column("traded", { key: "lastTradeDate", header: "Traded" }),
   column("grade", { key: "traceGradeCode", header: "Grade" }),
 ];
+
+/**
+ * One issuer's tape (`sharesOneIssuer`) leaves the issuer column out of the
+ * text table, as the pane does; exports and piped output keep it.
+ */
+function reportColumns(bonds: readonly CorporateBond[]): HeadlessPaneColumn[] {
+  if (!sharesOneIssuer(bonds)) return COLUMNS;
+  return COLUMNS.map((spec) => spec.key === "issuerName" ? { ...spec, minTableWidth: Number.MAX_SAFE_INTEGER } : spec);
+}
 
 function reportRow(bond: CorporateBond) {
   return {
@@ -85,7 +94,7 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [{
         // An empty answer is its message alone, dated in its own words.
         title: bonds.length > 0 ? (tradeDate ? `Last sales ${tradeDate}` : "Last sales") : query ? "" : "Last sales",
-        columns: COLUMNS,
+        columns: reportColumns(bonds),
         rows: bonds.map(reportRow),
         ...(query ? { empty: noPrintsText(query, tradeDate, issuer) } : {}),
       }],

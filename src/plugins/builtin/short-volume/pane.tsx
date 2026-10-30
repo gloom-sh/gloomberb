@@ -3,6 +3,7 @@ import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { ChartTableHeader, DataTableStackView, EmptyState, formatPercentAxis, KeyValueRow, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -83,7 +84,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "short-volume", focused, loading: resource.loading, error: resource.error,
     url: selected?.sourceUrl ?? data?.source.url ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
     stale: !!data && resource.data?.stale,
   });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="short-volume-signin" action="view daily short volume" needsVerification={session.needsVerification} />;

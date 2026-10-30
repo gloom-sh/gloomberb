@@ -1092,8 +1092,10 @@ function observedDayText(date: string, retrievedAt: string): string {
 }
 
 interface DatasetLineDetail {
-  /** Leave out the source. */
-  source?: "none";
+  /** The source without its `Source:` label, or left out. */
+  source?: "bare" | "none";
+  /** Leave out how many days the data lags, which a narrow line gives up before its source and date. */
+  lag?: "none";
   /** Leave out the oldest observation. */
   oldest?: "none";
   /** Count stale rows without their total. */
@@ -1113,11 +1115,12 @@ function lagText(days: number): string {
  * `Source: DTCC · last trade 2026-10-09 · lag 2 days`.
  */
 function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: number, detail: DatasetLineDetail = {}): string[] {
+  const source = detail.source === "none" ? [] : [detail.source === "bare" ? freshness.source : `Source: ${freshness.source}`];
   if (freshness.observation) {
     return [
-      ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
+      ...source,
       `${freshness.observation} ${asOf.slice(0, 10)}`,
-      lagText(lagDays),
+      ...(detail.lag === "none" ? [] : [lagText(lagDays)]),
       ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, false)]
         : freshness.status === "stale" ? ["stale"] : []),
     ];
@@ -1127,9 +1130,9 @@ function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: num
   const oldest = freshness.oldest && detail.oldest !== "none" ? ` (oldest ${dated(freshness.oldest)})` : "";
   const stale = freshness.status !== "stale" ? null : staleRowsText(freshness, detail.status === "short") ?? "stale";
   return [
-    ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
+    ...source,
     `observed ${dated(asOf)}${period ? ` (${period})` : ""}${oldest}`,
-    `lag ${lagDays}d`,
+    ...(detail.lag === "none" ? [] : [`lag ${lagDays}d`]),
     ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, false)] : stale ? [stale] : []),
   ];
 }
@@ -1190,16 +1193,21 @@ export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
  * `Source: CFTC · Tue 6 Oct 2026 · not a live feed (weekly report)`, shortens
  * the same way and gives up its source last. A dataset reads
  * `Source: Gloom Cloud · observed Sun 4 Oct · lag 6d` and gives up its oldest
- * observation, the stale total, then its source.
+ * observation, the stale total, then its lag; its source loses its label
+ * (`Gloom Cloud · observed Sun 4 Oct`), and the narrowest line is the date
+ * alone (`Observed Sun 4 Oct`): the source goes before the date.
  */
 export function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
   if (datesObservation(freshness)) {
     const { asOf, lagDays } = freshness;
+    // The lag, relative to the reading, goes before the source and the date; the source before the date.
     const datasetDetails: DatasetLineDetail[] = [
       {},
       { oldest: "none" },
       { oldest: "none", status: "short" },
-      { source: "none", oldest: "none", status: "short" },
+      { oldest: "none", status: "short", lag: "none" },
+      { oldest: "none", status: "short", lag: "none", source: "bare" },
+      { oldest: "none", status: "short", lag: "none", source: "none" },
     ];
     return [...new Set(datasetDetails.map((detail) => capitalize(datasetLineParts(freshness, asOf, lagDays, detail).join(" · "))))];
   }

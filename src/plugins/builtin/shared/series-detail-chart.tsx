@@ -111,7 +111,9 @@ export function SeriesDetailChart({
 }) {
   const [userViewport, setUserViewport] = useState<{ start: Date; end: Date } | null>(null);
   const chartWidth = Math.max(24, width);
-  const statRows = statGridRows(stats, width);
+  // A figure wraps only into rows the chart's least leaves, so the pane never spills.
+  const statMaxLines = height - MIN_CHART_ROWS - aboveChartRows - belowChartRows;
+  const statRows = statGridRows(stats, width, undefined, { maxLines: statMaxLines });
   const chartHeight = Math.max(MIN_CHART_ROWS, height - statRows - aboveChartRows - belowChartRows);
   const { unit, unitGroup, nativeFrequency } = axis;
 
@@ -139,7 +141,7 @@ export function SeriesDetailChart({
 
   return (
     <Box flexDirection="column" width={width}>
-      <StatGrid items={stats} width={width} />
+      <StatGrid items={stats} width={width} maxLines={statMaxLines} />
       {drawable ? (
         <>
           {aboveChart?.(chartWidth)}

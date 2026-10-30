@@ -31,6 +31,8 @@ const CHART_SHARE = 0.4;
 const SHORT_BODY_ROWS = 12;
 /** The figures never take more than this share of the body. */
 const FIGURE_SHARE = 0.25;
+/** The share of the body figures that wrap rather than cut a date may take, beyond FIGURE_SHARE. */
+const WRAPPED_FIGURE_SHARE = 1 / 3;
 
 /**
  * The rows a kit table spends outside its body: the header, plus a horizontal
@@ -70,15 +72,28 @@ export interface ChartTableLayoutInput {
 export interface ChartTableLayout {
   figures: StatItem[];
   figureRows: number;
+  /** The lines the figures may take, so a whole-row cell too narrow for one line wraps within them (StatGrid's `maxLines`). */
+  figureMaxLines: number;
   mode: ChartBandMode;
   chartRows: number;
 }
 
-/** Drops figures from the end until they fit the row budget. */
-function fitFigures(figures: readonly StatItem[], width: number, maxRows: number): StatItem[] {
+/** Rows `figures` take within `maxLines` (StatGrid's own count). */
+function figureRows(figures: readonly StatItem[], width: number, maxLines: number): number {
+  return statGridRows([...figures], width, undefined, { maxLines });
+}
+
+/**
+ * The figures that fit the row budget a line each, dropped from the end, and
+ * the lines they may take: a whole-row figure too narrow for one line wraps
+ * onto a second rather than cut a date, into rows up to WRAPPED_FIGURE_SHARE
+ * of the body, the leading ones first; the rest keep one line, cut. Wrapping
+ * never costs a figure that fits a line. A budget of one row wraps none.
+ */
+function fitFigures(figures: readonly StatItem[], width: number, maxRows: number, body: number): { figures: StatItem[]; maxLines: number } {
   const kept = [...figures];
-  while (kept.length > 0 && statGridRows(kept, width) > maxRows) kept.pop();
-  return kept;
+  while (kept.length > 0 && figureRows(kept, width, maxRows) > maxRows) kept.pop();
+  return { figures: kept, maxLines: maxRows > 1 ? Math.max(maxRows, Math.floor(body * WRAPPED_FIGURE_SHARE)) : maxRows };
 }
 
 /**
@@ -89,7 +104,9 @@ function fitFigures(figures: readonly StatItem[], width: number, maxRows: number
  *   fewer), so the rows the pane is about never vanish.
  * - The figures take at most a quarter of the body, one row when it is short
  *   or when a second row would cost the chart its place, and lose items from
- *   the end rather than wrap.
+ *   the end rather than spill; a whole-row figure wraps onto a second line
+ *   rather than cut its detail, in rows up to a third of the body, never
+ *   at the cost of a figure that fits a line.
  * - The chart takes 40% of what is left, or everything the table does not
  *   need when all its rows fit, so no blank band opens under a short table.
  * - Below a readable chart the band becomes a one-row strip, then nothing.
@@ -125,11 +142,11 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
 
   // A table with no room for a single row after the figures gets the body back.
   const figureBudget = Math.min(figureCap, Math.max(0, body - chrome - Math.min(tableRows, 1)));
-  const figures = figureBudget > 0 ? fitFigures(input.figures ?? [], width, figureBudget) : [];
-  const figureRows = figures.length ? statGridRows(figures, width) : 0;
+  const { figures, maxLines: figureMaxLines } = figureBudget > 0 ? fitFigures(input.figures ?? [], width, figureBudget, body) : { figures: [], maxLines: 0 };
+  const shownRows = figures.length ? figureRows(figures, width, figureMaxLines) : 0;
 
-  const rest = body - figureRows;
-  const none: ChartTableLayout = { figures, figureRows, mode: "none", chartRows: 0 };
+  const rest = body - shownRows;
+  const none: ChartTableLayout = { figures, figureRows: shownRows, figureMaxLines, mode: "none", chartRows: 0 };
   if (!input.chart || width < CHART_MIN_WIDTH) return none;
 
   const minRows = input.chart.minRows ?? CHART_MIN_ROWS;
@@ -137,7 +154,7 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   const maxRows = input.chart.maxRows ?? Number.POSITIVE_INFINITY;
   const room = rest - tableMin;
   const spare = rest - tableFit;
-  const full = (rows: number): ChartTableLayout => ({ figures, figureRows, mode: "full", chartRows: Math.min(rows, maxRows) });
+  const full = (rows: number): ChartTableLayout => ({ figures, figureRows: shownRows, figureMaxLines, mode: "full", chartRows: Math.min(rows, maxRows) });
   if (room >= minRows) {
     // With every table row in view beside a readable chart, the chart takes
     // exactly the rest; otherwise its 40% share, never below what it draws in.
@@ -148,7 +165,7 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   // instead of a strip over a blank band.
   if (spare >= compactRows) return full(spare);
   if (input.chart.strip !== false && room >= 1) {
-    return { figures, figureRows, mode: "strip", chartRows: 1 };
+    return { figures, figureRows: shownRows, figureMaxLines, mode: "strip", chartRows: 1 };
   }
   return none;
 }

@@ -58,6 +58,14 @@ export interface PaneFooterSegment {
    */
   capture?: boolean;
   /**
+   * The segment only says how long ago the pane's data loaded (`5m ago`,
+   * `fetched just now`), relative to the moment it is read: build it with
+   * {@link ageFooterSegment}. A row too narrow for every segment leaves it out
+   * first, whole, before anything else shortens or is cut, so the source and
+   * the date stay.
+   */
+  age?: boolean;
+  /**
    * When the copy the pane shows was saved, on the saved-copy segment
    * ({@link savedCopyFooterSegment}). The footer draws that segment first,
    * wherever a pane registers it, and once: the oldest when several parts of
@@ -133,6 +141,19 @@ export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.n
     parts: [{ text, tone: "warning" }],
     variants: [[{ text: t("saved copy"), tone: "warning" }]],
   };
+}
+
+/**
+ * The footer's one form for how long ago the pane's data loaded: `5m ago`,
+ * or `fetched 5m ago` with a `verb`. A narrow row leaves it out first (`age`).
+ */
+export function ageFooterSegment(ago: string, { id = "updated", verb, tone = "muted" }: {
+  id?: string;
+  /** Said before the age: `fetched`, `checked`, `updated`. */
+  verb?: string;
+  tone?: PaneFooterPart["tone"];
+} = {}): PaneFooterSegment {
+  return { id, age: true, parts: [{ text: verb ? `${verb} ${ago}` : ago, tone }] };
 }
 
 /**
@@ -325,7 +346,8 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): P
 }
 
 /**
- * The info segments as they fit `width`: segments with `variants` step down
+ * The info segments as they fit `width`: an `age` (`5m ago`) is left out
+ * first, so the source and the date outlast it; then segments with `variants` step down
  * together, one variant at a time, until the row fits or none is left; beside
  * the hints, the trailing status that still does not fit is then cut or left
  * out (trimTrailing). A status after every segment with shorter forms gives
@@ -336,6 +358,10 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): P
  * so a frame that fits its own status line sees it overflow.
  */
 export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
+  // How long ago the data loaded goes first, whole: a cut age (`fetched just`) says nothing.
+  if (infoTextWidth(info) > width && info.some((segment) => segment.age)) {
+    return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints });
+  }
   if (!besideHints) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
@@ -547,6 +573,7 @@ export function samePaneFooterRegistration(
         && !!segment.onPress === !!other.onPress
         && segment.disabled === other.disabled
         && segment.savedCopyAt === other.savedCopyAt
+        && segment.age === other.age
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));
