@@ -9,9 +9,9 @@ function delayedMarkText(minutes: number): string {
   return `${ICON_GLYPHS.clock}${minutes}m`;
 }
 
-/** Columns the mark takes in the terminal. */
-export function delayedMarkWidth(minutes: number): number {
-  return displayWidth(delayedMarkText(minutes));
+/** Cells the mark takes: `◷15m` in the terminal, the clock icon (12px, two cells) on the desktop and the web. */
+export function delayedMarkWidth(minutes: number, nativePaneChrome: boolean): number {
+  return nativePaneChrome ? 2 : displayWidth(delayedMarkText(minutes));
 }
 
 /**

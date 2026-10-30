@@ -256,7 +256,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const marketStateText = sessionLabel ? t(sessionLabel) : "";
   // Signed out or free, the headline price is the delayed one: the mark says so after the session.
   const delayMinutes = sessionQuote ? quoteDelayMinutes : null;
-  const delayCells = delayMinutes != null ? delayedMarkWidth(delayMinutes) + 1 : 0;
+  const delayCells = delayMinutes != null ? delayedMarkWidth(delayMinutes, nativePaneChrome === true) + 1 : 0;
   const hasIdentityLine = Boolean(companyName || venueText || marketStateText || delayMinutes != null);
   // The desktop logo is a square from the top of the company name's capitals down to the
   // price's baseline, so its edges meet the text's and the three read as one block. The

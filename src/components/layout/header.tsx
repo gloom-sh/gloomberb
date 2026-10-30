@@ -769,7 +769,8 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
     available: width,
     baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
     countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
-    spyWidth: summary.spyText.length + 1 + (summary.spyDelayMinutes != null ? delayedMarkWidth(summary.spyDelayMinutes) + 1 : 0),
+    // A delayed SPY keeps its mark: the two fit, or give way, together.
+    spyWidth: summary.spyText.length + 1 + (summary.spyDelayMinutes != null ? delayedMarkWidth(summary.spyDelayMinutes, nativePaneChrome) + 1 : 0),
     stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
   });
   const marketLabel = fit.showCountdown ? summary.marketLabel : summary.marketLabelShort;
