@@ -4,7 +4,7 @@ import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { Button } from "../../../components/ui/button";
 import { DelayedMark } from "../../../components/ui/delayed-mark";
-import { Box, useCommandBarShortcut } from "../../../ui";
+import { Box, useCommandBarShortcut, useUiCapabilities } from "../../../ui";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES, resolvePlanAccess } from "../../../api-client/plan-access";
@@ -25,6 +25,7 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   const openUpgrade = useCloudUpgradeAction("status-widget");
   const openPlan = useCloudPlanAction();
   const offerShowing = useTrialOfferShowing();
+  const { nativePaneChrome } = useUiCapabilities();
   // The status bar takes no keyboard focus; the chip names the command instead.
   const commandBarKey = useCommandBarShortcut();
   const [access, setAccess] = useState(() => resolvePlanAccess(apiClient.getCurrentUser()));
@@ -51,7 +52,7 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
 
   const mark = <DelayedMark minutes={CLOUD_QUOTE_DELAY_MINUTES} />;
   return (
-    <Box flexDirection="row" alignItems="center" gap={1} paddingRight={offerShowing ? 1 : 0} data-gloom-role="delayed-status">
+    <Box flexDirection="row" alignItems="center" gap={1} paddingRight={offerShowing || !nativePaneChrome ? 1 : 0} data-gloom-role="delayed-status">
       {mark}
       {offerShowing ? null : (
         <Button
