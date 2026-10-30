@@ -24,7 +24,6 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { latestSettledSessionDate } from "../../utils/price-history";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
-import { sourceDidNotAnswer } from "../../api-client/errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
@@ -380,7 +379,6 @@ export function mapBatchError<T>(
   if (isEmptyCloudStatus(item.status)) {
     return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message, { notFound: item.reasonCode === NOT_FOUND_REASON });
   }
-  if (isCloudSourceFailure(item.status)) return sourceDidNotAnswer(item.reasonCode ?? fallbackMessage);
   return new Error(item.reasonCode ?? fallbackMessage);
 }
 

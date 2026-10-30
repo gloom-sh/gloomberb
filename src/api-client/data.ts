@@ -53,7 +53,7 @@ import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
 import { LIVE_SCAN_PATH, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
 import { signalWithTimeout } from "../utils/async-deadline";
-import { ApiRequestError, isRetryableApiError } from "./errors";
+import { ApiRequestError, isRetryableApiError, markAskedTwice } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
@@ -206,25 +206,21 @@ function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBa
 
 /** How long a listing read waits before asking again after the service said its source failed. */
 const LISTING_RETRY_DELAY_MS = 400;
-/** A rate limit that asks for a longer wait than this is not asked again at once. */
-const LISTING_RETRY_MAX_WAIT_MS = 2_000;
 
 /**
- * How long to wait before asking a failed listing read again, or null not to:
- * the service answered that its own source failed (`retryable_error`, or the
- * catch-all `fatal_error`, with no data), or failed with a 5xx, a timeout or a
- * rate limit it answered. An answer of no data, a refusal, and a request that
- * never reached the service (`DataServiceUnreachableError`) are not asked again.
+ * Whether a failed listing read is asked again: the service answered that its
+ * own source failed (`retryable_error`, or the catch-all `fatal_error`, with no
+ * data), or failed with a 5xx or a timeout. A rate limit is never asked again,
+ * whatever wait it names: asking again is more of what it refused. An answer of
+ * no data, a refusal, and a request that never reached the service
+ * (`DataServiceUnreachableError`) are not asked again either.
  */
-function listingRetryWait(outcome: { response: CloudMarketResponse<unknown> } | { error: unknown }, delayMs: number): number | null {
+function isListingReadRetried(outcome: { response: CloudMarketResponse<unknown> } | { error: unknown }): boolean {
   if ("response" in outcome) {
     const { status, data } = outcome.response ?? {};
-    return (status === "retryable_error" || status === "fatal_error") && data == null ? delayMs : null;
+    return (status === "retryable_error" || status === "fatal_error") && data == null;
   }
-  if (!isRetryableApiError(outcome.error)) return null;
-  const asked = (outcome.error as ApiRequestError).retryAfterMs;
-  if (asked != null && asked > LISTING_RETRY_MAX_WAIT_MS) return null;
-  return Math.max(delayMs, asked ?? 0);
+  return isRetryableApiError(outcome.error) && (outcome.error as ApiRequestError).status !== 429;
 }
 
 export class CloudDataApi {
@@ -236,20 +232,24 @@ export class CloudDataApi {
 
   /**
    * A listing's quote, history or financials, asked again once when the
-   * service failed to answer it (`listingRetryWait`): its source blinks for a
+   * service failed to answer it (`isListingReadRetried`): its source blinks for a
    * few minutes at a time, and a known listing then read as one no source
    * covers. A caller's abort stops the second ask.
    */
   private async readListing<T>(read: () => Promise<CloudMarketResponse<T>>, signal?: AbortSignal): Promise<CloudMarketResponse<T>> {
     const first = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
-    const wait = listingRetryWait(first, this.listingRetryDelayMs);
     const settle = () => {
       if ("error" in first) throw first.error;
       return first.response;
     };
-    if (wait == null || signal?.aborted) return settle();
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    return signal?.aborted ? settle() : read();
+    if (!isListingReadRetried(first) || signal?.aborted) return settle();
+    if (this.listingRetryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.listingRetryDelayMs));
+    if (signal?.aborted) return settle();
+    const second = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
+    // Failing the same way twice, the service did not answer it (`markAskedTwice`).
+    if (isListingReadRetried(second)) markAskedTwice("error" in second ? second.error : second.response);
+    if ("error" in second) throw second.error;
+    return second.response;
   }
 
   private requestMarketSymbol<T>(

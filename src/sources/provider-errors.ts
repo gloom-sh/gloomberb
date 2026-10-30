@@ -1,6 +1,5 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
-import { type ApiRequestError, isRetryableApiError } from "../api-client/errors";
-import { OperationTimeoutError } from "../utils/async-deadline";
+import { wasAskedTwice } from "../api-client/errors";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
 // resolved `gloomberb/market-data` from the source tree) is still recognized.
@@ -141,16 +140,6 @@ export function serviceDidNotAnswerMessage(symbol?: string): string {
   return `Gloom's data service did not answer${symbol ? ` for ${symbol}` : ""}. Try again in a moment.`;
 }
 
-/**
- * A failure of Gloom's data service rather than of the request: it answered
- * that its source failed (a 5xx, `retryable_error`), or was too slow to answer
- * within the request's limit. A rate limit is the caller's, not a failure.
- */
-export function isServiceFailure(error: unknown): boolean {
-  if (error instanceof OperationTimeoutError) return error.message.startsWith("Cloud ");
-  return isRetryableApiError(error) && (error as ApiRequestError).status !== 429;
-}
-
 /** The router's generic answer that no provider served a request, holding the failure behind it when a provider failed rather than missed. */
 class NoProviderError extends Error {
   constructor(message: string, readonly failure: unknown) {
@@ -162,9 +151,10 @@ class NoProviderError extends Error {
  * The router's final error when no provider answered. A reason a provider gave
  * replaces the generic wording, and so does the service's answer that no
  * listing exists for `symbol` ("Not a ticker"), a request that never reached
- * the data service, and a data service that failed to answer
- * (`serviceDidNotAnswerMessage`), each of which says that rather than that no
- * source has the symbol; any other failure keeps the generic message.
+ * the data service, and a listing read the data service failed to answer twice
+ * (`wasAskedTwice`, `serviceDidNotAnswerMessage`), each of which says that
+ * rather than that no source has the symbol; any other failure, a 5xx on a read
+ * that is not asked again among them, keeps the generic message.
  */
 export function noProviderError(message: string, note: ProviderMissNote | undefined, symbol?: string): Error {
   if (note?.reason) return createProviderMiss(note.reason, note.reason);
@@ -172,7 +162,7 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
   if (isNetworkFailure(note?.failure)) {
     return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
   }
-  if (isServiceFailure(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
+  if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
   return new NoProviderError(message, note?.failure);
 }
 

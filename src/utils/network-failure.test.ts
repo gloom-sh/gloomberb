@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { ApiRequestError } from "../api-client/errors";
+import { ApiRequestError, markAskedTwice } from "../api-client/errors";
 import { CloudApiRequestTransport, setCloudApiFetchTransport } from "../api-client/request";
 import { describeChatImageError } from "../plugins/builtin/chat/attachments/model";
 import { inferCliErrorOptions, printCliError } from "../cli/errors";
@@ -83,14 +83,16 @@ test("an answer from the server or a local service is never \"couldn't reach\", 
   }
 });
 
-// A Cloudflare page for a backend that is down printed "error: 521: Web server is down".
-test("a server error that reaches the command line says the data service did not answer and to try again", async () => {
+// A listing read whose data service was down printed the proxy's status line, "error: 521: Web server is down".
+test("a listing read the data service failed to answer twice says so at the command line; any other server error keeps its own words", async () => {
   for (const failure of [new ApiRequestError("521: Web server is down", 521), new ApiRequestError("UPSTREAM_ERROR", undefined, undefined, "retryable_error")]) {
-    const json = await captureConsole(() => printCliError(failure, inferCliErrorOptions(["--json"])));
+    const json = await captureConsole(() => printCliError(markAskedTwice(failure), inferCliErrorOptions(["--json"])));
     expect(JSON.parse(json.stderr).error).toMatchObject({
       code: "source_unavailable", message: "Gloom's data service did not answer. Try again in a moment.", retryable: true,
     });
   }
+  const other = await captureConsole(() => printCliError(new ApiRequestError("521: Web server is down", 521), inferCliErrorOptions(["--json"])));
+  expect(JSON.parse(other.stderr).error).toEqual({ code: "unexpected_error", message: "521: Web server is down" });
 });
 
 test("surfaces that point at the connection still do", () => {
