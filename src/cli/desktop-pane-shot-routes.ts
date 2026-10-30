@@ -11,6 +11,13 @@ export const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
  * queued behind each other for seconds.
  */
 export const SHOT_API_SOCKET_PATH = "/__gloom_cli_api_socket__";
+/**
+ * The socket URL's query parameter holding the token only this capture's page
+ * is given: with the page's own origin, what lets a socket in. Any website open
+ * in the user's browser can reach the local port, and the replies carry reads
+ * made with the user's session.
+ */
+export const SHOT_API_SOCKET_TOKEN_PARAM = "token";
 
 /** A read the page sends over the socket: an API path with its query, and the request's headers. */
 export interface ShotApiSocketCall {

@@ -17,6 +17,7 @@ import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
+  SHOT_API_SOCKET_TOKEN_PARAM,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
   type ShotApiSocketCall,
@@ -72,6 +73,8 @@ import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "
 declare global {
   interface Window {
     __GLOOM_CLI_SHOT_PAYLOAD__?: DesktopPaneShotPayload;
+    /** What lets this page's API socket in (`SHOT_API_SOCKET_TOKEN_PARAM`); no other page is given it. */
+    __GLOOM_CLI_SHOT_SOCKET_TOKEN__?: string;
     __GLOOM_CLI_SHOT_READY__?: boolean;
     __GLOOM_CLI_SHOT_PENDING__?: number;
     __GLOOM_CLI_SHOT_ERROR__?: string;
@@ -160,7 +163,9 @@ function openShotApiSocket(): Promise<ShotApiSocketSend | null> {
     const pending = new Map<number, (reply: ShotApiSocketReply | null) => void>();
     let nextId = 1;
     let open = false;
-    const socket = new WebSocket(new URL(SHOT_API_SOCKET_PATH, window.location.href.replace(/^http/, "ws")));
+    const url = new URL(SHOT_API_SOCKET_PATH, window.location.href.replace(/^http/, "ws"));
+    url.searchParams.set(SHOT_API_SOCKET_TOKEN_PARAM, window.__GLOOM_CLI_SHOT_SOCKET_TOKEN__ ?? "");
+    const socket = new WebSocket(url);
     socket.addEventListener("message", (event) => {
       let reply: ShotApiSocketReply;
       try {

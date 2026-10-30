@@ -2,6 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
@@ -24,6 +25,7 @@ import { scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
+  SHOT_API_SOCKET_TOKEN_PARAM,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
   type ShotApiSocketCall,
@@ -234,7 +236,9 @@ export async function renderDesktopPaneScreenshot(
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
   try {
-    server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
+    // A socket opens only for this page (`isShotPageSocket`): its origin, and this token it alone is given.
+    const socketToken = randomBytes(32).toString("hex");
+    server = serveShotPage(view, shotPageHtml(view, payload, socketToken), apiProxy, options.bridge ?? null, socketToken);
     return await capturePageScreenshot({
       chrome,
       url: new URL("/", server.url).href,
@@ -260,7 +264,7 @@ export async function renderDesktopPaneScreenshot(
 }
 
 /** The page for one capture: the shared view, with this capture's pane and data in its bootstrap script. */
-function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): string {
+function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload, socketToken: string): string {
   const payloadJson = JSON.stringify(encodeRpcValue(payload)).replace(/</g, "\\u003c");
   return renderElectrobunViewHtml({
     stylesheet: view.get(SHOT_VIEW_STYLESHEET) ?? "",
@@ -269,6 +273,7 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): str
     loadingText: "Rendering pane...",
     bootstrapScript: `
       window.__GLOOM_CLI_SHOT_PAYLOAD__ = ${payloadJson};
+      window.__GLOOM_CLI_SHOT_SOCKET_TOKEN__ = ${JSON.stringify(socketToken)};
       (() => {
         // A screenshot cannot be interacted with, so drawing tools, the
         // quick-add input and the close button only add noise to the image.
@@ -295,11 +300,25 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): str
   });
 }
 
-function serveShotPage(
+/**
+ * Whether a socket request comes from this capture's page: sent from the
+ * page's own origin, holding the token only the page was given. Any website
+ * open in the user's browser can reach this port, and a socket's replies are
+ * reads made with the user's session; a browser sends a page's true origin.
+ */
+function isShotPageSocket(request: Request, url: URL, port: number | undefined, socketToken: string): boolean {
+  if (port === undefined || request.headers.get("origin") !== `http://127.0.0.1:${port}`) return false;
+  const given = Buffer.from(url.searchParams.get(SHOT_API_SOCKET_TOKEN_PARAM) ?? "");
+  const expected = Buffer.from(socketToken);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+export function serveShotPage(
   view: ShotViewFiles,
   html: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null,
+  socketToken: string,
 ): ReturnType<typeof Bun.serve> {
   return Bun.serve({
     hostname: "127.0.0.1",
@@ -308,6 +327,7 @@ function serveShotPage(
     fetch(request, server) {
       const url = new URL(request.url);
       if (url.pathname === SHOT_API_SOCKET_PATH) {
+        if (!socketToken || !isShotPageSocket(request, url, server.port, socketToken)) return new Response("Forbidden", { status: 403 });
         return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
       }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
