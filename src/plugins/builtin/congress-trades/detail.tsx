@@ -16,6 +16,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
+import { signedColor } from "../shared/research-cells";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
@@ -45,6 +46,19 @@ import { loadCongressHouse } from "./client";
 
 const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
 
+/** A window's return, or its excess with SPY's own return beside it. */
+function ReturnRow({ label, value, spy }: { label: string; value: number | null | undefined; spy?: number | null }) {
+  return (
+    <KeyValueRow
+      {...DETAIL_ROW}
+      label={label}
+      value={formatCongressReturn(value)}
+      color={signedColor(value, colors)}
+      detail={spy == null ? undefined : `SPY ${formatCongressReturn(spy)}`}
+    />
+  );
+}
+
 export function TradeDetail({
   trade,
   width,
@@ -68,8 +82,10 @@ export function TradeDetail({
         <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
         <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
-        <KeyValueRow {...DETAIL_ROW} label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
-        <KeyValueRow {...DETAIL_ROW} label="filed return" value={formatCongressReturn(trade.returnSinceFiling)} />
+        <ReturnRow label="tx return" value={trade.returnSinceTx} />
+        <ReturnRow label="tx vs SPY" value={trade.excessSinceTx} spy={trade.spyReturnSinceTx} />
+        <ReturnRow label="filed return" value={trade.returnSinceFiling} />
+        <ReturnRow label="filed vs SPY" value={trade.excessSinceFiling} spy={trade.spyReturnSinceFiling} />
         <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf ?? "--"} />
         <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? "--"} />
         <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? "--"} />
@@ -292,7 +308,8 @@ export function MemberTradesDetail({
   // detail adds what the row lacks: how many priced trades stand behind the
   // return figures, and the committees.
   const summaryItems: StatItem[] = [
-    { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
+    { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), color: signedColor(summaryMember.medianReturn, colors), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
+    { id: "vs-spy", label: "Median vs SPY", value: formatCongressReturn(summaryMember.medianExcessSinceFiling), color: signedColor(summaryMember.medianExcessSinceFiling, colors), detail: `since filing, ${summaryMember.excessTradeCount ?? 0} priced`, detailVariants: ["since filing"] },
     { id: "hit", label: "Buy hit rate", value: summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`, detail: `${summaryMember.pricedBuyCount ?? 0} priced buys` },
     ...(summaryMember.committees ?? []).map((committee): StatItem => ({ id: `committee:${committee}`, label: "Committee", value: committee, wide: true })),
   ];

@@ -815,6 +815,12 @@ export interface CloudCongressTradePayload {
   sourceUrl: string;
   returnSinceTx?: number | null;
   returnSinceFiling?: number | null;
+  /** SPY's return over the same days as returnSinceTx, percent. */
+  spyReturnSinceTx?: number | null;
+  spyReturnSinceFiling?: number | null;
+  /** returnSinceTx less spyReturnSinceTx, percentage points. */
+  excessSinceTx?: number | null;
+  excessSinceFiling?: number | null;
   returnAsOf?: string | null;
   party?: string | null;
   committees?: string[];
@@ -834,9 +840,12 @@ export interface CloudCongressMemberPayload {
   lastFilingDate: string | null;
   avgLagDays: number | null;
   medianReturn?: number | null;
+  /** Median of the trades' excessSinceFiling. */
+  medianExcessSinceFiling?: number | null;
   buyHitRate?: number | null;
   pricedTradeCount?: number;
   pricedBuyCount?: number;
+  excessTradeCount?: number;
   party?: string | null;
   committees?: string[];
 }
