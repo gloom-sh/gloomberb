@@ -112,9 +112,19 @@ export async function removeUpdateAsides(
 const TAR_BLOCK = 512;
 
 /**
+ * A macOS extended-attributes sidecar (`._name`), which an archive lists just
+ * before the file it describes.
+ */
+function isAppleDoublePath(name: string): boolean {
+  return name.split("/").some((segment) => segment.startsWith("._"));
+}
+
+/**
  * The first path in a tar, read from its leading headers: a ustar name and
- * prefix, or the long name a pax (`x`) or GNU (`L`) header gives it. Null when
- * `bytes` ends before one.
+ * prefix, or the long name a pax (`x`) or GNU (`L`) header gives it. A macOS
+ * extended-attributes sidecar (`._Gloomberb`) is skipped, so the path is the
+ * entry the archive carries, not the metadata beside it. Null when `bytes`
+ * ends before one.
  */
 export function firstTarPath(bytes: Uint8Array): string | null {
   const decoder = new TextDecoder();
@@ -136,8 +146,14 @@ export function firstTarPath(bytes: Uint8Array): string | null {
       header = data + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
       continue;
     }
-    if (longName) return longName;
-    const name = field(header, 100);
+    const fromHeader = longName == null;
+    const name = longName ?? field(header, 100);
+    longName = null;
+    if (isAppleDoublePath(name)) {
+      header = data + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
+      continue;
+    }
+    if (!fromHeader) return name;
     // POSIX ustar ("ustar\0") only: GNU tar keeps other fields where the prefix would be.
     const prefix = field(header + 257, 6) === "ustar" ? field(header + 345, 155) : "";
     return prefix ? `${prefix}/${name}` : name;

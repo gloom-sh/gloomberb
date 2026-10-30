@@ -509,6 +509,24 @@ describe("update archives from before the rename", () => {
     }
   });
 
+  test("skips a macOS extended-attributes sidecar ahead of the entry", () => {
+    const folder = mkdtempSync(join(tmpdir(), "gloom-update-tar-"));
+    try {
+      const stage = mkdtempSync(join(folder, "stage-"));
+      mkdirSync(join(stage, "Gloomberb", "Resources"), { recursive: true });
+      writeFileSync(join(stage, "Gloomberb", "Resources", "version.json"), "{}");
+      // macOS writes `._Gloomberb` beside `Gloomberb` and lists it first. The
+      // sidecar is packed as itself, with no sidecar of its own.
+      writeFileSync(join(stage, "._Gloomberb"), "metadata");
+      const packed = Bun.spawnSync(["tar", "--format=ustar", "-cf", "sidecar.tar", "._Gloomberb", "Gloomberb"],
+        { cwd: stage, env: { ...process.env, COPYFILE_DISABLE: "1" } });
+      if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
+      expect(firstTarPath(readFileSync(join(stage, "sidecar.tar")))).toBe("Gloomberb/");
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
   test("a download first drops the unpacked archives that carry the old name", async () => {
     const root = mkdtempSync(join(tmpdir(), "gloom-update-legacy-"));
     try {
