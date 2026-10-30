@@ -4,7 +4,9 @@ import type { HeadlessPaneContext } from "../../types/headless";
 import { assessPaneScreenshot, shotStatusIssues } from "./screenshot-assessment";
 import type { PaneScreenshotResult } from "./screenshot-types";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
-import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { appendDomReportFooter, buildDomFunctionReport, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { askgLockNote } from "../../plugins/builtin/cloud/askg/lock-note";
+import type { MarketContext } from "../types";
 import { getPaneFunctionCapability } from "./capabilities";
 import { researchModule } from "../../plugins/builtin/research";
 import { filingEventsModule } from "../../plugins/builtin/filing-events";
@@ -393,4 +395,27 @@ test("a rendered pane with rows beside an error marker has data for its symbol a
   const bare = await buildDomPaneReportFromRender(resolved, render([]));
   expect(bare.data.unavailableSymbols).toEqual(["AAPL"]);
   expect(reportFailure(bare.data, "fn DES AAPL", { tables: bare.tables })?.code).toBe("no_data");
+});
+
+test("a pane the sign-in wall covers whole reports the wall at once without a session, as the rendered wall reports it", async () => {
+  const resolved = {
+    token: "ASKG", label: "Ask Gloom", options: {}, capability: { id: "askg-pane" }, instance: { settings: {} },
+    // Rendering it would need a browser; a pane that reaches the renderer here fails the test.
+    pane: { id: "askg", signInWall: true, reportLockNote: askgLockNote, component: () => { throw new Error("rendered"); } },
+  } as unknown as ResolvedPaneFunction;
+  const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
+  const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+  delete process.env.GLOOMBERB_SESSION_TOKEN;
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "which dividend stocks are cheap");
+    expect(report.data).toMatchObject({ locked: "sign-in", empty: true, complete: false });
+    expect(report.data.freshness).toBeUndefined();
+    expect(report.text).toStartWith("Ask Gloom\n\nAsk Gloom (ASKG in the app) needs only a free, verified Gloom account: log in or sign up free");
+    expect(appendDomReportFooter(report.text, domReportView(report.data), report.data.freshness))
+      .toEndWith("Rendered view: the pane is locked, so no values were read.");
+    expect(reportFailure(report.data, "fn ASKG")?.code).toBe("no_data");
+  } finally {
+    if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+    else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+  }
 });

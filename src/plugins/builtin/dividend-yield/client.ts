@@ -75,6 +75,18 @@ function statedRateSummary(stated: StatedForwardRate): QuoteSummaryDividendField
 interface DividendReadOptions {
   /** The forward rate fundamentals state (statedForwardRate), asked only when the summary is missing. */
   loadStatedForwardRate?: () => Promise<StatedForwardRate | null> | StatedForwardRate | null;
+  /** The history already asked for (requestDividendHistory), so it need not wait for the quote the price comes from. */
+  history?: Promise<DividendHistoryResponse>;
+}
+
+type DividendHistoryResponse = Awaited<ReturnType<typeof apiClient.getMarketDividends>>;
+
+/** Asks Gloom Cloud for a listing's dividend history, for fetchDividendData to read once the price is known. */
+export function requestDividendHistory(symbol: string, exchange = ""): Promise<DividendHistoryResponse> {
+  const pending = trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
+  // Read by fetchDividendData; a failure there is its error, and none is left unobserved meanwhile.
+  pending.catch(() => {});
+  return pending;
 }
 
 let connectionHealth: ConnectionHealthRegistry | null = null;
@@ -155,7 +167,7 @@ export async function fetchDividendData(
   currentPriceCurrency?: string,
   options: DividendReadOptions = {},
 ): Promise<DividendData> {
-  const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
+  const response = await (options.history ?? requestDividendHistory(symbol, exchange));
   if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
   const { actions: sourceActions, quote: rawQuote, summary, triedAt } = response.data;
   // In the major unit as the history arrives, as every other reader of it gets it.

@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { fetchDividendData, statedForwardRate, type DividendData } from "./client";
+import { fetchDividendData, requestDividendHistory, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText } from "./view";
@@ -27,9 +27,9 @@ import {
   type TaxEquivalentAnalysis, type TreasuryTenor,
 } from "../../../market-data/tax-equivalent";
 
-/** Symbols one `fn DVD` ranks at most, and how many it reads at once. */
+/** Symbols one `fn DVD` ranks at most; it reads them all at once, so a cold ranking takes about as long as its slowest name. */
 const MAX_RANKED_SYMBOLS = 25;
-const RANKING_CONCURRENCY = 4;
+const RANKING_CONCURRENCY = MAX_RANKED_SYMBOLS;
 /** The history options' defaults: a ranking lists no history, so only these leave it unchanged. */
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
@@ -68,6 +68,8 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
     const instrument = await context.resolveInstrument?.(symbol);
     const listingSymbol = instrument?.symbol ?? symbol;
     const exchange = instrument?.exchange ?? "";
+    // The history is asked for beside the quote, not after it: only its yields need the price.
+    const history = requestDividendHistory(listingSymbol, exchange);
     try {
       const quote = await context.marketData.getQuote(listingSymbol, exchange);
       // The regular session's price: after the close, the close rather than an after-hours print.
@@ -79,6 +81,7 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
       currentPrice = null;
     }
     const data = await fetchDividendData(listingSymbol, currentPrice, exchange, currentPriceCurrency, {
+      history,
       // Read only when the summary is missing: the forward rate fundamentals state, as `fundamentals` shows it.
       loadStatedForwardRate: async () => statedForwardRate(await context.marketData.getTickerFinancials(listingSymbol, exchange)),
     });

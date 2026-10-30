@@ -3,8 +3,8 @@ import type {
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
 import {
-  compareDate, curveCutoff, CURVE_OPTIONS, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
-  parseCompareInput, parseCurveArgument, type CurveData, type CurveId,
+  compareDate, curveCutoff, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
+  parseCompareInput, parseCurveArgument, unknownCurveMessage, type CurveData, type CurveId,
 } from "./curves";
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
 import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
@@ -194,7 +194,7 @@ export function createYieldCurveHeadless(
       const argument = parseCurveArgument(args.argument);
       const optionCurve = args.options.curve == null || args.options.curve === "" ? null : curveIdOf(args.options.curve);
       if (args.options.curve && !optionCurve) {
-        throw new Error(`Unknown curve ${String(args.options.curve)}; use ${CURVE_OPTIONS.map((option) => option.aliases[0]).join(", ")}.`);
+        throw new Error(unknownCurveMessage(String(args.options.curve)));
       }
       const curve = optionCurve ?? argument.curve ?? "us";
       const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date, new Date(), "--date") : argument.date;

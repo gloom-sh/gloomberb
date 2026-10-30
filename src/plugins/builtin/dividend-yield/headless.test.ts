@@ -187,6 +187,8 @@ test("several symbols are one table ranked by trailing yield; a read without its
   expect(line("HALF")).toContain("no cash history");
   expect(line("NOSUM")).toMatch(/3\.10%.*no summary/);
   expect(line("GONE")).toContain("not read");
+  // The date column is the next distribution's pay date, beside the last ex-date that has passed.
+  expect(text.split("\n").find((entry) => entry.startsWith("Ticker"))).toMatch(/Last ex +Next pay/);
 
   // Every exported row names its ticker, the percent its figures are in and the time of the price its yields are over,
   // and the closing lines date the report by the newest of those prices.
@@ -201,6 +203,26 @@ test("several symbols are one table ranked by trailing yield; a read without its
   // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
   await expect(definition.load({ ...request, options: { type: "special", limit: 40 } }, context)).rejects.toThrow("--type filters one ticker's payment history");
   await expect(definition.load({ ...request, options: { type: "all", limit: 5 } }, context)).rejects.toThrow("--limit filters");
+});
+
+test("a ranking reads every ticker at once, so it takes as long as its slowest read, not one wave after another", async () => {
+  const symbols = Array.from({ length: 25 }, (_, index) => `T${index}`);
+  const started: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const definition = createDividendYieldHeadless({
+    loadData: async (symbol) => {
+      started.push(symbol);
+      await gate;
+      return { ...fixture, currency: "USD" };
+    },
+  });
+  const request = { rawArgument: symbols.join(" "), argument: symbols, symbols, options: { type: "all", limit: 40 } };
+  const loading = definition.load(request, context);
+  await Bun.sleep(0);
+  expect(started).toEqual(symbols);
+  release();
+  expect((await loading).sections[0]!.rows).toHaveLength(25);
 });
 
 describe("a bond fund's yields", () => {

@@ -75,12 +75,34 @@ export function screenCheckSummary(data: ScreenCheckPayload): string {
   return data.matches === null ? "Not covered" : data.matches ? "Passes all criteria" : "Does not match";
 }
 
+/** The thresholds a criterion compares a value with: one, or a range's two ends. */
+function thresholds(criterion: ScreenCriterion): number[] {
+  if (!("value" in criterion)) return [];
+  const value = criterion.value as unknown;
+  return (Array.isArray(value) ? value : [value]).filter((entry): entry is number => typeof entry === "number");
+}
+
+/**
+ * A stored value as DVD writes its figures: two decimals (6.93%, 26.42 x), a
+ * whole number without them. A value that would round onto a threshold it is
+ * not (25.0001 against <= 25) keeps the decimals that tell it apart, so its
+ * Fail never reads as 25.00 failing <= 25.
+ */
+function checkValueText(value: number, unit: string, criterion: ScreenCriterion): string {
+  const limits = thresholds(criterion);
+  const whole = Number.isInteger(value) && unit !== "%";
+  let digits = whole ? 0 : 2;
+  while (digits < 15 && limits.some((limit) => limit !== value && Number(value.toFixed(digits)) === limit)) digits += 1;
+  const text = value.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: digits });
+  return unit === "%" ? `${text}%` : `${text}${unit ? ` ${unit}` : ""}`;
+}
+
 export function checkRows(data: ScreenCheckPayload) {
   return data.criteria.map((entry, index) => ({
     id: String(index),
     criterion: checkCriterionText(entry.criterion),
     value: entry.state === "not-covered" ? "Not covered" : entry.value === null ? "Missing" : typeof entry.value === "number"
-      ? `${number(entry.value)}${entry.unit ? ` ${entry.unit}` : ""}` : entry.value,
+      ? checkValueText(entry.value, entry.unit, entry.criterion) : entry.value,
     result: entry.passes === null ? "Not evaluated" : entry.passes ? "Pass" : "Fail",
     asOf: entry.asOf?.slice(0, 10) ?? (entry.observedAt ? `${entry.observedAt.slice(0, 10)} (collected)` : "--"),
     state: entry.state,
