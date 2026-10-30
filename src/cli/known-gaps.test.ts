@@ -13,7 +13,7 @@ import { lookupGlossary } from "./glossary";
 import { catalogEmptyCopy } from "../plugins/builtin/chart-composer/catalog-inventory";
 import { doeModule } from "../plugins/builtin/doe";
 import { doeGasWord } from "../plugins/builtin/doe/headless";
-import { buildFuturesRows, DEFAULT_FUTURES_SORT, futuresNoMatchFailure } from "../plugins/builtin/futures/model";
+import { buildFuturesRows, DEFAULT_FUTURES_SORT } from "../plugins/builtin/futures/model";
 import { getContractsBySector } from "../market-data/futures-board";
 
 beforeEach(() => {
@@ -40,10 +40,6 @@ test("gas words open gas storage, FUT knows natgas and names what to try, and a 
   expect(board("natgas")).toEqual(["NG=F"]);
   expect(board("gas")).toContain("NG=F");
   expect(board("urea")).toEqual([]);
-  expect(futuresNoMatchFailure("urea")).toEqual({
-    message: 'No futures contract matches "urea".',
-    details: "Try a code such as NG, CL or GC, or a name such as natural gas or gold: gloom fn FUT NG. Other boards: gloom fn FUT --tab inventories, positioning or crops.",
-  });
 
   const miss = (query: string) => renderPaneCatalogReport([], parsePaneCatalogArgs([query]), lookupGlossary(query), null).replace(/\s+/g, " ");
   expect(miss("hurricane")).toContain(`For stories that mention it: gloom news '"hurricane"'.`);

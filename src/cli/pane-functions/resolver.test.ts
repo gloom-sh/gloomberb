@@ -325,7 +325,10 @@ test("every function the catalog lists with no argument refuses one, a rendered 
     // A rendered view that reads its argument with no shortcut declares it, so the catalog lists it and fn passes it on.
     const feed = entries.find((entry) => entry.templateId === "twitter-feed-pane");
     expect(feed?.argPlaceholder).toBe("query");
-    expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["twitter-feed-pane", "nvda"]))).instance.params?.query).toBe("nvda");
+    const feedQuery = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["twitter-feed-pane", "nvda"]));
+    expect(feedQuery.instance.params?.query).toBe("nvda");
+    // An X query may be a ticker, and is read as one: only an id the pane opens (the story pane's) is not.
+    expect(feedQuery.instance.binding).toEqual({ kind: "fixed", symbol: "NVDA" });
     // A pane opened by its id stands for its templates, which take a ticker: it is not one of the catalog's functions.
     const byPaneId = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["realized-vol", "DHI"]));
     expect(byPaneId.instance.binding).toEqual({ kind: "fixed", symbol: "DHI" });

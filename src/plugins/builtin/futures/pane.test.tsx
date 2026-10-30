@@ -14,6 +14,8 @@ import { TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
 import type { Quote } from "../../../types/financials";
 import { resetFuturesBoardTerms } from "./use-board-terms";
 import { resetFrontContractReturns } from "./use-front-returns";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
+import { renderedReportFailure } from "../../../cli/pane-functions/report-notices";
 
 const FuturesPane = futuresModule.panes![0]!.component as (props: {
   paneId: string;
@@ -301,5 +303,30 @@ describe("FuturesPane", () => {
     const filtered = tui.frame();
     expect(filtered).toContain("Gold");
     expect(filtered).not.toContain("E-Mini S&P 500");
+  });
+
+  /** `fn FUT urea` printed every tab and header cell, then the board's "No matching contracts. Clear search." */
+  test("a search no contract matches fails the report with what to type instead; natgas finds natural gas", async () => {
+    const search = async (query: string) => {
+      const registry = createRemoteUiRegistry();
+      await tui.render(<RemoteUiRegistryProvider registry={registry}><Harness /></RemoteUiRegistryProvider>, { width: 80, height: 24 });
+      await renderSettled();
+      await emitKeypress({ name: "/", sequence: "/" });
+      await renderSettled();
+      for (const character of query) await emitKeypress({ name: character, sequence: character });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await tui.setup().renderOnce();
+      });
+      await renderSettled();
+      return { frame: tui.frame(), failure: renderedReportFailure(registry.snapshot()) };
+    };
+    expect((await search("urea")).failure).toEqual({
+      message: 'No futures contract matches "urea".',
+      details: "Try a code such as NG, CL or GC, or a name such as natural gas or gold: gloom fn FUT NG. Other boards: gloom fn FUT --tab inventories, positioning or crops.",
+    });
+    const natgas = await search("natgas");
+    expect(natgas.failure).toBeNull();
+    expect(natgas.frame).toContain("Natural Gas");
   });
 });

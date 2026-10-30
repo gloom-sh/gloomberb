@@ -226,8 +226,9 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       primaryDocument: filing.primaryDocument ?? null,
       cik: filing.cik,
       companyName: filing.companyName ?? null,
-      // A current report links its press release, where its figures are, when its index names one.
-      url: filing.pressReleaseUrl ?? filing.filingUrl,
+      url: filing.filingUrl,
+      // A current report's press release exhibit, where its index names one: the page its figures are on.
+      ...(filing.pressReleaseUrl ? { pressReleaseUrl: filing.pressReleaseUrl } : {}),
     };
   });
 }

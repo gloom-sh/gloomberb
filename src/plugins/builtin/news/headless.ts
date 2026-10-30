@@ -29,7 +29,9 @@ const NEWS_COLUMNS = [
   { key: "importance", header: "Score", align: "right" as const },
   // The short id `fn news-story-pane` opens the story by, and its summary on one line under the row; exports keep both whole.
   { key: "id", header: "ID", textFormat: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
-  { key: "summary", header: "Summary", underRow: "line" as const },
+  { key: "summary", header: "Summary", underRow: "line" as const,
+    textFormat: (value: unknown, row: Record<string, unknown>) =>
+      newsSummaryLine({ title: String(row.headline ?? ""), summary: typeof value === "string" ? value : undefined }) ?? "" },
 ];
 
 export interface NewsHeadlessDependencies {
@@ -54,7 +56,7 @@ function newsRow(article: NewsArticle) {
     publishedAt: article.publishedAt.toISOString(),
     source: article.source,
     headline: article.title,
-    summary: newsSummaryLine(article),
+    summary: article.summary ?? null,
     topic: article.topic,
     topics: article.topics,
     sectors: article.sectors,

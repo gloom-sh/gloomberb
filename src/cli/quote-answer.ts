@@ -145,10 +145,15 @@ export async function answerQuote(
  * "HCI does not trade on LSE. HCI trades on: NYSE, IEX, JSE." for a symbol
  * written with a venue's suffix (HCI.L) that no source quotes, when its base
  * symbol trades elsewhere and not on the venue the suffix names: the answer
- * `HCI:LSE` gets. Null otherwise, so the symbol keeps its own answer.
+ * `HCI:LSE` gets. Only for London's `.L` and suffixes of two letters or more
+ * (`.IS`, `.JO`): another one-letter suffix is as likely a US share class
+ * (MKC.V, BRK.B) and keeps its own answer. Null otherwise.
  */
 async function notTradedOnSuffixVenue(listing: CliListing, market: MarketContext): Promise<string | null> {
-  const venue = listing.exchange ? null : listingSuffixCandidate(listing.symbol);
+  if (listing.exchange) return null;
+  const suffix = listing.symbol.slice(listing.symbol.lastIndexOf(".") + 1);
+  if (!listing.symbol.includes(".") || (suffix.length < 2 && suffix.toUpperCase() !== "L")) return null;
+  const venue = listingSuffixCandidate(listing.symbol);
   return venue ? notTradedMessage(venue, market) : null;
 }
 

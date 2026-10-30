@@ -14,7 +14,7 @@ function doeInstance(tab: DoeTab, options?: PaneTemplateCreateOptions): PaneTemp
   // `DOE NGS` or `DOE natural gas` opens on gas storage, as `NGS` does.
   if (input && doeGasWord(input)) return { placement: "floating", settings: { tab: "gas" } };
   const series = doeSeriesOption(input);
-  if (input && !series) throw new Error("Use a series such as cushing, gasoline, distillate or east; for gas storage, gloom fn NGS");
+  if (input && !series) throw new Error(`Use a series such as cushing, gasoline, distillate or east${tab === "gas" ? "" : "; for gas storage, gloom fn NGS"}`);
   return { placement: "floating", settings: { tab: series?.tab ?? tab }, ...(series ? { params: { series: series.value } } : {}) };
 }
 

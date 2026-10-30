@@ -17,6 +17,7 @@ import {
   normalizeNewsFeed,
   normalizeNewsQuery,
 } from "./news-model";
+import { storyIdMatches } from "./story-id";
 
 export { buildNewsQueryKey } from "./news-model";
 
@@ -343,16 +344,17 @@ export class NewsService {
     const sources = this.enabledSources({ feed: "latest" })
       .filter((source) => !!source.provider.fetchNewsStory);
 
+    // A short id (`6067684e`, as `news` prints it) names the story whose id starts with it.
     const requestedRevisions = new Map<NewsQueryEntry, string>();
     for (const entry of this.queries.values()) {
-      const article = entry.state.articles.find((article) => article.id === storyId);
+      const article = entry.state.articles.find((article) => storyIdMatches(article.id, storyId));
       if (article) requestedRevisions.set(entry, newsArticleRevision(article));
     }
     let failed = false;
     let olderDetail: NewsArticle | null = null;
     const commitDetail = (article: NewsArticle) => {
       this.mergeStoryDetail(article, requestedRevisions);
-      return this.articles.find((current) => current.id === storyId) ?? article;
+      return this.articles.find((current) => current.id === article.id) ?? article;
     };
     for (const source of sources) {
       try {
@@ -362,8 +364,9 @@ export class NewsService {
           () => source.provider.fetchNewsStory?.(storyId) ?? Promise.resolve(null),
         );
         if (!article) continue;
-        if (article.id !== storyId) throw new Error("Story detail identity mismatch.");
-        const current = this.articles.find((current) => current.id === storyId);
+        // The source answers a short id with the full id of the story it starts.
+        if (!storyIdMatches(article.id, storyId)) throw new Error("Story detail identity mismatch.");
+        const current = this.articles.find((current) => current.id === article.id);
         if (current && article.publishedAt < current.publishedAt) {
           if (!olderDetail || article.publishedAt > olderDetail.publishedAt) olderDetail = article;
           continue;

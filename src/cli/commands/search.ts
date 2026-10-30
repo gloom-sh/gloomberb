@@ -347,20 +347,27 @@ function withQuotedNames(symbol: string, candidates: TickerSearchCandidate[], qu
   });
 }
 
+/** A symbol without a venue's suffix or code: DK for DK.BA or DK:BYMA. */
+const baseSymbol = (symbol: string) => symbol.toUpperCase().replace(/[:.][A-Z]{1,4}$/, "");
+
 /**
  * Other Listings are the primary listing's company's own lines alone: by its
- * name, or a name it had (Cassava Sciences for Filana's FLNA). Another
- * company's line, or one search names no company for (DKC1O on BYMA under
+ * name, a name it had (Cassava Sciences for Filana's FLNA), or, for a line
+ * search names no company for, its symbol on another venue. Another company's
+ * line, or a nameless line under another symbol (DKC1O on BYMA under
  * `search DK`), is an Other Match, listed after them.
  */
 function withOtherCompaniesApart(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+  // A line search names no company for: no name, or only its symbol (DKC1O).
+  const nameless = (candidate: TickerSearchCandidate) =>
+    isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
-  if (!primary) return candidates;
+  // A primary line search names no company for gives nothing to tell its company's lines by.
+  if (!primary || nameless(primary)) return candidates;
   const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
-  const ownLine = (candidate: TickerSearchCandidate) => {
-    const name = resolveSearchName(candidate);
-    return !isLowQualityTickerName(name, candidate.symbol) && names.some((company) => sameCompany(name, company));
-  };
+  const ownLine = (candidate: TickerSearchCandidate) => nameless(candidate)
+    ? baseSymbol(candidate.symbol) === baseSymbol(primary.symbol)
+    : names.some((company) => sameCompany(resolveSearchName(candidate), company));
   const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
   if (others.length === 0) return candidates;
   const kept = candidates.filter((candidate) => !others.includes(candidate));

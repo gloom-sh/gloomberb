@@ -158,7 +158,7 @@ import {
   type HistoryVolume,
 } from "../history-rows";
 import {
-  HISTORY_EXPORT_COLUMNS,
+  historyExportColumns,
   historyExportStatus,
   historyFailureRow,
   oneLineFailure,
@@ -813,7 +813,8 @@ function newsRows(articles: NewsArticle[]) {
   return articles.map((article) => ({
     id: article.id,
     title: article.title,
-    summary: newsSummaryLine(article),
+    // Whole, as exports write it; the text table's line under the row (newsRowNote) runs it together.
+    summary: article.summary ?? null,
     source: article.source,
     publishedAt: isoDate(article.publishedAt),
     topic: article.topic,
@@ -830,7 +831,9 @@ function filingRows(filings: SecFilingItem[]) {
     filingDate: isoDate(filing.filingDate).slice(0, 10),
     companyName: filing.companyName ?? "",
     accessionNumber: filing.accessionNumber,
-    url: filing.pressReleaseUrl ?? filing.primaryDocumentUrl ?? filing.filingUrl,
+    url: filing.primaryDocumentUrl ?? filing.filingUrl,
+    // A current report's press release exhibit, where its index names one: the figures, not the cover page.
+    pressReleaseUrl: filing.pressReleaseUrl ?? "",
     items: secFilingItemCodes(filing.items) ?? "",
     // A current report's items by number and name: the results 8-K reads apart from another filed that day.
     itemsLabel: currentReportItemsLabel(filing.items) ?? "",
@@ -1635,8 +1638,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           date: (text) => intraday ? formatUtcTime(text) : text.slice(0, 10) }))] : []].join("\n"),
       dateKey: "date",
       textColumns: [...textColumns, HISTORY_FLAG_TEXT_COLUMN],
-      // One header whatever the market is doing, for one symbol as for a list (HISTORY_EXPORT_COLUMNS).
-      columns: HISTORY_EXPORT_COLUMNS,
+      // One header whatever the market is doing, for one symbol as for a list (historyExportColumns).
+      columns: historyExportColumns(data),
       exportStatus: historyExportStatus,
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
       exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
@@ -1742,7 +1745,7 @@ async function runHistoryList(
       dateKey: "date",
       textColumns: [{ key: "symbol", header: "Symbol", shrink: false }, ...textColumns,
         { key: "currency", header: "Cur", shrink: false, format: currencyCell }, HISTORY_FLAG_TEXT_COLUMN],
-      columns: HISTORY_EXPORT_COLUMNS,
+      columns: historyExportColumns(rows),
       exportStatus: historyExportStatus,
       // Every row names its symbol, the currency its prices are in, its bar size and the as-of of its own symbol's bars.
       exportIdentity: (row) => {
@@ -1966,8 +1969,12 @@ const NEWS_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-/** A story's summary under its row, on one line, cut to the width (`rowNote`): the figure a headline leaves out. */
-const newsRowNote = (row: Record<string, unknown>) => typeof row.summary === "string" ? row.summary : null;
+/**
+ * A story's summary under its row, on one line, cut to the width (`rowNote`): the figure a headline leaves out.
+ * None for a summary that only repeats the headline; exports keep the summary whole.
+ */
+const newsRowNote = (row: Record<string, unknown>) => typeof row.summary === "string"
+  ? newsSummaryLine({ title: String(row.title ?? ""), summary: row.summary }) : null;
 
 /**
  * Stories matching text, printed as a symbol's news is, under a line saying
@@ -2167,15 +2174,18 @@ const FILING_COLUMNS = [
   { key: "url", header: "URL", optional: true },
   { key: "items", header: "Items" },
   { key: "itemsLabel", header: "Item names" },
+  { key: "pressReleaseUrl", header: "Press release URL" },
 ];
 
-// The text table names the items before the URL, which a narrow terminal drops first.
+// The text table names the items before the URL, which a narrow terminal drops first. A current report's
+// URL is its press release where it has one, the page its figures are on; exports keep both links.
 const FILING_TEXT_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
   { key: "itemsLabel", header: "Items" },
-  { key: "url", header: "URL", optional: true },
+  { key: "url", header: "URL", optional: true,
+    format: (value: unknown, row: Record<string, unknown>) => String(row.pressReleaseUrl || (value ?? "")) },
 ];
 
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
@@ -3332,7 +3342,8 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "CSV",
         lines: [
-          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, Contract, Roll, Thin, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled, Unsettled, Roll and Thin are true or false, Contract names a continuous future's contract per bar, and status says why a row has no prices.",
+          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "A continuous future whose bars name their contracts (NG=F) adds Contract, Roll and Thin before status: the contract per bar, and true or false for the bar it rolled at and a bar that traded far below those around it.",
         ],
       }, {
         title: "Several symbols",

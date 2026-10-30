@@ -323,7 +323,7 @@ export function historyRows(
     };
   });
   const breaks = historyBreakFlags(times, rows.map((row) => row.close), interval);
-  const thin = thinVolumeBars(rows);
+  const thin = thinVolumeBars(rows.map((row, index) => ({ ...row, contract: points[index]!.contract })));
   let contract: string | null = null;
   return rows.map((row, index) => {
     const flags = [...flagCodes(row), ...breaks[index]!];
@@ -347,18 +347,22 @@ const THIN_NEIGHBOURS = 5;
 const THIN_VOLUME_SHARE = 0.05;
 
 /**
- * For each bar, whether it traded far below the bars around it: a volume
- * under THIN_VOLUME_SHARE of the median of up to THIN_NEIGHBOURS bars either
- * side that have one (at least four). NG=F's 2026-10-28 bar on 15 lots
- * between days of 150,000 is a price few trades made. A bar still forming,
- * or without a volume, is not judged.
+ * For each bar of a continuous future, whether it traded far below the bars
+ * around it: a volume under THIN_VOLUME_SHARE of the median of up to
+ * THIN_NEIGHBOURS bars either side that have one (at least four). NG=F's
+ * 2026-10-28 bar on 15 lots between days of 150,000 is a price few trades
+ * made. Only a bar naming its contract is judged, against others that do: a
+ * stock's or a coin's quiet day is not a contract's thin one. A bar still
+ * forming, or with no trade at all (no volume, or 0), is not judged.
  */
-function thinVolumeBars(rows: readonly Pick<HistoryRow, "volume" | "partial">[]): boolean[] {
+function thinVolumeBars(rows: readonly (Pick<HistoryRow, "volume" | "partial"> & { contract?: string })[]): boolean[] {
+  const judged = (row: (typeof rows)[number]): row is (typeof rows)[number] & { volume: number } =>
+    !!row.contract && !row.partial && row.volume != null && Number.isFinite(row.volume) && row.volume > 0;
   return rows.map((row, index) => {
-    if (row.partial || row.volume == null || !Number.isFinite(row.volume)) return false;
+    if (!judged(row)) return false;
     const around = [...rows.slice(Math.max(0, index - THIN_NEIGHBOURS), index), ...rows.slice(index + 1, index + 1 + THIN_NEIGHBOURS)]
-      .filter((other) => !other.partial && other.volume != null && Number.isFinite(other.volume))
-      .map((other) => other.volume!)
+      .filter(judged)
+      .map((other) => other.volume)
       .sort((left, right) => left - right);
     if (around.length < 4) return false;
     const middle = around.length / 2;

@@ -146,6 +146,30 @@ describe("DOE report dates", () => {
   });
 });
 
+/** `fn DOE NGS` asked for a petroleum series; the fix pointed every gas word at `fn NGS`, `fn NGS gas` included. */
+test("DOE given a gas word opens gas storage and points to NGS; NGS given one opens it without pointing to itself", async () => {
+  const spy = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(board({ reports: [board().reports[0]!, gasReport], series: [crude(), mountain()] }));
+  try {
+    const load = async (tab: "all" | "gas", argument: string) => {
+      const args = { symbols: [], argument: [argument], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
+      return await doeHeadless(tab).load(args, {} as HeadlessPaneContext) as HeadlessBundleResult;
+    };
+    const doe = await load("all", "NGS");
+    expect(doe.sections.map((section) => section.title)).toEqual([expect.stringMatching(/^Gas Storage/)]);
+    expect(doe.warnings).toEqual(["Gas storage is its own function: gloom fn NGS (one region: gloom fn NGS east)"]);
+    for (const word of ["gas", "storage", "natural gas"]) {
+      const ngs = await load("gas", word);
+      expect(ngs.sections.map((section) => section.title)).toEqual([expect.stringMatching(/^Gas Storage/)]);
+      expect(ngs.warnings ?? []).toEqual([]);
+    }
+    // A word that is no series names the series to use, and NGS only from DOE.
+    await expect(load("all", "jet fuel")).rejects.toThrow("Use a series such as cushing, gasoline, distillate or east; for gas storage, gloom fn NGS");
+    await expect(load("gas", "jet fuel")).rejects.toThrow(/^Use a series such as cushing, gasoline, distillate or east$/);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 describe("DOE figures", () => {
   test("stocks read in millions of barrels; a rate compares in points; nothing reads -0", () => {
     expect(formatDoeChange("kb", 922)).toBe("+0.9");

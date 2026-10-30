@@ -60,11 +60,23 @@ describe("history rows", () => {
     expect(historyContractDrawdown(rows.slice(5))!.drawdown.drawdown).toBeGreaterThan(-0.05);
     expect(rows.filter((row) => row.thin).map((row) => row.date)).toEqual(["2026-10-28"]);
     expect(historyThinNote(rows)).toBe("2026-10-28 traded thin: under 5% of the volume of the bars around it");
-    // A history naming no contract has no roll and one drawdown.
-    const plain = historyRows(bars.map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close })), "1d");
-    expect(plain.some((row) => row.roll || row.contract)).toBe(false);
+    // A history naming no contract (a stock's, whose 15-share day is just quiet) has no roll, no thin bar and one drawdown.
+    const plain = historyRows(bars.map(([date, close, volume]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume })), "1d");
+    expect(plain.some((row) => row.roll || row.contract || row.thin)).toBe(false);
+    // A bar with no trade at all is no thin one.
+    const idle = historyRows(bars.map(([date, close, volume, contract]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume: volume === 15 ? 0 : volume, contract })), "1d");
+    expect(idle.some((row) => row.thin)).toBe(false);
     expect(historyRollNote("NG=F", plain)).toBeNull();
     expect(historyContractDrawdown(plain)!.contract).toBeNull();
+  });
+
+  test("a served bar keeps its contract only as a listed contract code: root, month letter and two-digit year", () => {
+    const contract = (value: unknown) => mapPricePoint({ date: "2026-10-26T00:00:00.000Z", close: 3.05, contract: value } as never).contract;
+    for (const code of ["NGZ26", "ZQF27", "6EZ26", "MNQH27", "CLX26"]) expect(contract(code)).toBe(code);
+    // Lower case, a four-digit year, a letter no month has, a bare root, padding or markup is no contract.
+    for (const value of ["ngz26", "NGZ2026", "NGA26", "NG", "NGZ26 ", "", "<b>NGZ26</b>", 26, null, undefined]) {
+      expect(contract(value)).toBeUndefined();
+    }
   });
 
   test("float32 noise from either source becomes the intended decimal while real precision stays", () => {

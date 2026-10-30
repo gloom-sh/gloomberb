@@ -547,9 +547,11 @@ function renderRows(
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
-      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => (
-        row[column.key] == null || row[column.key] === "" ? [] : cell(row, column).split("\n")
-      ))),
+      // A value the text leaves out (a summary that only repeats the headline) takes no line.
+      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => {
+        const text = row[column.key] == null || row[column.key] === "" ? "" : cell(row, column);
+        return text === "" ? [] : text.split("\n");
+      })),
       ...(under.length > 0 && under.every((column) => column.underRow === "line") ? { cutBelow: true } : {}),
     },
   );

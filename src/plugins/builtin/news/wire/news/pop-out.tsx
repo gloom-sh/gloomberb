@@ -34,7 +34,11 @@ function handOffNewsStory(article: NewsArticle): void {
 
 function handedOffStory(articleId: string): NewsArticle | null {
   if (!articleId) return null;
-  return handedOffStories.get(articleId) ?? null;
+  const exact = handedOffStories.get(articleId);
+  if (exact) return exact;
+  // A pane opened by a short id (`fn news-story-pane 6067684e`) takes the story whose id starts with it.
+  for (const [id, article] of handedOffStories) if (storyIdMatches(id, articleId)) return article;
+  return null;
 }
 
 export const openNewsStoryPane = (

@@ -32,7 +32,7 @@ function barMark(key: "partial" | "filled" | "unsettled" | "roll" | "thin") {
  * whether or not any bar of this run has one, so files of different symbols
  * or days line up when joined.
  */
-export const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
+const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "date", header: "Date" },
   { key: "open", header: "Open" },
   { key: "high", header: "High" },
@@ -47,11 +47,26 @@ export const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "volumeNote", header: "Volume note" },
   { key: "venueVolume", header: "Venue volume" },
   { key: "volumeVenue", header: "Volume venue" },
-  // A continuous future's contract per bar, the bar it rolled at, and a bar that traded far below those around it.
+];
+
+/** A continuous future's contract per bar, the bar it rolled at, and a bar that traded far below those around it. */
+const CONTRACT_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "contract", header: "Contract" },
   { key: "roll", header: "Roll", value: barMark("roll") },
   { key: "thin", header: "Thin", value: barMark("thin") },
 ];
+
+/**
+ * The columns of an export of these rows: HISTORY_EXPORT_COLUMNS, and when a
+ * bar names its contract (a continuous future such as NG=F) Contract, Roll and
+ * Thin after them, for every row of the export. A stock's or a coin's file is
+ * as it always was.
+ */
+export function historyExportColumns(rows: readonly Pick<HistoryRow, "contract">[]): CliResultColumn<ExportedRow>[] {
+  return rows.some((row) => typeof row.contract === "string" && row.contract !== "")
+    ? [...HISTORY_EXPORT_COLUMNS, ...CONTRACT_EXPORT_COLUMNS]
+    : HISTORY_EXPORT_COLUMNS;
+}
 
 /** Flags of a break before a bar, whose prices stay; every other code left the prices blank. */
 const BREAK_FLAGS = new Set(["gap", "jump"]);

@@ -64,6 +64,14 @@ describe("SEC headless model", () => {
 
     const both = await headless.load(args(2), createTestHeadlessContext());
     expect(both.rows).toHaveLength(2);
+    expect(both.textColumns?.map((column) => column.key)).not.toContain("pressReleaseUrl");
+
+    // An 8-K whose index names its press release keeps the filing's link, and the release prints beside it.
+    const released = await createSecHeadless({
+      loadFilings: async () => [{ ...filings[0]!, pressReleaseUrl: "https://www.sec.gov/filing/one/ex99-1.htm" }],
+    }).load(args(1), createTestHeadlessContext());
+    expect(released.rows[0]).toMatchObject({ url: "https://www.sec.gov/filing/one", pressReleaseUrl: "https://www.sec.gov/filing/one/ex99-1.htm" });
+    expect(released.textColumns?.map((column) => column.key)).toContain("pressReleaseUrl");
     // A first read asks for a few hundred, past the pricing supplements a bank files in runs.
     expect(requestedLimits).toEqual([200, 200]);
   });

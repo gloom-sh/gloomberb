@@ -118,6 +118,10 @@ test("a symbol written with a venue's suffix that does not trade there names its
   // A suffixed listing that does trade there keeps its quote.
   const vodafone = createTestQuote({ symbol: "VOD.L", currency: "GBP" });
   expect((await runQuote(["VOD.L"], venueSource("VOD", ["LSE", "NASDAQ"], { "VOD.L": vodafone }))).rows.map((row) => row.target.symbol)).toEqual(["VOD.L"]);
+  // Another one-letter suffix is as likely a US share class (McCormick's voting MKC.V): it keeps its own answer, naming no venue.
+  const mccormick = await runQuote(["MKC.V"], venueSource("MKC", ["NYSE"], {}, { NYSE: "McCormick & Company, Incorporated" }));
+  expect(mccormick.failure?.message ?? mccormick.warnings.join(" ")).not.toContain("does not trade on");
+  expect(mccormick.failure?.message ?? mccormick.warnings.join(" ")).toContain("MKC.V");
 });
 
 test("a listing whose quote request failed, rather than found none, is still one to try, under the symbol search lists it by", async () => {

@@ -176,6 +176,7 @@ test("a JSE move names its close from the venue's calendar, without daily closes
   const thursday = { ...hci, changeSessionDate: "2026-11-05", lastUpdated: Date.parse("2026-11-05T10:00:00Z") };
   const basis = quoteChangeBasis(thursday);
   expect(basis).toEqual({ kind: "close", date: "2026-11-03", venue: "JSE", closed: ["2026-11-04"] });
+  expect(changeBasisLabel(basis!, NOW)).toBe("vs Tue 3 Nov close");
   expect(changeBasisNote(basis, NOW)).toBe("JSE closed Wed 4 Nov, holiday");
 });
 

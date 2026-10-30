@@ -85,15 +85,17 @@ export function cleanTickerInput(value: string): string {
 /**
  * Whether a function's argument names the ticker its pane shows. Its report
  * says first: AUCT's `10Y` and IPO's `pending` are free text its own resolver
- * reads, never a symbol to look up. Without a report, a rendered pane's own
- * argument says (the story pane's story id), then the shortcut.
+ * reads, never a symbol to look up. Without a report, a rendered pane whose
+ * argument is an id it opens (the story pane's story id) says so, then the
+ * shortcut.
  */
 export function argumentNamesTicker(
   template: Pick<PaneTemplateDef, "shortcut"> | undefined,
   headless: Pick<HeadlessPaneDefinition, "argument"> | undefined,
   pane?: Pick<PaneDef, "reportArgument">,
 ): boolean {
-  const kind = headless?.argument.kind ?? pane?.reportArgument?.kind;
+  if (!headless && pane?.reportArgument?.identifier) return false;
+  const kind = headless?.argument.kind;
   if (kind === "free-text" || kind === "none") return false;
   return kind === "tickers" || kind === "symbol-list" || template?.shortcut?.argKind !== "text";
 }
