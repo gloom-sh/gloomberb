@@ -26,6 +26,8 @@ function now(): number {
 let lastSampleName: string | null = null;
 let lastSampleEndedAt = 0;
 let lastSampleMetadata: Record<string, unknown> | undefined;
+/** Inside `withoutLastStep`: samples are logged, and none becomes the last step. */
+let quietDepth = 0;
 
 /**
  * The most recent measured section, when it ended and what it was measured
@@ -43,7 +45,7 @@ function logSlowPerfSample(
   metadata?: Record<string, unknown>,
   lastStep = true,
 ): void {
-  if (lastStep) {
+  if (lastStep && quietDepth === 0) {
     lastSampleName = name;
     lastSampleEndedAt = now();
     lastSampleMetadata = metadata;
@@ -60,6 +62,20 @@ function logSlowPerfSample(
     perfLog.error(name, payload);
   } else if (durationMs >= PERF_WARN_MS) {
     perfLog.warn(name, payload);
+  }
+}
+
+/**
+ * Runs `fn` without any section it measures becoming the step a later stall
+ * names: reporting a stall reads the windows, and the next stall must still
+ * name the work before it, not the report.
+ */
+export function withoutLastStep<T>(fn: () => T): T {
+  quietDepth += 1;
+  try {
+    return fn();
+  } finally {
+    quietDepth -= 1;
   }
 }
 

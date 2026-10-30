@@ -38,9 +38,10 @@ import {
 } from "../../telemetry/crash-reports-node";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { installUpdateFailureReporter } from "../../telemetry/update-failures";
+import { createStallClocks } from "../../telemetry/stall-clocks";
 import { installStallReporter, recordStall } from "../../telemetry/stall-reports";
 import { createNodeStallReporterHost } from "../../telemetry/stall-reports-node";
-import { setStallSink } from "../../utils/main-thread-stall";
+import { setStallClocks, setStallSink } from "../../utils/main-thread-stall";
 import { createNodeUpdateFailureHost } from "../../telemetry/update-failures-node";
 import { terminalInstallKind } from "../../updater";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
@@ -129,6 +130,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     }));
     installStallReporter(createNodeStallReporterHost({ getDataDir: () => config.dataDir }));
     setStallSink((event) => recordStall("terminal", event));
+    setStallClocks(createStallClocks());
     installUsageCounter({
       surface: "terminal",
       os: describeNodeOs(),

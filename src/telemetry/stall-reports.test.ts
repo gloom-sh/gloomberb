@@ -69,7 +69,7 @@ describe("stall reports", () => {
       type: "MainThreadStall",
       message: "2-5s after chart.resolve",
       plugin: "stall-monitor",
-      pane: "process=window count=1 longest=2300ms platform=macos-arm64 phase=steady up=30s-2m gap=<1s day=1",
+      pane: "process=window count=1 longest=2300ms phase=steady up=30s-2m gap=<1s day=1 platform=macos-arm64",
     });
     expect(JSON.stringify(crashReports)).not.toMatch(/AAPL|alice/);
   });
@@ -99,8 +99,9 @@ describe("stall reports", () => {
 describe("app stalls", () => {
   // The desktop app's own process: a SQLite statement that held it names
   // itself, says whether it waited on another program's lock, and the
-  // report says whether anyone was looking and how often it happened today.
-  test("a stall after a SQLite statement names the statement, its tries and the lock, with the app's attention", () => {
+  // report says whether anyone was looking, whether the thread was busy or
+  // waiting, and how often it happened today.
+  test("a stall after a SQLite statement names the statement, its tries and the lock, with the app's attention and CPU", () => {
     const { clock, sent, log } = fakeReporter();
     setStallAttentionProbe(() => ({ active: false, visible: true }));
     const event = {
@@ -114,7 +115,7 @@ describe("app stalls", () => {
 
     recordStall("app", event);
     clock.now += HOUR_MS;
-    recordStall("app", { blockedMs: 1_500, uptimeMs: 100 * 60_000, phase: "steady" });
+    recordStall("app", { blockedMs: 1_500, uptimeMs: 100 * 60_000, phase: "steady", threadCpu: 0.04, otherCpu: 1.27 });
     clock.now += HOUR_MS;
     recordStall("app", event);
     // A sub-second stall is logged without asking the windows.
@@ -122,10 +123,11 @@ describe("app stalls", () => {
     recordStall("app", { blockedMs: 600 });
 
     expect(sent.map((report) => [report.section, formatStallReportDetails(report)])).toEqual([
-      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms platform=macos-arm64 phase=steady up=10-60m gap=in fg=0 vis=1 lock=1 try=3 day=1"],
-      ["unmeasured", "process=app count=1 longest=1500ms platform=macos-arm64 phase=steady up=1-6h gap=none fg=0 vis=1 day=2"],
+      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms phase=steady up=10-60m gap=in fg=0 vis=1 lock=1 try=3 day=1 platform=macos-arm64"],
+      ["unmeasured", "process=app count=1 longest=1500ms phase=steady up=1-6h gap=none fg=0 vis=1 cpu=0 oth=130 day=2 platform=macos-arm64"],
     ]);
     expect(log[0]).toEndWith("last measured: sqlite.blocked, ended 400 ms before (touch cached resource, 3 tries, waited on a lock)  [phase=steady up=10-60m gap=in fg=0 vis=1]");
+    expect(log[1]).toEndWith("nothing measured before it  [phase=steady up=1-6h gap=none fg=0 vis=1 cpu=0 oth=130]");
     expect(log[3]).toEndWith("nothing measured before it  [phase=unknown up=unknown gap=none]");
   });
 
@@ -148,10 +150,12 @@ describe("app stalls", () => {
       visible: null,
       attempts: 99,
       lockWait: true,
+      cpuPercent: 100,
+      otherCpuPercent: 990,
     });
 
     expect(details.length).toBeLessThanOrEqual(120);
-    expect(details).toStartWith("process=app count=999 longest=123400ms platform=windows-arm64 phase=startup up=30s-2m gap=10-60s fg=? vis=? lock=1");
+    expect(details).toBe("process=app count=999 longest=123400ms phase=startup up=30s-2m gap=10-60s fg=? vis=? cpu=100 oth=990 lock=1 try=99");
   });
 });
 
