@@ -7,7 +7,9 @@ import type {
 import { fetchDividendData, requestDividendHistory, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
-import { formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText } from "./view";
+import {
+  convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+} from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { forwardDividendBasis, noCurrentDividend, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
@@ -34,14 +36,18 @@ const RANKING_CONCURRENCY = MAX_RANKED_SYMBOLS;
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
 
-const PAYMENT_COLUMNS = [
-  { key: "exDate", header: "Ex-date" },
-  { key: "amount", header: "Amount", align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
-      ? formatDistributionAmount(value, row.currency) : value == null ? "-" : String(value) },
-  { key: "currency", header: "CCY" },
-  { key: "type", header: "Type" },
-];
+/** The history's columns; amounts converted from the currency the company declares in keep their currency's decimals. */
+function paymentColumns(converted: boolean) {
+  const amount = converted ? formatConvertedAmount : formatDistributionAmount;
+  return [
+    { key: "exDate", header: "Ex-date" },
+    { key: "amount", header: "Amount", align: "right" as const,
+      format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
+        ? amount(value, row.currency) : value == null ? "-" : String(value) },
+    { key: "currency", header: "CCY" },
+    { key: "type", header: "Type" },
+  ];
+}
 
 /** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
 const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
@@ -150,10 +156,15 @@ export function projectDividendYieldHeadless(
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
     };
   });
+  // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.
+  const convertedFrom = data.convertedFrom;
+  const paymentColumnList = paymentColumns(!!convertedFrom);
   const declaredColumns = rows.some((row) => row.declared)
-    ? [...PAYMENT_COLUMNS.slice(0, 2), DECLARED_COLUMN, ...PAYMENT_COLUMNS.slice(2)] : PAYMENT_COLUMNS;
+    ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList;
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
+  const cashRate = (value: number | null) => !currency ? "—" : !convertedFrom ? formatDistributionAmount(value ?? undefined, currency)
+    : value == null ? formatConvertedAmount(value, currency) : `${formatConvertedAmount(value, currency)} (${convertedFromText(convertedFrom)})`;
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
   // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
   const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
@@ -183,8 +194,8 @@ export function projectDividendYieldHeadless(
             value: figure.value,
             formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
           })) : []),
-          { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
-          { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
+          { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate) },
+          { label: "Forward rate", value: metrics.forwardRate, formatted: cashRate(metrics.forwardRate) },
           { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           { label: "1Y Cash Growth", value: roundedRatio(metrics.growth1Y), formatted: growthText(metrics.growth1Y, metrics.growth1YPayments) },
           { label: "3Y Cash CAGR", value: roundedRatio(metrics.growth3Y), formatted: growthText(metrics.growth3Y, metrics.growth3YPayments) },
@@ -201,7 +212,7 @@ export function projectDividendYieldHeadless(
         entries: taxEquivalentLines(tax).map((line) => ({ label: line.label, value: line.value, formatted: line.text })),
       }] : []),
       {
-        title: "Dividend history",
+        title: convertedFrom ? `Dividend history (amounts ${convertedFromText(convertedFrom)})` : "Dividend history",
         columns: declaredColumns,
         rows,
         // Each amount is in its own row's currency.
@@ -214,6 +225,8 @@ export function projectDividendYieldHeadless(
       truncated: rows.length < matching.length,
       type,
       currency: data.currency ?? data.payments[0]?.currency ?? null,
+      // The currency the company declares in, when the amounts are converted from it; null for one paid as declared.
+      convertedFrom: convertedFrom ?? null,
       historyAvailable: data.historyAvailable ?? true,
       historyError: data.historyError ?? null,
       summaryError: data.summaryError ?? null,

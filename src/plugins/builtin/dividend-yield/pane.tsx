@@ -31,7 +31,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -46,11 +46,14 @@ import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { useFundFacts } from "../sec/fund-facts-view";
+import { usePaneInstance } from "../../../state/app/context";
+import { DividendRankingView, rankSymbolsOf } from "./ranking-view";
 import { bondFigures } from "../../../market-data/bond-funds";
 
-function formatRate(value: number | null, currency: string): string {
+/** A per-share rate; one converted from the currency the company declares in keeps its currency's decimals. */
+function formatRate(value: number | null, currency: string, converted = false): string {
   if (value == null) return "—";
-  return formatDistributionAmount(value, currency);
+  return converted ? formatConvertedAmount(value, currency) : formatDistributionAmount(value, currency);
 }
 
 function formatGrowth(value: number | null): string {
@@ -90,7 +93,9 @@ function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
  * say they are not its SEC yield, and the SEC yield follows them with its date.
  */
 function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory: boolean, short: boolean,
-  declared: DividendData["declared"], bond: FundBondFacts | null = null): StatItem[] {
+  declared: DividendData["declared"], bond: FundBondFacts | null = null, convertedFrom?: string): StatItem[] {
+  // The rates of a listing paid in a conversion of what its company declares say what they were converted from.
+  const converted = convertedFrom ? { detail: convertedFromText(convertedFrom) } : {};
   const exDate: StatItem[] = metrics.nextExDividendDate
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
@@ -116,8 +121,10 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
         ...(forwardNote ? { detail: forwardNote } : {}) },
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
-    { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
-    { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
+    { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom),
+      ...metrics.trailingRate != null ? converted : {} },
+    { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency, !!convertedFrom),
+      ...metrics.forwardRate != null ? converted : {} },
     growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments),
     growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments),
     { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
@@ -144,13 +151,14 @@ const rowKey = (row: DividendRow) => row.key;
 function renderCell(
   row: DividendRow,
   column: DividendColumn,
+  converted = false,
 ): DataTableCell {
   switch (column.id) {
     case "exDate":
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: formatDistributionAmount(row.amount, row.currency),
+        text: converted ? formatConvertedAmount(row.amount, row.currency) : formatDistributionAmount(row.amount, row.currency),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
@@ -161,9 +169,15 @@ function renderCell(
   }
 }
 
-export function DividendYieldPane({ focused, width, height, loadData = fetchDividendData }: {
-  focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData;
-}) {
+type DividendPaneProps = { focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData };
+
+/** One ticker's dividends, or several ranked by yield when the pane was opened with a list (`shot DVD KO JNJ`). */
+export function DividendYieldPane(props: DividendPaneProps) {
+  const ranked = rankSymbolsOf(usePaneInstance()?.settings);
+  return ranked.length > 1 ? <DividendRankingView symbols={ranked} {...props} /> : <DividendTickerPane {...props} />;
+}
+
+function DividendTickerPane({ focused, width, height, loadData = fetchDividendData }: DividendPaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
   const { nativePaneChrome } = useUiCapabilities();
   // Yields are repriced from the quote on every render, so streaming it is all
@@ -275,13 +289,15 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond) : [];
+  const convertedFrom = historyData?.convertedFrom;
+  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom), [convertedFrom]);
+  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
   }).figures;
   // The desktop grid never clips a label; the terminal shortens them rather than clip.
   const figures = metrics && !nativePaneChrome && labelsClip(keptFigures, width)
-    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared, bond) : fullFigures;
+    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared, bond, convertedFrom) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {
@@ -324,7 +340,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
-      renderCell={renderCell}
+      renderCell={renderRowCell}
       selectedTextOverridesCellColor
       emptyStateTitle={emptyTitle}
     />

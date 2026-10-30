@@ -8,6 +8,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
 afterEach(() => setHttpFetchTransport(null));
 
@@ -183,9 +184,38 @@ describe("cash distribution calculations", () => {
     const result = projectDividendYieldHeadless(data, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} });
     expect(result.sections[0]?.entries?.find((entry) => entry.label === "History status")?.value)
       .toBe("Stale cash history as of 2026-10-20; recent distributions may be missing.");
-    const history = result.sections.find((section) => section.title === "Dividend history")!;
+    // The pence are a conversion of the dollars declared: the history says so, and JSON keeps every decimal.
+    const history = result.sections.find((section) => section.title === "Dividend history (amounts converted from USD)")!;
     expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);
     expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
+    expect(result.metadata).toMatchObject({ convertedFrom: "USD" });
+  });
+
+  test("a rand line of a dollar payer rounds its amounts to the cent and says they are converted from USD, even with no declared row beside them", async () => {
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "S32", currency: "ZAc", fetchedAt: "2026-10-29T18:39:54.600Z", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-03-04", amount: 62.2114 }, { exDate: "2026-09-16", amount: 86.6087 }],
+      declaredCash: { currency: "USD", rows: [] },
+    } } }));
+    const data = await fetchDividendData("S32", 50.6, "JSE", "ZAR");
+    expect(data.convertedFrom).toBe("USD");
+    const request = { rawArgument: "S32:JSE", argument: "S32:JSE", symbols: ["S32:JSE"], options: {} };
+    const result = projectDividendYieldHeadless(data, request);
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    expect(text).toMatch(/Trailing rate +ZAR\s1\.49 \(converted from USD\)/);
+    expect(text).toContain("Dividend history (amounts converted from USD)");
+    expect(text).toMatch(/2026-09-16 +ZAR\s0\.87 +ZAR +cash/);
+    expect(text).not.toContain("0.866087");
+    // The exports keep the amount as read.
+    expect(result.sections[1]!.rows![0]).toMatchObject({ amount: 0.866087, currency: "ZAR" });
+    // A listing paid in what its company declares is as before.
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "SBK", currency: "ZAc", fetchedAt: "2026-10-29T18:39:54.600Z", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-09-16", amount: 86.6087 }],
+    } } }));
+    const plain = await fetchDividendData("SBK", 300, "JSE", "ZAR");
+    expect(plain.convertedFrom).toBeUndefined();
+    expect(renderHeadlessPaneText(createDividendYieldHeadless(), projectDividendYieldHeadless(plain, request), request, "DVD")).toMatch(/ZAR\s0\.866087/);
   });
 
   test("a read without its summary takes the forward rate fundamentals state, and each error says what is missing and when it was tried", async () => {

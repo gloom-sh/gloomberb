@@ -349,8 +349,8 @@ export async function resolvePaneFunction(
   if (!pane) {
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
-  const createOptions = buildCreateOptions(template, args.arg);
   const headless = getHeadlessPaneDefinition(template, pane);
+  const createOptions = withTickerList(buildCreateOptions(template, args.arg), headless, args.arg);
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
   if (resolutionSettings.tableSection) {
@@ -398,6 +398,23 @@ export async function resolvePaneFunction(
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
+}
+
+/**
+ * A function whose report ranks a list (`fn DVD KO JNJ`) though its pane
+ * opens on one ticker: the list is passed as `symbols`, so `shot` draws the
+ * same tickers `fn` reads, in one pane, and fetches each. One ticker stays as
+ * it was.
+ */
+function withTickerList(
+  createOptions: PaneTemplateCreateOptions | undefined,
+  headless: HeadlessPaneDefinition | undefined,
+  arg: string,
+): PaneTemplateCreateOptions | undefined {
+  const kind = headless?.argument.kind;
+  if (!createOptions || createOptions.symbols?.length || (kind !== "tickers" && kind !== "symbol-list")) return createOptions;
+  const symbols = [...new Set(arg.split(/[,\s]+/).map((word) => cleanTickerInput(word)).filter(Boolean))];
+  return symbols.length > 1 ? { ...createOptions, symbol: symbols[0]!, arg: symbols.join(","), symbols } : createOptions;
 }
 
 function validateTickerCardinality(

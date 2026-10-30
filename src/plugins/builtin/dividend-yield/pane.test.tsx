@@ -348,3 +348,41 @@ test("mixed-currency payments keep the currency column", async () => {
   const data = await quarterlyIncome((index) => index < 2 ? "USD" : "CAD");
   expect(await renderLoaded(data, 88, 26)).toContain("CCY");
 });
+
+test("DVD opened on several tickers ranks them by trailing yield as fn DVD does, and keeps a row for one it could not read", async () => {
+  const { dividendYieldModule } = await import("./index");
+  const template = dividendYieldModule.paneTemplates!.find((entry) => entry.id === "dividend-yield-pane")!;
+  const context = { activeTicker: null } as never;
+  // `shot DVD KO JNJ` passes the list; one ticker opens its own pane as before.
+  const ranked = template.createInstance!(context, { arg: "KO,JNJ,GONE", symbol: "KO", symbols: ["KO", "JNJ", "GONE"] })!;
+  expect(ranked).toMatchObject({ title: "DVD KO, JNJ, GONE", binding: { kind: "none" }, settings: { rankSymbols: ["KO", "JNJ", "GONE"] } });
+  expect(template.createInstance!(context, { arg: "KO", symbol: "KO" })).toMatchObject({ binding: { kind: "fixed", symbol: "KO" } });
+
+  const { buildDividendMetrics, toDividendPayment } = await import("./client");
+  const income = (amount: number) => {
+    const now = new Date();
+    const payments = [0, 3, 6, 9].map((months) => toDividendPayment(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1))
+      .toISOString().slice(0, 10), amount, "USD")!);
+    return { payments, currency: "USD", price: 50, historyAvailable: true, metrics: buildDividendMetrics(payments, null, 50) };
+  };
+  const loadData = (async (symbol: string) => {
+    if (symbol === "GONE") throw new Error("No dividend data found for GONE");
+    return income(symbol === "KO" ? 0.5 : 0.75);
+  }) as unknown as typeof fetchDividendData;
+  const id = ranked.instanceId!;
+  const state = createInitialState(createTestPaneConfig("/tmp/dividend-ranking", {
+    instanceId: id, paneId: "dividend-yield", binding: { kind: "none" }, settings: ranked.settings,
+  }));
+  await act(async () => {
+    await tui.render(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
+      <DividendYieldPane focused width={110} height={10} loadData={loadData} />
+    </TestPaneProvider>, { width: 110, height: 10 });
+  });
+  const lines = (await frame()).split("\n");
+  const header = lines.findIndex((line) => line.includes("TICKER"));
+  expect(lines[header]).toMatch(/TICKER +YIELD TTM +FWD YIELD +PAYOUT +1Y GROWTH +3Y CAGR +LAST EX +NEXT PAY +NOTE/);
+  // $3.00 and $2.00 a year over $50: JNJ first, then KO, and the ticker that failed last, marked not read.
+  expect(lines[header + 1]).toMatch(/^\s*JNJ +6\.00%/);
+  expect(lines[header + 2]).toMatch(/^\s*KO +4\.00%/);
+  expect(lines[header + 3]).toMatch(/^\s*GONE .*not read/);
+});
