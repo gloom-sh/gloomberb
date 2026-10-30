@@ -23,11 +23,13 @@ const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as cons
 const QUANTITY_UNITS = [
   "number", "count", "units", "shares", "contracts", "days", "people", "jobs", "posts", "views", "hours",
   "barrels", "barrels/day", "cubic feet", "MW", "MWh", "TWh", "GWh/day", "tons", "ounces",
+  // A hash rate: exahashes per second.
+  "EH/s",
   // The instrument's own currency, for a field that applies to any ticker.
   "currency", "currency/share",
 ] as const;
-/** What a price is quoted per: `USD/barrel`, `USD/GPU-hour`. */
-const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "tCO2", "hour", "GPU-hour"] as const;
+/** What a price is quoted per: `USD/barrel`, `USD/GPU-hour`, a miner's `USD/PH/s/day`. */
+const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "tCO2", "hour", "GPU-hour", "PH/s/day"] as const;
 const SCALES = ["thousand", "million", "billion", "trillion"] as const;
 
 const RATE_SET: ReadonlySet<string> = new Set(RATE_UNITS);

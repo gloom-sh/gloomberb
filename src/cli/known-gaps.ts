@@ -326,6 +326,14 @@ const COMMAND_POINTERS: ReadonlyArray<{
       "change", "ranking", "rankings", "dashboard", "lending", "staking"],
     line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloom fn CRYP --list defi (by chain: --by chain)",
   },
+  {
+    // Ahead of DIST, which "difficulty" finds by its description; the four series are listed after it.
+    names: ["hashrate", "hash rate", "hashprice", "hash price", "difficulty", "retarget", "mining", "miner", "miners"],
+    words: ["bitcoin", "btc", "network", "crypto", "stock", "stocks", "equities", "listed", "next",
+      "estimate", "adjustment", "chart", "history"],
+    line: "Bitcoin network: gloom fn G hashrate, difficulty or hashprice; listed miners: gloom fn THEM crypto",
+    leads: true,
+  },
 ];
 
 /** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */

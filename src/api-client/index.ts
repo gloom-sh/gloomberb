@@ -955,6 +955,7 @@ class GloomApiClient {
   getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
   getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
   getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
+  getCloudBitcoinNetwork = this.data.getCloudBitcoinNetwork.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);

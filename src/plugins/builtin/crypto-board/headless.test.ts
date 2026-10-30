@@ -48,7 +48,7 @@ test("a supply outage is a note: the prices stay a complete report, with the mar
   expect("exportTables" in result).toBe(false);
   const freshness = deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW);
   const text = renderHeadlessPaneText(cryptoBoardHeadless, result, ARGS, "CRYP", freshness);
-  expect(text).toMatch(/Vol 24h  Market cap\n/);
+  expect(text).toMatch(/Vol 24h USD  Market cap USD\n/);
   expect(text).not.toMatch(/Supply\s/);
 });
 

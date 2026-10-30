@@ -1,4 +1,5 @@
 import type { DataTableColumn } from "../../../components";
+import { pickUnit } from "../../../utils/format";
 import type {
   RevenueBreakdownPayload,
   RevenueBreakdownPeriod,
@@ -81,6 +82,23 @@ export function revenueAmount(value: number | null): string {
   const scaled = abs / divisor;
   const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
   return `${value < 0 ? "-" : ""}${scaled.toFixed(digits)}${suffix}`;
+}
+
+const SCALE_WORDS: Record<string, string> = { K: "thousands", M: "millions", B: "billions", T: "trillions" };
+
+/**
+ * One scale for a report table's amounts, its largest one's, so a 0.0 never sits beside a 5.52M: `unit`
+ * names it once ("USD millions") and `format` prints each amount in it, with one count of decimals down the
+ * table (179.3 and 0.0, or 54.32 and 7.88). The pane keeps each amount's own suffix (`revenueAmount`).
+ */
+export function revenueScale(values: ReadonlyArray<number | null>, currency: string | null): { unit: string; format: (value: number | null) => string } {
+  const amounts = values.filter((value): value is number => value !== null && Number.isFinite(value));
+  const { suffix, divisor } = pickUnit(amounts);
+  const digits = Math.max(0, ...amounts.map((value) => Math.abs(value) / divisor)) >= 100 ? 1 : 2;
+  return {
+    unit: [currency?.trim(), SCALE_WORDS[suffix]].filter(Boolean).join(" "),
+    format: (value) => value === null || !Number.isFinite(value) ? revenueAmount(null) : (value / divisor).toFixed(digits),
+  };
 }
 
 export const sharePercent = (value: number | null) =>

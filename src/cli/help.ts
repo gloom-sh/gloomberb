@@ -54,7 +54,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
   ["--color, --no-color", "Force or turn off colors (NO_COLOR also turns them off)"],
   ["--plain, --no-plain", "Plain text for a screen reader or large text: no rule lines, arrows as words, every table column kept with a dash in empty cells. On by default when NO_COLOR is set or output is piped; --no-plain turns it off"],
-  ["--width <n>", "Fit tables to n columns (default: the terminal width; piped output is not fitted). shot takes its own --width in pixels"],
+  ["--width <n>", "Fit tables to n columns (default: the terminal width; piped output fits COLUMNS when set, else is not fitted). shot takes its own --width in pixels"],
 ];
 
 const EXIT_CODES: Array<[string, string]> = [

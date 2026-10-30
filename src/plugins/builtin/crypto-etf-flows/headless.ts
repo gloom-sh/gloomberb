@@ -43,6 +43,15 @@ function summaryLine(payload: CryptoEtfFlowsPayload): string {
   ].join(" ");
 }
 
+/**
+ * "Funds: IBIT iShares Bitcoin Trust ETF, ..., BTC Grayscale Bitcoin Mini Trust ETF.": a column is headed by
+ * the fund's ticker, and BTC or ETH there is Grayscale's mini fund, not the coin. Null when no fund is named.
+ */
+function fundsLine(payload: CryptoEtfFlowsPayload): string | null {
+  const named = payload.funds.flatMap((fund) => fund.name ? [`${fund.ticker} ${fund.name}`] : []);
+  return named.length ? `Funds: ${named.join(", ")}.` : null;
+}
+
 export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   argument: { kind: "none" },
@@ -95,10 +104,11 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
       pending: day.pending,
     }));
     const summary = cryptoEtfFlowSummary(payload);
+    const funds = fundsLine(payload);
     return {
       rows,
       columns: flowColumns(payload),
-      notes: [summaryLine(payload), `Source: ${payload.source.publisher}, ${payload.source.url}`],
+      notes: [summaryLine(payload), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
       complete: !payload.stale,
       ...(payload.stale ? { warnings: [`The flows were last read ${payload.fetchedAt.slice(0, 10)}; newer days may be missing.`] } : {}),
       freshness: {

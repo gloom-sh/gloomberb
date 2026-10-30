@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { bareFredSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
+import { bareCatalogSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -513,16 +513,27 @@ test("fn G DFII10 charts the FRED series once no listing answers to it, and a ti
   const quoted = async (symbol: string) => ({ symbol, price: 79, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0 });
   const guard = (getQuote: (symbol: string) => Promise<unknown>) => ({ marketData: createTestDataProvider({ getQuote: getQuote as never }), catalogSeriesName: catalog });
   // A listing read, a quote that answers, or a failure that is not "not a ticker" keep the ticker.
-  expect(await bareFredSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
-  expect(await bareFredSeries(ir, async () => null, guard(quoted))).toBeNull();
-  expect(await bareFredSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
+  expect(await bareCatalogSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
+  expect(await bareCatalogSeries(ir, async () => null, guard(quoted))).toBeNull();
+  expect(await bareCatalogSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
   // A symbol the catalog does not list is never asked about.
   let asked = 0;
-  expect(await bareFredSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
+  expect(await bareCatalogSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
   expect(asked).toBe(0);
-  expect(await bareFredSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
+  expect(await bareCatalogSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
     id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
   });
+
+  // A word that is a catalog series' own id (fn G hashrate) charts that series, on the same terms.
+  const hashrate = buildCustomChartPreset("HASHRATE").series[0]!;
+  const named = (getQuote: (symbol: string) => Promise<unknown>) => ({
+    ...guard(getQuote),
+    catalogSeriesNamed: (word: string) => word === "HASHRATE" ? { expression: "CAP:bitcoin:hashrate", name: "Bitcoin network hash rate" } : undefined,
+  });
+  expect(await bareCatalogSeries(hashrate, async () => null, named(notATicker))).toMatchObject({
+    id: hashrate.id, source: { kind: "capability", capabilityId: "bitcoin", seriesId: "hashrate" }, label: "Bitcoin network hash rate",
+  });
+  expect(await bareCatalogSeries(hashrate, async () => null, named(quoted))).toBeNull();
 });
 
 test("fn CMP reads a leg's fund facts once through their cache, and never a leg a cached quote calls a stock", async () => {

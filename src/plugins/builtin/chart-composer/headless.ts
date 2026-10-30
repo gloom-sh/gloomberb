@@ -600,30 +600,34 @@ export function argumentWithListing(argument: string, symbol: string, key: strin
 }
 
 /**
- * A FRED series id typed where a ticker goes (`fn G DFII10`), as the chart of
- * FRED:DFII10: the catalog lists it, no listing answers to it, and the quote
- * source says it is not a ticker. A real ticker of the same letters, read as
- * a listing or quoted, still charts as the ticker; null then, and for any
- * other series.
+ * A catalog series typed where a ticker goes, as its chart: a FRED series id
+ * (`fn G DFII10` is FRED:DFII10), or a word that is a series' own id
+ * (`fn G hashrate` is CAP:bitcoin:hashrate), when the catalog lists it, no
+ * listing answers to it, and the quote source says it is not a ticker. A
+ * real ticker of the same letters, read as a listing or quoted, still charts
+ * as the ticker; null then, and for any other symbol.
  */
-export async function bareFredSeries(
+export async function bareCatalogSeries(
   series: ChartSeriesSpec,
   readListing: () => Promise<unknown>,
-  context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName">,
+  context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName" | "catalogSeriesNamed">,
 ): Promise<ChartSeriesSpec | null> {
   const { source } = series;
   if (source.kind !== "security" || source.instrument.exchange || source.instrument.instrument || source.fieldId !== CHART_FIELD_IDS.price) return null;
   const id = source.instrument.symbol.trim().toUpperCase();
   const expression = `FRED:${id}`;
-  const label = /^[A-Z0-9]+$/.test(id)
+  const fredLabel = /^[A-Z0-9]+$/.test(id)
     ? context.catalogSeriesName?.(expression) ?? getSharedRegistry()?.series?.findByExpression(expression)?.definition.name
     : undefined;
+  const named = fredLabel ? undefined : context.catalogSeriesNamed?.(id);
+  const parsed = named ? parseSeriesExpression(named.expression) : null;
+  const label = fredLabel ?? (parsed ? named?.name : undefined);
   if (!label || await readListing()) return null;
   const failure = await Promise.resolve().then(() => context.marketData.getQuote(id, ""))
     .then((quote) => quote ? null : `Not a ticker: ${id}.`, (error: unknown) => error instanceof Error ? error.message : String(error));
   if (!failure || !notATickerSymbol(failure)) return null;
-  const fred = buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
-  return { ...fred, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
+  const spec = parsed ? buildSeriesSpec({ ...parsed, label }, 0) : buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
+  return { ...spec, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
 }
 
 /**
@@ -680,9 +684,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         series: await Promise.all(parsed.series.map(async (series) => {
           if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
           const { symbol } = series.source.instrument;
-          // A FRED id no ticker answers to (DFII10) is its FRED series; an intraday chart has none.
-          const fred = template === "graph-intraday-price-pane" ? null : await bareFredSeries(series, () => readListing(symbol), context);
-          if (fred) return fred;
+          // A FRED id (DFII10) or a series' own id (hashrate) no ticker answers to is that series; an intraday chart has none.
+          const catalog = template === "graph-intraday-price-pane" ? null : await bareCatalogSeries(series, () => readListing(symbol), context);
+          if (catalog) return catalog;
           if (!reads.has(symbol)) reads.set(symbol, readSeriesListing(symbol));
           const instrument = await reads.get(symbol)!;
           return instrument ? { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } } : series;

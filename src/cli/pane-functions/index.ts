@@ -356,7 +356,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const data = glossary
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
-      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
+      // A note the listing and the report both make (a coin's code charted as a fund) is said once.
+      const warnings = [...new Set([...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []])];
       // A report with no data is printed as it is, and fails: exit 1, and `ok: false` in JSON with the reason.
       const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), {
         failsWithoutData: resolved.headless?.failsWithoutData, tables: report.tables });

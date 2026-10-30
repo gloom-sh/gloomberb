@@ -15,6 +15,7 @@ import { doeModule } from "../plugins/builtin/doe";
 import { doeGasWord } from "../plugins/builtin/doe/headless";
 import { buildFuturesRows, DEFAULT_FUTURES_SORT } from "../plugins/builtin/futures/model";
 import { getContractsBySector } from "../market-data/futures-board";
+import { findCatalogSeries } from "./series-search";
 
 beforeEach(() => {
   // Catalog discovery starts chat and instantiates the map's chart templates.
@@ -212,6 +213,27 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["usdt"]), lookupGlossary("usdt"), null, series, commandPointer("usdt"));
   expect(catalog.indexOf(line)).toBe(0);
   expect(catalog).toContain("Taiwan dollar");
+});
+
+test("hashrate, hashprice, difficulty, mining and miner lead to the bitcoin network series and THEM crypto, ahead of DIST", async () => {
+  const line = "Bitcoin network: gloom fn G hashrate, difficulty or hashprice; listed miners: gloom fn THEM crypto";
+  for (const query of ["hashrate", "hash rate", "hashprice", "difficulty", "bitcoin difficulty", "mining", "miner", "bitcoin miners", "mining stocks"]) {
+    expect(commandPointer(query), query).toBe(line);
+    expect(commandPointerLeads(query), query).toBe(true);
+  }
+  // Mining of anything else, and data mining, are not the bitcoin network.
+  for (const query of ["gold mining", "data mining", "gold miners"]) expect(commandPointer(query), query).toBeNull();
+  const plugins = getLoadablePlugins();
+  expect(findCatalogSeries(plugins, "hashrate").map((match) => match.expression)).toEqual(["CAP:bitcoin:hashrate"]);
+  expect(findCatalogSeries(plugins, "hashprice")[0]).toMatchObject({ expression: "CAP:bitcoin:hashprice", unit: "USD/PH/s/day" });
+  expect(findCatalogSeries(plugins, "mining").map((match) => match.expression)).toEqual(expect.arrayContaining([
+    "CAP:bitcoin:hashrate", "CAP:bitcoin:difficulty", "CAP:bitcoin:retarget-estimate", "CAP:bitcoin:hashprice",
+  ]));
+  // The line comes first, before the series and before DIST, which "difficulty" finds by its description.
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["difficulty"]), lookupGlossary("difficulty"), null,
+    findCatalogSeries(plugins, "difficulty"), commandPointer("difficulty"), true);
+  expect(catalog.indexOf(line)).toBe(0);
+  expect(catalog).toContain("CAP:bitcoin:difficulty");
 });
 
 test("DeFi words find CRYP and name its DeFi list; exchange reserves are said plainly to be uncovered", async () => {

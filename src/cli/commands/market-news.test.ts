@@ -55,7 +55,7 @@ function unknownSymbol() {
   return { ...cli, calls };
 }
 
-test("several words, quoted or not, search story text in the service's order without looking up a listing", async () => {
+test("several words, quoted or not, search story text without looking up a listing, and print the matches newest first", async () => {
   const requests = serveSearch(STORIES);
   const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
   await news.execute(["european gas"], cli.context);
@@ -63,8 +63,8 @@ test("several words, quoted or not, search story text in the service's order wit
 
   expect(requests.map((url) => [url.pathname, url.searchParams.get("query"), url.searchParams.get("limit")]))
     .toEqual([["/news/search", "european gas", "20"], ["/news/search", "european gas", "20"]]);
-  // Headline hits lead the service's answer, so an older one stays above a newer summary hit.
-  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["older", "newer"]);
+  // The service answers headline hits first (an older one above a newer summary hit); the list reads newest first, as help says.
+  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["newer", "older"]);
   expect(cli.printed[0]!.result.metadata).toMatchObject({ ticker: null, search: "european gas" });
   const text = render(cli.printed[0]!);
   expect(text.split("\n")[0]).toBe('Stories matching "european gas"');
@@ -97,9 +97,14 @@ test("each story prints its short id and its summary on one indented line cut to
 });
 
 test("a search no story has every word of lists the closest stories, and says so under its heading", async () => {
-  const requests = serveSearch([story("two", "SpaceX lockup expiration puts buyers to the test", "2026-10-09T15:45:00.000Z")], "closest");
+  const requests = serveSearch([
+    story("two", "SpaceX lockup expiration puts buyers to the test", "2026-10-09T15:45:00.000Z"),
+    story("one", "IPO calendar for the week", "2026-10-20T09:00:00.000Z"),
+  ], "closest");
   const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
   await news.execute(["IPO lockup expiry"], cli.context);
+  // The closest stories stay most words first, as the heading says, not by date.
+  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["two", "one"]);
 
   expect(requests[0]!.searchParams.get("closest")).toBe("1");
   expect(cli.printed[0]!.result.metadata).toMatchObject({ search: "IPO lockup expiry", match: "closest" });

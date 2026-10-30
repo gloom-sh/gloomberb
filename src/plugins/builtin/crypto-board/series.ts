@@ -1,6 +1,7 @@
 import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
 import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDefiTvl, loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
+import { BITCOIN_NETWORK_SERIES } from "./bitcoin-network";
 
 const DAY_MS = 86_400_000;
 
@@ -114,4 +115,5 @@ export const CRYPTO_SERIES: readonly SeriesDefinition[] = [
   },
   ...STABLECOIN_SUPPLY_SERIES,
   DEFI_TVL_SERIES,
+  ...BITCOIN_NETWORK_SERIES,
 ];

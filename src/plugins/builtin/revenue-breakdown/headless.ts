@@ -1,13 +1,21 @@
 import type { RevenueBreakdownView } from "../../../api-client/revenue-breakdown";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRevenueBreakdown } from "./client";
-import { growthPercent, quarterLabel, reportedSpan, revenueAmount, sharePercent } from "./model";
+import { growthPercent, quarterLabel, reportedSpan, revenueScale, sharePercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
-/** Amounts compact and shares and growth in percent, as the pane prints them (15.97B, 83.7%, +10.8%); exports keep the whole number. */
+/** Shares and growth in percent, as the pane prints them (83.7%, +10.8%), amounts on the table's scale; exports keep the whole number. */
 const number = (format: (value: number | null) => string) => (value: unknown) => format(typeof value === "number" ? value : null);
-const amountColumn = (key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right", textFormat: number(revenueAmount) });
+
+/** A table's amounts on its one scale (`revenueScale`), named once in its title: "Total revenue, USD millions". */
+function amountScale(values: ReadonlyArray<number | null>, currency: string | null) {
+  const scale = revenueScale(values, currency);
+  return {
+    title: (title: string) => scale.unit ? `${title}, ${scale.unit}` : title,
+    column: (key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right", textFormat: number(scale.format) }),
+  };
+}
 
 export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -46,16 +54,18 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
       ctx.apiClient,
       await resolveHeadlessIssuerListing(ctx, symbol),
     ));
+    const rowScale = amountScale(data.rows.flatMap((row) => [...row.values, row.ttm]), data.currency);
+    const totalScale = amountScale(data.total, data.currency);
     return {
       complete: data.access === "full",
       errors: data.lockedRows > 0 ? [`${data.lockedRows} more rows need Gloom Pro`] : [],
       sections: [
         {
-          title: `Quarterly revenue by ${data.view}`,
+          title: rowScale.title(`Quarterly revenue by ${data.view}`),
           columns: [
             { key: data.view, header: data.view[0]!.toUpperCase() + data.view.slice(1) },
-            ...data.periods.map((period) => amountColumn(quarterLabel(period), quarterLabel(period))),
-            amountColumn("ttm", "TTM"),
+            ...data.periods.map((period) => rowScale.column(quarterLabel(period), quarterLabel(period))),
+            rowScale.column("ttm", "TTM"),
             { key: "share", header: "Share", align: "right", textFormat: number(sharePercent) },
             { key: "yoy", header: "YoY", align: "right", textFormat: number(growthPercent) },
           ],
@@ -68,8 +78,8 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
           })),
         },
         {
-          title: "Total revenue",
-          columns: [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, amountColumn("revenue", "Revenue")],
+          title: totalScale.title("Total revenue"),
+          columns: [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
           rows: data.periods.map((period, index) => ({
             quarter: quarterLabel(period),
             end: period.end,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
-import { barLevels, reportedSpan, revenueAmount, sortRevenueRows } from "./model";
+import { barLevels, reportedSpan, revenueAmount, revenueScale, sortRevenueRows } from "./model";
 
 const row = (label: string, values: (number | null)[], yoy: number | null = null) => ({
   key: `p:${label}`, label, values, ttm: null, yoy, share: null,
@@ -20,6 +20,18 @@ describe("revenue breakdown model", () => {
   test("amounts keep three significant figures", () => {
     expect([54_252e6, 245_500e6, 7_883e6, 31e9, 380e6, 1.2e12, null].map(revenueAmount))
       .toEqual(["54.3B", "246B", "7.88B", "31.0B", "380M", "1.20T", "--"]);
+  });
+
+  test("a report table prints every amount on one scale, its largest one's, named once with the currency", () => {
+    // CORZ: a 0 beside 5.52M and 179M reads 0.0, 5.5 and 179.3 in USD millions, never 0.00 beside 5.52M.
+    const corz = revenueScale([0, 5_520_000, 10_340_000, 179_300_000, null], "USD");
+    expect(corz.unit).toBe("USD millions");
+    expect([0, 5_520_000, 179_300_000, 95_360_000, null].map(corz.format)).toEqual(["0.0", "5.5", "179.3", "95.4", "--"]);
+    // Below 100 of the scale, two decimals down the whole table.
+    const apple = revenueScale([54_320e6, 7_883e6], "USD");
+    expect(apple.unit).toBe("USD billions");
+    expect([54_320e6, 7_883e6, 380e6].map(apple.format)).toEqual(["54.32", "7.88", "0.38"]);
+    expect(revenueScale([null], null).unit).toBe("");
   });
 
   test("sorting puts unreported values last in both directions", () => {

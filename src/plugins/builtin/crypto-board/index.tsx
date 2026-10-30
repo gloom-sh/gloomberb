@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { cryptoMarketsCache, DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
+import { BITCOIN_NETWORK_CACHES } from "./bitcoin-network";
 import { cryptoBoardHeadless } from "./headless";
 import { CryptoBoardPane } from "./pane";
 import { CRYPTO_SERIES } from "./series";
@@ -40,10 +41,12 @@ export const cryptoBoardModule: PluginModule = {
     cryptoMarketsCache.attach(ctx.persistence);
     for (const cache of STABLECOIN_SUPPLY_CACHES) cache.attach(ctx.persistence);
     for (const cache of DEFI_TVL_CACHES) cache.attach(ctx.persistence);
+    for (const cache of BITCOIN_NETWORK_CACHES) cache.attach(ctx.persistence);
   },
   dispose() {
     cryptoMarketsCache.reset();
     for (const cache of STABLECOIN_SUPPLY_CACHES) cache.reset();
     for (const cache of DEFI_TVL_CACHES) cache.reset();
+    for (const cache of BITCOIN_NETWORK_CACHES) cache.reset();
   },
 };

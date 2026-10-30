@@ -24,6 +24,25 @@ export function seriesExpression(definition: SeriesDefinition): string {
 }
 
 /**
+ * The one catalog series a bare word names by its id (`hashrate` is
+ * `bitcoin:hashrate`), for a chart typed with the word where a ticker goes.
+ * Only a word of six letters or more, and only when no other series has the
+ * same name in another namespace: `ca` is a policy rate and a CDS, and a
+ * short word is too often someone's ticker.
+ */
+export function seriesNamedBy(definitions: Iterable<SeriesDefinition>, word: string): SeriesDefinition | undefined {
+  const wanted = word.trim().toLowerCase();
+  if (!/^[a-z]{6,}$/.test(wanted)) return undefined;
+  let found: SeriesDefinition | undefined;
+  for (const definition of definitions) {
+    if (definition.input || splitSeriesId(definition.id)?.name.toLowerCase() !== wanted) continue;
+    if (found && found.id !== definition.id) return undefined;
+    found = definition;
+  }
+  return found;
+}
+
+/**
  * The capability series id a loaded series charts under: its name, one of its
  * lines after a tilde, and for a series with an input, the symbol after a
  * slash (`days-to-cover/AAPL`, `bands~upper/AAPL`).

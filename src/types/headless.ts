@@ -127,6 +127,8 @@ export interface HeadlessPaneContext {
   capabilities?: CapabilityInvoker;
   /** The catalog's name for the series charted as an expression (`FRED:DFII10`); undefined for one it does not list. */
   catalogSeriesName?: (expression: string) => string | undefined;
+  /** The catalog series a bare word names by its id (`hashrate` is CAP:bitcoin:hashrate); undefined for any other word. */
+  catalogSeriesNamed?: (word: string) => { expression: string; name: string } | undefined;
   /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
   resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
