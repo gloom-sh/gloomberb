@@ -101,6 +101,18 @@ export interface FundDetailData {
   filingGap?: ThirteenFFilingGap | null;
   /** A refresh failed and the oldest copy that answered instead was saved at this time (ms). */
   savedAt?: number;
+  /** The parts still loading, while the fund fills in (loadFundDetail's `onProgress`); absent once whole. */
+  loading?: ThirteenFDetailLoading;
+}
+
+/** Parts of a fund's detail still loading. */
+export interface ThirteenFDetailLoading {
+  /** The latest report's holdings are a large filing's first rows. */
+  positions?: boolean;
+  /** The prior quarter's holdings, which the latest are compared with. */
+  comparison?: boolean;
+  /** EDGAR's filing list, for a fund behind on its filings. */
+  filingGap?: boolean;
 }
 
 /** A manager a 13F-NT names as reporting its holdings. */

@@ -149,8 +149,8 @@ describe("13F data cache", () => {
       if (parsed.pathname.endsWith("/forms")) return json(forms.map((form) => ({ ...form, cik: "1067983" })));
       const accession = parsed.searchParams.get("accession_number")!;
       fetched.push(accession);
-      return json([{ accession_number: accession, cik: "1067983", cusip: accession === "addition" ? "222222222" : "111111111",
-        ticker: accession === "addition" ? "NEW" : "OLD", value: accession === "addition" ? 50 : 100, ssh_prnamt: 10 }]);
+      return json({ complete: true, rows: [{ accession_number: accession, cik: "1067983", cusip: accession === "addition" ? "222222222" : "111111111",
+        ticker: accession === "addition" ? "NEW" : "OLD", value: accession === "addition" ? 50 : 100, ssh_prnamt: 10 }] });
     });
     const detail = await loadFundDetail("1067983", "Fund");
     expect(fetched.sort()).toEqual(["addition", "base", "previous"]);
@@ -288,6 +288,101 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
   expect(pages[1]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
   expect(pages[2]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
   expect(pages[3]?.rows[0]).toMatchObject({ periodOfReport: "2026-06-30", estQuarterReturn: 4, tableValueTotal: 150, tableEntryTotal: 3 });
+});
+
+function holdingRows(accession: string, from: number, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    accession_number: accession, cik: "1067983", cusip: String(100_000_000 + from + index), value: from + index + 1, ssh_prnamt: 1,
+  }));
+}
+
+function filedForm(accession: string, period: string, entries: number) {
+  return {
+    accession_number: accession, cik: "1067983", company_name: "Fund", period_of_report: period,
+    filed_as_of_date: period, submission_type: "13F-HR", table_value_total: 100, table_entry_total: entries,
+  };
+}
+
+test("a filing comes whole in one request, and a page at a time, a few at once, from a service that cannot send it whole", async () => {
+  const asked: Array<{ path: string; offset?: number; limit?: number }> = [];
+  let whole = true;
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    asked.push({ path, ...(params.offset != null ? { offset: Number(params.offset), limit: Number(params.limit) } : {}) });
+    if (path === "/forms") return [filedForm("current", "2026-06-30", 1_234)];
+    if (path === "/holdings") {
+      if (!whole) throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      return { cik: "1067983", accession_number: "current", rows: holdingRows("current", 0, 1_234), complete: true };
+    }
+    if (path === "/form") return holdingRows("current", Number(params.offset), Math.max(0, Math.min(Number(params.limit), 1_234 - Number(params.offset))));
+    return {};
+  }) as never);
+  // Nothing falls through to the public source while Gloom Cloud answers.
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  try {
+    const detail = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false });
+    expect(detail.latestHoldings).toHaveLength(1_234);
+    expect(asked.map((request) => request.path)).toEqual(["/forms", "/holdings"]);
+
+    whole = false;
+    asked.length = 0;
+    const paged = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(paged.latestHoldings.map((row) => row.value)).toEqual(Array.from({ length: 1_234 }, (_, index) => index + 1));
+    expect(paged.warnings).toEqual([]);
+    const pages = asked.filter((request) => request.path === "/form");
+    expect(pages[0]).toEqual({ path: "/form", offset: 0, limit: 250 });
+    // Five pages hold the filing; the few asked past its end come back empty.
+    expect(pages.map((page) => page.offset).slice(0, 5).sort((a, b) => a! - b!)).toEqual([0, 250, 500, 750, 1_000]);
+    expect(pages.length).toBeLessThanOrEqual(5 + 4);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a large filing shows its first rows, then the whole filing, then the quarter it is compared with", async () => {
+  let releaseWhole!: () => void;
+  const wholeGate = new Promise<void>((resolve) => { releaseWhole = resolve; });
+  let releasePrevious!: () => void;
+  const previousGate = new Promise<void>((resolve) => { releasePrevious = resolve; });
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    if (path === "/forms") return [filedForm("current", "2026-06-30", 5_000), filedForm("previous", "2026-03-31", 10)];
+    if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+    if (params.accession_number === "previous") {
+      await previousGate;
+      return { rows: holdingRows("previous", 0, 10), complete: true };
+    }
+    if (params.limit != null) return { rows: holdingRows("current", 0, Number(params.limit)), complete: false };
+    await wholeGate;
+    return { rows: holdingRows("current", 0, 5_000), complete: true };
+  }) as never);
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  const seen: FundDetailData[] = [];
+  let shown!: () => void;
+  const firstShown = new Promise<void>((resolve) => { shown = resolve; });
+  try {
+    const loaded = loadFundDetail("1067983", "Fund", undefined, {
+      filingGap: false,
+      onProgress: (detail) => { seen.push(detail); shown(); },
+    });
+    await firstShown;
+    // The first rows, with nothing yet called a buy or a sale.
+    expect(seen[0]?.latestHoldings).toHaveLength(2_000);
+    expect(seen[0]?.loading).toEqual({ positions: true, comparison: true });
+    expect(hasComparable13FQuarter(seen[0]!)).toBe(false);
+    expect(buildFundHoldingRows(seen[0]!).every((row) => row.action === "unknown" && row.previousValue == null)).toBe(true);
+    releaseWhole();
+    await Bun.sleep(1);
+    expect(seen.at(-1)?.latestHoldings).toHaveLength(5_000);
+    expect(seen.at(-1)?.loading).toEqual({ comparison: true });
+    releasePrevious();
+    const detail = await loaded;
+    expect(detail.loading).toBeUndefined();
+    expect(seen.at(-1)?.loading).toBeUndefined();
+    expect(hasComparable13FQuarter(detail)).toBe(true);
+    expect(detail.latestHoldings).toHaveLength(5_000);
+    expect(detail.previousHoldings).toHaveLength(10);
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 test("abort during a holdings page stops the walk", async () => {
