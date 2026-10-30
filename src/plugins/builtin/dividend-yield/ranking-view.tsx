@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   DataTableView,
   PaneStatusBody,
@@ -8,12 +8,13 @@ import {
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { usePluginAppActions } from "../../../public/react";
+import { usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { TextAttributes } from "../../../ui";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { compareSortValues, nextHeaderSort, type SortComparableValue, type SortPreference } from "../../../utils/sort-values";
 import { fetchDividendData } from "./client";
 import { projectDividendRanking, type DividendRankingEntry } from "./ranking";
 
@@ -35,6 +36,14 @@ const DATE_COLUMNS = new Set(["lastExDate", "payDate", "secYieldAsOf"]);
 
 type RankingRow = Record<string, unknown> & { symbol: string };
 type RankingColumn = DataTableColumn & { source: HeadlessPaneColumn };
+/** No column: the order `fn DVD` ranks in, trailing yield first and a ticker not read last. */
+const RANKED_ORDER: SortPreference<string> = { columnId: null, direction: "desc" };
+
+function sortRankingRows(rows: RankingRow[], sort: SortPreference<string>): RankingRow[] {
+  const { columnId, direction } = sort;
+  if (!columnId) return rows;
+  return [...rows].sort((left, right) => compareSortValues(left[columnId] as SortComparableValue, right[columnId] as SortComparableValue, direction));
+}
 
 /**
  * Reads every ticker at once, as `fn DVD` does: a ticker that fails keeps its
@@ -78,15 +87,16 @@ export function DividendRankingView({ symbols, focused, width, height, loadData 
   usePaneRefreshKey(resource.reload, { focused });
   const { createPaneFromTemplate } = usePluginAppActions();
   const section = useMemo(() => resource.data ? projectDividendRanking(resource.data).sections[0] ?? null : null, [resource.data]);
-  const rows = (section?.rows ?? []) as RankingRow[];
+  const [sort, setSort] = usePluginPaneState<SortPreference<string>>("dividend-ranking:sort", RANKED_ORDER);
+  const rows = useMemo(() => sortRankingRows((section?.rows ?? []) as RankingRow[], sort), [section, sort]);
   const columns = useMemo<RankingColumn[]>(() => (section?.columns ?? []).map((column) => ({
     id: column.key,
     label: column.header,
     width: Math.max(column.header.length, COLUMN_WIDTHS[column.key] ?? 0),
-    align: column.align ?? "left",
+    align: column.align === "right" ? "right" : "left",
     source: column,
   })), [section]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = usePluginPaneState<string | null>("dividend-ranking:selected", null);
 
   usePaneFooter("dividend-ranking", () => ({
     info: loadingErrorFooterInfo(resource.loading && !!resource.data, resource.data ? null : resource.error),
@@ -118,6 +128,11 @@ export function DividendRankingView({ symbols, focused, width, height, loadData 
         rootWidth={width}
         rootHeight={height}
         freezeFirstColumn
+        sortColumnId={sort.columnId}
+        sortDirection={sort.direction}
+        // A third click on a column returns to the ranking.
+        onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, {
+          firstDirection: id === "symbol" || id === "note" || id === "yieldBasis" ? "asc" : "desc", resetTo: RANKED_ORDER }))}
         getItemKey={(row) => row.symbol}
         selection={{ kind: "id", selectedId: rows.some((row) => row.symbol === selected) ? selected! : rows[0]?.symbol ?? "",
           getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}

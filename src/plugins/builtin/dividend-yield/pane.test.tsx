@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -354,7 +354,7 @@ test("DVD opened on several tickers ranks them by trailing yield as fn DVD does,
   const template = dividendYieldModule.paneTemplates!.find((entry) => entry.id === "dividend-yield-pane")!;
   const context = { activeTicker: null } as never;
   // `shot DVD KO JNJ` passes the list; one ticker opens its own pane as before.
-  const ranked = template.createInstance!(context, { arg: "KO,JNJ,GONE", symbol: "KO", symbols: ["KO", "JNJ", "GONE"] })!;
+  const ranked = (await template.createInstance!(context, { arg: "KO,JNJ,GONE", symbol: "KO", symbols: ["KO", "JNJ", "GONE"] }))!;
   expect(ranked).toMatchObject({ title: "DVD KO, JNJ, GONE", binding: { kind: "none" }, settings: { rankSymbols: ["KO", "JNJ", "GONE"] } });
   expect(template.createInstance!(context, { arg: "KO", symbol: "KO" })).toMatchObject({ binding: { kind: "fixed", symbol: "KO" } });
 
@@ -370,13 +370,19 @@ test("DVD opened on several tickers ranks them by trailing yield as fn DVD does,
     return income(symbol === "KO" ? 0.5 : 0.75);
   }) as unknown as typeof fetchDividendData;
   const id = ranked.instanceId!;
-  const state = createInitialState(createTestPaneConfig("/tmp/dividend-ranking", {
+  const initial = createInitialState(createTestPaneConfig("/tmp/dividend-ranking", {
     instanceId: id, paneId: "dividend-yield", binding: { kind: "none" }, settings: ranked.settings,
   }));
-  await act(async () => {
-    await tui.render(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
+  const runtime = createTestPluginRuntime();
+  function Live() {
+    const [state, setState] = useState<AppState>(initial);
+    return <TestPaneProvider state={state} dispatch={(action: AppAction) => setState((current) => appReducer(current, action))}
+      paneId={id} pluginId="dividend-yield" runtime={runtime}>
       <DividendYieldPane focused width={110} height={10} loadData={loadData} />
-    </TestPaneProvider>, { width: 110, height: 10 });
+    </TestPaneProvider>;
+  }
+  await act(async () => {
+    await tui.render(<Live />, { width: 110, height: 10 });
   });
   const lines = (await frame()).split("\n");
   const header = lines.findIndex((line) => line.includes("TICKER"));
@@ -385,4 +391,10 @@ test("DVD opened on several tickers ranks them by trailing yield as fn DVD does,
   expect(lines[header + 1]).toMatch(/^\s*JNJ +6\.00%/);
   expect(lines[header + 2]).toMatch(/^\s*KO +4\.00%/);
   expect(lines[header + 3]).toMatch(/^\s*GONE .*not read/);
+  // A header sorts by its column; a third click returns to the ranking.
+  for (const order of [["GONE", "JNJ", "KO"], ["KO", "JNJ", "GONE"], ["JNJ", "KO", "GONE"]]) {
+    await tui.clickFrameText("TICKER");
+    const sorted = (await frame()).split("\n");
+    expect(sorted.slice(header + 1, header + 4).map((line) => line.trim().split(/\s+/)[0])).toEqual(order);
+  }
 });
