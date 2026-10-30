@@ -9,6 +9,7 @@ import {
 import { DividendYieldPane } from "./pane";
 import { dividendYieldHeadless } from "./headless";
 import { RANK_SYMBOLS_SETTING } from "./ranking-view";
+import { MAX_RANKED_SYMBOLS } from "./ranking-reads";
 import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../../types/plugin";
 
 function createDividendYieldModule({
@@ -90,7 +91,8 @@ function createDividendYieldModule({
  */
 function rankedSymbols(options: PaneTemplateCreateOptions | undefined): string[] {
   const list = options?.symbols?.length ? options.symbols : (options?.arg ?? options?.symbol ?? "").split(",");
-  const symbols = [...new Set(list.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
+  // The first 25, as `fn DVD` ranks at most.
+  const symbols = [...new Set(list.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))].slice(0, MAX_RANKED_SYMBOLS);
   return symbols.length > 1 ? symbols : [];
 }
 
@@ -98,6 +100,8 @@ function rankedSymbols(options: PaneTemplateCreateOptions | undefined): string[]
 function withRanking(template: PaneTemplateDef): PaneTemplateDef {
   return {
     ...template,
+    // `fn` and `shot` pass a typed list as `symbols`, so `shot DVD KO JNJ` draws the ranking `fn DVD KO JNJ` prints.
+    opensTickerList: true,
     canCreate: (context, options) => rankedSymbols(options).length > 1 || (template.canCreate?.(context, options) ?? true),
     createInstance: (context, options) => {
       const symbols = rankedSymbols(options);

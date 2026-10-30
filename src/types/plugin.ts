@@ -554,6 +554,13 @@ export interface PaneTemplateDef {
   /** Template-specific headless model. Takes precedence over the pane-level model. */
   headless?: HeadlessPaneDefinition;
   /**
+   * A one-ticker template whose pane also opens on several at once (DVD's
+   * ranking): `fn` and `shot` pass a typed list (`shot DVD KO JNJ`) to
+   * createInstance as `symbols`. Any other one-ticker template gets the list
+   * as it always has, in `symbol` and `arg`.
+   */
+  opensTickerList?: boolean;
+  /**
    * Source and status of the view this template opens, for a template that
    * opens one view of a pane hosting several (Fixed Income's Issuer Debt).
    * Captures and rendered-view reports merge it over the pane's own

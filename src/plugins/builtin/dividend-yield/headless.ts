@@ -16,9 +16,9 @@ import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
-import { mapWithConcurrency } from "../../../utils/concurrency";
 import { logFailure } from "../../../utils/log-failure";
-import { projectDividendRanking, roundedRatio, type DividendRankingEntry } from "./ranking";
+import { projectDividendRanking, roundedRatio } from "./ranking";
+import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
@@ -29,9 +29,6 @@ import {
   type TaxEquivalentAnalysis, type TreasuryTenor,
 } from "../../../market-data/tax-equivalent";
 
-/** Symbols one `fn DVD` ranks at most; it reads them all at once, so a cold ranking takes about as long as its slowest name. */
-const MAX_RANKED_SYMBOLS = 25;
-const RANKING_CONCURRENCY = MAX_RANKED_SYMBOLS;
 /** The history options' defaults: a ranking lists no history, so only these leave it unchanged. */
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
@@ -54,10 +51,13 @@ const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
     ? formatDistributionAmount(value, row.declaredCurrency) : "-" };
 
+/** What a ticker's read needs: the market data, Gloom Cloud, and the listing a typed key stands for. */
+export type DividendReadContext = Pick<HeadlessPaneContext, "marketData" | "apiClient" | "resolveInstrument">;
+
 export interface DividendYieldHeadlessDependencies {
-  loadData(symbol: string, context: HeadlessPaneContext): Promise<DividendData>;
+  loadData(symbol: string, context: DividendReadContext): Promise<DividendData>;
   /** A US-listed fund's bond facts (SEC yield, yield to worst, duration); null for any other listing. */
-  loadBond?(symbol: string, context: HeadlessPaneContext): Promise<FundBondFacts | null>;
+  loadBond?(symbol: string, context: DividendReadContext): Promise<FundBondFacts | null>;
   /** The Treasury par curve GC shows, for the muni/Treasury ratio; null when it cannot be read. */
   loadTreasury?(context: HeadlessPaneContext): Promise<TreasuryTenor[] | null>;
 }
@@ -110,6 +110,25 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
   },
   loadTreasury: (context) => loadTreasuryTenors(context.apiClient),
 };
+
+/**
+ * How a ranking reads each ticker: `fn DVD`'s, and the DVD pane's with the
+ * app's market data, so both read the same listing at the same price. A
+ * fund's bond facts never fail its row: without them it ranks as before.
+ */
+export function dividendRankingReads(
+  context: DividendReadContext,
+  dependencies: Pick<DividendYieldHeadlessDependencies, "loadData" | "loadBond"> = defaultDependencies,
+): DividendRankingReads {
+  const { loadBond } = dependencies;
+  return {
+    loadData: (symbol) => dependencies.loadData(symbol, context),
+    ...loadBond ? {
+      loadBond: (symbol: string) => loadBond(symbol, context).catch((error) => error instanceof BondClassificationError ? null
+        : logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)(error)),
+    } : {},
+  };
+}
 
 /** A growth figure, or what its short year holds: "n/a: 1 of 2 payments". */
 function growthText(growth: number | null, payments: GrowthPayments | null | undefined): string {
@@ -338,18 +357,7 @@ export function createDividendYieldHeadless(
       if (historyOptions.length > 0) {
         throw new Error(`${historyOptions.join(" and ")} ${historyOptions.length === 1 ? "filters" : "filter"} one ticker's payment history, and a ranking of several lists none. Drop ${historyOptions.length === 1 ? "it" : "them"}, or run DVD on one ticker.`);
       }
-      const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
-        // A fund's bond facts never fail its row: without them it ranks as before.
-        const bond = dependencies.loadBond?.(symbol, context)
-          .catch((error) => error instanceof BondClassificationError ? null
-            : logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)(error)) ?? null;
-        try {
-          return { symbol, data: await dependencies.loadData(symbol, context), bond: await bond };
-        } catch (error) {
-          return { symbol, error: error instanceof Error ? error.message : String(error) };
-        }
-      });
-      return projectDividendRanking(entries);
+      return projectDividendRanking(await readDividendRanking(args.symbols, dividendRankingReads(context, dependencies)));
     },
   };
 }

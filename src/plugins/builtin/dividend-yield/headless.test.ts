@@ -205,26 +205,6 @@ test("several symbols are one table ranked by trailing yield; a read without its
   await expect(definition.load({ ...request, options: { type: "all", limit: 5 } }, context)).rejects.toThrow("--limit filters");
 });
 
-test("a ranking reads every ticker at once, so it takes as long as its slowest read, not one wave after another", async () => {
-  const symbols = Array.from({ length: 25 }, (_, index) => `T${index}`);
-  const started: string[] = [];
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  const definition = createDividendYieldHeadless({
-    loadData: async (symbol) => {
-      started.push(symbol);
-      await gate;
-      return { ...fixture, currency: "USD" };
-    },
-  });
-  const request = { rawArgument: symbols.join(" "), argument: symbols, symbols, options: { type: "all", limit: 40 } };
-  const loading = definition.load(request, context);
-  await Bun.sleep(0);
-  expect(started).toEqual(symbols);
-  release();
-  expect((await loading).sections[0]!.rows).toHaveLength(25);
-});
-
 describe("a bond fund's yields", () => {
   const ISHARES = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
   const MUB: FundBondFacts = {
