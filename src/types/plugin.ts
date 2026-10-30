@@ -228,6 +228,12 @@ export interface PaneDef {
    */
   reportLockNote?(lock: PaneLock): string | Promise<string>;
   /**
+   * The sign-in wall covers the whole pane whenever there is no Gloom Cloud
+   * session (ASKG): a rendered-view report without one prints its
+   * `reportLockNote` at once rather than render the wall to read it.
+   */
+  signInWall?: boolean;
+  /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloom catalog` lists it under Requires, as it does a
    * `headless` model's `discovery.dataRequirements`.
@@ -547,6 +553,13 @@ export interface PaneTemplateDef {
   listed?: boolean;
   /** Template-specific headless model. Takes precedence over the pane-level model. */
   headless?: HeadlessPaneDefinition;
+  /**
+   * A one-ticker template whose pane also opens on several at once (DVD's
+   * ranking): `fn` and `shot` pass a typed list (`shot DVD KO JNJ`) to
+   * createInstance as `symbols`. Any other one-ticker template gets the list
+   * as it always has, in `symbol` and `arg`.
+   */
+  opensTickerList?: boolean;
   /**
    * Source and status of the view this template opens, for a template that
    * opens one view of a pane hosting several (Fixed Income's Issuer Debt).

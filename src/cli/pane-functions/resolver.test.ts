@@ -17,8 +17,12 @@ import type { MarketContext } from "../types";
 import { buildPaneCatalogEntries, type PaneFunctionCatalog } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { buildFunctionReport } from "./report";
-import { parsePaneFunctionArgs } from "./options";
-import { applyListingArgument, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
+import { buildCreateOptions, parsePaneFunctionArgs } from "./options";
+import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, withTickerList } from "./resolver";
+import { getHeadlessPaneDefinition } from "./capabilities";
+import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
+import { earningsModule } from "../../plugins/builtin/earnings";
+import { dividendYieldModule } from "../../plugins/builtin/dividend-yield";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
 import { capabilityPluginState } from "./capabilities";
 import { newsWireModule } from "../../plugins/builtin/news/wire";
@@ -336,4 +340,31 @@ test("every function the catalog lists with no argument refuses one, a rendered 
     catalog.destroy();
     mock.restore();
   }
+});
+
+test("only a template that opens on a list takes one as symbols: shot DVD KO JNJ ranks both, while DES, ADR and EVTS keep their symbol and arg", async () => {
+  const modules = [tickerDetailModule, earningsModule, dividendYieldModule];
+  const catalog: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  for (const code of ["DES", "ADR", "EVTS"]) {
+    const found = findPaneFunction(catalog, code)!;
+    const before = buildCreateOptions(found.template, "KO, JNJ");
+    expect(withTickerList(found.template, before, getHeadlessPaneDefinition(found.template, found.pane!), "KO, JNJ"), code).toBe(before);
+    expect(before?.symbols, code).toBeUndefined();
+  }
+  // A report that takes a list does not make its one-ticker pane open on one.
+  const listReport: HeadlessPaneDefinition<"bundle"> = { shape: "bundle", argument: { kind: "tickers" }, options: [], load: () => ({ sections: [] }) };
+  const oneTicker = template("ONE", "one", listReport);
+  const typed = buildCreateOptions(oneTicker, "KO, JNJ");
+  expect(withTickerList(oneTicker, typed, listReport, "KO, JNJ")).toBe(typed);
+  const dvd = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", "KO, JNJ"]), { command: "shot" });
+  expect(dvd.createOptions).toMatchObject({ symbol: "KO", arg: "KO,JNJ", symbols: ["KO", "JNJ"] });
+  expect(dvd.instance.settings).toMatchObject({ rankSymbols: ["KO", "JNJ"] });
+  // One ticker opens its own pane, and past fn's 25 the list is refused as fn refuses it.
+  expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", "KO"]), { command: "shot" })).createOptions?.symbols).toBeUndefined();
+  const many = Array.from({ length: 26 }, (_, index) => `T${index}`).join(",");
+  await expect(resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", many]), { command: "shot" })).rejects.toThrow("DVD accepts at most 25 symbols.");
 });

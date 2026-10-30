@@ -27,7 +27,7 @@ test("CLI conversion counts a minor unit as a hundredth of its major currency, a
   const toEuros = createBaseConverter(provider, "EUR");
   expect(await toEuros(7_000, "GBX")).toBeCloseTo(70 * 1.25 / 1.1, 9);
   // The rate a report states is the pound's, which pence convert at a hundredth of.
-  expect(toEuros.conversions()).toEqual([{ currency: "GBP", baseCurrency: "EUR", rate: 1.25 / 1.1, asOf: null }]);
+  expect(toEuros.conversions()).toEqual([{ currency: "GBP", baseCurrency: "EUR", rate: 1.25 / 1.1, asOf: null, stale: false }]);
   expect(await createBaseConverter(provider, "USD")(10_000, "ZAc")).toBeCloseTo(5.5, 9);
   // Into a base in pence, and between pence written either way, which need no rate.
   expect(await createBaseConverter(provider, "GBp")(87.5, "USD")).toBeCloseTo(7_000, 9);

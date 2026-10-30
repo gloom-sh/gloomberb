@@ -1,9 +1,9 @@
 import { getSharedRegistry } from "../../plugins/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
-import { parsePublicTickerKey } from "../../utils/exchanges";
 import { findNamedCollection } from "../../portfolio/collection-name";
 import { readBareListing } from "../listing-arg";
 import { apiClient } from "../../api-client";
+import { resolveSavedInstrument } from "../../tickers/saved-instrument";
 import type { MarketContext } from "../types";
 import type {
   HeadlessArgumentExpansion,
@@ -222,12 +222,7 @@ export function createHeadlessPaneContext(
       if (!watchlist) return null;
       return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(watchlist.id));
     },
-    async resolveInstrument(key) {
-      const parsed = parsePublicTickerKey(key);
-      const ticker = await context.store.loadTicker(key)
-        ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
-      return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
-    },
+    resolveInstrument: (key) => resolveSavedInstrument(key, (saved) => context.store.loadTicker(saved)),
     readDeviceState: <T,>(pluginId: string, key: string) =>
       context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {

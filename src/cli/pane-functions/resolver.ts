@@ -349,8 +349,8 @@ export async function resolvePaneFunction(
   if (!pane) {
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
-  const createOptions = buildCreateOptions(template, args.arg);
   const headless = getHeadlessPaneDefinition(template, pane);
+  const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane));
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
   if (resolutionSettings.tableSection) {
@@ -398,6 +398,27 @@ export async function resolvePaneFunction(
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
+}
+
+/**
+ * A one-ticker template whose pane also opens on a list (`opensTickerList`:
+ * DVD's ranking): the list is passed as `symbols`, so `shot` draws the same
+ * tickers `fn` reads, in one pane, and fetches each; past the most the
+ * function's report takes, it is refused as `fn` refuses it. One ticker, and
+ * any other template, stays as it was.
+ */
+export function withTickerList(
+  template: PaneTemplateDef | undefined,
+  createOptions: PaneTemplateCreateOptions | undefined,
+  headless: HeadlessPaneDefinition | undefined,
+  arg: string,
+  token = template?.shortcut?.prefix ?? "",
+): PaneTemplateCreateOptions | undefined {
+  if (!template?.opensTickerList || !createOptions || createOptions.symbols?.length) return createOptions;
+  const symbols = [...new Set(arg.split(/[,\s]+/).map((word) => cleanTickerInput(word)).filter(Boolean))];
+  if (symbols.length < 2) return createOptions;
+  if (headless) validateSymbolCount(headless, token, symbols, "shot");
+  return { ...createOptions, symbol: symbols[0]!, arg: symbols.join(","), symbols };
 }
 
 function validateTickerCardinality(

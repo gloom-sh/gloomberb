@@ -337,3 +337,19 @@ test("a word that is also its company's name hints at the text search only when 
   expect(wordMeansMore([filed(["META"]), filed(["META", "GOOGL"]), filed([])], "META")).toBe(false);
   expect(wordMeansMore([filed([]), filed([])], "GOLD")).toBe(false);
 });
+
+test("a story's tags keep the venue of a listing outside the US, so PIK on the JSE never opens Kidpik, and tag a company once", () => {
+  const link = (symbol: string, exchange: string, marketCap?: number) => ({ symbol, exchange, canonicalTicker: `${symbol}:${exchange}`,
+    relationType: "direct", displayTier: "primary" as const, confidence: 1, relevanceScore: 1, ...marketCap ? { marketCap } : {} });
+  const tags = (...tickerLinks: ReturnType<typeof link>[]) =>
+    mapCloudNewsArticle({ ...story("pnp", "Pick n Pay narrows its loss as Boxer grows", "2026-10-26T05:19:00.000Z"), tickerLinks }).tickers;
+  expect(tags(link("PIK", "XJSE"), link("BOX", "XJSE"), link("KO", "XNYS"), link("MZDAY", "OTC"), link("BTC", "CRYPTO")))
+    .toEqual(["PIK:JSE", "BOX:JSE", "KO", "MZDAY", "BTC"]);
+  // Every over-the-counter venue is a US one, bare.
+  expect(tags(link("NSRGY", "OTCM"), link("RHHBY", "OTCQX"), link("TCEHY", "PINX"), link("GMGI", "EXPM"))).toEqual(["NSRGY", "RHHBY", "TCEHY", "GMGI"]);
+  // ASML on Euronext Amsterdam and on NASDAQ is one company: its home line, the one its market cap is stated on, wherever it was tagged.
+  expect(tags(link("ASML", "XNAS"), link("SKHY", "XNAS"), link("ASML", "XAMS", 614_099_124_224))).toEqual(["ASML:AMS", "SKHY"]);
+  expect(tags(link("ASML", "XAMS", 614_099_124_224), link("ASML", "XNAS"))).toEqual(["ASML:AMS"]);
+  // With no market cap on either, the venue tagged first.
+  expect(tags(link("SHOP", "XTSE"), link("SHOP", "XNYS"))).toEqual(["SHOP:TSX"]);
+});
