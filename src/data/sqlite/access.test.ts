@@ -11,7 +11,10 @@ function synchronousLevel(connection: Database): number | undefined {
 
 // Without WAL (a network share can refuse it) a commit that skips the flush
 // can leave the database corrupt after a power cut, not just a commit short.
-test("commits stop flushing only where WAL took, and user data always flushes", () => {
+// In the app the checkpointer's thread flushes user data: on Windows the
+// flush held the app's thread for seconds. A command has no checkpointer,
+// and its user writes flush themselves.
+test("commits stop flushing only where WAL took, and user data flushes on the app's thread only where nothing else does", () => {
   const levels = (database: SqliteDatabase) => {
     const { connection, access } = database;
     const seen: Record<string, number | undefined> = { connection: synchronousLevel(connection) };
@@ -21,20 +24,23 @@ test("commits stop flushing only where WAL took, and user data always flushes", 
     return seen;
   };
   const wal = new SqliteDatabase(createTempDbPath("sync-wal"), { interactive: true });
+  const command = new SqliteDatabase(createTempDbPath("sync-command"));
   // An in-memory database is one where journal_mode=WAL does not take.
   const noWal = new SqliteDatabase(":memory:", { interactive: true });
   try {
-    expect(levels(wal)).toEqual({ connection: 1, userWrite: 2, cacheWrite: 1, after: 1 });
+    expect(levels(wal)).toEqual({ connection: 1, userWrite: 1, cacheWrite: 1, after: 1 });
+    expect(levels(command)).toEqual({ connection: 1, userWrite: 2, cacheWrite: 1, after: 1 });
     expect(noWal.connection.query<{ journal_mode: string }, []>("PRAGMA journal_mode").get()?.journal_mode).not.toBe("wal");
     expect(levels(noWal)).toEqual({ connection: 2, userWrite: 2, cacheWrite: 2, after: 2 });
   } finally {
     wal.close();
+    command.close();
     noWal.close();
   }
 });
 
 // A batch of quotes or a list's rows used to commit one row at a time. A
-// user write does not wait in that batch: it commits on its own, and flushes.
+// user write does not wait in that batch: it commits on its own.
 test("in the app, the cache writes of one turn commit together, and a user write commits them first", async () => {
   const dbPath = createTempDbPath("cache-batch");
   const database = new SqliteDatabase(dbPath, { interactive: true });
@@ -51,13 +57,13 @@ test("in the app, the cache writes of one turn commit together, and a user write
     expect(committed()).toBe(2);
 
     access.writeCache("put", put("c"));
-    let level: number | undefined;
+    let inTransaction: boolean | undefined;
     access.write("user write", () => {
-      level = synchronousLevel(connection);
+      inTransaction = connection.inTransaction;
       put("user")();
     });
     expect(committed()).toBe(4);
-    expect(level).toBe(2);
+    expect(inTransaction).toBe(false);
   } finally {
     other.close();
     database.close();
@@ -65,16 +71,17 @@ test("in the app, the cache writes of one turn commit together, and a user write
 });
 
 // A cache write made from a user write's callback, or from a queued write's
-// `settled`, opened a batch the next user write then ran inside, at NORMAL.
+// `settled`, opened a batch the next user write then ran inside: a failed
+// commit of that batch rolls the user write back with the cache's.
 test("in the app, a user write never lands in a cache batch, whatever opened it", async () => {
   const dbPath = createTempDbPath("cache-batch-durable");
   const database = new SqliteDatabase(dbPath, { interactive: true });
   const { connection, access } = database;
   connection.exec("CREATE TABLE rows (k TEXT PRIMARY KEY)");
   const put = (k: string) => () => { connection.query("INSERT OR REPLACE INTO rows (k) VALUES (?)").run(k); };
-  const seen: Array<{ level: number | undefined; inTransaction: boolean }> = [];
+  const seen: boolean[] = [];
   const probe = (k: string) => () => {
-    seen.push({ level: synchronousLevel(connection), inTransaction: connection.inTransaction });
+    seen.push(connection.inTransaction);
     put(k)();
   };
   const locker = new Database(dbPath);
@@ -89,10 +96,7 @@ test("in the app, a user write never lands in a cache batch, whatever opened it"
     locker.exec("ROLLBACK");
     await Bun.sleep(150);
     expect(access.flush()).toBe(true);
-    expect(seen).toEqual([
-      { level: 2, inTransaction: false },
-      { level: 2, inTransaction: false },
-    ]);
+    expect(seen).toEqual([false, false]);
   } finally {
     if (locker.inTransaction) locker.exec("ROLLBACK");
     locker.close();

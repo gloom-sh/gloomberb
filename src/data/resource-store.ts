@@ -277,22 +277,18 @@ export class ResourceStore {
     // Eviction goes by the order on disk, which has to hold the latest reads.
     if (!this.flushTouches()) return false;
 
-    const candidates = this.db.query<{
-      namespace: string;
-      kind: string;
-      entity_key: string;
-      variant_key: string;
-      source_key: string;
-      size_bytes: number;
-    }, [number]>(
-      `SELECT namespace, kind, entity_key, variant_key, source_key, size_bytes
+    // Only the row ids, which the recency index holds: a row's size sits
+    // after its payload, and reading it walks the whole payload from disk.
+    // Asking it of the oldest 512 rows read 10 MB to pick what to evict.
+    const candidates = this.db.query<{ rowid: number }, [number]>(
+      `SELECT rowid
        FROM resource_cache
        ORDER BY last_accessed_at ASC, fetched_at ASC
        LIMIT ?`,
     );
-    const remove = this.db.query(
-      `DELETE FROM resource_cache
-       WHERE namespace = ? AND kind = ? AND entity_key = ? AND variant_key = ? AND source_key = ?`,
+    // Deleting a row reads its payload anyway, to free it: the size comes along.
+    const remove = this.db.query<{ size_bytes: number }, [number]>(
+      "DELETE FROM resource_cache WHERE rowid = ? RETURNING size_bytes",
     );
 
     // A cache at its limit holds tens of thousands of rows, so eviction reads
@@ -306,24 +302,23 @@ export class ResourceStore {
       if (!batch) return false;
       if (batch.length === 0) return true;
 
-      const rowsToDelete = [] as typeof batch;
-      for (const row of batch) {
-        if (this.withinSoftLimits(remainingCount, remainingSize)) break;
-        rowsToDelete.push(row);
-        remainingCount -= 1;
-        remainingSize -= row.size_bytes;
-      }
-      if (rowsToDelete.length === 0) return true;
-
+      let left = { count: remainingCount, size: remainingSize };
       const pruned = this.access.writeCache("prune least recently used cached resources", () => {
+        left = { count: remainingCount, size: remainingSize };
         const tx = this.db.transaction(() => {
-          for (const row of rowsToDelete) {
-            remove.run(row.namespace, row.kind, row.entity_key, row.variant_key, row.source_key);
+          for (const { rowid } of batch) {
+            if (this.withinSoftLimits(left.count, left.size)) break;
+            const removed = remove.get(rowid);
+            if (!removed) continue;
+            left.count -= 1;
+            left.size -= removed.size_bytes;
           }
         });
         tx();
       });
       if (!pruned) return false;
+      remainingCount = left.count;
+      remainingSize = left.size;
     }
     return true;
   }
@@ -382,25 +377,33 @@ export class ResourceStore {
     key: Pick<ResourceCacheKey, "namespace" | "kind" | "entityKey">,
     options: ListResourceOptions = {},
   ): CachedResourceRecord<T>[] {
+    const variantKeys = options.variantKeys ? [...new Set(options.variantKeys.map(normalizeVariantKey))] : null;
+    const sourceKeys = options.sourceKeys ? [...new Set(options.sourceKeys.map(normalizeSourceKey))] : null;
+    if (variantKeys?.length === 0 || sourceKeys?.length === 0) return [];
+    // The rows asked for only: an entity can hold dozens of variants (every
+    // range of a price history, from every source), megabytes of payload
+    // that a filter after the read threw away. The keys come from the
+    // primary key's index. Expiry stays below: the column sits after the
+    // payload, and checking it here walked a 10 MB payload twice.
+    const filters = [
+      ...(variantKeys ? [`variant_key IN (${variantKeys.map(() => "?").join(", ")})`] : []),
+      ...(sourceKeys ? [`source_key IN (${sourceKeys.map(() => "?").join(", ")})`] : []),
+    ];
+    const params: string[] = [key.namespace, key.kind, key.entityKey, ...(variantKeys ?? []), ...(sourceKeys ?? [])];
     const rows = this.access.readCache("list cached resources", () => (
       this.db
-        .query<ResourceCacheRow, [string, string, string]>(
+        .query<ResourceCacheRow, string[]>(
           `SELECT namespace, kind, entity_key, variant_key, source_key, schema_version, payload, provenance,
                   fetched_at, stale_at, expires_at, last_accessed_at, size_bytes
            FROM resource_cache
-           WHERE namespace = ? AND kind = ? AND entity_key = ?`,
+           WHERE ${["namespace = ?", "kind = ?", "entity_key = ?", ...filters].join(" AND ")}`,
         )
-        .all(key.namespace, key.kind, key.entityKey)
+        .all(...params)
     )) ?? [];
-
-    const allowedVariantKeys = options.variantKeys ? new Set(options.variantKeys.map(normalizeVariantKey)) : null;
-    const allowedSourceKeys = options.sourceKeys ? new Set(options.sourceKeys.map(normalizeSourceKey)) : null;
 
     const records: CachedResourceRecord<T>[] = [];
     for (const row of sortRows(rows)) {
       if (!options.allowExpired && isExpired(row.expires_at)) continue;
-      if (allowedVariantKeys && !allowedVariantKeys.has(row.variant_key)) continue;
-      if (allowedSourceKeys && !allowedSourceKeys.has(row.source_key)) continue;
       if (options.schemaVersion != null && row.schema_version !== options.schemaVersion) {
         this.deleteExact({
           namespace: row.namespace,

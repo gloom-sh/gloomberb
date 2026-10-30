@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { debugLog } from "../../utils/debug-log";
 import { logFailure } from "../../utils/log-failure";
+import { recordPerfSample } from "../../utils/perf-marks";
 
 /**
  * Pages SQLite lets the WAL grow to before the connection that commits
@@ -19,7 +20,10 @@ const checkpointLog = debugLog.createLogger("sqlite");
 /**
  * Runs on its own thread with its own connection. A passive checkpoint
  * copies what it can without waiting on a lock and never stops the app's
- * connection from reading or writing meanwhile.
+ * connection from reading or writing meanwhile. It flushes the WAL to disk
+ * before copying it, and the database after: that flush is what makes the
+ * app's writes of user data durable (access.ts), so it never runs with
+ * `synchronous=OFF`.
  */
 const WORKER_SOURCE = `
 import { Database } from "bun:sqlite";
@@ -32,6 +36,7 @@ self.onmessage = (event) => {
     try {
       db = new Database(message.path);
       db.exec("PRAGMA busy_timeout=1000");
+      db.exec("PRAGMA synchronous=FULL");
       postMessage({ type: "ready" });
     } catch (error) {
       postMessage({ type: "failed", message: String(error && error.message || error) });
@@ -43,7 +48,15 @@ self.onmessage = (event) => {
     const startedAt = performance.now();
     try {
       const result = db.query("PRAGMA wal_checkpoint(PASSIVE)").get();
-      postMessage({ type: "checkpointed", ms: performance.now() - startedAt, result });
+      const endedAt = performance.now();
+      // Wall-clock times, so a pause on the app's thread can be lined up with it.
+      postMessage({
+        type: "checkpointed",
+        ms: endedAt - startedAt,
+        startedAt: performance.timeOrigin + startedAt,
+        endedAt: performance.timeOrigin + endedAt,
+        result,
+      });
     } catch (error) {
       postMessage({ type: "failed", message: String(error && error.message || error) });
     }
@@ -76,6 +89,8 @@ interface WorkerMessage {
   type: "ready" | "failed" | "checkpointed";
   message?: string;
   ms?: number;
+  startedAt?: number;
+  endedAt?: number;
   result?: { busy?: number; log?: number; checkpointed?: number };
 }
 
@@ -87,8 +102,9 @@ interface WorkerMessage {
  * disk, on the thread that asked for the write. That is the app's only
  * thread, and the copy takes 150 ms to a second on a laptop, more under an
  * antivirus. The app's connection leaves it to this instead (see
- * database.ts), and `onFailure` puts SQLite's own schedule back when the
- * thread cannot run.
+ * database.ts), along with flushing what it commits, and `onFailure` puts
+ * SQLite's own schedule and the app's flushes back when the thread cannot
+ * run.
  *
  * Null where there is no Worker to run it on.
  */
@@ -164,6 +180,13 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
     }
     if (message.type === "checkpointed") {
       running = false;
+      // On its own thread, so never the step a stall of the app's names.
+      recordPerfSample("sqlite.checkpoint", message.ms ?? 0, {
+        pages: message.result?.log,
+        copied: message.result?.checkpointed,
+        startedAt: Math.round(message.startedAt ?? 0),
+        endedAt: Math.round(message.endedAt ?? 0),
+      }, { lastStep: false });
       if (pending) schedule();
     }
   };
