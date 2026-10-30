@@ -49,13 +49,25 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
 - **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloom doctor` names them.
-- **Versions:** Windows 11 on x64 is the tested setup. On ARM PCs the x64 build runs through Windows' built-in emulation; CI checks that it opens and stays open on Windows 11 on Arm, and nothing more. Windows 10 is untested.
+- **Versions:** Windows 11 on x64 is the tested setup. On ARM PCs the x64 build runs through Windows' built-in emulation; CI checks that the desktop app opens and stays open on Windows 11 on Arm, and nothing more. Windows 10 is untested.
 
-For a terminal-only setup on x64, install Bun and use the package:
+For the terminal command alone, run this in PowerShell (no admin rights needed):
 
 ```powershell
-bun install -g @gloom-sh/terminal
+irm https://gloom.sh/install.ps1 | iex
 ```
+
+It downloads `gloomberb-windows-x64.exe.gz` from the latest release, checks its SHA-256 against the digest GitHub lists, installs it as `gloom.exe` in `%USERPROFILE%\.local\bin` (`GLOOM_INSTALL_DIR` picks another folder) and adds that folder to your user PATH; open a new terminal window afterwards. Running it again installs the latest release over it. On ARM PCs it installs the same x64 build. The script is [scripts/install.ps1](../scripts/install.ps1). Prefer to download it yourself? Unzip the `.gz` from the [release page](https://github.com/gloom-sh/gloomberb/releases/latest) with 7-Zip and put the `.exe` on your PATH.
+
+`curl -fsSL gloom.sh/install | bash` is for macOS and Linux: under Git Bash it stops and points to the PowerShell line. With Bun installed, `bun install -g @gloom-sh/terminal` works too.
+
+What Windows supports today:
+
+| | x64 | ARM (x64 emulation) |
+|---|---|---|
+| Desktop app (installer) | Tested on Windows 11 | Opens and stays open on Windows 11 (CI), otherwise untested |
+| Terminal command (`install.ps1`, Bun) | Tested on Windows 11 | Untested |
+| Terminal charts | Text in Windows Terminal (no Kitty graphics) | Same |
 
 ## Terminal Package
 

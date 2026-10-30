@@ -222,6 +222,15 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).toContain("gloomberb-linux-x64.gz");
   });
 
+  // Git Bash said only "Unsupported OS: MINGW64_NT-10.0-26100".
+  test.each(["MINGW64_NT-10.0-26100", "MSYS_NT-10.0-26100", "CYGWIN_NT-10.0-26100"])("points Windows shells (%s) at the PowerShell install, downloading nothing", async (unameSystem) => {
+    const run = await runInstall({ unameSystem, unameMachine: "x86_64" });
+
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain("irm https://gloom.sh/install.ps1 | iex");
+    expect(run.downloadLog).toBe("");
+  });
+
   test("installs the arm64 binary on Linux", async () => {
     const run = await runInstall({
       unameSystem: "Linux",

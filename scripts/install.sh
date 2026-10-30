@@ -16,6 +16,13 @@ main() {
   case "$OS" in
     Darwin) os="darwin" ;;
     Linux)  os="linux" ;;
+    # Git Bash, MSYS2 and Cygwin on Windows: the Windows build installs from PowerShell.
+    MINGW*|MSYS*|CYGWIN*)
+      echo "This script installs Gloom on macOS and Linux. On Windows, run this in PowerShell:" >&2
+      echo "  irm https://gloom.sh/install.ps1 | iex" >&2
+      echo "Or install the desktop app, which includes the gloom command: https://gloom.sh/download" >&2
+      exit 1
+      ;;
     *)
       echo "Unsupported OS: $OS" >&2
       exit 1
