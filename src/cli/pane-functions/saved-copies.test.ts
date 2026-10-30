@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
 import type { DoeBoardPayload } from "../../api-client/doe";
 import { ApiRequestError } from "../../api-client/errors";
@@ -85,23 +85,29 @@ const BOARD: DoeBoardPayload = {
 };
 
 test("fn DOE answers a failed refresh from the board an earlier run read, and fails with the hint when none did", async () => {
-  const board = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(BOARD);
-  spies.push(board);
-  const saved = profile();
-  expect((await fn(["DOE", "--tab", "gas"], saved)).text).toContain("not a live feed");
+  // The week the board is from, before its next report is due: a later day reads it as stale.
+  setSystemTime(new Date("2026-10-23T12:00:00Z"));
+  try {
+    const board = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(BOARD);
+    spies.push(board);
+    const saved = profile();
+    expect((await fn(["DOE", "--tab", "gas"], saved)).text).toContain("not a live feed");
 
-  board.mockRejectedValue(unreachable());
-  const offline = await fn(["DOE", "--tab", "gas"], saved);
-  expect(offline.error).toBeNull();
-  expect(offline.text).toMatch(/Lower 48 +Bcf +3,644 +\+77/);
-  expect(offline.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
+    board.mockRejectedValue(unreachable());
+    const offline = await fn(["DOE", "--tab", "gas"], saved);
+    expect(offline.error).toBeNull();
+    expect(offline.text).toMatch(/Lower 48 +Bcf +3,644 +\+77/);
+    expect(offline.text).toMatch(/· couldn't refresh; saved copy from \d\d:\d\d UTC/);
 
-  // A profile that never read it has nothing to show: the error every command gives, with what to check.
-  const { error } = await fn(["DOE", "--tab", "gas"], profile());
-  const printed = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }));
-  expect(printed.stderr).toMatch(/^error: Gloom couldn't reach its data service\nCheck the internet connection/);
-  const json = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
-  expect(JSON.parse(json.stderr).error).toMatchObject({ code: "service_unreachable", retryable: true });
+    // A profile that never read it has nothing to show: the error every command gives, with what to check.
+    const { error } = await fn(["DOE", "--tab", "gas"], profile());
+    const printed = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }));
+    expect(printed.stderr).toMatch(/^error: Gloom couldn't reach its data service\nCheck the internet connection/);
+    const json = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+    expect(JSON.parse(json.stderr).error).toMatchObject({ code: "service_unreachable", retryable: true });
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("fn ECST answers a failed refresh from the statistic an earlier run read, saying so once rather than as an error", async () => {

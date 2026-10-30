@@ -1,5 +1,5 @@
 import { useEffect, useRef, type Ref } from "react";
-import { Box, ScrollBox, Text, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { Button, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import {
@@ -294,10 +294,23 @@ export function BrokerDetailContent({
   // Enter saves from any field, so what stopped the save can be below the
   // fold; bring it and the buttons into view.
   const actionsRef = useRef<BoxRenderable | null>(null);
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const nativeRenderer = useNativeRenderer();
   useEffect(() => {
     if (!editError) return;
-    return afterLayout(() => revealInScrollBox(scrollRef.current, actionsRef.current));
-  }, [editError]);
+    const reveal = () => revealInScrollBox(scrollRef.current, actionsRef.current);
+    if (desktop) return afterLayout(reveal);
+    // The terminal lays the error line out only when it draws a frame, which
+    // can come after a 0 ms timer: measured before it, the buttons are one row
+    // short and the error pushes Save back below the fold.
+    const onFrame = () => {
+      nativeRenderer.off("frame", onFrame);
+      reveal();
+    };
+    nativeRenderer.on("frame", onFrame);
+    nativeRenderer.requestRender();
+    return () => nativeRenderer.off("frame", onFrame);
+  }, [desktop, editError, nativeRenderer]);
 
   if (!row) return <Box flexGrow={1} />;
 

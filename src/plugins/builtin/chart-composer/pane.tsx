@@ -141,7 +141,10 @@ import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useOptionChartRange } from "./option-range";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
-import { resolveEntryData } from "../../../market-data/selectors";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { useQuoteEntries } from "../../../market-data/hooks";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
@@ -218,6 +221,8 @@ interface ChartComposerSurfaceProps {
   onCapture?: (capturing: boolean) => void;
   /** The legend names each series' company; a ticker's own research tab already does. */
   nameSeries?: boolean;
+  /** The footer's delayed clock; a ticker's research tab says it in its quote footer instead. */
+  delayFooter?: boolean;
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
@@ -307,6 +312,7 @@ function ChartComposerSurface({
   footerId,
   onCapture,
   nameSeries = true,
+  delayFooter = true,
 }: ChartComposerSurfaceProps) {
   const trade = useResearchTrading();
   const dialog = useDialog();
@@ -1119,6 +1125,22 @@ function ChartComposerSurface({
   }, [activeRuntimeViewport, plottedSeries, spec, viewport]);
   // A series a failed refresh left on a saved copy says when that copy was saved, as every pane does.
   const savedAt = resolution.savedAt;
+  // Signed out or free, a market series' latest bars are built from delayed quotes.
+  const marketInstruments = useMemo(() => (delayFooter ? spec.series.flatMap((entry) => (
+    entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId) ? [entry.source.instrument] : []
+  )) : []), [delayFooter, spec.series]);
+  const marketQuotes = useQuoteEntries(marketInstruments);
+  // Signed out no stream feeds a chart's quotes: without Pro the chart reads them once to know which are late.
+  const { hasProAccess } = usePlanAccess();
+  const marketQuoteKey = marketInstruments.map(buildQuoteKey).join("\u001f");
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (hasProAccess || !coordinator) return;
+    for (const instrument of marketInstruments) {
+      void coordinator.loadQuote(instrument).catch(logFailure("chart-composer.pane", "Loading a chart quote failed"));
+    }
+  }, [hasProAccess, marketQuoteKey]);
+  const quoteDelay = useQuoteDelayFooter(Array.from(marketQuotes.values(), resolveEntryData), "chart-delay");
   usePaneFooter(footerId, () => ({
     info: [
       ...(delistingKey ? [{ id: "delisted", parts: [{ text: delistingKey, tone: "warning" as const }] }] : []),
@@ -1130,6 +1152,7 @@ function ChartComposerSurface({
           : newestBeyondView
             ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
             : []),
+      ...(quoteDelay ? [quoteDelay] : []),
     ],
     hints: [
       // One key opens the ticket, which chooses Buy or Sell; [s]eries keeps its key with trading on.
@@ -1140,7 +1163,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "b", label: "ars", title: "Bar Size", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [delistingKey, savedAt, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
+  }), [delistingKey, savedAt, loading, pickingAnchor, newestBeyondView, quoteDelay, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -1476,6 +1499,7 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
       footerId="chart-composer:research"
       onCapture={onCapture}
       nameSeries={false}
+      delayFooter={false}
     />
   );
 }

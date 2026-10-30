@@ -103,6 +103,7 @@ import {
 } from "../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
 import { apiClient } from "../../api-client";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
 import { exchangeAnnouncementsPage, listsExchangeAnnouncements, type ExchangeAnnouncementsPage } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
@@ -1435,6 +1436,9 @@ async function loadListingHistory(
   // A bar history: dated by its last bar, stale once bars of its size stop arriving.
   // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
   const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
+  // Signed out or free, the bars of a session in progress run as late as the delayed quote they end on, and say how late.
+  const sessionTrading = quote?.marketState === "REGULAR" || quote?.marketState === "PRE" || quote?.marketState === "POST";
+  const delayedTail = quote?.dataSource === "delayed" && !quote.delisting && (dayToDate || (intraday && sessionTrading));
   // The source that served the bars, a broker or another source when Gloom Cloud could not.
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A window that closed before today is the history asked for: no later bar makes it stale.
@@ -1449,6 +1453,7 @@ async function loadListingHistory(
     cadenceExchange: venue,
     ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
     ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
+    ...(delayedTail ? { status: "delayed" as const, delayMinutes: CLOUD_QUOTE_DELAY_MINUTES } : {}),
     ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
   // The rows are drawn from the bars served, which say whether they are the saved copy.
   }), loaded);
