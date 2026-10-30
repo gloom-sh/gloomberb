@@ -62,7 +62,7 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
   const price = headline?.price;
   const change = headline?.changePercent;
   return (
-    <Box flexDirection="row" minWidth={0} overflow="hidden">
+    <Box flexDirection="row" alignItems="center" minWidth={0} overflow="hidden">
       <Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text>
       {preview.name ? <Text fg={colors.textDim}>{`  ${preview.name}`}</Text> : null}
       {price != null ? <Text fg={colors.text}>{`  ${formatMarketPrice(price, { maxWidth: 12 })}`}</Text> : null}

@@ -408,7 +408,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             />
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             {hasIdentityLine && (
-              <Box flexDirection="row" minWidth={0} overflow="hidden">
+              <Box flexDirection="row" alignItems="center" minWidth={0} overflow="hidden">
                 {identityName && (
                   <ClippedText fg={colors.textDim} text={identityName} width={identityNameWidth} />
                 )}
