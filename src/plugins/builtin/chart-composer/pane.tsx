@@ -141,8 +141,9 @@ import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useOptionChartRange } from "./option-range";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
-import { resolveEntryData } from "../../../market-data/selectors";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useQuoteEntries } from "../../../market-data/hooks";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -1129,6 +1130,16 @@ function ChartComposerSurface({
     entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId) ? [entry.source.instrument] : []
   )) : []), [delayFooter, spec.series]);
   const marketQuotes = useQuoteEntries(marketInstruments);
+  // Signed out no stream feeds a chart's quotes: without Pro the chart reads them once to know which are late.
+  const { hasProAccess } = usePlanAccess();
+  const marketQuoteKey = marketInstruments.map(buildQuoteKey).join("\u001f");
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (hasProAccess || !coordinator) return;
+    for (const instrument of marketInstruments) {
+      void coordinator.loadQuote(instrument).catch(logFailure("chart-composer.pane", "Loading a chart quote failed"));
+    }
+  }, [hasProAccess, marketQuoteKey]);
   const quoteDelay = useQuoteDelayFooter(Array.from(marketQuotes.values(), resolveEntryData), "chart-delay");
   usePaneFooter(footerId, () => ({
     info: [
