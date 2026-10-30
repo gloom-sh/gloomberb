@@ -496,3 +496,18 @@ test("--search finds an event however its name is spaced or hyphenated, and the 
   }
   expect(await econText(calendar, ["--search", "ism"])).toContain("No matching events");
 });
+
+test("--search also finds an event by its publisher's name, initials or site: usda is the WASDE", async () => {
+  const usda = { name: "U.S. Department of Agriculture", url: "https://www.usda.gov/" };
+  const calendar = [
+    ...twoWeeks,
+    { ...event("2026-11-10T17:00:00.000Z", "US", "medium", "WASDE Report"), source: usda },
+    { ...event("2026-11-06T13:30:00.000Z", "US", "high", "Non Farm Payrolls"), source: { name: "Bureau of Labor Statistics", url: "https://www.bls.gov/" } },
+  ];
+  setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
+  const names = async (words: string) => ((await econPrinted(calendar, ["--search", words])).result.data as Array<{ event: string }>).map((row) => row.event);
+  for (const words of ["USDA", "agriculture", "department of agriculture", "usda wasde"]) expect(await names(words), words).toEqual(["WASDE Report"]);
+  expect(await names("bls")).toEqual(["Non Farm Payrolls"]);
+  // A word in neither the name nor the publisher still finds nothing.
+  expect(await names("usda payrolls")).toEqual([]);
+});
