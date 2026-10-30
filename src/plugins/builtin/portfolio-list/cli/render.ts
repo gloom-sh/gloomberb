@@ -852,9 +852,12 @@ async function showCollectionWithMarketData(
     })), dividends, toBase);
     const lotIncome = income.lots;
     const totalIncome = income.totalIncome;
-    // The yield is on what is invested, the priced holdings' net value: cash pays no dividend, so it does not dilute the yield.
-    const invested = exposure.net;
-    const portfolioYield = totalIncome != null && invested > 0 ? (totalIncome / invested) * 100 : null;
+    // The yield is on what is invested: cash pays no dividend, so it does not dilute it. A long-only book's is
+    // its priced holdings' net value. A book that holds a short is weighed on its gross exposure, and so is its
+    // yield: the net shrinks as the hedge grows (long 100k against short 80k nets 20k), which would inflate it.
+    const hedged = allocation.weightBasis === "gross";
+    const yieldBase = hedged ? allocation.weightBase : exposure.net;
+    const portfolioYield = totalIncome != null && yieldBase != null && yieldBase > 0 ? (totalIncome / yieldBase) * 100 : null;
     const incomeUnavailable = [...income.gaps].map(([symbol, gap]) => ({ symbol, ...gap }));
     const showTargets = allocation.targetSum != null;
     // Never dropped on a narrow terminal, so --explain reads the terms off them.
@@ -992,7 +995,7 @@ async function showCollectionWithMarketData(
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
         incomeComplete: income.gaps.size === 0, incomeUnavailable,
-        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the invested value, the priced holdings' net value without cash (exposure.net); annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
+        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the invested value without cash: the priced holdings' net value (exposure.net), or for a book that holds a short its gross exposure (weightBase), as its weights are; annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
         // Each rate a holding in another currency was converted at, dated, and whether it is stale.
         fxRates: toBase.conversions().filter((conversion) => conversion.currency !== conversion.baseCurrency).map(fxRateRecord),
         complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0,
@@ -1140,9 +1143,11 @@ async function showCollectionWithMarketData(
     const fxLine = fxRatesLine(toBase.conversions(), { warning: cliStyles.warning });
     if (fxLine) console.log(fxLine);
     const notes: string[] = [];
-    // With cash in the book, TOTAL's yield is on the holdings alone and says so.
-    if (showIncome && portfolioYield != null && cashExport?.value) {
-      notes.push(cliStyles.muted(`TOTAL yield is income over the invested ${wholeMoney(invested)}, cash excluded.`));
+    // TOTAL's yield says what it divides: a hedged book's gross exposure, or, with cash in the book, the holdings alone.
+    if (showIncome && portfolioYield != null && yieldBase != null && hedged) {
+      notes.push(cliStyles.muted(`TOTAL yield is income over the gross exposure of ${wholeMoney(yieldBase)}, as the book holds a short; cash excluded.`));
+    } else if (showIncome && portfolioYield != null && yieldBase != null && cashExport?.value) {
+      notes.push(cliStyles.muted(`TOTAL yield is income over the invested ${wholeMoney(yieldBase)}, cash excluded.`));
     }
     const weightNote = weightBasisLine(allocation, currency);
     if (weightNote) notes.push(cliStyles.muted(weightNote));

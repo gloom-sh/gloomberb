@@ -205,3 +205,37 @@ test("a rand portfolio names and dates the USD/ZAR rate its dollar holding is va
     setCliColorEnabledOverride(null);
   }
 });
+
+test("a book that holds a short puts TOTAL's yield on its gross exposure, never on a net the hedge shrinks or turns negative", async () => {
+  const book = (longShares: number, shortShares: number, format?: "json") => createTestCliContext({
+    config: { ...createDefaultConfig("/unused-income"), portfolios: [{ id: "main", name: "Main", currency: "USD", cash: { amount: 5_000, currency: "USD" } }] },
+    store: { loadAllTickers: async () => [
+      createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["main"], positions: [position(longShares, 60, "USD")] }),
+      createTestTicker("MO", "Altria", { exchange: "NYSE", portfolios: ["main"], positions: [position(-shortShares, 60, "USD")] }),
+    ] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 100, currency: "USD", change: 0, changePercent: 0, previousClose: 100, lastUpdated: Date.now() }),
+      getExchangeRate: async () => 1,
+      // KO pays $2.00 a share a year; MO pays nothing, so the short owes nothing.
+      getCorporateActions: async (symbol) => history(symbol, "USD", symbol === "KO" ? quarterly(0.5) : []),
+    }),
+  }, format ? { format } : {});
+  const yieldOf = async (longShares: number, shortShares: number) => {
+    const cli = book(longShares, shortShares, "json");
+    await showCollection("main", cli.context);
+    return JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options)).metadata.portfolioYield;
+  };
+  setCliColorEnabledOverride(false);
+  try {
+    // Long $100,000 against short $80,000: $2,000 a year is 1.11% of the $180,000 gross, not 10% of the $20,000 net.
+    expect(await yieldOf(1_000, 800)).toBeCloseTo(2_000 / 180_000 * 100, 8);
+    const shown = await text(() => showCollection("main", book(1_000, 800).context));
+    expect(shown).toMatch(/TOTAL[^\n]*\$2,000\.00 +1\.11%/);
+    expect(shown).toContain("TOTAL yield is income over the gross exposure of $180,000, as the book holds a short; cash excluded.");
+    expect(shown).not.toContain("over the invested");
+    // Short more than long nets -$30,000: the yield is still $1,000 over the $130,000 gross.
+    expect(await yieldOf(500, 800)).toBeCloseTo(1_000 / 130_000 * 100, 8);
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
