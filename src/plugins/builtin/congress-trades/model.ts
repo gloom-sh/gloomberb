@@ -414,6 +414,14 @@ export function mergeCongressPages(
   return { ...next, trades: [...byTradeId.values()], members };
 }
 
+/** Percent to one decimal; a figure that rounds to zero reads 0.0%, never -0.0%. */
 export function formatCongressReturn(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+  if (value == null || !Number.isFinite(value)) return "--";
+  const shown = roundCongressReturn(value);
+  return `${shown > 0 ? "+" : ""}${shown === 0 ? "0.0" : shown.toFixed(1)}%`;
+}
+
+/** The figure as shown, so its colour follows the digits: SPY at -0.04% is flat, not red. */
+export function roundCongressReturn(value: number): number {
+  return Math.round(value * 10) / 10 || 0;
 }

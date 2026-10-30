@@ -16,7 +16,6 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
-import { signedColor } from "../shared/research-cells";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
@@ -41,7 +40,7 @@ import {
   type TradeColumn,
   type TradeColumnId,
 } from "./model";
-import { renderCongressTradeCell } from "./table";
+import { congressReturnColor, renderCongressTradeCell } from "./table";
 import { loadCongressHouse } from "./client";
 
 const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
@@ -53,7 +52,7 @@ function ReturnRow({ label, value, spy }: { label: string; value: number | null 
       {...DETAIL_ROW}
       label={label}
       value={formatCongressReturn(value)}
-      color={signedColor(value, colors)}
+      color={congressReturnColor(value)}
       detail={spy == null ? undefined : `SPY ${formatCongressReturn(spy)}`}
     />
   );
@@ -308,8 +307,8 @@ export function MemberTradesDetail({
   // detail adds what the row lacks: how many priced trades stand behind the
   // return figures, and the committees.
   const summaryItems: StatItem[] = [
-    { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), color: signedColor(summaryMember.medianReturn, colors), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
-    { id: "vs-spy", label: "Median vs SPY", value: formatCongressReturn(summaryMember.medianExcessSinceFiling), color: signedColor(summaryMember.medianExcessSinceFiling, colors), detail: `since filing, ${summaryMember.excessTradeCount ?? 0} priced`, detailVariants: ["since filing"] },
+    { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), color: congressReturnColor(summaryMember.medianReturn), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
+    { id: "vs-spy", label: "Median vs SPY", value: formatCongressReturn(summaryMember.medianExcessSinceFiling), color: congressReturnColor(summaryMember.medianExcessSinceFiling), detail: `since filing, ${summaryMember.excessTradeCount ?? 0} priced`, detailVariants: ["since filing"] },
     { id: "hit", label: "Buy hit rate", value: summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`, detail: `${summaryMember.pricedBuyCount ?? 0} priced buys` },
     ...(summaryMember.committees ?? []).map((committee): StatItem => ({ id: `committee:${committee}`, label: "Committee", value: committee, wide: true })),
   ];

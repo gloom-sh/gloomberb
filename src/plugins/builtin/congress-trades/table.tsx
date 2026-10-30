@@ -12,6 +12,7 @@ import {
   formatAmountRange,
   formatCongressReturn,
   formatLag,
+  roundCongressReturn,
   FILING_DAY_FORMAT,
   tradeAssetLabel,
   type MemberColumn,
@@ -19,9 +20,13 @@ import {
   type TickerColumn,
 } from "./model";
 
-/** A return or its excess over SPY, coloured by sign wherever CG shows one. */
-export function congressReturnCell(value: number | null | undefined): DataTableCell {
-  return { text: formatCongressReturn(value), color: signedColor(value, colors) };
+/** A return or its excess over SPY takes the shared signed colours wherever CG shows one, by its digits. */
+export function congressReturnColor(value: number | null | undefined): string {
+  return signedColor(value == null ? value : roundCongressReturn(value), colors);
+}
+
+function congressReturnCell(value: number | null | undefined): DataTableCell {
+  return { text: formatCongressReturn(value), color: congressReturnColor(value) };
 }
 
 function sideColor(side: CloudCongressTradePayload["side"]): string {

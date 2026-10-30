@@ -7,6 +7,7 @@ import {
   buildMemberTradeColumns,
   buildTradeColumns,
   canLoadMoreCongress,
+  formatCongressReturn,
   congressScanNotice,
   mergeCongressPages,
   nextCongressPage,
@@ -169,6 +170,13 @@ describe("congress return columns", () => {
     const narrow = buildMemberColumns(90);
     expect(ids(narrow)).toEqual(["member", "party", "trades", "buys", "sells", "range", "medianExcessSinceFiling"]);
     expect(getTableWidth(narrow)).toBe(90);
+  });
+
+  test("a figure that rounds to zero reads flat, never -0.0%", () => {
+    expect(formatCongressReturn(-0.04)).toBe("0.0%");
+    expect(formatCongressReturn(-3)).toBe("-3.0%");
+    expect(formatCongressReturn(12.34)).toBe("+12.3%");
+    expect(formatCongressReturn(null)).toBe("--");
   });
 
   test("a member's trades end on VS SPY, and their own lag goes before it", () => {
