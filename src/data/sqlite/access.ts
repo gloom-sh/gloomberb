@@ -43,9 +43,13 @@ const sqliteLog = debugLog.createLogger("sqlite");
  *
  * In WAL mode the connection commits with `synchronous=NORMAL`: a commit no
  * longer flushes the disk, and a power cut can cost the last few, never the
- * database. A write of user data flushes as before (`FULL`), which also
- * flushes everything committed ahead of it. Where WAL does not take (a
- * network share), every commit flushes.
+ * database. A write of user data is flushed within a second or two by the
+ * checkpointer's thread, which flushes the WAL before copying it (see
+ * checkpointer.ts): on Windows the flush took the app's thread for seconds
+ * at a time. Where nothing else flushes (a command, a checkpointer that
+ * stopped), a write of user data flushes itself (`FULL`), and with it
+ * everything committed ahead of it. Where WAL does not take (a network
+ * share), every commit flushes.
  *
  * On the app's connection the cache writes of one turn of the event loop
  * share a transaction and commit together once the turn is over: a batch of
@@ -99,6 +103,12 @@ export interface SqliteAccessOptions {
    * connection's own level is left alone.
    */
   relaxedCommits?: boolean;
+  /**
+   * Whether another thread flushes the WAL soon after each commit (the
+   * checkpointer, while it runs). A write of user data then commits at
+   * `NORMAL` like the cache's.
+   */
+  flushedElsewhere?: () => boolean;
   /** After each commit of the app's connection (see checkpointer.ts). */
   onCommit?: () => void;
 }
@@ -152,16 +162,17 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
   };
 
   /**
-   * Commits `write` with a full flush when the connection's own level is
-   * NORMAL. The cache writes of the turn commit first, wherever they came
-   * from (a queued write's `settled`, the write before), so the user write
-   * never lands inside their batch at NORMAL.
+   * Commits `write` on its own, with a full flush when the connection's own
+   * level is NORMAL and nothing else flushes it. The cache writes of the turn
+   * commit first, wherever they came from (a queued write's `settled`, the
+   * write before), so the user write never lands inside their batch, which
+   * a failed commit rolls back whole.
    */
   const durable = <T>(write: () => T): T => {
     commitCacheBatch();
     durableWrites += 1;
     try {
-      if (!options.relaxedCommits || db.inTransaction) return write();
+      if (!options.relaxedCommits || db.inTransaction || options.flushedElsewhere?.()) return write();
       db.exec("PRAGMA synchronous=FULL");
       try {
         return write();

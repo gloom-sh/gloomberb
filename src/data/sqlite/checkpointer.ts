@@ -19,7 +19,10 @@ const checkpointLog = debugLog.createLogger("sqlite");
 /**
  * Runs on its own thread with its own connection. A passive checkpoint
  * copies what it can without waiting on a lock and never stops the app's
- * connection from reading or writing meanwhile.
+ * connection from reading or writing meanwhile. It flushes the WAL to disk
+ * before copying it, and the database after: that flush is what makes the
+ * app's writes of user data durable (access.ts), so it never runs with
+ * `synchronous=OFF`.
  */
 const WORKER_SOURCE = `
 import { Database } from "bun:sqlite";
@@ -32,6 +35,7 @@ self.onmessage = (event) => {
     try {
       db = new Database(message.path);
       db.exec("PRAGMA busy_timeout=1000");
+      db.exec("PRAGMA synchronous=FULL");
       postMessage({ type: "ready" });
     } catch (error) {
       postMessage({ type: "failed", message: String(error && error.message || error) });
@@ -87,8 +91,9 @@ interface WorkerMessage {
  * disk, on the thread that asked for the write. That is the app's only
  * thread, and the copy takes 150 ms to a second on a laptop, more under an
  * antivirus. The app's connection leaves it to this instead (see
- * database.ts), and `onFailure` puts SQLite's own schedule back when the
- * thread cannot run.
+ * database.ts), along with flushing what it commits, and `onFailure` puts
+ * SQLite's own schedule and the app's flushes back when the thread cannot
+ * run.
  *
  * Null where there is no Worker to run it on.
  */

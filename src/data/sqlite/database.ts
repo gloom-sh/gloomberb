@@ -90,8 +90,9 @@ export class SqliteDatabase {
       this.connection.query<{ journal_mode: string }, []>("PRAGMA journal_mode=WAL").get()?.journal_mode
     ));
     // In WAL mode commits can stop flushing the disk and the database stays
-    // whole; user data still flushes per write (access.ts). Where WAL does not
-    // take (a network share, an in-memory database), every commit flushes.
+    // whole; user data is flushed soon after by the checkpointer, or per write
+    // where it does not run (access.ts). Where WAL does not take (a network
+    // share, an in-memory database), every commit flushes.
     const wal = journalMode?.toLowerCase() === "wal";
     this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
@@ -99,19 +100,25 @@ export class SqliteDatabase {
     });
     // The app's statements choose how long to wait for a lock themselves.
     if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
-    // The app's commits leave copying the WAL into the database to a thread
-    // of its own, and only do it themselves past a WAL ten times the usual.
+    // The app's commits leave copying the WAL into the database, and flushing
+    // it, to a thread of its own, and only copy it themselves past a WAL ten
+    // times the usual.
+    let checkpointerRunning = false;
     if (options.interactive && wal && dbPath !== ":memory:") {
       this.checkpointer = startWalCheckpointer(dbPath, () => {
+        checkpointerRunning = false;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
       });
-      if (this.checkpointer) this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
+      if (this.checkpointer) {
+        checkpointerRunning = true;
+        this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
+      }
     }
     const checkpointer = this.checkpointer;
     this.access = createSqliteAccess(this.connection, {
       interactive: options.interactive,
       relaxedCommits: wal,
-      ...(checkpointer ? { onCommit: () => checkpointer.nudge() } : {}),
+      ...(checkpointer ? { onCommit: () => checkpointer.nudge(), flushedElsewhere: () => checkpointerRunning } : {}),
     });
   }
 

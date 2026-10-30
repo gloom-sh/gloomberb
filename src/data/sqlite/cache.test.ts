@@ -370,6 +370,56 @@ describe("AppPersistence", () => {
       expect(connection.query("SELECT 1 FROM resource_cache WHERE entity_key = 'filler-0'").get()).toBeNull();
       expect(connection.query("SELECT 1 FROM resource_cache WHERE entity_key = 'trigger'").get()).not.toBeNull();
       expect(selects.every((sql) => sql.includes("LIMIT"))).toBe(true);
+      // Picking what to evict reads the recency index alone: a row's size sits
+      // after its payload, and asking it of the oldest batch read megabytes.
+      for (const sql of selects) {
+        const plan = query<{ detail: string }, [number]>(`EXPLAIN QUERY PLAN ${sql}`).all(512).map((row) => row.detail).join(" ");
+        expect(plan).toContain("COVERING INDEX");
+      }
+    } finally {
+      persistence.close();
+    }
+  });
+
+  // An entity can hold dozens of variants (every range of a price history,
+  // from every source); a list read all their payloads and kept one.
+  test("a list reads only the variants and sources it asks for", () => {
+    const dbPath = createTempDbPath("resource-list-filter");
+    const persistence = new AppPersistence(dbPath);
+    const connection = persistence.database.connection;
+    try {
+      const write = (variantKey: string, sourceKey: string) => persistence.resources.set({
+        namespace: "market",
+        kind: "price-history",
+        entityKey: "AAPL",
+        variantKey,
+        sourceKey,
+      }, { variantKey, sourceKey }, { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
+      write("range=1y", "provider:a");
+      write("range=1y", "provider:b");
+      write("range=5y", "provider:a");
+      write("range=max", "provider:a");
+
+      const lists: string[] = [];
+      const query = connection.query.bind(connection);
+      (connection as { query: typeof query }).query = ((sql: string) => {
+        if (sql.includes("FROM resource_cache") && sql.includes("entity_key = ?") && sql.includes("payload")) lists.push(sql);
+        return query(sql);
+      }) as typeof query;
+      const listed = persistence.resources.list<{ variantKey: string; sourceKey: string }>(
+        { namespace: "market", kind: "price-history", entityKey: "AAPL" },
+        { variantKeys: ["range=1y", "range=5y"], sourceKeys: ["provider:a"] },
+      );
+      (connection as { query: typeof query }).query = query;
+
+      expect(listed.map((record) => record.value).sort((a, b) => a.variantKey.localeCompare(b.variantKey))).toEqual([
+        { variantKey: "range=1y", sourceKey: "provider:a" },
+        { variantKey: "range=5y", sourceKey: "provider:a" },
+      ]);
+      // The filter runs on the key columns, ahead of the payload in each row:
+      // a row it rejects never has its payload read.
+      expect(lists).toHaveLength(1);
+      expect(lists[0]).toMatch(/variant_key IN \(\?, \?\) AND source_key IN \(\?\)/);
     } finally {
       persistence.close();
     }
