@@ -63,7 +63,7 @@ test("a Gloom Wire post counts as unread only when it mentions you", () => {
     message("m2", wire, "merged, thanks @readers"),
     message("m3", wire, "merged, thanks @reader!"),
     message("m4", person, "big print"),
-    message("m5", reader, "agreed"),
+    message("m5", { ...reader, displayName: "Reader" }, "agreed"),
   ]);
   expect(channel.unreadCount).toBe(2);
   // The same posts again, as a resync brings them, add nothing.
