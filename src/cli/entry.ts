@@ -1,7 +1,9 @@
 import "./opentui-libc";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
-import { plainByDefault, setCliPlainOverride } from "../utils/cli-output";
+import { cliAsciiEnabled, plainByDefault, setCliPlainOverride } from "../utils/cli-output";
+import { localeMayNotReadUtf8 } from "../utils/ascii-text";
+import { writeAsciiWhile } from "./ascii-output";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
 import { measurePerfAsync } from "../utils/perf-marks";
@@ -80,6 +82,8 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
   // For a screen reader, a pipe or NO_COLOR: no rule lines, arrows in words, fixed table columns. Set
   // for this process only; `--plain` / `--no-plain` decide it in dispatchCli, and commands run in-process keep theirs.
   setCliPlainOverride(plainByDefault());
+  // Plain text to a C locale or a legacy Windows code page is written in ASCII (`cliAsciiEnabled`).
+  if (inferCliErrorOptions(rawArgs).format === "text" && localeMayNotReadUtf8()) writeAsciiWhile(cliAsciiEnabled);
   const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;

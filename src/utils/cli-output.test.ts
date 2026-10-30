@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { asciiText, localeReadsUtf8 } from "./ascii-text";
 import {
   cliArrow,
   cliTerminalWidth,
   plainWords,
   renderDefinitions,
   renderTable,
+  setCliAsciiLocaleOverride,
   setCliColorEnabledOverride,
   setCliPlainOverride,
   setCliWidthOverride,
@@ -200,4 +202,38 @@ test("renderDefinitions moves a long term's description under it instead of past
   expect(visibleLength(lines[0]!)).toBeLessThanOrEqual(80);
   expect(lines[0]).toContain("Statement period");
   expect(lines[2]!.indexOf("Statement line")).toBe(lines[0]!.indexOf("Statement period"));
+});
+
+test("plain output to a terminal that reads only ASCII spells out what it cannot show, and its columns still line up", () => {
+  // `quote` under LANG=C printed —, ·, € and ¢, which a cmd.exe code page garbles and which carry the unit.
+  expect(asciiText("SAP SE  €211.25  Corn 447.50¢/bu  US¢  —  Gloom Cloud · OSL")).toBe("SAP SE  EUR211.25  Corn 447.50c/bu  USc  -  Gloom Cloud | OSL");
+  expect(asciiText("CN¥7.12  ¥62,655  £12.30  Société Générale  Ørsted  −1.2  …")).toBe("CNY7.12  JPY62,655  GBP12.30  Societe Generale  Orsted  -1.2  ...");
+  expect(asciiText("plain text\x1b[1m stays\x1b[0m")).toBe("plain text\x1b[1m stays\x1b[0m");
+  setCliPlainOverride(true);
+  setCliAsciiLocaleOverride(true);
+  try {
+    expect(renderTable([{ header: "Symbol" }, { header: "Last", align: "right" }, { header: "After" }], [["SAP:XETRA", "€211.25", ""], ["ZC=F", "447.50¢", "—"]], { maxWidth: null }).split("\n")).toEqual([
+      "Symbol          Last  After",
+      "SAP:XETRA  EUR211.25  -",
+      "ZC=F         447.50c  -",
+    ]);
+  } finally {
+    setCliAsciiLocaleOverride(null);
+    setCliPlainOverride(null);
+  }
+});
+
+test("the locale decides whether the terminal reads UTF-8, and on Windows with none set the console's code page", () => {
+  const never = () => { throw new Error("the code page is not read when a locale is set"); };
+  expect(localeReadsUtf8({ LANG: "C", LC_ALL: "C" }, "linux", never)).toBe(false);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8", LC_ALL: "" }, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "C.utf8" }, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8", LC_ALL: "POSIX" }, "darwin", never)).toBe(false);
+  expect(localeReadsUtf8({ LANG: "de_DE.ISO-8859-1" }, "linux", never)).toBe(false);
+  // Nothing set: left as it is, except on Windows, where the console's code page decides.
+  expect(localeReadsUtf8({}, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({}, "win32", () => 437)).toBe(false);
+  expect(localeReadsUtf8({}, "win32", () => 65001)).toBe(true);
+  expect(localeReadsUtf8({}, "win32", () => null)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8" }, "win32", never)).toBe(true);
 });
