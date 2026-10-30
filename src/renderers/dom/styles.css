@@ -1497,6 +1497,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-icon-button:disabled, [data-gloom-role="pane-footer-icon"] { cursor: default; }
 .gloom-icon-button:not(:disabled):hover { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
 .gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
+/* A status's few characters after its icon (a delay's 15m): read without hovering, in the muted tone of the meta text around it. */
+.gloom-icon-button-text, [data-gloom-role="pane-footer-icon-text"] { margin-left: var(--gloom-space-xs); color: var(--gloom-text-muted); }
+.gloom-icon-button:not(:disabled):hover .gloom-icon-button-text { color: inherit; }
 .gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }
 [data-gloom-role="field-grid-value"] button,
 [data-gloom-role="field-grid-value"] button > span { justify-content: flex-end !important; text-align: right; padding-inline: 0 !important; }
