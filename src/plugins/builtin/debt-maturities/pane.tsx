@@ -433,10 +433,13 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       metric("next12", "Due next 12 months", latest.next12MonthsShare),
       metric("next3", "Due next 3 years", latest.next3YearsShare),
       { id: "as-of", label: "As of", value: latest.asOf },
-      // A 10-Q filed since: its own row, dated, so it never reads as the schedule's.
+      // A 10-Q filed since: its own row, named by its period, so it never reads
+      // as the schedule's. The filed date goes beside the figures where it fits
+      // and gives way to them where it does not: the footer says it
+      // ("10-Q 2026-09-30, filed 2026-10-27").
       ...(quarter ? [{
-        id: "latest-10q", label: "Latest 10-Q", value: quarterDebtText(quarter),
-        detail: `${quarter.asOf} · filed ${quarter.filed}`, wide: true,
+        id: "latest-10q", label: `10-Q ${quarter.asOf}`, value: quarterDebtText(quarter),
+        detail: `filed ${quarter.filed}`, detailVariants: [""], wide: true,
       }] : []),
     ];
   }, [latest, quarter]);

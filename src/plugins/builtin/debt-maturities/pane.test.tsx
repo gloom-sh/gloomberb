@@ -141,9 +141,9 @@ test("a newer 10-Q is a dated figure row of its own, and every filing's year lab
   // Earlier tests left this issuer's annual-only answer in the cache.
   debtMaturitiesCache.reset();
   const lines = await render(94, 30);
-  const row = lines.find((line) => line.includes("Latest 10-Q"));
-  expect(row).toContain("Current 212.00M · Non-current 6.84B USD");
-  expect(row).toContain("2025-12-31 · filed 2026-02-10");
+  // Named by its period; the filed date beside the figures where it fits.
+  const row = lines.find((line) => line.includes("10-Q 2025-12-31"));
+  expect(row).toMatch(/10-Q 2025-12-31 +Current 212\.00M · Non-current 6\.84B USD  filed 2026-02-10/);
   // The schedule's own date is still said once, apart from the 10-Q's.
   expect(lines.find((line) => line.includes("As of"))).toContain("2025-06-30");
   // The idle legend reads the newest filing, and each fiscal year sits under the chart once, in order.

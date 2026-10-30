@@ -110,7 +110,9 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   }, [model]);
 
   const selectedId = String(discountRate);
-  const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width));
+  // A figure wraps only into rows the table's least leaves, so the pane never spills.
+  const statMaxLines = height - 1 - 4;
+  const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width, undefined, { maxLines: statMaxLines }));
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[
@@ -120,7 +122,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
       error={!model ? inputs.error ?? identityError ?? null : model.error} empty={false}>
       {model && !model.error ? <>
-        <StatGrid items={stats} width={width} />
+        <StatGrid items={stats} width={width} maxLines={statMaxLines} />
         <DataTableView<Row> focused={focused} columns={COLUMNS} items={model.sensitivity} rootWidth={width} rootHeight={contentHeight}
           getItemKey={(row) => String(row.discountRate)} emptyStateTitle="No implied growth." sortColumnId={null} sortDirection="desc"
           selection={{ kind: "id", selectedId, getId: (row) => String(row.discountRate),

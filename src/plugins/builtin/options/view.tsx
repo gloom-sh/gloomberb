@@ -32,6 +32,7 @@ import {
   type QueryBarFilter,
   type DataTableVisibleRange,
 } from "../../../components";
+import { statGridWithin } from "../../../components/ui/stat-grid";
 import { useShortcut } from "../../../react/input";
 import { useOptionalDialog, type AlertContext } from "../../../ui/dialog";
 import { useLiveQuoteEntries, useQuoteUpdates } from "../../../state/hooks/quote-streaming";
@@ -980,10 +981,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
   const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];
-  const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
-  // A short band gives up figures from the end; the expiry stays.
-  const shownStatItems = summaryRowCount === 0 ? []
-    : [statItems[0]!, ...figures.slice(0, summaryRowCount * statColumns - (expiryInline ? 1 : statColumns))];
+  // A short band gives up figures from the end, by lines: a row that wraps
+  // takes two. The expiry leads, so it stays.
+  const summaryLines = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
+  const { items: shownStatItems, lines: summaryRowCount } = statGridWithin(statItems, statWidth, summaryLines, statColumns);
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.
@@ -997,7 +998,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       <QueryBar width={Math.max(1, width - 2)} filters={queryFilters} />
 
       {summaryRowCount > 0 && (
-        <StatGrid items={shownStatItems} width={statWidth} columns={statColumns} />
+        <StatGrid items={shownStatItems} width={statWidth} columns={statColumns} maxLines={summaryLines} />
       )}
 
       {isOpt && parsed && (

@@ -135,6 +135,15 @@ export function sharesOneIssuer(bonds: readonly Pick<CorporateBond, "issuerName"
   return new Set(bonds.map((bond) => bond.issuerName.trim().toUpperCase())).size === 1;
 }
 
+/**
+ * The sort the tape shows: a saved issuer sort, while one issuer's tape leaves
+ * the issuer column out, sorts as the default, which the header can show; the
+ * saved sort comes back with the column.
+ */
+export function shownBondSort(sort: BondSort, sharedIssuer: boolean): BondSort {
+  return sharedIssuer && sort.columnId === "issuer" ? DEFAULT_BOND_SORT : sort;
+}
+
 /** The columns at `width`, without the issuer's when every row shares it (`sharesOneIssuer`). */
 export function buildBondColumns(width: number, { sharedIssuer = false }: { sharedIssuer?: boolean } = {}): BondColumn[] {
   const columns = sharedIssuer ? BOND_COLUMNS.filter((column) => column.id !== "issuer") : BOND_COLUMNS;

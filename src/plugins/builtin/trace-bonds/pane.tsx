@@ -41,6 +41,7 @@ import {
   formatBondDecimal,
   isBondColumnId,
   sharesOneIssuer,
+  shownBondSort,
   sortBonds,
   type BondColumn,
   type BondSort,
@@ -74,10 +75,11 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(updatedAt, load);
   usePaneRefreshKey(() => void reload(), { focused, enabled: !searchActive });
 
-  const rows = useMemo(() => sortBonds(bonds, sort), [bonds, sort]);
   // One issuer's tape says its name once, in what was asked, not on every row.
   const sharedIssuer = useMemo(() => sharesOneIssuer(bonds), [bonds]);
   const columns = useMemo(() => buildBondColumns(width, { sharedIssuer }), [sharedIssuer, width]);
+  const shownSort = shownBondSort(sort, sharedIssuer);
+  const rows = useMemo(() => sortBonds(bonds, shownSort), [bonds, shownSort]);
   const tradeDate = answered ? data.tradeDate : null;
   const footerInfo = useMemo(
     () => (tradeDate ? [{ id: "trade-date", parts: [{ text: tradeDate }] }] : []),
@@ -99,11 +101,11 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
 
   const onHeaderClick = useCallback((columnId: string) => {
     if (!isBondColumnId(columnId)) return;
-    setSort((current) => nextHeaderSort(current, columnId, {
+    setSort((current) => nextHeaderSort(shownBondSort(current, sharedIssuer), columnId, {
       firstDirection: firstBondSortDirection,
       resetTo: DEFAULT_BOND_SORT,
     }));
-  }, [setSort]);
+  }, [setSort, sharedIssuer]);
 
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
@@ -193,13 +195,13 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
       }}
       columns={columns}
       items={rows}
-      sortColumnId={sort.columnId}
-      sortDirection={sort.direction}
+      sortColumnId={shownSort.columnId}
+      sortDirection={shownSort.direction}
       onHeaderClick={onHeaderClick}
       onSortChange={(columnId, direction) => {
         if (isBondColumnId(columnId)) setSort({ columnId, direction });
       }}
-      resetScrollKey={`${needle}:${sort.columnId ?? ""}:${sort.direction}`}
+      resetScrollKey={`${needle}:${shownSort.columnId ?? ""}:${shownSort.direction}`}
       getItemKey={(row) => row.id}
       renderCell={renderCell}
       selectedTextOverridesCellColor

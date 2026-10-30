@@ -6,7 +6,7 @@ import { setCliWidthOverride, visibleLength } from "../../../utils/cli-output";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { bondTapeRequests, fetchBondTape, isCusip, noPrintsText, parseBondQuery, tapeIssuerName } from "./client";
 import { traceBondsHeadless } from "./headless";
-import { buildBondColumns, sharesOneIssuer } from "./model";
+import { DEFAULT_BOND_SORT, buildBondColumns, sharesOneIssuer, shownBondSort } from "./model";
 
 type Row = Record<string, unknown>;
 type Filter = { fieldName: string; compareType: string; fieldValue: string | null };
@@ -229,10 +229,17 @@ test("a narrow tape keeps price, yield and CUSIP ahead of what describes the bon
   setCliWidthOverride(56);
   const { text } = await report("whirlpool");
   const lines = text.split("\n");
-  const header = lines.find((line) => line.includes("Issuer"))!;
-  for (const name of ["Price", "Yield", "CUSIP"]) expect(header).toContain(name);
-  // Two issues of one issuer stay apart by CUSIP, the coupon and maturity moved under each.
-  expect(lines.find((line) => line.includes("963320BG0"))).toContain("88.055");
-  expect(text).toContain("Maturity 2031-07-01");
+  // One issuer's tape leaves its name out of the table, as the pane does.
+  const header = lines.find((line) => line.includes("CUSIP"))!;
+  for (const name of ["Price", "Yield"]) expect(header).toContain(name);
+  expect(text).not.toContain("WHIRLPOOL CORP");
+  // Two issues of one issuer stay apart by CUSIP, and the name's room goes to their coupon and maturity.
+  expect(lines.find((line) => line.includes("963320BG0"))).toMatch(/7\.875 +2034-07-01 +88\.055/);
+  expect(lines.find((line) => line.includes("963320BF2"))).toMatch(/7\.500 +2031-07-01/);
   expect(lines.filter((line) => visibleLength(line) > 56)).toEqual([]);
+
+  // A saved issuer sort, with the column left out, sorts as the default the header shows.
+  const issuerSort = { columnId: "issuer", direction: "asc" } as const;
+  expect(shownBondSort(issuerSort, true)).toEqual(DEFAULT_BOND_SORT);
+  expect(shownBondSort(issuerSort, false)).toBe(issuerSort);
 });
