@@ -162,3 +162,46 @@ test("a portfolio in another currency converts income into it, a lot valued at i
     setCliColorEnabledOverride(null);
   }
 });
+
+test("a rand portfolio names and dates the USD/ZAR rate its dollar holding is valued at, flags a stale one, and puts TOTAL's yield on the invested value", async () => {
+  const now = Date.now();
+  const holding = createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["za"], positions: [{ ...position(100, 60, "USD"), portfolio: "za" }] });
+  const randBook = (zarAsOf: number, zarStaleAt: number, format?: "json") => createTestCliContext({
+    config: { ...createDefaultConfig("/unused-income"), baseCurrency: "ZAR",
+      portfolios: [{ id: "za", name: "ZA", currency: "ZAR", fixedCurrency: true, cash: { amount: 20_000, currency: "ZAR" } }] },
+    store: { loadAllTickers: async () => [holding] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 100, currency: "USD", change: 0, changePercent: 0, previousClose: 100, lastUpdated: now }),
+      // The cached rate a report reads, dated by its observation: R16 to the dollar.
+      getCachedQuery: ((method: string, args: unknown[]) => ({
+        load: async () => {
+          if (method !== "getExchangeRate") throw new Error(`${method} is unused in this test`);
+          const zar = args[0] === "ZAR";
+          return { value: zar ? 1 / 16 : 1, fetchedAt: now, asOf: zar ? zarAsOf : now, staleAt: zar ? zarStaleAt : now + 3_600_000,
+            expiresAt: now + 86_400_000, source: "test" };
+        },
+      })) as never,
+      revalidatesInBackground: false,
+      getCorporateActions: async () => history("KO", "USD", quarterly(0.5)),
+    }),
+  }, format ? { format } : {});
+  setCliColorEnabledOverride(false);
+  try {
+    // 100 shares at $100 are R160,000 beside R20,000 of cash; $200 a year is R3,200, 2.00% of what is invested, not 1.78% of R180,000.
+    const fresh = await text(() => showCollection("za", randBook(now - 600_000, now + 3_000_000).context));
+    expect(fresh).toMatch(/TOTAL[^\n]*ZAR180,000[^\n]*ZAR3,200\.00 +2\.00%/);
+    expect(fresh).toContain("TOTAL yield is income over the invested ZAR160,000, cash excluded.");
+    expect(fresh).toMatch(/^FX: USD\/ZAR 16, as of \w{3} \d{1,2} \w{3} \d\d:\d\d UTC$/m);
+    // A rate past its fresh window, read 47 hours ago, says so beside the value it moves.
+    const stale = await text(() => showCollection("za", randBook(now - 47 * 3_600_000, now - 1_000).context));
+    expect(stale).toMatch(/^FX: USD\/ZAR 16, as of [^\n]* UTC \(stale, 47h old\)$/m);
+    const cli = randBook(now - 47 * 3_600_000, now - 1_000, "json");
+    await showCollection("za", cli.context);
+    const exported = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
+    expect(exported.metadata.portfolioYield).toBeCloseTo(2, 8);
+    expect(exported.metadata.fxRates).toEqual([{ currency: "USD", baseCurrency: "ZAR", pair: "USD/ZAR", rate: 16,
+      asOf: new Date(now - 47 * 3_600_000).toISOString(), stale: true }]);
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});

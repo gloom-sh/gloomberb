@@ -1,5 +1,7 @@
 import { logFailure } from "../../../../utils/log-failure";
-import { createBaseConverter } from "../../../../cli/base-converter";
+import { createBaseConverter, type BaseConversion } from "../../../../cli/base-converter";
+import { quotedFxPair } from "../../../../utils/currency-pair";
+import { formatFxRate } from "../../../../cli/fx-pair";
 import { savedListingName } from "../../../../cli/listing-arg";
 import { currentListingName } from "../../../../tickers/listing-name";
 import { withMarketData } from "../../../../cli/scoped-context";
@@ -575,6 +577,38 @@ export function weightBasisLine(allocation: Pick<PortfolioAllocation, "weightBas
   return weightBasisNote(allocation, (value) => formatAllocationMoney(value, currency, { whole: true }));
 }
 
+/** `47h old`, or `3 days old` past two days: how far behind a stale rate is. */
+function rateAge(asOf: number, now: number): string {
+  const hours = Math.max(0, Math.floor((now - asOf) / 3_600_000));
+  return hours < 48 ? `${hours}h old` : `${Math.floor(hours / 24)} days old`;
+}
+
+/** A rate the report converted at, as markets quote the pair and `fx` writes it, for `--json`. */
+export function fxRateRecord({ currency, baseCurrency, rate, asOf, stale }: BaseConversion) {
+  const quoted = quotedFxPair(currency, baseCurrency, rate);
+  return { currency, baseCurrency, pair: quoted.pair, rate: Number(formatFxRate(quoted.rate)), asOf: asOf == null ? null : new Date(asOf).toISOString(), stale };
+}
+
+/**
+ * `FX: USD/ZAR 16.7237, as of Fri 30 Oct 18:12 UTC`: each rate a portfolio's
+ * holdings in another currency were converted at, as markets quote the pair,
+ * dated; one past its fresh window says it is stale and how old. Null when
+ * nothing was converted.
+ */
+export function fxRatesLine(
+  conversions: readonly BaseConversion[],
+  { now = Date.now(), warning = (text: string) => text }: { now?: number; warning?: (text: string) => string } = {},
+): string | null {
+  const rates = conversions.filter((conversion) => conversion.currency !== conversion.baseCurrency && Number.isFinite(conversion.rate));
+  if (rates.length === 0) return null;
+  return `FX: ${rates.map((conversion) => {
+    const quoted = quotedFxPair(conversion.currency, conversion.baseCurrency, conversion.rate);
+    const dated = conversion.asOf == null ? "" : `, as of ${formatUtcDayTime({ time: conversion.asOf, dateOnly: false }, now)} UTC`;
+    const text = `${quoted.pair} ${formatFxRate(quoted.rate)}${dated}`;
+    return conversion.stale ? warning(`${text} (stale${conversion.asOf == null ? "" : `, ${rateAge(conversion.asOf, now)}`})`) : text;
+  }).join("; ")}`;
+}
+
 /** What the TOTAL row weighs: all of a total; nothing on a gross base, where the weights net to the book's net over its gross. */
 function totalWeight(allocation: Pick<PortfolioAllocation, "weightBasis" | "total">): number | null {
   return allocation.weightBasis === "total" && allocation.total != null && allocation.total > 0 ? 100 : null;
@@ -818,7 +852,9 @@ async function showCollectionWithMarketData(
     })), dividends, toBase);
     const lotIncome = income.lots;
     const totalIncome = income.totalIncome;
-    const portfolioYield = totalIncome != null && allocation.total != null && allocation.total > 0 ? (totalIncome / allocation.total) * 100 : null;
+    // The yield is on what is invested, the priced holdings' net value: cash pays no dividend, so it does not dilute the yield.
+    const invested = exposure.net;
+    const portfolioYield = totalIncome != null && invested > 0 ? (totalIncome / invested) * 100 : null;
     const incomeUnavailable = [...income.gaps].map(([symbol, gap]) => ({ symbol, ...gap }));
     const showTargets = allocation.targetSum != null;
     // Never dropped on a narrow terminal, so --explain reads the terms off them.
@@ -956,7 +992,9 @@ async function showCollectionWithMarketData(
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
         incomeComplete: income.gaps.size === 0, incomeUnavailable,
-        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the total value; annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
+        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the invested value, the priced holdings' net value without cash (exposure.net); annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
+        // Each rate a holding in another currency was converted at, dated, and whether it is stale.
+        fxRates: toBase.conversions().filter((conversion) => conversion.currency !== conversion.baseCurrency).map(fxRateRecord),
         complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0,
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
@@ -1098,7 +1136,14 @@ async function showCollectionWithMarketData(
     console.log("");
     if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
+    // The rates the holdings in another currency are valued at, dated, so a stale one is seen beside the value it moves.
+    const fxLine = fxRatesLine(toBase.conversions(), { warning: cliStyles.warning });
+    if (fxLine) console.log(fxLine);
     const notes: string[] = [];
+    // With cash in the book, TOTAL's yield is on the holdings alone and says so.
+    if (showIncome && portfolioYield != null && cashExport?.value) {
+      notes.push(cliStyles.muted(`TOTAL yield is income over the invested ${wholeMoney(invested)}, cash excluded.`));
+    }
     const weightNote = weightBasisLine(allocation, currency);
     if (weightNote) notes.push(cliStyles.muted(weightNote));
     // The notes name the rows as the table does.

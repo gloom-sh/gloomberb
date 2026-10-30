@@ -197,7 +197,7 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
+import { fxRateNotes, refreshedFxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
@@ -3128,7 +3128,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     }));
     const freshness = fxPairFreshness(loaded);
     // A rate that is its pair's bar says which bar, and a stale one why it stands.
-    const rateNotes = fxRateNotes(new Map([...loaded].map(([code, leg]) => [code, leg.timing])));
+    const timings = new Map([...loaded].map(([code, leg]) => [code, leg.timing]));
+    // --refresh read every leg again: one that is still stale says the data service has no newer rate.
+    const rateNotes = [...fxRateNotes(timings), ...ctx.cliOptions.refresh ? refreshedFxRateNotes(timings) : []];
     if (tenor && shortRates && !("error" in tenor)) {
       const read = await shortRates;
       if ("error" in read) throw read.error;
