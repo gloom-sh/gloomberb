@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { runInNewContext } from "vm";
 
 import { bundleExternalPlugin, buildSharedModuleSource } from "./bundle";
 import { PLUGIN_HOST_GLOBAL } from "./host-modules";
@@ -221,6 +222,90 @@ describe("bundleExternalPlugin", () => {
       await expect(bundleExternalPlugin(dir, join(dir, "out"))).rejects.toThrow("No plugin entry file");
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the process a browser bundle reads", () => {
+  // The desktop view has no `process`; a plugin that reads it at load died with
+  // "ReferenceError: process is not defined" there while working in the
+  // terminal. Bun's own test runner has a `process`, so the bundle runs in a
+  // fresh context that lacks one, as the view does.
+  function runInView(code: string, userAgent: string): Record<string, any> {
+    const sandbox: Record<string, any> = { navigator: { userAgent }, performance, queueMicrotask, console };
+    // The bundle is an ES module; a script cannot export, so drop the export list.
+    runInNewContext(code.replace(/export\s*\{[^}]*\};?\s*$/, ""), sandbox);
+    return sandbox;
+  }
+
+  const readsProcess = `
+    import nodeProcess, { platform as importedPlatform } from "node:process";
+    class Client {
+      token = process.env.GLOOM_TEST_TOKEN;
+      constructor() { process.env.NODE_ENV === "development" && (this.dev = true); }
+    }
+    const client = new Client();
+    globalThis.seen = {
+      token: client.token,
+      nodeEnv: process.env.NODE_ENV,
+      platform: process.platform,
+      importedPlatform,
+      sameObject: nodeProcess === process,
+      type: typeof process,
+      cwd: process.cwd(),
+      tickReturned: typeof process.nextTick,
+      exit: () => process.exit(1),
+    };
+    export default { id: "scratch", name: "Scratch", version: "1.0.0" };
+  `;
+
+  test("is a stand-in that holds nothing of the host's environment", async () => {
+    const dir = scratchPlugin(readsProcess);
+    process.env.GLOOM_TEST_TOKEN = "host-secret";
+    try {
+      const result = await bundleExternalPlugin(dir, join(dir, "out"), {
+        exportNamesFor: fakeExports,
+        pluginName: "Tradovate",
+        // As the desktop compiles it; the bundle still holds a `process` read
+        // for everything that is not this one.
+        define: { "process.env.NODE_ENV": "\"production\"" },
+      });
+      const code = await Bun.file(result.outputPath).text();
+      const view = runInView(code, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+      expect(view.seen).toMatchObject({
+        nodeEnv: "production",
+        platform: "win32",
+        importedPlatform: "win32",
+        sameObject: true,
+        type: "object",
+        cwd: "/",
+        tickReturned: "function",
+      });
+      expect(view.seen.token).toBeUndefined();
+      expect(view.seen.exit).toThrow('Plugin "Tradovate" called process.exit()');
+      // The host's own checks for a Node runtime must not see the stand-in.
+      expect(view.process).toBeUndefined();
+      expect(runInView(code, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)").seen.platform).toBe("darwin");
+      expect(runInView(code, "Mozilla/5.0 (X11; Linux x86_64)").seen.platform).toBe("linux");
+    } finally {
+      delete process.env.GLOOM_TEST_TOKEN;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("is left out of bundles that never read process, and of bundles for Bun", async () => {
+    const quiet = scratchPlugin(`export default { id: "scratch", name: "Scratch", version: "1.0.0" };`);
+    const native = scratchPlugin(readsProcess);
+    try {
+      const plain = await bundleExternalPlugin(quiet, join(quiet, "out"), { exportNamesFor: fakeExports });
+      expect(await Bun.file(plain.outputPath).text()).not.toContain("__gloomPluginProcess");
+
+      const forBun = await bundleExternalPlugin(native, join(native, "out"), { exportNamesFor: fakeExports, target: "bun" });
+      expect(await Bun.file(forBun.outputPath).text()).not.toContain("__gloomPluginProcess");
+    } finally {
+      rmSync(quiet, { recursive: true, force: true });
+      rmSync(native, { recursive: true, force: true });
     }
   });
 });
