@@ -396,6 +396,8 @@ export function FundDetailView({
       .catch((loadError) => {
         if (abortRef.current !== controller) return;
         if (loadError instanceof Error && loadError.name === "AbortError") return;
+        // A first load that failed after its first rows shows the error, not a part of the filing as the fund.
+        setData((current) => current?.loading ? null : current);
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });

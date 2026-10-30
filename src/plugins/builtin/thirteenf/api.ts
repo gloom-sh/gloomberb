@@ -12,6 +12,7 @@ import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
+import { isNetworkFailure } from "../../../utils/network-failure";
 import { asRecord, finiteOrNull } from "../../../utils/guards";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -59,6 +60,8 @@ let forms13FPersistence: PluginPersistence | null = null;
 const failedRefreshes = new Set<string>();
 // The promise is the generation. A newer download replaces it, and the replaced one must not write.
 const activeRequests = new Map<string, Promise<unknown>>();
+/** The service answered a whole filing with 404: it is an older one, so filings are read a page at a time. */
+let wholeFilingsMissing = false;
 
 export function attachThirteenFApiPersistence(persistence: PluginPersistence) {
   if (forms13FPersistence !== persistence) resetThirteenFApiPersistence();
@@ -69,6 +72,7 @@ export function resetThirteenFApiPersistence() {
   forms13FPersistence = null;
   failedRefreshes.clear();
   activeRequests.clear();
+  wholeFilingsMissing = false;
 }
 
 function padCik(value: string): string {
@@ -370,9 +374,11 @@ export interface FilingHoldingsOptions extends Forms13FReadOptions {
 
 /**
  * A filing's whole information table: one request to Gloom Cloud, which
- * reads the source's pages itself and keeps the filing. A service without
- * that answer (an older one) or that fails it is read a page at a time,
- * a few pages at once, as before.
+ * reads the source's pages itself and keeps the filing. An older service
+ * without that answer (a 404, remembered for the session) or one that cannot
+ * be reached is read a page at a time, a few pages at once, as before; a page
+ * Gloom Cloud cannot send comes from the public source. A busy or failing
+ * service (429, 5xx) is the error: paging it would only ask it more.
  */
 export async function listThirteenFFormHoldings(
   cik: string,
@@ -381,6 +387,7 @@ export async function listThirteenFFormHoldings(
   options: FilingHoldingsOptions = {},
 ): Promise<ThirteenFHoldingRecord[]> {
   const { entries, onFirstRows, ...readOptions } = options;
+  if (wholeFilingsMissing) return listPagedHoldings(cik, accessionNumber, signal, readOptions);
   // The count lets a filing the service has not stored yet be read in fewer requests.
   const params = {
     cik: normalizeCik(cik),
@@ -404,6 +411,9 @@ export async function listThirteenFFormHoldings(
     return filingRows(await whole);
   } catch (error) {
     signal?.throwIfAborted();
+    const missing = error instanceof ApiRequestError && error.status === 404;
+    if (!missing && !isNetworkFailure(error)) throw error;
+    if (missing) wholeFilingsMissing = true;
     return listPagedHoldings(cik, accessionNumber, signal, readOptions);
   } finally {
     answered = true;

@@ -72,7 +72,7 @@ describe("13F data cache", () => {
       ]);
       const accession = request.searchParams.get("accession_number");
       if (accession === failure) return new Response("unavailable", { status: 503 });
-      return json([{ accession_number: accession, cik: "1067983", cusip: "111111111", value: accession === "current" ? 100 : 90, ssh_prnamt: 10 }]);
+      return filingJson(request, [{ accession_number: accession, cik: "1067983", cusip: "111111111", value: accession === "current" ? 100 : 90, ssh_prnamt: 10 }]);
     });
     const partial = await loadFundDetail("1067983", "Fund");
     expect(partial.latestReport).toMatchObject({ complete: true, tableValueTotal: 100 });
@@ -84,7 +84,8 @@ describe("13F data cache", () => {
     expect(hasComparable13FQuarter(recovered)).toBe(true);
     expect(buildFundHoldingRows(recovered)[0]).toMatchObject({ value: 100, previousValue: 90, action: "held", sharesChange: 0 });
     failure = "current";
-    await expect(loadFundDetail("1067983", "Fund", undefined, { forceRefresh: true })).rejects.toThrow("Forms13F 503");
+    // The service's own failure, not a second try at the public source.
+    await expect(loadFundDetail("1067983", "Fund", undefined, { forceRefresh: true })).rejects.toThrow("unavailable");
   });
 
   test("one failed holder enhancement retains every source CIK and healthy metadata", async () => {
@@ -305,12 +306,12 @@ function filedForm(accession: string, period: string, entries: number) {
 
 test("a filing comes whole in one request, and a page at a time, a few at once, from a service that cannot send it whole", async () => {
   const asked: Array<{ path: string; offset?: number; limit?: number }> = [];
-  let whole = true;
+  let whole: number | null = null;
   const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
     asked.push({ path, ...(params.offset != null ? { offset: Number(params.offset), limit: Number(params.limit) } : {}) });
     if (path === "/forms") return [filedForm("current", "2026-06-30", 1_234)];
     if (path === "/holdings") {
-      if (!whole) throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      if (whole != null) throw new ApiRequestError(whole === 404 ? "Unknown 13F path /holdings" : "Service unavailable", whole);
       return { cik: "1067983", accession_number: "current", rows: holdingRows("current", 0, 1_234), complete: true };
     }
     if (path === "/form") return holdingRows("current", Number(params.offset), Math.max(0, Math.min(Number(params.limit), 1_234 - Number(params.offset))));
@@ -323,7 +324,13 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     expect(detail.latestHoldings).toHaveLength(1_234);
     expect(asked.map((request) => request.path)).toEqual(["/forms", "/holdings"]);
 
-    whole = false;
+    // A busy service is the error, not a reason to ask it 250 rows at a time.
+    whole = 503;
+    asked.length = 0;
+    await expect(loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true })).rejects.toThrow("Service unavailable");
+    expect(asked.some((request) => request.path === "/form")).toBe(false);
+
+    whole = 404;
     asked.length = 0;
     const paged = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
     expect(paged.latestHoldings.map((row) => row.value)).toEqual(Array.from({ length: 1_234 }, (_, index) => index + 1));
@@ -333,6 +340,10 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     // Five pages hold the filing; the few asked past its end come back empty.
     expect(pages.map((page) => page.offset).slice(0, 5).sort((a, b) => a! - b!)).toEqual([0, 250, 500, 750, 1_000]);
     expect(pages.length).toBeLessThanOrEqual(5 + 4);
+    // The older service is remembered: the next filing goes straight to pages.
+    asked.length = 0;
+    await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(asked.some((request) => request.path === "/holdings")).toBe(false);
   } finally {
     spy.mockRestore();
   }
@@ -395,6 +406,8 @@ test("abort during a holdings page stops the walk", async () => {
       controller.abort();
       throw new DOMException("The operation was aborted.", "AbortError");
     }
+    // An older service, which reads a filing a page at a time.
+    if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
     throw new Error("cloud down");
   }) as never);
   setHttpFetchTransport(async (url) => {
@@ -460,6 +473,11 @@ test("a fund behind on its filings reads EDGAR's 13F-NT; a missing route, a serv
   }
 });
 
+/** A filing's rows as Gloom Cloud sends them: whole from `/holdings`, a page from `/form`. */
+function filingJson(request: URL, rows: unknown[]): Response {
+  return json(request.pathname.endsWith("/holdings") ? { rows, complete: true } : rows);
+}
+
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -479,7 +497,7 @@ test("browser, reconciled report and individual filing say when the copy a faile
       period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR",
       table_value_total: 100, table_entry_total: 1,
     }]);
-    return json([{ accession_number: "0001067983-26-000001", cik: "1067983", cusip: "111111111", value: 100, ssh_prnamt: 10 }]);
+    return filingJson(new URL(String(url)), [{ accession_number: "0001067983-26-000001", cik: "1067983", cusip: "111111111", value: 100, ssh_prnamt: 10 }]);
   });
   const browser = await loadBrowserRows("funds", "1067983");
   const detail = await loadFundDetail("1067983", "Fund");
@@ -545,7 +563,7 @@ test("a fund's own performance row takes the ranking's return when it gives one,
       filed_as_of_date: form[key].filed, submission_type: "13F-HR", cik: "1067983",
     })));
     const accession = request.searchParams.get("accession_number") as "current" | "previous";
-    return json(scenario.lines[accession].map((line) => ({ accession_number: accession, cik: "1067983", cusip: line.cusip, ticker: line.cusip === "111111111" ? "AAA" : "", value: line.value, ssh_prnamt: line.shares })));
+    return filingJson(request, scenario.lines[accession].map((line) => ({ accession_number: accession, cik: "1067983", cusip: line.cusip, ticker: line.cusip === "111111111" ? "AAA" : "", value: line.value, ssh_prnamt: line.shares })));
   });
   const load = async (next: Partial<typeof scenario>, splitFactor?: Parameters<typeof loadFundPerformance>[3] extends infer O ? O extends { splitFactor?: infer F } ? F : never : never) => {
     scenario = { ...scenario, ...next };

@@ -72,6 +72,15 @@ function installAlpha13FTransport(urls: string[] = [], override?: (path: string,
   setHttpFetchTransport(async (url) => {
     urls.push(String(url));
     const parsed = new URL(String(url));
+    if (!parsed.pathname.endsWith("/holdings")) return respond(parsed);
+    // Gloom Cloud sends a filing whole: the rows `/form` serves a page at a time.
+    const page = new URL(parsed);
+    page.pathname = page.pathname.replace(/\/holdings$/, "/form");
+    const response = respond(page);
+    return response.ok ? json({ rows: await response.json(), complete: true }) : response;
+  });
+
+  function respond(parsed: URL): Response {
     const path = parsed.pathname;
     const answer = override?.(path, parsed);
     if (answer) return answer;
@@ -140,7 +149,7 @@ function installAlpha13FTransport(urls: string[] = [], override?: (path: string,
       ]);
     }
     return json([]);
-  });
+  }
 }
 
 describe("ThirteenFPane", () => {
