@@ -110,9 +110,14 @@ test("sessionless caches, foreign assets and contradictory session records never
       const lastBar = resolution && new Date(resolution.points.at(-1)!.date).toISOString();
       if (answers || lastBar) expect(lastBar).toBe(answers ? "2026-09-21T19:45:00.000Z" : "2026-09-18T19:45:00.000Z");
       expect(calls).toEqual(["resolution"]);
-      const historical = await router.getDetailedPriceHistoryWithMetadata(symbol, exchange, start, new Date("2026-09-21T20:00:00Z"), "15m");
-      expect(historical.points).toEqual(metadata ? [] : points());
-      expect(historical.session).toBeUndefined();
+      // A window whose only answer was rejected is a failure to load, not a window without bars.
+      const historical = router.getDetailedPriceHistoryWithMetadata(symbol, exchange, start, new Date("2026-09-21T20:00:00Z"), "15m");
+      if (metadata) {
+        await expect(historical).rejects.toThrow(`No source could load history for ${symbol} just now`);
+      } else {
+        expect((await historical).points).toEqual(points());
+        expect((await historical).session).toBeUndefined();
+      }
     } finally { store.close(); }
   }
 });

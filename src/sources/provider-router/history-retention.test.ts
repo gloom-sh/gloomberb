@@ -140,7 +140,8 @@ test("source metadata must match the target, interval and exact detailed origina
   const router = new AssetDataRouter({ ...limited(calls), async getDetailedPriceHistory() { throw new HistoryRetentionError(data); } });
   const failure = await router.getDetailedPriceHistory("BTC-USD", "CCC", new Date(data.requestedStart + 1000), new Date(data.requestedEnd), "15m").catch((error) => error);
   expect(failure).not.toBeInstanceOf(HistoryRetentionError);
-  expect(await router.getDetailedPriceHistory("BTC-USD", "CCC", new Date(data.requestedStart + 1000), new Date(data.requestedEnd), "15m")).toEqual([]);
+  // Nor as an empty window: no source loaded it.
+  expect(failure.message).toBe("No source could load history for BTC-USD just now");
 });
 
 test("recovery rejects altered target, interval, contract, source and expanding or expired bounds without calls", async () => {

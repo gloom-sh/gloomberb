@@ -4,10 +4,12 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { collectSavedCopies, servedFromSavedCopy } from "../../data/saved-copies";
 import { createDefaultConfig } from "../../types/config";
-import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
-import { fail, isCliFailure } from "../errors";
+import { fail, isCliFailure, printCliError } from "../errors";
+import { AssetDataRouter } from "../../sources/provider-router";
+import { captureConsole } from "../../test-support/console";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
@@ -301,6 +303,25 @@ test("a break in the series is flagged on the bar after it in every export, and 
   } finally {
     setSystemTime();
   }
+});
+
+/**
+ * At 08:12Z on 30 Oct 2026 `history BTC-USD --from 2025-10-31` printed "0 bars · No results" (`ok: true`, no rows)
+ * while `--range 1Y` failed with "No source could load history for BTC-USD just now".
+ */
+test("a window of dates no source could load is a retryable failure, never an empty history; a source with nothing keeps its empty answer", async () => {
+  const run = async (getDetailedPriceHistory: () => Promise<PriceHistoryResult["points"]>) => {
+    const provider = { ...fallbackProvider, id: "window-failure", getQuote: async () => createTestQuote({ symbol: "BTC-USD", currency: "USD" }), getDetailedPriceHistory };
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: new AssetDataRouter(provider) }, { format: "json" });
+    return history.execute(["BTC-USD", "--from", "2025-10-31"], cli.context).then(() => cli.printed[0]!.result);
+  };
+  const failure = await run(async () => { throw new Error("Request timed out"); }).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toBe("No source could load history for BTC-USD just now");
+  const printed = await captureConsole(() => printCliError(failure, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  expect(JSON.parse(printed.stderr)).toMatchObject({ ok: false, error: { code: "source_unavailable", retryable: true } });
+  // A source that answered with no bars in the window is no failure.
+  expect(await run(async () => []).catch((error: unknown) => error)).not.toBeInstanceOf(Error);
 });
 
 test("a past window reads its own dates' bars, in the size its span takes, with no bar from today's quote and no feed to go stale", async () => {

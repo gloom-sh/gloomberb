@@ -781,6 +781,11 @@ export class ProviderRouterHistoryRoutes {
       throw noProviderError(coin ? `No source could load history for ${request.target.symbol} just now` : request.missingProviderError,
         attempts.misses, request.target.symbol);
     }
+    // A window of dates no source could answer, because one failed rather than had nothing, is that failure:
+    // an empty answer would read as no bars in the window (`history --from` printing "0 bars").
+    if (!providerResult && attempts.misses.failure !== undefined && !reportedGaps.some((value) => value.points.length > 0)) {
+      throw noProviderError(`No source could load history for ${request.target.symbol} just now`, attempts.misses, request.target.symbol);
+    }
     return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }
 

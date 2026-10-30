@@ -118,7 +118,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType), iv: showIv ? iv.data?.reference ?? null : null } : null,
   [model, quote?.currency, quote?.instrumentType, showIv, iv.data]);
   const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
-    ...(model?.warnings ?? []), model?.historyNote, ...(showIv ? iv.data?.warnings ?? [] : []),
+    ...(model?.warnings ?? []), model?.historyNote, model?.formingNote, ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
   ].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "realized-vol-notices", notices: [...new Set(notices)], focused });
