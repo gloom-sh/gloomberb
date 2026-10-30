@@ -43,6 +43,8 @@ export interface MarketSummary {
   marketLabelShort: string;
   spyColor: string;
   spyText: string;
+  /** `spyText` without its move (`SPY $762.43`), for a delayed SPY in a header too narrow for both and the mark. */
+  spyPriceText: string;
   /** Minutes SPY's price is late for this account (signed out or free), drawn as the delayed mark beside it; null when live. */
   spyDelayMinutes: number | null;
 }
@@ -52,6 +54,8 @@ export interface MarketSummaryFit {
   showCountdown: boolean;
   showState: boolean;
   showSpy: boolean;
+  /** SPY keeps its move; false when it gave the move up to stay (`spyMoveWidth`). */
+  showSpyMove: boolean;
 }
 
 /**
@@ -60,12 +64,16 @@ export interface MarketSummaryFit {
  * base currency, then the countdown suffix that widens the label. A narrowing
  * header therefore sheds the countdown, then the currency, then the state, and
  * keeps SPY longest. `countdownWidth` is what the suffix adds to the label.
+ * `spyMoveWidth` is what SPY's move adds to `spyWidth`, for a SPY that gives
+ * its move up before it gives way: a delayed SPY, whose mark makes it wider,
+ * so a narrow header still shows it and says it is late.
  */
 export function resolveMarketSummaryFit(options: {
   available: number;
   baseCurrencyWidth: number;
   countdownWidth: number;
   spyWidth: number;
+  spyMoveWidth?: number;
   stateWidth: number;
 }): MarketSummaryFit {
   let remaining = options.available;
@@ -74,11 +82,13 @@ export function resolveMarketSummaryFit(options: {
     remaining -= width;
     return true;
   };
-  const showSpy = take(options.spyWidth);
+  const spyMoveWidth = options.spyMoveWidth ?? 0;
+  const showSpyMove = take(options.spyWidth);
+  const showSpy = showSpyMove || (spyMoveWidth > 0 && take(options.spyWidth - spyMoveWidth));
   const showState = take(options.stateWidth);
   const showBaseCurrency = take(options.baseCurrencyWidth);
   const showCountdown = showState && take(options.countdownWidth);
-  return { showBaseCurrency, showCountdown, showState, showSpy };
+  return { showBaseCurrency, showCountdown, showState, showSpy, showSpyMove: showSpy && showSpyMove };
 }
 
 /**
@@ -90,15 +100,17 @@ export function resolveMarketSummaryFit(options: {
  * The price carries its currency's sign ($), so the base currency label
  * after it is never read as its unit.
  */
-export function spySummary(quote: Quote | null | undefined, colors: ThemeColors): Pick<MarketSummary, "spyColor" | "spyText"> {
+export function spySummary(quote: Quote | null | undefined, colors: ThemeColors): Pick<MarketSummary, "spyColor" | "spyPriceText" | "spyText"> {
   const display = getSessionMoveDisplay(quote);
   // Fixed decimals and a percent slot as wide as "+0.53%", so a streamed tick
   // never slides the market-state label or re-fits the cluster.
+  const spyPriceText = display
+    ? `SPY ${formatMarketPriceWithCurrency(display.price, quote?.currency || "USD", liveQuoteFormatOptions(quote, quote?.currency, "ETF"))}`
+    : "SPY —";
   return {
     spyColor: display?.change != null ? priceColor(display.change, colors) : colors.textDim,
-    spyText: display
-      ? `SPY ${formatMarketPriceWithCurrency(display.price, quote?.currency || "USD", liveQuoteFormatOptions(quote, quote?.currency, "ETF"))} ${formatPercentRaw(display.changePercent).padStart(6)}`
-      : "SPY —",
+    spyPriceText,
+    spyText: display ? `${spyPriceText} ${formatPercentRaw(display.changePercent).padStart(6)}` : spyPriceText,
   };
 }
 
@@ -138,7 +150,7 @@ export function useMarketSummary(): MarketSummary {
     return () => { clearInterval(id); };
   }, [appActive]);
 
-  const { spyColor, spyText } = spySummary(spyQuote, colors);
+  const { spyColor, spyPriceText, spyText } = spySummary(spyQuote, colors);
   const spyDelayMinutes = useFreeQuoteDelay(spyQuote);
 
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
@@ -153,6 +165,7 @@ export function useMarketSummary(): MarketSummary {
     marketLabel,
     marketLabelShort,
     spyColor,
+    spyPriceText,
     spyText,
     spyDelayMinutes,
   };
