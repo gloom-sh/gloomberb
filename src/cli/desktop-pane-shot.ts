@@ -21,7 +21,14 @@ import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../uti
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { scrollTruncationReasons } from "./scroll-truncation";
-import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
+import {
+  SHOT_API_PROXY_PREFIX,
+  SHOT_API_SOCKET_PATH,
+  SHOT_HTTP_BRIDGE_PATH,
+  SHOT_MARKET_BRIDGE_PATH,
+  type ShotApiSocketCall,
+  type ShotApiSocketReply,
+} from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
@@ -298,8 +305,11 @@ function serveShotPage(
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 60,
-    fetch(request) {
+    fetch(request, server) {
       const url = new URL(request.url);
+      if (url.pathname === SHOT_API_SOCKET_PATH) {
+        return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
+      }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
         return proxyShotApiRequest(request, url, apiProxy);
       }
@@ -311,7 +321,37 @@ function serveShotPage(
       }
       return serveShotAsset(url, view, html);
     },
+    websocket: {
+      message(socket, message) {
+        void answerShotApiCall(String(message), apiProxy).then((reply) => socket.send(reply));
+      },
+    },
   });
+}
+
+/**
+ * One read the page sent over its API socket (`SHOT_API_SOCKET_PATH`), made
+ * as the proxy makes it, with the session the page never holds: the reply's
+ * JSON, its body in base64. A call that is not an API path answers why.
+ */
+export async function answerShotApiCall(message: string, apiProxy: DesktopPaneShotApiProxy): Promise<string> {
+  let id = 0;
+  try {
+    const call = JSON.parse(message) as Partial<ShotApiSocketCall>;
+    id = typeof call.id === "number" ? call.id : 0;
+    if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
+    const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
+    const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
+    const response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+    const body = Buffer.from(await response.arrayBuffer()).toString("base64");
+    const headers: Array<[string, string]> = [];
+    response.headers.forEach((value, name) => headers.push([name, value]));
+    const reply: ShotApiSocketReply = { id, status: response.status, statusText: response.statusText, headers, body };
+    return JSON.stringify(reply);
+  } catch (error) {
+    const reply: ShotApiSocketReply = { id, error: errorMessage(error) };
+    return JSON.stringify(reply);
+  }
 }
 
 async function runShotMarketBridge(

@@ -4,6 +4,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import type { PricePoint } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
+import { coalescedBump } from "./coalesced-bump";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
@@ -33,8 +34,12 @@ const HISTORY_TTL_MS = 30 * 60_000;
  * once a minute, not once a tick.
  */
 const HISTORY_RETRY_MS = 60_000;
-/** Forty-odd contracts open at once; a few requests at a time keep the board's quotes first. */
-const HISTORY_CONCURRENCY = 4;
+/**
+ * Seventy-odd contracts open at once. Twelve reads at a time load them in
+ * about a second (four took three, holding `fn FUT` past four seconds), and
+ * the board's quotes, one batch, are asked for before any.
+ */
+const HISTORY_CONCURRENCY = 12;
 
 /**
  * Null when the source has no history for the contract (delisted, unknown),
@@ -89,17 +94,22 @@ export function useFrontContractReturns(
     let cancelled = false;
     let failed = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const landed = coalescedBump(() => {
+      if (!cancelled) setVersion((current) => current + 1);
+    });
     const worker = async () => {
       for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
         if (!await loadHistory(provider, symbol)) failed = true;
-        if (!cancelled) setVersion((current) => current + 1);
+        landed.bump();
       }
     };
     void Promise.all(Array.from({ length: Math.min(HISTORY_CONCURRENCY, queue.length) }, worker)).then(() => {
+      landed.flush();
       if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), HISTORY_RETRY_MS);
     });
     return () => {
       cancelled = true;
+      landed.cancel();
       queue.length = 0;
       clearTimeout(retryTimer);
     };
