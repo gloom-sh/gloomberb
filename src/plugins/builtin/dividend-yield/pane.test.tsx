@@ -386,7 +386,7 @@ test("DVD opened on several tickers ranks them by trailing yield as fn DVD does,
   });
   const lines = (await frame()).split("\n");
   const header = lines.findIndex((line) => line.includes("TICKER"));
-  expect(lines[header]).toMatch(/TICKER +YIELD TTM +FWD YIELD +PAYOUT +1Y GROWTH +3Y CAGR +LAST EX +NEXT PAY +NOTE/);
+  expect(lines[header]).toMatch(/TICKER +YIELD TTM ▼ +FWD YIELD +PAYOUT +1Y GROWTH +3Y CAGR +LAST EX +NEXT PAY +NOTE/);
   // $3.00 and $2.00 a year over $50: JNJ first, then KO, and the ticker that failed last, marked not read.
   expect(lines[header + 1]).toMatch(/^\s*JNJ +6\.00%/);
   expect(lines[header + 2]).toMatch(/^\s*KO +4\.00%/);

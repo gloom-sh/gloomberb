@@ -36,8 +36,11 @@ const DATE_COLUMNS = new Set(["lastExDate", "payDate", "secYieldAsOf"]);
 
 type RankingRow = Record<string, unknown> & { symbol: string };
 type RankingColumn = DataTableColumn & { source: HeadlessPaneColumn };
-/** No column: the order `fn DVD` ranks in, trailing yield first and a ticker not read last. */
-const RANKED_ORDER: SortPreference<string> = { columnId: null, direction: "desc" };
+/**
+ * The order `fn DVD` ranks in: trailing yield, highest first. A stable sort
+ * of the ranked rows keeps a ticker not read last among those with no yield.
+ */
+const RANKED_ORDER: SortPreference<string> = { columnId: "trailingYield", direction: "desc" };
 
 function sortRankingRows(rows: RankingRow[], sort: SortPreference<string>): RankingRow[] {
   const { columnId, direction } = sort;
