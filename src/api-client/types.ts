@@ -1511,6 +1511,8 @@ interface CloudNewsTickerLinkPayload {
   confidence: number;
   relevanceScore: number;
   impactScore?: number;
+  /** The company's market cap, stated on its home listing and not on a cross-listing. */
+  marketCap?: number | null;
   sentiment?: "positive" | "neutral" | "negative" | null;
 }
 
