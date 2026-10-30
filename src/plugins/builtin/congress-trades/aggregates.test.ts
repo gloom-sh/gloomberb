@@ -17,11 +17,13 @@ test("unbounded and missing reported ranges remain unknown through aggregation",
 });
 test("member return summaries use priced trades and priced buys as separate denominators", () => {
   const result = aggregateLoadedCongress([
-    trade("one", { returnSinceTx: 20, party: "Democrat", committees: ["Budget"] }),
-    trade("two", { returnSinceTx: -10 }),
-    trade("three", { returnSinceTx: 40, side: "SELL" }),
-    trade("four", { returnSinceTx: null }),
+    trade("one", { returnSinceTx: 20, excessSinceFiling: 6, party: "Democrat", committees: ["Budget"] }),
+    trade("two", { returnSinceTx: -10, excessSinceFiling: -4 }),
+    trade("three", { returnSinceTx: 40, excessSinceFiling: 12, side: "SELL" }),
+    trade("four", { returnSinceTx: 5, excessSinceFiling: null }),
+    trade("five", { returnSinceTx: null }),
   ]);
-  expect(result.members[0]).toMatchObject({ medianReturn: 20, buyHitRate: 50, pricedTradeCount: 3, pricedBuyCount: 2, party: "Democrat", committees: ["Budget"] });
+  // The median against SPY is over the trades it could be read for, sells included, apart from the return's.
+  expect(result.members[0]).toMatchObject({ medianReturn: 12.5, medianExcessSinceFiling: 6, excessTradeCount: 3, buyHitRate: 200 / 3, pricedTradeCount: 4, pricedBuyCount: 3, party: "Democrat", committees: ["Budget"] });
   expect(aggregateLoadedCongress([trade("one", { returnSinceTx: 0 }), trade("two", { returnSinceTx: 10 })]).members[0]).toMatchObject({ medianReturn: 5, buyHitRate: 50 });
 });

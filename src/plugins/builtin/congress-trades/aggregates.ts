@@ -1,5 +1,11 @@
 import type { CloudCongressMemberPayload, CloudCongressTickerPayload, CloudCongressTradePayload } from "../../../api-client";
 
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return (sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.floor(sorted.length / 2)]!) / 2;
+}
+
 /** Aggregates exactly the distinct trades loaded, including appended years. */
 export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], metadata: CloudCongressMemberPayload[] = []) {
   const members = new Map<string, CloudCongressMemberPayload>();
@@ -7,6 +13,7 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
   const lags = new Map<string, number[]>();
   const returns = new Map<string, number[]>();
   const buys = new Map<string, number[]>();
+  const excess = new Map<string, number[]>();
   const known = new Map(metadata.map((member) => [member.id, member]));
   const seen = new Set<string>();
   for (const trade of trades) {
@@ -22,6 +29,7 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
       lags.set(memberId, []);
       returns.set(memberId, []);
       buys.set(memberId, []);
+      excess.set(memberId, []);
     }
     const summaries: (CloudCongressMemberPayload | CloudCongressTickerPayload)[] = [member];
     if (trade.ticker) {
@@ -39,6 +47,7 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
       returns.get(memberId)!.push(trade.returnSinceTx);
       if (trade.side === "BUY") buys.get(memberId)!.push(trade.returnSinceTx);
     }
+    if (trade.excessSinceFiling != null && Number.isFinite(trade.excessSinceFiling)) excess.get(memberId)!.push(trade.excessSinceFiling);
     if (!member.lastFilingDate || trade.filingDate >= member.lastFilingDate) {
       member.party = trade.party ?? member.party ?? null;
       member.committees = trade.committees ?? member.committees ?? [];
@@ -57,11 +66,13 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
   }
   for (const [id, member] of members) {
     const values = lags.get(id)!;
-    const priced = returns.get(id)!.sort((a, b) => a - b);
+    const priced = returns.get(id)!;
     const pricedBuys = buys.get(id)!;
     member.pricedTradeCount = priced.length;
     member.pricedBuyCount = pricedBuys.length;
-    member.medianReturn = priced.length ? (priced[Math.floor((priced.length - 1) / 2)]! + priced[Math.floor(priced.length / 2)]!) / 2 : null;
+    member.excessTradeCount = excess.get(id)!.length;
+    member.medianReturn = median(priced);
+    member.medianExcessSinceFiling = median(excess.get(id)!);
     member.buyHitRate = pricedBuys.length ? 100 * pricedBuys.filter(value => value > 0).length / pricedBuys.length : null;
     member.avgLagDays = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null;
   }

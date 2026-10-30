@@ -51,6 +51,7 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "owner", header: "Owner" },
   { key: "returnSinceTx", header: "Tx return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "returnSinceFiling", header: "Filed return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
+  { key: "excessSinceFiling", header: "Vs SPY", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
 ];
 
 const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
@@ -73,6 +74,7 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "avgLagDays", header: "Avg", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
   { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "pricedTradeCount", header: "Priced trades" },
+  { key: "medianExcessSinceFiling", header: "Median vs SPY", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "buyHitRate", header: "Buy hit", align: "right", format: value => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "--" },
   { key: "pricedBuyCount", header: "Priced buys" },
 ];
