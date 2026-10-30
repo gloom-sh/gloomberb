@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { debugLog } from "../../utils/debug-log";
 import { logFailure } from "../../utils/log-failure";
+import { recordPerfSample } from "../../utils/perf-marks";
 
 /**
  * Pages SQLite lets the WAL grow to before the connection that commits
@@ -47,7 +48,15 @@ self.onmessage = (event) => {
     const startedAt = performance.now();
     try {
       const result = db.query("PRAGMA wal_checkpoint(PASSIVE)").get();
-      postMessage({ type: "checkpointed", ms: performance.now() - startedAt, result });
+      const endedAt = performance.now();
+      // Wall-clock times, so a pause on the app's thread can be lined up with it.
+      postMessage({
+        type: "checkpointed",
+        ms: endedAt - startedAt,
+        startedAt: performance.timeOrigin + startedAt,
+        endedAt: performance.timeOrigin + endedAt,
+        result,
+      });
     } catch (error) {
       postMessage({ type: "failed", message: String(error && error.message || error) });
     }
@@ -80,6 +89,8 @@ interface WorkerMessage {
   type: "ready" | "failed" | "checkpointed";
   message?: string;
   ms?: number;
+  startedAt?: number;
+  endedAt?: number;
   result?: { busy?: number; log?: number; checkpointed?: number };
 }
 
@@ -169,6 +180,13 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
     }
     if (message.type === "checkpointed") {
       running = false;
+      // On its own thread, so never the step a stall of the app's names.
+      recordPerfSample("sqlite.checkpoint", message.ms ?? 0, {
+        pages: message.result?.log,
+        copied: message.result?.checkpointed,
+        startedAt: Math.round(message.startedAt ?? 0),
+        endedAt: Math.round(message.endedAt ?? 0),
+      }, { lastStep: false });
       if (pending) schedule();
     }
   };

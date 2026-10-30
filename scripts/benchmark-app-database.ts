@@ -9,8 +9,10 @@
  * the writes set off, with the WAL checkpointer running as in the app.
  *
  * Prints a table per checkout: each operation's median, 95th percentile and
- * longest time on the thread, and the event loop's longest pause, and writes
- * it to the job summary on CI.
+ * longest time on the thread, the event loop's longest pause, and how long
+ * the checkpoints took on their own thread, and writes it to the job summary
+ * on CI. Then a timeline of each run's slow moments (100 ms or more on the
+ * app's thread, and the checkpoints), to tell what a pause coincided with.
  *
  *   bun scripts/benchmark-app-database.ts --base ../base [--seconds 45] [--runs 2] [--dir <folder>] [--out results.json]
  */
@@ -26,17 +28,51 @@ const HEAD = resolve(import.meta.dir, "..");
 const MB = 1024 * 1024;
 const KB = 1024;
 const TICK_MS = 25;
+/** App-thread moments at least this long go on the timeline. */
+const SLOW_MS = 100;
 /** Symbols with price histories, each in every range from two sources. */
 const HISTORY_SYMBOLS = 30;
 const LAG_PROBE_MS = 10;
 
 type OpSamples = Record<string, number[]>;
 
+/** Something that took a while, at a wall-clock time (ms since the epoch). */
+interface Moment {
+  what: string;
+  at: number;
+  ms: number;
+}
+
 interface RunResult {
   ops: OpSamples;
   /** Event-loop pauses past the probe's interval, in ms. */
   lags: number[];
   closeMs: number;
+  startedAt: number;
+  timeOrigin: number;
+  /** Operations and pauses of SLOW_MS or more on the app's thread. */
+  slow: Moment[];
+  /** From the checkout's own perf trace, where it has them. */
+  checkpoints: Moment[];
+  statements: Moment[];
+}
+
+/** `perf <name> <ms>ms t=<ms since the process started> <metadata>` (utils/perf-marks.ts). */
+function traceMoments(stderr: string, timeOrigin: number): { checkpoints: Moment[]; statements: Moment[] } {
+  const checkpoints: Moment[] = [];
+  const statements: Moment[] = [];
+  for (const line of stderr.split("\n")) {
+    const match = /^perf (\S+) ([\d.]+)ms t=(\d+)(?: (.*))?$/.exec(line.trim());
+    if (!match) continue;
+    const [, name, ms, t, json] = match;
+    const metadata = json ? JSON.parse(json) as Record<string, unknown> : {};
+    if (name === "sqlite.checkpoint" && typeof metadata.startedAt === "number") {
+      checkpoints.push({ what: `checkpoint (${metadata.pages ?? "?"} pages)`, at: metadata.startedAt, ms: Number(ms) });
+    } else if (name === "sqlite.blocked") {
+      statements.push({ what: `statement: ${metadata.operation}`, at: timeOrigin + Number(t) - Number(ms), ms: Number(ms) });
+    }
+  }
+  return { checkpoints, statements };
 }
 
 function arg(name: string): string | undefined {
@@ -162,11 +198,15 @@ async function runWorkload(source: string, dbPath: string, seconds: number): Pro
   const { AppPersistence } = await import(pathToFileURL(join(source, "src/data/app-persistence.ts")).href);
   const persistence = new AppPersistence(dbPath, { interactive: true });
   const ops: OpSamples = {};
+  const slow: Moment[] = [];
   const time = (name: string, fn: () => unknown) => {
     const startedAt = performance.now();
     fn();
-    (ops[name] ??= []).push(performance.now() - startedAt);
+    const ms = performance.now() - startedAt;
+    (ops[name] ??= []).push(ms);
+    if (ms >= SLOW_MS) slow.push({ what: name, at: performance.timeOrigin + startedAt, ms });
   };
+  const runStartedAt = performance.timeOrigin + performance.now();
   const random = seeded(23);
   const policy = { cachePolicy: { staleMs: 3_600_000, expireMs: 30 * 24 * 3_600_000 } };
   const ranges = ["1d", "5d", "1m", "6m", "ytd", "1y", "5y", "all"];
@@ -175,7 +215,9 @@ async function runWorkload(source: string, dbPath: string, seconds: number): Pro
   let lastProbe = performance.now();
   const probe = setInterval(() => {
     const now = performance.now();
-    lags.push(Math.max(0, now - lastProbe - LAG_PROBE_MS));
+    const lag = Math.max(0, now - lastProbe - LAG_PROBE_MS);
+    lags.push(lag);
+    if (lag >= SLOW_MS) slow.push({ what: "event-loop pause", at: performance.timeOrigin + now - lag, ms: lag });
     lastProbe = now;
   }, LAG_PROBE_MS);
 
@@ -243,7 +285,16 @@ async function runWorkload(source: string, dbPath: string, seconds: number): Pro
   clearInterval(probe);
   const closingAt = performance.now();
   persistence.close();
-  return { ops, lags, closeMs: performance.now() - closingAt };
+  return {
+    ops,
+    lags,
+    closeMs: performance.now() - closingAt,
+    startedAt: runStartedAt,
+    timeOrigin: performance.timeOrigin,
+    slow,
+    checkpoints: [],
+    statements: [],
+  };
 }
 
 interface Summary {
@@ -254,6 +305,14 @@ interface Summary {
   pausesOver100Ms: number;
   pausesOver250Ms: number;
   closeMs: number;
+  checkpoints: { count: number; p50: number; p95: number; max: number };
+  /** Pauses of SLOW_MS or more on the app's thread, and how many of them overlapped a checkpoint. */
+  slowPauses: number;
+  slowPausesDuringCheckpoint: number;
+}
+
+function overlaps(moment: Moment, others: Moment[]): boolean {
+  return others.some((other) => moment.at < other.at + other.ms && other.at < moment.at + moment.ms);
 }
 
 function summarize(label: string, results: RunResult[]): Summary {
@@ -264,6 +323,8 @@ function summarize(label: string, results: RunResult[]): Summary {
     ops[name] = { count: samples.length, p50: percentile(samples, 0.5), p95: percentile(samples, 0.95), max: samples.at(-1) ?? 0 };
   }
   const lags = results.flatMap((result) => result.lags);
+  const checkpointMs = results.flatMap((result) => result.checkpoints.map((checkpoint) => checkpoint.ms)).sort((a, b) => a - b);
+  const pauses = results.flatMap((result) => result.slow.filter((moment) => moment.what === "event-loop pause").map((moment) => ({ moment, checkpoints: result.checkpoints })));
   return {
     label,
     runs: results.length,
@@ -272,7 +333,23 @@ function summarize(label: string, results: RunResult[]): Summary {
     pausesOver100Ms: lags.filter((lag) => lag >= 100).length,
     pausesOver250Ms: lags.filter((lag) => lag >= 250).length,
     closeMs: Math.max(0, ...results.map((result) => result.closeMs)),
+    checkpoints: { count: checkpointMs.length, p50: percentile(checkpointMs, 0.5), p95: percentile(checkpointMs, 0.95), max: checkpointMs.at(-1) ?? 0 },
+    slowPauses: pauses.length,
+    slowPausesDuringCheckpoint: pauses.filter(({ moment, checkpoints }) => overlaps(moment, checkpoints)).length,
   };
+}
+
+/** Each run's slow moments in order, seconds from its start. */
+function timeline(label: string, results: RunResult[]): string {
+  return results.map((result, index) => {
+    const moments = [
+      ...result.slow,
+      ...result.statements.filter((moment) => moment.ms >= SLOW_MS),
+      ...result.checkpoints.filter((moment) => moment.ms >= SLOW_MS),
+    ].sort((a, b) => a.at - b.at);
+    const lines = moments.map((moment) => `  +${((moment.at - result.startedAt) / 1000).toFixed(3)}s  ${Math.round(moment.ms).toString().padStart(5)} ms  ${moment.what}`);
+    return [`${label}, run ${index + 1}: ${moments.length === 0 ? "nothing slow" : ""}`, ...lines].join("\n");
+  }).join("\n");
 }
 
 function formatMs(ms: number): string {
@@ -289,7 +366,15 @@ function table(summaries: Summary[]): string {
   }).join(" | ")} |`);
   const pauses = `| longest event-loop pause | ${summaries.map((summary) => `${formatMs(summary.longestPauseMs)} (${summary.pausesOver100Ms} over 100 ms, ${summary.pausesOver250Ms} over 250)`).join(" | ")} |`;
   const close = `| close (longest) | ${summaries.map((summary) => formatMs(summary.closeMs)).join(" | ")} |`;
-  return [header, rule, ...rows, pauses, close].join("\n");
+  const checkpoints = `| checkpoint, on its own thread | ${summaries.map((summary) => (
+    summary.checkpoints.count === 0
+      ? "not traced"
+      : `${formatMs(summary.checkpoints.p50)} / ${formatMs(summary.checkpoints.p95)} / ${formatMs(summary.checkpoints.max)} (${summary.checkpoints.count})`
+  )).join(" | ")} |`;
+  const during = `| pauses of ${SLOW_MS} ms or more during a checkpoint | ${summaries.map((summary) => (
+    summary.checkpoints.count === 0 ? "not traced" : `${summary.slowPausesDuringCheckpoint} of ${summary.slowPauses}`
+  )).join(" | ")} |`;
+  return [header, rule, ...rows, pauses, close, checkpoints, during].join("\n");
 }
 
 async function child(): Promise<void> {
@@ -327,12 +412,15 @@ async function main(): Promise<void> {
         cwd: checkout.source,
         encoding: "utf8",
         maxBuffer: 256 * MB,
+        // Every measured section to stderr: slow statements, and the checkpoints where a checkout traces them.
+        env: { ...process.env, GLOOMBERB_PERF_TRACE: "1" },
       });
       const line = spawned.stdout.split("\n").find((text) => text.startsWith("RESULT "));
       if (spawned.status !== 0 || !line) {
         throw new Error(`${checkout.label} run ${run + 1} failed (${spawned.status}):\n${spawned.stderr}`);
       }
-      results.get(checkout.label)!.push(JSON.parse(line.slice("RESULT ".length)) as RunResult);
+      const result = JSON.parse(line.slice("RESULT ".length)) as RunResult;
+      results.get(checkout.label)!.push({ ...result, ...traceMoments(spawned.stderr, result.timeOrigin) });
       rmSync(runDir, { recursive: true, force: true });
       console.log(`${checkout.label}: run ${run + 1} of ${runs} done`);
     }
@@ -347,8 +435,13 @@ async function main(): Promise<void> {
     "",
   ].join("\n");
   console.log(`\n${report}`);
+  console.log(`Slow moments (${SLOW_MS} ms or more on the app's thread, and checkpoints):`);
+  for (const checkout of checkouts) console.log(timeline(checkout.label, results.get(checkout.label)!));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
-  if (out) writeFileSync(out, JSON.stringify({ platform: process.platform, seconds, runs, seed, summaries }, null, 2));
+  if (out) {
+    const moments = Object.fromEntries(checkouts.map((checkout) => [checkout.label, results.get(checkout.label)!.map(({ startedAt, slow, checkpoints, statements }) => ({ startedAt, slow, checkpoints, statements }))]));
+    writeFileSync(out, JSON.stringify({ platform: process.platform, seconds, runs, seed, summaries, moments }, null, 2));
+  }
 }
 
 if (process.argv.includes("--child")) {
