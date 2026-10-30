@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ChatMessage } from "../../../../api-client";
-import { getVisibleMessages } from "./messages";
+import { getVisibleMessages, mergeChatMessages } from "./messages";
 import { createEmptyChannelState } from "./state";
 
 test("unchanged snapshots reuse the transcript, but every source-list replacement invalidates it", () => {
@@ -42,4 +42,31 @@ test("unchanged snapshots reuse the transcript, but every source-list replacemen
   channel.messages = [];
   expect(getVisibleMessages(channel)).toEqual([]);
   expect(getVisibleMessages(createEmptyChannelState())).not.toBe(getVisibleMessages(channel));
+});
+
+test("a Gloom Wire post counts as unread only when it mentions you", () => {
+  const channel = createEmptyChannelState();
+  const reader = { id: "reader", username: "Reader" };
+  const wire = { id: "managed-llm-gloomwire", username: "gloomwire", displayName: "Gloom Wire", accountType: "managed_llm" as const };
+  const person = { id: "person", username: "person", displayName: "Person" };
+  const message = (id: string, user: ChatMessage["user"], content: string): ChatMessage => ({
+    id, channelId: "equities", content, replyToId: null,
+    createdAt: new Date(Date.UTC(2026, 0, 1, 0, Number(id.slice(1)))).toISOString(),
+    user,
+  });
+  const merge = (messages: ChatMessage[]) => mergeChatMessages({
+    channel, currentUser: reader, messages, viewActive: false, markViewed: () => {},
+  });
+
+  merge([
+    message("m1", wire, "$NVDA: Nvidia beats on revenue"),
+    message("m2", wire, "merged, thanks @readers"),
+    message("m3", wire, "merged, thanks @reader!"),
+    message("m4", person, "big print"),
+    message("m5", reader, "agreed"),
+  ]);
+  expect(channel.unreadCount).toBe(2);
+  // The same posts again, as a resync brings them, add nothing.
+  merge([message("m1", wire, "$NVDA: Nvidia beats on revenue"), message("m3", wire, "merged, thanks @reader!")]);
+  expect(channel.unreadCount).toBe(2);
 });
