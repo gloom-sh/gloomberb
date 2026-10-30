@@ -144,22 +144,43 @@ const DATED = new RegExp([
   "\\b\\d+ ?(?:d|h|m|min|days?|hours?) ago\\b",
 ].join("|"));
 
+/** `text` cut to `room` after its last whole word that fits, behind a `…`; mid-word only when its first word does not fit. */
+function clipWords(text: string, room: number): string {
+  if (displayWidth(text) <= room) return text;
+  const words = text.split(" ");
+  for (let count = words.length - 1; count > 0; count--) {
+    const kept = `${words.slice(0, count).join(" ")}…`;
+    if (displayWidth(kept) <= room) return kept;
+  }
+  return clipToDisplayWidth(text, room);
+}
+
 /**
  * `text` cut to `width` without cutting a date: its ` · ` parts that have none
- * give way first, from the last, cut short and then to a `…` that says
- * something is left out. Only a line of dates too wide for the width is cut
- * at its end.
+ * give way first, from the last, cut short at a word and then to a `…` that
+ * says something is left out; then the words before a part's date
+ * (`1,561,837 shares… 16:02:15.123`). Only dates too wide for the width are
+ * cut at their end.
  */
 function cutKeepingDates(text: string, width: number): string {
   const parts = text.split(" · ");
   const joined = () => parts.join(" · ");
+  const roomFor = (index: number) => width - (displayWidth(joined()) - displayWidth(parts[index]!));
   for (let index = parts.length - 1; index >= 0 && displayWidth(joined()) > width; index--) {
     const part = parts[index]!;
     if (DATED.test(part)) continue;
-    const room = width - (displayWidth(joined()) - displayWidth(part));
-    if (room >= 4) parts[index] = clipToDisplayWidth(part, room);
+    const room = roomFor(index);
+    if (room >= 4) parts[index] = clipWords(part, room);
     else if (parts[index + 1] !== "…" && part !== "…") parts[index] = "…";
     else parts.splice(index, 1);
+  }
+  for (let index = parts.length - 1; index >= 0 && displayWidth(joined()) > width; index--) {
+    const part = parts[index]!;
+    const at = part.search(DATED);
+    if (at <= 0) continue;
+    const date = part.slice(at);
+    const room = roomFor(index) - displayWidth(date) - 1;
+    parts[index] = room >= 4 ? `${clipWords(part.slice(0, at).trimEnd(), room)} ${date}` : date;
   }
   return truncateToDisplayWidth(joined(), width);
 }

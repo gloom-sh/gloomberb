@@ -77,6 +77,18 @@ test("a whole-row figure too narrow for its line takes a second for its detail, 
     "                    88 pctl… · 2026-10-29",
     " Dec '26 to Jul '27 +37.2bp  86 pctl 1Y",
   ]);
+
+  // A time inside a part keeps it, and the words before it give way (time and sales' VWAP).
+  const tape: StatItem[] = [
+    { label: "VWAP", value: "344.6238", detail: "1,561,837 shares since 16:02:15.123" },
+    { label: "Range", value: "253.5000 to 344.6789" },
+  ];
+  await tui.render(<StatGrid items={tape} width={40} columns={1} />, { width: 40, height: 3 });
+  expect(lines(await tui.waitForFrameToContain("Range")).slice(0, 3)).toEqual([
+    " VWAP  344.6238",
+    "       1,561,837 shares… 16:02:15.123",
+    " Range 253.5000 to 344.6789",
+  ]);
 });
 
 test("a wrapped figure keeps its split bar on the first line, and a wide label pads by cells", async () => {
