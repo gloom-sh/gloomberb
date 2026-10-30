@@ -3,7 +3,7 @@ import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
-  ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
+  listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -328,4 +328,18 @@ test("every command agrees with quote on where a symbol trades: a venue search l
     .toBe("CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)");
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
     .toBeNull();
+});
+
+test("a list's bare coin code read as a listing says so, as quote does: CORR RIOT,BTC names BTC-USD; RIOT and a named listing are not asked", async () => {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol: string) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, name: "Grayscale Bitcoin Mini Trust ETF", instrumentType: "ETF" });
+    },
+  });
+  const listing = (symbol: string, exchange = "") => ({ symbol, exchange, request: { symbol: exchange ? `${symbol}:${exchange}` : symbol, exchange } });
+  expect(await listCoinNotes([listing("RIOT"), listing("BTC"), listing("ETH", "ARCA")], { dataProvider }))
+    .toEqual(["BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD."]);
+  expect(asked).toEqual(["BTC"]);
 });

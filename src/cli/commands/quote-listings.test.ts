@@ -167,6 +167,19 @@ test("a code several companies list is never quoted on one of them: it asks for 
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
 });
 
+test("a top coin's code several companies list asks for an exchange and names the coin's pair: HYPE is not hyperliquid", async () => {
+  const quote = createTestQuote({ symbol: "HYPE:XETRA", currency: "EUR" });
+  const names = { XETRA: "iShares EUR High Yield Corp Bond ESG Paris-Aligned Climate UCITS ETF", CSE: "Hyper Bit Technologies Ltd." };
+  const source = venueSource("HYPE", ["XETRA", "CSE"], { "HYPE:XETRA": quote }, names);
+  const bare = await runQuote(["HYPE"], source);
+  expect(bare.failure?.message).toBe("Choose an exchange for HYPE.");
+  expect(bare.failure?.details?.split("\n").at(-1)).toBe("HYPE is iShares EUR High Yield Corp Bond ESG Paris-Aligned Climate UCITS ETF or "
+    + "Hyper Bit Technologies Ltd., not hyperliquid. For hyperliquid use HYPE-USD.");
+  // A code no coin has asks as before.
+  const other = await runQuote(["2222"], venueSource("2222", ["JPX", "TADAWUL"], {}, { JPX: "Kotobuki Spirits Co., Ltd.", TADAWUL: "Saudi Arabian Oil Co." }));
+  expect(other.failure?.details).not.toContain("For ");
+});
+
 test("BDI asks for an exchange and says the Baltic Dry Index is not covered; on an exchange it is Black Diamond Group's quote", async () => {
   const quote = createTestQuote({ symbol: "BDI:TSX", currency: "CAD" });
   const names = { TSX: "Black Diamond Group Limited", BSE: "B. D. Industries (Pune) Limited" };

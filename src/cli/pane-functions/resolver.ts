@@ -11,7 +11,7 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
-import { ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import { listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
@@ -254,8 +254,9 @@ export async function applyListingArgument(
     }
     notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
   }
-  // One listing's notes come with its choice note; a list's are said here.
-  if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes));
+  // One listing's notes come with its choice note; a list's are said here, with a coin's code read as a listing
+  // (CORR RIOT,BTC: BTC is the Grayscale fund) as `quote BTC` says it.
+  if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes), ...await listCoinNotes(listings, context));
   return {
     ...args,
     arg: listings.map((listing) => listing.key).join(", "),

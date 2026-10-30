@@ -4,7 +4,7 @@ import type { CapabilityInvoker } from "../capabilities/types";
 import type { GloomPlugin } from "../types/plugin";
 import { resolveRegisteredSeries } from "./capability";
 import { readSeriesFolder } from "./files";
-import { SeriesRegistry, seriesExpression } from "./registry";
+import { SeriesRegistry, seriesExpression, seriesNamedBy } from "./registry";
 import type { SeriesDefinition } from "./types";
 
 /**
@@ -74,4 +74,13 @@ export function standaloneSeriesCatalog(
     }
     return byExpression.get(expression);
   };
+}
+
+/** The catalog series a bare word is an alias of (`hashrate`), where no plugin runtime runs; see `seriesNamedBy`. */
+export function standaloneSeriesNamed(
+  plugins: readonly GloomPlugin[],
+  disabledPlugins: readonly string[] = [],
+): (word: string) => SeriesDefinition | undefined {
+  const definitions = () => plugins.filter((plugin) => !disabledPlugins.includes(plugin.id)).flatMap((plugin) => plugin.series ?? []);
+  return (word) => seriesNamedBy(definitions(), word);
 }

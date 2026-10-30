@@ -577,3 +577,14 @@ test("the rate line reads as markets quote the pair, is printed once, and except
   expect(today.match(/figures at/g)).toHaveLength(1);
   expect(today).toContain("CAD figures at USD/CAD 1.4, as of 2026-10-20 06:00 UTC.");
 });
+
+test("a coin's volume says it is traded value in the quote currency; a stock's stays a share count", async () => {
+  const volumeLine = async (symbol: string, exchangeName: string | undefined) => {
+    const text = (await buildTickerReport({ symbol, tickerFile: null, config, toBase: async value => value,
+      financials: { quote: { ...quote, symbol, exchangeName, volume: 75_244_118_016 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] },
+    })).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+    return text.split("\n").find((line) => line.trim().startsWith("Volume"))?.trim();
+  };
+  expect(await volumeLine("BTC-USD", "CCC")).toBe("Volume 75,244,118,016 USD");
+  expect(await volumeLine("MARA", "NASDAQ")).toBe("Volume 75,244,118,016");
+});

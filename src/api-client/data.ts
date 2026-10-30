@@ -30,7 +30,7 @@ import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { BitcoinNetworkPayload, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -894,6 +894,11 @@ export class CloudDataApi {
   /** Total DeFi TVL, the largest protocols and chains with 7D and 30D changes, and the total's daily history. */
   async getCloudDefiTvl(): Promise<DefiTvlPayload> {
     return this.request<DefiTvlPayload>("/cloud/crypto/defi/tvl", { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** Bitcoin's daily hash rate, the difficulty at each retarget, the next retarget's estimate and derived hashprice. */
+  async getCloudBitcoinNetwork(): Promise<BitcoinNetworkPayload> {
+    return this.request<BitcoinNetworkPayload>("/cloud/crypto/bitcoin/network", { signal: AbortSignal.timeout(30_000) });
   }
 
   /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */

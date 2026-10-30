@@ -59,7 +59,7 @@ import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { coinListingNotes, EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -909,7 +909,12 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       asOf: newestReportTime(lastBars),
       oldest: oldestReportTime(lastBars),
     });
-    const warnings = [...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!), ...sessionNote ? [sessionNote] : []];
+    // A coin's code read as a listing (BTC, the Grayscale fund) says so, as `quote BTC` does.
+    const warnings = [
+      ...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!),
+      ...coinListingNotes(leftListing!, leftQuote), ...coinListingNotes(rightListing!, rightQuote),
+      ...sessionNote ? [sessionNote] : [],
+    ];
     ctx.printResult({
       data: [{ left, right, samples: sampleSize, correlation }],
       ...(warnings.length > 0 ? { warnings } : {}),

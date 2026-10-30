@@ -10,7 +10,7 @@ import type { PluginCapability } from "../capabilities";
 import type { AppConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import { getLoadablePlugins } from "../plugins/catalog";
-import { standaloneSeriesCatalog, standaloneSeriesInvoker } from "../series/standalone";
+import { standaloneSeriesCatalog, standaloneSeriesInvoker, standaloneSeriesNamed } from "../series/standalone";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { apiClient } from "../api-client";
@@ -132,7 +132,8 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   dataProvider.setBackgroundRevalidation(false);
   const seriesCapabilities = standaloneSeriesInvoker(plugins, context.dataDir, context.config.disabledPlugins);
   const findCatalogSeries = standaloneSeriesCatalog(plugins, context.config.disabledPlugins);
-  return { ...context, dataProvider, seriesCapabilities, findCatalogSeries, statementSources: cloudStatementReportSources };
+  const findCatalogSeriesNamed = standaloneSeriesNamed(plugins, context.config.disabledPlugins);
+  return { ...context, dataProvider, seriesCapabilities, findCatalogSeries, findCatalogSeriesNamed, statementSources: cloudStatementReportSources };
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {

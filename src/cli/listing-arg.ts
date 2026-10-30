@@ -36,7 +36,7 @@ import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy } from "../sources/provider-errors";
-import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
+import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
@@ -60,7 +60,7 @@ import {
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
-import { notTheCoinNote } from "./commands/crypto-hints";
+import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -455,6 +455,19 @@ export function coinListingNotes(
 }
 
 /**
+ * `coinListingNotes` for each listing of a list (CORR RIOT,BTC), asked only
+ * of a bare top coin code, whose quote alone says whether it is the coin.
+ */
+export async function listCoinNotes(
+  listings: ReadonlyArray<Pick<CliListing, "symbol" | "exchange" | "request">>,
+  deps: Pick<ListingDeps, "dataProvider">,
+): Promise<string[]> {
+  const bare = listings.filter((listing) => !listing.exchange && TOP_COIN_NAMES.has(listing.symbol));
+  const quotes = await Promise.all(bare.map((listing) => loadListingQuote(deps.dataProvider, listing)));
+  return bare.flatMap((listing, index) => coinListingNotes(listing, quotes[index]));
+}
+
+/**
  * `listingChoiceNote` for a listing a command resolved, from the quote it was
  * read on: only a bare symbol went where the data service chose. A named
  * listing whose code names several venues says which it was read as
@@ -636,8 +649,12 @@ function describeOtherListings(
   // Every other listing was asked and had nothing: they are named as such, with nothing to try.
   const heading = choose ? "Listings" : lines.length === 0 ? `No ${request.noun} on its other listings either` : "Other listings";
   const named = lines.length === 0 ? without : offered;
-  const details = lines.length === 0 ? `${heading}: ${without.map((venue) => venueKey(listing.symbol, venue)).join(", ")}.`
+  const listed = lines.length === 0 ? `${heading}: ${without.map((venue) => venueKey(listing.symbol, venue)).join(", ")}.`
     : lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n");
+  // A top coin's code (HYPE, SOL) none of the listings is: the coin may be what was meant.
+  const coin = coinElsewhereNote(listing.symbol, [...resolved ? [resolved] : [], ...others]
+    .map((venue) => ({ key: venueKey(listing.symbol, venue), name: venue.name })));
+  const details = coin ? `${listed}\n${coin}` : listed;
   return {
     // The symbol went to no venue, so none of them is said to lack the data.
     message: choose

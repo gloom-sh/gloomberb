@@ -307,3 +307,36 @@ test("large research reports remain complete through a pipe after stdout initial
   expect(report.data.rows).toHaveLength(6000);
   expect(report.data.rows.at(-1)).toEqual({ id: 5999, name: "東京 — research report" });
 });
+
+test("COLUMNS fits piped text to its width and never changes JSON, CSV or NDJSON", () => {
+  const data = [
+    { headline: "A long headline that runs well past the fifty-six columns of a narrow pager", source: "Wire", volume: 1200 },
+    { headline: "Another story", source: "Filing", volume: 35 },
+  ];
+  const footer = "Source: Gloom Cloud · a closing line long enough to wrap at fifty-six columns if anything wrapped it";
+  const tables = { tables: [{ title: "Stories", columns: ["Headline", "Source", "Volume"], rows: data.map((row) => [row.headline, row.source, row.volume]) }], footer: [footer] };
+  const render = (format: CliGlobalOptions["format"]) => [
+    serializeCliResult({ data }, { ...baseOptions, format }),
+    ...format === "csv" || format === "ndjson" ? [serializeCliResult({ data }, { ...baseOptions, format }, { tables })] : [],
+  ];
+  const stdout = process.stdout as { isTTY?: boolean };
+  const saved = { columns: process.env.COLUMNS, tty: stdout.isTTY };
+  setCliColorEnabledOverride(false);
+  try {
+    // Piped, as `gloom ... | less` is.
+    stdout.isTTY = false;
+    delete process.env.COLUMNS;
+    const whole = { json: render("json"), csv: render("csv"), ndjson: render("ndjson"), text: render("text") };
+    process.env.COLUMNS = "56";
+    const fitted = { json: render("json"), csv: render("csv"), ndjson: render("ndjson"), text: render("text") };
+    expect(fitted.json).toEqual(whole.json);
+    expect(fitted.csv).toEqual(whole.csv);
+    expect(fitted.ndjson).toEqual(whole.ndjson);
+    expect(fitted.text).not.toEqual(whole.text);
+  } finally {
+    stdout.isTTY = saved.tty;
+    if (saved.columns === undefined) delete process.env.COLUMNS;
+    else process.env.COLUMNS = saved.columns;
+    setCliColorEnabledOverride(null);
+  }
+});

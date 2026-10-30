@@ -61,6 +61,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "futures", chart: "Front-month futures board, charted from the board", series: ["fut:*"] },
   { module: "futures-curve", chart: "Futures curve by contract month", notInCatalog: "not-a-time-series", reason: "Plotted by delivery month; each front month is in the catalog as FUT:code." },
   { module: "crypto-board", chart: "Price sparklines for the large coins", series: ["crypto:*"] },
+  { module: "crypto-board", chart: "Bitcoin network hash rate, difficulty, next retarget estimate and hashprice", series: ["bitcoin:*"] },
   { module: "perps", chart: "Perpetual funding, open interest, premium and long/short account share", series: ["perps:*"] },
   { module: "crypto-etf-flows", chart: "The running net flow of the US spot bitcoin or ether ETFs since launch", notInCatalog: "not-yet", reason: "Daily and dated: the running total and each fund's daily flow could be crypto ETF series, and none is registered for the composer yet." },
   { module: "perps", chart: "Perpetual mark price", notInCatalog: "not-yet", reason: "The pair's price is in the catalog; the perpetual's own mark price could be a crypto series." },

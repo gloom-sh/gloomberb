@@ -1,4 +1,5 @@
 import { getSharedRegistry } from "../../plugins/registry";
+import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
 import { findNamedCollection } from "../../portfolio/collection-name";
 import { readBareListing } from "../listing-arg";
@@ -190,7 +191,7 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries">> & {
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries" | "findCatalogSeriesNamed">> & {
   dataProvider: HeadlessPaneContext["marketData"];
 };
 
@@ -210,6 +211,11 @@ export function createHeadlessPaneContext(
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
     catalogSeriesName: (expression) => (getSharedRegistry()?.series.findByExpression(expression)?.definition
       ?? context.findCatalogSeries?.(expression))?.name,
+    catalogSeriesNamed: (word) => {
+      const registered = getSharedRegistry()?.series?.list().map(({ definition }) => definition) ?? [];
+      const definition = seriesNamedBy(registered, word) ?? context.findCatalogSeriesNamed?.(word);
+      return definition ? { expression: seriesExpression(definition), name: definition.name } : undefined;
+    },
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
       const portfolio = findNamedCollection(context.config.portfolios, id);
@@ -569,7 +575,7 @@ function renderBundle(
   return result.sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
-    ...(section.title ? [renderSection(section.title)] : []),
+    ...(section.title ? [renderSection(section.textTitle ?? section.title)] : []),
     "rows" in section && section.rows
       ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.textEntries ?? section.entries),

@@ -466,7 +466,7 @@ Headless loaders must stay isomorphic. Do not import React, DOM APIs, Electrobun
 The four supported shapes cover the pane catalog:
 
 - `rows`: `{ columns?, rows }` for one table
-- `bundle`: `{ sections: [{ title, columns?, rows, unit? } | { title, entries, textEntries? }] }` for dashboards such as VAL and ECST. A row section's `unit` fills the `currency_or_unit` column of its exported rows. An entry's `unit` exports its number whole with the unit beside the label, and `textEntries` are the lines the text report prints instead of `entries` when the pane says in one line what the export keeps apart (a range, a level with its distance)
+- `bundle`: `{ sections: [{ title, textTitle?, columns?, rows, unit? } | { title, entries, textEntries? }] }` for dashboards such as VAL and ECST. A row section's `unit` fills the `currency_or_unit` column of its exported rows, and its `textTitle` is the heading the text report prints in place of `title` when it says more than an export's section name should (the scale its amounts are printed in); JSON, CSV and NDJSON keep `title`. An entry's `unit` exports its number whole with the unit beside the label, and `textEntries` are the lines the text report prints instead of `entries` when the pane says in one line what the export keeps apart (a range, a level with its distance)
 - `series`: `{ series: [{ id, label, points, unit?, symbol?, interval? }], stats? }` for charts and derived statistics. `unit`, `symbol` (what the series was asked as) and `interval` (the bars or frequency served) fill the `currency_or_unit`, `symbol_or_series` and `interval` columns every exported row ends with
 - `snapshot`: `{ asOf, items, empty? }` for a point-in-time view of a stream. `empty` is what the text report says in place of `No data.` when there are no items (the stream is still starting or warming up, nothing matches), and JSON carries it as `empty`
 
@@ -865,6 +865,7 @@ export default {
 | `unit` | `%`, `bp`, `x`, `ratio`, `index`, `score` or `points`; a quantity (`count`, `shares`, `contracts`, `people`, `barrels`, ...) or a currency code, optionally after `thousand`, `million`, `billion` or `trillion`; or a currency per unit (`USD/barrel`). `describeSeriesUnits()` lists them all. Series in the same unit share a chart axis. |
 | `frequency` | `intraday`, `daily`, `weekly`, `monthly`, `quarterly`, `annual` or `irregular`. |
 | `group`, `tags`, `description` | The catalog tab the series is listed under, extra search words, and one sentence for search and automation. |
+| `aliases` | Up to four lower-case words `fn G` charts the series by where a ticker goes (`fn G hashrate`): only when no listing answers to the word, the quote source says it is not a ticker, and no other series claims it. Not for a series with an `input`. |
 | `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
 | `limitation` | One sentence on a limit the publisher sets on the data, such as a cap on how far back its history goes (`History limited to 3 years by the publisher.`). The catalog shows it as a warning on the selected series. |
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |

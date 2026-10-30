@@ -75,6 +75,9 @@ const NUMBER_JOINER = /^(?:\/|·|→|↑|↓|[-–]|to|up|down)$/;
 const PLAIN_EMPTY_CELL = "—";
 let colorEnabledOverride: boolean | null = null;
 let widthOverride: number | null = null;
+/** The widths `COLUMNS` is taken at for piped output, as `--width` takes them; anything else is ignored. */
+const MIN_COLUMNS_VARIABLE = 20;
+const MAX_COLUMNS_VARIABLE = 1000;
 let plainOverride: boolean | null = null;
 /** Output is being rendered for a file (`renderForFile`), which has no terminal width. */
 let renderingForFile = false;
@@ -219,9 +222,22 @@ export function setCliWidthOverride(value: number | null): void {
 /** Columns the output is fitted to: `--width`, else the terminal's, or null when output is piped or redirected. */
 export function cliTerminalWidth(): number | null {
   if (widthOverride != null) return widthOverride;
-  if (renderingForFile || !process.stdout.isTTY) return null;
+  if (renderingForFile) return null;
+  if (!process.stdout.isTTY) return columnsVariable();
   const columns = process.stdout.columns;
   return typeof columns === "number" && columns > 0 ? columns : null;
+}
+
+/**
+ * `COLUMNS=60 gloom ... | less`: piped output is fitted to the width the
+ * variable sets, as `--width` does, so a screen reader or a pager gets the
+ * same narrow layout a terminal does. Unset or not a width, output stays whole.
+ */
+function columnsVariable(): number | null {
+  const value = process.env.COLUMNS?.trim();
+  if (!value || !/^\d+$/.test(value)) return null;
+  const columns = Number(value);
+  return columns >= MIN_COLUMNS_VARIABLE && columns <= MAX_COLUMNS_VARIABLE ? columns : null;
 }
 
 function padDisplay(text: string, width: number, align: CliAlign = "left"): string {
@@ -514,6 +530,22 @@ function wrapCell(text: string, width: number): string[] {
   });
 }
 
+/**
+ * The columns that say what a row is: the leading ones up to the first figure
+ * after a word (`#`, Coin and Name before Price; Symbol and Name before Last).
+ */
+function rowIdentityColumns(columns: readonly CliTableColumn[]): Set<number> {
+  const identity = new Set<number>();
+  let named = false;
+  for (const [index, column] of columns.entries()) {
+    const figure = column.align === "right";
+    if (figure && named) break;
+    identity.add(index);
+    named ||= !figure;
+  }
+  return identity;
+}
+
 interface TableLayout {
   kept: TableEntry[];
   stacked: TableEntry[];
@@ -534,13 +566,18 @@ function movesSooner(left: readonly number[], right: readonly number[]): boolean
  * (a name, a title) before dates and figures, then rightmost first. The
  * first column stays. The list ends at the first layout that keeps every
  * column it shows whole on one line: moving more only adds lines.
+ *
+ * Plain output (`--plain`, read aloud by a screen reader) keeps the columns
+ * that say what a row is on its first line, after only the ones too wide to
+ * sit there: a row is heard as "BTC Bitcoin" before its figures.
  */
-function tableLayouts(entries: TableEntry[], available: number): TableLayout[] {
+function tableLayouts(entries: TableEntry[], available: number, identity: ReadonlySet<number> = new Set()): TableLayout[] {
   const fit = (kept: TableEntry[]) => fitColumnWidths(kept.map((entry) => entry.width), kept.map((entry) => entry.floor), available);
   const first = entries[0]!;
   const room = available - first.floor - COLUMN_GAP;
   const order = (entry: TableEntry) => [
     entry.floor > room ? 1 : 0,
+    identity.has(entry.index) ? 0 : 1,
     entry.column.stackPriority ?? 0,
     entry.text && entry.width > SOFT_MIN_COLUMN_WIDTH ? 1 : 0,
     entry.index,
@@ -676,7 +713,7 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   });
   let best = "";
   let bestLines = Infinity;
-  for (const layout of tableLayouts(entries, available)) {
+  for (const layout of tableLayouts(entries, available, cliPlainEnabled() ? rowIdentityColumns(columns) : undefined)) {
     const stacked = layout.stacked.filter((entry) => entry.column.stackRows !== 0).sort((left, right) => left.index - right.index);
     const text = renderTableLayout(columns, rows, options, layout.kept, stacked, available, true);
     const lines = text.split("\n").length;

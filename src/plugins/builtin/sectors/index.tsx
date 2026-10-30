@@ -448,7 +448,7 @@ export const sectorsModule: PluginModule = {
       paneId: "sectors",
       label: "Thematic Baskets",
       description: "Curated themes with equal-weight returns, breadth and member leaders and laggards.",
-      keywords: ["themes", "thematic", "baskets", "AI compute", "datacenters", "electrification", "power grid", "nuclear", "uranium", "defense", "aerospace", "cybersecurity", "robotics", "automation", "critical minerals", "crypto", "bitcoin", "solar", "clean energy", "gold", "silver", "homebuilders", "memory", "chip equipment", "cloud software"],
+      keywords: ["themes", "thematic", "baskets", "AI compute", "datacenters", "electrification", "power grid", "nuclear", "uranium", "defense", "aerospace", "cybersecurity", "robotics", "automation", "critical minerals", "crypto", "bitcoin", "bitcoin miners", "miners", "bitcoin mining", "solar", "clean energy", "gold", "silver", "homebuilders", "memory", "chip equipment", "cloud software"],
       shortcut: { prefix: "THEM", argKind: "text", argPlaceholder: "theme", argOptional: true },
       headless: themesHeadless,
       // The theme param opens the Themes tab, and the named theme's members.

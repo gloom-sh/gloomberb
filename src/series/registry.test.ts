@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeriesRegistry, capabilitySeriesId, seriesExpression } from "./registry";
+import { SeriesRegistry, capabilitySeriesId, seriesExpression, seriesNamedBy } from "./registry";
 import { normalizeSeriesPoints, resolveLoadedSeries, seriesLoadWindow } from "./resolve";
 import { chartSeriesResolveOutputSchema } from "../capabilities/chart-series";
 import { hostLabelWords, isValidSeriesUnit, validateSeriesDefinition } from "./validate";
@@ -16,7 +16,7 @@ const loaded = (overrides: Partial<SeriesDefinition> = {}): SeriesDefinition => 
 
 describe("series validation", () => {
   test("units follow one small grammar: rates, quantities with a scale, currencies and prices per unit", () => {
-    for (const unit of ["%", "bp", "index", "USD", "billion USD", "thousand barrels/day", "USD/barrel", "million shares", "currency/share"]) {
+    for (const unit of ["%", "bp", "index", "USD", "billion USD", "thousand barrels/day", "USD/barrel", "million shares", "currency/share", "EH/s", "USD/PH/s/day"]) {
       expect(isValidSeriesUnit(unit)).toBe(true);
     }
     for (const unit of ["", "percent", "thousand %", "usd", "USD/apple", "dozen eggs", "billion"]) {
@@ -279,4 +279,17 @@ describe("a series with lines", () => {
     expect(await b).toBe("closed");
     expect(aborted).toBe("closed");
   });
+});
+
+test("a bare word names only a series that lists it as an alias, and none that two series claim", () => {
+  const series = (id: string, aliases?: string[]) => ({ id, name: id, unit: "%", frequency: "daily", expression: `X:${id}`, ...aliases ? { aliases } : {} }) as SeriesDefinition;
+  const catalog = [series("bitcoin:hashrate", ["hashrate"]), series("bitcoin:difficulty", ["difficulty"]), series("doe:cushing"),
+    series("macro:inflation"), series("a:claimed", ["claimed"]), series("b:claimed", ["claimed"])];
+  expect(seriesNamedBy(catalog, "HASHRATE")?.id).toBe("bitcoin:hashrate");
+  expect(seriesNamedBy(catalog, "difficulty")?.id).toBe("bitcoin:difficulty");
+  // A series' own id of six letters or more is no alias; nor is a word two series claim.
+  for (const word of ["cushing", "inflation", "claimed", "hash"]) expect(seriesNamedBy(catalog, word), word).toBeUndefined();
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["Rate"]) })).toThrow('alias "Rate"');
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["rate"]), input: "ticker", expression: "{ticker}:close" } as SeriesDefinition))
+    .toThrow("a series with an input takes no aliases");
 });
