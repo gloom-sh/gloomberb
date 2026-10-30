@@ -5,6 +5,7 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import { usePlanAccess } from "../../../api-client/plan-access";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
@@ -191,6 +192,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
   // While its session trades, a free list says when it was built; a finished one is final and its date says enough.
   const asOfLabel = payload && delayed && sessionTrading ? listAsOfLabel(payload.asOf, payload.session, session) : null;
+  const quoteDelay = useQuoteDelayFooter(payload ? [{ dataSource: delayed ? "delayed" : "live" }] : [], "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
@@ -205,8 +207,9 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       ...(payload?.stale ? [STALE_SEGMENT] : []),
       // A float the source does not date says so once, while the FLOAT column shows.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
+      ...(quoteDelay ? [quoteDelay] : []),
     ],
-  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, rows, sessionLabel, summaryQuotes]);
+  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, quoteDelay, rows, sessionLabel, summaryQuotes]);
 
   const openRow = useCallback((row: SessionMoverRow) => {
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });

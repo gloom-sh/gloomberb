@@ -11,7 +11,7 @@ import { useRendererHost } from "../../../ui";
 import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
-import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "../../../api-client/plan-access";
+import { freeQuotesDelayMinutes, resolvePlanAccess, usePlanAccess, type PlanAccess, type QuoteDelayFacts } from "../../../api-client/plan-access";
 import { useViewport } from "../../../react/input";
 import { type DialogApi, useOptionalDialog } from "../../../ui/dialog";
 import { promptCloudUpgrade } from "../../../account/upgrade-dialog";
@@ -364,4 +364,27 @@ export function useCloudAccessFooter({
   );
 
   return { access, hint, openUpgrade, segment };
+}
+
+/**
+ * The footer's clock for a pane whose prices this account sees late: the free
+ * tier's delay (`freeQuotesDelayMinutes`) on any of `quotes`, pressed for the
+ * upgrade, as the quote footer's clock is. Null with Pro or a trial, and while
+ * every price shown is live, so those accounts see nothing new. A pane whose
+ * data comes as one board says so with one `{ dataSource }` for the board.
+ */
+export function useQuoteDelayFooter(
+  quotes: Iterable<QuoteDelayFacts | null | undefined>,
+  placement: string,
+): PaneFooterSegment | null {
+  const language = useAppLanguage();
+  const minutes = freeQuotesDelayMinutes(usePlanAccess(), quotes);
+  const openUpgrade = useCloudUpgradeAction(placement);
+  return useMemo(() => (minutes == null ? null : delayedFooterSegment({
+    id: "quote-delay",
+    detail: tf("{delay} delayed · try Pro live", { delay: `${minutes}m` }),
+    delay: `${minutes}m`,
+    onPress: openUpgrade,
+    quoteStatus: true,
+  })), [language, minutes, openUpgrade]);
 }

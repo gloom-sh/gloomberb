@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolvePlanAccess, type PlanAccessUser } from "./plan-rules";
+import { freeQuoteDelayMinutes, freeQuotesDelayMinutes, resolvePlanAccess, type PlanAccessUser } from "./plan-rules";
 
 const NOW = Date.parse("2026-08-04T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -65,5 +65,41 @@ describe("plan access", () => {
     // Sessions from a server without effectivePlan still resolve.
     expect(resolvePlanAccess({ emailVerified: true, plan: "pro" }, NOW).hasProAccess).toBe(true);
     expect(resolvePlanAccess(null, NOW)).toMatchObject({ signedIn: false, hasProAccess: false });
+  });
+});
+
+describe("the delay a price is shown with", () => {
+  const delayed = { dataSource: "delayed" as const };
+  const live = { dataSource: "live" as const };
+  const accounts = {
+    "signed out": resolvePlanAccess(null, NOW),
+    free: resolvePlanAccess(user(), NOW),
+    unverified: resolvePlanAccess(user({ emailVerified: false, plan: "pro" }), NOW),
+    "lapsed trial": resolvePlanAccess(user({ trialEndsAt: new Date(NOW - 1).toISOString(), effectivePlan: "pro" }), NOW),
+    trial: resolvePlanAccess(user({ trialEndsAt: new Date(NOW + DAY).toISOString(), effectivePlan: "pro" }), NOW),
+    Pro: resolvePlanAccess(user({ plan: "pro", effectivePlan: "pro" }), NOW),
+  };
+
+  test("is the free tier's on every price that is not live, signed out included; Pro and a trial see none", () => {
+    for (const name of ["signed out", "free", "unverified", "lapsed trial"] as const) {
+      expect(freeQuoteDelayMinutes(accounts[name], delayed)).toBe(15);
+      // A quote that does not say how it was delivered is not claimed live.
+      expect(freeQuoteDelayMinutes(accounts[name], {})).toBe(15);
+    }
+    for (const name of ["trial", "Pro"] as const) {
+      expect(freeQuoteDelayMinutes(accounts[name], delayed)).toBeNull();
+      expect(freeQuotesDelayMinutes(accounts[name], [delayed])).toBeNull();
+    }
+  });
+
+  test("is none on a live price, on a line that no longer trades or a fund's NAV, and without a price", () => {
+    const free = accounts.free;
+    expect(freeQuoteDelayMinutes(free, live)).toBeNull();
+    expect(freeQuoteDelayMinutes(free, { ...delayed, delisting: { status: "delisted", lastTradeDate: "2026-07-31", historyStart: "2001-01-02" } })).toBeNull();
+    expect(freeQuoteDelayMinutes(free, { ...delayed, priceObservation: "nav" })).toBeNull();
+    expect(freeQuoteDelayMinutes(free, null)).toBeNull();
+    // A board of coins is live; one late price among them makes it late.
+    expect(freeQuotesDelayMinutes(free, [live, null, live])).toBeNull();
+    expect(freeQuotesDelayMinutes(free, [live, delayed])).toBe(15);
   });
 });

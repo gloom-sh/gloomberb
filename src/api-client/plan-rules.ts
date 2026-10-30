@@ -1,6 +1,8 @@
 // The plan rules alone, free of React and the API client, so the provider
 // router can gate real-time routing on the same entitlement the panes show.
 
+import type { Quote } from "../types/financials";
+
 /**
  * Minimum shape the plan helpers need. Both `AuthUser` (from `/auth/get-session`)
  * and `AccountProfile` (from `/account/profile`) satisfy it.
@@ -68,6 +70,39 @@ export function hasProAccess(user: PlanAccessUser | null | undefined, now = Date
   if (user.plan === "pro") return true;
   if (isTrialActive(user, now)) return true;
   return user.effectivePlan === "pro" && !user.trialEndsAt;
+}
+
+/** What of a price decides whether a free account sees it late. */
+export type QuoteDelayFacts = Pick<Quote, "dataSource" | "delisting" | "priceObservation">;
+
+/**
+ * The delay in minutes an account sees on a price: the free tier's quote
+ * delay when the account has no real-time access (signed out, free, a trial
+ * that ended) and the price is not live, null otherwise. A live price (a
+ * coin, a broker's own feed) has none, and neither does a price with no delay
+ * to speak of (a delisted line's last trade, a fund's NAV). Pro and trial
+ * accounts never see one.
+ */
+export function freeQuoteDelayMinutes(
+  access: Pick<PlanAccess, "hasProAccess">,
+  quote: QuoteDelayFacts | null | undefined,
+): number | null {
+  if (access.hasProAccess || !quote) return null;
+  if (quote.dataSource === "live" || quote.delisting || quote.priceObservation === "nav") return null;
+  return CLOUD_QUOTE_DELAY_MINUTES;
+}
+
+/** The delay of the first of `quotes` an account sees late (see {@link freeQuoteDelayMinutes}), or null when none is. */
+export function freeQuotesDelayMinutes(
+  access: Pick<PlanAccess, "hasProAccess">,
+  quotes: Iterable<QuoteDelayFacts | null | undefined>,
+): number | null {
+  if (access.hasProAccess) return null;
+  for (const quote of quotes) {
+    const minutes = freeQuoteDelayMinutes(access, quote);
+    if (minutes != null) return minutes;
+  }
+  return null;
 }
 
 export function resolvePlanAccess(

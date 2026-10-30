@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { apiClient } from "./index";
-import { resolvePlanAccess, type PlanAccess } from "./plan-rules";
+import { freeQuoteDelayMinutes, resolvePlanAccess, type PlanAccess, type QuoteDelayFacts } from "./plan-rules";
 
 export * from "./plan-rules";
 
@@ -24,4 +24,13 @@ export function usePlanAccess(): PlanAccess {
     planAccessKey,
   );
   return resolvePlanAccess(apiClient.getCurrentUser());
+}
+
+/**
+ * The delay this account sees on a price (see {@link freeQuoteDelayMinutes}):
+ * the free tier's on a price that is not live, null with Pro or a trial.
+ * Follows sign-in and plan changes.
+ */
+export function useFreeQuoteDelay(quote: QuoteDelayFacts | null | undefined): number | null {
+  return freeQuoteDelayMinutes(usePlanAccess(), quote);
 }
