@@ -1,5 +1,6 @@
 import type { ChatAttachment, ChatMessage } from "../../../../api-client";
 import { toTimestampMillis } from "../../../../utils/timestamp";
+import { isGloomWire } from "../ghost-user";
 import type { ChannelRuntimeState, MergeMessagesOptions } from "./state";
 import { PENDING_RECONCILE_WINDOW_MS } from "./state";
 import { chatMessageMentionsUsername, compareMessages, normalizeChatUsername } from "./utils";
@@ -186,16 +187,26 @@ function getMentionMessages(messages: ChatMessage[], user: CurrentChatUser): Cha
 
 interface MergeChatMessagesOptions {
   channel: ChannelRuntimeState;
-  currentUserId?: string | null;
+  currentUser?: CurrentChatUser;
   messages: ChatMessage[];
   options?: MergeMessagesOptions;
   viewActive: boolean;
   markViewed: (persist?: boolean) => void;
 }
 
+/**
+ * New messages from others count as unread, as the server counts them: a
+ * Gloom Wire post only when it mentions you.
+ */
+function countUnread(messages: ChatMessage[], user: CurrentChatUser): number {
+  const fromPeople = messages.filter((message) => !isGloomWire(message.user));
+  const wireMentions = getMentionMessages(messages.filter((message) => isGloomWire(message.user)), user);
+  return fromPeople.length + wireMentions.length;
+}
+
 export function mergeChatMessages({
   channel,
-  currentUserId,
+  currentUser,
   messages,
   options,
   viewActive,
@@ -203,11 +214,11 @@ export function mergeChatMessages({
 }: MergeChatMessagesOptions): void {
   reconcilePendingMessages(channel, messages);
   const freshIncoming = mergeStoredMessages(channel, messages)
-    .filter((message) => message.user.id !== currentUserId);
+    .filter((message) => message.user.id !== currentUser?.id);
   if (viewActive) {
     markViewed(false);
   } else if (freshIncoming.length > 0 && options?.countUnread !== false) {
-    channel.unreadCount += freshIncoming.length;
+    channel.unreadCount += countUnread(freshIncoming, currentUser);
   }
 }
 

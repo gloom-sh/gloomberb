@@ -2145,7 +2145,7 @@ A reply, a mention, a direct or group message, or a message in a channel whose n
 
 ### Unread
 
-The dim count in the status bar, everything unread that the chip does not name (channel messages and missed notices), opens Unread (also in the command bar): one row per channel with unread messages, the count of a channel that mentions you in green. Counts are your account's, the same on every device. Opening a row shows that channel in your chat pane, and `m` marks everything read.
+The dim count in the status bar, everything unread that the chip does not name (channel messages and missed notices), opens Unread (also in the command bar): one row per channel with unread messages, the count of a channel that mentions you in green. Counts are your account's, the same on every device. Gloom Wire posts add to them only when one mentions you. Opening a row shows that channel in your chat pane, and `m` marks everything read.
 
 Unread also keeps the price alerts, catalyst alerts, economic release prints and team notices whose toast you may have missed, newest first, the last 300. Opening one selects the price rule in ALRT, opens the catalyst or ECO, or goes where the team card's toast goes. This list is kept on this device only.
 
