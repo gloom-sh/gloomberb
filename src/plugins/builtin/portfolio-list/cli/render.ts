@@ -584,7 +584,7 @@ function rateAge(asOf: number, now: number): string {
 }
 
 /** A rate the report converted at, as markets quote the pair and `fx` writes it, for `--json`. */
-export function fxRateRecord({ currency, baseCurrency, rate, asOf, stale }: BaseConversion) {
+function fxRateRecord({ currency, baseCurrency, rate, asOf, stale }: BaseConversion) {
   const quoted = quotedFxPair(currency, baseCurrency, rate);
   return { currency, baseCurrency, pair: quoted.pair, rate: Number(formatFxRate(quoted.rate)), asOf: asOf == null ? null : new Date(asOf).toISOString(), stale };
 }
@@ -595,7 +595,7 @@ export function fxRateRecord({ currency, baseCurrency, rate, asOf, stale }: Base
  * dated; one past its fresh window says it is stale and how old. Null when
  * nothing was converted.
  */
-export function fxRatesLine(
+function fxRatesLine(
   conversions: readonly BaseConversion[],
   { now = Date.now(), warning = (text: string) => text }: { now?: number; warning?: (text: string) => string } = {},
 ): string | null {

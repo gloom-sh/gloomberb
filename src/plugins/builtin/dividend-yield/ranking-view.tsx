@@ -53,7 +53,7 @@ function sortRankingRows(rows: RankingRow[], sort: SortPreference<string>): Rank
  * row, marked not read. Each reads its yields over the price its history
  * comes with.
  */
-export async function loadDividendRanking(
+async function loadDividendRanking(
   symbols: readonly string[],
   loadData: typeof fetchDividendData = fetchDividendData,
 ): Promise<DividendRankingEntry[]> {
