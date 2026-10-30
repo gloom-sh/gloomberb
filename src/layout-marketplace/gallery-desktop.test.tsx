@@ -171,6 +171,32 @@ test("the preview names the layout in use and leaves its actions to the footer",
   expect(buttons(preview)).toEqual([]);
 });
 
+test("a layout with no panes says so in the empty-state style instead of drawing a blank preview", async () => {
+  const owned = buildOwnedEntries([
+    { name: "Blank", layout: { dockRoot: null, instances: [], floating: [], detached: [] } },
+    { name: "Monitor", layout: testDockedLayout() },
+  ], 0);
+  const { controller } = createController({ owned, entries: owned });
+  const container = await renderGallery(controller);
+
+  const preview = container.querySelector('[data-gloom-role="layout-gallery-preview"]')!;
+  expect(preview.textContent).toContain("Blank");
+  expect(preview.querySelector('[data-gloom-ui="empty-state"]')?.textContent).toBe("No panes in this layout.");
+  expect(preview.querySelector("svg")).toBeNull();
+});
+
+test("the sidebar is wide enough for its section headers, so a narrow pane never cuts a count", async () => {
+  const owned = buildOwnedEntries(Array.from({ length: 12 }, (_, index) => ({ name: `Layout ${index}`, layout: testDockedLayout() })), 0);
+  const { controller } = createController({ owned, entries: owned });
+  // 72 cells is the narrowest pane with a sidebar, whose default width is 14 cells.
+  const container = await renderInApp(<LayoutGalleryDesktop controller={controller} width={72} />);
+
+  const sidebar = container.querySelector('[data-gloom-role="pane-sidebar"]') as HTMLElement;
+  expect(sidebar.textContent).toContain("Your layouts (12)");
+  // "Your layouts (12)" is 17 cells, with the inset, marker and gap before it: 21 cells of 8 px.
+  expect(sidebar.style.width).toBe("168px");
+});
+
 test("an empty gallery keeps a preview placeholder instead of a blank pane", async () => {
   const { controller } = createController({ owned: [], entries: [] });
   const container = await renderGallery(controller);
