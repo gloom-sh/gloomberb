@@ -84,8 +84,9 @@ type DividendHistoryResponse = Awaited<ReturnType<typeof apiClient.getMarketDivi
 /** Asks Gloom Cloud for a listing's dividend history, for fetchDividendData to read once the price is known. */
 export function requestDividendHistory(symbol: string, exchange = ""): Promise<DividendHistoryResponse> {
   const pending = trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
-  // Read by fetchDividendData; a failure there is its error, and none is left unobserved meanwhile.
-  pending.catch(() => {});
+  pending.catch(() => {
+    // Intentional ignore: fetchDividendData awaits this same promise and reports its failure.
+  });
   return pending;
 }
 
