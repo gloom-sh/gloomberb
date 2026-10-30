@@ -276,6 +276,14 @@ target, which **rejects `node:*` imports even behind a dynamic `import()`**. A
 plugin that opens a socket or resolves DNS therefore fails to compile for the
 view, and the marketplace shows it as broken.
 
+`process` is the one exception: a plugin that reads it still loads in the view
+and the browser app. It gets its own stand-in with `env` (only `NODE_ENV`,
+never the host's environment, so keep settings in the plugin's config), the
+`platform` of the window, an empty `argv`, `cwd()`, `nextTick`, `hrtime` and
+no-op listeners. `process.exit`, `kill`, `chdir` and the memory and CPU readings
+throw an error naming the plugin, and everything else is `undefined`. It does
+not exist as a global, only inside the plugin's own bundle.
+
 Ship a second, renderer-safe entry for that case:
 
 ```json
