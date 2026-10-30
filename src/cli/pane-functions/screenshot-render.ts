@@ -1,8 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
-import { dirname } from "path";
-import { mkdir } from "fs/promises";
+import { createOutputFolder } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
 import {
@@ -252,7 +251,7 @@ export async function renderDesktopShot({
    */
   onStalledReport?: () => void;
 }): Promise<PaneScreenshotResult> {
-  if (captureImage) await mkdir(dirname(outputPath), { recursive: true });
+  if (captureImage) await createOutputFolder(outputPath);
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
