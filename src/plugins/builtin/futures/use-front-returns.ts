@@ -5,6 +5,7 @@ import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import type { PricePoint } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import { coalescedBump } from "./coalesced-bump";
+import { boardRead } from "./board-reads";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
@@ -34,12 +35,6 @@ const HISTORY_TTL_MS = 30 * 60_000;
  * once a minute, not once a tick.
  */
 const HISTORY_RETRY_MS = 60_000;
-/**
- * Seventy-odd contracts open at once. Twelve reads at a time load them in
- * about a second (four took three, holding `fn FUT` past four seconds), and
- * the board's quotes, one batch, are asked for before any.
- */
-const HISTORY_CONCURRENCY = 12;
 
 /**
  * Null when the source has no history for the contract (delisted, unknown),
@@ -97,20 +92,18 @@ export function useFrontContractReturns(
     const landed = coalescedBump(() => {
       if (!cancelled) setVersion((current) => current + 1);
     });
-    const worker = async () => {
-      for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        if (!await loadHistory(provider, symbol)) failed = true;
-        landed.bump();
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(HISTORY_CONCURRENCY, queue.length) }, worker)).then(() => {
+    // Twelve reads at a time, shared with the rows' terms (`boardRead`); a board that moved on skips its turn.
+    void Promise.all(queue.map((symbol) => boardRead(async () => {
+      if (cancelled) return;
+      if (!await loadHistory(provider, symbol)) failed = true;
+      landed.bump();
+    }))).then(() => {
       landed.flush();
       if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), HISTORY_RETRY_MS);
     });
     return () => {
       cancelled = true;
       landed.cancel();
-      queue.length = 0;
       clearTimeout(retryTimer);
     };
   }, [candidates, enabled, provider, today, retry]);

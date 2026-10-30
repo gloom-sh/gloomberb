@@ -6,6 +6,7 @@ import { createTtlCache } from "../../../data/ttl-cache";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
 import { logFailure } from "../../../utils/log-failure";
 import { coalescedBump } from "./coalesced-bump";
+import { boardRead } from "./board-reads";
 
 interface FuturesTermsState {
   /** The row's terms are still being asked for. */
@@ -24,8 +25,6 @@ const TERMS_TTL_MS = 30 * 60_000;
  * once a minute, not once a tick.
  */
 const TERMS_RETRY_MS = 60_000;
-/** Seventy-odd rows open at once; twelve reads at a time, as for their histories (use-front-returns). */
-const TERMS_CONCURRENCY = 12;
 
 /**
  * Null when the server has no terms for the symbol, which is an answer and is
@@ -71,20 +70,18 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
     const landed = coalescedBump(() => {
       if (!cancelled) setVersion((current) => current + 1);
     });
-    const worker = async () => {
-      for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        if (!await loadTerms(symbol)) failed = true;
-        landed.bump();
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(TERMS_CONCURRENCY, queue.length) }, worker)).then(() => {
+    // Twelve reads at a time, shared with the rows' histories (`boardRead`); a board that moved on skips its turn.
+    void Promise.all(queue.map((symbol) => boardRead(async () => {
+      if (cancelled) return;
+      if (!await loadTerms(symbol)) failed = true;
+      landed.bump();
+    }))).then(() => {
       landed.flush();
       if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), TERMS_RETRY_MS);
     });
     return () => {
       cancelled = true;
       landed.cancel();
-      queue.length = 0;
       clearTimeout(retryTimer);
     };
   }, [enabled, symbolKey, retry]);
