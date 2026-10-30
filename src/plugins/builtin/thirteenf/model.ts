@@ -547,6 +547,8 @@ export function estimateFilingQuarterReturn(data: FundDetailData, splits: SplitF
 
 export function hasComparable13FQuarter(data: FundDetailData): boolean {
   if (data.latestReport?.complete === false || data.previousReport?.complete === false) return false;
+  // Until both quarters are in whole, a line one of them lacks is not a buy or a sale.
+  if (data.loading?.positions || data.loading?.comparison) return false;
   const current = data.latestForm?.periodOfReport;
   const previous = data.previousForm?.periodOfReport;
   return adjacentQuarterPeriods(current, previous);

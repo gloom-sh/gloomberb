@@ -33,6 +33,7 @@ import type {
   FundBrowserRow,
   FundDetailData,
   ThirteenFBrowserTab,
+  ThirteenFDetailLoading,
   ThirteenFFilingGap,
   ThirteenFFund,
   ThirteenFHoldingRecord,
@@ -162,9 +163,12 @@ async function loadBrowserPage(
   const pageApiOptions = { ...apiOptions, offset };
 
   if (tab === "performance") {
-    const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
     const quarters = priorQuarters(quarter);
-    const history = await loadRankingHistory(quarters, signal, apiOptions);
+    // The prior quarters' rankings do not depend on this page, so they are read beside it.
+    const [topFunds, history] = await Promise.all([
+      listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions),
+      loadRankingHistory(quarters, signal, apiOptions),
+    ]);
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
     const rows = buildBrowserRows({ topFunds, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) }));
     const result: BrowserLoadResult = {
@@ -516,12 +520,22 @@ export async function loadFundPerformance(
   };
 }
 
+/**
+ * A fund's latest report and the one before it, with their holdings. With
+ * `onProgress`, the fund as it fills in: the latest report's holdings as
+ * soon as they are read (a large filing's first rows before the rest), then
+ * the prior quarter they are compared with and EDGAR's filing list, each
+ * part still loading named in `loading`. The answer is the whole fund.
+ */
 export async function loadFundDetail(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
   /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
-  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { filingGap?: boolean } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & {
+    filingGap?: boolean;
+    onProgress?: (detail: FundDetailData) => void;
+  } = {},
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
@@ -541,47 +555,87 @@ export async function loadFundDetail(
   const previousReport = reports[1];
   const latestForm = latestReport?.filings.at(-1) ?? null;
   const previousForm = previousReport?.filings.at(-1) ?? null;
-  async function loadReport(report: ThirteenFPeriodReport | undefined): Promise<ThirteenFHoldingRecord[]> {
+  const checkGap = options.filingGap !== false;
+  const parts: Pick<FundDetailData, "latestHoldings" | "previousHoldings" | "filingGap"> & { loading: ThirteenFDetailLoading } = {
+    latestHoldings: [],
+    previousHoldings: [],
+    filingGap: null,
+    loading: { positions: true, ...(previousReport ? { comparison: true } : {}), ...(checkGap ? { filingGap: true } : {}) },
+  };
+  const detail = (): FundDetailData => {
+    const loading = Object.fromEntries(Object.entries(parts.loading).filter(([, value]) => value)) as ThirteenFDetailLoading;
+    return {
+      cik: normalizeCik(cik),
+      name: latestForm?.companyName || fallbackName,
+      forms,
+      latestForm,
+      previousForm,
+      latestHoldings: parts.latestHoldings,
+      previousHoldings: parts.previousHoldings,
+      latestReport,
+      previousReport,
+      warnings: [...warnings],
+      filingGap: parts.filingGap,
+      ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}),
+      ...(Object.keys(loading).length ? { loading } : {}),
+    };
+  };
+  let failed = false;
+  // The fund is shown once its latest holdings, or a large filing's first rows, are in.
+  const progress = () => {
+    if (!options.onProgress || failed || signal?.aborted || (parts.loading.positions && !parts.latestHoldings.length)) return;
+    options.onProgress(detail());
+  };
+  async function loadReport(report: ThirteenFPeriodReport | undefined, onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void): Promise<ThirteenFHoldingRecord[]> {
     if (!report) return [];
-    const holdings: ThirteenFHoldingRecord[] = [];
-    for (const form of report.filings) {
-      const rows = await listThirteenFFormHoldings(cik, form.accessionNumber, signal, apiOptions);
-      holdings.push(...rows);
+    // An amended period's filings are read at once: the original and each of its additions.
+    const filings = await Promise.all(report.filings.map((form, index) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, {
+      ...apiOptions,
+      entries: form.tableEntryTotal,
+      ...(index === 0 && onFirstRows ? { onFirstRows } : {}),
+    })));
+    report.filings.forEach((form, index) => {
+      const rows = filings[index]!;
       if (form.tableEntryTotal != null && rows.length !== form.tableEntryTotal) {
         report.complete = false;
         warnings.push(`${report.periodOfReport}: loaded ${rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
       }
-    }
+    });
     if (!report.complete && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {
       warnings.push(`${report.periodOfReport}: amendment type or original report unavailable; disclosed entries cannot be reconciled into a full report.`);
     }
-    return holdings;
+    return filings.flat();
   }
-  const [latestHoldings, previousHoldings, filingGap] = await Promise.all([
-    loadReport(latestReport),
+  await Promise.all([
+    loadReport(latestReport, options.onProgress ? (rows) => {
+      if (!parts.loading.positions) return;
+      parts.latestHoldings = rows;
+      progress();
+    } : undefined).then((rows) => {
+      parts.latestHoldings = rows;
+      parts.loading.positions = false;
+      progress();
+    }),
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
       if (previousReport) previousReport.complete = false;
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
+    }).then((rows) => {
+      parts.previousHoldings = rows;
+      parts.loading.comparison = false;
+      progress();
     }),
-    options.filingGap === false ? null
-      : loadFilingGap(cik, latestForm?.periodOfReport, signal, now, { forceRefresh: options.forceRefresh }),
-  ]);
-  return {
-    cik: normalizeCik(cik),
-    name: latestForm?.companyName || fallbackName,
-    forms,
-    latestForm,
-    previousForm,
-    latestHoldings,
-    previousHoldings,
-    latestReport,
-    previousReport,
-    warnings,
-    filingGap,
-    ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}),
-  };
+    (checkGap ? loadFilingGap(cik, latestForm?.periodOfReport, signal, now, { forceRefresh: options.forceRefresh }) : Promise.resolve(null)).then((gap) => {
+      parts.filingGap = gap;
+      parts.loading.filingGap = false;
+      progress();
+    }),
+  ]).catch((error: unknown) => {
+    failed = true;
+    throw error;
+  });
+  return detail();
 }
 
 export async function loadFilingPositions(

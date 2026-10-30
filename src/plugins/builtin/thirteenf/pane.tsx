@@ -372,7 +372,11 @@ export function FundDetailView({
     abortRef.current = controller;
     setStatus("loading");
     setError(null);
-    void loadFundDetail(seed.cik, seed.name, controller.signal, { forceRefresh: refresh })
+    void loadFundDetail(seed.cik, seed.name, controller.signal, {
+      forceRefresh: refresh,
+      // A first load shows the fund as it fills in; a refresh keeps what is on screen until it answers whole.
+      ...(refresh ? {} : { onProgress: (partial: FundDetailData) => { if (abortRef.current === controller) setData(partial); } }),
+    })
       .then((nextData) => {
         if (abortRef.current !== controller) return;
         setData(nextData);
@@ -392,6 +396,8 @@ export function FundDetailView({
       .catch((loadError) => {
         if (abortRef.current !== controller) return;
         if (loadError instanceof Error && loadError.name === "AbortError") return;
+        // A first load that failed after its first rows shows the error, not a part of the filing as the fund.
+        setData((current) => current?.loading ? null : current);
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });
@@ -522,7 +528,10 @@ export function FundDetailView({
       ...(staleFiling ? { tone: "warning" as const } : {}) },
     data && hasComparable13FQuarter(data)
       ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
-      : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
+      // The quarter the changes will compare with, dim until both are in.
+      : data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })
+        ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport, tone: "muted" }
+        : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
     ...(data?.latestReport && data.latestReport.filings.length > 1
       ? [{ id: "combined", label: "Combined", value: `${data.latestReport.filings.length} filings` }]
       : []),
@@ -593,7 +602,9 @@ export function FundDetailView({
         ]}
         meta={data?.name && data.name !== seed.name ? data.name : undefined}
       />
-      {activeTab === "overlap" && data ? <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
+      {activeTab === "overlap" && data ? data.loading?.positions || data.loading?.comparison ? (
+        <PaneStatusBody loading align="center" loadingLabel="Loading 13F filing..." />
+      ) : <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
         <DataTableStackView<FundTimelineRow, FundTimelineColumn>
           focused={focused}
           detailOpen={!!openFiling}
