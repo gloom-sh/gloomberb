@@ -18,7 +18,7 @@
  */
 import { spawnSync } from "child_process";
 import { randomBytes } from "crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { appendFileSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
@@ -383,6 +383,22 @@ async function child(): Promise<void> {
   process.exit(0);
 }
 
+/**
+ * A fresh copy sits in the OS's write cache, and the run's first flush of
+ * the disk paid for writing all of it out: on Windows, 640 to 860 ms on
+ * whichever checkout ran second, landing on a checkpoint, a save or a read.
+ * A user's database was written days ago, so every run starts from one
+ * that is on disk.
+ */
+function flushToDisk(path: string): void {
+  const fd = openSync(path, "r+");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 async function main(): Promise<void> {
   const base = arg("base");
   const seconds = Number(arg("seconds") ?? 45);
@@ -408,6 +424,7 @@ async function main(): Promise<void> {
       mkdirSync(runDir, { recursive: true });
       const dbPath = join(runDir, ".gloomberb-cache.db");
       copyFileSync(master, dbPath);
+      flushToDisk(dbPath);
       const spawned = spawnSync(process.execPath, [SCRIPT, "--child", "--source", checkout.source, "--db", dbPath, "--seconds", String(seconds)], {
         cwd: checkout.source,
         encoding: "utf8",
