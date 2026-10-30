@@ -286,6 +286,13 @@ export interface HeadlessPaneFreshness {
   /** What not-a-feed data is, in a few words: "filed data", "monthly release", "your inputs". */
   basis?: string;
   /**
+   * The pane shows nothing from a market or a feed: the user's own notes and
+   * rules, the app's connections, documentation, an account. A screenshot's
+   * footer then carries no status line, which would date nothing or call the
+   * app's own state "not a live feed". `fn` still cites `source` and `basis`.
+   */
+  local?: boolean;
+  /**
    * How often the data is published, when its dates mark the start of a period
    * (a monthly statistic is dated the 1st). The report then names the month,
    * quarter or year, not a day it was never observed on. A semiannual estimate

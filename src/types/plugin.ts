@@ -183,7 +183,7 @@ export interface PaneDef {
    * `headless` model) cites, when "Gloom Cloud" with the state the footer
    * shows would be wrong: local data, a calculator, filed records.
    */
-  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis" | "local">;
   /**
    * Options a rendered-view report takes (`fn OMON AAPL --strikes 10`):
    * each sets the pane setting of its key, is checked by its `normalize`, and
@@ -554,7 +554,7 @@ export interface PaneTemplateDef {
    * `reportFreshness`: each field set here wins, the rest are the pane's. So
    * they date the filings on screen, not the issuer's stock quote.
    */
-  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis" | "local">;
   wizard?: WizardStep[];
   canCreate?: (context: PaneTemplateContext, options?: PaneTemplateCreateOptions) => boolean;
   createInstance?: (

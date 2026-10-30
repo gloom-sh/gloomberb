@@ -109,3 +109,23 @@ test("a status line replaces the pane's own text that says the same: its as-of f
   expect(footer()).toContain("Pro preview");
   expect(footer()).toContain("Observed Mon 5 Oct · lag 5d");
 });
+
+test("a capture with nothing to date gives the footer row back to the pane", async () => {
+  const ui = createDomUiHost();
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="Risk" width={40} height={24} statusLine>
+        {(frame) => <div data-body-height={frame.height}>Sign in to read risk factors.</div>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const bodyHeight = () => Number(root.querySelector("[data-body-height]")?.getAttribute("data-body-height"));
+  const withoutFooter = 24 - nativePaneHeaderRows();
+  // The row is held from the first frame, while the line is still being worked out.
+  expect(root.querySelector('[data-gloom-role="pane-footer"]')).not.toBeNull();
+  expect(bodyHeight()).toBeCloseTo(withoutFooter - nativePaneFooterRows());
+
+  await act(async () => { expect(await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.([])).toBe(""); });
+  expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
+  expect(bodyHeight()).toBeCloseTo(withoutFooter);
+});

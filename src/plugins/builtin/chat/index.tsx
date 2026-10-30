@@ -62,6 +62,7 @@ let disposeUnreadBadge: (() => void) | undefined;
 export const chatModule: PluginModule = {
   panes: [{
     id: "chat",
+    reportFreshness: { local: true },
     name: "Chat",
     icon: "C",
     component: ChatPane,
@@ -79,7 +80,7 @@ export const chatModule: PluginModule = {
     },
   }, {
     id: UNREAD_INBOX_PANE_ID,
-    reportFreshness: { status: "not-a-feed", basis: "chat messages and missed alerts" },
+    reportFreshness: { status: "not-a-feed", basis: "chat messages and missed alerts", local: true },
     name: "Unread",
     // Mentions and replies from every conversation, DMs included.
     personalData: "messages",
