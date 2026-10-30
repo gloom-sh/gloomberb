@@ -234,6 +234,11 @@ function venueVolume(value: unknown): { venueVolume: { venue: string; volume: nu
     : null;
 }
 
+/** What a served bar's volume counts, when it is a short plain phrase (`aggregate`, `3 spot venues`). */
+function volumeBasis(value: unknown): { volumeBasis: string } | null {
+  return typeof value === "string" && /^[a-z0-9][a-z0-9 ]{0,31}$/i.test(value.trim()) ? { volumeBasis: value.trim() } : null;
+}
+
 /**
  * One served bar. `coin`: the bars are a coin's, which trades every hour of every day. Its intraday volume is the
  * value traded in the bar on major spot venues, and a bar no venue reported has none rather than 0, so a 0 (from an
@@ -254,6 +259,7 @@ export function mapPricePoint(
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: coin && point.volume === 0 ? undefined : point.volume,
     ...(venueVolume(point.venueVolume) ?? {}),
+    ...(volumeBasis(point.volumeBasis) ?? {}),
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),

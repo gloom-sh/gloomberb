@@ -81,6 +81,10 @@ export interface HistoryRow {
   volumeNote?: string;
   /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
   venueVolume?: number;
+  /**
+   * The venue `venueVolume` counts, or for a bar with its volume, what that volume counts when the source says
+   * (`aggregate` across venues on a coin's daily bar, `3 spot venues` on its intraday bar).
+   */
   volumeVenue?: string;
   /** A continuous future's bar (NG=F): the contract it closes on (NGZ26), where the source says. */
   contract?: string;
@@ -312,7 +316,7 @@ export function historyRows(
       ...(volume ? { volumeUnit: volume.unit } : {}),
       ...(values.volume == null && point.venueVolume
         ? { venueVolume: point.venueVolume.volume, volumeVenue: point.venueVolume.venue }
-        : {}),
+        : values.volume != null && point.volumeBasis ? { volumeVenue: point.volumeBasis } : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
         ? {
@@ -500,9 +504,22 @@ export function historyVolume(
   return coin && unit.kind === "currency" && unit.currency ? { unit: unit.currency } : null;
 }
 
-/** `volume in USD per UTC day` for a coin's daily bars; `volume in USD` for others. */
-export function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null): string {
-  return interval === "1d" ? `volume in ${volume.unit} per UTC day` : `volume in ${volume.unit}`;
+/**
+ * `volume in USD per UTC day` for a coin's daily bars, `volume in USD` for others, with what it counts when every bar
+ * with a volume says the same (`historyVolumeBasis`): `volume in USD per UTC day, aggregate across venues`, `volume in
+ * USD summed over 3 spot venues`.
+ */
+export function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null, basis: string | null = null): string {
+  const text = interval === "1d" ? `volume in ${volume.unit} per UTC day` : `volume in ${volume.unit}`;
+  if (!basis) return text;
+  return basis === "aggregate" ? `${text}, aggregate across venues` : `${text} summed over ${basis}`;
+}
+
+/** What the volume of every bar that has one counts, when they all say the same; null otherwise. */
+export function historyVolumeBasis(rows: readonly Pick<HistoryRow, "volume" | "volumeVenue">[]): string | null {
+  const bases = new Set(rows.filter((row) => row.volume != null).map((row) => row.volumeVenue ?? null));
+  const [basis] = bases.size === 1 ? [...bases] : [null];
+  return basis ?? null;
 }
 
 function listDates(dates: readonly string[]): string {

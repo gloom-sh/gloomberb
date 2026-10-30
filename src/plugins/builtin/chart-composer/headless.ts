@@ -46,7 +46,8 @@ import { loadFundFacts } from "../sec/fund-facts";
 import { comparedFundTickers, loadDailyObjectives, mayDrawDailyObjective, withLeverageOverlay } from "./leverage-overlay";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
-import { LATEST_INTRADAY_TEXT } from "../../../market-data/market/period-return";
+import { LATEST_INTRADAY_TEXT, periodDayText } from "../../../market-data/market/period-return";
+import { CLOSING_PRINT_PENDING_TEXT, quoteOfficialClose, withOfficialCloses } from "../../../time-series/official-close";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -368,10 +369,19 @@ function chartFreshness(
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
+  const closedDay = closedPriceBarDay(series);
+  // A window that ended before today (`--to 2026-10-23`) is the history asked for, which no later close makes stale:
+  // `daily closes through Fri 23 Oct`.
+  const windowEnd = spec.viewport.dateWindow?.end;
+  if (windowEnd && /^\d{4}-\d{2}-\d{2}$/.test(windowEnd) && windowEnd < new Date().toISOString().slice(0, 10)) {
+    const through = closedDay ?? series.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString().slice(0, 10)).sort().at(-1);
+    const basis = coarsest === "1d" ? "daily closes" : coarsest === "1wk" ? "weekly closes" : coarsest === "1mo" ? "monthly closes" : "intraday bars";
+    return { status: "not-a-feed", basis: through ? `${basis} through ${periodDayText(through, new Date().getUTCFullYear())}` : basis,
+      ...(through && closedDay ? { asOf: through } : {}), oldest: null };
+  }
   const forming = formingPriceBar(series);
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
   if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
-  const closedDay = closedPriceBarDay(series);
   // A comparison whose newest point is a session still trading is not a day's closes.
   const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT } : {};
   // Daily bars are dated by the time of the newest point: a closed session's day, or when a session still trading was last quoted.
@@ -668,6 +678,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
     shape: "series",
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
+      const closingPrintsPending: string[] = [];
       const stored = parseChartSpec(context.settings?.chartSpec);
       if (!stored) throw new Error("The chart specification is invalid.");
       const saved = typeof args.options.exchange === "string" ? onExchange(stored, args.options.exchange) : stored;
@@ -726,6 +737,23 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ...await loadIntradayWindow({ provider: context.marketData, symbol: target.symbol, exchange: target.exchange ?? "", request, context: { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument } }),
         })));
         context.signal.throwIfAborted();
+        // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
+        // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
+        await Promise.all(histories.map(async (history) => {
+          // A future settles rather than closing on an auction print; its bars stay as traded.
+          if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null) return;
+          const quote = history.quote ?? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
+            { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
+            .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null));
+          const official = quoteOfficialClose(quote);
+          const closes = new Map(official ? [[official.date, official.close] as const] : []);
+          const venue = history.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
+          const now = Date.now();
+          const shown = withOfficialCloses(history.points, closes, { venue, now });
+          history.points = shown.points;
+          history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now }).points;
+          if (shown.pending) closingPrintsPending.push(history.symbol);
+        }));
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);
         const ends = histories.flatMap(({ end }) => end ? [end.getTime()] : []);
@@ -801,6 +829,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         model.metadata = { ...model.metadata, resolution: dropped.drop };
       }
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, chartQuoteTimes(model));
+      if (closingPrintsPending.length) {
+        model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };
+      }
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

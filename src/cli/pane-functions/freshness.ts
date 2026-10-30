@@ -123,6 +123,8 @@ export interface ReportFreshness {
   ageOnly?: true;
   /** What the newest observation is, said before its time: `newest story Tue 29 Sep 2026 20:17 UTC`. */
   asOfLabel?: string;
+  /** The newest observation is a bar of this many minutes opening at `asOf`: the line names its span (`last bar 15:00–16:00 UTC`). */
+  barMinutes?: number;
   /** The line says when the report was retrieved after the newest observation's date (`retrieved Wed 28 Oct 2026 19:07 UTC`). */
   retrievedToo?: true;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
@@ -572,6 +574,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const note = declared.note?.trim();
   const noteVariants = note ? (declared.noteVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== note) : [];
   const asOfLabel = asOf ? declared.asOfLabel?.trim() : undefined;
+  const barMinutes = asOf && !asOf.dateOnly && !declaredAsOf && declared.barMinutes != null && declared.barMinutes > 0 ? declared.barMinutes : undefined;
   const schedule = declared.schedule?.trim();
   const scheduleVariants = schedule ? (declared.scheduleVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== schedule) : [];
   const publisher = declared.publisher?.trim();
@@ -612,6 +615,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(status === "unreported" && declared.ageOnly ? { ageOnly: true as const } : {}),
     ...(asOfLabel ? { asOfLabel } : {}),
+    ...(barMinutes ? { barMinutes } : {}),
     ...(asOf && declared.retrievedToo ? { retrievedToo: true as const } : {}),
     ...(note ? { note } : {}),
     ...(noteVariants.length > 0 ? { noteVariants } : {}),
@@ -619,8 +623,14 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(scheduleVariants.length > 0 ? { scheduleVariants } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
-    retrievedAt: new Date(now).toISOString(),
+    retrievedAt: declaredRetrieval(declared.retrievedAt, now) ?? new Date(now).toISOString(),
   };
+}
+
+/** A declared retrieval (`retrievedAt`): when the source last read the data, not in the future. */
+function declaredRetrieval(value: string | undefined, now: number): string | null {
+  const time = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(time) && time <= now + FUTURE_TOLERANCE_MS ? new Date(time).toISOString() : null;
 }
 
 /**
@@ -914,6 +924,8 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
     : period ? `${periodText(freshness.asOf, period)} (${period})`
     : freshness.asOfClose
       ? `${tradingDayText(freshness.asOfClose, market)} close`
+      : freshness.barMinutes && time && !time.dateOnly
+        ? barSpanText(time.time, freshness.barMinutes, undated && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt))
       : time?.dateOnly ? tradingDayText(freshness.asOf, market)
         : undated && time && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt)
           ? `${new Date(time.time).toISOString().slice(11, 16)} UTC` : timeText(freshness.asOf, local);
@@ -922,6 +934,14 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   // A list dated by its newest entry names it, so the time is not read as when the list was read.
   const dated = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
   return oldest && !short && freshness.oldestAgeMinutes == null ? `${dated} (oldest ${oldest})` : dated;
+}
+
+/** `Fri 30 Oct 2026, last bar 15:00–16:00 UTC`: the newest bar's span; `undated` leaves the day off. */
+function barSpanText(open: number, minutes: number, undated: boolean): string {
+  const start = new Date(open).toISOString();
+  const end = new Date(open + minutes * 60_000).toISOString();
+  const span = `last bar ${start.slice(11, 16)}–${end.slice(11, 16)} UTC`;
+  return undated ? span : `${dayText(start)}, ${span}`;
 }
 
 /**

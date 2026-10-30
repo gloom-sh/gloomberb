@@ -37,6 +37,7 @@ import {
   flowColor,
   formatFlow,
   formatFlowAmount,
+  formatPriceChange,
   fundTickerOfColumn,
   pendingText,
   type CryptoEtfFlowColumn,
@@ -136,6 +137,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((day: CryptoEtfFlowDay, column: CryptoEtfFlowColumn): DataTableCell => {
     if (column.id === "date") return { text: day.date, value: day.date, color: colors.text };
     if (column.id === "total") return { text: formatFlow(day.total), value: day.total, color: flowColor(day.total, colors) };
+    if (column.id === "price") return { text: formatPriceChange(day.priceChangePct), value: day.priceChangePct ?? null, color: flowColor(day.priceChangePct, colors) };
     const ticker = fundTickerOfColumn(column.id) ?? "";
     const value = day.flows[ticker] ?? null;
     // A fund that reported the day before and not yet today: its figure is to come, not none.

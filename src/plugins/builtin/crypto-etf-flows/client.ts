@@ -32,7 +32,8 @@ export function validateCryptoEtfFlows(payload: CryptoEtfFlowsPayload, asset: Cr
   for (const [index, day] of payload.days.entries()) {
     if (!day || !date(day.date) || (index > 0 && day.date >= payload.days[index - 1]!.date) || !flow(day.total)
       || !day.flows || typeof day.flows !== "object" || Object.entries(day.flows).some(([ticker, value]) => !known.has(ticker) || !flow(value))
-      || !Array.isArray(day.pending) || day.pending.some((ticker) => !known.has(ticker))) return invalid();
+      || !Array.isArray(day.pending) || day.pending.some((ticker) => !known.has(ticker))
+      || (day.priceChangePct !== undefined && !flow(day.priceChangePct))) return invalid();
   }
   if (payload.days[0] && payload.days[0].date !== payload.asOf) return invalid();
   return payload;

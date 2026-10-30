@@ -224,10 +224,11 @@ describe("normalized market price comparison", () => {
     const network = await resolveChartSpecData(chart, sources(data));
     const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]])));
     for (const result of [network, seeded!]) {
-      expect(result.series.slice(0, 2).map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 10], [0, 20]]);
-      expect(result.viewport?.start.toISOString()).toBe("2026-01-07T23:00:00.000Z");
+      // Measured from the close before the window, 7 Jan's on both venues (Sydney's opens on 6 Jan UTC).
+      expect(result.series.slice(0, 2).map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 11.11111111111111, 22.22222222222222], [0, 66.66666666666666, 100]]);
+      expect(result.viewport?.start.toISOString()).toBe("2026-01-06T23:00:00.000Z");
       expect(result.viewport?.end.toISOString()).toBe("2026-01-09T23:59:59.999Z");
-      expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[95, -5], [105, 5]]);
+      expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[95, 5.555555555555555], [105, 16.666666666666664]]);
     }
     expect(chart.viewport.dateWindow).toEqual({ start: "2026-01-08", end: "2026-01-09" });
     const requestViewport = { start: date("2026-01-08"), end: date("2026-01-09T23:59:59.999Z") };
@@ -348,7 +349,9 @@ describe("normalized market price comparison", () => {
     selected.viewport.dateWindow!.start = "2022-05-09";
     const cache = new ChartResolveCache();
     const result = await resolveChartSpecData(selected, sources(), cache);
-    expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([100, 100 / 11]);
+    // Authored dates measure from the close the legs share before the first date, as RETURN does: 2 May's.
+    expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([125, 20]);
+    expect(result.priceComparison?.notice).toContain("From Mon 2 May 2022 close");
     const panned = await resolveChartSpecData(selected, sources(), cache, { requestViewport: { start: date("2026-09-07"), end: date("2026-09-10") } });
     expect(panned.priceComparison?.start).toBeNull();
     const raw = spec();

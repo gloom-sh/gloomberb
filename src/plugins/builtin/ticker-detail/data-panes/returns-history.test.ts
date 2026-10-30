@@ -25,7 +25,7 @@ test("a bare ticker on a weekend ends at its listing's last session, named by it
   expect(series).toMatchObject({ lastSession: "2026-10-09", venue: "ARCA", resolution: "1h", visibleTo: now });
   expect(new Date(series.visibleFrom).toISOString()).toBe("2026-10-04T20:00:00.000Z");
   // The request reaches back over the weekend before the window for the base bar, and up to now.
-  expect(asked).toEqual([{ start: "2026-09-30T20:00:00.000Z", end: "2026-10-11T15:00:00.000Z" }]);
+  expect(asked[0]).toEqual({ start: "2026-09-30T20:00:00.000Z", end: "2026-10-11T15:00:00.000Z" });
   const rows = buildReturnRows(series.points, series.visibleFrom, series.visibleTo);
   expect(rows).toHaveLength(35);
   expect(new Date(rows[0]!.timestamp).toISOString()).toBe("2026-10-09T19:30:00.000Z");

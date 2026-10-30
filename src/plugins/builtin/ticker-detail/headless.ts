@@ -52,6 +52,7 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-ba
 import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
+import { CLOSING_PRINT_PENDING_TEXT } from "../../../time-series/official-close";
 import {
   closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
   type HistoryBarSize,
@@ -622,8 +623,12 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         oldest: null,
         ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
-        // The window ends at the last session while the market is shut, which the status line says.
-        ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+        // The window ends at the last session while the market is shut, which the status line says, and whether its
+        // last bar ends on the official close yet.
+        ...(series.lastSession || series.closingPrintPending ? { note: [
+          series.lastSession ? closedMarketNote(series.lastSession, series.visibleTo) : null,
+          series.closingPrintPending ? CLOSING_PRINT_PENDING_TEXT : null,
+        ].filter(Boolean).join(", ") } : {}),
         ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` } : {}),
       },
       metadata: {
