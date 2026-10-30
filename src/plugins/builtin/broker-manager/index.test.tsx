@@ -165,6 +165,27 @@ async function pressKey(key: Parameters<ReturnType<typeof tui.setup>["mockInput"
   await tui.setup().renderOnce();
 }
 
+/**
+ * Presses `key` and draws no frame until a 0 ms timer has run: what a fast
+ * machine does when the key lands within a frame interval of the last frame,
+ * which the renderer holds back. Anything that only waits for a timer then
+ * measures a layout the terminal has not drawn yet.
+ */
+async function pressKeyBeforeFrame(key: Parameters<ReturnType<typeof tui.setup>["mockInput"]["pressKey"]>[0]) {
+  const renderer = tui.setup().renderer as unknown as { loop: () => Promise<void> };
+  const loop = renderer.loop;
+  renderer.loop = async () => {};
+  try {
+    await act(async () => {
+      tui.setup().mockInput.pressKey(key);
+    });
+    await Bun.sleep(1);
+  } finally {
+    renderer.loop = loop;
+  }
+  await tui.setup().renderOnce();
+}
+
 async function pressArrow(direction: "up" | "down") {
   await act(async () => {
     tui.setup().mockInput.pressArrow(direction);
@@ -379,7 +400,8 @@ describe("BrokersPane", () => {
 
     await pressKey("e");
     expect(frame()).not.toContain("Cancel");
-    await pressKey("RETURN");
+    // Measured before the error line is drawn, the buttons are a row short and Save stays below the fold.
+    await pressKeyBeforeFrame("RETURN");
     await settle();
     expect(calls).toEqual([]);
     const lines = frame().split("\n");
