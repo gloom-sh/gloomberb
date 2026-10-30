@@ -110,6 +110,23 @@ describe("ticker-search utilities", () => {
     expect(listingChoiceQuery("ES=F:")).toBeNull();
   });
 
+  test("the line the service marks as a company's home leads a symbol's choices, before another company's lines abroad", async () => {
+    // /market/search?q=YAR on 2026-10-30: `quote YAR` offered Americold's four German lines first and Yara's own line last.
+    const dataProvider = createTestDataProvider({
+      search: async () => [
+        makeSearchResult("YAR", "Americold Realty Trust, Inc.", { exchange: "MUNICH" }),
+        makeSearchResult("YAR", "Americold Realty Trust Inc.", { exchange: "HANOVER" }),
+        makeSearchResult("YAR", "Yari Minerals Limited", { exchange: "ASX" }),
+        { ...makeSearchResult("YAR", "Yara International ASA", { exchange: "OSL", currency: "NOK" }), homeListing: true },
+      ],
+      getQuote: async () => { throw new Error("NOT_FOUND"); },
+    });
+    const error = await resolveTickerSearch({ query: "YAR", activeTicker: null, tickers: new Map(), dataProvider }).catch((caught) => caught);
+    expect(error).toBeInstanceOf(AmbiguousTickerError);
+    expect(error.listings[0]).toMatch(/^YAR:(OSL|XOSL)$/);
+    expect(error.listings).toHaveLength(4);
+  });
+
   test("ambiguous symbols require venue, currency and exact quote evidence", async () => {
     const results = [makeSearchResult("GLD", "SPDR", { exchange: "BYMA", currency: "ARS" }),
       makeSearchResult("GLD", "SPDR", { exchange: "NYSE", currency: "USD" })];
