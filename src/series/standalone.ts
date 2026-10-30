@@ -76,7 +76,7 @@ export function standaloneSeriesCatalog(
   };
 }
 
-/** The catalog series a bare word names by its id (`hashrate`), where no plugin runtime runs; see `seriesNamedBy`. */
+/** The catalog series a bare word is an alias of (`hashrate`), where no plugin runtime runs; see `seriesNamedBy`. */
 export function standaloneSeriesNamed(
   plugins: readonly GloomPlugin[],
   disabledPlugins: readonly string[] = [],

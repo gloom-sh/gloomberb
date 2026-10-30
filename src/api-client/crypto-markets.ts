@@ -211,15 +211,16 @@ export interface BitcoinNetworkDailyValue {
 }
 
 /**
- * `GET /cloud/crypto/bitcoin/network`: the bitcoin network as mempool.space
- * publishes it, with hashprice derived from its block rewards, BTC price and
- * the difficulty.
+ * `GET /cloud/crypto/bitcoin/network`: the bitcoin network's daily hash rate,
+ * the difficulty at each retarget, the next retarget's estimate and hashprice,
+ * derived from the block rewards, the BTC price and the difficulty.
  */
 export interface BitcoinNetworkPayload {
   version: 1;
   generatedAt: string;
   status: "available" | "stale" | "unavailable";
-  source: { publisher: string; url: string };
+  /** Who serves the figures, as a chart cites them: Gloom Cloud. */
+  source: { name: string; url: string };
   /** When the hash rate and rewards were last read. */
   historyFetchedAt: string | null;
   /** Exahashes per second, each UTC day's average; the newest day is the day so far. */
@@ -228,7 +229,7 @@ export interface BitcoinNetworkPayload {
   difficulty: Array<{ date: string; height: number; difficulty: number; changePercent: number | null }>;
   /** USD per PH/s per day, derived. */
   hashprice: BitcoinNetworkDailyValue[];
-  /** mempool.space's estimate of the next retarget, as last read. */
+  /** The estimate of the next retarget, as last read. */
   retarget: {
     changePercent: number;
     estimatedAt: string;

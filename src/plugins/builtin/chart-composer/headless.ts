@@ -601,7 +601,7 @@ export function argumentWithListing(argument: string, symbol: string, key: strin
 
 /**
  * A catalog series typed where a ticker goes, as its chart: a FRED series id
- * (`fn G DFII10` is FRED:DFII10), or a word that is a series' own id
+ * (`fn G DFII10` is FRED:DFII10), or a word a series lists as an alias
  * (`fn G hashrate` is CAP:bitcoin:hashrate), when the catalog lists it, no
  * listing answers to it, and the quote source says it is not a ticker. A
  * real ticker of the same letters, read as a listing or quoted, still charts
@@ -684,7 +684,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         series: await Promise.all(parsed.series.map(async (series) => {
           if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
           const { symbol } = series.source.instrument;
-          // A FRED id (DFII10) or a series' own id (hashrate) no ticker answers to is that series; an intraday chart has none.
+          // A FRED id (DFII10) or a series alias (hashrate) no ticker answers to is that series; an intraday chart has none.
           const catalog = template === "graph-intraday-price-pane" ? null : await bareCatalogSeries(series, () => readListing(symbol), context);
           if (catalog) return catalog;
           if (!reads.has(symbol)) reads.set(symbol, readSeriesListing(symbol));

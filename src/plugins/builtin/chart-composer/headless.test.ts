@@ -524,7 +524,7 @@ test("fn G DFII10 charts the FRED series once no listing answers to it, and a ti
     id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
   });
 
-  // A word that is a catalog series' own id (fn G hashrate) charts that series, on the same terms.
+  // A word a catalog series lists as an alias (fn G hashrate) charts that series, on the same terms.
   const hashrate = buildCustomChartPreset("HASHRATE").series[0]!;
   const named = (getQuote: (symbol: string) => Promise<unknown>) => ({
     ...guard(getQuote),

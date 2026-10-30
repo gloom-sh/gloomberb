@@ -8,11 +8,15 @@ import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 /** Shares and growth in percent, as the pane prints them (83.7%, +10.8%), amounts on the table's scale; exports keep the whole number. */
 const number = (format: (value: number | null) => string) => (value: unknown) => format(typeof value === "number" ? value : null);
 
-/** A table's amounts on its one scale (`revenueScale`), named once in its title: "Total revenue, USD millions". */
+/**
+ * A table's amounts on its one scale (`revenueScale`), named once in the text
+ * report's heading ("Total revenue, USD millions"). Exports keep the section
+ * name and the whole number.
+ */
 function amountScale(values: ReadonlyArray<number | null>, currency: string | null) {
   const scale = revenueScale(values, currency);
   return {
-    title: (title: string) => scale.unit ? `${title}, ${scale.unit}` : title,
+    section: (title: string) => ({ title, ...scale.unit ? { textTitle: `${title}, ${scale.unit}` } : {} }),
     column: (key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right", textFormat: number(scale.format) }),
   };
 }
@@ -61,7 +65,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors: data.lockedRows > 0 ? [`${data.lockedRows} more rows need Gloom Pro`] : [],
       sections: [
         {
-          title: rowScale.title(`Quarterly revenue by ${data.view}`),
+          ...rowScale.section(`Quarterly revenue by ${data.view}`),
           columns: [
             { key: data.view, header: data.view[0]!.toUpperCase() + data.view.slice(1) },
             ...data.periods.map((period) => rowScale.column(quarterLabel(period), quarterLabel(period))),
@@ -78,7 +82,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
           })),
         },
         {
-          title: totalScale.title("Total revenue"),
+          ...totalScale.section("Total revenue"),
           columns: [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, totalScale.column("revenue", "Revenue")],
           rows: data.periods.map((period, index) => ({
             quarter: quarterLabel(period),

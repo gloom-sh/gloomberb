@@ -143,6 +143,13 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
     if (!Array.isArray(definition.tags) || definition.tags.length > 16) fail(id, "tags must be a list of at most 16 words.");
     for (const tag of definition.tags) checkLabel(id, "tag", tag, 40, context, false);
   }
+  if (definition.aliases !== undefined) {
+    if (!Array.isArray(definition.aliases) || definition.aliases.length > 4) fail(id, "aliases must be a list of at most 4 words.");
+    if (definition.input !== undefined) fail(id, "a series with an input takes no aliases: the word would stand for a ticker.");
+    for (const alias of definition.aliases) {
+      if (typeof alias !== "string" || !/^[a-z][a-z-]{3,31}$/.test(alias)) fail(id, `alias "${String(alias)}" must be one lower-case word of 4 to 32 letters.`);
+    }
+  }
   if (definition.url !== undefined && (typeof definition.url !== "string" || !/^https?:\/\/\S+$/.test(definition.url))) {
     fail(id, "url must be an http or https address.");
   }

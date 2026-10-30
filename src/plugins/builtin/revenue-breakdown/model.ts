@@ -89,16 +89,21 @@ const SCALE_WORDS: Record<string, string> = { K: "thousands", M: "millions", B: 
 /**
  * One scale for a report table's amounts, its largest one's, so a 0.0 never sits beside a 5.52M: `unit`
  * names it once ("USD millions") and `format` prints each amount in it, with one count of decimals down the
- * table (179.3 and 0.0, or 54.32 and 7.88). The pane keeps each amount's own suffix (`revenueAmount`).
+ * table (179.3 and 0.0, or 54.32 and 7.88). An amount too small for that many decimals keeps two significant
+ * digits (0.030), so only a true zero reads 0.0. The pane keeps each amount's own suffix (`revenueAmount`).
  */
 export function revenueScale(values: ReadonlyArray<number | null>, currency: string | null): { unit: string; format: (value: number | null) => string } {
   const amounts = values.filter((value): value is number => value !== null && Number.isFinite(value));
   const { suffix, divisor } = pickUnit(amounts);
   const digits = Math.max(0, ...amounts.map((value) => Math.abs(value) / divisor)) >= 100 ? 1 : 2;
-  return {
-    unit: [currency?.trim(), SCALE_WORDS[suffix]].filter(Boolean).join(" "),
-    format: (value) => value === null || !Number.isFinite(value) ? revenueAmount(null) : (value / divisor).toFixed(digits),
+  const format = (value: number | null) => {
+    if (value === null || !Number.isFinite(value)) return revenueAmount(null);
+    const scaled = value / divisor;
+    if (scaled === 0 || Number(scaled.toFixed(digits)) !== 0) return scaled.toFixed(digits);
+    // Two significant digits: as many decimals as the first one's place, and one more.
+    return scaled.toFixed(Math.min(20, 1 - Math.floor(Math.log10(Math.abs(scaled)))));
   };
+  return { unit: [currency?.trim(), SCALE_WORDS[suffix]].filter(Boolean).join(" "), format };
 }
 
 export const sharePercent = (value: number | null) =>

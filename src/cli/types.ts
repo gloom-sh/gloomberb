@@ -21,7 +21,7 @@ export type MarketContext = ConfigContext & {
   seriesCapabilities?: CapabilityInvoker;
   /** The catalog series charted as an expression (`FRED:DFII10`), in a report run without the plugin runtime. */
   findCatalogSeries?: (expression: string) => import("../series/types").SeriesDefinition | undefined;
-  /** The catalog series a bare word names by its id (`hashrate`), in a report run without the plugin runtime. */
+  /** The catalog series a bare word is an alias of (`hashrate`), in a report run without the plugin runtime. */
   findCatalogSeriesNamed?: (word: string) => import("../series/types").SeriesDefinition | undefined;
   /** `--refresh`: prefetched data bypasses the local cache. */
   refresh?: boolean;

@@ -281,12 +281,15 @@ describe("a series with lines", () => {
   });
 });
 
-test("a bare word names a catalog series by its id only when one series has it and it is no short code", () => {
-  const series = (id: string, input?: "ticker") => ({ id, name: id, unit: "%", frequency: "daily", expression: `X:${id}`, ...input ? { input } : {} }) as SeriesDefinition;
-  const catalog = [series("bitcoin:hashrate"), series("bitcoin:difficulty"), series("policy-rate:ca"), series("sovereign-cds:ca"),
-    series("doe:cushing"), series("lab:cushing"), series("short-interest:days-to-cover", "ticker")];
+test("a bare word names only a series that lists it as an alias, and none that two series claim", () => {
+  const series = (id: string, aliases?: string[]) => ({ id, name: id, unit: "%", frequency: "daily", expression: `X:${id}`, ...aliases ? { aliases } : {} }) as SeriesDefinition;
+  const catalog = [series("bitcoin:hashrate", ["hashrate"]), series("bitcoin:difficulty", ["difficulty"]), series("doe:cushing"),
+    series("macro:inflation"), series("a:claimed", ["claimed"]), series("b:claimed", ["claimed"])];
   expect(seriesNamedBy(catalog, "HASHRATE")?.id).toBe("bitcoin:hashrate");
   expect(seriesNamedBy(catalog, "difficulty")?.id).toBe("bitcoin:difficulty");
-  // Two namespaces with the name, a code of a few letters, or a series that needs a ticker name none.
-  for (const word of ["cushing", "ca", "days-to-cover", "hash"]) expect(seriesNamedBy(catalog, word), word).toBeUndefined();
+  // A series' own id of six letters or more is no alias; nor is a word two series claim.
+  for (const word of ["cushing", "inflation", "claimed", "hash"]) expect(seriesNamedBy(catalog, word), word).toBeUndefined();
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["Rate"]) })).toThrow('alias "Rate"');
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["rate"]), input: "ticker", expression: "{ticker}:close" } as SeriesDefinition))
+    .toThrow("a series with an input takes no aliases");
 });

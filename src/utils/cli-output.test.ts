@@ -215,6 +215,20 @@ test("plain output fitted narrow keeps what a row is (rank, coin, name) on its f
     expect(lines[1]!.trim().split(/\s+/).slice(0, 3)).toEqual(["1", "BTC", "Bitcoin"]);
     expect(lines.find((line) => line.includes("HYPE"))!.trim().split(/\s+/).slice(0, 3)).toEqual(["7", "HYPE", "Hyperliquid"]);
     expect(lines.some((line) => /^\s+Name /.test(line))).toBe(false);
+
+    // A quote table, no rank, whose figures a terminal keeps on the first line and the names under them:
+    // plain output says the symbol and company first, then the price and the changes.
+    const quoteColumns = [{ header: "Symbol" }, { header: "Name" }, { header: "Last", align: "right" as const },
+      { header: "Chg %", align: "right" as const }, { header: "1W %", align: "right" as const }, { header: "Volume", align: "right" as const }];
+    const quoteRows = [["IBIT", "iShares Bitcoin Trust ETF", "$43.10", "-1.20%", "-4.05%", "51.2M"], ["MARA", "MARA Holdings, Inc.", "$15.92", "-3.41%", "+2.10%", "38.2M"]];
+    const quote = renderTable(quoteColumns, quoteRows, { maxWidth: 44 }).split("\n");
+    expect(quote.every((line) => visibleLength(line) <= 44)).toBe(true);
+    expect(quote.find((line) => line.startsWith("IBIT"))).toMatch(/^IBIT\s+iShares Bitcoin Trust ETF\s+\$43\.10$/);
+    expect(quote.find((line) => line.startsWith("MARA"))).toMatch(/^MARA\s+MARA Holdings, Inc\.\s+\$15\.92$/);
+    expect(quote.some((line) => /^\s+Name /.test(line))).toBe(false);
+    // The terminal's own layout is unchanged: figures first, the name under them.
+    setCliPlainOverride(false);
+    expect(renderTable(quoteColumns, quoteRows, { maxWidth: 44 }).split("\n")).toContain("  Name iShares Bitcoin Trust ETF");
   } finally {
     setCliPlainOverride(null);
   }

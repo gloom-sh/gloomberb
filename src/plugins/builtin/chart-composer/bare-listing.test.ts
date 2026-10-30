@@ -1,4 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
+import { standaloneSeriesInvoker, standaloneSeriesNamed } from "../../../series/standalone";
+import { BITCOIN_NETWORK_CACHES } from "../crypto-board/bitcoin-network";
+import { bitcoinNetworkFixture } from "../crypto-board/test-fixture";
 import { AppPersistence } from "../../../data/app-persistence";
 import { TickerRepository } from "../../../data/ticker-repository";
 import { getLoadablePlugins } from "../../catalog";
@@ -73,9 +77,9 @@ function failing(cli: ReturnType<typeof createTestCliContext>) {
   return failure;
 }
 
-async function run(args: string[], command: "fn" | "quote") {
+async function run(args: string[], command: "fn" | "quote", market: Record<string, unknown> = {}) {
   const persistence = new AppPersistence(":memory:");
-  const cli = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers) });
+  const cli = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers), ...market });
   (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
   const failure = failing(cli);
   try {
@@ -131,4 +135,40 @@ test("a retry names the listing in place of the bare symbol, wherever the argume
   // A named listing, or an argument that does not spell the series, is left alone.
   expect(argumentWithListing("BDI:NEO, BDI", "BDI", "BDI:TSX")).toBe("BDI:NEO, BDI:TSX");
   expect(argumentWithListing("FUT:CL", "CL=F", "CL=F:NYMEX")).toBe("CL=F:NYMEX");
+});
+
+test("fn G hashrate charts the bitcoin hash rate by the alias the CLI's own catalog finds, and a ticker still charts as the ticker", async () => {
+  const plugins = getLoadablePlugins();
+  // The CLI's wiring without the app: the plugins' series, charted and named as initMarketData builds them.
+  const market = {
+    seriesCapabilities: standaloneSeriesInvoker(plugins, config.dataDir),
+    findCatalogSeriesNamed: standaloneSeriesNamed(plugins),
+    dataProvider: createTestDataProvider({
+      search: async () => [],
+      getQuote: async (symbol) => {
+        if (symbol.toUpperCase() === "AAPL") return QUOTES.AAPL!;
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+      getTickerFinancials: async (symbol) => {
+        if (symbol.toUpperCase() === "AAPL") return createTestFinancials({ quote: QUOTES.AAPL!, priceHistory: BARS });
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+      getPriceHistory: async () => BARS,
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: BARS }),
+    }),
+  };
+  const network = spyOn(apiClient, "getCloudBitcoinNetwork").mockImplementation(async () => bitcoinNetworkFixture());
+  try {
+    const { failure, printed } = await run(["G", "hashrate"], "fn", market);
+    expect(failure.message).toBeUndefined();
+    const [series] = (printed!.result.data as { series: Array<{ label?: string; unit?: string; points?: unknown[] }> }).series;
+    expect([series?.label, series?.unit, series?.points?.length]).toEqual(["Bitcoin network hash rate", "EH/s", 2]);
+    expect(network).toHaveBeenCalledTimes(1);
+    // A word no series lists as an alias is still read as a ticker.
+    const ticker = await run(["G", "AAPL"], "fn", market);
+    expect((ticker.printed!.result.data as { series: Array<{ name?: string }> }).series[0]?.name).toBe("Apple Inc.");
+  } finally {
+    network.mockRestore();
+    for (const cache of BITCOIN_NETWORK_CACHES) cache.reset();
+  }
 });

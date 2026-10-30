@@ -1,4 +1,4 @@
-import type { CryptoMarketAsset, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
+import type { BitcoinNetworkPayload, CryptoMarketAsset, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 
 /** 2026-09-23 12:00 UTC; closes run 2026-08-24 through 2026-09-22. */
 export const CRYPTO_FIXTURE_NOW = Date.parse("2026-09-23T12:00:00Z");
@@ -153,5 +153,26 @@ export function defiTvlFixture(): DefiTvlPayload {
     ],
     history: { start: "2026-09-19", total: [90e9, 91e9, null, 92e9, 92.4e9] },
     warnings: [],
+  };
+}
+
+/** The bitcoin network board as Gloom Cloud serves it, its estimate unread: two days of hash rate, two retargets. */
+export function bitcoinNetworkFixture(patch: Partial<BitcoinNetworkPayload> = {}): BitcoinNetworkPayload {
+  return {
+    version: 1,
+    generatedAt: "2026-10-30T19:56:00.000Z",
+    status: "stale",
+    source: { name: "Gloom Cloud", url: "https://gloom.sh" },
+    historyFetchedAt: "2026-10-30T19:55:00.000Z",
+    hashrate: [{ date: "2026-10-29", value: 951.2 }, { date: "2026-10-30", value: 964.26 }],
+    difficulty: [
+      { date: "2026-10-15", height: 971712, difficulty: 140_574_000_000_000, changePercent: 2.1 },
+      { date: "2026-10-29", height: 973728, difficulty: 148_364_561_003_867.4, changePercent: 5.54 },
+    ],
+    hashprice: [{ date: "2026-10-30", value: 33.2713 }],
+    retarget: null,
+    retargetHistory: [{ date: "2026-10-29", value: -3.9 }, { date: "2026-10-30", value: -4.22 }],
+    warnings: ["The retarget estimate is unavailable."],
+    ...patch,
   };
 }

@@ -34,6 +34,14 @@ describe("revenue breakdown model", () => {
     expect(revenueScale([null], null).unit).toBe("");
   });
 
+  test("only a true zero reads 0.0: an amount below the table's precision keeps two significant digits, and its sign", () => {
+    const corz = revenueScale([179_300_000, 30_000, -4_000, 0], "USD");
+    expect([0, -0, 30_000, -4_000, 96_000, 1_234, 49_000].map(corz.format))
+      .toEqual(["0.0", "0.0", "0.030", "-0.0040", "0.1", "0.0012", "0.049"]);
+    const apple = revenueScale([54_320e6, 1e6], "USD");
+    expect([1e6, -2e6, 4.6e6].map(apple.format)).toEqual(["0.0010", "-0.0020", "0.0046"]);
+  });
+
   test("sorting puts unreported values last in both directions", () => {
     const rows = [row("a", [1], null), row("b", [2], 0.1), row("c", [3], -0.2)];
     expect(sortRevenueRows(rows, { column: "yoy", direction: "desc" }).map((r) => r.label)).toEqual(["b", "c", "a"]);

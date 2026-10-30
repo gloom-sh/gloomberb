@@ -127,7 +127,7 @@ export interface HeadlessPaneContext {
   capabilities?: CapabilityInvoker;
   /** The catalog's name for the series charted as an expression (`FRED:DFII10`); undefined for one it does not list. */
   catalogSeriesName?: (expression: string) => string | undefined;
-  /** The catalog series a bare word names by its id (`hashrate` is CAP:bitcoin:hashrate); undefined for any other word. */
+  /** The catalog series a bare word is an alias of (`hashrate` is CAP:bitcoin:hashrate); undefined for any other word. */
   catalogSeriesNamed?: (word: string) => { expression: string; name: string } | undefined;
   /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
   resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
@@ -514,6 +514,13 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
 export type HeadlessBundleSection =
   | {
     title: string;
+    /**
+     * The heading the text report prints in place of `title`, when it can say
+     * more than an export's section name should (the scale its amounts are
+     * printed in, "Total revenue, USD millions"). JSON, CSV and NDJSON keep
+     * `title`, so a section read by its name stays where it was.
+     */
+    textTitle?: string;
     columns?: HeadlessPaneColumn[];
     rows: HeadlessPaneRow[];
     /** What the report says when `rows` is empty, in place of "No data.": why there are none, and what to run instead. */
@@ -586,6 +593,7 @@ export type HeadlessBundleSection =
     /** In a report with `exportDated`: the period the figures cover, and when they were released (an ISO date or instant), which each exported line names in `period` and `released`. */
     period?: string;
     released?: string;
+    textTitle?: never;
     columns?: never;
     rows?: never;
     textColumns?: never;

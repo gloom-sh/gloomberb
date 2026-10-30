@@ -29,6 +29,7 @@ function validateBitcoinNetwork(data: BitcoinNetworkPayload): BitcoinNetworkPayl
     !data
     || data.version !== 1
     || !instant(data.generatedAt)
+    || typeof data.source?.name !== "string" || !data.source.name.trim()
     || !["available", "stale", "unavailable"].includes(data.status)
     || !daily(data.hashrate)
     || !daily(data.hashprice)
@@ -59,21 +60,24 @@ function loadBitcoinNetwork() {
 const points = (rows: readonly BitcoinNetworkDailyValue[]): SeriesPoint[] =>
   rows.map((row) => ({ date: Date.parse(`${row.date}T00:00:00Z`), value: row.value }));
 
-const MEMPOOL: SeriesAttribution = { source: "mempool.space", publisher: "mempool.space" };
 const TAGS = ["bitcoin", "BTC", "BTC-USD", "mining", "miner", "miners", "bitcoin mining", "network", "on-chain"];
-const SOURCE_URL = "https://mempool.space/mining";
 
-/** A series of the network board: its points, the board's own warning, and the cached-copy note. */
+/**
+ * A series of the network board: its points, cited as the server names its
+ * source, with the board's warnings about this figure (`concerns`: "Hash
+ * rate, difficulty and hashprice could not refresh" is three series', "The
+ * retarget estimate is unavailable" the estimate's alone) and the
+ * cached-copy note.
+ */
 function networkSeries(
-  definition: Omit<Extract<SeriesDefinition, { load: unknown }>, "load" | "frequency" | "group" | "url">
+  definition: Omit<Extract<SeriesDefinition, { load: unknown }>, "load" | "frequency" | "group">
     & { frequency?: SeriesDefinition["frequency"] },
   read: (payload: BitcoinNetworkPayload) => SeriesPoint[],
-  { attribution = MEMPOOL, part = "history" }: { attribution?: SeriesAttribution; part?: "history" | "retarget" } = {},
+  { concerns, derived }: { concerns: RegExp; derived?: string },
 ): SeriesDefinition {
   return {
     frequency: "daily",
     group: "Crypto",
-    url: SOURCE_URL,
     refreshMs: 30 * 60_000,
     ...definition,
     load: async () => {
@@ -81,9 +85,10 @@ function networkSeries(
       const found = read(resource.payload);
       if (!found.length) throw new Error(`${definition.name} is not available yet.`);
       const note = cachedSeriesNote(resource);
-      // The board says which part could not refresh: the daily figures, or the retarget estimate.
-      const own = resource.payload.warnings.find((line) => /retarget/i.test(line) === (part === "retarget"));
-      const warning = note.warning ?? own;
+      const own = resource.payload.warnings.filter((line) => concerns.test(line)).join(" ");
+      const warning = note.warning ?? (own || undefined);
+      const source = resource.payload.source.name.trim();
+      const attribution: SeriesAttribution = { source: derived ? `${source}, ${derived}` : source };
       return { points: found, attribution, ...note, ...warning ? { warning } : {} };
     },
   } as SeriesDefinition;
@@ -91,8 +96,10 @@ function networkSeries(
 
 /**
  * The bitcoin network for `fn G`: hash rate, difficulty, the next
- * retarget's estimate and hashprice. `catalog hashrate`, `hashprice`,
- * `difficulty`, `mining` and `miner` find them by their tags.
+ * retarget's estimate and hashprice. `fn G hashrate`, `difficulty`,
+ * `retarget` and `hashprice` chart them by their aliases; `catalog
+ * hashrate`, `hashprice`, `difficulty`, `mining` and `miner` find them by
+ * their tags.
  */
 export const BITCOIN_NETWORK_SERIES: readonly SeriesDefinition[] = [
   networkSeries({
@@ -100,8 +107,9 @@ export const BITCOIN_NETWORK_SERIES: readonly SeriesDefinition[] = [
     name: "Bitcoin network hash rate",
     unit: "EH/s",
     tags: [...TAGS, "hashrate", "hash rate"],
-    description: "The bitcoin network's hash rate in exahashes per second, each UTC day's average as mempool.space estimates it from the blocks found; the newest day is the day so far.",
-  }, (payload) => points(payload.hashrate)),
+    aliases: ["hashrate"],
+    description: "The bitcoin network's hash rate in exahashes per second, each UTC day's average, estimated from the blocks found; the newest day is the day so far.",
+  }, (payload) => points(payload.hashrate), { concerns: /\bhash rate\b/i }),
   networkSeries({
     id: "bitcoin:difficulty",
     name: "Bitcoin mining difficulty (trillions)",
@@ -109,22 +117,27 @@ export const BITCOIN_NETWORK_SERIES: readonly SeriesDefinition[] = [
     frequency: "irregular",
     style: "step",
     tags: [...TAGS, "difficulty", "retarget", "difficulty adjustment"],
-    description: "The difficulty each retarget set, every 2,016 blocks, in trillions, dated by the block that set it, as mempool.space lists it.",
-  }, (payload) => payload.difficulty.map((row) => ({ date: Date.parse(`${row.date}T00:00:00Z`), value: Number((row.difficulty / 1e12).toFixed(4)) }))),
+    aliases: ["difficulty"],
+    description: "The difficulty each retarget set, every 2,016 blocks, in trillions, dated by the block that set it.",
+  }, (payload) => payload.difficulty.map((row) => ({ date: Date.parse(`${row.date}T00:00:00Z`), value: Number((row.difficulty / 1e12).toFixed(4)) })),
+  { concerns: /\bdifficulty\b/i }),
   networkSeries({
     id: "bitcoin:retarget-estimate",
     name: "Bitcoin next difficulty retarget estimate",
     unit: "%",
     tags: [...TAGS, "difficulty", "retarget", "difficulty adjustment", "estimate"],
-    description: "mempool.space's estimate of the change in difficulty at the next retarget, in percent, as read each UTC day since Gloom began keeping it in October 2026.",
-  }, (payload) => points(payload.retargetHistory), { part: "retarget" }),
+    aliases: ["retarget"],
+    description: "The estimated change in difficulty at the next retarget, in percent, as read each UTC day since Gloom began keeping it in October 2026.",
+  }, (payload) => points(payload.retargetHistory), { concerns: /\bretarget\b/i }),
   networkSeries({
     id: "bitcoin:hashprice",
     name: "Bitcoin hashprice (derived)",
     unit: "USD/PH/s/day",
     tags: [...TAGS, "hashprice", "hash price", "miner revenue"],
-    description: "Derived, not quoted: what 1 PH/s is expected to earn in a day, in USD, at the day's difficulty, average block reward (subsidy and fees) and BTC price, all from mempool.space.",
+    aliases: ["hashprice"],
+    description: "Derived, not quoted: what 1 PH/s is expected to earn in a day, in USD, at the day's difficulty, average block reward (subsidy and fees) and BTC price.",
   }, (payload) => points(payload.hashprice), {
-    attribution: { source: "Derived from mempool.space block rewards, BTC price and difficulty", publisher: "mempool.space" },
+    concerns: /\bhashprice\b/i,
+    derived: "derived from the block rewards, the BTC price and the difficulty",
   }),
 ];
