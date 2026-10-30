@@ -51,7 +51,7 @@ For the terminal on **Windows**, in PowerShell:
 irm https://gloom.sh/install.ps1 | iex
 ```
 
-The script downloads the prebuilt release from GitHub and checks its SHA-256 against the digest GitHub lists. Apple Silicon Macs get the desktop app and the `gloom` command; Linux and Intel Macs get the standalone binary. The PowerShell line does the same on Windows: it puts the standalone `gloom.exe` in `%USERPROFILE%\.local\bin` and adds that folder to your PATH. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
+The script downloads the prebuilt release from GitHub and checks its SHA-256 against the checksum file the release publishes beside it, installing nothing if they differ. Apple Silicon Macs get the desktop app and the `gloom` command; Linux and Intel Macs get the standalone binary. The PowerShell line does the same on Windows: it puts the standalone `gloom.exe` in `%USERPROFILE%\.local\bin` and adds that folder to your PATH. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
 
 With [Bun](https://bun.sh), on any supported OS:
 

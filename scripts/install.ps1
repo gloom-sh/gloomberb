@@ -27,33 +27,29 @@ function Install-Gloom {
     throw "Unsupported architecture: $Arch. Gloom needs 64-bit Windows."
   }
 
+  # The asset and its SHA-256, `<asset>.sha256` beside it, both from the latest
+  # release's download URL: no API, so no rate limit stands between them.
   $Url = "https://github.com/$Repo/releases/latest/download/$Asset"
-  $Digest = $null
-  Write-Host "Fetching release metadata from https://api.github.com/repos/$Repo/releases/latest"
-  try {
-    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing
-    $Entry = @($Release.assets | Where-Object { $_.name -eq $Asset })[0]
-    if ($Entry) {
-      $Url = $Entry.browser_download_url
-      if ("$($Entry.digest)" -match '^sha256:([0-9a-fA-F]{64})$') { $Digest = $Matches[1].ToLowerInvariant() }
-    }
-  } catch {
-    Write-Host 'Release metadata is unavailable; downloading the latest release without it.'
-  }
 
   $Temp = Join-Path ([IO.Path]::GetTempPath()) ("gloom-install-" + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $Temp | Out-Null
   try {
+    # Nothing is installed unverified: a checksum that cannot be read, or that does not match, stops here.
+    $ChecksumFile = Join-Path $Temp "$Asset.sha256"
+    try {
+      Invoke-WebRequest -Uri "$Url.sha256" -OutFile $ChecksumFile -UseBasicParsing
+    } catch {
+      throw "Could not read the SHA-256 checksum for $Asset from $Url.sha256. Nothing was installed. Try again in a minute, or download Gloom from https://gloom.sh/download"
+    }
+    $Expected = "$(@((Get-Content -Raw -Path $ChecksumFile) -split '\s+' | Where-Object { $_ })[0])".ToLowerInvariant()
+    if ($Expected -notmatch '^[0-9a-f]{64}$') { throw "$Url.sha256 holds no SHA-256 checksum. Nothing was installed." }
+
     $Archive = Join-Path $Temp $Asset
     Write-Host "Downloading $Asset from $Url"
     Invoke-WebRequest -Uri $Url -OutFile $Archive -UseBasicParsing
-    if ($Digest) {
-      $Actual = (Get-FileHash -Path $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
-      if ($Actual -ne $Digest) { throw "SHA-256 mismatch for $Asset. Nothing was installed." }
-      Write-Host "Verified SHA-256 for $Asset."
-    } else {
-      Write-Warning "Could not obtain a SHA-256 digest for $Asset. Continuing without checksum verification."
-    }
+    $Actual = (Get-FileHash -Path $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($Actual -ne $Expected) { throw "SHA-256 mismatch for $Asset. Nothing was installed." }
+    Write-Host "Verified SHA-256 for $Asset."
 
     Write-Host 'Extracting...'
     $Exe = Join-Path $Temp 'gloom.exe'
