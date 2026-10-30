@@ -420,6 +420,9 @@ describe("AppPersistence", () => {
       // a row it rejects never has its payload read.
       expect(lists).toHaveLength(1);
       expect(lists[0]).toMatch(/variant_key IN \(\?, \?\) AND source_key IN \(\?\)/);
+      // A column stored after the payload (expiry, times, size) checked in SQL
+      // walks a large payload once for the check and again to return it.
+      expect(lists[0]!.split("WHERE")[1]).not.toMatch(/expires_at|stale_at|fetched_at|last_accessed_at|size_bytes/);
     } finally {
       persistence.close();
     }

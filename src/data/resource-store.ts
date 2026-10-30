@@ -382,23 +382,17 @@ export class ResourceStore {
     if (variantKeys?.length === 0 || sourceKeys?.length === 0) return [];
     // The rows asked for only: an entity can hold dozens of variants (every
     // range of a price history, from every source), megabytes of payload
-    // that a filter after the read threw away.
+    // that a filter after the read threw away. The keys come from the
+    // primary key's index. Expiry stays below: the column sits after the
+    // payload, and checking it here walked a 10 MB payload twice.
     const filters = [
       ...(variantKeys ? [`variant_key IN (${variantKeys.map(() => "?").join(", ")})`] : []),
       ...(sourceKeys ? [`source_key IN (${sourceKeys.map(() => "?").join(", ")})`] : []),
-      ...(options.allowExpired ? [] : ["expires_at >= ?"]),
     ];
-    const params: Array<string | number> = [
-      key.namespace,
-      key.kind,
-      key.entityKey,
-      ...(variantKeys ?? []),
-      ...(sourceKeys ?? []),
-      ...(options.allowExpired ? [] : [Date.now()]),
-    ];
+    const params: string[] = [key.namespace, key.kind, key.entityKey, ...(variantKeys ?? []), ...(sourceKeys ?? [])];
     const rows = this.access.readCache("list cached resources", () => (
       this.db
-        .query<ResourceCacheRow, Array<string | number>>(
+        .query<ResourceCacheRow, string[]>(
           `SELECT namespace, kind, entity_key, variant_key, source_key, schema_version, payload, provenance,
                   fetched_at, stale_at, expires_at, last_accessed_at, size_bytes
            FROM resource_cache
@@ -409,6 +403,7 @@ export class ResourceStore {
 
     const records: CachedResourceRecord<T>[] = [];
     for (const row of sortRows(rows)) {
+      if (!options.allowExpired && isExpired(row.expires_at)) continue;
       if (options.schemaVersion != null && row.schema_version !== options.schemaVersion) {
         this.deleteExact({
           namespace: row.namespace,
