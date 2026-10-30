@@ -5,6 +5,8 @@ import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
+import { newsSummaryLine } from "../../news/news-model";
+import { shortStoryId } from "../../news/story-id";
 import type {
   AnalystResearchData,
   CorporateActionsData,
@@ -121,7 +123,7 @@ import {
   type CliReportTables,
 } from "../report-tables";
 import { historyCoverageNotice } from "../../sources/history-coverage";
-import { maxDrawdown, maxDrawdownText } from "../../utils/max-drawdown";
+import { maxDrawdownText } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
@@ -133,6 +135,9 @@ import {
   historyFacts,
   historyFlagNote,
   historyWickNote,
+  historyContractDrawdown,
+  historyRollNote,
+  historyThinNote,
   historyGapNote,
   historyJumpNote,
   historyUnbrokenFrom,
@@ -153,7 +158,7 @@ import {
   type HistoryVolume,
 } from "../history-rows";
 import {
-  HISTORY_EXPORT_COLUMNS,
+  historyExportColumns,
   historyExportStatus,
   historyFailureRow,
   oneLineFailure,
@@ -806,7 +811,10 @@ function financialStatementRows(financials: FinancialsCliData) {
 
 function newsRows(articles: NewsArticle[]) {
   return articles.map((article) => ({
+    id: article.id,
     title: article.title,
+    // Whole, as exports write it; the text table's line under the row (newsRowNote) runs it together.
+    summary: article.summary ?? null,
     source: article.source,
     publishedAt: isoDate(article.publishedAt),
     topic: article.topic,
@@ -824,6 +832,8 @@ function filingRows(filings: SecFilingItem[]) {
     companyName: filing.companyName ?? "",
     accessionNumber: filing.accessionNumber,
     url: filing.primaryDocumentUrl ?? filing.filingUrl,
+    // A current report's press release exhibit, where its index names one: the figures, not the cover page.
+    pressReleaseUrl: filing.pressReleaseUrl ?? "",
     items: secFilingItemCodes(filing.items) ?? "",
     // A current report's items by number and name: the results 8-K reads apart from another filed that day.
     itemsLabel: currentReportItemsLabel(filing.items) ?? "",
@@ -1472,12 +1482,27 @@ async function loadListingHistory(
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
     gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
+    // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
+    historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
   ].flat();
   return {
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
+}
+
+/**
+ * A continuous future's history is the front month's, not the contract its
+ * quote names now: NG=F's rows from before the roll are November's under a
+ * quote of "Natural Gas Dec 2026". The heading says "Natural Gas front month"
+ * once the bars name their contracts.
+ */
+function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[]): ListingIdentity {
+  if (!/=F$/i.test(symbol) || !rows.some((row) => row.contract)) return identity;
+  const board = futuresBoardContract(symbol);
+  const name = board?.name ?? identity.name?.replace(/\s+[A-Z][a-z]{2}\s+\d{4}$/, "");
+  return name ? { ...identity, name: `${name} front month` } : identity;
 }
 
 /** What a listing with no bar for what was asked says, in a warning and in a list's status column. */
@@ -1525,6 +1550,8 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.partial ? cliStyles.muted("partial") : "",
     row.filled ? cliStyles.muted("filled") : "",
     row.unsettled ? cliStyles.muted("unsettled") : "",
+    row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
+    row.thin ? cliStyles.muted("thin") : "",
     typeof row.status === "string" ? cliStyles.warning(row.status) : "",
   ].filter(Boolean).join(" "),
 };
@@ -1578,8 +1605,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
     const textColumns = historyTextColumns(intraday, price).map((column) => column.key !== "volume" ? column
       : { ...column, format: historyVolumeCell(() => missingVolume) });
-    // The largest fall from a close to a later one in the bars shown, said under the heading.
-    const drawdown = maxDrawdown(data);
+    // The largest fall from a close to a later one in the bars shown, said under the heading: within one contract
+    // of a continuous future, never from one month's close to another's across a roll.
+    const contractDrawdown = historyContractDrawdown(data);
+    const drawdown = contractDrawdown?.drawdown ?? null;
     ctx.printResult({
       data,
       metadata: {
@@ -1596,20 +1625,21 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         // The first bar after the last gap or jump; the first bar when there is none.
         unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
-        maxDrawdown: drawdown,
+        maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
     }, {
-      heading: [listingHeading(identity), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
-        ...drawdown && interval ? [cliStyles.muted(maxDrawdownText(drawdown, { basis: `${BAR_INTERVAL_LABELS[interval]} closes`, price,
+      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
+        ...drawdown && interval ? [cliStyles.muted(maxDrawdownText(drawdown, {
+          basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
           date: (text) => intraday ? formatUtcTime(text) : text.slice(0, 10) }))] : []].join("\n"),
       dateKey: "date",
       textColumns: [...textColumns, HISTORY_FLAG_TEXT_COLUMN],
-      // One header whatever the market is doing, for one symbol as for a list (HISTORY_EXPORT_COLUMNS).
-      columns: HISTORY_EXPORT_COLUMNS,
+      // One header whatever the market is doing, for one symbol as for a list (historyExportColumns).
+      columns: historyExportColumns(data),
       exportStatus: historyExportStatus,
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
       exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
@@ -1715,7 +1745,7 @@ async function runHistoryList(
       dateKey: "date",
       textColumns: [{ key: "symbol", header: "Symbol", shrink: false }, ...textColumns,
         { key: "currency", header: "Cur", shrink: false, format: currencyCell }, HISTORY_FLAG_TEXT_COLUMN],
-      columns: HISTORY_EXPORT_COLUMNS,
+      columns: historyExportColumns(rows),
       exportStatus: historyExportStatus,
       // Every row names its symbol, the currency its prices are in, its bar size and the as-of of its own symbol's bars.
       exportIdentity: (row) => {
@@ -1934,8 +1964,17 @@ const NEWS_COLUMNS = [
   { key: "source", header: "Source" },
   { key: "title", header: "Title" },
   { key: "tickers", header: "Tickers" },
+  // The short id `fn news-story-pane` opens the story by; exports keep the whole id.
+  { key: "id", header: "ID", format: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
   { key: "url", header: "URL", optional: true },
 ];
+
+/**
+ * A story's summary under its row, on one line, cut to the width (`rowNote`): the figure a headline leaves out.
+ * None for a summary that only repeats the headline; exports keep the summary whole.
+ */
+const newsRowNote = (row: Record<string, unknown>) => typeof row.summary === "string"
+  ? newsSummaryLine({ title: String(row.title ?? ""), summary: row.summary }) : null;
 
 /**
  * Stories matching text, printed as a symbol's news is, under a line saying
@@ -1973,6 +2012,7 @@ async function printNewsSearch(
     heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
     columns: NEWS_COLUMNS,
+    rowNote: newsRowNote,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
   });
 }
@@ -2016,6 +2056,7 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
     heading: metalNewsHeading(route),
     rows: newsRows,
     columns: NEWS_COLUMNS,
+    rowNote: newsRowNote,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
     ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
   });
@@ -2118,6 +2159,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
       columns: NEWS_COLUMNS,
+      rowNote: newsRowNote,
       ...(empty ? { empty } : {}),
       ...(wordHint ? { footnote: wordHint } : {}),
     });
@@ -2132,15 +2174,18 @@ const FILING_COLUMNS = [
   { key: "url", header: "URL", optional: true },
   { key: "items", header: "Items" },
   { key: "itemsLabel", header: "Item names" },
+  { key: "pressReleaseUrl", header: "Press release URL" },
 ];
 
-// The text table names the items before the URL, which a narrow terminal drops first.
+// The text table names the items before the URL, which a narrow terminal drops first. A current report's
+// URL is its press release where it has one, the page its figures are on; exports keep both links.
 const FILING_TEXT_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
   { key: "itemsLabel", header: "Items" },
-  { key: "url", header: "URL", optional: true },
+  { key: "url", header: "URL", optional: true,
+    format: (value: unknown, row: Record<string, unknown>) => String(row.pressReleaseUrl || (value ?? "")) },
 ];
 
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
@@ -3298,6 +3343,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "CSV",
         lines: [
           "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "A continuous future whose bars name their contracts (NG=F) adds Contract, Roll and Thin before status: the contract per bar, and true or false for the bar it rolled at and a bar that traded far below those around it.",
         ],
       }, {
         title: "Several symbols",

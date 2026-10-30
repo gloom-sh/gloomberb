@@ -245,3 +245,14 @@ export function filterNewsArticlesForQuery(items: NewsArticle[], query: NewsQuer
   // Page size is a fetch hint. Accumulated load-more results keep MAX_ARTICLES.
   return filtered.slice(0, MAX_ARTICLES);
 }
+
+/**
+ * A story's summary as one line under its row in a text list (`news`,
+ * `fn CN`): its whitespace and line breaks run together, null when it has
+ * none or only repeats the headline.
+ */
+export function newsSummaryLine(article: Pick<NewsArticle, "title" | "summary">): string | null {
+  const summary = article.summary?.replace(/\s+/g, " ").trim();
+  if (!summary || summary.toLowerCase() === article.title.trim().toLowerCase()) return null;
+  return summary;
+}

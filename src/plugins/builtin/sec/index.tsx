@@ -457,9 +457,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   usePaneStatusLinkFooter({
     registrationId: "sec",
     focused,
-    url: openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
+    // A current report links its press release, where its figures are, when its index names one.
+    url: openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
     source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : announcements?.name ?? null,
-    label: openFiling ? "filing" : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
+    label: openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
+      : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
     loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError,

@@ -3,6 +3,7 @@ import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
+  historyContractDrawdown, historyRollNote, historyThinNote,
 } from "./history-rows";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
@@ -35,6 +36,49 @@ const weekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6
 const between = (date: Date, from: string, to: string) => date.toISOString().slice(0, 10) >= from && date.toISOString().slice(0, 10) <= to;
 
 describe("history rows", () => {
+  /**
+   * `history NG=F --range 1M` on 30 Oct 2026: November's bars to the 23rd (2.640 there), December's from the
+   * 26th, about 0.40 higher. Read across the join the drawdown was -19.6%; within each contract it is far less.
+   * The 28th traded 15 lots between days of about 150,000.
+   */
+  test("a continuous future's rows name the roll, read drawdowns within a contract and flag a thin bar", () => {
+    const bars: Array<[string, number, number, string]> = [
+      ["2026-10-19", 3.15, 160_000, "NGX26"], ["2026-10-20", 3.02, 150_000, "NGX26"], ["2026-10-21", 2.86, 140_000, "NGX26"],
+      ["2026-10-22", 2.74, 155_000, "NGX26"], ["2026-10-23", 2.64, 145_000, "NGX26"], ["2026-10-26", 3.05, 150_000, "NGZ26"],
+      ["2026-10-27", 2.99, 148_000, "NGZ26"], ["2026-10-28", 2.97, 15, "NGZ26"], ["2026-10-29", 2.92, 152_000, "NGZ26"],
+      ["2026-10-30", 2.90, 151_000, "NGZ26"],
+    ];
+    const rows = historyRows(bars.map(([date, close, volume, contract]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume, contract })), "1d");
+    expect(rows.filter((row) => row.roll).map((row) => [row.date, row.contract])).toEqual([["2026-10-26", "NGZ26"]]);
+    expect(historyRollNote("NG=F", rows)).toBe("NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked roll); drawdowns are read within one contract");
+    // Across the join the low of 2.64 would sit under December's 3.05 peak; within November it falls from 3.15.
+    const deepest = historyContractDrawdown(rows)!;
+    expect(deepest.contract).toBe("NGX26");
+    expect(deepest.drawdown.peak).toEqual({ date: "2026-10-19", close: 3.15 });
+    expect(deepest.drawdown.trough).toEqual({ date: "2026-10-23", close: 2.64 });
+    // December alone falls under 5% from its first close: no reading pairs its 3.05 with November's 2.64.
+    expect(historyContractDrawdown(rows.slice(5))!.drawdown.drawdown).toBeGreaterThan(-0.05);
+    expect(rows.filter((row) => row.thin).map((row) => row.date)).toEqual(["2026-10-28"]);
+    expect(historyThinNote(rows)).toBe("2026-10-28 traded thin: under 5% of the volume of the bars around it");
+    // A history naming no contract (a stock's, whose 15-share day is just quiet) has no roll, no thin bar and one drawdown.
+    const plain = historyRows(bars.map(([date, close, volume]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume })), "1d");
+    expect(plain.some((row) => row.roll || row.contract || row.thin)).toBe(false);
+    // A bar with no trade at all is no thin one.
+    const idle = historyRows(bars.map(([date, close, volume, contract]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume: volume === 15 ? 0 : volume, contract })), "1d");
+    expect(idle.some((row) => row.thin)).toBe(false);
+    expect(historyRollNote("NG=F", plain)).toBeNull();
+    expect(historyContractDrawdown(plain)!.contract).toBeNull();
+  });
+
+  test("a served bar keeps its contract only as a listed contract code: root, month letter and two-digit year", () => {
+    const contract = (value: unknown) => mapPricePoint({ date: "2026-10-26T00:00:00.000Z", close: 3.05, contract: value } as never).contract;
+    for (const code of ["NGZ26", "ZQF27", "6EZ26", "MNQH27", "CLX26"]) expect(contract(code)).toBe(code);
+    // Lower case, a four-digit year, a letter no month has, a bare root, padding or markup is no contract.
+    for (const value of ["ngz26", "NGZ2026", "NGA26", "NG", "NGZ26 ", "", "<b>NGZ26</b>", 26, null, undefined]) {
+      expect(contract(value)).toBeUndefined();
+    }
+  });
+
   test("float32 noise from either source becomes the intended decimal while real precision stays", () => {
     // The feed sends the exact float32.
     expect(cleanFloat32Price(Math.fround(340.33))).toBe(340.33);

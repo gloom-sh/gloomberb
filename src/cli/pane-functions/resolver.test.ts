@@ -21,6 +21,8 @@ import { parsePaneFunctionArgs } from "./options";
 import { applyListingArgument, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
 import { capabilityPluginState } from "./capabilities";
+import { newsWireModule } from "../../plugins/builtin/news/wire";
+import { shortStoryId, storyIdMatches } from "../../news/story-id";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -199,6 +201,26 @@ test("shot hands CDX, SOVR (or its alias WCDS) and IPO their argument as the par
   expect(await shot("IPO", "pending")).toEqual({ params: expect.objectContaining({ search: "pending" }), binding: { kind: "none" } });
 });
 
+/** `fn news-story-pane 2ef88dae-…` said "Not a ticker: 2EF88DAE-…": the story pane's argument is a story id, as `news` prints it. */
+test("the story pane opens on the story id typed, whole or short, never read as a ticker", async () => {
+  const stories: PaneFunctionCatalog = {
+    panes: new Map((newsWireModule.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map((newsWireModule.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const open = async (id: string) => (await resolvePaneFunction(stories, context, parsePaneFunctionArgs(["news-story-pane", id]), { command: "shot" })).instance;
+  const id = "6067684e-2e13-41c5-a7cf-5052b3cefc07";
+  expect(await open(id)).toMatchObject({ params: { articleId: id }, binding: { kind: "none" } });
+  // The short id `news` prints opens the story it starts.
+  expect(shortStoryId(id)).toBe("6067684e");
+  expect(await open("6067684e")).toMatchObject({ params: { articleId: "6067684e" }, binding: { kind: "none" } });
+  expect(storyIdMatches(id, "6067684E")).toBe(true);
+  expect(storyIdMatches(id, "6067684")).toBe(false);
+  // An id from another source is printed and matched whole.
+  expect(shortStoryId("rss:abc123")).toBe("rss:abc123");
+  expect(storyIdMatches("rss:abc123", "rss:abc")).toBe(false);
+});
+
 test("an implied-vol word that is no code (IVOL, OVOL, IV) names HIVG and OVDV and runs each on the argument", async () => {
   const modules = [ivHistoryModule, volSurfaceModule];
   const vol: PaneFunctionCatalog = {
@@ -303,7 +325,10 @@ test("every function the catalog lists with no argument refuses one, a rendered 
     // A rendered view that reads its argument with no shortcut declares it, so the catalog lists it and fn passes it on.
     const feed = entries.find((entry) => entry.templateId === "twitter-feed-pane");
     expect(feed?.argPlaceholder).toBe("query");
-    expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["twitter-feed-pane", "nvda"]))).instance.params?.query).toBe("nvda");
+    const feedQuery = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["twitter-feed-pane", "nvda"]));
+    expect(feedQuery.instance.params?.query).toBe("nvda");
+    // An X query may be a ticker, and is read as one: only an id the pane opens (the story pane's) is not.
+    expect(feedQuery.instance.binding).toEqual({ kind: "fixed", symbol: "NVDA" });
     // A pane opened by its id stands for its templates, which take a ticker: it is not one of the catalog's functions.
     const byPaneId = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["realized-vol", "DHI"]));
     expect(byPaneId.instance.binding).toEqual({ kind: "fixed", symbol: "DHI" });

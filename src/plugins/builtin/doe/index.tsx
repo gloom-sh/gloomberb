@@ -4,15 +4,17 @@ import type { PluginModule } from "../plugin-module";
 import { DOE_CATALOG_SERIES } from "./series";
 import { doeBoardCache } from "./client";
 import { doePriceCache } from "./prices";
-import { doeHeadless } from "./headless";
+import { doeGasWord, doeHeadless } from "./headless";
 import { DOE_SERIES_OPTIONS, doeSeriesOption } from "./model";
 import { DoePane } from "./pane";
 
 /** Opens on a tab, or on the series typed after the mnemonic and its tab. */
 function doeInstance(tab: DoeTab, options?: PaneTemplateCreateOptions): PaneTemplateInstanceConfig {
   const input = options?.arg?.trim();
+  // `DOE NGS` or `DOE natural gas` opens on gas storage, as `NGS` does.
+  if (input && doeGasWord(input)) return { placement: "floating", settings: { tab: "gas" } };
   const series = doeSeriesOption(input);
-  if (input && !series) throw new Error("Use a series such as cushing, gasoline, distillate or east");
+  if (input && !series) throw new Error(`Use a series such as cushing, gasoline, distillate or east${tab === "gas" ? "" : "; for gas storage, gloom fn NGS"}`);
   return { placement: "floating", settings: { tab: series?.tab ?? tab }, ...(series ? { params: { series: series.value } } : {}) };
 }
 

@@ -127,6 +127,7 @@ function mapCloudSecFiling(item: {
   primaryDocumentUrl?: string;
   fileNumber?: string;
   fundSeries?: boolean;
+  pressReleaseUrl?: string;
 }): SecFilingItem {
   return {
     accessionNumber: item.accessionNumber,
@@ -144,6 +145,8 @@ function mapCloudSecFiling(item: {
     // Absent from an older server: no file number is not the same as an empty one.
     ...(typeof item.fileNumber === "string" ? { fileNumber: item.fileNumber } : {}),
     ...(typeof item.fundSeries === "boolean" ? { fundSeries: item.fundSeries } : {}),
+    ...(typeof item.pressReleaseUrl === "string" && /^https:\/\/www\.sec\.gov\//.test(item.pressReleaseUrl)
+      ? { pressReleaseUrl: item.pressReleaseUrl } : {}),
   };
 }
 

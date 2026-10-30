@@ -32,6 +32,17 @@ import {
 import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
+import { quotedSearchCommand } from "../commands/news-search";
+
+/**
+ * The `news` search for words no function matches (`catalog hurricane`):
+ * one word quoted so `news` searches the stories rather than a ticker, several
+ * as typed in one pair of quotes.
+ */
+function catalogNewsCommand(query: string): string {
+  const words = query.trim().replace(/\s+/g, " ").replace(/["']/g, "");
+  return /\s/.test(words) ? `gloom news "${words}"` : quotedSearchCommand(words.toLowerCase());
+}
 
 export interface PaneFunctionCatalog {
   panes: ReadonlyMap<string, PaneDef>;
@@ -810,7 +821,7 @@ export function renderPaneCatalogReport(
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
     if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
-      ? `No functions match "${args.query}". Run gloom catalog to browse them all.`
+      ? `No functions match "${args.query}". For stories that mention it: ${catalogNewsCommand(args.query)}. Run gloom catalog to browse them all.`
       : "No functions are available."));
   }
 

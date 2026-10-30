@@ -83,10 +83,34 @@ test("a company found by the name it had before it was renamed leads, and says w
   const printed: PrintedCliResult["result"][] = [];
   await search("cassava", { initMarketData, printResult: (result) => { printed.push(result); } });
   const rows = printed[0]!.data as Array<{ category: string; symbol: string; formerName?: string }>;
+  // Other Listings are Filana's own lines, under the name it had; another company's 0841 is an Other Match.
   expect(rows.map((item) => `${item.symbol}:${item.category}`)).toEqual([
-    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:Other Listings",
+    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:Other Matches",
   ]);
   expect(rows[0]!.formerName).toBe("Cassava Sciences Inc");
   expect("formerName" in rows[1]!).toBe(false);
   expect(printed[0]!.warnings).toEqual(["FLNA is Filana Therapeutics, Inc., formerly Cassava Sciences Inc"]);
+});
+
+/**
+ * `search DK` on 30 Oct 2026 listed DKC1O, DKIMA and DKC1D, unnamed, and Daiei Kankyo's DKCLF under Delek's
+ * Other Listings.
+ */
+test("Other Listings keep the primary listing's company's lines, its nameless ones included; another company's or another symbol's unnamed line is an Other Match", async () => {
+  const row = (symbol: string, name: string, exchange: string) => ({ providerId: "gloomberb-cloud", symbol, name, exchange, type: "Common Stock", primaryExchange: exchange });
+  const answer = [
+    row("DK", "Delek US Holdings, Inc.", "NYSE"), row("DK", "Delek US Holdings, Inc.", "IEX"), row("DKC1O", "DKC1O", "BYMA"),
+    // Delek's own line on another venue, which search names no company for.
+    { ...row("DK", "", "BYMA"), primaryExchange: "NYSE" },
+    row("DKIMA", "DKIMA", "SFB"), row("DKCLF", "Daiei Kankyo Co., Ltd.", "OTC"), row("DKL", "Delek Logistics Partners, LP", "NYSE"),
+  ];
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => { throw new Error("no quote"); } });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("DK", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>;
+  expect(rows.map((item) => `${item.symbol}:${item.exchange}:${item.category}`)).toEqual([
+    "DK:NYSE:Primary Listing", "DK:IEX:Other Listings", "DK:BYMA:Other Listings",
+    "DKC1O:BYMA:Other Matches", "DKIMA:SFB:Other Matches", "DKCLF:OTC:Other Matches", "DKL:NYSE:Other Matches",
+  ]);
 });

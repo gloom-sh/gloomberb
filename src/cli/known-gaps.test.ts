@@ -11,6 +11,10 @@ import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
 import { catalogEmptyCopy } from "../plugins/builtin/chart-composer/catalog-inventory";
+import { doeModule } from "../plugins/builtin/doe";
+import { doeGasWord } from "../plugins/builtin/doe/headless";
+import { buildFuturesRows, DEFAULT_FUTURES_SORT } from "../plugins/builtin/futures/model";
+import { getContractsBySector } from "../market-data/futures-board";
 
 beforeEach(() => {
   // Catalog discovery starts chat and instantiates the map's chart templates.
@@ -18,6 +22,29 @@ beforeEach(() => {
   spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
 });
 afterEach(() => mock.restore());
+
+/**
+ * Dead ends from 30 Oct 2026: `fn DOE NGS` asked for a petroleum series, `fn FUT natgas` printed every tab and header
+ * then "Clear search.", and `catalog hurricane` found nothing and said nothing else.
+ */
+test("gas words open gas storage, FUT knows natgas and names what to try, and a catalog miss offers the news search", () => {
+  const doe = doeModule.paneTemplates!.find((template) => template.id === "doe-pane")!;
+  for (const word of ["NGS", "natural gas", "natgas"]) {
+    expect(doeGasWord(word)).toBe(true);
+    expect(doe.createInstance!({} as never, { arg: word })).toMatchObject({ settings: { tab: "gas" } });
+  }
+  expect(doeGasWord("cushing")).toBe(false);
+
+  const board = (query: string) => buildFuturesRows(getContractsBySector(), DEFAULT_FUTURES_SORT, new Map(), { query })
+    .flatMap((row) => row.type === "row" ? [row.contract.symbol] : []);
+  expect(board("natgas")).toEqual(["NG=F"]);
+  expect(board("gas")).toContain("NG=F");
+  expect(board("urea")).toEqual([]);
+
+  const miss = (query: string) => renderPaneCatalogReport([], parsePaneCatalogArgs([query]), lookupGlossary(query), null).replace(/\s+/g, " ");
+  expect(miss("hurricane")).toContain(`For stories that mention it: gloom news '"hurricane"'.`);
+  expect(miss("hurricane season")).toContain(`For stories that mention it: gloom news "hurricane season".`);
+});
 
 test("data a name search cannot find is pointed to, with its proxies, by search and catalog, instead of each pointing at the other", () => {
   const gap = "EU carbon (EUA): the auction price is in EPWR, chart CAP:carbon:eua. Traded proxies: CO2:LSE, KRBN.";

@@ -424,10 +424,14 @@ describe("calendar history fetched copies", () => {
     expect(outdated(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T12:00:00Z", { exchange: "" })).toBe(false);
     // The feed labels BSE bars at the 09:15 IST open, the previous New York date.
     expect(outdated(bars("2026-09-21T03:45:00Z", "2026-09-22T03:45:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
-    // The JSE is closed for Heritage Day on 09-24 and publishes no calendar here:
+    // The JSE is closed for Heritage Day on Fri 24 Sep 2027, a year whose closures it has not published:
     // one refetch after each weekday open and close, the holiday's included.
+    expect(polls(bars("2027-09-21T00:00:00Z", "2027-09-22T00:00:00Z"), "2027-09-22T16:00:00Z", "2027-09-23T00:00:00Z", "2027-09-27T00:00:00Z", "JSE")).toBe(4);
     const toWednesday = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
-    expect(polls(toWednesday, "2026-09-23T16:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "JSE")).toBe(4);
+    // In 2026 the JSE's closures are published: Heritage Day (Thu 24 Sep) and election day (Wed 4 Nov) are no missing
+    // session, so a copy to the day before is not re-checked until the next session opens (07:00 UTC) and closes.
+    expect(polls(toWednesday, "2026-09-23T16:00:00Z", "2026-09-24T00:00:00Z", "2026-09-25T06:50:00Z", "JSE")).toBe(0);
+    expect(polls(bars("2026-11-02T00:00:00Z", "2026-11-03T00:00:00Z"), "2026-11-03T16:00:00Z", "2026-11-04T00:00:00Z", "2026-11-05T06:50:00Z", "JSE")).toBe(0);
     // KRX Chuseok, 09-24 to 09-26, is covered: no missing session before Monday opens (00:00 UTC).
     expect(polls(toWednesday, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-27T23:50:00Z", "KRX")).toBe(0);
     // SSE Golden Week, Oct 1-7, is covered: no missing session before Oct 8 opens.

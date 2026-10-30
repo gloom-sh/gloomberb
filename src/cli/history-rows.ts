@@ -18,6 +18,7 @@ import {
   isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
+import { maxDrawdown, type MaxDrawdown } from "../utils/max-drawdown";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
@@ -81,6 +82,12 @@ export interface HistoryRow {
   /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
   venueVolume?: number;
   volumeVenue?: string;
+  /** A continuous future's bar (NG=F): the contract it closes on (NGZ26), where the source says. */
+  contract?: string;
+  /** The first bar on a contract after another's: the series rolled into `contract` at this bar. */
+  roll?: true;
+  /** The bar traded far below the bars around it (THIN_VOLUME_SHARE of their median): a price on few trades. */
+  thin?: true;
 }
 
 /** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
@@ -316,10 +323,134 @@ export function historyRows(
     };
   });
   const breaks = historyBreakFlags(times, rows.map((row) => row.close), interval);
+  const thin = thinVolumeBars(rows.map((row, index) => ({ ...row, contract: points[index]!.contract })));
+  let contract: string | null = null;
   return rows.map((row, index) => {
     const flags = [...flagCodes(row), ...breaks[index]!];
-    return flags.length > 0 ? { ...row, flag: flags.join(",") } : row;
+    const own = points[index]!.contract;
+    // A roll is a change between two known contracts; a bar naming none (before the source knew) is no roll.
+    const rolled = !!own && contract != null && own !== contract;
+    if (own) contract = own;
+    const marked = {
+      ...row,
+      ...(own ? { contract: own } : {}),
+      ...(rolled ? { roll: true as const } : {}),
+      ...(thin[index] ? { thin: true as const } : {}),
+    };
+    return flags.length > 0 ? { ...marked, flag: flags.join(",") } : marked;
   });
+}
+
+/** Bars on each side of a bar whose volumes it is held against. */
+const THIN_NEIGHBOURS = 5;
+/** A bar under this share of its neighbours' median volume traded thin. */
+const THIN_VOLUME_SHARE = 0.05;
+
+/**
+ * For each bar of a continuous future, whether it traded far below the bars
+ * around it: a volume under THIN_VOLUME_SHARE of the median of up to
+ * THIN_NEIGHBOURS bars either side that have one (at least four). NG=F's
+ * 2026-10-28 bar on 15 lots between days of 150,000 is a price few trades
+ * made. Only a bar naming its contract is judged, against others that do: a
+ * stock's or a coin's quiet day is not a contract's thin one. A bar still
+ * forming, or with no trade at all (no volume, or 0), is not judged.
+ */
+function thinVolumeBars(rows: readonly (Pick<HistoryRow, "volume" | "partial"> & { contract?: string })[]): boolean[] {
+  const judged = (row: (typeof rows)[number]): row is (typeof rows)[number] & { volume: number } =>
+    !!row.contract && !row.partial && row.volume != null && Number.isFinite(row.volume) && row.volume > 0;
+  return rows.map((row, index) => {
+    if (!judged(row)) return false;
+    const around = [...rows.slice(Math.max(0, index - THIN_NEIGHBOURS), index), ...rows.slice(index + 1, index + 1 + THIN_NEIGHBOURS)]
+      .filter(judged)
+      .map((other) => other.volume)
+      .sort((left, right) => left - right);
+    if (around.length < 4) return false;
+    const middle = around.length / 2;
+    const median = around.length % 2 ? around[Math.floor(middle)]! : (around[middle - 1]! + around[middle]!) / 2;
+    return median > 0 && row.volume < THIN_VOLUME_SHARE * median;
+  });
+}
+
+/** A roll of a continuous future: the bar it rolled at, and the contracts either side. */
+interface HistoryRoll {
+  date: string;
+  from: string;
+  to: string;
+}
+
+/** Every roll in a history's bars (`roll`), oldest first. */
+function historyRolls(rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): HistoryRoll[] {
+  let contract: string | null = null;
+  const rolls: HistoryRoll[] = [];
+  for (const row of rows) {
+    if (row.roll && contract && row.contract) rolls.push({ date: row.date, from: contract, to: row.contract });
+    if (row.contract) contract = row.contract;
+  }
+  return rolls;
+}
+
+/**
+ * A history's bars split at every roll, each run one contract's, oldest
+ * first: what a drawdown or a change is read within, never across a roll.
+ * One run, named by no contract, for a history that names none.
+ */
+function historyContractRuns<Row extends Pick<HistoryRow, "contract" | "roll">>(rows: readonly Row[]): Array<{ contract: string | null; rows: Row[] }> {
+  const runs: Array<{ contract: string | null; rows: Row[] }> = [];
+  for (const row of rows) {
+    const current = runs.at(-1);
+    if (!current || row.roll) runs.push({ contract: row.contract ?? null, rows: [row] });
+    else {
+      current.rows.push(row);
+      current.contract ??= row.contract ?? null;
+    }
+  }
+  return runs;
+}
+
+/**
+ * The largest drawdown of a history's bars within one contract: each run
+ * between rolls read on its own (historyContractRuns), the deepest kept and
+ * named by its contract when the bars roll. A history naming no contract is
+ * one run, its drawdown `maxDrawdown`'s.
+ */
+export function historyContractDrawdown(
+  rows: readonly Pick<HistoryRow, "date" | "close" | "contract" | "roll">[],
+): { drawdown: MaxDrawdown; contract: string | null } | null {
+  const runs = historyContractRuns(rows);
+  let deepest: { drawdown: MaxDrawdown; contract: string | null } | null = null;
+  for (const run of runs) {
+    const drawdown = maxDrawdown(run.rows);
+    if (drawdown && (!deepest || drawdown.drawdown < deepest.drawdown.drawdown)) deepest = { drawdown, contract: runs.length > 1 ? run.contract : null };
+  }
+  return deepest;
+}
+
+/**
+ * "NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked
+ * roll)": the rolls a continuous future's bars make, the latest few by date,
+ * the rest counted. Null without one.
+ */
+export function historyRollNote(symbol: string, rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): string | null {
+  const rolls = historyRolls(rows);
+  if (rolls.length === 0) return null;
+  const shown = rolls.slice(-LISTED_GAPS);
+  const earlier = rolls.length - shown.length;
+  const listed = shown.map((roll) => `from ${roll.from} to ${roll.to} on ${historyDate(roll.date)}`);
+  return `${symbol} is the front month: ${earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "roll" : "rolls"}, then ` : ""}`
+    + `rolled ${listItems(listed)} (marked roll); drawdowns are read within one contract`;
+}
+
+/**
+ * "2026-10-28 traded thin: under 5% of the volume of the bars around it", the
+ * bars marked `thin`, the latest few by date. Null without one.
+ */
+export function historyThinNote(rows: readonly Pick<HistoryRow, "date" | "thin">[]): string | null {
+  const thin = rows.filter((row) => row.thin).map((row) => historyDate(row.date));
+  if (thin.length === 0) return null;
+  const shown = thin.slice(-LISTED_GAPS);
+  const earlier = thin.length - shown.length;
+  const dates = listItems([...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "bar" : "bars"}`] : [], ...shown]);
+  return `${dates} traded thin: under ${THIN_VOLUME_SHARE * 100}% of the volume of the bars around ${thin.length === 1 ? "it" : "them"}`;
 }
 
 /**

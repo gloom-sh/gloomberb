@@ -45,6 +45,8 @@ export interface CliTableOptions {
   indent?: number;
   /** Lines printed under each row, by row index, indented and muted: a footnote that belongs to the row. */
   below?: ReadonlyArray<readonly string[] | undefined>;
+  /** Each line under a row stays one line, cut to the table's width, rather than wrapping: a story's summary. */
+  cutBelow?: boolean;
 }
 
 export type CliStatEntry = readonly [label: string, value: string];
@@ -601,7 +603,7 @@ function renderTableLayout(
   const belowIndent = `${indent}${" ".repeat(COLUMN_GAP)}`;
   const belowWidth = Math.max(1, (available ?? 0) - COLUMN_GAP);
   const renderBelow = (index: number) => (options.below?.[index] ?? []).flatMap((line) => (
-    available == null ? [line] : wrapText(line, belowWidth)
+    available == null ? [line] : options.cutBelow ? [truncateDisplay(line, belowWidth)] : wrapText(line, belowWidth)
   )).map((line) => `${belowIndent}${cliStyles.muted(line)}`.trimEnd());
   // Columns moved under the rows print there as `Header value`, as many to a line as fit.
   const renderStacked = (cells: string[], rowIndex: number): string[] => {

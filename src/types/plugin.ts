@@ -203,7 +203,14 @@ export interface PaneDef {
    * catalog lists it, and `fn` refuses an argument from a function that
    * declares none here, in its shortcut or in a `headless` model.
    */
-  reportArgument?: Pick<HeadlessPaneArgumentDef, "kind" | "placeholder" | "description" | "optional">;
+  reportArgument?: Pick<HeadlessPaneArgumentDef, "kind" | "placeholder" | "description" | "optional"> & {
+    /**
+     * The argument names something the pane opens by its own id (the story
+     * pane's story id), never a symbol: `fn` does not look it up as a ticker.
+     * A query (X Feed's) leaves it unset and keeps its ticker reading.
+     */
+    identifier?: boolean;
+  };
   /**
    * Lines a rendered-view report prints above its table, from the settings it
    * ran with: what the default view leaves out and how to see more. `--json`

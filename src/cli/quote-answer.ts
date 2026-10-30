@@ -2,6 +2,7 @@ import type { QuoteBatchResult } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { bareListingNote } from "../tickers/listing-fate";
 import { notATickerSymbol } from "../sources/provider-errors";
+import { listingSuffixCandidate } from "../sources/listing-symbols";
 import { looksLikeCurrencyPair } from "../utils/currency-pair";
 import { canonicalExchange } from "../utils/exchanges";
 import type { CliCommandDef } from "../types/plugin";
@@ -102,6 +103,9 @@ export async function answerQuote(
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
+  // HCI.L is HCI on LSE written with a vendor's suffix: one that does not trade there says so as HCI:LSE does.
+  const suffixed = await notTradedOnSuffixVenue(listing, market);
+  if (suffixed) return { result, listing, failure: { message: suffixed, oneLine: suffixed }, notes: [] };
   // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
@@ -135,6 +139,22 @@ export async function answerQuote(
     ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
+}
+
+/**
+ * "HCI does not trade on LSE. HCI trades on: NYSE, IEX, JSE." for a symbol
+ * written with a venue's suffix (HCI.L) that no source quotes, when its base
+ * symbol trades elsewhere and not on the venue the suffix names: the answer
+ * `HCI:LSE` gets. Only for London's `.L` and suffixes of two letters or more
+ * (`.IS`, `.JO`): another one-letter suffix is as likely a US share class
+ * (MKC.V, BRK.B) and keeps its own answer. Null otherwise.
+ */
+async function notTradedOnSuffixVenue(listing: CliListing, market: MarketContext): Promise<string | null> {
+  if (listing.exchange) return null;
+  const suffix = listing.symbol.slice(listing.symbol.lastIndexOf(".") + 1);
+  if (!listing.symbol.includes(".") || (suffix.length < 2 && suffix.toUpperCase() !== "L")) return null;
+  const venue = listingSuffixCandidate(listing.symbol);
+  return venue ? notTradedMessage(venue, market) : null;
 }
 
 /**

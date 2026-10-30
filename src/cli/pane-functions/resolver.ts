@@ -83,7 +83,7 @@ async function buildPaneInstance(
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
   const headlessArgKind = resolved.headless?.argument.kind;
-  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless)
+  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless, resolved.pane)
     ? null
     : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
       ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\s]+/)[0] ?? ""))

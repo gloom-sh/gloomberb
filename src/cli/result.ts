@@ -93,6 +93,8 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   heading?: string;
   /** Text-mode line printed under the rows, such as where a listing stops. Not printed with no rows: say it in `empty`. */
   footnote?: string;
+  /** Text-mode line under each table row, indented and muted, cut to the width: a story's summary under its headline. */
+  rowNote?: (row: Row) => string | null | undefined;
   /** Text-mode block printed under the rows and footnote, for figures about a row that are not columns. */
   details?: (data: T) => string;
   /**
@@ -446,6 +448,7 @@ function formatTextCell<Row extends Record<string, unknown>>(
 function renderTextTable<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
+  rowNote?: (row: Row) => string | null | undefined,
 ): string {
   const resolvedColumns = textColumns(rows, columns);
   const cells = rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table")));
@@ -469,6 +472,7 @@ function renderTextTable<Row extends Record<string, unknown>>(
       stackRows: column.stackRows,
     })),
     cells.map((row) => shown.map(({ index }) => row[index]!)),
+    rowNote ? { below: rows.map((row) => { const note = rowNote(row); return note ? [note] : []; }), cutBelow: true } : {},
   );
 }
 
@@ -607,7 +611,7 @@ function renderTextRows<T, Row extends Record<string, unknown>>(
   }
   return layout === "record"
     ? renderTextRecords(rows as Row[], columns)
-    : renderTextTable(rows as Row[], columns);
+    : renderTextTable(rows as Row[], columns, renderOptions.rowNote);
 }
 
 /** Settles once the result `printCliResult` last wrote has left the process: a pipe can hold it back. */

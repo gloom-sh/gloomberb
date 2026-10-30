@@ -107,6 +107,23 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   expect(unquoted.failure?.details).toBe("No quote on its other listings either: CSPX:LSE.");
 });
 
+/** `quote HCI.L` said "Not a ticker: HCI.L" where `quote HCI:LSE` named the venues HCI trades on. */
+test("a symbol written with a venue's suffix that does not trade there names its venues, as SYMBOL:CODE does", async () => {
+  const names = { NYSE: "HCI Group, Inc.", IEX: "HCI Group, Inc.", JSE: "Hosken Consolidated Investments Limited" };
+  const message = "HCI does not trade on LSE. HCI trades on: NYSE, IEX, JSE.";
+  const suffixed = await runQuote(["HCI.L"], venueSource("HCI", ["NYSE", "IEX", "JSE"], {}, names));
+  const coded = await runQuote(["HCI:LSE"], venueSource("HCI", ["NYSE", "IEX", "JSE"], {}, names));
+  expect(coded.failure?.message ?? coded.warnings.join(" ")).toContain(message);
+  expect(suffixed.failure?.message ?? suffixed.warnings.join(" ")).toContain(message);
+  // A suffixed listing that does trade there keeps its quote.
+  const vodafone = createTestQuote({ symbol: "VOD.L", currency: "GBP" });
+  expect((await runQuote(["VOD.L"], venueSource("VOD", ["LSE", "NASDAQ"], { "VOD.L": vodafone }))).rows.map((row) => row.target.symbol)).toEqual(["VOD.L"]);
+  // Another one-letter suffix is as likely a US share class (McCormick's voting MKC.V): it keeps its own answer, naming no venue.
+  const mccormick = await runQuote(["MKC.V"], venueSource("MKC", ["NYSE"], {}, { NYSE: "McCormick & Company, Incorporated" }));
+  expect(mccormick.failure?.message ?? mccormick.warnings.join(" ")).not.toContain("does not trade on");
+  expect(mccormick.failure?.message ?? mccormick.warnings.join(" ")).toContain("MKC.V");
+});
+
 test("a listing whose quote request failed, rather than found none, is still one to try, under the symbol search lists it by", async () => {
   // `BARC.` is London's way to write BARC: search lists it as BARC on each venue.
   const listing = (exchange: string) => ({ providerId: "test", symbol: "BARC", name: "Barclays PLC", exchange, type: "Common Stock", currency: "GBP" });
@@ -374,7 +391,7 @@ test("a symbol whose company merged into another names it in one line and its JS
 
   // Search sends the company it merged into for the old name, naming it; the line is quote's. It is the
   // primary listing though the old company's leftover line matches the name better, and that line,
-  // linked by its name, says what it became; a namesake search cannot link stays below.
+  // linked by its name, says what it became; a namesake search cannot link stays below, as another company's.
   const former = { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20", successor: { symbol: "CMBT", name: "Cmb.Tech NV" } };
   const dataProvider = createTestDataProvider({
     search: async () => [
@@ -393,7 +410,7 @@ test("a symbol whose company merged into another names it in one line and its JS
   expect((printed[0]!.data as Array<Record<string, unknown>>).map(({ category, symbol, formerIssuer }) => ({ category, symbol, formerIssuer }))).toEqual([
     { category: "Primary Listing", symbol: "CMBT", formerIssuer: former },
     { category: "Other Listings", symbol: "GOGLC", formerIssuer: former },
-    { category: "Other Listings", symbol: "GOMH", formerIssuer: undefined },
+    { category: "Other Matches", symbol: "GOMH", formerIssuer: undefined },
   ]);
 });
 
