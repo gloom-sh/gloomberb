@@ -1,7 +1,20 @@
+import { isPredictionMarketExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
+
+/**
+ * A story's tag for a listing: the bare symbol on a US venue (or over the
+ * counter) and for a coin, the symbol and its venue elsewhere. PIK on the JSE
+ * is Pick n Pay, and bare PIK opens Kidpik on NASDAQ.
+ */
 function newsDisplayTickerSymbol(value: string | null | undefined): string | null {
   const normalized = value?.trim().toUpperCase();
   if (!normalized) return null;
-  return normalized.split(":")[0] || null;
+  const listing = parsePublicTickerKey(normalized);
+  const venue = listing.exchange ?? "";
+  if (!listing.symbol) return null;
+  if (isPredictionMarketExchange(venue)) return normalized;
+  return !venue || isUsListingExchange(venue) || venue.startsWith("OTC") || venue === "CRYPTO"
+    ? listing.symbol
+    : `${listing.symbol}:${venue}`;
 }
 
 export function collectNewsDisplayTickers(

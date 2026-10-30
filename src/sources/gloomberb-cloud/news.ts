@@ -32,9 +32,10 @@ function mapCloudNewsTickers(
   item: CloudNewsPayload,
   fallbackTicker?: string,
 ): string[] {
-  const tickers = collectNewsDisplayTickers(
-    item.tickerLinks.flatMap((link) => [link.symbol, link.canonicalTicker]),
-  );
+  // Each link's listing: its canonical key, or its symbol on its venue.
+  const tickers = collectNewsDisplayTickers(item.tickerLinks.map((link) => (
+    link.canonicalTicker || (link.symbol && link.exchange ? `${link.symbol}:${link.exchange}` : link.symbol)
+  )));
   const fallbackTickers = collectNewsDisplayTickers([fallbackTicker]);
   if (tickers.length === 0) tickers.push(...fallbackTickers);
   return tickers;

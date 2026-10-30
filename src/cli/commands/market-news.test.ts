@@ -337,3 +337,11 @@ test("a word that is also its company's name hints at the text search only when 
   expect(wordMeansMore([filed(["META"]), filed(["META", "GOOGL"]), filed([])], "META")).toBe(false);
   expect(wordMeansMore([filed([]), filed([])], "GOLD")).toBe(false);
 });
+
+test("a story's tags keep the venue of a listing outside the US, so PIK on the JSE never opens Kidpik", () => {
+  const link = (symbol: string, exchange: string) => ({ symbol, exchange, canonicalTicker: `${symbol}:${exchange}`,
+    relationType: "direct", displayTier: "primary" as const, confidence: 1, relevanceScore: 1 });
+  const tagged = mapCloudNewsArticle({ ...story("pnp", "Pick n Pay narrows its loss as Boxer grows", "2026-10-26T05:19:00.000Z"),
+    tickerLinks: [link("PIK", "XJSE"), link("BOX", "XJSE"), link("KO", "XNYS"), link("MZDAY", "OTC"), link("BTC", "CRYPTO")] });
+  expect(tagged.tickers).toEqual(["PIK:JSE", "BOX:JSE", "KO", "MZDAY", "BTC"]);
+});
