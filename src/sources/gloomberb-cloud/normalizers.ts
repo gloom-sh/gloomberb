@@ -24,6 +24,7 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { latestSettledSessionDate } from "../../utils/price-history";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
+import { sourceDidNotAnswer } from "../../api-client/errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
@@ -367,6 +368,11 @@ export function isEmptyCloudStatus(
   return status === "empty" || status === "unsupported";
 }
 
+/** The service answered that its own source failed: `retryable_error`, or `fatal_error`, its catch-all for an upstream error. */
+export function isCloudSourceFailure(status: CloudMarketResponse<unknown>["status"]): boolean {
+  return status === "retryable_error" || status === "fatal_error";
+}
+
 export function mapBatchError<T>(
   item: CloudMarketBatchItem<T>,
   fallbackMessage: string,
@@ -374,6 +380,7 @@ export function mapBatchError<T>(
   if (isEmptyCloudStatus(item.status)) {
     return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message, { notFound: item.reasonCode === NOT_FOUND_REASON });
   }
+  if (isCloudSourceFailure(item.status)) return sourceDidNotAnswer(item.reasonCode ?? fallbackMessage);
   return new Error(item.reasonCode ?? fallbackMessage);
 }
 

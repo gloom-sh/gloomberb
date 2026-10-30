@@ -48,7 +48,7 @@ import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
-import { isRetryableApiError } from "../../api-client/errors";
+import { isRetryableApiError, sourceDidNotAnswer } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import { publicListingTarget } from "../listing-target";
@@ -66,6 +66,7 @@ import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
   formatCloudDateTime,
   formatCloudHistoryEnd,
+  isCloudSourceFailure,
   isEmptyCloudStatus,
   mapBatchError,
   NOT_FOUND_REASON,
@@ -433,6 +434,8 @@ function unwrapRequiredCloudResponse<T>(response: CloudMarketResponse<T>, messag
   if (isEmptyCloudStatus(response.status)) {
     throw createProviderMiss(response.reasonCode ?? message, response.message, { notFound: response.reasonCode === NOT_FOUND_REASON });
   }
+  // The service's own source failed, asked twice (`readListing`): not an answer that the listing has nothing.
+  if (isCloudSourceFailure(response.status)) throw sourceDidNotAnswer(response.reasonCode ?? message);
   throw new Error(response.reasonCode ?? message);
 }
 
