@@ -257,8 +257,12 @@ export function mapPricePoint(
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),
+    ...(typeof point.contract === "string" && FUTURES_CONTRACT_CODE.test(point.contract) ? { contract: point.contract } : {}),
   };
 }
+
+/** A listed contract as a continuous future's bar names it: root, month letter and year (NGZ26, ZQF27). */
+const FUTURES_CONTRACT_CODE = /^[A-Z0-9]{1,4}[FGHJKMNQUVXZ]\d{2}$/;
 
 /** Per-share bases the statistics block serves beside its multiples. */
 const CLOUD_PER_SHARE_BASES = ["forwardEps", "dividendRate"] as const;

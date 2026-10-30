@@ -7,6 +7,7 @@ import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
 import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
+import { setCliWidthOverride } from "../../utils/cli-output";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
 
@@ -68,6 +69,31 @@ test("several words, quoted or not, search story text in the service's order wit
   const text = render(cli.printed[0]!);
   expect(text.split("\n")[0]).toBe('Stories matching "european gas"');
   expect(text).toContain("Goldman warns TTF could hit 105 euros");
+});
+
+/**
+ * `news ALL` on 30 Oct 2026 listed "September 2026 Monthly Release" with nothing under it: the $220M of
+ * catastrophe losses were only in the JSON summary, and no row carried an id the story pane would open.
+ */
+test("each story prints its short id and its summary on one indented line cut to the width; exports keep both whole", async () => {
+  const id = "7a2e8fda-0c4b-4c1e-9d55-2f4e8a6b1c3d";
+  const summary = "Allstate estimated September catastrophe losses at $220 million,\n\nbringing third-quarter losses to $1.65 billion.";
+  serveSearch([{ ...story(id, "September 2026 Monthly Release", "2026-10-15T11:52:00.000Z"), summary }]);
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
+  await news.execute(["catastrophe losses"], cli.context);
+  setCliWidthOverride(72);
+  try {
+    const lines = render(cli.printed[0]!).split("\n");
+    const row = lines.findIndex((line) => line.includes("September 2026 Monthly Release"));
+    expect(lines[row]).toContain("7a2e8fda");
+    expect(lines[row]).not.toContain(id);
+    expect(lines[row + 1]).toBe("  Allstate estimated September catastrophe losses at $220 million, brin…");
+  } finally {
+    setCliWidthOverride(null);
+  }
+  const csv = serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv", color: false }, cli.printed[0]!.options);
+  expect(csv).toContain(id);
+  expect((cli.printed[0]!.result.data as Array<{ summary: string }>)[0]!.summary).toBe(summary);
 });
 
 test("a search no story has every word of lists the closest stories, and says so under its heading", async () => {

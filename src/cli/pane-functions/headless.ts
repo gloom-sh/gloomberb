@@ -550,6 +550,7 @@ function renderRows(
       below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => (
         row[column.key] == null || row[column.key] === "" ? [] : cell(row, column).split("\n")
       ))),
+      ...(under.length > 0 && under.every((column) => column.underRow === "line") ? { cutBelow: true } : {}),
     },
   );
 }

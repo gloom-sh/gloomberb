@@ -68,6 +68,11 @@ export interface SecFilingItem {
    * Frankfurt reads SK hynix's). Absent on the listing's own filings.
    */
   companyFrom?: CompanyFrom;
+  /**
+   * A current report's press release (its EX-99.1), when its index names one:
+   * the page the results or the news are on, not the cover page.
+   */
+  pressReleaseUrl?: string;
 }
 
 export interface SecFilingDocument {

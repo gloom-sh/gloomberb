@@ -493,6 +493,8 @@ export interface CloudPricePointPayload {
   filled?: boolean;
   /** A future's closed session whose settlement is not confirmed yet: it closes on the last trade. */
   unsettled?: boolean;
+  /** A continuous future's calendar bar: the contract it closes on (NGZ26), where the server knows it. */
+  contract?: string;
 }
 
 type CloudEconImpact = "high" | "medium" | "low";

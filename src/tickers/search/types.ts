@@ -3,7 +3,12 @@ import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 
 export type TickerSearchInstrumentClass = "equity" | "fund" | "derivative" | "other";
-type TickerSearchCategory = "Saved" | "Primary Listing" | "Other Listings" | "Funds & Derivatives" | "Related";
+/**
+ * `Other Matches`: rows `gloom search` finds for the query that are not a listing
+ * of the primary listing's company (another company's DK, a line search names
+ * no company for), kept apart from its Other Listings.
+ */
+type TickerSearchCategory = "Saved" | "Primary Listing" | "Other Listings" | "Other Matches" | "Funds & Derivatives" | "Related";
 
 export interface TickerSearchRankableItem {
   id: string;

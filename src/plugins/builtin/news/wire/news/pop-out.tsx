@@ -7,6 +7,7 @@ import { usePaneInstance } from "../../../../../state/app/context";
 import type { PaneProps, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../../types/plugin";
 import { usePluginAppActions } from "../../../../runtime";
 import { usePersistedNewsArticles } from "../persisted-articles";
+import { storyIdMatches } from "../../../../../news/story-id";
 import { NewsDetailView } from "./detail-view";
 import { useNewsArticleFooter } from "./footer";
 
@@ -82,9 +83,10 @@ export function NewsStoryPane({ focused, width }: PaneProps) {
   const [loaded, setLoaded] = useState<NewsArticle | null>(() => handedOffStory(articleId));
   // The pane keeps a copy of its story, so a relaunch or a shared layout shows
   // it at once, including a story from an RSS feed that cannot be fetched by id.
-  const story = useMemo(() => (loaded?.id === articleId ? [loaded] : NO_STORY), [articleId, loaded]);
+  // A story opened by its short id (`fn news-story-pane 6067684e`) is the one whose id starts with it.
+  const story = useMemo(() => (loaded && storyIdMatches(loaded.id, articleId) ? [loaded] : NO_STORY), [articleId, loaded]);
   const kept = usePersistedNewsArticles("story", story);
-  const article = kept.find((entry) => entry.id === articleId) ?? null;
+  const article = kept.find((entry) => storyIdMatches(entry.id, articleId)) ?? null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

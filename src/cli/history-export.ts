@@ -21,7 +21,7 @@ export interface HistoryListRow extends HistoryRow {
 type ExportedRow = Record<string, unknown>;
 
 /** A bar's mark as an export writes it: true or false on a bar, nothing on a symbol's row with no bar. */
-function barMark(key: "partial" | "filled" | "unsettled") {
+function barMark(key: "partial" | "filled" | "unsettled" | "roll" | "thin") {
   return (row: ExportedRow) => row.date ? row[key] === true : "";
 }
 
@@ -47,6 +47,10 @@ export const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "volumeNote", header: "Volume note" },
   { key: "venueVolume", header: "Venue volume" },
   { key: "volumeVenue", header: "Volume venue" },
+  // A continuous future's contract per bar, the bar it rolled at, and a bar that traded far below those around it.
+  { key: "contract", header: "Contract" },
+  { key: "roll", header: "Roll", value: barMark("roll") },
+  { key: "thin", header: "Thin", value: barMark("thin") },
 ];
 
 /** Flags of a break before a bar, whose prices stay; every other code left the prices blank. */

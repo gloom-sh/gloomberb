@@ -238,7 +238,7 @@ export function collectShotSymbols(resolved: ResolvedPaneFunction, rawArg: strin
     }
   }
   // A text argument is a phrase, not a symbol, so it must never be looked up as one.
-  const argIsTicker = argumentNamesTicker(resolved.template, resolved.headless);
+  const argIsTicker = argumentNamesTicker(resolved.template, resolved.headless, resolved.pane);
   let symbols = resolved.createOptions?.symbols?.length
     ? resolved.createOptions.symbols
     : [

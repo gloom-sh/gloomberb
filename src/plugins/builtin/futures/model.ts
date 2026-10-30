@@ -149,7 +149,21 @@ function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: 
     || contract.name.toLowerCase().includes(normalized)
     || futuresContractName(contract, quote).toLowerCase().includes(normalized)
     || contract.symbol.toLowerCase().includes(normalized)
+    // Everyday names the board's own does not hold: natgas is Natural Gas.
+    || (contract.aliases ?? []).some((alias) => alias.includes(normalized))
   );
+}
+
+/**
+ * Why `fn FUT <text>` lists nothing, for a search no contract matches: what
+ * to type instead, never the board's own buttons ("Clear search.").
+ */
+export function futuresNoMatchFailure(query: string): { message: string; details: string } {
+  return {
+    message: `No futures contract matches "${query.trim()}".`,
+    details: "Try a code such as NG, CL or GC, or a name such as natural gas or gold: gloom fn FUT NG."
+      + " Other boards: gloom fn FUT --tab inventories, positioning or crops.",
+  };
 }
 
 export const FUTURES_RETURN_COLUMNS: Readonly<Partial<Record<FuturesColumnId, FuturesReturnHorizon>>> = {

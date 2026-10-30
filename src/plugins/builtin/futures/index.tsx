@@ -48,6 +48,7 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   FUTURES_RETURN_COLUMNS,
+  futuresNoMatchFailure,
   futuresRowId,
   type FuturesColumnId,
   type FuturesSortPreference,
@@ -255,6 +256,14 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       const now = Date.now();
       return { observations: [...listedQuotes.values()].flatMap((state) => (state.quote ? [quoteObservation(state.quote, now)] : [])) };
     },
+  } : null);
+
+  // `fn FUT natgas` with no contract to list fails with what to type instead, not the board's empty labels.
+  const noMatch = !!dataProvider && !!searchQuery.trim() && !rows.some((row) => row.type === "row");
+  useRemoteUiNode(noMatch ? {
+    role: "report-failure",
+    label: "No matching contracts",
+    getMetadata: () => futuresNoMatchFailure(searchQuery),
   } : null);
 
   const status = quoteBoardStatus(listedQuotes);

@@ -36,6 +36,7 @@ import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
@@ -133,8 +134,8 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    return withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote)
-      .slice(0, totalLimit);
+    const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote);
+    return withOtherCompaniesApart(ordered).slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -344,6 +345,28 @@ function withQuotedNames(symbol: string, candidates: TickerSearchCandidate[], qu
     const [, ...rest] = candidate.detail.split(" | ");
     return { ...candidate, detail: [name, ...rest].join(" | "), ...candidate.result ? { result: { ...candidate.result, name } } : {} };
   });
+}
+
+/**
+ * Other Listings are the primary listing's company's own lines alone: by its
+ * name, or a name it had (Cassava Sciences for Filana's FLNA). Another
+ * company's line, or one search names no company for (DKC1O on BYMA under
+ * `search DK`), is an Other Match, listed after them.
+ */
+function withOtherCompaniesApart(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+  const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
+  if (!primary) return candidates;
+  const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
+  const ownLine = (candidate: TickerSearchCandidate) => {
+    const name = resolveSearchName(candidate);
+    return !isLowQualityTickerName(name, candidate.symbol) && names.some((company) => sameCompany(name, company));
+  };
+  const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
+  if (others.length === 0) return candidates;
+  const kept = candidates.filter((candidate) => !others.includes(candidate));
+  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings") + 1;
+  const apart = others.map((candidate) => ({ ...candidate, category: "Other Matches" as const }));
+  return [...kept.slice(0, at), ...apart, ...kept.slice(at)];
 }
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */

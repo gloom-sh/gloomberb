@@ -996,6 +996,8 @@ export interface PricePoint {
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
   unsettled?: boolean;
+  /** A continuous future's bar (NG=F): the contract it closes on (NGZ26). A change from the bar before is a roll. */
+  contract?: string;
 }
 
 export interface StatementHistoryAttempt {

@@ -209,9 +209,10 @@ export interface HeadlessPaneColumn {
   /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
-   * prints nothing. Exports keep it as a column.
+   * prints nothing. Exports keep it as a column. `"line"`: one line cut to
+   * the width, never wrapped (a story's summary under its headline).
    */
-  underRow?: boolean;
+  underRow?: boolean | "line";
 }
 
 export interface HeadlessPaneEntry {
