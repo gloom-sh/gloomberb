@@ -152,6 +152,8 @@ export interface DividendData {
   payments: DividendPayment[];
   /** The currency the company declares in, when its amounts here are converted from it (declaredCurrencyOf). */
   convertedFrom?: string;
+  /** Beside convertedFrom, the sub-unit the source states the cash in (GBp, ZAc): converted amounts are written in it. */
+  convertedSubUnit?: string;
   /** Declared and unpaid, in `currency`; never in `payments` or any figure. Absent from older servers. */
   declared?: DeclaredDividendAction[];
   metrics: DividendMetrics;
@@ -206,6 +208,8 @@ export async function fetchDividendData(
   }
   const declaredCash = cashCurrency ? declaredCashByExDate(actions?.declaredCash, cashCurrency) : new Map();
   const convertedFrom = cashCurrency ? declaredCurrencyOf(actions?.declaredCash, cashCurrency) : undefined;
+  const sourceUnit = sourceActions?.currency;
+  const convertedSubUnit = convertedFrom && sourceUnit && resolveCurrencyUnit(sourceUnit).divisor !== 1 ? sourceUnit : undefined;
   const payments = actions && cashCurrency ? actions.dividends.flatMap(action => {
     const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     const declared = declaredCash.get(action.exDate);
@@ -229,7 +233,7 @@ export async function fetchDividendData(
     throw new Error(`No dividend data found for ${symbol}`);
   }
   return {
-    payments, ...(declared.length > 0 ? { declared } : {}), ...(convertedFrom ? { convertedFrom } : {}), metrics, price, currency: currency || undefined, historyAvailable,
+    payments, ...(declared.length > 0 ? { declared } : {}), ...(convertedFrom ? { convertedFrom } : {}), ...(convertedSubUnit ? { convertedSubUnit } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
     ...(statedFields && metrics.forwardRate != null ? { forwardFromFundamentals: true } : {}),

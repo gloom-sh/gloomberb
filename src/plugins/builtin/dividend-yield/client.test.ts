@@ -168,7 +168,7 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
   });
 
-  test("a London line of a dollar payer shows each declared amount beside its pence, and a kept history is dated", async () => {
+  test("a London line of a dollar payer keeps its pence to two decimals beside each declared amount, and a kept history is dated", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "BP", currency: "GBp", stale: true, fetchedAt: "2026-10-27T03:00:00.000Z", dividendsAsOf: "2026-10-20T02:31:00.000Z",
       coverage: { dividends: "available" }, splits: [], earnings: [],
@@ -189,9 +189,14 @@ describe("cash distribution calculations", () => {
     expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);
     expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
     expect(result.metadata).toMatchObject({ convertedFrom: "USD" });
+    // Pence stay pence: 6.4059p reads 6.41p, never £0.06.
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} }, "DVD");
+    expect(text).toMatch(/2026-08-13 +6\.41p +\$0\.0867 +GBP/);
+    expect(text).toMatch(/Trailing rate +12\.59p \(converted from USD\)/);
+    expect(text).not.toContain("£0.06");
   });
 
-  test("a rand line of a dollar payer rounds its amounts to the cent and says they are converted from USD, even with no declared row beside them", async () => {
+  test("a rand line of a dollar payer rounds its cents to two decimals and says they are converted from USD, even with no declared row beside them", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "S32", currency: "ZAc", fetchedAt: "2026-10-29T18:39:54.600Z", coverage: { dividends: "available" }, splits: [], earnings: [],
       dividends: [{ exDate: "2026-03-04", amount: 62.2114 }, { exDate: "2026-09-16", amount: 86.6087 }],
@@ -202,9 +207,9 @@ describe("cash distribution calculations", () => {
     const request = { rawArgument: "S32:JSE", argument: "S32:JSE", symbols: ["S32:JSE"], options: {} };
     const result = projectDividendYieldHeadless(data, request);
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
-    expect(text).toMatch(/Trailing rate +ZAR\s1\.49 \(converted from USD\)/);
+    expect(text).toMatch(/Trailing rate +148\.82c \(converted from USD\)/);
     expect(text).toContain("Dividend history (amounts converted from USD)");
-    expect(text).toMatch(/2026-09-16 +ZAR\s0\.87 +ZAR +cash/);
+    expect(text).toMatch(/2026-09-16 +86\.61c +ZAR +cash/);
     expect(text).not.toContain("0.866087");
     // The exports keep the amount as read.
     expect(result.sections[1]!.rows![0]).toMatchObject({ amount: 0.866087, currency: "ZAR" });

@@ -36,9 +36,9 @@ const RANKING_CONCURRENCY = MAX_RANKED_SYMBOLS;
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
 
-/** The history's columns; amounts converted from the currency the company declares in keep their currency's decimals. */
-function paymentColumns(converted: boolean) {
-  const amount = converted ? formatConvertedAmount : formatDistributionAmount;
+/** The history's columns; amounts converted from the currency the company declares in go to two decimals of their source's unit. */
+function paymentColumns(converted: boolean, subUnit?: string) {
+  const amount = converted ? (value: number, currency: string) => formatConvertedAmount(value, currency, subUnit) : formatDistributionAmount;
   return [
     { key: "exDate", header: "Ex-date" },
     { key: "amount", header: "Amount", align: "right" as const,
@@ -158,13 +158,14 @@ export function projectDividendYieldHeadless(
   });
   // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.
   const convertedFrom = data.convertedFrom;
-  const paymentColumnList = paymentColumns(!!convertedFrom);
+  const subUnit = data.convertedSubUnit;
+  const paymentColumnList = paymentColumns(!!convertedFrom, subUnit);
   const declaredColumns = rows.some((row) => row.declared)
     ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList;
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
   const cashRate = (value: number | null) => !currency ? "—" : !convertedFrom ? formatDistributionAmount(value ?? undefined, currency)
-    : value == null ? formatConvertedAmount(value, currency) : `${formatConvertedAmount(value, currency)} (${convertedFromText(convertedFrom)})`;
+    : value == null ? formatConvertedAmount(value, currency) : `${formatConvertedAmount(value, currency, subUnit)} (${convertedFromText(convertedFrom)})`;
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
   // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
   const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });

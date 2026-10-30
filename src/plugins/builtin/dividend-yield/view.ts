@@ -1,6 +1,7 @@
 import type { DividendPayment, GrowthPayments } from "./types";
 import { formatCurrency } from "../../../utils/format";
 import { currencyMinorDigits } from "../../../market-data/market/format";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
@@ -10,11 +11,17 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /**
  * A cash amount the listing pays as a conversion of the currency its company
- * declares in (`DividendData.convertedFrom`): to its currency's decimals
- * (ZAR 0.87, not ZAR 0.866087), as the conversion gives it no more.
+ * declares in (`DividendData.convertedFrom`), to two decimals of the unit its
+ * source states it in: pence stay pence (BP's 6.4059p is `6.41p`, never
+ * `£0.06`), and a major unit keeps its currency's decimals (`ZAR 0.87`, not
+ * `ZAR 0.866087`), as the conversion gives it no more.
  */
-export function formatConvertedAmount(value: number | null | undefined, currency: string): string {
-  return value == null || !Number.isFinite(value) ? "—" : formatCurrency(value, currency, currencyMinorDigits(currency));
+export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
+  return unit && unit.divisor !== 1 && unit.currency === currency
+    ? formatCurrency(value * unit.divisor, subUnit!, 2)
+    : formatCurrency(value, currency, currencyMinorDigits(currency));
 }
 
 /** What a converted amount says beside it: `converted from USD`. */
