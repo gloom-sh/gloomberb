@@ -654,7 +654,7 @@ async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext
  * `--exchange TSX`: every ticker series that names no venue, on that one, as
  * `BDI:TSX` would be. A code the app does not know fails before any request.
  */
-export function onExchange(spec: ChartSpec, exchange: string): ChartSpec {
+function onExchange(spec: ChartSpec, exchange: string): ChartSpec {
   const code = exchange.trim().toUpperCase();
   if (!isKnownExchangeCode(code)) throw new Error(`Unknown exchange "${exchange.trim()}". Write a venue code such as TSX, LSE or XETRA, or name it in the series: BDI:TSX.`);
   return { ...spec, series: spec.series.map((series) => series.source.kind !== "security" || series.source.instrument.exchange || series.source.instrument.instrument
