@@ -70,6 +70,10 @@ static ULONG64 g_pages[MAX_PAGES];
 static volatile LONG g_page_state[MAX_PAGES]; // 0 executable, 1 released by a recorded call, 2 reported
 static ULONG64 g_page_seen[MAX_PAGES];
 static volatile LONG g_page_count = 0;
+// Where Bun 1.3.13 (the build Electrobun 1.18.1 ships) returns to after
+// compiling a JSCallback; only those pages are watched when it is found.
+#define COMPILE_CALLBACK_RETURN 0x11629efULL
+static ULONG64 g_callback_return = 0;
 
 #define EXEC_MASK (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)
 
@@ -125,8 +129,18 @@ static __declspec(noinline) void record_call(char kind, char other, NTSTATUS sta
   InterlockedExchange(&c->state, 1);
 }
 
+static __declspec(noinline) int from_compile_callback(void) {
+  if (!g_callback_return) return 1;
+  ULONG64 sp = (ULONG64)_AddressOfReturnAddress();
+  ULONG64 top = __readgsqword(0x08);
+  for (int n = 0; n < 160 && sp + 8 <= top; ++n, sp += 8) {
+    if (*(ULONG64*)sp == g_callback_return) return 1;
+  }
+  return 0;
+}
+
 static void add_page(ULONG64 base, ULONG64 size) {
-  if (size != 0x1000) return;
+  if (size != 0x1000 || !from_compile_callback()) return;
   LONG n = g_page_count;
   for (LONG i = 0; i < n && i < MAX_PAGES; ++i) {
     if (g_pages[i] == base) { g_page_seen[i] = *(volatile ULONG64*)0x7FFE0008; InterlockedExchange(&g_page_state[i], 0); return; }
@@ -235,6 +249,12 @@ static void* hook_stub(HMODULE ntdll, const char* name, void* hook, unsigned cha
 static void install_hooks(void) {
   HMODULE ntdll = GetModuleHandleA("ntdll.dll");
   if (!ntdll) return;
+  HMODULE exe = GetModuleHandleA(NULL);
+  MODULEINFO mi;
+  // Only the build whose offset is known.
+  if (exe && K32GetModuleInformation(GetCurrentProcess(), exe, &mi, sizeof(mi)) && mi.SizeOfImage == 0x7127000) {
+    g_callback_return = (ULONG64)exe + COMPILE_CALLBACK_RETURN;
+  }
   unsigned char* page = (unsigned char*)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
   if (!page) return;
   // The trampolines' own page is never watched: allocate it before the hooks.
@@ -372,7 +392,7 @@ static DWORD WINAPI watch_pages(LPVOID unused) {
         write_out(line, p);
       }
     }
-    Sleep(1);
+    Sleep(5);
   }
   return 0;
 }

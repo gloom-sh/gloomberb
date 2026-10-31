@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [copy-recorder-1, copy-recorder-2, copy-recorder-3, copy-recorder-4, stop-only-recorder-1]
+        variant: [copy-recorder-1, copy-recorder-2, copy-recorder-3, copy-recorder-4, copy-recorder-5, copy-recorder-6]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
           $Arguments = @{
             Installer = (Resolve-Path installer/stable-win-x64-GloomSetup.exe).Path
             Label = $Variant
-            Launches = 15
+            Launches = 25
             Copy = $Variant.StartsWith("copy")
           }
           if ($Variant -like "*recorder*") {
