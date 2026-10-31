@@ -2238,7 +2238,7 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - Anyone can read it, signed in or not.
 - Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
 - A vote that did not go through says so on its row, and the item's detail says why.
-- The Changelog tab shows the release notes as `CHG` does. `h` and `l` switch between the tabs, and each keeps its place.
+- The roadmap is the Features tab; the Changelog tab beside it shows the release notes as `CHG` does. `h` and `l` switch between the tabs, and each keeps its place.
 
 ## Localized interface
 

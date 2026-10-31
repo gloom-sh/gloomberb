@@ -246,9 +246,12 @@ function RoadmapView({ focused, width, height }: PaneProps) {
   );
 }
 
-/** What is coming and what came: the roadmap, and the Changelog as CHG shows it. */
+/**
+ * What is coming and what came: the roadmap's features, and the Changelog as
+ * CHG shows it. The first tab is not "Roadmap", which the title already says.
+ */
 const VIEWS = [
-  { value: "roadmap", label: "Roadmap" },
+  { value: "roadmap", label: "Features" },
   { value: "changelog", label: "Changelog" },
 ] as const;
 type ViewId = (typeof VIEWS)[number]["value"];

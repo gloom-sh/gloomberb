@@ -310,14 +310,14 @@ test("ROADMAP opens on the roadmap; the Changelog tab lists the releases, and sw
   signedIn("pro");
   const votes: Array<[string, boolean]> = [];
   let frame = await render(client({ items: ITEMS, canVote: true }, votes));
-  expect(lines(frame)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(lines(frame)[0]).toMatch(/Features\s+Changelog/);
   expect(chatRow(frame)).toMatch(/\b7\b/);
   frame = await press("v");
   expect(chatRow(frame)).toMatch(/✓ 8\b/);
 
   const reads = releaseReads;
   frame = await press("l");
-  expect(lines(frame)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(lines(frame)[0]).toMatch(/Features\s+Changelog/);
   expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\s+TITLE/);
   expect(lines(frame).find((line) => line.includes("v0.19.1"))).toMatch(/Oct 29, 2026\s+v0\.19\.1\s+Roadmap and votes/);
   expect(lines(frame).find((line) => line.includes("v0.19.0"))).toMatch(/Oct 22, 2026\s+v0\.19\.0\s+Faster charts/);
@@ -358,9 +358,9 @@ test("the Changelog view draws what CHG draws, row for row, a release's notes to
   await settle();
   const notesAlone = tui.frame();
 
-  expect(lines(inRoadmap)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(lines(inRoadmap)[0]).toMatch(/Features\s+Changelog/);
   expect(lines(inRoadmap).slice(1)).toEqual(lines(alone));
   expect(lines(notesInRoadmap).slice(1)).toEqual(lines(notesAlone));
-  expect(alone).not.toMatch(/Roadmap\s+Changelog/);
+  expect(alone).not.toMatch(/Features\s+Changelog/);
   expect(releaseReads).toBe(reads);
 });
