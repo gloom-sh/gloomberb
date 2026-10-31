@@ -738,6 +738,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 - `/` searches company names in either script, tickers, markets, countries, status and the region's name. The word `pending` lists deals not priced yet. `IPO japan` opens the pane on that search, as `gloom fn IPO japan` reads it.
 - DATE is the listing date in the venue's calendar, dimmed while expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence). SIZE is the money raised in US dollars. RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker once it has one.
 - `gloom fn IPO --region apac --status upcoming --json` returns the same deals. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
+- An [IPO alert](#filing-event-alerts) follows a company or keyword on this calendar: `gloom alerts add ipo Stripe`, or **Add Event Alert**.
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
 
@@ -824,6 +825,11 @@ An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or 30-day
 - The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloom alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
 - Readings stay on the device and only a rule going off or changing is synced. Gloom Cloud does not check these, so they reach no phone.
 
+An **IPO** alert follows a company or keyword on the IPO calendar (`IPO`), worldwide and with no symbol: `Stripe`, or a word such as `therapeutics`. It matches a deal whose name, in either script, or ticker contains it, in any case.
+
+- Gloom Cloud sends it once per deal at each step: on the calendar, dated (the first listing date, expected or confirmed), priced, and trading. A deal that arrives already dated or priced sends one alert, for where it stands.
+- Only steps reached after you set the rule count. A postponed or withdrawn deal sends nothing.
+
 From the shell, `gloom alerts add` takes every rule **Add Event Alert** offers:
 
 ```bash
@@ -839,6 +845,7 @@ gloom alerts add TSLA insider sell         # insider alone: buys or sells
 gloom alerts add GME short interest increase 20%
 gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
 gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
+gloom alerts add ipo Stripe                # a company or keyword on the IPO calendar
 gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium; the market id keeps its case (kPEPE)
 gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
 gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
@@ -862,6 +869,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 | a Congress rule | `CG` |
 | a 13F rule | `13F` on the fund |
 | a news keyword with no symbol | `SRCH` on the keyword |
+| an IPO | `IPO` searched for its company or keyword |
 | options flow on your lists | `FLOW` |
 | breaking news with no symbol | `FIRST` |
 

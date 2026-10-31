@@ -16,14 +16,22 @@ export const IV_LEVEL_ALERTS_KEY = "ivLevelAlerts";
  * every version reads.
  */
 export const CALENDAR_ALERTS_KEY = "calendarAlerts";
+/**
+ * IPO rules, kept apart for the same reason. Gloom Cloud checks them, so it
+ * reads this list beside `eventAlerts`.
+ */
+export const IPO_ALERTS_KEY = "ipoAlerts";
 export const MAX_EVENT_ALERTS = 40;
 
 /** The config key a rule is kept under. */
 export const eventAlertStoreKey = (rule: Pick<EventAlertRule, "kind">) =>
-  rule.kind === "iv_level" ? IV_LEVEL_ALERTS_KEY : rule.kind === "calendar_event" ? CALENDAR_ALERTS_KEY : EVENT_ALERTS_KEY;
+  rule.kind === "iv_level" ? IV_LEVEL_ALERTS_KEY
+    : rule.kind === "calendar_event" ? CALENDAR_ALERTS_KEY
+      : rule.kind === "ipo" ? IPO_ALERTS_KEY
+        : EVENT_ALERTS_KEY;
 
 /** Every config key event alerts are kept under. */
-export const EVENT_ALERT_STORE_KEYS = [EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY, CALENDAR_ALERTS_KEY] as const;
+export const EVENT_ALERT_STORE_KEYS = [EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY, CALENDAR_ALERTS_KEY, IPO_ALERTS_KEY] as const;
 type EventAlertStoreKey = (typeof EVENT_ALERT_STORE_KEYS)[number];
 
 export interface EventAlertRule {

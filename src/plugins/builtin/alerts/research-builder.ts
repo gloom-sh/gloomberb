@@ -6,7 +6,7 @@ import type { EventAlertRule } from "./events";
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
 /** CPI and FOMC and any other calendar release are one kind of alert to the reader, whichever list keeps the rule. */
 export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
-  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", calendar_event: "Macro event", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move",
+  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", calendar_event: "Macro event", ipo: "IPO", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move",
 };
 /** What an IV level rule follows, as the form, a list and a notification name it. */
 export const IV_LEVEL_NAMES: Record<IvLevelMetric, string> = { atm: "30d ATM IV", rr: "30d 25D RR" };
@@ -46,6 +46,8 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
     : kind === "macro_event" ? [{key:"event", label:"Release", type:"select", defaultValue:"cpi", options:MACRO_ALERT_EVENTS.map((value) => ({value, label:MACRO_EVENT_NAMES[value]}))}]
     // HIRE covers listings worldwide; a non-US one is written with its venue.
     : kind === "hiring_move" ? [{key:"symbol", label:"Symbol", type:"text", placeholder:"RIVN or ADYEN:AMS", required:true}]
+    // A deal on the IPO calendar has no listing to name yet: it is followed by its name.
+    : kind === "ipo" ? [{key:"keyword", label:"Company or keyword", type:"text", placeholder:"Stripe", required:true}]
     : [{key:"symbol",label:kind === "news_keyword" ? "Symbol (optional)" : kind === "options_flow" ? "Symbol (blank: portfolio and watchlists)" : "Symbol",type:"text",placeholder:"AAPL", required:kind !== "news_keyword" && kind !== "options_flow"},
       {key:"exchange",label:"US exchange",type:"select",defaultValue:"US",options:choices(["US","NASDAQ","NYSE","ARCA","AMEX","BATS","OTC"])}];
   if (kind === "earnings_date") {
@@ -92,6 +94,7 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
   if (!value) throw new Error(kind === "options_flow"
     ? "Check the symbol and US exchange. The minimum premium is $50,000."
     : kind === "hiring_move" ? "Check the symbol. Write a non-US listing with its exchange, as ADYEN:AMS."
+    : kind === "ipo" ? "Name a company or keyword of 2 to 80 characters, such as Stripe."
     : kind === "iv_level"
       ? "Check the symbol and US exchange. An ATM IV level is 1 to 500 (%), a risk reversal -50 to 50 (vol pts)."
       : kind === "iv_spike"
@@ -142,6 +145,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
     case "news_keyword": return `${symbol} · ${config.keyword}`;
     case "analyst_change": case "insider_trade": return `${symbol} · ${config.direction}`;
     case "hiring_move": return `${symbol} · ${config.direction === "either" ? "accelerating or slowing" : config.direction}`;
+    case "ipo": return config.keyword ?? "";
     case "fifty_two_week": return `${symbol} · 52w ${config.direction}`;
     case "unusual_volume": return `${symbol} · ≥${config.threshold}× 20d`;
     case "short_interest_change": return `${symbol} · ${config.direction} ≥${config.threshold}%`;
