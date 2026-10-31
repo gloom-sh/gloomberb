@@ -84,6 +84,7 @@ export function CompanyLogo({
       alignItems="center"
       justifyContent="center"
       objectFit="contain"
+      fallbackWhileLoading
       style={{
         width: cellWidthPx * width,
         height: cellHeightPx * height,
@@ -91,7 +92,7 @@ export function CompanyLogo({
         ...style,
       }}
     >
-      {/* Without a logo the initial fills the same tile, so the header keeps its shape. */}
+      {/* Without a logo, or until it loads, the initial fills the same tile, so the header keeps its shape. */}
       <Box width="100%" height="100%" bg={colors.border} alignItems="center" justifyContent="center">
         <Text
           fg={colors.text}
