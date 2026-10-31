@@ -1,3 +1,4 @@
+import { asciiText, localeReadsUtf8 } from "./ascii-text";
 type CliAlign = "left" | "right" | "center";
 
 export interface CliTableColumn {
@@ -79,6 +80,8 @@ let widthOverride: number | null = null;
 const MIN_COLUMNS_VARIABLE = 20;
 const MAX_COLUMNS_VARIABLE = 1000;
 let plainOverride: boolean | null = null;
+/** Whether the terminal reads only ASCII (`localeReadsUtf8`); undefined until first asked. */
+let asciiLocale: boolean | undefined;
 /** Output is being rendered for a file (`renderForFile`), which has no terminal width. */
 let renderingForFile = false;
 
@@ -148,6 +151,23 @@ export function cliPlainEnabled(): boolean {
   return plainOverride === true;
 }
 
+/** Tests say whether the terminal reads only ASCII; null asks the environment again. */
+export function setCliAsciiLocaleOverride(value: boolean | null): void {
+  asciiLocale = value ?? undefined;
+}
+
+/**
+ * Plain output to a terminal that cannot show UTF-8 (a C locale, a Windows
+ * code page such as 437): it is written in ASCII (`asciiText`), so a dash, a
+ * euro or a cent sign does not print as `â€”`. Output rendered for a file
+ * keeps its UTF-8.
+ */
+export function cliAsciiEnabled(): boolean {
+  if (plainOverride !== true || renderingForFile) return false;
+  asciiLocale ??= !localeReadsUtf8();
+  return asciiLocale;
+}
+
 /**
  * Whether output is plain without `--plain` or `--no-plain`: NO_COLOR is set
  * to a value (an empty one is unset, as the convention says), or stdout is
@@ -190,14 +210,20 @@ export function plainWords(text: string): string {
 }
 
 /** A table header's sort mark in words: `MKT VAL ▼` is "MKT VAL (sorted descending)". */
-function plainHeader(header: string): string {
+function plainHeader(header: string, ascii: boolean): string {
   const sorted = header.replace(/\s*([▲▼])\s*$/, (_match, mark: string) => ` (sorted ${mark === "▲" ? "ascending" : "descending"})`);
-  return plainWords(sorted.trimStart());
+  const worded = plainWords(sorted.trimStart());
+  return ascii ? asciiText(worded) : worded;
 }
 
-/** A plain table's cell: arrows in words, and "—" for no value. */
-function plainCell(cell: string): string {
-  return EMPTY_CELL.test(stripAnsi(cell).trim()) ? PLAIN_EMPTY_CELL : plainWords(cell);
+/**
+ * A plain table's cell: arrows in words, and "—" for no value. In ASCII
+ * (`cliAsciiEnabled`) before the columns are measured, so `EUR211.25` lines
+ * up as `€211.25` did.
+ */
+function plainCell(cell: string, ascii: boolean): string {
+  const plain = EMPTY_CELL.test(stripAnsi(cell).trim()) ? PLAIN_EMPTY_CELL : plainWords(cell);
+  return ascii ? asciiText(plain) : plain;
 }
 
 function applyAnsi(text: string, code: string): string {
@@ -684,9 +710,10 @@ function renderTableLayout(
  */
 export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
   if (cliPlainEnabled()) {
-    columns = columns.map((column) => ({ ...column, header: plainHeader(column.header) }));
-    rows = rows.map((row) => columns.map((_, index) => plainCell(row[index] ?? "")));
-    if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map(plainWords)) };
+    const ascii = cliAsciiEnabled();
+    columns = columns.map((column) => ({ ...column, header: plainHeader(column.header, ascii) }));
+    rows = rows.map((row) => columns.map((_, index) => plainCell(row[index] ?? "", ascii)));
+    if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map((line) => ascii ? asciiText(plainWords(line)) : plainWords(line))) };
   }
   const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
   const available = maxWidth == null ? null : maxWidth - (options.indent ?? 0);

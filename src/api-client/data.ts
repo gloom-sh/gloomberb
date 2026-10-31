@@ -53,7 +53,7 @@ import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
 import { LIVE_SCAN_PATH, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
 import { signalWithTimeout } from "../utils/async-deadline";
-import { ApiRequestError } from "./errors";
+import { ApiRequestError, isRetryableApiError, markAskedTwice } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
@@ -204,8 +204,53 @@ function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBa
   return answers;
 }
 
+/** How long a listing read waits before asking again after the service said its source failed. */
+const LISTING_RETRY_DELAY_MS = 400;
+
+/**
+ * Whether a failed listing read is asked again: the service answered that its
+ * own source failed (`retryable_error`, or the catch-all `fatal_error`, with no
+ * data), or failed with a 5xx or a timeout. A rate limit is never asked again,
+ * whatever wait it names: asking again is more of what it refused. An answer of
+ * no data, a refusal, and a request that never reached the service
+ * (`DataServiceUnreachableError`) are not asked again either.
+ */
+function isListingReadRetried(outcome: { response: CloudMarketResponse<unknown> } | { error: unknown }): boolean {
+  if ("response" in outcome) {
+    const { status, data } = outcome.response ?? {};
+    return (status === "retryable_error" || status === "fatal_error") && data == null;
+  }
+  return isRetryableApiError(outcome.error) && (outcome.error as ApiRequestError).status !== 429;
+}
+
 export class CloudDataApi {
-  constructor(private readonly request: CloudApiRequest) {}
+  constructor(
+    private readonly request: CloudApiRequest,
+    /** The wait before a failed listing read is asked again (`readListing`); tests set 0. */
+    private readonly listingRetryDelayMs = LISTING_RETRY_DELAY_MS,
+  ) {}
+
+  /**
+   * A listing's quote, history or financials, asked again once when the
+   * service failed to answer it (`isListingReadRetried`): its source blinks for a
+   * few minutes at a time, and a known listing then read as one no source
+   * covers. A caller's abort stops the second ask.
+   */
+  private async readListing<T>(read: () => Promise<CloudMarketResponse<T>>, signal?: AbortSignal): Promise<CloudMarketResponse<T>> {
+    const first = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
+    const settle = () => {
+      if ("error" in first) throw first.error;
+      return first.response;
+    };
+    if (!isListingReadRetried(first) || signal?.aborted) return settle();
+    if (this.listingRetryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.listingRetryDelayMs));
+    if (signal?.aborted) return settle();
+    const second = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
+    // Failing the same way twice, the service did not answer it (`markAskedTwice`).
+    if (isListingReadRetried(second)) markAskedTwice("error" in second ? second.error : second.response);
+    if ("error" in second) throw second.error;
+    return second.response;
+  }
 
   private requestMarketSymbol<T>(
     path: string,
@@ -315,7 +360,7 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudQuotePayload>> {
-    return this.requestMarketSymbol("/market/quote", symbol, exchange);
+    return this.readListing(() => this.requestMarketSymbol("/market/quote", symbol, exchange));
   }
 
   async getCloudQuotesBatch(
@@ -323,7 +368,7 @@ export class CloudDataApi {
     mode: "cache-first" | "refresh" = "cache-first",
     options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
-    return this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal);
+    return this.readListing(() => this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal), options.signal);
   }
 
   async getCloudWorldVenues(): Promise<
@@ -400,14 +445,14 @@ export class CloudDataApi {
     statementHistory?: "extended",
   ): Promise<CloudMarketResponse<CloudFinancialsPayload>> {
     const path = cloudMarketSymbolPath("/market/financials", symbol, exchange);
-    return this.request(statementHistory === "extended" ? `${path}&statementHistory=extended` : path);
+    return this.readListing(() => this.request(statementHistory === "extended" ? `${path}&statementHistory=extended` : path));
   }
 
   async getCloudFinancialsBatch(
     targets: CloudMarketBatchTarget[],
     mode: "cache-first" | "refresh" = "cache-first",
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudFinancialsPayload>>> {
-    return this.postMarketBatch("/market/financials/batch", targets, mode);
+    return this.readListing(() => this.postMarketBatch("/market/financials/batch", targets, mode));
   }
 
   async getCloudHolders(
@@ -520,10 +565,10 @@ export class CloudDataApi {
     params: CloudHistoryParams = {},
     options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    return this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
+    return this.readListing(() => this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
       cloudHistoryPath(symbol, exchange, params),
       options.signal ? { signal: options.signal } : undefined,
-    );
+    ), options.signal);
   }
 
   async getCloudExchangeRate(

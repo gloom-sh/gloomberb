@@ -1,10 +1,10 @@
 import type { AppPersistence } from "../data/app-persistence";
-import { ApiRequestError } from "../api-client/errors";
+import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
-import { isProviderBusy, isSourceFailure, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
+import { isProviderBusy, isSourceFailure, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE, serviceDidNotAnswerMessage } from "../sources/provider-errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 
 const USAGE_PREFIX = "Usage: ";
@@ -126,6 +126,10 @@ function cliErrorObject(error: unknown): CliErrorObject {
   // A source failed (a timeout, a rate limit) where none had the data to answer: asked again it may.
   if (isSourceFailure(error)) {
     return { code: SOURCE_UNAVAILABLE_CODE, message: error instanceof Error ? error.message : String(error), retryable: true };
+  }
+  // A listing read the data service failed to answer twice: said in Gloom's words. Any other 5xx keeps the server's.
+  if (wasAskedTwice(error)) {
+    return { code: SOURCE_UNAVAILABLE_CODE, message: serviceDidNotAnswerMessage(), retryable: true };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {

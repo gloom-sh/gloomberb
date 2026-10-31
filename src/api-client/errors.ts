@@ -75,6 +75,26 @@ export function sourceDidNotAnswer(message: string): ApiRequestError {
   return new ApiRequestError(message, undefined, undefined, "retryable_error");
 }
 
+// Registered, so a mark set by another copy of this module is still read.
+const ASKED_TWICE = Symbol.for("gloomberb.listingReadAskedTwice");
+
+/**
+ * Marks a listing read's failure, or its failed answer, as the second of two
+ * asks (`CloudDataApi.readListing`). Only such a failure is said to be the data
+ * service not answering; any other 5xx keeps the server's own words.
+ */
+export function markAskedTwice<T>(value: T): T {
+  if (value && typeof value === "object" && Object.isExtensible(value) && !wasAskedTwice(value)) {
+    Object.defineProperty(value, ASKED_TWICE, { value: true });
+  }
+  return value;
+}
+
+/** Whether a failure, or a failed answer, came from a listing read asked twice (`markAskedTwice`). */
+export function wasAskedTwice(value: unknown): boolean {
+  return !!value && typeof value === "object" && (value as Record<symbol, unknown>)[ASKED_TWICE] === true;
+}
+
 /** Codes of a connection that dropped or stalled after it opened: Node's and the system's, then Bun's. */
 const INTERRUPTED_CODES = new Set(["ECONNRESET", "ECONNABORTED", "EPIPE", "ETIMEDOUT", "ConnectionClosed"]);
 

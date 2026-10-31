@@ -481,7 +481,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
   const search = takeOption(rawArgs, "--search")?.trim() ?? null;
-  if (search === "") ctx.fail("--search needs the words of an event's name.", "Such as econ --search nonfarm.");
+  if (search === "") ctx.fail("--search needs the words of an event's name or its publisher.", "Such as econ --search nonfarm.");
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   const tzOption = takeOption(rawArgs, "--tz");
   const viewerZone = tzOption == null ? null : canonicalTimeZone(tzOption);
@@ -976,7 +976,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--search <words>", description: "Events whose name has these words, case, spaces and hyphens aside, such as nonfarm or fed funds" },
+        { flags: "--search <words>", description: "Events whose name or publisher has these words, case, spaces and hyphens aside, such as nonfarm, fed funds or USDA" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],

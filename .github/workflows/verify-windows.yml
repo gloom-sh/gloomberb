@@ -34,6 +34,11 @@ jobs:
             throw "Missing standalone Windows CLI archive"
           }
 
+      # Windows PowerShell 5.1, as `irm https://gloom.sh/install.ps1 | iex` runs in a stock terminal.
+      - name: Test the PowerShell install script
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/install.test.ps1
+
   desktop:
     runs-on: windows-latest
     steps:

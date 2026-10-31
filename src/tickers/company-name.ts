@@ -204,6 +204,25 @@ export function groupByCompany<T>(
   return groups;
 }
 
+/**
+ * A one-letter code a venue pads onto the end of a name after a run of
+ * spaces: the `R` of "Americold Realty Trust Inc.   R". A longer word there
+ * (`AG`, `ASA`) is the name's own.
+ */
+const STRAY_NAME_TAIL = /\s{2,}[A-Za-z0-9]$/;
+
+/**
+ * A listing's name as a venue's file writes it, without the stray fragment a
+ * fixed-width file leaves after a run of spaces ("Americold Realty Trust
+ * Inc.   R" on Hanover is "Americold Realty Trust Inc."), and with its spaces
+ * single. A name that is only the fragment keeps it.
+ */
+export function cleanListingName(name: string): string {
+  const trimmed = name.trim();
+  const cut = trimmed.replace(STRAY_NAME_TAIL, "");
+  return (cut || trimmed).replace(/\s+/g, " ");
+}
+
 /** A company's name without its legal form, for sentences: "Avis Budget Group, Inc." is "Avis Budget Group". */
 export function shortCompanyName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);

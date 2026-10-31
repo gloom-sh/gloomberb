@@ -5,6 +5,8 @@ import type { FuturesContract } from "../../../market-data/futures-board";
 import { createTtlCache } from "../../../data/ttl-cache";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
 import { logFailure } from "../../../utils/log-failure";
+import { coalescedBump } from "./coalesced-bump";
+import { boardRead } from "./board-reads";
 
 interface FuturesTermsState {
   /** The row's terms are still being asked for. */
@@ -23,8 +25,6 @@ const TERMS_TTL_MS = 30 * 60_000;
  * once a minute, not once a tick.
  */
 const TERMS_RETRY_MS = 60_000;
-/** Forty-odd rows open at once; a few requests at a time keep the board's quotes first. */
-const TERMS_CONCURRENCY = 4;
 
 /**
  * Null when the server has no terms for the symbol, which is an answer and is
@@ -67,18 +67,21 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
     let cancelled = false;
     let failed = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const worker = async () => {
-      for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        if (!await loadTerms(symbol)) failed = true;
-        if (!cancelled) setVersion((current) => current + 1);
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(TERMS_CONCURRENCY, queue.length) }, worker)).then(() => {
+    const landed = coalescedBump(() => {
+      if (!cancelled) setVersion((current) => current + 1);
+    });
+    // Twelve reads at a time, shared with the rows' histories (`boardRead`); a board that moved on skips its turn.
+    void Promise.all(queue.map((symbol) => boardRead(async () => {
+      if (cancelled) return;
+      if (!await loadTerms(symbol)) failed = true;
+      landed.bump();
+    }))).then(() => {
+      landed.flush();
       if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), TERMS_RETRY_MS);
     });
     return () => {
       cancelled = true;
-      queue.length = 0;
+      landed.cancel();
       clearTimeout(retryTimer);
     };
   }, [enabled, symbolKey, retry]);

@@ -50,13 +50,32 @@ export async function checkOutputPath(path: string, platform: NodeJS.Platform = 
 }
 
 /**
+ * Creates the folder `path` goes in and the folders above it, failing with
+ * that folder named when it cannot: `--output /nonexistent/x.png` cannot
+ * create /nonexistent, which says more than the `mkdir` error behind it.
+ */
+export async function createOutputFolder(path: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+  const folder = (platform === "win32" ? win32 : posix).dirname(path);
+  try {
+    await mkdir(folder, { recursive: true });
+  } catch (error) {
+    const code = errorCode(error);
+    const lead = `Cannot create the folder ${folder}`;
+    if (code === "EACCES" || code === "EPERM") throw new Error(`${lead}: permission denied.`);
+    if (code === "EROFS") throw new Error(`${lead}: the disk is read-only.`);
+    if (code === "ENOTDIR" || code === "EEXIST") throw new Error(`${lead}: a file stands where one of its folders would be.`);
+    throw new Error(`${lead}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
  * Writes a command's output to `path`, creating the folders it names as
  * `shot --output` does, and failing with what to do when it cannot.
  */
 export async function writeOutputFile(path: string, contents: string, platform: NodeJS.Platform = process.platform): Promise<void> {
   const paths = platform === "win32" ? win32 : posix;
+  await createOutputFolder(path, platform);
   try {
-    await mkdir(paths.dirname(path), { recursive: true });
     await writeFile(path, contents);
   } catch (error) {
     const code = errorCode(error);

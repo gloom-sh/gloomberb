@@ -367,6 +367,11 @@ export function isEmptyCloudStatus(
   return status === "empty" || status === "unsupported";
 }
 
+/** The service answered that its own source failed: `retryable_error`, or `fatal_error`, its catch-all for an upstream error. */
+export function isCloudSourceFailure(status: CloudMarketResponse<unknown>["status"]): boolean {
+  return status === "retryable_error" || status === "fatal_error";
+}
+
 export function mapBatchError<T>(
   item: CloudMarketBatchItem<T>,
   fallbackMessage: string,

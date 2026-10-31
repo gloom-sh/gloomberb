@@ -110,6 +110,23 @@ describe("ticker-search utilities", () => {
     expect(listingChoiceQuery("ES=F:")).toBeNull();
   });
 
+  test("the line the service marks as a company's home leads a symbol's choices, before another company's lines abroad", async () => {
+    // /market/search?q=YAR on 2026-10-30: `quote YAR` offered Americold's four German lines first and Yara's own line last.
+    const dataProvider = createTestDataProvider({
+      search: async () => [
+        makeSearchResult("YAR", "Americold Realty Trust, Inc.", { exchange: "MUNICH" }),
+        makeSearchResult("YAR", "Americold Realty Trust Inc.", { exchange: "HANOVER" }),
+        makeSearchResult("YAR", "Yari Minerals Limited", { exchange: "ASX" }),
+        { ...makeSearchResult("YAR", "Yara International ASA", { exchange: "OSL", currency: "NOK" }), homeListing: true },
+      ],
+      getQuote: async () => { throw new Error("NOT_FOUND"); },
+    });
+    const error = await resolveTickerSearch({ query: "YAR", activeTicker: null, tickers: new Map(), dataProvider }).catch((caught) => caught);
+    expect(error).toBeInstanceOf(AmbiguousTickerError);
+    expect(error.listings[0]).toMatch(/^YAR:(OSL|XOSL)$/);
+    expect(error.listings).toHaveLength(4);
+  });
+
   test("ambiguous symbols require venue, currency and exact quote evidence", async () => {
     const results = [makeSearchResult("GLD", "SPDR", { exchange: "BYMA", currency: "ARS" }),
       makeSearchResult("GLD", "SPDR", { exchange: "NYSE", currency: "USD" })];
@@ -1333,6 +1350,22 @@ describe("ticker-search utilities", () => {
       ];
       expect(primary("LVMH", lvmh)).toBe("MC");
       expect(symbols("LVMH", lvmh).slice(0, 2)).toEqual(["MC", "LVMH"]);
+    });
+
+    test("a symbol's home listing leads another company's German regional line of it", () => {
+      // /market/search?q=YAR on 2026-10-30: Americold's lines in Germany came first, Yara's home line on Oslo seventh.
+      const yar = [
+        listing("YAR", "Americold Realty Trust, Inc.", "MUNICH", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust, Inc.", "FWB2", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust Inc.", "HANOVER", undefined, "Common Stock"),
+        listing("YAR", "Yari Minerals Limited", "ASX", undefined, "Common Stock"),
+        { ...listing("YAR", "Yara International ASA", "OSL", undefined, "Common Stock"), homeListing: true },
+      ];
+      const ranked = build("YAR", yar);
+      expect(ranked.find((item) => item.category === "Primary Listing")?.result?.exchange).toBe("OSL");
+      // A home line of its own leads only a regional line: a symbol's line on its home exchange keeps the lead.
+      const yari = [yar[3]!, yar[4]!];
+      expect(build("YAR", yari)[0]?.result?.exchange).toBe("ASX");
     });
   });
 

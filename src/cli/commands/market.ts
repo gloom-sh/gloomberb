@@ -258,7 +258,7 @@ import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
-import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -3266,12 +3266,14 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
       })),
     ]);
-    const noCalendar = abroadNotes.join("\n");
+    // A listing at home the calendar has no date for is named as well: a list never drops a symbol unsaid.
+    const undated = undatedListingsNote(listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing)));
+    const noCalendar = [...abroadNotes, ...undated ? [undated] : []].join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
       ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
-      ...ctx.cliOptions.format === "text" ? [] : abroadNotes,
+      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? [undated] : []],
     ];
     ctx.printResult({
       data: events,

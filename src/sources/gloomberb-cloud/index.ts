@@ -48,7 +48,7 @@ import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
-import { isRetryableApiError } from "../../api-client/errors";
+import { isRetryableApiError, markAskedTwice, sourceDidNotAnswer, wasAskedTwice } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import { publicListingTarget } from "../listing-target";
@@ -66,6 +66,7 @@ import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
   formatCloudDateTime,
   formatCloudHistoryEnd,
+  isCloudSourceFailure,
   isEmptyCloudStatus,
   mapBatchError,
   NOT_FOUND_REASON,
@@ -86,6 +87,7 @@ import {
   boardSearchesFrom,
 } from "./perpetuals";
 import { predictionMarketListing } from "../../tickers/prediction-listing";
+import { cleanListingName } from "../../tickers/company-name";
 import { settleWithin } from "../../utils/async-deadline";
 import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
 
@@ -148,6 +150,15 @@ function mapCloudSecFiling(item: {
     ...(typeof item.pressReleaseUrl === "string" && /^https:\/\/www\.sec\.gov\//.test(item.pressReleaseUrl)
       ? { pressReleaseUrl: item.pressReleaseUrl } : {}),
   };
+}
+
+/** Search rows with a venue's fixed-width name cleaned of the stray code after its spaces ("Americold Realty Trust Inc.   R"). */
+function withCleanNames<T extends { name: string }>(rows: T[]): T[] {
+  return rows.map((row) => {
+    if (typeof row.name !== "string") return row;
+    const name = cleanListingName(row.name);
+    return name === row.name ? row : { ...row, name };
+  });
 }
 
 function isCloudProviderMiss(error: unknown): boolean {
@@ -423,6 +434,8 @@ function unwrapRequiredCloudResponse<T>(response: CloudMarketResponse<T>, messag
   if (isEmptyCloudStatus(response.status)) {
     throw createProviderMiss(response.reasonCode ?? message, response.message, { notFound: response.reasonCode === NOT_FOUND_REASON });
   }
+  // The service's own source failed on a listing read asked twice (`readListing`): not an answer that the listing has nothing.
+  if (isCloudSourceFailure(response.status) && wasAskedTwice(response)) throw markAskedTwice(sourceDidNotAnswer(response.reasonCode ?? message));
   throw new Error(response.reasonCode ?? message);
 }
 
@@ -650,7 +663,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
     // A crypto exchange's line of a coin pair, which no source quotes, is offered as the crypto venue's listing.
     const listings = await withCloudFallback(
-      async () => withExchangeLinesAsCoinListings(await apiClient.searchInstruments(query, context?.limit ?? 10)),
+      async () => withExchangeLinesAsCoinListings(withCleanNames(await apiClient.searchInstruments(query, context?.limit ?? 10))),
       "Cloud search is unavailable",
     ).catch((error: unknown) => {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
@@ -767,7 +780,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   async searchBatch(queries: string[], options: { limit?: number; signal?: AbortSignal } = {}): Promise<Map<string, InstrumentSearchResult[]> | null> {
     const answers = await cloudSearchBatch(queries, options);
     if (!answers) return null;
-    for (const [query, rows] of answers) answers.set(query, withExchangeLinesAsCoinListings(rows));
+    for (const [query, rows] of answers) answers.set(query, withExchangeLinesAsCoinListings(withCleanNames(rows)));
     // Perpetual markets lead each answer, as `search` gives them, so a symbol in a list resolves as it does alone:
     // one read of the board answers every query's search of it. A query that found no listing is searched again
     // on its own, which finds them then; a board that does not answer leaves them out, as a search does.

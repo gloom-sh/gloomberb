@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
+import { sourceDidNotAnswer, ApiRequestError, markAskedTwice } from "../api-client/errors";
+import { OperationTimeoutError } from "../utils/async-deadline";
 import {
   cleanProviderReason,
   createProviderMiss,
   isNoProviderMessage,
+  isNoSourceAnswer,
+  isSourceFailure,
   noProviderError,
   noteProviderAnswer,
   noteProviderMiss,
@@ -82,4 +86,25 @@ test("a miss raised by another copy of the module, as a plugin's can be, is stil
   expect(foreign).not.toBeInstanceOf((createProviderMiss("x") as Error).constructor);
   expect(shouldLogProviderError(foreign)).toBe(false);
   expect(providerMissReason(foreign)).toBe("No quote for SIVE.");
+});
+
+// A known listing whose source blinked read as one no source covers ("No quote provider available for YAR:OSL").
+test("a listing read the data service failed to answer twice says so and to try again, never that no source covers the listing", () => {
+  for (const failure of [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502)]) {
+    const note: ProviderMissNote = {};
+    noteProviderMiss(note, markAskedTwice(failure));
+    const error = noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL");
+    expect(error.message).toBe("Gloom's data service did not answer for YAR:OSL. Try again in a moment.");
+    expect(isNoProviderMessage(error.message)).toBe(false);
+    expect(isSourceFailure(error)).toBe(true);
+    expect(isNoSourceAnswer(error)).toBe(false);
+  }
+  // A failure of a read that is not asked again, a 5xx and a timeout among them, keeps the router's words.
+  const unretried = [sourceDidNotAnswer("UPSTREAM_ERROR"), new ApiRequestError("Bad gateway", 502), new ApiRequestError("Forbidden", 403),
+    new ApiRequestError("Too many requests", 429), new OperationTimeoutError("Cloud market request timed out after 10000ms: /market/quotes/batch")];
+  for (const failure of unretried) {
+    const note: ProviderMissNote = {};
+    noteProviderMiss(note, failure);
+    expect(noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL").message).toBe("No quote provider available for YAR:OSL");
+  }
 });

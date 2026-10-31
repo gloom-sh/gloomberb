@@ -2,6 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
@@ -21,7 +22,15 @@ import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../uti
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { scrollTruncationReasons } from "./scroll-truncation";
-import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
+import {
+  SHOT_API_PROXY_PREFIX,
+  SHOT_API_SOCKET_PATH,
+  SHOT_API_SOCKET_TOKEN_PARAM,
+  SHOT_HTTP_BRIDGE_PATH,
+  SHOT_MARKET_BRIDGE_PATH,
+  type ShotApiSocketCall,
+  type ShotApiSocketReply,
+} from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
@@ -227,7 +236,9 @@ export async function renderDesktopPaneScreenshot(
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
   try {
-    server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
+    // A socket opens only for this page (`isShotPageSocket`): its origin, and this token it alone is given.
+    const socketToken = randomBytes(32).toString("hex");
+    server = serveShotPage(view, shotPageHtml(view, payload, socketToken), apiProxy, options.bridge ?? null, socketToken);
     return await capturePageScreenshot({
       chrome,
       url: new URL("/", server.url).href,
@@ -253,7 +264,7 @@ export async function renderDesktopPaneScreenshot(
 }
 
 /** The page for one capture: the shared view, with this capture's pane and data in its bootstrap script. */
-function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): string {
+function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload, socketToken: string): string {
   const payloadJson = JSON.stringify(encodeRpcValue(payload)).replace(/</g, "\\u003c");
   return renderElectrobunViewHtml({
     stylesheet: view.get(SHOT_VIEW_STYLESHEET) ?? "",
@@ -262,6 +273,7 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): str
     loadingText: "Rendering pane...",
     bootstrapScript: `
       window.__GLOOM_CLI_SHOT_PAYLOAD__ = ${payloadJson};
+      window.__GLOOM_CLI_SHOT_SOCKET_TOKEN__ = ${JSON.stringify(socketToken)};
       (() => {
         // A screenshot cannot be interacted with, so drawing tools, the
         // quick-add input and the close button only add noise to the image.
@@ -288,18 +300,36 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): str
   });
 }
 
-function serveShotPage(
+/**
+ * Whether a socket request comes from this capture's page: sent from the
+ * page's own origin, holding the token only the page was given. Any website
+ * open in the user's browser can reach this port, and a socket's replies are
+ * reads made with the user's session; a browser sends a page's true origin.
+ */
+function isShotPageSocket(request: Request, url: URL, port: number | undefined, socketToken: string): boolean {
+  if (port === undefined || request.headers.get("origin") !== `http://127.0.0.1:${port}`) return false;
+  const given = Buffer.from(url.searchParams.get(SHOT_API_SOCKET_TOKEN_PARAM) ?? "");
+  const expected = Buffer.from(socketToken);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+export function serveShotPage(
   view: ShotViewFiles,
   html: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null,
+  socketToken: string,
 ): ReturnType<typeof Bun.serve> {
   return Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 60,
-    fetch(request) {
+    fetch(request, server) {
       const url = new URL(request.url);
+      if (url.pathname === SHOT_API_SOCKET_PATH) {
+        if (!socketToken || !isShotPageSocket(request, url, server.port, socketToken)) return new Response("Forbidden", { status: 403 });
+        return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
+      }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
         return proxyShotApiRequest(request, url, apiProxy);
       }
@@ -311,7 +341,37 @@ function serveShotPage(
       }
       return serveShotAsset(url, view, html);
     },
+    websocket: {
+      message(socket, message) {
+        void answerShotApiCall(String(message), apiProxy).then((reply) => socket.send(reply));
+      },
+    },
   });
+}
+
+/**
+ * One read the page sent over its API socket (`SHOT_API_SOCKET_PATH`), made
+ * as the proxy makes it, with the session the page never holds: the reply's
+ * JSON, its body in base64. A call that is not an API path answers why.
+ */
+export async function answerShotApiCall(message: string, apiProxy: DesktopPaneShotApiProxy): Promise<string> {
+  let id = 0;
+  try {
+    const call = JSON.parse(message) as Partial<ShotApiSocketCall>;
+    id = typeof call.id === "number" ? call.id : 0;
+    if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
+    const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
+    const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
+    const response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+    const body = Buffer.from(await response.arrayBuffer()).toString("base64");
+    const headers: Array<[string, string]> = [];
+    response.headers.forEach((value, name) => headers.push([name, value]));
+    const reply: ShotApiSocketReply = { id, status: response.status, statusText: response.statusText, headers, body };
+    return JSON.stringify(reply);
+  } catch (error) {
+    const reply: ShotApiSocketReply = { id, error: errorMessage(error) };
+    return JSON.stringify(reply);
+  }
 }
 
 async function runShotMarketBridge(

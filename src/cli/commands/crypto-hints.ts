@@ -80,14 +80,18 @@ interface QuoteNoteResult {
 }
 
 /**
- * The router words a failure as "<reason> for <symbol>"; drop the symbol so equal reasons group.
- * Any other line, such as a sentence the data service wrote, is kept as it reads.
+ * The router words a failure as "<reason> for <symbol>", alone or closing its
+ * first sentence ("Gloom's data service did not answer for X. Try again in a
+ * moment."); drop the symbol so equal reasons group. Any other line, such as a
+ * sentence the data service wrote, is kept as it reads.
  */
 function failureReason(message: string, symbol: string): string {
   const line = (message.split("\n")[0] ?? "").trim();
   const bare = line.replace(/\.+$/, "");
   const suffix = ` for ${symbol}`;
-  return bare.toLowerCase().endsWith(suffix.toLowerCase()) ? bare.slice(0, -suffix.length) : line;
+  if (bare.toLowerCase().endsWith(suffix.toLowerCase())) return bare.slice(0, -suffix.length);
+  const at = line.toLowerCase().indexOf(`${suffix.toLowerCase()}. `);
+  return at > 0 ? `${line.slice(0, at)}${line.slice(at + suffix.length)}` : line;
 }
 
 /**

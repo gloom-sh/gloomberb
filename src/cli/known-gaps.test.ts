@@ -425,3 +425,19 @@ test("PMI and nowcast words lead to ECO, ECST and alerts add, with the terms exp
     registry.destroy();
   }
 });
+
+test("USDA's and grain words find the crop balances, PSD and FUT's crops tab", async () => {
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    // `catalog usda` and the rest answered "No functions match".
+    for (const query of ["usda", "grain", "wasde", "fertilizer", "potash"]) {
+      const found = filterPaneCatalogEntries(entries, query);
+      expect(found.map((entry) => entry.token), query).toContain("PSD");
+      expect(found.find((entry) => entry.token === "PSD")!.paneId, query).toBe("commodities-energy");
+    }
+  } finally {
+    registry.destroy();
+  }
+});
