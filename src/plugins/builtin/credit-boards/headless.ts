@@ -1,6 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import type { CdxBoardIndex, CreditIndexQuote } from "../../../api-client/credit-boards";
 import { CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
+import { readsInBatches } from "../../../market-data/batched-reads";
 import {
   cdxDay,
   cdxRows,
@@ -201,8 +202,9 @@ export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
     const country = query ? findSovereign(payload.sovereigns, query) : null;
     if (query && !country) throw new Error(`No sovereign ${query}. Use one of: ${payload.sovereigns.map((entry) => entry.name).join(", ")}.`);
     const sovereigns = country ? [country] : payload.sovereigns;
+    const batch = await readsInBatches(ctx.marketData, "getPriceHistory");
     const moves = await loadCurrencyMoves(sovereigns.map((row) => row.currency),
-      (symbol) => ctx.marketData.getPriceHistory(symbol, "", "3M"));
+      (symbol) => ctx.marketData.getPriceHistory(symbol, "", "3M", batch ? { batch } : undefined), batch);
     const publisher = boardPublisher(payload.source);
     const kinds = levelKinds(sovereigns, (row) => row.kind);
     return {

@@ -83,6 +83,7 @@ import {
   type QuoteSubscriptionRequest,
 } from "./quotes";
 import { withSavedCopyMarkOf } from "../../data/saved-copies";
+import { readsInBatches } from "../batched-reads";
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
 const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
@@ -479,9 +480,15 @@ export class MarketDataCoordinator {
     });
   }
 
+  /** Whether expiries asked together reach the source in batch requests (`DataProvider.batchesReads`). */
+  batchesOptions(): Promise<boolean> {
+    return readsInBatches(this.dataProvider, "getOptionsChain");
+  }
+
+  /** `batch`: one of many expiries asked at once, from a source that batches them (`batchesOptions`). */
   async loadOptions(
     request: OptionsRequest,
-    options: { forceRefresh?: boolean } = {},
+    options: { forceRefresh?: boolean; batch?: boolean } = {},
   ): Promise<QueryEntry<OptionsChain>> {
     const key = buildOptionsKey(request);
     const loadingKey = options.forceRefresh ? `${key}|refresh` : key;
@@ -511,9 +518,11 @@ export class MarketDataCoordinator {
           }
         }
       }
-      return this.loadCachedQuery("getOptionsChain", [request.instrument.symbol, request.instrument.exchange, request.expirationDate, toMarketDataContext(request.instrument)], key, this.optionsStore, options.forceRefresh, (value) => value.expirationDates.length === 0) ?? loadOptionsEntry({
+      const context = { ...toMarketDataContext(request.instrument), ...(options.batch ? { batch: true } : {}) };
+      return this.loadCachedQuery("getOptionsChain", [request.instrument.symbol, request.instrument.exchange, request.expirationDate, context], key, this.optionsStore, options.forceRefresh, (value) => value.expirationDates.length === 0) ?? loadOptionsEntry({
         dataProvider: this.dataProvider,
         forceRefresh: options.forceRefresh,
+        batch: options.batch,
         request,
         store: this.optionsStore,
         runSingleFlight: (flightKey, task) => this.runSingleFlight(flightKey, task),

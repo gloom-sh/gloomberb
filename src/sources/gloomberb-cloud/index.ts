@@ -18,6 +18,7 @@ import type {
   EarningsEvent,
   SecFilingDocument,
   SecFilingItem,
+  BatchedReadMethod,
   MarketDataRequestContext,
   QuoteBatchOptions,
   QuoteBatchResult,
@@ -834,7 +835,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     exchange = target.exchange ?? "";
     const request = toHistoryRequest(range);
     const { response, extendedHours } = await withCloudFallback(
-      () => loadCloudHistory(request.interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, { ...request, ...(session ? { session } : {}) }), _context),
+      () => loadCloudHistory(request.interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, { ...request, ...(session ? { session } : {}) },
+        { batch: _context?.batch }), _context),
       `Cloud chart data is unavailable for ${ticker}`,
     );
     return mapCloudPriceHistory(response, target.symbol, exchange, request.interval, subtractTimeRange(new Date(), range), undefined, extendedHours);
@@ -921,11 +923,16 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate, extendedHours);
   }
 
+  /** Trailing history and dated expiries asked with others (`batch`) go out as batch requests while the service reads them so. */
+  batchesReads(method: BatchedReadMethod): boolean {
+    return apiClient.batchesReads(method === "getPriceHistory" ? "history" : "options");
+  }
+
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {
     rejectPerpetual(ticker, exchange, "options chains");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate);
+      const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate, { batch: _context?.batch });
       const chain = unwrapRequiredCloudResponse(
         response,
         `Cloud options chains are unavailable for ${ticker}`,

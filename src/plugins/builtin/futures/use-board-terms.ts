@@ -6,7 +6,8 @@ import { createTtlCache } from "../../../data/ttl-cache";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
 import { logFailure } from "../../../utils/log-failure";
 import { coalescedBump } from "./coalesced-bump";
-import { boardRead } from "./board-reads";
+import { apiClient } from "../../../api-client";
+import { boardReadGate } from "./board-reads";
 
 interface FuturesTermsState {
   /** The row's terms are still being asked for. */
@@ -33,18 +34,18 @@ const TERMS_RETRY_MS = 60_000;
  */
 const termsCache = createTtlCache<FuturesContractTermsPayload | null>({ ttlMs: TERMS_TTL_MS, rejectionMs: TERMS_RETRY_MS });
 
-async function readTerms(symbol: string): Promise<FuturesContractTermsPayload | null> {
+async function readTerms(symbol: string, batch: boolean): Promise<FuturesContractTermsPayload | null> {
   try {
-    return await loadFuturesContractTerms(symbol);
+    return await loadFuturesContractTerms(symbol, apiClient, { batch });
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) return null;
     throw error;
   }
 }
 
-/** Whether the row has an answer; false when the read failed. */
-function loadTerms(symbol: string): Promise<boolean> {
-  return termsCache.load(symbol, () => readTerms(symbol))
+/** Whether the row has an answer; false when the read failed. `batch`: asked with every other row's, in batch requests. */
+function loadTerms(symbol: string, batch: boolean): Promise<boolean> {
+  return termsCache.load(symbol, () => readTerms(symbol, batch))
     .then(() => true, logFailure("futures", "Read a futures row's contract terms failed", false));
 }
 
@@ -70,10 +71,13 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
     const landed = coalescedBump(() => {
       if (!cancelled) setVersion((current) => current + 1);
     });
-    // Twelve reads at a time, shared with the rows' histories (`boardRead`); a board that moved on skips its turn.
-    void Promise.all(queue.map((symbol) => boardRead(async () => {
+    // Twelve reads at a time, shared with the rows' histories (`boardRead`), or all at once while the client
+    // sends terms in batch requests; a board that moved on skips its turn.
+    const batch = apiClient.batchesReads("futures-terms");
+    const read = boardReadGate(batch);
+    void Promise.all(queue.map((symbol) => read(async () => {
       if (cancelled) return;
-      if (!await loadTerms(symbol)) failed = true;
+      if (!await loadTerms(symbol, batch)) failed = true;
       landed.bump();
     }))).then(() => {
       landed.flush();
