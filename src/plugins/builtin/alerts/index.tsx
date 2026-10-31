@@ -278,11 +278,12 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news, IV levels, hiring and market moves",
+      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news, IPOs, IV levels, hiring and market moves",
       keywords: [
         "alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before",
         "filing", "filings", "sec", "8-k", "news", "keyword", "analyst", "52-week", "unusual volume", "volume",
         "short interest", "insider", "catalyst", "implied volatility", "iv spike", "iv level", "risk reversal", "skew", "options flow", "perps", "funding", "hiring", "jobs",
+        "ipo", "going public", "listing",
       ],
       category: "data",
       wizardLayout: "form",
