@@ -123,7 +123,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const root = normalizeCurveRoot(input);
     if (!root) {
       // A subject no source carries (`fn CTM BDI`, the Baltic Dry Index) is said with its proxies, as search says it.
-      const gap = knownGapMessage(input);
+      const gap = typeof input === "string" ? knownGapMessage(input) : null;
       throw Object.assign(new Error(unsupportedCurveRootMessage(input)), gap ? { details: gap } : {});
     }
     const date = curveAsOfDate(args.options.date, new Date(), "--date");
