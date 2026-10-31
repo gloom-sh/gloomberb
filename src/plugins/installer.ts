@@ -43,7 +43,7 @@ function ensurePluginsDir() {
   }
 }
 
-const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?![\s\S])/;
 const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 export function validatePluginDirectoryName(name: string): string {
@@ -115,6 +115,13 @@ interface RunResult {
   stderr: string;
 }
 
+/** Resolves git before a command changes into a plugin checkout. */
+function gitExecutable(): string {
+  const executable = Bun.which("git");
+  if (!executable) throw Object.assign(new Error(gitMissingMessage()), { code: "ENOENT" });
+  return executable;
+}
+
 /**
  * Runs a command without blocking the event loop: a fetch or `bun install`
  * takes seconds, and the terminal UI and the desktop's Bun process keep
@@ -129,7 +136,7 @@ function run(
   env?: NodeJS.ProcessEnv,
 ): Promise<RunResult> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
+    const child = spawn(command === "git" ? gitExecutable() : command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
     let stdout = "";
     let stderr = "";
     child.stdout?.setEncoding("utf-8").on("data", (chunk: string) => { stdout += chunk; });
@@ -416,7 +423,7 @@ function githubRepoFromUrl(url: string): string | null {
 /** `owner/repo` from the checkout's origin remote, or null for anything that is not a GitHub clone. */
 export function readPluginRemote(pluginDir: string): string | null {
   try {
-    return githubRepoFromUrl(execFileSync("git", ["config", "--get", "remote.origin.url"], { cwd: pluginDir, stdio: ["ignore", "pipe", "ignore"] })
+    return githubRepoFromUrl(execFileSync(gitExecutable(), ["config", "--get", "remote.origin.url"], { cwd: pluginDir, stdio: ["ignore", "pipe", "ignore"] })
       .toString("utf-8"));
   } catch {
     // Intentional ignore: Hand-copied plugins and local repositories may have no origin remote.
@@ -454,7 +461,7 @@ export async function readPluginRemoteHead(name: string): Promise<string | null>
   if (!existsSync(join(dir, ".git"))) return null;
   if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
   try {
-    const { stdout } = await execFile("git", ["ls-remote", "origin", "HEAD"], {
+    const { stdout } = await execFile(gitExecutable(), ["ls-remote", "origin", "HEAD"], {
       cwd: dir,
       timeout: REMOTE_HEAD_TIMEOUT_MS,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" },

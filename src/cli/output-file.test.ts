@@ -47,8 +47,10 @@ test("an output folder that cannot be created is named, not left to mkdir's word
 test.skipIf(process.platform === "win32")("--output writes a plain file only the user can read, and nothing through a link or into a device", async () => {
   const root = await mkdtemp(join(tmpdir(), "gloom-output-file-"));
   try {
-    const fresh = join(root, "report.csv");
-    await writeOutputFile(fresh, "a,b\n");
+    const fresh = join(root, "capture.png");
+    const png = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+    await writeOutputFile(fresh, png);
+    expect(new Uint8Array(await readFile(fresh))).toEqual(png);
     expect((await stat(fresh)).mode & 0o777).toBe(0o600);
     // A file it replaces is made private before the report goes in, and holds only the report.
     const shared = join(root, "shared.csv");
