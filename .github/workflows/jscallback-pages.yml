@@ -19,6 +19,7 @@ jobs:
       matrix:
         bun: [bun-v1.3.13/bun-windows-x64-baseline, bun-v1.4.4/bun-windows-x64-baseline]
     runs-on: windows-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - name: Watch a JSCallback's pages while the process allocates

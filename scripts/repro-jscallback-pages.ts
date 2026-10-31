@@ -7,8 +7,6 @@ const k32 = dlopen("kernel32.dll", {
   GetProcessHeap: { args: [], returns: FFIType.ptr },
   GetProcessHeaps: { args: [FFIType.u32, FFIType.ptr], returns: FFIType.u32 },
   HeapWalk: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
-  HeapLock: { args: [FFIType.ptr], returns: FFIType.bool },
-  HeapUnlock: { args: [FFIType.ptr], returns: FFIType.bool },
 });
 
 type Page = { allocationBase: number; base: number; size: number; state: number; protect: number; type: number };
@@ -32,9 +30,10 @@ function heapRegions(heap: number) {
   const regions: Array<[number, number]> = [];
   const entry = new Uint8Array(48);
   const view = new DataView(entry.buffer);
-  k32.symbols.HeapLock(heap);
-  try {
-    while (k32.symbols.HeapWalk(heap, ptr(entry))) {
+  // Unlocked on purpose: a locked heap stalls Bun's own threads, and GC with them.
+  const entryPtr = ptr(entry);
+  for (let i = 0; i < 1_000_000 && k32.symbols.HeapWalk(heap, entryPtr); i++) {
+    {
       const flags = view.getUint16(14, true);
       if (flags & 0x0001) {
         // PROCESS_HEAP_REGION: lpData is the region start; committed + uncommitted sizes follow.
@@ -44,8 +43,6 @@ function heapRegions(heap: number) {
         regions.push([start, start + committed + uncommitted]);
       }
     }
-  } finally {
-    k32.symbols.HeapUnlock(heap);
   }
   return regions;
 }
@@ -59,6 +56,7 @@ const callbacks: JSCallback[] = [];
 for (let i = 0; i < 40; i++) {
   callbacks.push(new JSCallback(() => {}, { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true }));
 }
+console.log("walking the process heap");
 const regions = heapRegions(heap);
 console.log(`process heap regions: ${regions.map(([a, b]) => `${hex(a)}-${hex(b)}`).join(" ")}`);
 for (const cb of callbacks.slice(0, 6)) {
@@ -89,6 +87,7 @@ while (performance.now() - started < Number(process.env.CHURN_MS ?? 60_000)) {
     temp.close();
   }
   if (round % 3 === 0) Bun.gc(false);
+  if (round % 500 === 0) console.log(`round ${round} at ${Math.round(performance.now() - started)} ms`);
   for (const cb of callbacks) {
     const address = cb.ptr as unknown as number;
     if (lost.has(address)) continue;
