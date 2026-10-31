@@ -87,6 +87,8 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   const progress = getOnboardingProgress(config);
   const stage = progress.stage;
   const workspaceBuilt = isOnboardingWorkspaceBuilt(progress);
+  /** Opened again from Settings: any step can be left, and the first-run funnel is not told. */
+  const rerun = progress.rerun === true;
   const researchOpenedRef = useRef<string | null>(null);
   /** The stages the user came through, oldest first, for Back to retrace. */
   const visitedRef = useRef<OnboardingStage[]>([]);
@@ -122,7 +124,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   // bar, so an unread inbox never stalls the first session.
   const account = useOnboardingAccount({
     nextStep: () => {
-      recordResearchActivity("onboarding_signed_in");
+      if (!rerun) recordResearchActivity("onboarding_signed_in");
       saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
     },
     setEditingField,
@@ -140,12 +142,12 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
 
   useEffect(() => {
     const activity = STAGE_ACTIVITY[stage];
-    if (activity) recordResearchActivity(activity);
-  }, [stage]);
+    if (activity && !rerun) recordResearchActivity(activity);
+  }, [rerun, stage]);
 
   useEffect(() => {
-    if (stage === "portfolio" && positionCount > 0) recordResearchActivity("onboarding_position_added");
-  }, [positionCount, stage]);
+    if (stage === "portfolio" && positionCount > 0 && !rerun) recordResearchActivity("onboarding_position_added");
+  }, [positionCount, rerun, stage]);
 
   // The portfolio step opens straight into the ticker field.
   useEffect(() => {
@@ -210,8 +212,8 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   useEffect(() => {
     if (stage !== "research" || !progress.tickerSymbol || researchOpenedRef.current === progress.tickerSymbol) return;
     researchOpenedRef.current = progress.tickerSymbol;
-    recordResearchActivity("ticker_saved");
-  }, [stage, progress.tickerSymbol]);
+    if (!rerun) recordResearchActivity("ticker_saved");
+  }, [rerun, stage, progress.tickerSymbol]);
   const movePositionCursor = useCallback((delta: number) => {
     if (positionCursorIndex < 0) return;
     const next = Math.max(0, Math.min(positionCount - 1, positionCursorIndex + delta));
@@ -322,7 +324,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    personalTickers, goBack,
+    personalTickers, goBack, rerun,
   };
 }
 
@@ -337,7 +339,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    personalTickers, goBack,
+    personalTickers, goBack, rerun,
   } = useOnboardingWizard(props);
 
   if (helpFocused) {
@@ -414,7 +416,8 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           onDismiss={skipSetup}
           dismissing={isFinishing}
           dismissDisabled={isBrokerCommitting}
-          showDismiss={false}
+          // The first run needs a holding; a run from Settings can be left as it was.
+          showDismiss={rerun}
         />
         <OnboardingTitle
           step={desktop ? undefined : t("PORTFOLIO")}
@@ -494,7 +497,8 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           onNavigate={goToSection}
           onDismiss={skipSetup}
           dismissing={isFinishing}
-          showDismiss={false}
+          dismissDisabled={buildingDesks}
+          showDismiss={rerun}
         />
         <OnboardingTitle
           step={desktop ? undefined : t("DESKS")}

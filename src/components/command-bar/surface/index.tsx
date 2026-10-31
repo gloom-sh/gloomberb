@@ -44,6 +44,8 @@ interface CommandBarProps {
   pluginRegistry: PluginRegistry;
   quitApp: () => void;
   onCheckForUpdates?: () => void | Promise<void>;
+  /** Settings' Run Setup Again; without it (the browser, or setup already showing) the command is left out. */
+  onRunSetupAgain?: () => Promise<void>;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
 }
 
@@ -53,6 +55,7 @@ export function CommandBar({
   pluginRegistry,
   quitApp,
   onCheckForUpdates,
+  onRunSetupAgain,
   onNativeOccluderChange,
 }: CommandBarProps) {
   const {
@@ -80,9 +83,11 @@ export function CommandBar({
     visibleListStateRef,
   } = useCommandBarEnvironment();
   // Without an updater (the web terminal) neither checking nor a channel means anything.
-  const availableCommands = useMemo(() => onCheckForUpdates
-    ? allAvailableCommands
-    : allAvailableCommands.filter((command) => command.id !== "check-for-updates" && command.id !== "release-channel"), [allAvailableCommands, onCheckForUpdates]);
+  const availableCommands = useMemo(() => allAvailableCommands.filter((command) => {
+    if (command.id === "check-for-updates" || command.id === "release-channel") return !!onCheckForUpdates;
+    if (command.id === "run-setup-again") return !!onRunSetupAgain;
+    return true;
+  }), [allAvailableCommands, onCheckForUpdates, onRunSetupAgain]);
   const {
     applyThemePreview,
     clearThemePreview,
@@ -200,6 +205,7 @@ export function CommandBar({
     dispatch,
     focusedPaneId: state.focusedPaneId,
     onCheckForUpdates,
+    onRunSetupAgain,
     persistConfig,
     pluginRegistry,
     pushRoute,

@@ -53,6 +53,8 @@ export function runDirectCommandAction(options: {
   getState: () => AppState;
   notify: NotifyFn;
   onCheckForUpdates?: () => void | Promise<void>;
+  /** Settings' Run Setup Again; absent where setup cannot run. */
+  onRunSetupAgain?: () => Promise<void>;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
@@ -78,6 +80,7 @@ export function runDirectCommandAction(options: {
     getState,
     notify,
     onCheckForUpdates,
+    onRunSetupAgain,
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
@@ -390,6 +393,12 @@ export function runDirectCommandAction(options: {
     case "check-for-updates":
       void onCheckForUpdates?.();
       closeAll({ revertThemePreview: false });
+      return;
+    case "run-setup-again":
+      closeAll({ revertThemePreview: false });
+      void onRunSetupAgain?.().catch((error: unknown) => {
+        notify(error instanceof Error ? error.message : String(error), { type: "error" });
+      });
       return;
     case "release-channel": {
       // The runtime checks again as soon as the channel changes.

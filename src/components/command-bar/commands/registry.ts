@@ -309,6 +309,15 @@ export const commands: Command[] = [
     category: "Config",
   },
 
+  // Setup, from its first step on what the user has (components/onboarding/run-setup-again.ts)
+  {
+    id: "run-setup-again",
+    prefix: "",
+    label: "Run Setup Again",
+    description: "Rebuild Home and setup's desk tabs; your other layouts stay",
+    category: "Config",
+  },
+
   // Import/Export
   {
     id: "export-config",

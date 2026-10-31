@@ -20,6 +20,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
 import { SignInGate } from "./components/sign-in-gate";
@@ -87,6 +88,8 @@ interface AppInnerProps {
   updatesEnabled?: boolean;
   onboardingActive?: boolean;
   onOnboardingComplete?: (config: AppConfig) => void | Promise<void>;
+  /** Shows setup again once Run Setup Again has saved its progress; absent where setup cannot run. */
+  onRunSetupAgain?: () => void;
   /** Hosted browser terminal: nothing is reachable until a session exists. */
   signInGateActive?: boolean;
   /** Fires once the startup state is in place and the first real layout can paint. */
@@ -127,6 +130,7 @@ function AppInner({
   updatesEnabled = true,
   onboardingActive = false,
   onOnboardingComplete,
+  onRunSetupAgain,
   signInGateActive = false,
   onInitialized,
   pluginsReady,
@@ -186,6 +190,8 @@ function AppInner({
   const dialog = useDialog();
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
+  // Not while setup is already showing.
+  const runSetupAgain = useRunSetupAgain(onboardingActive ? undefined : onRunSetupAgain);
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
   const focusDetachedPane = useMemo(() => {
     const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
@@ -505,6 +511,7 @@ function AppInner({
               pluginRegistry={pluginRegistry}
               quitApp={() => rendererHost.requestExit()}
               onCheckForUpdates={updatesEnabled ? runUpdateCommand : undefined}
+              onRunSetupAgain={runSetupAgain}
               onNativeOccluderChange={setCommandBarNativeOccluder}
             />
           )}
@@ -534,6 +541,11 @@ interface AppProps {
    * terminal sets this; desktop and the TUI keep sign-in optional.
    */
   requireSignIn?: boolean;
+  /**
+   * Settings can open setup again (Run Setup Again). The browser keeps no
+   * setup progress, so it turns this off.
+   */
+  setupEnabled?: boolean;
   /** Fires once the startup state is in place and the first real layout can paint. */
   onInitialized?: () => void;
 }
@@ -552,6 +564,7 @@ export function App({
   remoteControlAdapter,
   updatesEnabled = true,
   requireSignIn = false,
+  setupEnabled = true,
   onInitialized,
 }: AppProps) {
   useAppLanguage();
@@ -593,6 +606,8 @@ export function App({
     && !shareHandoff
     && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
   ));
+
+  const showSetup = useCallback(() => setShowOnboarding(true), []);
 
   useEffect(() => bindAppActivity(renderer), [renderer]);
 
@@ -656,6 +671,7 @@ export function App({
             setConfig(updatedConfig);
             setShowOnboarding(false);
           }}
+          onRunSetupAgain={setupEnabled && !shareHandoff ? showSetup : undefined}
         />
       </AppProvider>
     </RemoteUiRegistryProvider>
