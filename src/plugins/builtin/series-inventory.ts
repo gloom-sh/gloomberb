@@ -97,6 +97,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "analytics", chart: "Portfolio value, drawdown and factor exposure", notInCatalog: "account", reason: "Built from the user's own portfolio; the factor legs are tickers in the catalog." },
   { module: "holders", chart: "Holders treemap", notInCatalog: "not-a-time-series", reason: "A treemap of one filing date." },
   { module: "market-heatmap", chart: "Market heat map", notInCatalog: "not-a-time-series", reason: "A treemap of today's moves." },
+  { module: "buildout", chart: "TheBuildout's theme board", notInCatalog: "not-a-time-series", reason: "A treemap of the themes' market caps, coloured by their median 1Y return today." },
   { module: "portfolio-list", chart: "Portfolio treemap", notInCatalog: "not-a-time-series", reason: "A treemap of current positions." },
   { module: "world-venue-map", chart: "Chokepoint transits and the map's place series", series: ["geo:*"] },
 ];
