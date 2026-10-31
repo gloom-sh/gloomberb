@@ -81,11 +81,12 @@ export interface HistoryRow {
   volumeNote?: string;
   /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
   venueVolume?: number;
-  /**
-   * The venue `venueVolume` counts, or for a bar with its volume, what that volume counts when the source says
-   * (`aggregate` across venues on a coin's daily bar, `3 spot venues` on its intraday bar).
-   */
   volumeVenue?: string;
+  /**
+   * What the bar's volume counts, where the source says: `aggregate` across venues on a coin's daily bar,
+   * `3 spot venues` on its intraday bar, whose volume is summed over those venues.
+   */
+  volumeBasis?: string;
   /** A continuous future's bar (NG=F): the contract it closes on (NGZ26), where the source says. */
   contract?: string;
   /** The first bar on a contract after another's: the series rolled into `contract` at this bar. */
@@ -316,7 +317,8 @@ export function historyRows(
       ...(volume ? { volumeUnit: volume.unit } : {}),
       ...(values.volume == null && point.venueVolume
         ? { venueVolume: point.venueVolume.volume, volumeVenue: point.venueVolume.venue }
-        : values.volume != null && point.volumeBasis ? { volumeVenue: point.volumeBasis } : {}),
+        : {}),
+      ...(values.volume != null && point.volumeBasis ? { volumeBasis: point.volumeBasis } : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
         ? {
@@ -516,8 +518,8 @@ export function historyVolumeText(volume: HistoryVolume, interval: ManualChartRe
 }
 
 /** What the volume of every bar that has one counts, when they all say the same; null otherwise. */
-export function historyVolumeBasis(rows: readonly Pick<HistoryRow, "volume" | "volumeVenue">[]): string | null {
-  const bases = new Set(rows.filter((row) => row.volume != null).map((row) => row.volumeVenue ?? null));
+export function historyVolumeBasis(rows: readonly Pick<HistoryRow, "volume" | "volumeBasis">[]): string | null {
+  const bases = new Set(rows.filter((row) => row.volume != null).map((row) => row.volumeBasis ?? null));
   const [basis] = bases.size === 1 ? [...bases] : [null];
   return basis ?? null;
 }

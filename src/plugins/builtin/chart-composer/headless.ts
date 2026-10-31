@@ -34,6 +34,9 @@ import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
+import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data/market/freshness";
+import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
+import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
@@ -47,7 +50,7 @@ import { comparedFundTickers, loadDailyObjectives, mayDrawDailyObjective, withLe
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
 import { LATEST_INTRADAY_TEXT, periodDayText } from "../../../market-data/market/period-return";
-import { CLOSING_PRINT_PENDING_TEXT, quoteOfficialClose, withOfficialCloses } from "../../../time-series/official-close";
+import { CLOSING_PRINT_PENDING_TEXT, newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../time-series/official-close";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -740,23 +743,33 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
         // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
         await Promise.all(histories.map(async (history) => {
-          // A future settles rather than closing on an auction print; its bars stay as traded.
-          if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null) return;
+          // A future settles rather than closing on an auction print, and a coin or a currency pair has no session
+          // to close: their bars stay as traded, and no quote is read for them.
+          if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null
+            || isRoundTheClockCoin(history.symbol, history.exchange) || isCurrencyPairListing(history.symbol, history.exchange)) return;
+          const now = Date.now();
+          const known = history.exchange || history.quote?.listingExchangeName || history.quote?.exchangeName || undefined;
+          if (known && isAlwaysOpenExchange(known)) return;
+          // While the session trades, no session of the chart has closed since its bars were read.
+          if (history.quote?.marketState === "REGULAR" || (known && isRegularSessionTime(known, now) === true)) return;
+          if (known && !newestClosedSession(history.points, { venue: known, now })) return;
           // A captured shot's source can have no quotes: its bars are drawn as captured.
           const quote = history.quote ?? (typeof context.marketData.getQuote === "function"
             ? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
               { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
               .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null))
             : null);
-          const official = quoteOfficialClose(quote);
-          const closes = new Map(official ? [[official.date, official.close] as const] : []);
-          const venue = history.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
-          const now = Date.now();
-          const shown = withOfficialCloses(history.points, closes, { venue, now });
-          history.points = shown.points;
-          history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now }).points;
-          // Without a quote there is no saying whether the print is in.
-          if (shown.pending && quote) closingPrintsPending.push(history.symbol);
+          const venue = known || quote?.listingExchangeName || quote?.exchangeName || undefined;
+          const newest = newestClosedSession(history.points, { venue, now });
+          const decided = newest ? newestSessionClose(quote, { ...newest, venue }) : null;
+          if (!newest || !decided) return;
+          if ("pending" in decided) {
+            closingPrintsPending.push(history.symbol);
+            return;
+          }
+          const closes = new Map([[newest.date, decided.close]]);
+          history.points = withOfficialCloses(history.points, closes, { venue, now });
+          history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now });
         }));
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);

@@ -144,8 +144,8 @@ export const paneSchemas = {
         ],
         defaultValue: "percent",
       },
-      // A window of dates, each leg rebased at its first close in it: --from 2019-12-31 compares since then.
-      { key: "from", type: "string", placeholder: "year|date", description: `${PRICE_WINDOW_FROM_HELP}; the returns are measured from its first shared close`,
+      // A window of dates, measured from the close before it as RETURN is: --from 2026-10-19 compares since the 16th's close.
+      { key: "from", type: "string", placeholder: "year|date", description: `${PRICE_WINDOW_FROM_HELP}; the returns are measured from the last close the tickers share before it, as RETURN measures`,
         example: "--from 2019-12-31", replaces: ["rangePreset"] },
       { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP },
       {

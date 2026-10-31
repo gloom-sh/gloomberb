@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
-import type { PricePoint } from "../../../../types/financials";
+import type { PricePoint, Quote } from "../../../../types/financials";
 import { loadReturnSeries } from "./returns-history";
 import { buildReturnRows } from "./returns-model";
 
@@ -66,30 +66,52 @@ test("a dated window keeps the week its first date falls in, and a source with n
   expect(asked).toEqual(["1wk", "1h", "1d"]);
 });
 
-test("each closed session ends on its official close: earlier ones from the daily bars, the newest from the quote", async () => {
+test("each closed session ends on its close: earlier ones from the daily bars, the newest from the quote or, on a weekend, its daily bar", async () => {
   const days = ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"];
   // The daily closes differ from the last hourly bar's trade (…+0.6), as an auction print does.
   const daily: PricePoint[] = days.map((date, day) => ({ date: new Date(`${date}T00:00:00Z`), close: 378 + day + 0.65 }));
-  const quote = (regularClose: number | undefined) => createTestDataProvider({
-    getQuoteMetadata: async (symbol) => ({ symbol, listingExchangeName: "ARCA", source: {} }),
+  const provider = (quote: Partial<Quote>) => createTestDataProvider({
+    getQuoteMetadata: async (symbol) => ({ symbol, listingExchangeName: "ARCA", currency: "USD", source: {} }),
     getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => (
       interval === "1d" ? { points: daily, resolution: "1d" } : { points: VTI_1H, resolution: "1h" }),
-    getQuote: async (symbol) => ({
-      symbol, price: 383.9, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "ARCA",
-      marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z"),
-      ...(regularClose ? { regularClose, regularCloseSessionDate: "2026-10-09" } : {}),
-    }),
+    getQuote: async (symbol) => ({ symbol, price: 383.6, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "ARCA", ...quote } as Quote),
   });
-  const now = Date.parse("2026-10-11T15:00:00Z");
-  const request = { symbol: "VTI", exchange: "", range: "5D" as const, resolution: "1h" as const, support: [], now };
   const closes = (points: PricePoint[]) => points.filter((point) => new Date(point.date).getUTCHours() === 19).map((point) => point.close);
+  const earlier = [378.65, 379.65, 380.65, 381.65, 382.65];
+  const request = (now: string) => ({ symbol: "VTI", exchange: "", range: "5D" as const, resolution: "1h" as const, support: [], now: Date.parse(now) });
 
-  const series = await loadReturnSeries(quote(384), request);
-  expect(closes(series.points)).toEqual([378.65, 379.65, 380.65, 381.65, 382.65, 384]);
-  expect(series.closingPrintPending).toBeUndefined();
-  // Without the quote's close the newest session keeps its last trade, and says its print is not in yet;
-  // its daily bar may be a copy taken while it traded.
-  const waiting = await loadReturnSeries(quote(undefined), request);
-  expect(closes(waiting.points).at(-1)).toBeCloseTo(383.6);
-  expect(waiting.closingPrintPending).toBe("2026-10-09");
+  // Sunday: the quote's official close of Friday's session.
+  const sunday = await loadReturnSeries(provider({ marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z"),
+    regularClose: 384, regularCloseSessionDate: "2026-10-09" }), request("2026-10-11T15:00:00Z"));
+  expect(closes(sunday.points)).toEqual([...earlier, 384]);
+  expect(sunday.closingPrintPending).toBeUndefined();
+  // A weekend quote without it: Friday's daily bar, and no note that a print is to come.
+  const weekend = await loadReturnSeries(provider({ marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") }), request("2026-10-11T15:00:00Z"));
+  expect(closes(weekend.points)).toEqual([...earlier, 383.65]);
+  expect(weekend.closingPrintPending).toBeUndefined();
+  // Right after the close, before the print: the last trade stays, and the note says the print is to come.
+  const justClosed = await loadReturnSeries(provider({ marketState: "POST", lastUpdated: Date.parse("2026-10-09T20:05:00Z") }), request("2026-10-09T20:10:00Z"));
+  expect(closes(justClosed.points).at(-1)).toBeCloseTo(383.6);
+  expect(justClosed.closingPrintPending).toBe("2026-10-09");
+});
+
+test("a daily close is the session of its venue's local date, not of its UTC date", async () => {
+  // BHP on the ASX: Sydney's 10:00 to 16:00 session runs 23:00 to 05:00 UTC, so Thursday's daily bar is stamped
+  // 23:00 UTC on Wednesday and its last hourly bar opens at 04:00 UTC on Thursday.
+  const sessions = [["2026-10-28", "2026-10-29"], ["2026-10-29", "2026-10-30"]] as const;
+  const hourly: PricePoint[] = sessions.flatMap(([eve, day], session) => [
+    { date: new Date(`${eve}T23:00:00Z`), close: 45 + session },
+    ...[0, 1, 2, 3, 4].map((hour) => ({ date: new Date(`${day}T0${hour}:00:00Z`), close: 45.1 + session + hour / 100 })),
+  ]);
+  const daily: PricePoint[] = [{ date: new Date("2026-10-28T23:00:00Z"), close: 45.5 }, { date: new Date("2026-10-29T23:00:00Z"), close: 46.5 }];
+  const provider = createTestDataProvider({
+    getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => (
+      interval === "1d" ? { points: daily, resolution: "1d" } : { points: hourly, resolution: "1h" }),
+    getQuote: async (symbol) => ({ symbol, price: 46.5, change: 0, changePercent: 0, currency: "AUD", listingExchangeName: "ASX",
+      marketState: "CLOSED", lastUpdated: Date.parse("2026-10-30T06:00:00Z") }),
+  });
+  const series = await loadReturnSeries(provider, { symbol: "BHP", exchange: "ASX", range: "5D", resolution: "1h", support: [],
+    now: Date.parse("2026-10-31T03:00:00Z") });
+  const lastBars = series.points.filter((point) => new Date(point.date).getUTCHours() === 4).map((point) => point.close);
+  expect(lastBars).toEqual([45.5, 46.5]);
 });

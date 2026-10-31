@@ -597,3 +597,38 @@ test("fn CMP reads a leg's fund facts once through their cache, and never a leg 
     fundFactsCache.reset();
   }
 });
+
+test("GIP ends a closed session on its official close, says when it is still to come, and reads no quote for it while trading or for a coin", async () => {
+  const run = async (symbol: string, now: string, quote: Record<string, unknown>) => {
+    const points = [13, 14, 15, 16, 17, 18, 19].map((hour, index) => ({
+      date: new Date(`2026-10-30T${hour}:30:00Z`), open: 100, high: 101, low: 99, close: 100 + index, volume: 10,
+    })).filter((point) => point.date.getTime() <= Date.parse(now));
+    let calls = 0;
+    const provider = createTestDataProvider({
+      getQuote: async (requested) => {
+        calls++;
+        return { symbol: requested, price: 107, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "NASDAQ", lastUpdated: Date.parse(now), ...quote };
+      },
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getPriceHistoryForResolution: async () => points,
+      getDetailedPriceHistory: async () => points,
+    });
+    try {
+      setSystemTime(new Date(now));
+      const model = await chartHeadless("graph-intraday-price-pane").load({ argument: symbol, rawArgument: symbol, symbols: [symbol], options: {} },
+        createTestHeadlessContext({ marketData: provider, settings: { chartSpec: buildIntradayPriceChartPreset(symbol) } })) as ChartPaneModel;
+      return { calls, last: model.chart.series[0]?.points.at(-1)?.value, note: model.freshness?.note };
+    } finally {
+      setSystemTime();
+    }
+  };
+  // Fri 30 Oct 2026: AAPL trades until 20:00 UTC; its 19:30 bar ends on the last trade before the closing auction.
+  const trading = await run("AAPL:NASDAQ", "2026-10-30T18:45:00Z", { marketState: "REGULAR" });
+  const closed = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST", regularClose: 105.5, regularCloseSessionDate: "2026-10-30" });
+  expect(closed.last).toBe(105.5);
+  expect(closed.calls - trading.calls).toBe(1);
+  const waiting = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST" });
+  expect(waiting.note).toContain("closing print not in yet");
+  // A coin has no session to close: no quote is read for it.
+  expect((await run("BTC-USD:CCC", "2026-10-30T20:10:00Z", { marketState: "REGULAR", listingExchangeName: "CCC" })).calls).toBe(trading.calls);
+});

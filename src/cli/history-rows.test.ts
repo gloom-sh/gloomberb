@@ -184,6 +184,9 @@ describe("history rows", () => {
     const hourly = [{ date: "2026-10-30T20:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 86_000_000, volumeBasis: "3 spot venues" },
       { date: "2026-10-30T21:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 91_000_000, volumeBasis: "3 spot venues" }];
     const hourRows = historyRows(hourly.map((point) => mapPricePoint(point, 1, "CCC", true)), "1h");
+    // Its own field (the CSV's Volume basis), never the venue a venue-only count names.
+    expect(hourRows.map(({ volumeBasis, volumeVenue }) => ({ volumeBasis, volumeVenue }))).toEqual([
+      { volumeBasis: "3 spot venues", volumeVenue: undefined }, { volumeBasis: "3 spot venues", volumeVenue: undefined }]);
     expect(historyVolumeText({ unit: "USD" }, "1h", historyVolumeBasis(hourRows))).toBe("volume in USD summed over 3 spot venues");
     const dayRows = historyRows([mapPricePoint({ ...hourly[0]!, date: "2026-10-30", volume: 24_470_000_000, volumeBasis: "aggregate" }, 1, "CCC", true)], "1d");
     expect(historyVolumeText({ unit: "USD" }, "1d", historyVolumeBasis(dayRows))).toBe("volume in USD per UTC day, aggregate across venues");

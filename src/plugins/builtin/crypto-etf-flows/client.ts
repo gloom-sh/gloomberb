@@ -18,7 +18,9 @@ const textOrNull = (value: unknown) => value === null || text(value);
 /**
  * The flows as served, or an error: the asset asked for, its funds once each,
  * every day newest first with a figure or none for each fund, and where they
- * are from. A payload that breaks any of it is not drawn.
+ * are from. A payload that breaks any of it is not drawn. A day's price move
+ * that is not a number or null is dropped from that day alone: the flows
+ * stand without it.
  */
 export function validateCryptoEtfFlows(payload: CryptoEtfFlowsPayload, asset: CryptoEtfFlowAsset): CryptoEtfFlowsPayload {
   const invalid = (): never => { throw new Error("The server returned invalid crypto ETF flows"); };
@@ -32,11 +34,15 @@ export function validateCryptoEtfFlows(payload: CryptoEtfFlowsPayload, asset: Cr
   for (const [index, day] of payload.days.entries()) {
     if (!day || !date(day.date) || (index > 0 && day.date >= payload.days[index - 1]!.date) || !flow(day.total)
       || !day.flows || typeof day.flows !== "object" || Object.entries(day.flows).some(([ticker, value]) => !known.has(ticker) || !flow(value))
-      || !Array.isArray(day.pending) || day.pending.some((ticker) => !known.has(ticker))
-      || (day.priceChangePct !== undefined && !flow(day.priceChangePct))) return invalid();
+      || !Array.isArray(day.pending) || day.pending.some((ticker) => !known.has(ticker))) return invalid();
   }
   if (payload.days[0] && payload.days[0].date !== payload.asOf) return invalid();
-  return payload;
+  if (payload.days.every((day) => day.priceChangePct === undefined || flow(day.priceChangePct))) return payload;
+  return { ...payload, days: payload.days.map((day) => {
+    if (day.priceChangePct === undefined || flow(day.priceChangePct)) return day;
+    const { priceChangePct: _dropped, ...rest } = day;
+    return rest;
+  }) };
 }
 
 export async function fetchCryptoEtfFlows(

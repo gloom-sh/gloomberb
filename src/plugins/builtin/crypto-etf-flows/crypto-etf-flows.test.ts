@@ -123,7 +123,10 @@ test("a dated window lists its days, a fund with no figure reads as none, and th
   const stub = spyOn(apiClient, "getCloudCryptoEtfFlows").mockImplementation(async () => priced);
   try {
     expect(validateCryptoEtfFlows(priced, "BTC").days[0]!.priceChangePct).toBe(-1.25);
-    expect(() => validateCryptoEtfFlows(payload([{ ...day("2026-10-20", {}, 1), priceChangePct: "1%" as never }]), "BTC")).toThrow();
+    // A malformed price move is dropped from its day; the flows stand.
+    const malformed = validateCryptoEtfFlows(payload([{ ...day("2026-10-20", { IBIT: 5 }, 5), priceChangePct: "1%" as never },
+      { ...day("2026-10-19", {}, 1), priceChangePct: 0.5 }]), "BTC");
+    expect(malformed.days.map((entry) => [entry.total, "priceChangePct" in entry ? entry.priceChangePct : "absent"])).toEqual([[5, "absent"], [1, 0.5]]);
     const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: { asset: "btc", limit: 20, from: "2026-10-21", to: "2026-10-23" } };
     const result = await cryptoEtfFlowsHeadless.load(args, {} as HeadlessPaneContext) as HeadlessRowsResult;
     expect(result.rows.map((row) => row.date)).toEqual(["2026-10-23", "2026-10-22", "2026-10-21"]);
