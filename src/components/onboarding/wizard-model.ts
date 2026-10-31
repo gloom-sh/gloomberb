@@ -19,9 +19,63 @@ const LEGACY_STAGES: Partial<Record<OnboardingStage, OnboardingStage>> = {
 };
 
 export function getOnboardingProgress(config: AppConfig): OnboardingProgress {
-  const progress = config.onboardingProgress ?? { version: 1, stage: "portfolio" };
-  const stage = LEGACY_STAGES[progress.stage];
-  return stage ? { ...progress, stage } : progress;
+  const saved = config.onboardingProgress ?? { version: 1, stage: "portfolio" };
+  const legacy = LEGACY_STAGES[saved.stage];
+  const progress = legacy ? { ...saved, stage: legacy } : saved;
+  // Older builds sent Back from Gloom Cloud to the portfolio after the
+  // workspace was built; such a profile resumes on the workspace.
+  return isOnboardingStageFinished(progress, progress.stage) ? { ...progress, stage: "research" } : progress;
+}
+
+/** Stages the wizard reaches only once the workspace is built. */
+const WORKSPACE_STAGES: ReadonlySet<OnboardingStage> = new Set(["research", "account", "upgrade", "ready"]);
+
+/**
+ * Whether the workspace is built around a holding: the portfolio and desk
+ * steps are finished. Older builds saved no desks, so a later stage with a
+ * holding counts too.
+ */
+export function isOnboardingWorkspaceBuilt(progress: OnboardingProgress): boolean {
+  return !!progress.tickerSymbol && (Array.isArray(progress.desks) || WORKSPACE_STAGES.has(progress.stage));
+}
+
+/**
+ * A step that is done for good: the portfolio and desk steps once the
+ * workspace is built (building twice would add every desk twice), and Pro
+ * for an account that has it. The wizard shows them as done and never asks
+ * them again.
+ */
+function isOnboardingStageFinished(progress: OnboardingProgress, stage: OnboardingStage, pro = false): boolean {
+  if (stage === "upgrade") return pro;
+  return (stage === "portfolio" || stage === "desks") && isOnboardingWorkspaceBuilt(progress);
+}
+
+/**
+ * Where Back (and Esc) goes: the step the user came from, passing over any
+ * that is finished for good (`pro`: the account has Pro). With no way back
+ * recorded (the app restarted on this step), the step before it in the
+ * flow. `visited` is the stages the user came through, oldest first; what
+ * comes back is what is left of it. Null when the step has no way back.
+ */
+export function previousOnboardingStage(
+  progress: OnboardingProgress,
+  visited: readonly OnboardingStage[],
+  { pro = false }: { pro?: boolean } = {},
+): { stage: OnboardingStage; visited: OnboardingStage[] } | null {
+  for (let index = visited.length - 1; index >= 0; index -= 1) {
+    const stage = visited[index]!;
+    if (stage !== progress.stage && !isOnboardingStageFinished(progress, stage, pro)) {
+      return { stage, visited: visited.slice(0, index) };
+    }
+  }
+  const stage: OnboardingStage | null = progress.stage === "account"
+    ? isOnboardingWorkspaceBuilt(progress) ? "research" : "portfolio"
+    : progress.stage === "upgrade"
+      ? "account"
+      : progress.stage === "ready"
+        ? progress.accountStatus === "signed-in" && !pro ? "upgrade" : "account"
+        : null;
+  return stage ? { stage, visited: [] } : null;
 }
 
 export function withOnboardingProgress(

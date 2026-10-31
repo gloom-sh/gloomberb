@@ -1505,6 +1505,18 @@ export const ja: Record<string, string> = {
   "b: sign in with the browser instead": "b: ブラウザーでサインイン",
   "Sign in with the browser instead": "ブラウザーでサインイン",
   "Real-time market data": "リアルタイム市場データ",
+  // ── Onboarding desks ─────────────────────────────────────────
+  "What do you trade most?": "主に何を取引しますか？",
+  "Pick up to 3; each adds a ready-made tab.": "最大3つまで選べます。それぞれ用意済みのタブを追加します。",
+  "Everything else is one search away.": "その他はすべて検索ひとつで開けます。",
+  "DESKS": "デスク",
+  "Skip": "スキップ",
+  "Equities": "株式",
+  "Futures & commodities": "先物・コモディティ",
+  "Rates & credit": "金利・クレジット",
+  "FX & macro": "為替・マクロ",
+  "Active trading": "アクティブトレード",
+  "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "保有銘柄のヒートマップ、ウォッチリスト、{ticker} のチャート。デスクは下部のタブにあり、{shortcut} で追加できます。",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "無料トライアルを開始",
   "Your last payment didn't go through": "前回のお支払いが完了しませんでした",

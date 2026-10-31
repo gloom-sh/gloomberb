@@ -250,7 +250,7 @@ export interface AccountProfile {
   showLocalTime?: boolean;
   /** The desks chat shows beside your name; empty shows none. */
   chatDesks?: string[];
-  /** Your answer to "What do you trade?" at the first run: private, it pre-fills `chatDesks`. */
+  /** Your answer to "What do you trade most?" at the first run: private, it pre-fills `chatDesks`. */
   onboardingDesks?: string[];
   syncEnabled: boolean;
   weeklyRoundupEnabled: boolean;

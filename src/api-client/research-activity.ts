@@ -350,7 +350,7 @@ function attributionPayload(): Record<string, string> | undefined {
 }
 
 export interface ResearchActivityDetails {
-  /** The desks picked at "What do you trade?", on the milestone that ends the first run. */
+  /** The desks picked at "What do you trade most?", on the milestone that ends the first run. */
   desks?: readonly string[];
   /**
    * Which prompt raised an `upgrade_intent` (a pane footer, a wall, the

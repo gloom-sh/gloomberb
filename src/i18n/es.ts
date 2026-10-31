@@ -1509,6 +1509,18 @@ export const es: Record<string, string> = {
   "b: sign in with the browser instead": "b: iniciar sesión con el navegador",
   "Sign in with the browser instead": "Iniciar sesión con el navegador",
   "Real-time market data": "Datos de mercado en tiempo real",
+  // ── Onboarding desks ─────────────────────────────────────────
+  "What do you trade most?": "¿Qué operas más?",
+  "Pick up to 3; each adds a ready-made tab.": "Elige hasta 3; cada una añade una pestaña lista.",
+  "Everything else is one search away.": "Todo lo demás está a una búsqueda.",
+  "DESKS": "MESAS",
+  "Skip": "Omitir",
+  "Equities": "Renta variable",
+  "Futures & commodities": "Futuros y materias primas",
+  "Rates & credit": "Tipos y crédito",
+  "FX & macro": "Divisas y macro",
+  "Active trading": "Trading activo",
+  "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "Tus posiciones como mapa de calor, una lista de seguimiento y el gráfico de {ticker}. Tus mesas son pestañas abajo; {shortcut} añade más.",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "Iniciar prueba gratis",
   "Your last payment didn't go through": "Tu último pago no se completó",

@@ -1503,6 +1503,18 @@ export const ko: Record<string, string> = {
   "b: sign in with the browser instead": "b: 브라우저로 로그인",
   "Sign in with the browser instead": "브라우저로 로그인",
   "Real-time market data": "실시간 시장 데이터",
+  // ── Onboarding desks ─────────────────────────────────────────
+  "What do you trade most?": "주로 무엇을 거래하나요?",
+  "Pick up to 3; each adds a ready-made tab.": "최대 3개까지 고르세요. 각각 준비된 탭을 추가합니다.",
+  "Everything else is one search away.": "나머지는 검색 한 번이면 됩니다.",
+  "DESKS": "데스크",
+  "Skip": "건너뛰기",
+  "Equities": "주식",
+  "Futures & commodities": "선물 및 원자재",
+  "Rates & credit": "금리 및 크레딧",
+  "FX & macro": "외환 및 매크로",
+  "Active trading": "액티브 트레이딩",
+  "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "보유 종목 히트맵, 관심 목록, {ticker} 차트. 데스크는 하단 탭에 있고 {shortcut}로 더 추가합니다.",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "무료 체험 시작",
   "Your last payment didn't go through": "지난 결제가 처리되지 않았습니다",

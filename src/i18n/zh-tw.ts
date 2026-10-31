@@ -1505,6 +1505,18 @@ export const zhTW: Record<string, string> = {
   "b: sign in with the browser instead": "b：改用瀏覽器登入",
   "Sign in with the browser instead": "改用瀏覽器登入",
   "Real-time market data": "即時市場資料",
+  // ── Onboarding desks ─────────────────────────────────────────
+  "What do you trade most?": "你最常交易什麼？",
+  "Pick up to 3; each adds a ready-made tab.": "最多選 3 項，每項新增一個現成的分頁。",
+  "Everything else is one search away.": "其他內容一搜即得。",
+  "DESKS": "交易台",
+  "Skip": "略過",
+  "Equities": "股票",
+  "Futures & commodities": "期貨與大宗商品",
+  "Rates & credit": "利率與信用",
+  "FX & macro": "外匯與總經",
+  "Active trading": "積極交易",
+  "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "持股熱力圖、觀察清單和 {ticker} 的圖表。你的交易台在底部分頁；{shortcut} 可新增更多。",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "開始免費試用",
   "Your last payment didn't go through": "上次付款未成功",

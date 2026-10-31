@@ -44,7 +44,7 @@ export interface AccountDraft {
   showLocalTime: boolean;
   /** Chat shows what you trade: off until you turn it on. */
   showDesks: boolean;
-  /** The desks to show, pre-filled from your answer to "What do you trade?". */
+  /** The desks to show, pre-filled from your answer to "What do you trade most?". */
   desks: string[];
   weeklyRoundupEnabled: boolean;
   positionAlertsEnabled: boolean;

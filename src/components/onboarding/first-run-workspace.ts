@@ -8,6 +8,7 @@ import {
   type SavedLayout,
 } from "../../types/config";
 import type { TickerMetadata, TickerRecord } from "../../types/ticker";
+import type { DeskKey } from "../../layout/desk-keys";
 
 /**
  * The watchlist a first run lands with: the two index ETFs and the names most
@@ -211,13 +212,49 @@ export function buildFirstRunLayout({
   };
 }
 
-/** Replaces the Home layout with the first-run workspace and makes it active. */
-export function applyFirstRunLayout(config: AppConfig, home: SavedLayout): AppConfig {
-  const layouts = config.layouts.length > 0 ? [home, ...config.layouts.slice(1)] : [home];
+/**
+ * The ids of the layouts onboarding makes. Running it again finds its own
+ * layouts by these and replaces them, so it never adds a copy; a layout
+ * without one is the user's.
+ */
+const ONBOARDING_HOME_LAYOUT_ID = "onboarding:home";
+const ONBOARDING_LAYOUT_ID_PREFIX = "onboarding:";
+
+export function onboardingDeskLayoutId(desk: DeskKey): string {
+  return `${ONBOARDING_LAYOUT_ID_PREFIX}desk:${desk}`;
+}
+
+function isOnboardingLayout(layout: SavedLayout): boolean {
+  return layout.id?.startsWith(ONBOARDING_LAYOUT_ID_PREFIX) === true;
+}
+
+/**
+ * Puts the first-run workspace in place and makes Home active: Home, then a
+ * tab per picked desk. The layouts an earlier run made are replaced where
+ * they stood, and a desk not picked this time goes with them; a first run
+ * replaces the stock Home it starts with. Every other layout is the user's
+ * and keeps its place and content.
+ */
+export function applyFirstRunLayout(
+  config: AppConfig,
+  home: SavedLayout,
+  desks: ReadonlyArray<SavedLayout & { id: string }> = [],
+): AppConfig {
+  const earlier = config.layouts.findIndex(isOnboardingLayout);
+  const users = config.layouts.filter((layout) => !isOnboardingLayout(layout));
+  // Everything before the first layout onboarding made is the user's, so its index holds.
+  const at = earlier >= 0 ? earlier : 0;
+  const kept = earlier >= 0 ? users : users.slice(1);
+  const layouts = [
+    ...kept.slice(0, at),
+    { ...home, id: ONBOARDING_HOME_LAYOUT_ID },
+    ...desks,
+    ...kept.slice(at),
+  ];
   return {
     ...config,
     layouts,
     layout: home.layout,
-    activeLayoutIndex: 0,
+    activeLayoutIndex: at,
   };
 }
