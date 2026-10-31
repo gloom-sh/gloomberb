@@ -1,4 +1,5 @@
-import { mkdir, stat, writeFile } from "fs/promises";
+import { constants } from "fs";
+import { lstat, mkdir, open } from "fs/promises";
 import { homedir } from "os";
 import { posix, win32 } from "path";
 
@@ -40,13 +41,28 @@ function isFolder(path: string, paths: typeof posix): Error {
   return new Error(`Cannot write ${path}: it is a folder. Name a file in it, such as ${paths.join(path, "report.csv")}.`);
 }
 
-/** Fails when `path` names a folder: checked before a report loads, so it stops at once. */
+function isLink(path: string): Error {
+  return new Error(`Cannot write ${path}: it is a link. Name the file it points to, or a new file.`);
+}
+
+function isNotAFile(path: string): Error {
+  return new Error(`Cannot write ${path}: it is not a plain file. Name a new file, or a file to replace.`);
+}
+
+/**
+ * Fails when `path` names a folder, a link or anything else that is not a
+ * plain file (a device, a pipe): checked before a report loads, so it stops
+ * at once, and again as the file is opened.
+ */
 export async function checkOutputPath(path: string, platform: NodeJS.Platform = process.platform): Promise<void> {
-  const existing = await stat(path).catch(() => {
+  const existing = await lstat(path).catch(() => {
     // Intentional ignore: a path that does not exist yet is the usual case, and writing reports any real failure.
     return null;
   });
-  if (existing?.isDirectory()) throw isFolder(path, platform === "win32" ? win32 : posix);
+  if (!existing) return;
+  if (existing.isDirectory()) throw isFolder(path, platform === "win32" ? win32 : posix);
+  if (existing.isSymbolicLink()) throw isLink(path);
+  if (!existing.isFile()) throw isNotAFile(path);
 }
 
 /**
@@ -69,19 +85,48 @@ export async function createOutputFolder(path: string, platform: NodeJS.Platform
 }
 
 /**
+ * Opens `path` to write, creating it readable by the user alone: never
+ * through a link (`O_NOFOLLOW`), and without waiting on a pipe no one reads
+ * (`O_NONBLOCK`). Windows has neither flag; `checkOutputPath` refuses a link there.
+ */
+const OUTPUT_OPEN_FLAGS = constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+const OUTPUT_FILE_MODE = 0o600;
+
+/**
  * Writes a command's output to `path`, creating the folders it names as
- * `shot --output` does, and failing with what to do when it cannot.
+ * `shot --output` does, and failing with what to do when it cannot. The file
+ * is readable by the user alone, as one it replaces is made, and only a plain
+ * file is written: a link or a device in its place is refused.
  */
 export async function writeOutputFile(path: string, contents: string, platform: NodeJS.Platform = process.platform): Promise<void> {
   const paths = platform === "win32" ? win32 : posix;
   await createOutputFolder(path, platform);
+  await checkOutputPath(path, platform);
+  const fail = (error: unknown): never => {
+    throw writeFailure(path, paths, error);
+  };
+  const file = await open(path, OUTPUT_OPEN_FLAGS, OUTPUT_FILE_MODE).catch(fail);
   try {
-    await writeFile(path, contents);
-  } catch (error) {
-    const code = errorCode(error);
-    if (code === "EISDIR") throw isFolder(path, paths);
-    if (code === "EACCES" || code === "EPERM") throw new Error(`Cannot write ${path}: permission denied.`);
-    if (code === "ENOTDIR" || code === "EEXIST") throw new Error(`Cannot write ${path}: a file stands where one of its folders would be.`);
-    throw new Error(`Cannot write ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    // The path can change between the check and the open; what was opened is what counts.
+    if (!(await file.stat()).isFile()) throw isNotAFile(path);
+    await (async () => {
+      if (platform !== "win32") await file.chmod(OUTPUT_FILE_MODE);
+      await file.truncate(0);
+      await file.writeFile(contents);
+    })().catch(fail);
+  } finally {
+    await file.close();
   }
+}
+
+function writeFailure(path: string, paths: typeof posix, error: unknown): Error {
+  const code = errorCode(error);
+  if (code === "EISDIR") return isFolder(path, paths);
+  // O_NOFOLLOW on a link: ELOOP on Linux and macOS, EMLINK on FreeBSD.
+  if (code === "ELOOP" || code === "EMLINK") return isLink(path);
+  // O_NONBLOCK on a pipe no one reads.
+  if (code === "ENXIO") return isNotAFile(path);
+  if (code === "EACCES" || code === "EPERM") return new Error(`Cannot write ${path}: permission denied.`);
+  if (code === "ENOTDIR" || code === "EEXIST") return new Error(`Cannot write ${path}: a file stands where one of its folders would be.`);
+  return new Error(`Cannot write ${path}: ${error instanceof Error ? error.message : String(error)}`);
 }

@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync } from "fs";
+import { existsSync } from "fs";
+import { makePrivateDirSync } from "../../../../utils/private-files";
 import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
@@ -103,7 +104,7 @@ function buildInitializationPayload(
 async function resolveDesktopDataDir(): Promise<string> {
   const dataDir = await getDataDir() ?? getGloomberbDirs().data;
   if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
+    makePrivateDirSync(dataDir);
   }
   return dataDir;
 }

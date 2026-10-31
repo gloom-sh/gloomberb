@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { readFileSync, renameSync, rmSync } from "fs";
 import { join } from "path";
+import { makePrivateDirSync, writePrivateFileSync } from "../../../../utils/private-files";
 import type { DesktopViewIds } from "../../shared/protocol";
 
 /**
@@ -37,13 +38,16 @@ export function readDesktopViewIds(dataDir: string): DesktopViewIds {
   }
 }
 
-/** Replaces the copy with what the view sent, written whole or not at all. Throws when it cannot, so the view tries again. */
+/**
+ * Replaces the copy with what the view sent, written whole or not at all and
+ * readable by the user alone. Throws when it cannot, so the view tries again.
+ */
 export function saveDesktopViewIds(dataDir: string, ids: unknown): void {
   const path = viewIdsPath(dataDir);
   const temporary = `${path}.${process.pid}.tmp`;
   try {
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(temporary, JSON.stringify(parseViewIds(ids)));
+    makePrivateDirSync(dataDir);
+    writePrivateFileSync(temporary, JSON.stringify(parseViewIds(ids)));
     renameSync(temporary, path);
   } catch (error) {
     rmSync(temporary, { force: true });
