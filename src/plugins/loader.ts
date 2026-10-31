@@ -15,8 +15,10 @@ import {
   missingPluginDependencies,
   settleDependencyInstalls,
 } from "./dependencies";
-import { declaredPeerPlugins, describePeerLink, isLinkedPeerModule, linkHostPackages, relinkPeerPlugin } from "./host-link";
+import { declaredPeerPlugins, describePeerLink, installedPeerPlugins, isLinkedPeerModule, linkHostPackages, relinkPeerPlugin } from "./host-link";
+import { importSiblingsFromTheirFolders } from "./peer-imports";
 import { refreshResolverFolders, rekeyedEntry, withoutRetryQuery } from "./peer-retry";
+import { redirectionGuard } from "./redirection-guard";
 import { pluginDirectoryNames } from "./plugin-names";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -258,7 +260,7 @@ function hasStaleModules(pluginDir: string, commit: string | null): boolean {
  */
 const retriedEntries = new Map<string, string>();
 
-/** Plugin folders whose recovery this process already reported; once is enough to explain it. */
+/** Plugin folders whose recovery, or link that did not resolve, this process already reported; once is enough to explain it. */
 const reportedRecoveries = new Set<string>();
 
 /** Loads running now, which a crash report counts: two at once share the links they rewrite. */
@@ -299,28 +301,53 @@ function failedPeer(pluginDir: string, specifier: string | undefined): string | 
 /**
  * The state of the link to `peer` and around it, for the crash report of an
  * import that failed on it: whether the sibling's folder is there, what the
- * link is and where it points, whether the retry rewrote it, how often this
- * process wrote it before, which `bun install` runs this process made, how
- * many loads ran at once, and whether this is the first launch of the version.
+ * link is and where it points, why reading through it failed, whether the
+ * retry rewrote it, how often this process wrote it before, which `bun
+ * install` runs this process made, how many loads ran at once, whether this
+ * is the first launch of the version, and on Windows whether this process
+ * may follow a junction (redirection-guard.ts). `how` leads: the retry's
+ * outcome, or how a plugin that loaded imported the sibling.
  */
-function describePeerFailure(pluginDir: string, peer: string, relinked: string, retry: string): string {
+function describePeerLinkState(pluginDir: string, peer: string, how: string, relinked?: string): string {
   const link = describePeerLink(pluginDir, peer);
   const now = Date.now();
   const installs = describeDependencyInstalls(now);
+  const guard = redirectionGuard();
   const fields = [
-    `retry=${retry}`,
+    how,
     `peer=${peer}`,
     `dir=${link.directory ?? "missing"}`,
     `link=${link.link}${link.target ? `->${link.target}` : ""}${link.linked ? "" : "(not-resolving)"}`,
-    `relinked=${relinked}`,
+    ...(link.resolveError ? [`link-stat=${link.resolveError}`] : []),
+    ...(relinked ? [`relinked=${relinked}`] : []),
     `link-writes=${link.writes}${link.lastWriteAt ? `@${((now - link.lastWriteAt) / 1000).toFixed(1)}s` : ""}`,
     ...(link.lastError ? [`link-error=${link.lastError}`] : []),
     `installs=${installs.length > 0 ? installs.slice(0, 4).join(",") : "none"}`,
     `loads=${loadsInFlight}`,
     `first-launch=${firstLaunchOfVersion === null ? "unknown" : firstLaunchOfVersion ? "yes" : "no"}`,
     ...(typeof Bun !== "undefined" ? [`bun=${Bun.version}`] : []),
+    ...(guard ? [`redirection-guard=${guard}`] : []),
   ];
   return fields.join(" ");
+}
+
+/**
+ * Reports, once per plugin and process, a plugin that loaded while its link
+ * to a sibling it imports does not resolve. The import itself went to the
+ * sibling's folder (peer-imports.ts), so nothing failed; the report says the
+ * link would have failed it, and why, which is how the first launch after an
+ * update looks when the old failure is gone.
+ */
+function reportUnresolvedSiblingLinks(pluginDir: string, directory: string): void {
+  if (reportedRecoveries.has(pluginDir)) return;
+  for (const { peer } of installedPeerPlugins(pluginDir)) {
+    if (describePeerLink(pluginDir, peer).linked) continue;
+    reportedRecoveries.add(pluginDir);
+    const detail = describePeerLinkState(pluginDir, peer, "peer-import=folder");
+    loaderLog.info(`Loaded ${directory} with ${peer} read from its folder; the link to it does not resolve [${detail}]`);
+    reportCrash(new Error(`Loaded ${directory} past a link to ${peer} that does not resolve`), { kind: "plugin", plugin: directory, detail });
+    return;
+  }
 }
 
 type PeerRetry =
@@ -353,14 +380,14 @@ async function retryPeerImport(pluginDir: string, entryFile: string, peer: strin
   refreshResolverFolders(pluginDir, [peer]);
   const specifier = rekeyedEntry(entryFile, pluginDir);
   if (!specifier) {
-    return { error: new Error("This process cannot import a plugin again."), detail: describePeerFailure(pluginDir, peer, relinked, "unavailable") };
+    return { error: new Error("This process cannot import a plugin again."), detail: describePeerLinkState(pluginDir, peer, "retry=unavailable", relinked) };
   }
   try {
     const module = await import(specifier);
     retriedEntries.set(pluginDir, specifier);
-    return { module, detail: describePeerFailure(pluginDir, peer, relinked, "loaded") };
+    return { module, detail: describePeerLinkState(pluginDir, peer, "retry=loaded", relinked) };
   } catch (error) {
-    return { error, detail: describePeerFailure(pluginDir, peer, relinked, "failed") };
+    return { error, detail: describePeerLinkState(pluginDir, peer, "retry=failed", relinked) };
   }
 }
 
@@ -475,6 +502,10 @@ async function loadPluginDirectory(
     };
   };
 
+  // A sibling it imports is read from the sibling's folder, not through the
+  // link just made: a process can be unable to follow that link at all.
+  importSiblingsFromTheirFolders(pluginDir);
+
   let module: unknown;
   try {
     const retried = options.fresh ? undefined : retriedEntries.get(pluginDir);
@@ -496,6 +527,7 @@ async function loadPluginDirectory(
     }
     module = retry.module;
   }
+  reportUnresolvedSiblingLinks(pluginDir, directory);
 
   try {
     const plugin = pluginFromModule(module);

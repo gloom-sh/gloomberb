@@ -7,6 +7,7 @@ import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./marketplace/store";
 import { bunCommand, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
+import { importSiblingsFromTheirFolders } from "./peer-imports";
 import {
   findAbsorbedCheckout,
   getPluginsDir,
@@ -297,6 +298,9 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
   if (missingPeerPlugins(targetDir).length > 0) return null;
   const entryFile = await resolvePluginEntry(targetDir);
   if (!entryFile) return null;
+  // The siblings from their folders, as the loader imports them, so the
+  // modules this caches are the ones a load in this process reuses.
+  importSiblingsFromTheirFolders(targetDir);
   // Fresh so an update is validated against the new code, not the module Bun
   // cached when the previous version loaded.
   const plugin = pluginFromModule(await import(`${entryFile}?validate=${Date.now()}`));

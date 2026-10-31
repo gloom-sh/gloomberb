@@ -4,6 +4,7 @@ import { basename, join } from "path";
 import { explainPluginLoadError } from "./compat";
 import { hostPublicModules } from "./host-link";
 import { resolvePluginBrowserEntry, resolvePluginEntry } from "./loader";
+import { siblingImportsBundlerPlugin } from "./peer-imports";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from "./host-modules";
 import {
   PLUGIN_PROCESS_IDENTIFIER,
@@ -192,6 +193,9 @@ export async function bundleExternalPlugin(
   const pluginName = options.pluginName ?? basename(pluginDir);
 
   const shared = new Set<string>();
+  // A sibling plugin it imports is compiled from the sibling's folder, as
+  // the loader imports it, not through the plugin's link (peer-imports.ts).
+  const siblings = siblingImportsBundlerPlugin(pluginDir);
   const result = await Bun.build({
     entrypoints: [entry],
     outdir: outDir,
@@ -216,6 +220,7 @@ export async function bundleExternalPlugin(
         (specifier) => shared.add(specifier),
         { providesProcess },
       ),
+      ...(siblings ? [siblings] : []),
     ],
   });
 

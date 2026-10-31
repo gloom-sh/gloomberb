@@ -1,5 +1,8 @@
-import { readdirSync, readFileSync, type Dirent } from "fs";
-import { dirname, extname, isAbsolute, join, relative } from "path";
+import { existsSync, readdirSync, readFileSync, type Dirent } from "fs";
+import { dirname, extname, join } from "path";
+
+import { isInside, replaceSpecifier, SOURCE_LOADERS, sourceLoader, withSiblingImports } from "./peer-imports";
+import { pluginDirectoryNames } from "./plugin-names";
 
 /**
  * A second import of a plugin whose first one failed on a sibling plugin it
@@ -19,19 +22,15 @@ import { dirname, extname, isAbsolute, join, relative } from "path";
  * nothing from the failed attempt is reused. Imports that leave the plugin,
  * the sibling's files included, resolve to the same modules as always, so the
  * plugin shares the sibling's state as on a normal load.
+ *
+ * A plugin's imports of its siblings no longer go through the link at all
+ * (peer-imports.ts), so what is left for the retry is a plugin that Bun
+ * already failed in this process, imported before its sibling was there.
  */
 
 /** The query that gives a plugin's files their new module keys. */
 const RETRY_PARAM = "gloom-plugin-retry";
 const RETRY_QUERY = new RegExp(`[?&]${RETRY_PARAM}=(\\d+)(?:&|$)`);
-const SOURCE_LOADERS: Readonly<Record<string, "ts" | "tsx" | "js" | "jsx">> = {
-  ".ts": "ts",
-  ".mts": "ts",
-  ".tsx": "tsx",
-  ".js": "js",
-  ".mjs": "js",
-  ".jsx": "jsx",
-};
 /** A file name that is never there: looking it up is what clears a folder. */
 const MISSING_FILE = "./.gloom-resolver-refresh";
 const SKIPPED_FOLDERS = new Set(["node_modules", ".git", "dist"]);
@@ -48,11 +47,6 @@ export function withoutRetryQuery(text: string): string {
 const retryRoots = new Map<number, string>();
 let retries = 0;
 let installed = false;
-
-function isInside(root: string, path: string): boolean {
-  const inside = relative(root, path);
-  return !!inside && !inside.startsWith("..") && !isAbsolute(inside);
-}
 
 /** The plugin's own folders, without dependencies or build output. */
 function sourceFolders(dir: string, out: string[] = [], depth = 0): string[] {
@@ -72,11 +66,11 @@ function sourceFolders(dir: string, out: string[] = [], depth = 0): string[] {
 }
 
 /**
- * Makes Bun read the plugin's folders and its links to `peers` from disk
- * again. Bun drops a folder from its resolver cache when a lookup in it
- * misses, so this looks up a file that is not there in each one. The
- * bundler shares the cache, which is why the desktop's compile of the same
- * plugin failed in the same session too.
+ * Makes Bun read the plugin's folders, its links to `peers` and the peers'
+ * own folders from disk again. Bun drops a folder from its resolver cache
+ * when a lookup in it misses, so this looks up a file that is not there in
+ * each one. The bundler shares the cache, which is why the desktop's compile
+ * of the same plugin failed in the same session too.
  */
 export function refreshResolverFolders(pluginDir: string, peers: readonly string[]): void {
   const modules = join(pluginDir, "node_modules");
@@ -84,6 +78,10 @@ export function refreshResolverFolders(pluginDir: string, peers: readonly string
   for (const peer of peers) {
     if (peer.startsWith("@")) folders.push(join(modules, peer.split("/")[0]!));
     folders.push(join(modules, peer));
+    for (const name of pluginDirectoryNames(peer)) {
+      const peerDir = join(dirname(pluginDir), name);
+      if (existsSync(peerDir)) folders.push(...sourceFolders(peerDir));
+    }
   }
   for (const folder of folders) {
     try {
@@ -97,15 +95,17 @@ export function refreshResolverFolders(pluginDir: string, peers: readonly string
 /**
  * The plugin's file at `path` (with the retry query), its relative imports
  * of other source files in the plugin given the same query, so they load
- * under new keys as well. Imports that leave the plugin keep their keys.
+ * under new keys as well. Imports that leave the plugin keep their keys,
+ * and those of a sibling plugin name its file in the sibling's folder, as
+ * on a first import (peer-imports.ts).
  */
-function rekeyedSource(path: string): { contents: string; loader: "ts" | "tsx" | "js" | "jsx" } {
+function rekeyedSource(path: string): { contents: string; loader: ReturnType<typeof sourceLoader> } {
   const match = RETRY_QUERY.exec(path);
   const file = match ? path.slice(0, match.index) : path;
-  const loader = SOURCE_LOADERS[extname(file).toLowerCase()] ?? "js";
+  const loader = sourceLoader(file);
   let contents = readFileSync(file, "utf8");
   const root = match ? retryRoots.get(Number(match[1])) : undefined;
-  if (!match || !root) return { contents, loader };
+  if (!match || !root) return { contents: withSiblingImports(file, contents), loader };
   const retry = Number(match[1]);
   const specifiers = new Set(
     new Bun.Transpiler({ loader }).scanImports(contents)
@@ -121,12 +121,9 @@ function rekeyedSource(path: string): { contents: string; loader: "ts" | "tsx" |
       continue;
     }
     if (!isInside(root, target) || !SOURCE_LOADERS[extname(target).toLowerCase()]) continue;
-    const rekeyed = `${specifier}?${RETRY_PARAM}=${retry}`;
-    for (const quote of ["\"", "'", "`"]) {
-      contents = contents.split(`${quote}${specifier}${quote}`).join(`${quote}${rekeyed}${quote}`);
-    }
+    contents = replaceSpecifier(contents, specifier, `${specifier}?${RETRY_PARAM}=${retry}`);
   }
-  return { contents, loader };
+  return { contents: withSiblingImports(file, contents), loader };
 }
 
 function installRekeyingLoader(): boolean {
