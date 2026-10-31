@@ -31,7 +31,7 @@ import type { TickerFinancials, PricePoint, Quote } from "../../../types/financi
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
-import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { cleanFloat32Price } from "../../../cli/history-rows";
@@ -650,14 +650,27 @@ async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext
   });
 }
 
+/**
+ * `--exchange TSX`: every ticker series that names no venue, on that one, as
+ * `BDI:TSX` would be. A code the app does not know fails before any request.
+ */
+export function onExchange(spec: ChartSpec, exchange: string): ChartSpec {
+  const code = exchange.trim().toUpperCase();
+  if (!isKnownExchangeCode(code)) throw new Error(`Unknown exchange "${exchange.trim()}". Write a venue code such as TSX, LSE or XETRA, or name it in the series: BDI:TSX.`);
+  return { ...spec, series: spec.series.map((series) => series.source.kind !== "security" || series.source.instrument.exchange || series.source.instrument.instrument
+    ? series
+    : { ...series, source: { ...series.source, instrument: { ...series.source.instrument, exchange: canonicalExchange(code) } } }) };
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
     shape: "series",
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
-      const saved = parseChartSpec(context.settings?.chartSpec);
-      if (!saved) throw new Error("The chart specification is invalid.");
+      const stored = parseChartSpec(context.settings?.chartSpec);
+      if (!stored) throw new Error("The chart specification is invalid.");
+      const saved = typeof args.options.exchange === "string" ? onExchange(stored, args.options.exchange) : stored;
       // A leveraged or inverse fund compared with anything draws its daily objective beside it.
       const parsed = template === "comparison-chart-pane" && mayDrawDailyObjective(saved)
         ? withLeverageOverlay(saved, await loadDailyObjectives(

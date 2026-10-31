@@ -52,6 +52,11 @@ export const paneSchemas = {
         values: [{ value: "auto" }, ...BAR_SIZES],
         normalize: (value) => normalizeBarSize(value, true),
       },
+      {
+        key: "exchange",
+        description: "Exchange for every ticker that names none: fn G BDI --exchange TSX is fn G BDI:TSX.",
+        type: "string",
+      },
     ],
     discovery: {
       id: "chart-composer",
