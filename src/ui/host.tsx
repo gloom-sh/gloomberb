@@ -375,6 +375,17 @@ export interface ImageSurfaceProps extends BoxProps {
   src?: string;
   alt?: string;
   objectFit?: "contain" | "cover";
+  /**
+   * Draw `children` until the image has loaded, not only without a `src` or
+   * once it fails, so a box that waits on a picture shows its stand-in rather
+   * than an empty one. The terminal always does.
+   */
+  fallbackWhileLoading?: boolean;
+  /**
+   * A colour behind the picture once it has loaded (a logo made for a light
+   * page), never behind `children`. The terminal draws none.
+   */
+  imageBackground?: string;
 }
 export interface MediaSurfaceProps extends BoxProps {
   src?: string;
