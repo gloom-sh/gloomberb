@@ -209,3 +209,23 @@ test("a refresh may take the session the app checked moments ago, and asks once 
   await controller.refreshSession({ reuseCheckWithinMs: 0 });
   expect(requests).toBe(2);
 });
+
+test("a read asked once another account's session is found does not join one sent before", async () => {
+  apiClient.setCookieSessionMode(true);
+  const reads: Array<(response: Response) => void> = [];
+  setCloudApiFetchTransport(async (url) => {
+    if (new URL(url).pathname === "/auth/get-session") return Response.json({ user: pro });
+    const { promise, resolve } = Promise.withResolvers<Response>();
+    reads.push(resolve);
+    return promise;
+  });
+  const settled = async (count: number) => { for (let i = 0; i < 50 && reads.length < count; i++) await Bun.sleep(1); };
+  const signedOut = apiClient.getCloudQuote("NVDA", "NASDAQ");
+  await settled(1);
+  await apiClient.getSession();
+  const signedIn = apiClient.getCloudQuote("NVDA", "NASDAQ");
+  await settled(2);
+  expect(reads).toHaveLength(2);
+  for (const answer of reads) answer(Response.json({ status: "success", data: { symbol: "NVDA", price: 1 } }));
+  await Promise.all([signedOut, signedIn]);
+});

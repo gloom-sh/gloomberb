@@ -82,6 +82,18 @@ type CloudApiStreamFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
+/**
+ * Whether a request can change what a later read answers. POSTs under the
+ * market and cloud data paths are batch reads (quotes, histories, perps,
+ * exposure), and telemetry and research activity reports change nothing a
+ * read returns; everything else that is not a GET is taken as a write.
+ */
+function changesReads(method: string, path: string): boolean {
+  if (method === "GET" || method === "HEAD") return false;
+  if (path.startsWith("/cloud/auth/")) return true;
+  return !/^\/(?:market|cloud|telemetry|activity)\//.test(path);
+}
+
 /** A request's headers in a fixed order, so two identical requests compare equal. */
 function headerLines(headers: Headers): string {
   const lines: string[] = [];
@@ -276,12 +288,14 @@ export class CloudApiRequestTransport {
   }
 
   setCookieSessionMode(enabled: boolean): void {
+    if (this.cookieSessionMode !== enabled) this.forgetSharedReads();
     this.cookieSessionMode = enabled;
   }
 
   setSessionToken(token: string | null): void {
     if (this.sessionToken !== token) {
       this.sessionCookieName = null;
+      this.forgetSharedReads();
     }
     this.sessionToken = token;
     if (!token) {
@@ -291,6 +305,16 @@ export class CloudApiRequestTransport {
 
   setWebSocketToken(token: string | null): void {
     this.websocketToken = token;
+  }
+
+  /**
+   * Stops later GETs from joining the ones still out (`readShared`); callers
+   * already waiting keep their answer. A write, or another account signing
+   * in, can change what a read answers, and in cookie mode a request's
+   * headers do not say whose session it carries.
+   */
+  forgetSharedReads(): void {
+    this.sharedReads.clear();
   }
 
   getSocketAuthToken(): string | null {
@@ -580,6 +604,10 @@ export class CloudApiRequestTransport {
     shareable = false,
   ): Promise<T> {
     throwIfRequestAborted(options?.signal);
+    const method = (options?.method ?? "GET").toUpperCase();
+    // A read asked during or after a write must not take an answer sent before it.
+    const writes = changesReads(method, path);
+    if (writes) this.forgetSharedReads();
     const headers = new Headers(options?.headers);
     if (
       !headers.has("Content-Type") &&
@@ -604,8 +632,8 @@ export class CloudApiRequestTransport {
       throwIfRequestAborted(signal);
       return { response, text: await response.text() };
     };
-    const request = async () => {
-      const shared = shareable && !send && (options?.method ?? "GET").toUpperCase() === "GET" && options?.body == null;
+    const answer = async () => {
+      const shared = shareable && !send && method === "GET" && options?.body == null;
       const { response: res, text } = shared
         ? await this.readShared(`${url}\n${headerLines(headers)}`, options?.signal, read)
         : await read(options?.signal);
@@ -632,6 +660,13 @@ export class CloudApiRequestTransport {
         this.websocketToken = parsed.token;
       }
       return parsed as T;
+    };
+    const request = async () => {
+      try {
+        return await answer();
+      } finally {
+        if (writes) this.forgetSharedReads();
+      }
     };
     // Crash reports, usage counts and command-search reports are background
     // traffic: a rate-limited, timed-out or missing one must not show up as a

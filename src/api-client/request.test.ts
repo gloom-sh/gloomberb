@@ -296,6 +296,49 @@ describe("CloudApiRequestTransport shared reads", () => {
   });
 });
 
+describe("CloudApiRequestTransport shared reads after a change", () => {
+  function pendingReads() {
+    const bodies: Array<(text: string) => void> = [];
+    const asked: string[] = [];
+    const transport = new CloudApiRequestTransport({
+      fetchTransport: async (url, init) => {
+        asked.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        if ((init?.method ?? "GET") !== "GET") return new Response("{}");
+        const { promise, resolve } = Promise.withResolvers<string>();
+        bodies.push(resolve);
+        return responseWithBody(() => promise);
+      },
+    });
+    return { transport, asked, answerAll: () => bodies.forEach((answer) => answer("{}")) };
+  }
+
+  test("a GET asked after a write, or during one, goes out again", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    const before = transport.request("/notes?scope=me");
+    await transport.request("/notes/n1", { method: "PUT", body: "{}" });
+    const after = transport.request("/notes?scope=me");
+    // A batch read sent as a POST changes nothing: the next GET still joins.
+    await transport.request("/market/quotes/batch", { method: "POST", body: "{}" });
+    const joined = transport.request("/notes?scope=me");
+    answerAll();
+    await Promise.all([before, after, joined]);
+    expect(asked).toEqual(["GET /notes", "PUT /notes/n1", "GET /notes", "POST /market/quotes/batch"]);
+  });
+
+  test("a GET asked after signing in or out, or after the session changes, goes out again", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    transport.setCookieSessionMode(true);
+    const signedOut = transport.request("/market/quote?symbol=NVDA");
+    await transport.request("/auth/sign-in/email", { method: "POST", body: "{}" });
+    const signedIn = transport.request("/market/quote?symbol=NVDA");
+    transport.forgetSharedReads();
+    const otherAccount = transport.request("/market/quote?symbol=NVDA");
+    answerAll();
+    await Promise.all([signedOut, signedIn, otherAccount]);
+    expect(asked.filter((line) => line.startsWith("GET"))).toHaveLength(3);
+  });
+});
+
 describe("putWithRevision", () => {
   class ItemConflictError extends RevisionConflictError<{ revision: number }> {}
   const refuse = async (_path: string, init?: RequestInit): Promise<never> => {

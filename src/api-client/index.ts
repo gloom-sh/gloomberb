@@ -314,6 +314,8 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
+    if (changed) this.transport.forgetSharedReads();
     if (confirmSession) {
       this.clearSessionRevalidationTimer();
       this.verifiedSessionIdentity = user ? {} : null;
