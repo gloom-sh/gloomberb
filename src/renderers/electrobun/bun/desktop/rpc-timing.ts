@@ -72,7 +72,7 @@ export function measureRpcTraffic(rpc: { setTransport(transport: RpcTransport): 
 
   rpc.setTransport = (transport) => {
     const { send, registerHandler } = transport;
-    setTransport({
+    setTransport.call(rpc, {
       ...transport,
       ...(send ? { send: (packet: RpcPacket) => measurePerf(outgoing(packet), () => send.call(transport, packet)) } : {}),
       ...(registerHandler
