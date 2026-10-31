@@ -73,9 +73,16 @@ export function coinElsewhereNote(symbol: string, listings: ReadonlyArray<{ key:
   return `${symbol} is ${named}, not ${coin}. For ${coin} use ${symbol}-USD.`;
 }
 
+/** A top coin quoted in dollars (BTC-USD, or on the crypto venue BTC-USD:CCC), which the CRYP board lists. */
+function isBoardCoinPair(symbol: string): boolean {
+  const [pair = "", venue] = symbol.trim().toUpperCase().split(":");
+  const match = venue === undefined || venue === "CCC" ? /^([A-Z0-9]+)-USD$/.exec(pair) : null;
+  return !!match && MAJOR_COINS.has(match[1]!);
+}
+
 interface QuoteNoteResult {
   target: { symbol: string };
-  quote: Pick<Quote, "name" | "instrumentType"> | null;
+  quote: Pick<Quote, "name" | "instrumentType"> & Partial<Pick<Quote, "dataSource">> | null;
   error: string | null;
 }
 
@@ -116,6 +123,14 @@ export function quoteNotes(results: QuoteNoteResult[]): string[] {
   const perpetuals = results
     .filter((result) => result.quote && isCryptoVenuePerpetual(result.quote.instrumentType, result.quote.name))
     .map((result) => result.target.symbol);
+  // A top coin's delayed quote is live on the crypto board, which needs no plan to stream it.
+  const boardCoins = results
+    .filter((result) => result.quote?.dataSource === "delayed" && isCryptoInstrumentType(result.quote.instrumentType ?? "")
+      && isBoardCoinPair(result.target.symbol))
+    .map((result) => result.target.symbol);
+  if (boardCoins.length > 0) {
+    notes.push(`${boardCoins.join(", ")} ${boardCoins.length === 1 ? "streams" : "stream"} live on the CRYP board (gloom fn CRYP).`);
+  }
   if (perpetuals.length > 0) {
     notes.push(`${perpetuals.join(", ")}: perpetual futures ${perpetuals.length === 1 ? "price" : "prices"} on crypto venues, 24/7; not the listed future, not spot.`);
   }

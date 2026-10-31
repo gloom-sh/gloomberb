@@ -17,6 +17,12 @@ export interface CryptoEtfFlowDay {
   total: number | null;
   /** Funds that reported the day before but show no figure yet. */
   pending: string[];
+  /**
+   * The funds' price move that day: the median of their close-to-close
+   * changes, in percent. Null where too few funds traded; absent when the
+   * server could not read the closes.
+   */
+  priceChangePct?: number | null;
 }
 
 /** `GET /cloud/crypto/etf-flows?asset=btc|eth`: daily net flows of the US spot funds. */

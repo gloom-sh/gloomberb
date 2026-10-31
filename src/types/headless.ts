@@ -423,11 +423,23 @@ export interface HeadlessPaneFreshness {
    */
   asOfLabel?: string;
   /**
+   * The newest observation is a bar of this many minutes that opens at the
+   * as-of: the line names its span, `last bar 15:00–16:00 UTC`, so the bar's
+   * open is not read as how far the data runs.
+   */
+  barMinutes?: number;
+  /**
    * Say when the rows were retrieved too, after the newest one's date: a list
    * dated by its newest filing was not read then (`newest filing Tue 27 Oct
    * 2026 · retrieved Wed 28 Oct 2026 19:07 UTC`).
    */
   retrievedToo?: boolean;
+  /**
+   * When the source last read the data, when that is not now: a page the
+   * server reads hourly is retrieved when it read it, not when the report
+   * asked the server. An ISO instant; ignored when in the future.
+   */
+  retrievedAt?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /**

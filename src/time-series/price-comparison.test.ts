@@ -224,10 +224,11 @@ describe("normalized market price comparison", () => {
     const network = await resolveChartSpecData(chart, sources(data));
     const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]])));
     for (const result of [network, seeded!]) {
-      expect(result.series.slice(0, 2).map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 10], [0, 20]]);
-      expect(result.viewport?.start.toISOString()).toBe("2026-01-07T23:00:00.000Z");
+      // Measured from the close before the window, 7 Jan's on both venues (Sydney's opens on 6 Jan UTC).
+      expect(result.series.slice(0, 2).map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 11.11111111111111, 22.22222222222222], [0, 66.66666666666666, 100]]);
+      expect(result.viewport?.start.toISOString()).toBe("2026-01-06T23:00:00.000Z");
       expect(result.viewport?.end.toISOString()).toBe("2026-01-09T23:59:59.999Z");
-      expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[95, -5], [105, 5]]);
+      expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[95, 5.555555555555555], [105, 16.666666666666664]]);
     }
     expect(chart.viewport.dateWindow).toEqual({ start: "2026-01-08", end: "2026-01-09" });
     const requestViewport = { start: date("2026-01-08"), end: date("2026-01-09T23:59:59.999Z") };
@@ -348,7 +349,9 @@ describe("normalized market price comparison", () => {
     selected.viewport.dateWindow!.start = "2022-05-09";
     const cache = new ChartResolveCache();
     const result = await resolveChartSpecData(selected, sources(), cache);
-    expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([100, 100 / 11]);
+    // Authored dates measure from the close the legs share before the first date, as RETURN does: 2 May's.
+    expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([125, 20]);
+    expect(result.priceComparison?.notice).toContain("From Mon 2 May 2022 close");
     const panned = await resolveChartSpecData(selected, sources(), cache, { requestViewport: { start: date("2026-09-07"), end: date("2026-09-10") } });
     expect(panned.priceComparison?.start).toBeNull();
     const raw = spec();
@@ -373,5 +376,101 @@ describe("normalized market price comparison", () => {
     const result = await resolveChartSpecData(window, sources({ OLDER: monthly([100, 80, 50, 40]), NEWER: monthly([10, 9, 6, 5]) }));
     expect(result.priceComparison?.notice).toContain("From Tue 31 Dec 2019 close");
     expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([-60, -50]);
+  });
+});
+
+describe("a fund compared with a coin", () => {
+  const HOUR = 60 * 60_000;
+  // Every calendar day from Wed 30 Sep to Fri 23 Oct 2026; IBIT closes on weekdays at 20:00 UTC, BTC-USD every UTC day.
+  const days = Array.from({ length: 24 }, (_, index) => new Date(Date.UTC(2026, 8, 30 + index)).toISOString().slice(0, 10));
+  const weekdays = days.filter((day) => ![0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay()));
+  const fund = rows(weekdays.map((day, index) => [day, 50 + index]));
+  // A coin's UTC-day close, and its price at 20:00 UTC (the US close, and its clock on a weekend): far apart, to tell.
+  const utcClose = (day: string) => 100_000 + days.indexOf(day) * 1_000;
+  const atUsClose = (day: string) => 90_000 + days.indexOf(day) * 100;
+  const coinDaily = rows(days.map((day) => [day, utcClose(day)]));
+  // Hourly coin bars by open time: the one opening 19:00 UTC closes at the US close; `forming` bars are still open.
+  const coinHourly = (forming: readonly string[] = []) => (from: string, to: string): PricePoint[] => {
+    const points: PricePoint[] = [];
+    for (let time = Date.parse(from); time < Date.parse(to); time += HOUR) {
+      const day = new Date(time).toISOString().slice(0, 10);
+      const close = new Date(time).getUTCHours() === 19 && days.includes(day) ? atUsClose(day) : 95_000;
+      points.push({ date: new Date(time), close, ...(forming.includes(new Date(time).toISOString()) ? { partial: true } : {}) });
+    }
+    return points;
+  };
+  function chart(window: { start: string; end: string }, resolution: "1d" | "1h" = "1d"): ChartSpec {
+    return {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1M", resolution, dateWindow: window },
+      panels: [{ id: "main" }], studies: [],
+      series: [["IBIT", "NASDAQ"], ["BTC-USD", "CCC"]].map(([symbol, exchange]) => ({
+        id: symbol!, source: { kind: "security", instrument: { symbol: symbol!, exchange: exchange! }, fieldId: "market.close" },
+        style: "line", transform: "percent", axis: "left", panelId: "main", interpolation: "none",
+      })),
+    };
+  }
+  function coinSources(hourly: (from: string, to: string) => PricePoint[] = coinHourly(), intraday?: Record<string, PricePoint[]>) {
+    const daily: Record<string, PricePoint[]> = { IBIT: fund, "BTC-USD": coinDaily };
+    const history = async (symbol: string) => (intraday ?? daily)[symbol] ?? [];
+    return {
+      now: date("2026-10-30T22:00:00Z"),
+      dataProvider: createTestDataProvider({
+        getQuote: async (symbol) => ({ symbol, currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-10-30T22:00:00Z") }),
+        getTickerFinancials: async (symbol) => ({ annualStatements: [], quarterlyStatements: [], priceHistory: daily[symbol] ?? [] }),
+        getPriceHistory: history,
+        getPriceHistoryForResolution: history,
+        getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
+          points: intraday?.[symbol] ?? (symbol === "BTC-USD" ? hourly(start.toISOString(), end.toISOString()) : []), resolution: "1h" as const,
+        }),
+      }),
+      loadFredSeries: async () => ({ data: { observations: [], info: null }, fetchedAt: 0, stale: false, source: "network" as const }),
+    };
+  }
+  const coinCloses = (result: Awaited<ReturnType<typeof resolveChartSpecData>>) => result.series[1]!.points.map((point) => point.rawValue);
+  const span = (from: string, to: string) => days.filter((day) => day >= from && day <= to);
+
+  test("the coin is measured at the fund's close on every day of the line, a weekend at that clock, and the notice says so", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources());
+    expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");
+    // From Fri 16 Oct to Fri 23 Oct at 20:00 UTC, the weekend between included: none of them a UTC-day close.
+    expect(coinCloses(result)).toEqual(span("2026-10-16", "2026-10-23").map(atUsClose));
+    expect(result.series[1]!.points.at(-1)?.value).toBeCloseTo((atUsClose("2026-10-23") / atUsClose("2026-10-16") - 1) * 100, 9);
+  });
+
+  test("a window past 16 days is re-timed on every day when the hourly bars cover them, and on none when one hour is missing", async () => {
+    const window = { start: "2026-10-01", end: "2026-10-23" };
+    const covered = await resolveChartSpecData(chart(window), coinSources());
+    expect(covered.priceComparison?.notice).toContain("From Wed 30 Sep close to Fri 23 Oct close; BTC-USD at the US close.");
+    expect(coinCloses(covered)).toEqual(span("2026-09-30", "2026-10-23").map(atUsClose));
+    // A bar still forming has no close yet: one day short, the line keeps its UTC closes throughout, and says so.
+    const short = await resolveChartSpecData(chart(window), coinSources(coinHourly(["2026-10-10T19:00:00.000Z"])));
+    expect(short.priceComparison?.notice).toContain("BTC-USD to 00:00 UTC, 4 h after the US close");
+    expect(coinCloses(short)).toEqual(span("2026-09-30", "2026-10-23").map(utcClose));
+  });
+
+  test("without hourly bars the coin keeps its UTC close, and the notice names both close times", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources(() => []));
+    expect(result.priceComparison?.notice).toContain("BTC-USD to 00:00 UTC, 4 h after the US close");
+    expect(coinCloses(result)).toEqual(span("2026-10-16", "2026-10-23").map(utcClose));
+  });
+
+  test("an explicit --from is measured from the close before that date, as RETURN is", async () => {
+    const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources(() => []));
+    expect(result.priceComparison?.notice).toContain("From Fri 16 Oct close");
+    expect(result.series[0]!.points[0]).toMatchObject({ value: 0, rawValue: 50 + weekdays.indexOf("2026-10-16") });
+  });
+
+  test("hourly legs stamped at different minutes are matched by the hour; legs that never share one name the bar that compares them", async () => {
+    // IBIT's hourly bars open on the half hour, BTC-USD's on the hour.
+    const fundHours = rows([["2026-10-29T13:30:00Z", 50], ["2026-10-29T14:30:00Z", 51], ["2026-10-29T15:30:00Z", 55]]);
+    const coinHours = rows([["2026-10-29T13:00:00Z", 100], ["2026-10-29T14:00:00Z", 104], ["2026-10-29T15:00:00Z", 110]]);
+    const window = { start: "2026-10-29", end: "2026-10-29" };
+    const matched = await resolveChartSpecData(chart(window, "1h"), coinSources(coinHourly(), { IBIT: fundHours, "BTC-USD": coinHours }));
+    expect(matched.series.map((entry) => entry.points.at(-1)?.value)).toEqual([10, 10]);
+    const apart = await resolveChartSpecData(chart(window, "1h"), coinSources(coinHourly(), {
+      IBIT: fundHours, "BTC-USD": rows([["2026-10-29T03:00:00Z", 100], ["2026-10-29T04:00:00Z", 104]]),
+    }));
+    expect(apart.priceComparison?.notice).toContain("IBIT and BTC-USD share no 1H bar times in this range; daily bars (1D) compare them.");
   });
 });

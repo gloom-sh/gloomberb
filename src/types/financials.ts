@@ -1004,6 +1004,12 @@ export interface PricePoint {
    * or comparison with a day's count takes it.
    */
   venueVolume?: { venue: string; volume: number };
+  /**
+   * What the bar's volume counts, when the source says: `aggregate` for a
+   * total across venues (a coin's daily bar), `3 spot venues` for a sum over
+   * those (a coin's intraday bar).
+   */
+  volumeBasis?: string;
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */

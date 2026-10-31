@@ -67,6 +67,13 @@ test("a sentence the data service wrote keeps its own ending, before the crypto 
   expect(note("BTC-USD", "Not listed on this feed")).toEqual([`BTC-USD: Not listed on this feed. ${HINT}`]);
 });
 
+test("a top coin's delayed quote points at the board that streams it live; a live one or another pair does not", () => {
+  const coin = (symbol: string, dataSource: Quote["dataSource"]) => ({ target: { symbol }, quote: { name: "Bitcoin USD", instrumentType: "CRYPTOCURRENCY" as const, dataSource }, error: null });
+  expect(quoteNotes([coin("BTC-USD", "delayed")])).toEqual(["BTC-USD streams live on the CRYP board (gloom fn CRYP)."]);
+  expect(quoteNotes([coin("BTC-USD:CCC", "delayed"), coin("ETH-USD", "delayed")])).toEqual(["BTC-USD:CCC, ETH-USD stream live on the CRYP board (gloom fn CRYP)."]);
+  expect(quoteNotes([coin("BTC-USD", "live"), coin("BTC-EUR", "delayed"), coin("BTC-USD:COINBASE", "delayed")])).toEqual([]);
+});
+
 test("history keeps its error and adds the crypto board pointer only for crypto pairs in text mode", async () => {
   const history = async (symbol: string, format: "text" | "json" = "text") => {
     const cli = createTestCliContext({ config, store: { loadTicker: async () => null }, dataProvider: {

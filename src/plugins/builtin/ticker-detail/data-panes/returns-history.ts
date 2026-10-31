@@ -15,6 +15,10 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { PricePoint } from "../../../../types/financials";
 import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
 import { isCurrencyPairListing } from "../../../../utils/fx-market-hours";
+import { latestRegularSessionClose } from "../../../../market-data/market/freshness";
+import { futuresSessionOpenMinute } from "../../../../market-data/market/trading-sessions";
+import { calendarBarStart } from "../../../../time-series/chart-data";
+import { newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../../time-series/official-close";
 import {
   effectiveReturnResolution,
   endsAtLatestBar,
@@ -39,6 +43,8 @@ export interface ReturnSeries {
   lastSession?: string;
   /** The venue whose sessions the window follows; empty when none is known. */
   venue: string;
+  /** The local date of the newest session, closed but without its official close yet: its last bar ends on the last trade. */
+  closingPrintPending?: string;
 }
 
 export interface ReturnSeriesRequest {
@@ -66,18 +72,74 @@ function historyErrorMessage(error: unknown, resolution: ManualChartResolution):
 /**
  * The venue whose sessions set where the window ends: the one the ticker
  * names, else the listing its quote names, so a bare VTI ends at the NYSE
- * Arca close on a weekend. Coins and currency pairs need none.
+ * Arca close on a weekend, with the listing's currency when that was read.
+ * Coins and currency pairs need none.
  */
-async function sessionVenue(provider: DataProvider, symbol: string, exchange: string): Promise<string> {
-  if (exchange || isRoundTheClockCoin(symbol) || isCurrencyPairListing(symbol, exchange)) return exchange;
+async function sessionVenue(provider: DataProvider, symbol: string, exchange: string): Promise<{ venue: string; currency?: string }> {
+  if (exchange || isRoundTheClockCoin(symbol) || isCurrencyPairListing(symbol, exchange)) return { venue: exchange };
   try {
     const metadata = provider.getQuoteMetadata
       ? await provider.getQuoteMetadata(symbol, exchange)
       : await provider.getQuote(symbol, exchange);
-    return metadata?.listingExchangeName ?? "";
+    return { venue: metadata?.listingExchangeName ?? "", ...(metadata?.currency ? { currency: metadata.currency } : {}) };
   } catch (error) {
-    return logFailure("ticker-detail.data-panes.returns-history", "Read return session venue failed", "")(error);
+    return { venue: logFailure("ticker-detail.data-panes.returns-history", "Read return session venue failed", "")(error) };
   }
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Intraday bars with each closed session's last bar on its official close
+ * (withOfficialCloses), so every total and the base they are measured from
+ * are the closes `history` and CMP give, not the last trade before the
+ * closing auction. Earlier sessions take their daily bar's close, dated by
+ * the venue's local date; the newest closed session the close
+ * newestSessionClose picks from the quote and its daily bar, or the note
+ * that its print is to come. Daily and longer bars, futures (which settle
+ * rather than close on a print) and listings without sessions are returned
+ * as loaded.
+ */
+async function withSessionCloses(
+  provider: DataProvider,
+  target: { symbol: string; exchange: string; venue: string; currency?: string },
+  interval: ManualChartResolution,
+  points: PricePoint[],
+  now: number,
+  context: { cacheMode: "refresh" } | undefined,
+): Promise<{ points: PricePoint[]; closingPrintPending?: string }> {
+  const venue = target.venue || undefined;
+  if (!isIntradayResolution(interval) || !points.length || futuresSessionOpenMinute(target.symbol, target.venue || target.exchange) != null
+    || !latestRegularSessionClose(venue, now)) return { points };
+  const newest = newestClosedSession(points, { venue, now });
+  // Whole UTC days, so the same window asks the same read (and its cached copy) all day.
+  const first = Math.floor(new Date(points[0]!.date).getTime() / DAY_MS) * DAY_MS - 2 * DAY_MS;
+  const end = Math.floor(Math.min(now, new Date(points.at(-1)!.date).getTime() + DAY_MS) / DAY_MS) * DAY_MS + DAY_MS - 1;
+  const [daily, quote] = await Promise.all([
+    fetchHistoryResult(provider, target.symbol, target.exchange, { kind: "detail", start: new Date(first), end: new Date(end), interval: "1d" }, context)
+      .catch(logFailure("ticker-detail.data-panes.returns-history", "Read the daily closes of a return window failed", null)),
+    // Only the newest closed session needs the quote's word on its close.
+    newest
+      ? Promise.resolve(provider.getQuote(target.symbol, target.exchange, context))
+        .catch(logFailure("ticker-detail.data-panes.returns-history", "Read the official close of a return window failed", null))
+      : null,
+  ]);
+  const dailyCloses = new Map<string, number>();
+  for (const bar of daily?.points ?? []) {
+    const time = new Date(bar.date).getTime();
+    if (!bar.partial && Number.isFinite(time) && Number.isFinite(bar.close) && bar.close > 0) {
+      dailyCloses.set(calendarBarStart(time, "1d", venue), bar.close);
+    }
+  }
+  const closes = new Map([...dailyCloses].filter(([date]) => date !== newest?.date));
+  const decided = newest
+    ? newestSessionClose(quote, { ...newest, venue, currency: target.currency ?? null, dailyClose: dailyCloses.get(newest.date) ?? null })
+    : null;
+  if (newest && decided && "close" in decided) closes.set(newest.date, decided.close);
+  return {
+    points: withOfficialCloses(points, closes, { venue, now }),
+    ...(newest && decided && "pending" in decided ? { closingPrintPending: newest.date } : {}),
+  };
 }
 
 /**
@@ -91,7 +153,7 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   if (request.window) return loadReturnWindow(provider, request, request.window);
   const { symbol, exchange, range, support, now } = request;
   const interval = effectiveReturnResolution(range, request.resolution, support);
-  const venue = await sessionVenue(provider, symbol, exchange);
+  const { venue, currency } = await sessionVenue(provider, symbol, exchange);
   const windowEnd = returnWindowEnd({ symbol, exchange: venue }, now);
   const visibleFrom = returnVisibleFrom(range, interval, windowEnd.end, venue || undefined);
   const start = new Date(visibleFrom - returnLookbackMs(range, interval, support));
@@ -114,8 +176,10 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   }
   if (!result) throw new Error("Price history unavailable");
   const latest = latestBarTime(result.points);
+  const closed = await withSessionCloses(provider, { symbol, exchange, venue, currency }, interval, result.points, now, context);
   return {
-    points: result.points,
+    points: closed.points,
+    ...(closed.closingPrintPending ? { closingPrintPending: closed.closingPrintPending } : {}),
     // A 1W to 5Y window's rows start after its base close, found among the bars by their session days.
     visibleFrom: endsAtLatestBar(range) && latest !== null && latest < windowEnd.end
       ? returnVisibleFrom(range, interval, latest, venue || undefined)
@@ -146,7 +210,7 @@ async function loadReturnWindow(provider: DataProvider, request: ReturnSeriesReq
   const step = CHART_RESOLUTION_STEP_MS[request.resolution];
   let interval = available.includes(request.resolution) ? request.resolution
     : available.find((candidate) => CHART_RESOLUTION_STEP_MS[candidate] >= step) ?? available.at(-1) ?? "1d";
-  const venue = await sessionVenue(provider, symbol, exchange);
+  const { venue, currency } = await sessionVenue(provider, symbol, exchange);
   const context = request.forceRefresh ? { cacheMode: "refresh" as const } : undefined;
   const load = async (resolution: ManualChartResolution) => {
     // A daily or longer bar is stamped at midnight UTC, so the window takes every bar from its first date's day, week or month on.
@@ -171,8 +235,10 @@ async function loadReturnWindow(provider: DataProvider, request: ReturnSeriesReq
     }
   }
   if (!loaded?.result) throw new Error("Price history unavailable");
+  const closed = await withSessionCloses(provider, { symbol, exchange, venue, currency }, interval, loaded.result.points, now, context);
   return {
-    points: loaded.result.points,
+    points: closed.points,
+    ...(closed.closingPrintPending ? { closingPrintPending: closed.closingPrintPending } : {}),
     visibleFrom: loaded.visibleFrom,
     visibleTo: Math.min(last, now),
     ...(loaded.result.coverageStart ? { coverageStart: loaded.result.coverageStart } : {}),

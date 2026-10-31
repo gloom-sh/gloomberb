@@ -1,9 +1,10 @@
 import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
-import { chartBarSizeSource, type ManualChartResolution } from "./resolution";
+import { CHART_RESOLUTION_STEP_MS, chartBarSizeSource, getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "./resolution";
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
+import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
 import {
   barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
@@ -52,6 +53,10 @@ export interface PriceComparisonOptions {
    */
   preset?: TimeRange | null;
   now?: number;
+  /** Coin legs whose daily closes were taken at the session venue's close (coinLegsAtSessionClose). */
+  atSessionClose?: ReadonlySet<string>;
+  /** Of those, the legs whose newest day ends at a session close that has passed: not a price still moving. */
+  closedEnds?: ReadonlySet<string>;
 }
 
 export function observationDate(time: number, series: Pick<ResolvedSeries, "timeBasis">): string {
@@ -156,6 +161,28 @@ export function totalReturnLevelsNotice(spec: ChartSpec, series: readonly Resolv
     priceOnly.length ? ` Price only for ${priceOnly.join(", ")}: distribution history unavailable.` : ""}`;
 }
 
+/**
+ * The bar size intraday legs are matched in: the chart's, or when it has none
+ * the coarsest the legs were served in. Null when neither is intraday.
+ */
+function intradayBucketMs(resolution: ManualChartResolution | "auto", series: ReadonlyArray<ResolvedSeries | undefined>): number | null {
+  const sizes = [resolution, ...series.map((entry) => entry?.historyResolution)]
+    .filter((size): size is ManualChartResolution => !!size && size !== "auto" && size in CHART_RESOLUTION_STEP_MS && isIntradayResolution(size as ManualChartResolution));
+  if (resolution !== "auto" && sizes[0] === resolution) return CHART_RESOLUTION_STEP_MS[resolution];
+  return sizes.length ? Math.max(...sizes.map((size) => CHART_RESOLUTION_STEP_MS[size])) : null;
+}
+
+/** `1H` for an hour's bucket, as the chart names its bar size. */
+function barLabel(bucketMs: number): string {
+  const size = (Object.keys(CHART_RESOLUTION_STEP_MS) as ManualChartResolution[]).find((key) => CHART_RESOLUTION_STEP_MS[key] === bucketMs);
+  return size ? getChartResolutionLabel(size) : `${Math.round(bucketMs / 60_000)}m`;
+}
+
+/** `IBIT and BTC-USD`, `A, B and C`. */
+function listLabels(labels: readonly string[]): string {
+  return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
 interface ComparedLeg {
   id: string;
   label: string;
@@ -203,6 +230,9 @@ export function resolvePriceComparison(
   const dropped: NonNullable<PriceComparison["dropped"]> = [];
   const reported = new Set<string>();
   const legs: ComparedLeg[] = [];
+  // Intraday bars compare by the bar of the chart's size they open in: a fund's 13:30 bar and a coin's 13:00 bar are
+  // one hourly bar, so the fund's last bar of the day (19:30, closing at 20:00) meets the coin's bar closing then.
+  const bucketMs = calendarBars ? null : intradayBucketMs(resolution, seriesIds.map((id) => byId.get(id)!));
   for (const id of seriesIds) {
     const entry = byId.get(id)!;
     const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
@@ -211,7 +241,7 @@ export function resolvePriceComparison(
     for (const point of entry.points) {
       const time = point.date.getTime();
       if (!Number.isFinite(time) || scalarPointValue(point) === null) continue;
-      const key = calendarBars ? observationDate(time, entry) : String(time);
+      const key = calendarBars ? observationDate(time, entry) : String(bucketMs ? Math.floor(time / bucketMs) * bucketMs : time);
       points.set(key, point);
       if (inWindow(time)) window.add(key);
     }
@@ -237,7 +267,16 @@ export function resolvePriceComparison(
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
   };
   const sharedWindow = shared((leg) => leg.window);
-  const sharedStart = sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
+  // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
+  // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
+  const authoredFrom = !preset && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
+    ? dateWindow.start : null;
+  const firstInWindow = authoredFrom ? legs.map((leg) => leg.window[0]!).sort(order)[0] : undefined;
+  const authoredBase = authoredFrom && firstInWindow !== undefined
+    ? shared((leg) => leg.keys).filter((key) => (calendarBars ? key < authoredFrom : order(key, firstInWindow) < 0)
+      && legs.every((leg) => nonzero(leg, key))).at(-1)
+    : undefined;
+  const sharedStart = authoredBase ?? sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
   // The period is measured back from the chart's newest observation, by its session day.
   const anchor = period && legs.length
     ? legs.map((leg) => calendarBars ? sessionDay(leg.window.at(-1)!) : dayOf(leg, leg.window.at(-1)!)).sort().at(-1)!
@@ -274,7 +313,14 @@ export function resolvePriceComparison(
   const droppedText = dropped.length
     ? ` Left out: ${dropped.map((entry) => reported.has(entry.seriesId) ? entry.label : `${entry.label} (${entry.reason})`).join("; ")}.`
     : "";
-  if (!compared.length) return { seriesIds, start: null, end: null, notice: unavailable, ...(dropped.length ? { dropped } : {}) };
+  if (!compared.length) {
+    // Intraday legs that never trade in the same bar: said, with the bar size that compares them.
+    const apart = !calendarBars && legs.length >= 2 && sharedWindow.length === 0 && legs.every((leg) => leg.window.length >= 2);
+    const notice = apart
+      ? `${basis} Comparison unavailable: ${listLabels(legs.map((leg) => leg.label))} share no ${bucketMs ? `${barLabel(bucketMs)} ` : ""}bar times in this range; daily bars (1D) compare them.`
+      : unavailable;
+    return { seriesIds, start: null, end: null, notice, ...(dropped.length ? { dropped } : {}) };
+  }
   const sourceBounds = Object.fromEntries(compared.map(({ leg, start, end }) => [leg.id, {
     start: leg.points.get(start)!.date.getTime(),
     end: leg.points.get(end)!.date.getTime(),
@@ -284,7 +330,7 @@ export function resolvePriceComparison(
     const endDay = calendarBars ? sessionDay(end) : dayOf(leg, end);
     // A daily bar of the session still trading, or a week or month running through it.
     return [leg.id, { baseDay: calendarBars ? sessionDay(start) : dayOf(leg, start), endDay,
-      intraday: calendarBars && isIntradayDailyBar(endDay, legVenue(leg.entry), now) }];
+      intraday: calendarBars && !options.closedEnds?.has(leg.id) && isIntradayDailyBar(endDay, legVenue(leg.entry), now) }];
   }));
   const span = calendarBars
     ? (() => {
@@ -292,7 +338,10 @@ export function resolvePriceComparison(
       const to = legsText(compared.map(({ leg }) => ({ label: leg.label, text: legDays[leg.id]!.intraday
         ? `${periodDayText(legDays[leg.id]!.endDay, currentYear)}, ${LATEST_INTRADAY_TEXT}`
         : `${periodDayText(legDays[leg.id]!.endDay, currentYear)} close` })));
-      return `From ${from} to ${to}; market session times may differ.`;
+      // A coin beside a listing that closes each day says when it is measured: at that close, or at 00:00 UTC.
+      const timing = priceComparisonCloseTimes({ legs: legDays }, compared.map(({ leg }) => leg.entry),
+        new Map(compared.map(({ leg }) => [leg.id, leg.label])), options.atSessionClose);
+      return `From ${from} to ${to}; ${timing ?? "market session times may differ"}.`;
     })()
     : baseDay && sharedBase !== undefined
       ? `From ${periodDayText(legDays[compared[0]!.leg.id]!.baseDay, currentYear)} close to ${displayDate(Math.max(...Object.values(sourceBounds).map((range) => range.end)))}.`

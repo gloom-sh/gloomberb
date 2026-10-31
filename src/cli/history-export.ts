@@ -47,6 +47,7 @@ const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "volumeNote", header: "Volume note" },
   { key: "venueVolume", header: "Venue volume" },
   { key: "volumeVenue", header: "Volume venue" },
+  { key: "volumeBasis", header: "Volume basis" },
 ];
 
 /** A continuous future's contract per bar, the bar it rolled at, and a bar that traded far below those around it. */

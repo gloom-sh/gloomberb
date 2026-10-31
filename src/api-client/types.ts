@@ -487,6 +487,8 @@ export interface CloudPricePointPayload {
    * alone), served in place of `volume`.
    */
   venueVolume?: { venue: string; volume: number };
+  /** What a coin bar's volume counts: `aggregate` across venues, or `3 spot venues` summed. */
+  volumeBasis?: string;
   /** A daily bar still forming when served: a coin's UTC day, or the trade date a future is trading. */
   partial?: boolean;
   /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */

@@ -55,6 +55,7 @@ import {
   totalReturnLevelsNotice,
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { coinLegsAtSessionClose } from "./coin-session-close";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { rememberSeedListingFacts } from "./parsed-history-cache";
 import {
@@ -1057,8 +1058,16 @@ async function resolveChartSpecPass(
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
-  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
-    { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) });
+  const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) };
+  let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow, comparisonOptions);
+  // A coin compared in daily closes with a listing that closes each day is measured at that close when its hourly bars reach.
+  const timed = sources.dataProvider && comparisonResolution === "1d"
+    ? await coinLegsAtSessionClose(priceComparison, rawSeries, sources.dataProvider, comparisonOptions.now) : null;
+  if (timed?.timing.atSessionClose.size) {
+    rawSeries.splice(0, rawSeries.length, ...timed.series);
+    priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
+      { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
+  }
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;

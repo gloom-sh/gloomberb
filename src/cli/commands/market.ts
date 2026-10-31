@@ -1,6 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
+import { CHART_RESOLUTION_STEP_MS } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
@@ -153,6 +154,7 @@ import {
   historyUnit,
   quotedPriceDivisor,
   historyVolume,
+  historyVolumeBasis,
   historyVolumeText,
   type HistoryRow,
   type HistoryUnit,
@@ -1463,16 +1465,19 @@ async function loadListingHistory(
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
     ...source,
     status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
+    ...(volume ? { note: historyVolumeText(volume, interval, historyVolumeBasis(data)) } : {}),
   }) : rowsFreshness(data, {
     ...source,
     ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
     observedKey: "date",
     oldest: null,
     cadenceExchange: venue,
+    // An intraday bar is dated by its open, so the line names its span: `last bar 15:00–16:00 UTC`.
+    ...(intraday && interval && interval in CHART_RESOLUTION_STEP_MS ? { barMinutes: CHART_RESOLUTION_STEP_MS[interval] / 60_000 } : {}),
     ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
     ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     ...(delayedTail ? { status: "delayed" as const, delayMinutes: CLOUD_QUOTE_DELAY_MINUTES } : {}),
-    ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
+    ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval, historyVolumeBasis(data)) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
   // The rows are drawn from the bars served, which say whether they are the saved copy.
   }), loaded);
   const gaps = historyGapNote(data, traded);
@@ -3355,7 +3360,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "CSV",
         lines: [
-          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, Volume basis, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
           "A continuous future whose bars name their contracts (NG=F) adds Contract, Roll and Thin before status: the contract per bar, and true or false for the bar it rolled at and a bar that traded far below those around it.",
         ],
       }, {
