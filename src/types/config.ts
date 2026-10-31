@@ -195,6 +195,11 @@ export interface OnboardingProgress {
   checkoutOpenedAt?: string;
   /** Desks picked at "What do you trade most?", in the order picked; empty when skipped. */
   desks?: string[];
+  /**
+   * Opened again from Settings (Run Setup Again) after setup was done: every
+   * step can be left, and the layouts are rebuilt in place.
+   */
+  rerun?: boolean;
 }
 
 /**

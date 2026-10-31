@@ -1,7 +1,7 @@
 import { resolvePlanAccess } from "../../../api-client/plan-rules";
 import { sourceDidNotAnswer } from "../../../api-client/errors";
 import { apiClient } from "../../../api-client";
-import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery, GpuObservation } from "../../../api-client/gpu";
+import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery, GpuObservation, GpuSettle } from "../../../api-client/gpu";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataProvider } from "../../../types/data-provider";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -59,6 +59,17 @@ function validObservation(row: unknown): row is GpuObservation {
       && (stats.constituentPrices === undefined || record(stats.constituentPrices) && Object.values(stats.constituentPrices).every((value) => finite(value) && value > 0)));
 }
 
+function validSettle(row: unknown): row is GpuSettle {
+  if (!record(row)) return false;
+  const settled = row.status === "settled";
+  return [row.id, row.gpuModel, row.formFactor, row.label].every((value) => typeof value === "string" && value.length > 0)
+    && typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && instant(row.settleAt) && instant(row.publishedAt)
+    && (row.memoryGb === null || finite(row.memoryGb) && row.memoryGb > 0)
+    && (settled ? finite(row.pricePerGpuHr) && row.pricePerGpuHr > 0 : row.status === "no-settle" && row.pricePerGpuHr === null)
+    && row.currency === "USD" && ["settle", "correction"].includes(row.kind) && nullableText(row.corrects)
+    && [row.change1d, row.change7d, row.change30d].every(nullableNumber);
+}
+
 function validateBoard(payload: GpuBoardPayload): GpuBoardPayload {
   if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !nullableInstant(payload.asOf) || typeof payload.stale !== "boolean"
     || !["available", "partial", "unavailable"].includes(payload.status) || !strings(payload.gaps)
@@ -66,7 +77,9 @@ function validateBoard(payload: GpuBoardPayload): GpuBoardPayload {
       && typeof row.id === "string" && row.id === `${row.source}:${row.skuKey}` && typeof row.label === "string" && typeof row.sourceLabel === "string"
       && [row.change1d, row.change7d, row.change30d].every(nullableNumber) && typeof row.stale === "boolean" && nullableText(row.lastError))
     || new Set(payload.rows.map((row) => row.id)).size !== payload.rows.length) throw new Error("The server returned invalid GPU rental prices.");
-  return payload;
+  // The settles ride along with the board: one that does not read right is left out, never the board with it.
+  return payload.settles === undefined ? payload
+    : { ...payload, settles: Array.isArray(payload.settles) ? payload.settles.filter(validSettle) : [] };
 }
 
 function validateHistory(payload: GpuHistoryPayload): GpuHistoryPayload {

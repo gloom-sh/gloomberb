@@ -7,6 +7,7 @@ import {
   buildFirstRunLayout,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
+  setupDeskPicks,
 } from "./first-run-workspace";
 
 function ticker(symbol: string, { held = false, watched = false } = {}): [string, TickerRecord] {
@@ -111,5 +112,33 @@ describe("first-run workspace", () => {
       .toEqual(["Monitor", "Home", "Options", "Macro", "Mine"]);
     expect(applyFirstRunLayout(again, home("MSFT")).layouts.map((layout) => layout.name))
       .toEqual(["Monitor", "Home", "Macro", "Mine"]);
+  });
+
+  test("a run from Settings rebuilds what setup made before it tagged its layouts, and replaces nothing else", () => {
+    const home = (symbol: string) => buildFirstRunLayout({ symbol, portfolioId: "main", watchlistId: "watchlist", hasPane: () => true });
+    const desk = (key: "rates" | "fx" | "options", name: string) => ({ ...home("SPY"), name, id: onboardingDeskLayoutId(key) });
+    const untagged = (name: string): SavedLayout => ({ name, layout: home("TSLA").layout });
+    // Setup's Home and desks as older builds left them, then the user's own:
+    // a later Rates tab is theirs, since only the run right after Home is setup's.
+    const older = {
+      ...createDefaultConfig("/tmp/first-run"),
+      layouts: [untagged("Home"), untagged("Rates"), untagged("FX & Macro"), untagged("Monitor"), untagged("Rates")],
+    };
+    expect(setupDeskPicks(older)).toEqual(["rates", "fx"]);
+
+    const again = applyFirstRunLayout(older, home("MSFT"), [desk("rates", "Rates"), desk("fx", "FX & Macro")], { rerun: true });
+    expect(again.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Rates"]);
+    expect(again.layouts.map((layout) => layout.id)).toEqual([
+      "onboarding:home", onboardingDeskLayoutId("rates"), onboardingDeskLayoutId("fx"), undefined, undefined,
+    ]);
+    expect(again.layouts.slice(3)).toEqual(older.layouts.slice(3));
+    expect(setupDeskPicks(again)).toEqual(["rates", "fx"]);
+
+    // A first tab that is not Home is the user's: Home goes in ahead of it.
+    const renamed = { ...older, layouts: [untagged("Main"), ...older.layouts.slice(1)] };
+    expect(setupDeskPicks(renamed)).toEqual([]);
+    const kept = applyFirstRunLayout(renamed, home("MSFT"), [], { rerun: true });
+    expect(kept.layouts.map((layout) => layout.name)).toEqual(["Home", "Main", "Rates", "FX & Macro", "Monitor", "Rates"]);
+    expect(kept.layouts.slice(1)).toEqual(renamed.layouts);
   });
 });

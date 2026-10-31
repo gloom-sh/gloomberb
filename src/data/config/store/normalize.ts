@@ -286,6 +286,7 @@ function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefi
     accountStatus,
     checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
     desks: Array.isArray(value.desks) ? sanitizeUniqueStringList(value.desks) : undefined,
+    rerun: value.rerun === true ? true : undefined,
   };
 }
 

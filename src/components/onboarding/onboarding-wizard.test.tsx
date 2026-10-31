@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { act, type ReactNode } from "react";
+import { act, useCallback, useState, type ReactNode } from "react";
 import { apiClient } from "../../api-client";
 import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
@@ -30,6 +30,7 @@ import {
 } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import { OnboardingWizard } from "./onboarding-wizard";
+import { useRunSetupAgain } from "./run-setup-again";
 import { loadFuturesContractTermsCached } from "../../market-data/futures-contract";
 
 const tui = createOpenTuiTestHarness();
@@ -201,6 +202,37 @@ function RuntimeWizardHarness({
       />
     </AppProvider>
   );
+}
+
+/** Settings' Run Setup Again over the app, the way AppInner wires it: setup shows first, then on `run`. */
+function SettingsHarness({
+  config,
+  pluginRegistry,
+  run,
+}: {
+  config: AppConfig;
+  pluginRegistry: PluginRegistry;
+  run: { current?: () => Promise<void> };
+}) {
+  return (
+    <AppProvider config={config}>
+      <StateCapture />
+      <SettingsRerun pluginRegistry={pluginRegistry} run={run} />
+    </AppProvider>
+  );
+}
+
+function SettingsRerun({ pluginRegistry, run }: { pluginRegistry: PluginRegistry; run: { current?: () => Promise<void> } }) {
+  const [open, setOpen] = useState(true);
+  const show = useCallback(() => setOpen(true), []);
+  run.current = useRunSetupAgain(open ? undefined : show);
+  return open ? (
+    <RuntimeOnboardingWizard
+      pluginRegistry={pluginRegistry}
+      tickerRepository={pluginRegistry.tickerRepository}
+      onComplete={() => setOpen(false)}
+    />
+  ) : null;
 }
 
 const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event);
@@ -519,15 +551,67 @@ describe("OnboardingWizard", () => {
       layouts: [...firstRun.layouts, mine],
       onboardingProgress: { version: 1, stage: "desks", path: "manual", portfolioId: "main", tickerSymbol: "AAPL" },
     }} pluginRegistry={pluginRegistry} />, { width: 100, height: 32 });
-    await waitForFrame("What do you trade most?");
-    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
-    await pressSpace();
-    await emitKeypress({ name: "j", sequence: "j" });
-    await pressSpace();
+    // The desks it made come back ticked.
+    const again = await waitForFrame("What do you trade most?");
+    expect(again).toContain("[\u2713] Rates & credit");
+    expect(again).toContain("[\u2713] FX & macro");
+    expect(again).toContain("[ ] Equities");
     await pressEnter();
     await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the second run to build the workspace");
     expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro", "Mine"]);
     expect(capturedConfig?.layouts[5]).toEqual(mine);
+  });
+
+  test("Run Setup Again opens on the holdings and desks the user has, and finishing it keeps the layouts", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-again-"));
+    const pluginRegistry = await createDeskRegistry(new JsonTickerRepository());
+    const defaults = createDefaultConfig(tempDataDir);
+    const mine = { name: "Mine", layout: defaults.layout };
+    const runSetupAgain: { current?: () => Promise<void> } = {};
+    await tui.render(
+      <SettingsHarness config={{ ...defaults, layouts: [...defaults.layouts, mine] }} pluginRegistry={pluginRegistry} run={runSetupAgain} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+
+    // The first run: AAPL, then the Rates desk.
+    await addManualPosition("AAPL", "10", "180");
+    await pressEscape();
+    await pressEnter();
+    await waitForFrame("What do you trade most?");
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    await pressEnter();
+    await waitForFrame("Built around AAPL");
+    await emitKeypress({ name: "f10" });
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "the first run to finish");
+    const layouts = capturedConfig!.layouts;
+    expect(layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "Monitor", "Macro", "Mine"]);
+
+    // From Settings: the holding is listed, the step can be left, and the Rates desk is ticked.
+    await act(async () => { await runSetupAgain.current!(); });
+    const holdings = await waitForFrame("What do you hold?");
+    expect(holdings).toContain("Positions (1)");
+    expect(holdings).toContain("AAPL");
+    expect(holdings).toContain("Skip setup");
+    await pressEscape();
+    await pressEnter();
+    expect(await waitForFrame("What do you trade most?")).toContain("[\u2713] Rates & credit");
+    await pressEnter();
+    await waitForFrame("Built around AAPL");
+    await emitKeypress({ name: "f10" });
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "the run from Settings to finish");
+    expect(capturedConfig!.layouts).toHaveLength(layouts.length);
+    expect(capturedConfig!.layouts.map((layout) => [layout.id, layout.name])).toEqual(layouts.map((layout) => [layout.id, layout.name]));
+    expect(capturedConfig!.layouts.slice(2)).toEqual(layouts.slice(2));
+
+    // Left at its first step, it changes nothing.
+    await act(async () => { await runSetupAgain.current!(); });
+    await waitForFrame("What do you hold?");
+    const finished = capturedConfig!.layouts;
+    await emitKeypress({ name: "f10" });
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "Skip setup to close it");
+    expect(capturedConfig!.layouts).toBe(finished);
   });
 
   test("the first-run milestone that ends onboarding names the desks picked", async () => {

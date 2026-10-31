@@ -786,6 +786,8 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 **Toggle Presentation Mode** in the command bar hides the header and the status bar until you toggle it again. The pane fullscreen key (`Ctrl+Shift+F`, `Cmd+Shift+F` on a Mac) then fills the window with one pane. The desktop app keeps the header, as it is the title bar. It is saved as `"presentationMode": true` in the config.
 
+**Run Setup Again** in the command bar opens setup at its first step, with your holdings listed and the desk tabs it made ticked. Picking the desks rebuilds Home and those tabs where they are, so no layout is copied: a desk you untick loses its tab, and your other layouts and your watchlist stay as they are. **Skip setup** (or `F10`) before then leaves your layouts as they were. The browser version has no setup, so it has no Run Setup Again.
+
 In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` removes the selected one after a confirm.
 
 - Removing it from a portfolio deletes its position there. Its notes, alerts and other lists stay.

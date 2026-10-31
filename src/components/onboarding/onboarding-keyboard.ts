@@ -130,7 +130,8 @@ export function useOnboardingKeyboard({
 
     const handled = ((): boolean => {
       if (isPlainKey(event, "f10")) {
-        if (stage === "portfolio" || stage === "desks" || isBrokerCommitting) return true;
+        // The first run needs a holding; a run from Settings can be left as it was.
+        if (isBrokerCommitting || ((stage === "portfolio" || stage === "desks") && !progress.rerun)) return true;
         if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
         else void finish(true);
         return true;
