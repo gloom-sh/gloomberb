@@ -15,6 +15,7 @@ import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/ca
 import { abortable, withDeadline } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
 import {
+  amendmentKind,
   buildBrowserRows,
   filingGapFor,
   estimateFilingQuarterReturn,
@@ -187,7 +188,10 @@ async function loadBrowserPage(
 
   if (tab === "latest") {
     const filings = await listThirteenFFilings(isoDateDaysAgo(21, now), to, latestLimit, signal, pageApiOptions);
-    const selected = dedupeLatestForms(filings);
+    // An original filing or a restatement is its period's whole report, and an
+    // amendment of unknown kind shows no totals either way: only one that adds
+    // NEW HOLDINGS needs the fund's earlier filing for its quarter's totals.
+    const selected = dedupeLatestForms(filings).filter((form) => amendmentKind(form) === "new-holdings");
     const rows = buildBrowserRows({ latestFilings: filings, source: "latest" });
     const result: BrowserLoadResult = {
       rows,
