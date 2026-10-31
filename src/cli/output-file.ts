@@ -91,7 +91,7 @@ export async function createOutputFolder(path: string, platform: NodeJS.Platform
  * file is written: a link or a device in its place is refused, checked first
  * and again as the file is opened.
  */
-export async function writeOutputFile(path: string, contents: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+export async function writeOutputFile(path: string, contents: string | Uint8Array, platform: NodeJS.Platform = process.platform): Promise<void> {
   const paths = platform === "win32" ? win32 : posix;
   await createOutputFolder(path, platform);
   await checkOutputPath(path, platform);
