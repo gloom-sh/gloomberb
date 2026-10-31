@@ -20,6 +20,21 @@ import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import type { ShortcutIntent } from "./shortcuts";
 import { clampIndex } from "../../../../utils/math";
 
+/** Written the way a symbol is: up to five letters and a share class (AAPL, nvda, BRK.B). */
+const SYMBOL_SHAPED_QUERY = /^[A-Za-z]{1,5}(?:[.\-/][A-Za-z]{1,2})?$/;
+
+/**
+ * Text that asks for a symbol rather than a local row: symbol-shaped, and in
+ * capitals or in no row's name. `nvda` matches Exposure only through its
+ * example input; `upd` is in Check for Updates.
+ */
+function readsAsSymbol(text: string, rows: readonly ResultItem[]): boolean {
+  if (!SYMBOL_SHAPED_QUERY.test(text)) return false;
+  if (text === text.toUpperCase()) return true;
+  const wanted = text.toLowerCase();
+  return !rows.some((row) => isDefaultSelectable(row) && row.label.toLowerCase().includes(wanted));
+}
+
 interface UseCommandBarRootRuntimeOptions {
   activeCollectionId: string | null;
   activePortfolio?: AppState["config"]["portfolios"][number];
@@ -317,6 +332,13 @@ export function useCommandBarRootRuntime({
     writeTickerSearchCache,
   });
   const rootSearching = tickerSearching || providerSearching;
+  // A symbol whose search has not answered: the rows on screen are what the
+  // letters match locally (a pane whose example names AAPL), not the symbol,
+  // so none of them is highlighted and Enter waits for the answer, as it would
+  // get had the symbol been typed slowly. Lower case found in a row's name
+  // (`upd`, `list`) is that row and runs at once.
+  const rootSymbolAnswerPending = !rootResultsCurrent && rootPlainTickerSearchArg !== null
+    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, orderedRootResults));
 
   useLayoutEffect(() => {
     if (currentRoute) return;
@@ -353,7 +375,7 @@ export function useCommandBarRootRuntime({
       // them is the answer and none is selected: Enter must not take one of
       // them for the ticker still being searched.
       const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
-      if (defaultIdx < 0) return -1;
+      if (defaultIdx < 0 || rootSymbolAnswerPending) return -1;
       const selected = clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
       pinnedRootRowRef.current = rootResultsCurrent && resultIds[selected]
         ? { id: resultIds[selected]!, answer: activeRootProviderResultsKey }
@@ -370,6 +392,7 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootResultModel.initialIdx,
     rootSelectionNavigatedRef,
+    rootSymbolAnswerPending,
     setRootHoveredIdx,
     setRootSelectedIdx,
   ]);
