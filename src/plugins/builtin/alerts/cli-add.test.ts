@@ -69,10 +69,11 @@ function cloud() {
   });
 }
 
-async function addAlert(args: string[]) {
+async function addAlert(args: string[], pluginState?: Record<string, unknown>) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-add-"));
   dataDirs.push(dataDir);
   const config = createDefaultConfig(dataDir);
+  if (pluginState) config.pluginConfig = { ...config.pluginConfig, [ALERTS_PLUGIN_ID]: pluginState };
   await saveConfig(config);
   const cli = createTestCliContext({ config, dataProvider: cloud() });
   let error: string | null = null;
@@ -178,10 +179,12 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
 });
 
 test("an IPO alert from the shell is the rule the dialog saves, in its own list, which Gloom Cloud reads", async () => {
-  const { events, error, printed, pluginState } = await addAlert(["ipo", "Space", "Exploration"]);
+  // A list from a newer version, synced here: a save keeps it, as released versions keep ipoAlerts.
+  const future = JSON.stringify([{ id: "f1", kind: "gamma_wall", target: "rule", value: "{}", createdAt: 1, status: "active" }]);
+  const { events, error, printed, pluginState } = await addAlert(["ipo", "Space", "Exploration"], { futureAlerts: future });
   expect(error).toBeNull();
   // Released versions read eventAlerts whole, so a kind they do not know goes in a list of its own.
-  expect(Object.keys(pluginState)).toEqual(["ipoAlerts"]);
+  expect(pluginState).toEqual({ futureAlerts: future, ipoAlerts: expect.any(String) });
   expect(events[0]).toMatchObject({ kind: "ipo", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, keyword: "Space Exploration" });
   expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it for a signed-in account with Cloud sync and sends it to your phone)");
