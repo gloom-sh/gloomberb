@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import type { CloudQuotePayload } from "../api-client";
 import { formatChartLegendValue } from "../components/chart/composite/format";
-import { formatMarketPriceWithCurrency, formatSignedMarketPrice, formatThirtySeconds } from "../market-data/market/format";
+import { formatMarketPriceWithCurrency, formatSignedMarketPrice, formatThirtySeconds, liveQuoteFormatOptions } from "../market-data/market/format";
+import { priceSeriesUnit } from "../market-data/market/index-level";
 import { mapQuote } from "../sources/gloomberb-cloud/normalizers";
-import { futuresGenericPriceBasis, parseFuturesGeneric } from "./futures-generic";
+import { futuresGenericPriceBasis, futuresListingPriceBasis, parseFuturesGeneric } from "./futures-generic";
+
+const quotePayload = (symbol: string, fields: Partial<CloudQuotePayload> = {}): CloudQuotePayload => ({
+  symbol, price: 104.484375, currency: "USD", change: -0.375, changePercent: -0.3576,
+  lastUpdated: 0, instrumentType: "FUTURE", providerId: "gloomberb-cloud", dataSource: "delayed", ...fields,
+});
 
 describe("generic futures read in their own units", () => {
   test("Treasury prices read in 32nds, with the eighth-of-a-32nd tick as a fraction", () => {
@@ -28,10 +35,42 @@ describe("generic futures read in their own units", () => {
   });
 
   test("a generic's cloud quote carries its basis; a crude contract's does not", () => {
-    const quote = (symbol: string) => ({ symbol, price: 17.5, currency: "USD", change: 0.1, changePercent: 0.5, lastUpdated: 0, instrumentType: "FUTURE" });
-    expect(mapQuote(quote("VX1") as never).priceBasis).toBe("points");
-    expect(mapQuote(quote("TY1") as never).priceBasis).toBe("thirty-seconds");
-    expect(mapQuote(quote("CL1") as never).priceBasis).toBeUndefined();
-    expect(mapQuote(quote("CLZ26.NYM") as never).priceBasis).toBeUndefined();
+    expect(mapQuote(quotePayload("VX1")).priceBasis).toBe("points");
+    expect(mapQuote(quotePayload("TY1")).priceBasis).toBe("thirty-seconds");
+    expect(mapQuote(quotePayload("CL1")).priceBasis).toBeUndefined();
+    expect(mapQuote(quotePayload("CLZ26.NYM")).priceBasis).toBeUndefined();
+  });
+
+  test.each([
+    ["ZT", "TU"], ["ZF", "FV"], ["ZN", "TY"], ["ZB", "US"], ["UB", "WN"],
+  ])("%s continuous and listed quotes use the same 32nds as %s generics", (root, alias) => {
+    for (const symbol of [`${alias}1`, `${root}=F`, `${root}Z26.CBT`, `${root}H27`]) {
+      for (const exchangeName of [undefined, "CBT", "CBOT"]) {
+        expect(futuresListingPriceBasis(symbol, exchangeName)).toBe("thirty-seconds");
+        const quote = mapQuote(quotePayload(symbol, { exchangeName }));
+        expect(quote.priceBasis).toBe("thirty-seconds");
+        expect(quote.price).toBe(104.484375);
+        expect(quote.currency).toBe("USD");
+        const options = liveQuoteFormatOptions(quote, quote.currency);
+        expect(formatMarketPriceWithCurrency(quote.price, quote.currency, options)).toBe("104-15½");
+        expect(formatSignedMarketPrice(quote.change, options)).toBe("-0-12");
+        const unit = priceSeriesUnit(quote.currency, quote.instrumentType, quote.priceBasis);
+        expect(formatChartLegendValue(quote.price, unit, `price:${unit}`, quote.instrumentType)).toBe("104-15½");
+      }
+    }
+  });
+
+  test("Treasury-like symbols on another venue or declared as securities keep their currency basis", () => {
+    for (const symbol of ["ZN=F", "ZNZ26.CBT", "TY1", "UB"]) {
+      for (const exchange of ["NYSE", "CME"]) expect(futuresListingPriceBasis(symbol, exchange)).toBeNull();
+    }
+    for (const instrumentType of ["EQUITY", "ETF", "BOND"]) {
+      for (const symbol of ["TY1", "ZN=F", "ZNZ26.CBT"]) {
+        const quote = mapQuote(quotePayload(symbol, { instrumentType, priceBasis: "per-unit" }));
+        expect(quote.priceBasis).toBe("per-unit");
+        expect(formatMarketPriceWithCurrency(quote.price, quote.currency, liveQuoteFormatOptions(quote, quote.currency))).toBe("$104.48");
+      }
+    }
+    expect(mapQuote(quotePayload("ZN=F", { exchangeName: "CBT", listingExchangeName: "NYSE" })).priceBasis).toBeUndefined();
   });
 });

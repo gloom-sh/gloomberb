@@ -138,8 +138,8 @@ export function baseSecuritySeries(
     : field.unit;
   const generic = field.unitGroup === "price"
     ? futuresGenericListing(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
-  // A generic future on an index, VIX or Treasuries reads in points or 32nds, and an index
-  // future's continuous symbol or contract in points, not dollars, as its quote does.
+  // Index and Treasury futures read in points or 32nds across generics,
+  // continuous symbols and listed contracts, as their quotes do.
   const genericBasis = field.unitGroup === "price" && isMarketFieldId(field.id)
     ? futuresListingPriceBasis(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
   // An index's level is points too, never the currency its members trade in.
