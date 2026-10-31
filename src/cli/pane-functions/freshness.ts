@@ -1006,6 +1006,15 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
   }
 }
 
+/**
+ * Where one venue's market stands now and the status line's words for it (`markets closed until Mon`), for a pane with
+ * no dated rows to read that from, such as a scanner. Null when no calendar places the venue.
+ */
+export function venueMarketLine(exchange: string, now: number): { state: ReportMarket["state"]; text: string } | null {
+  const { market } = reportMarketSession([{ exchange, time: null }], now);
+  return market ? { state: market.state, text: marketText(market, now, false, false) } : null;
+}
+
 /** Whether every market of a mixed report reads the same (`markets closed until Mon`): one line then says it for all. */
 function sameMarketText(markets: readonly VenueMarket[], now: number): boolean {
   return new Set(markets.map((market) => marketText(market, now, false, false))).size === 1;
