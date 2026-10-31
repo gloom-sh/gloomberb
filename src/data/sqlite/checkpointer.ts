@@ -14,6 +14,15 @@ export const SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES = 10_000;
 const CHECKPOINT_DELAY_MS = 1_000;
 /** How long closing waits for the checkpointer to let go of the file (Windows cannot delete an open one). */
 const CLOSE_WAIT_MS = 1_000;
+/**
+ * How long the thread may go without answering while it owes an answer
+ * (opening its connection, or a checkpoint) before it counts as stuck. A
+ * stuck thread flushes nothing, and the app's commits of user data skip
+ * their flush while it runs, so past this they flush again. The slowest
+ * checkpoint measured on Windows took under a second, and the slowest
+ * flush in stall reports 8 s.
+ */
+const STUCK_AFTER_MS = 30_000;
 
 const checkpointLog = debugLog.createLogger("sqlite");
 
@@ -78,6 +87,13 @@ self.onmessage = (event) => {
 };
 `;
 
+export interface WalCheckpointerOptions {
+  /** Overrides how long the thread may owe an answer before it counts as stuck. */
+  stuckAfterMs?: number;
+  /** Overrides the thread's code, so a test can run one that never answers. */
+  workerSource?: string;
+}
+
 export interface WalCheckpointer {
   /** Writes were committed: the WAL is copied into the database shortly, off this thread. */
   nudge(): void;
@@ -108,10 +124,15 @@ interface WorkerMessage {
  *
  * Null where there is no Worker to run it on.
  */
-export function startWalCheckpointer(dbPath: string, onFailure: () => void): WalCheckpointer | null {
+export function startWalCheckpointer(
+  dbPath: string,
+  onFailure: () => void,
+  options: WalCheckpointerOptions = {},
+): WalCheckpointer | null {
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL.createObjectURL !== "function") return null;
   let worker: Worker;
-  const source = URL.createObjectURL(new Blob([WORKER_SOURCE], { type: "application/javascript" }));
+  const source = URL.createObjectURL(new Blob([options.workerSource ?? WORKER_SOURCE], { type: "application/javascript" }));
+  const stuckAfterMs = options.stuckAfterMs ?? STUCK_AFTER_MS;
   try {
     worker = new Worker(source);
   } catch (error) {
@@ -126,10 +147,21 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
   let running = false;
   let pending = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** Messages the thread has yet to answer, and the clock on its next answer. */
+  let owed = 0;
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+  const stopWatching = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = null;
+  };
 
   const fail = (reason: string) => {
     if (failed || stopped) return;
     failed = true;
+    stopWatching();
+    if (timer) clearTimeout(timer);
+    timer = null;
     checkpointLog.warn("The WAL checkpointer stopped; commits checkpoint themselves", { reason });
     try {
       onFailure();
@@ -157,13 +189,42 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
     }
   };
 
+  /**
+   * Restarts the clock whenever the thread answers and still owes one. A
+   * thread stuck without an error event would otherwise leave user writes
+   * unflushed until the backstop checkpoint or close.
+   */
+  const watch = () => {
+    stopWatching();
+    if (owed === 0 || failed || stopped) return;
+    watchdog = setTimeout(() => {
+      watchdog = null;
+      fail(`no answer in ${stuckAfterMs} ms`);
+      terminate();
+      URL.revokeObjectURL(source);
+    }, stuckAfterMs);
+    (watchdog as { unref?: () => void }).unref?.();
+  };
+
+  const ask = (message: { type: string; path?: string; closed?: SharedArrayBuffer }): boolean => {
+    if (!post(message)) return false;
+    owed += 1;
+    if (owed === 1) watch();
+    return true;
+  };
+
+  const answered = () => {
+    owed = Math.max(0, owed - 1);
+    watch();
+  };
+
   const schedule = () => {
     if (timer || running || failed || stopped) return;
     timer = setTimeout(() => {
       timer = null;
       if (failed || stopped) return;
       pending = false;
-      running = post({ type: "checkpoint" });
+      running = ask({ type: "checkpoint" });
     }, CHECKPOINT_DELAY_MS);
     (timer as { unref?: () => void }).unref?.();
   };
@@ -171,6 +232,7 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
   worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
     const message = event.data;
     if (message.type === "ready") {
+      answered();
       URL.revokeObjectURL(source);
       return;
     }
@@ -179,6 +241,7 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
       return;
     }
     if (message.type === "checkpointed") {
+      answered();
       running = false;
       // On its own thread, so never the step a stall of the app's names.
       recordPerfSample("sqlite.checkpoint", message.ms ?? 0, {
@@ -193,7 +256,7 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
   worker.onerror = (event) => {
     fail(event.message);
   };
-  if (!post({ type: "open", path: resolve(dbPath), closed })) {
+  if (!ask({ type: "open", path: resolve(dbPath), closed })) {
     terminate();
     URL.revokeObjectURL(source);
     return null;
@@ -209,6 +272,7 @@ export function startWalCheckpointer(dbPath: string, onFailure: () => void): Wal
       if (stopped) return;
       if (timer) clearTimeout(timer);
       timer = null;
+      stopWatching();
       const asked = !failed && post({ type: "close" });
       stopped = true;
       if (!asked) {
