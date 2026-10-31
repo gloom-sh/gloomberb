@@ -28,6 +28,19 @@ test("broker marked shorts retain their sign when live quotes are unavailable", 
   const holdings = await portfolioHoldings(portfolio, [short], 400, { getQuote: async () => { throw new Error("offline"); }, getExchangeRate: async () => 1 });
   expect(holdings[0]!.weight).toBe(-.2);
 });
+test("a provider with a quote batch values every position from one request", async () => {
+  const batches: string[][] = [];
+  const values = await portfolioHoldings(portfolio, [ticker("A", 10), ticker("B", 5, "EUR")], 500, {
+    getQuote: async () => { throw new Error("one quote per position"); },
+    getQuotesBatch: async (targets) => {
+      batches.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: target.symbol === "A" ? createTestQuote({ price: 10, currency: "USD" }) : createTestQuote({ price: 20, currency: "EUR" }) }));
+    },
+    getExchangeRate: async () => 1.25,
+  });
+  expect(batches).toEqual([["A", "B"]]);
+  expect(values.map((holding) => holding.weight)).toEqual([.2, .25]);
+});
 test("watchlist membership uses equal weights only within that watchlist", () => {
   const a = ticker("A", 1), b = ticker("B", 2); a.metadata.watchlists = ["w"]; b.metadata.watchlists = ["other"];
   expect(watchlistHoldings([a, b], "w")).toEqual([{ symbol: "A:XNAS", weight: 1 }]);
