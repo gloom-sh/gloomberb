@@ -1458,6 +1458,26 @@ reason, since a lent share is reported by its lender and by the fund that bought
 Insider ownership is not offered: the stored Form 4 filings cover recent trades, not
 every insider's holdings.
 
+The quality fields use the same bases and definitions as `FA` (see
+[financial-ratios.md](financial-ratios.md)), so a screen and `FA` agree for the same
+company and period. ROIC, FCF yield, net debt / EBITDA and debt / equity read `FA`'s
+leading annual column: the trailing four quarters when they run past the latest
+fiscal year, otherwise that year. ROIC is NOPAT over average invested capital, both
+ends from the same line; FCF yield is free cash flow over the market cap at the
+period's last close; net debt adds lease liabilities outside US GAAP, as `FA` does.
+Each is as of the period end. Revenue and EPS CAGR 3Y and 5Y run from the latest
+fiscal year back three or five years, both years from one series: the stored
+statements when they hold both, otherwise the company's annual SEC filings, the
+series `GF` charts (US filers). The statements keep about five fiscal years, so a 5Y
+CAGR mostly reads the filings. A company whose statement revenue includes a line its
+filings report apart (Walmart's membership income) is never compounded from one into
+the other. EPS is diluted, on the current share basis; a share class reads none from
+the filings, since those report the company's. Forward revenue and EPS growth are the
+growth `EE` shows for the fiscal year in progress: a fiscal year that has ended
+unreported gives way to the next. A field is N/M where `FA` prints N/M: EBITDA, equity
+or average invested capital at or below zero, or a base year at or below zero. A
+missing line is never read as zero.
+
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last
 one. RSI 14 and the distance from the 20, 50 and 200-session simple averages are the

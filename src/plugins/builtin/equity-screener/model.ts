@@ -6,6 +6,7 @@ import {
   NUMERIC_FIELDS,
   OPTION_VOLATILITY_FIELDS,
   OWNERSHIP_FIELDS,
+  QUALITY_FIELDS,
   RESEARCH_FIELDS,
   KPI_FIELDS,
   SOCIAL_FIELDS,
@@ -126,6 +127,16 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   floatShares: "FLOAT",
   shortPercentOfFloat: "SI % FLOAT",
   institutionalOwnershipPercent: "INST OWN%",
+  roicPercent: "ROIC%",
+  fcfYieldPercent: "FCF YLD%",
+  netDebtToEbitda: "ND/EBITDA",
+  debtToEquity: "D/E",
+  revenueCagr3YPercent: "REV CAGR 3Y%",
+  revenueCagr5YPercent: "REV CAGR 5Y%",
+  epsCagr3YPercent: "EPS CAGR 3Y%",
+  epsCagr5YPercent: "EPS CAGR 5Y%",
+  forwardRevenueGrowthPercent: "FWD REV GR%",
+  forwardEpsGrowthPercent: "FWD EPS GR%",
   hiringOpenRoles: "OPEN ROLES",
   hiringNetAddsWeek: "NET ROLES/WK",
   hiringRemotePercent: "REMOTE%",
@@ -138,7 +149,8 @@ export const SHORT_LABELS: Record<NumericField, string> = {
 const COMPACT = new Set<NumericField>(["kpiArr", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiStores", "kpiBacklog", "marketCap", "volume", "averageVolume20d", "shortInterestShares", "sharesOutstanding", "floatShares"]);
 /** Daily counts: whole numbers below a thousand, compact above. */
 const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
-const RATIOS = new Set<NumericField>(["kpiBookToBill", "xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv"]);
+const RATIOS = new Set<NumericField>(["kpiBookToBill", "xPostsVsMedian", "wikiViewsVsMedian", "priceToBook", "evToEbitda", "ivToHv",
+  "netDebtToEbitda", "debtToEquity"]);
 const RETURNS: NumericField[] = ["return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent"];
 const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
   "guideRevenueChangePercent", "guideEpsChangePercent", "kpiSameStoreSalesPercent",
@@ -147,6 +159,9 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
   "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
   "iv30Change1d", "iv30Change5d",
+  // A negative return on capital or free cash flow means as much as a shrinking business.
+  "roicPercent", "fcfYieldPercent", "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
+  "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent",
@@ -369,6 +384,16 @@ export const screenLabel = (field: string) =>
     floatShares: "Float",
     shortPercentOfFloat: "Short interest % of float",
     institutionalOwnershipPercent: "Institutional ownership % (13F)",
+    roicPercent: "ROIC %",
+    fcfYieldPercent: "FCF yield %",
+    netDebtToEbitda: "Net debt / EBITDA",
+    debtToEquity: "Debt / equity",
+    revenueCagr3YPercent: "Revenue CAGR 3Y %",
+    revenueCagr5YPercent: "Revenue CAGR 5Y %",
+    epsCagr3YPercent: "EPS CAGR 3Y %",
+    epsCagr5YPercent: "EPS CAGR 5Y %",
+    forwardRevenueGrowthPercent: "Forward revenue growth %",
+    forwardEpsGrowthPercent: "Forward EPS growth %",
     hiringOpenRoles: "Hiring open roles",
     hiringNetAddsWeek: "Net open roles per week",
     hiringRemotePercent: "Remote roles %",
@@ -682,9 +707,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility, dividend, technical, option volatility or ownership fields
-      // omits them; they read as unavailable. A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research, volatility, dividend, technical, option volatility, ownership or quality
+      // fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

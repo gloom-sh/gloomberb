@@ -193,3 +193,39 @@ test("a sector or industry that names nothing says the names it was likely meant
   expect((gics.sections![0] as { empty?: string }).empty).toStartWith('No sector is named "Information Technology". Closest: Technology.');
   expect(equityScreenerHeadless.discovery!.reference!.map(({ title, items }) => [title, items.length])).toEqual([["Sectors", 11], ["Industries", 144]]);
 });
+
+test("--preset value, quality and garp run on the fundamental fields, leading with their own metric", async () => {
+  const queried: { criteria: unknown; sort: unknown }[] = [];
+  const data = screenFixture();
+  data.rows[0]!.metrics.roicPercent = { ...data.rows[0]!.metrics.roicPercent, value: 71.27, unit: "%", asOf: "2026-06-27", state: "available", scope: "derived" };
+  data.rows[0]!.metrics.netDebtToEbitda = { ...data.rows[0]!.metrics.netDebtToEbitda, value: null, unit: "x", state: "unavailable", notMeaningful: true, reason: "Trailing EBITDA is not positive" };
+  const apiClient = { equityScreener: async (_path: string, init?: { body?: string }) => {
+    const { criteria, sort } = JSON.parse(init!.body!);
+    queried.push({ criteria, sort });
+    return { ...structuredClone(data), definition: { version: 1, currency: "USD", criteria, sort } };
+  } };
+  const load = (options: Record<string, string>) => equityScreenerHeadless.load({ argument: undefined, options } as never, { apiClient } as never);
+  const quality = await load({ preset: "quality" });
+  expect(queried[0]).toEqual({
+    criteria: [
+      { field: "roicPercent", op: "gte", value: 15 },
+      { field: "netDebtToEbitda", op: "lte", value: 2 },
+      { field: "revenueCagr5YPercent", op: "gte", value: 5 },
+      { field: "fcfYieldPercent", op: "gt", value: 0 },
+      { field: "marketCap", op: "gte", value: 2_000_000_000 },
+    ],
+    sort: { field: "roicPercent", direction: "desc" },
+  });
+  const section = quality.sections![0]!;
+  expect(section.columns!.find((column) => column.key === "value")!.header).toBe("ROIC%");
+  expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "+71.3", unit: "%", asOf: "2026-06-27" });
+  // N/M as FA prints it, not a missing value.
+  const leverage = await load({ preset: "value", metric: "netDebtToEbitda" });
+  expect(leverage.sections![0]!.rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
+  expect(queried[1]!.sort).toEqual({ field: "fcfYieldPercent", direction: "desc" });
+  await load({ preset: "garp" });
+  expect(queried[2]).toMatchObject({
+    criteria: expect.arrayContaining([{ field: "forwardEpsGrowthPercent", op: "between", value: [10, 25] }, { field: "forwardPE", op: "lte", value: 20 }]),
+    sort: { field: "forwardEpsGrowthPercent", direction: "desc" },
+  });
+});

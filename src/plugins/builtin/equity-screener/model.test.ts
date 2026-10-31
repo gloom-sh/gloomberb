@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -153,13 +153,14 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.atrPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.ivPercentile).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.floatShares).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.roicPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
@@ -246,4 +247,19 @@ test("ownership fields: share counts compact, short % of float and institutional
     formatScreenValue("shortPercentOfFloat", 10.637), formatScreenValue("institutionalOwnershipPercent", 125.4)])
     .toEqual(["504.50M", "461.24M", "10.6", "125.4"]);
   for (const field of OWNERSHIP_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+});
+
+test("quality fields: leverage as multiples, returns and growth signed like the growth fields, N/M as FA prints it", () => {
+  expect([formatScreenValue("netDebtToEbitda", 0.1307), formatScreenValue("netDebtToEbitda", -0.124), formatScreenValue("debtToEquity", 0.784),
+    formatScreenValue("roicPercent", 71.27), formatScreenValue("fcfYieldPercent", -2.04), formatScreenValue("revenueCagr5YPercent", 8.677),
+    formatScreenValue("epsCagr3YPercent", 0.01), formatScreenValue("forwardEpsGrowthPercent", 95.23), formatScreenValue("revenueGrowthPercent", 8.677)])
+    .toEqual(["0.1x", "-0.1x", "0.8x", "+71.3", "-2.0", "+8.7", "0.0", "+95.2", "+8.7"]);
+  // A value FA calls not meaningful, kept apart from a missing one.
+  expect(formatScreenMetric("netDebtToEbitda", { value: null, notMeaningful: true })).toBe("N/M");
+  expect(formatScreenMetric("netDebtToEbitda", { value: null })).toBe("--");
+  // Growth, not a move: no sign colour, like FY REV GR%.
+  for (const field of QUALITY_FIELDS) {
+    expect(SIGN_COLORED.has(field)).toBe(false);
+    expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+  }
 });
