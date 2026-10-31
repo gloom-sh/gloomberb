@@ -132,6 +132,12 @@ export function listingChangeLine(fate: Pick<ListingFate, "change" | "formerIssu
 export const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null, formerIssuer: null };
 /** How long a fate waits for a change lookup it started late, or for a stopped line's. */
 export const LATE_CHANGE_WAIT_MS = 2_000;
+/**
+ * How long a command that says what became of a symbol's company (GOGL's merger) waits for the lookup it started
+ * beside its own request, once that is in: the lookup takes about a third of a second, and a cached request answers
+ * at once. A lookup that hangs costs a symbol that trades no more than this.
+ */
+export const SUCCESSOR_CHANGE_WAIT_MS = 750;
 
 // The zones of the US exchanges; a venue in another is abroad.
 const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
@@ -195,7 +201,11 @@ export function lineMayHaveMoved(quote: Quote | null, now = Date.now()): boolean
 export async function loadListingFate(
   listing: { symbol: string; exchange?: string | null; request?: { symbol: string; exchange: string } },
   dataProvider: Pick<DataProvider, "getQuote" | "getTickerChanges">,
-  options: { quote?: Quote | null | Promise<Quote | null>; changes?: TickerChangeLookup } = {},
+  /**
+   * `graceMs`: how long a lookup the command started waits once the quote is in, for a command that says what
+   * became of the company beside what it serves (GOGL's merger), not only whether it moved. A short grace by default.
+   */
+  options: { quote?: Quote | null | Promise<Quote | null>; changes?: TickerChangeLookup; graceMs?: number } = {},
 ): Promise<ListingFate> {
   const request = listing.request ?? { symbol: listing.symbol, exchange: listing.exchange ?? "" };
   const lookup = options.changes ?? startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
@@ -206,7 +216,7 @@ export async function loadListingFate(
     // A lookup started beside the command's request gets a short grace once that is ready, so a slow
     // one never holds a symbol that trades. A line that stopped is waited for: only its company can
     // have moved, and then the answer decides whether the command serves anything at all.
-    const changes = await lookup.settle(!options.changes || lineMayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
+    const changes = await lookup.settle(!options.changes || lineMayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : options.graceMs);
     return describeListingFate(listing, quote, changes);
   } catch (error) {
     logFailure("tickers-listing-fate", "Could not resolve listing fate")(error);
@@ -230,7 +240,8 @@ export function listingFateNotes(fate: ListingFate, served: { served: boolean; f
   return [
     // What it served ends on the listing's last session, and says so.
     fate.delisted ?? null,
-    tickerChangeLine(change),
+    // A company that left the symbol, else one that merged away from it (GOGL), as `quote` says it.
+    listingChangeLine(fate),
     earlier.length > 0 ? `Includes ${earlier.join("- and ")}-era bars: ${change!.note}` : null,
   ].filter((line): line is string => !!line);
 }

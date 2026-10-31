@@ -82,6 +82,7 @@ import {
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
 import { movedAwayChange } from "../../tickers/ticker-changes";
+import { listingChangeLine } from "../../tickers/listing-fate";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -1559,7 +1560,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // So does what became of the symbol, read from the research's quote as `history` reads it: a
     // company that moved (HFC became DINO), with nothing new listed there, has no profile of its own.
     const researchQuote = Promise.withResolvers<Quote | null>();
-    const fate = listingFateLoader(listing, { dataProvider }, researchQuote.promise);
+    const fate = listingFateLoader(listing, { dataProvider }, researchQuote.promise, { successor: true });
     const request: ListingDataRequest = { command: "ticker", noun: "research", fate };
     /** Nothing to show: a company that moved is under its new symbol. */
     const failIfMovedAway = async () => {
@@ -1603,8 +1604,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const quote = resolvedFinancials.quote;
     // The quote is the old line's (stopped, or named for the company that left): the profile and figures are another security's.
     researchQuote.resolve(quote ?? null);
-    const { moved } = await fate();
-    if (moved) failMovedSymbol(moved, request);
+    const researchFate = await fate();
+    if (researchFate.moved) failMovedSymbol(researchFate.moved, request);
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
@@ -1673,7 +1674,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
+    const successor = listingChangeLine(researchFate);
     const choiceNotes = [
+      // What became of the company that had the symbol (GOGL), as `quote` says it, then the listing it was read as.
+      ...successor ? [successor] : [],
       ...await listingChoiceNotes(listing, { store, dataProvider }, quote, venues),
       ...quote || !tickerFile ? [] : coinListingNotes(listing, { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory }),
     ];

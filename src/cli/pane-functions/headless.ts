@@ -235,13 +235,14 @@ export function createHeadlessPaneContext(
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
         command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
-      }, { refresh: !!context.refresh });
+      }, { refresh: !!context.refresh, successor: true });
       if (!read) return null;
       return {
         symbol: read.symbol,
         ...read.exchange ? { exchange: read.exchange } : {},
         ...read.name ? { name: read.name } : {},
         ...read.coinNote ? { coinNote: read.coinNote } : {},
+        ...read.successorNote ? { successorNote: read.successorNote } : {},
       };
     },
   };
