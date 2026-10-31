@@ -11,6 +11,8 @@ import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
 import { fetchHistoryResult } from "../sources/history-result";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { createTestHeadlessContext } from "../test-support/headless";
+import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { createIdleEntry } from "../market-data/result-types";
 
 const time = (value: string) => Date.parse(value);
 const NOW = time("2026-09-22T12:42:00Z");
@@ -31,7 +33,7 @@ const provider = (get: () => Promise<PriceHistoryResult>) => createTestDataProvi
   getPriceHistoryForResolution: async () => { throw new Error("The array projection must not replace the actual metadata acquisition"); },
   getPriceHistoryForResolutionWithMetadata: get,
 });
-afterEach(() => setSystemTime());
+afterEach(() => { setSystemTime(); setSharedMarketDataCoordinator(null); });
 
 test("price, volume and SMA200 share a current history acquisition and refresh exactly when the first new-session bar is due", async () => {
   setSystemTime(NOW);
@@ -309,4 +311,24 @@ test("GIP snapshot replay retains study warmup outside the visible session", asy
     expect(replay.snapshot.financials[0]![1].priceHistorySourceKey).toBe("provider:actual-history-source");
     expect(calls).toBe(1);
   }
+});
+
+test("a chart takes the listing's currency and type from the quote the app already holds", async () => {
+  setSystemTime(NOW);
+  let metadataReads = 0;
+  const dataProvider = createTestDataProvider({ id: "preferred-router-id",
+    getQuoteMetadata: async symbol => { metadataReads++; return { symbol, currency: "USD", instrumentType: "EQUITY" }; },
+    getChartResolutionSupport: () => [{ resolution: "15m", maxRange: "ALL" }],
+    getPriceHistoryForResolutionWithMetadata: async () => result(),
+  });
+  const quote = { symbol: "AAPL", price: 100, currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NASDAQ", lastUpdated: NOW };
+  setSharedMarketDataCoordinator({
+    getQuoteEntry: ({ symbol }: { symbol: string }) => symbol === "AAPL"
+      ? { ...createIdleEntry(), phase: "ready", data: quote, lastGoodData: quote }
+      : createIdleEntry(),
+  } as never);
+  const resolved = await resolveChartSpecData(chart(), { dataProvider, now: new Date() }, new ChartResolveCache());
+  expect(resolved.errors).toEqual([]);
+  expect(resolved.series.find(series => series.id === "close")!.points).toHaveLength(234);
+  expect(metadataReads).toBe(0);
 });

@@ -353,12 +353,18 @@ export class ChatController {
   }
 
   /** Single-flight: every open chat pane calls this on mount. */
-  async refreshSession(): Promise<void> {
+  /**
+   * Reads the signed-in user again. `reuseCheckWithinMs` accepts a session
+   * check the app made that recently instead: the web app checks its session
+   * before the first paint, and the status bar opening right after has
+   * nothing new to learn from a second request.
+   */
+  async refreshSession(options: { reuseCheckWithinMs?: number } = {}): Promise<void> {
     if (this.sessionRefreshPromise) return this.sessionRefreshPromise;
     this.realtime.stopSessionRetry();
     const generation = this.sessionRefreshGeneration;
     const isCurrent = () => generation === this.sessionRefreshGeneration;
-    const request = this.runSessionRefresh(isCurrent)
+    const request = this.runSessionRefresh(isCurrent, options.reuseCheckWithinMs)
       .catch((error) => {
         if (isCurrent()) this.realtime.scheduleSessionRetry();
         throw error;
@@ -379,9 +385,10 @@ export class ChatController {
     this.sessionRefreshPromise = null;
   }
 
-  private async runSessionRefresh(isCurrent: () => boolean): Promise<void> {
+  private async runSessionRefresh(isCurrent: () => boolean, reuseCheckWithinMs?: number): Promise<void> {
     return refreshChatControllerSession({
       isCurrent,
+      reuseCheckWithinMs,
       applySignedOut: () => this.applySignedOutSession(),
       channelStates: this.storage.channelStates,
       emit: () => this.emit(),

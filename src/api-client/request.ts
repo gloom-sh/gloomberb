@@ -82,6 +82,12 @@ type CloudApiStreamFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
+/** A request's headers in a fixed order, so two identical requests compare equal. */
+function headerLines(headers: Headers): string {
+  const lines: string[] = [];
+  headers.forEach((value, name) => { lines.push(`${name}:${value}`); });
+  return lines.sort().join("\n");
+}
 /** A response with its body read, which several callers can each parse. */
 interface CloudApiAnswer {
   response: CloudApiResponse;
@@ -352,11 +358,11 @@ export class CloudApiRequestTransport {
     );
   }
 
-  async request<T>(path: string, options?: RequestInit, canApplySession: () => boolean = () => true): Promise<T> {
+  async request<T>(path: string, options?: RequestInit, canApplySession?: () => boolean): Promise<T> {
     return this.withDeadline(path, this.deadlineFor(path), options?.signal, (signal) => this.performRequest<T>(path, {
       ...options,
       signal,
-    }, canApplySession));
+    }, canApplySession ?? (() => true), undefined, !canApplySession && !path.startsWith("/auth/")));
   }
 
   /**
@@ -566,6 +572,12 @@ export class CloudApiRequestTransport {
     options: RequestInit | undefined,
     canApplySession: () => boolean,
     send?: CloudApiFetchTransport,
+    /**
+     * Whether an identical GET already out can answer this one (`readShared`).
+     * Never for a request tied to a session check: a newer check must reach
+     * the server rather than take an answer about an older credential.
+     */
+    shareable = false,
   ): Promise<T> {
     throwIfRequestAborted(options?.signal);
     const headers = new Headers(options?.headers);
@@ -593,9 +605,9 @@ export class CloudApiRequestTransport {
       return { response, text: await response.text() };
     };
     const request = async () => {
-      const shared = !send && (options?.method ?? "GET").toUpperCase() === "GET" && options?.body == null;
+      const shared = shareable && !send && (options?.method ?? "GET").toUpperCase() === "GET" && options?.body == null;
       const { response: res, text } = shared
-        ? await this.readShared(`${url}\n${[...headers].map(([name, value]) => `${name}:${value}`).sort().join("\n")}`, options?.signal, read)
+        ? await this.readShared(`${url}\n${headerLines(headers)}`, options?.signal, read)
         : await read(options?.signal);
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;

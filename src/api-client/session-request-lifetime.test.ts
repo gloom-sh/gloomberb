@@ -182,3 +182,30 @@ test("new-credential validation supersedes an older live request without recheck
   expect(apiClient.getWebSocketToken()).toBe("new-ws");
   expect(apiClient.getCurrentUser()).toMatchObject(pro);
 });
+
+test("a cookie session checked at boot is not asked for again once chat restores its state", async () => {
+  apiClient.setCookieSessionMode(true);
+  let requests = 0;
+  setCloudApiFetchTransport(async () => { requests++; return new Response("", { status: 200 }); });
+  await apiClient.getSession();
+  controller.attachPersistence(new MemoryPluginPersistence());
+  expect(await apiClient.ensureVerifiedSession()).toBeNull();
+  expect(requests).toBe(1);
+});
+
+test("a refresh may take the session the app checked moments ago, and asks once that check is old", async () => {
+  apiClient.setCookieSessionMode(true);
+  let requests = 0;
+  setCloudApiFetchTransport(async (url) => {
+    if (new URL(url).pathname !== "/auth/get-session") return Response.json({ channels: [] });
+    requests++;
+    return Response.json({ user: pro });
+  });
+  await apiClient.getSession();
+  controller.attachPersistence(new MemoryPluginPersistence());
+  await controller.refreshSession({ reuseCheckWithinMs: 30_000 });
+  expect(requests).toBe(1);
+  expect(controller.getSnapshot().user?.id).toBe(pro.id);
+  await controller.refreshSession({ reuseCheckWithinMs: 0 });
+  expect(requests).toBe(2);
+});
