@@ -1,4 +1,7 @@
 import { Database } from "bun:sqlite";
+import { closeSync, openSync } from "fs";
+import { logFailure } from "../../utils/log-failure";
+import { restrictFileSync } from "../../utils/private-files";
 import { createSqliteAccess, type SqliteAccess } from "./access";
 import {
   SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
@@ -85,6 +88,18 @@ export class SqliteDatabase {
   private readonly checkpointer: WalCheckpointer | null = null;
 
   constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
+    const onDisk = dbPath !== "" && dbPath !== ":memory:" && !dbPath.startsWith("file:");
+    // The database holds the Cloud session: created readable by the user
+    // alone, so the WAL and shared-memory files SQLite makes beside it with
+    // the same mode are too, and an older one made so.
+    if (onDisk) {
+      try {
+        closeSync(openSync(dbPath, "a", 0o600));
+        restrictFileSync(dbPath);
+      } catch (error) {
+        logFailure("data.sqlite", "Restricting the database file to its user failed")(error);
+      }
+    }
     this.connection = new Database(dbPath);
     // Opening waits for another program's lock: it happens once, and the app
     // has nothing to show without its data.
@@ -97,6 +112,14 @@ export class SqliteDatabase {
     // where it does not run (access.ts). Where WAL does not take (a network
     // share, an in-memory database), every commit flushes.
     const wal = journalMode?.toLowerCase() === "wal";
+    if (onDisk && wal) {
+      try {
+        restrictFileSync(`${dbPath}-wal`);
+        restrictFileSync(`${dbPath}-shm`);
+      } catch (error) {
+        logFailure("data.sqlite", "Restricting the database's WAL files to their user failed")(error);
+      }
+    }
     this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);

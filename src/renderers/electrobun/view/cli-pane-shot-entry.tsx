@@ -17,9 +17,9 @@ import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
-  SHOT_API_SOCKET_TOKEN_PARAM,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
+  shotRouteUrl,
   type ShotApiSocketCall,
   type ShotApiSocketReply,
 } from "../../../cli/desktop-pane-shot-routes";
@@ -73,8 +73,6 @@ import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "
 declare global {
   interface Window {
     __GLOOM_CLI_SHOT_PAYLOAD__?: DesktopPaneShotPayload;
-    /** What lets this page's API socket in (`SHOT_API_SOCKET_TOKEN_PARAM`); no other page is given it. */
-    __GLOOM_CLI_SHOT_SOCKET_TOKEN__?: string;
     __GLOOM_CLI_SHOT_READY__?: boolean;
     __GLOOM_CLI_SHOT_PENDING__?: number;
     __GLOOM_CLI_SHOT_ERROR__?: string;
@@ -100,6 +98,12 @@ const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "json",
   "text",
 ]);
+
+/**
+ * The page's own address, read once before anything can change it: the
+ * server answers only inside the secret folder the page opened at.
+ */
+const SHOT_PAGE_URL = window.location.href;
 
 let pendingShotWork = 0;
 let didInstallShotFetchTracker = false;
@@ -163,8 +167,8 @@ function openShotApiSocket(): Promise<ShotApiSocketSend | null> {
     const pending = new Map<number, (reply: ShotApiSocketReply | null) => void>();
     let nextId = 1;
     let open = false;
-    const url = new URL(SHOT_API_SOCKET_PATH, window.location.href.replace(/^http/, "ws"));
-    url.searchParams.set(SHOT_API_SOCKET_TOKEN_PARAM, window.__GLOOM_CLI_SHOT_SOCKET_TOKEN__ ?? "");
+    const url = shotRouteUrl(SHOT_API_SOCKET_PATH, SHOT_PAGE_URL);
+    url.protocol = "ws:";
     const socket = new WebSocket(url);
     socket.addEventListener("message", (event) => {
       let reply: ShotApiSocketReply;
@@ -214,7 +218,7 @@ function installShotCloudApiTransport(): void {
   let socket: Promise<ShotApiSocketSend | null> | null = null;
   setCloudApiFetchTransport((url, init = {}) => {
     const upstream = new URL(url);
-    const proxyUrl = new URL(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, window.location.origin);
+    const proxyUrl = shotRouteUrl(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, SHOT_PAGE_URL);
     proxyUrl.search = upstream.search;
     const headers = new Headers(init.headers);
     // Bun owns the real session cookie. The browser only talks to the local
@@ -242,7 +246,7 @@ function installShotCloudApiTransport(): void {
  */
 function installShotHttpFetchTransport(): void {
   setHttpFetchTransport(async (url, init) => {
-    const response = await window.fetch(SHOT_HTTP_BRIDGE_PATH, {
+    const response = await window.fetch(shotRouteUrl(SHOT_HTTP_BRIDGE_PATH, SHOT_PAGE_URL), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(await toRequestEnvelope(url, init)),
@@ -264,7 +268,7 @@ async function restoreShotCloudSession(): Promise<void> {
  * of the corporate action history come from providers the router merges in.
  */
 async function requestShotMarketData<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<T> {
-  const response = await window.fetch(SHOT_MARKET_BRIDGE_PATH, {
+  const response = await window.fetch(shotRouteUrl(SHOT_MARKET_BRIDGE_PATH, SHOT_PAGE_URL), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operation, args }),

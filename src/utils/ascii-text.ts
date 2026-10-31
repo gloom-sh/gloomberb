@@ -99,11 +99,22 @@ export function localeMayNotReadUtf8(env: LocaleEnv = process.env, platform: str
   return platform === "win32";
 }
 
+/**
+ * Where Windows keeps `chcp.com`. Windows looks a bare program name up in the
+ * current folder before the system's, so a `chcp.com` left in the folder a
+ * command runs in would run in its place; the full path never does.
+ */
+export function windowsChcpPath(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  const root = [env.SystemRoot, env.SYSTEMROOT, env.windir, env.WINDIR]
+    .find((dir): dir is string => !!dir && /^[A-Za-z]:[\\/]/.test(dir)) ?? "C:\\Windows";
+  return `${root.replace(/[\\/]+$/, "")}\\System32\\chcp.com`;
+}
+
 /** The console's code page as `chcp` prints it ("Active code page: 437"), or null when it cannot be read. */
 function consoleCodePage(): number | null {
   try {
-    if (typeof Bun === "undefined") return null;
-    const answer = Bun.spawnSync(["chcp.com"], { stdout: "pipe", stderr: "ignore" });
+    if (typeof Bun === "undefined" || process.platform !== "win32") return null;
+    const answer = Bun.spawnSync([windowsChcpPath()], { stdout: "pipe", stderr: "ignore" });
     const page = /(\d+)\D*$/.exec(answer.stdout.toString().trim());
     return page ? Number(page[1]) : null;
   } catch {

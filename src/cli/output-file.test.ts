@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createOutputFolder, resolveOutputPath, writeOutputFile } from "./output-file";
+import { checkOutputPath, createOutputFolder, resolveOutputPath, writeOutputFile } from "./output-file";
 
 test("--output reads every path form a shell passes, and a Windows path only on Windows", () => {
   const posix = { cwd: "/work", home: "/home/me", platform: "linux" as const };
@@ -38,6 +38,40 @@ test("an output folder that cannot be created is named, not left to mkdir's word
     }
     await createOutputFolder(join(root, "made", "deep", "x.png"));
     expect((await stat(join(root, "made", "deep"))).isDirectory()).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// A report can hold positions and balances; `--output` naming a link or a device must not write through it.
+test.skipIf(process.platform === "win32")("--output writes a plain file only the user can read, and nothing through a link or into a device", async () => {
+  const root = await mkdtemp(join(tmpdir(), "gloom-output-file-"));
+  try {
+    const fresh = join(root, "report.csv");
+    await writeOutputFile(fresh, "a,b\n");
+    expect((await stat(fresh)).mode & 0o777).toBe(0o600);
+    // A file it replaces is made private before the report goes in, and holds only the report.
+    const shared = join(root, "shared.csv");
+    await writeFile(shared, "an older and longer report\n", { mode: 0o644 });
+    await chmod(shared, 0o644);
+    await writeOutputFile(shared, "x\n");
+    expect((await stat(shared)).mode & 0o777).toBe(0o600);
+    expect(await readFile(shared, "utf8")).toBe("x\n");
+
+    const target = join(root, "elsewhere.txt");
+    await writeFile(target, "untouched");
+    const link = join(root, "link.csv");
+    await symlink(target, link);
+    const dangling = join(root, "dangling.csv");
+    await symlink(join(root, "missing.txt"), dangling);
+    const pipe = join(root, "pipe.csv");
+    expect(Bun.spawnSync(["mkfifo", pipe]).exitCode).toBe(0);
+    for (const [path, reason] of [[link, "it is a link"], [dangling, "it is a link"], [pipe, "it is not a plain file"], ["/dev/null", "it is not a plain file"]] as const) {
+      await expect(checkOutputPath(path)).rejects.toThrow(`Cannot write ${path}: ${reason}`);
+      await expect(writeOutputFile(path, "a,b\n")).rejects.toThrow(`Cannot write ${path}: ${reason}`);
+    }
+    expect(await readFile(target, "utf8")).toBe("untouched");
+    await expect(lstat(join(root, "missing.txt"))).rejects.toThrow();
   } finally {
     await rm(root, { recursive: true, force: true });
   }
