@@ -528,18 +528,19 @@ export function buildSearchReport({
   /** What the query was searched as: "Read VIX.X as ^VIX (Cboe Volatility Index)." */
   readAs?: string;
 }): string {
+  // Every note is prose: it wraps to a narrow --width.
   const lines = [renderSection(`Search: ${query}`)];
-  if (readAs) lines.push("", readAs);
+  if (readAs) lines.push("", wrapToTerminal(readAs));
   const notes = [...fate.notes, ...formerIssuerNotes(candidates, fate)];
-  if (notes.length > 0) lines.push("", ...notes);
+  if (notes.length > 0) lines.push("", ...notes.map((note) => wrapToTerminal(note)));
   const gap = knownGapMessage(query);
   const indexNote = gap ? null : indexRootNote(query, candidates);
-  if (indexNote) lines.push("", indexNote);
-  if (gap) lines.push("", gap);
+  if (indexNote) lines.push("", wrapToTerminal(indexNote));
+  if (gap) lines.push("", wrapToTerminal(gap));
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", wrapToTerminal(centralBankLine(bank)));
   const setting = commandPointer(query);
-  if (setting) lines.push("", setting);
+  if (setting) lines.push("", wrapToTerminal(setting));
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
   // be in a series name ("apple") list them after the tickers.
@@ -553,9 +554,9 @@ export function buildSearchReport({
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
     else if (!gap && !bank && !setting && !charted) {
       return [...lines, ...hasNonLatinLetters(query) ? [cliStyles.muted(OTHER_SCRIPT_NO_MATCH)]
-        : [cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))]].join("\n");
+        : [cliStyles.muted("No matches found."), cliStyles.muted(wrapToTerminal(catalogHint(query)))]].join("\n");
     }
-    if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
+    if (pointToCatalog) lines.push("", cliStyles.muted(wrapToTerminal(catalogHint(query))));
     return lines.join("\n");
   }
 
@@ -588,7 +589,7 @@ export function buildSearchReport({
     ));
   }
   if (charted && !seriesFirst) lines.push("", charted);
-  if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
+  if (pointToCatalog) lines.push("", cliStyles.muted(wrapToTerminal(catalogHint(query))));
 
   return lines.join("\n");
 }

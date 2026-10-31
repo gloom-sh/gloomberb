@@ -585,15 +585,16 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   if (renderOptions.text) {
     return renderOptions.text(result.data);
   }
-  const summary = renderOptions.summary?.(result.data) ?? "";
-  const withHeading = (text: string) => renderOptions.heading ? `${renderOptions.heading}\n${text}` : text;
+  // The heading's lines, the summary and the notes are prose: each wraps to a narrow --width, as the source line does.
+  const summary = wrapToTerminal(renderOptions.summary?.(result.data) ?? "");
+  const withHeading = (text: string) => renderOptions.heading ? `${wrapToTerminal(renderOptions.heading)}\n${text}` : text;
   if (rows.length === 0) {
-    return withHeading(summary || cliStyles.muted(renderOptions.empty ?? "No results."));
+    return withHeading(summary || cliStyles.muted(wrapToTerminal(renderOptions.empty ?? "No results.")));
   }
   const table = renderTextRows(rows as Row[], result.data, renderOptions);
   const notes = [window.note, renderOptions.footnote].filter((note): note is string => !!note);
   const details = renderOptions.details?.(result.data) ?? "";
-  const body = [table, ...notes.map((note) => cliStyles.muted(note)), ...details ? ["", details] : []].join("\n");
+  const body = [table, ...notes.map((note) => cliStyles.muted(wrapToTerminal(note))), ...details ? ["", details] : []].join("\n");
   return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 
@@ -644,8 +645,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
+    // Each wraps to a narrow --width, as a note does.
     for (const warning of result.warnings ?? []) {
-      console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
+      console.error(wrapToTerminal(`${cliStyles.warning("warning:")} ${hinted(warning)}`));
     }
   }
   // CSV says what its rows do not in closing `# note:` lines; NDJSON has no place for one among its rows,

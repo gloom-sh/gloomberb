@@ -195,6 +195,13 @@ export interface HeadlessPaneColumn {
   stackRows?: number;
   /** The text table leaves the column out when fitted to fewer terminal columns than this; exports and piped output keep it. */
   minTableWidth?: number;
+  /**
+   * The narrow text table drops the column, rightmost first, before it moves any column under its rows: a figure
+   * the others imply (RETURN's interval $ beside its prices). Exports and a table that fits keep it.
+   */
+  optional?: boolean;
+  /** Among optional columns, a higher priority is dropped sooner. */
+  dropPriority?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */

@@ -596,7 +596,10 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       ...figures,
       ...forming || dayToDate ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
     ];
-    const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
+    // A narrow table drops the dollar moves, the interval's first, rather than putting Total % on a line under every row.
+    const textFigures = figures.map((column) => column.key === "intervalChange" ? { ...column, optional: true, dropPriority: 2 }
+      : column.key === "totalChange" ? { ...column, optional: true, dropPriority: 1 } : column);
+    const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...textFigures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
       maxDrawdownLine,

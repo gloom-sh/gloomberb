@@ -307,7 +307,8 @@ export function truncateDisplay(text: string, width: number): string {
 
 /**
  * Word-wraps text to `width` cells. Lines that already fit are kept verbatim, so aligned
- * columns survive; continuation lines keep the paragraph's leading indent.
+ * columns survive; continuation lines keep the paragraph's leading indent, and words on one
+ * line keep the spaces between them (a heading's `  ·  `).
  */
 export function wrapText(text: string, width: number): string[] {
   const lines: string[] = [];
@@ -317,7 +318,13 @@ export function wrapText(text: string, width: number): string[] {
       continue;
     }
     const indent = /^ */.exec(paragraph)![0];
-    const words = paragraph.slice(indent.length).split(/ +/).filter(Boolean);
+    // Each word with the spaces before it, which a line break drops. A separator (`·`) ends its line, never starts one.
+    const words: { gap: string; word: string }[] = [];
+    for (const [, gap, word] of paragraph.slice(indent.length).matchAll(/( *)([^ ]+)/g)) {
+      const last = words.at(-1);
+      if (last && word === "·") last.word += `${gap}${word}`;
+      else words.push({ gap: gap!, word: word! });
+    }
     if (words.length === 0) {
       lines.push("");
       continue;
@@ -325,16 +332,16 @@ export function wrapText(text: string, width: number): string[] {
     let line = indent;
     let lineWidth = indent.length;
     let lineHasWord = false;
-    for (const word of words) {
+    for (const { gap, word } of words) {
       const wordWidth = visibleLength(word);
-      if (lineHasWord && lineWidth + 1 + wordWidth > width) {
+      if (lineHasWord && lineWidth + gap.length + wordWidth > width) {
         lines.push(line);
         line = indent;
         lineWidth = indent.length;
         lineHasWord = false;
       }
-      line += lineHasWord ? ` ${word}` : word;
-      lineWidth += (lineHasWord ? 1 : 0) + wordWidth;
+      line += lineHasWord ? `${gap}${word}` : word;
+      lineWidth += (lineHasWord ? gap.length : 0) + wordWidth;
       lineHasWord = true;
     }
     lines.push(line);
