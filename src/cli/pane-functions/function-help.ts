@@ -1252,10 +1252,17 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   TBO: {
-    summary: "Data center and semiconductor supply chain intelligence: company lists, sites and intel, with limited free data and full access with a TheBuildout subscription.",
+    summary: "Data center and semiconductor supply chain intelligence: a board of AI buildout themes sized by market cap and coloured by median 1Y return, each theme's companies, sites and intel, with limited free data and full access with a TheBuildout subscription.",
     usage: ["TBO"],
-    keys: [TABS, OPEN, key("s", "tar")],
+    keys: [TABS, key("←/→", " theme"), OPEN, key("s", "tar")],
     data: same("Intel 72 hours delayed without a TheBuildout plan"),
+    bloomberg: [],
+  },
+  TBOC: {
+    summary: "One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site and the signals that name it. Linked to TBO, it follows the company under the cursor.",
+    usage: ["TBOC MSFT", "TBOC MSFT --tab signals"],
+    keys: [TABS, OPEN],
+    data: same("Signals 72 hours delayed and no hiring by site without a TheBuildout plan"),
     bloomberg: [],
   },
   ACM: {

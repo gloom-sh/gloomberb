@@ -53,6 +53,8 @@ async function mount() {
   const initial = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/buildout-access-test`, {
     paneId: "buildout", instanceId: id,
   }));
+  // These read the list of lists, a tab over from the theme board the pane opens on.
+  initial.paneState = { ...initial.paneState, [id]: { ...initial.paneState[id], activeTab: "companies" } };
   const runtime = createTestPluginRuntime();
   function Harness() {
     const [state, dispatch] = useReducer(appReducer, initial);

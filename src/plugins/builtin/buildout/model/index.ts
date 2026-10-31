@@ -119,7 +119,7 @@ export async function loadBuildoutData(token: string | null) {
     access,
     token,
     lists,
-    companies: { ...emptyPage<BuildoutCompany>(), blurredCompanyCount: 0 },
+    companies: { ...emptyPage<BuildoutCompany>(), blurredCompanyCount: 0, listSlug: null },
     sites: pageFromItems(sites),
     intel: pageFromItems(intel),
   };
