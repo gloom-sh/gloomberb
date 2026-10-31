@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - chore/windows-update-launch-repro
+    paths:
+      - scripts/repro-windows-update-launch.ps1
+      - scripts/diag-veh/**
+      - .github/workflows/windows-update-launch-repro.yml
   workflow_dispatch:
 
 permissions:

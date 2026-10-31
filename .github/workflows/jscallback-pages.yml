@@ -1,0 +1,34 @@
+name: JSCallback pages repro
+
+on:
+  push:
+    branches:
+      - chore/windows-update-launch-repro
+    paths:
+      - scripts/repro-jscallback-pages.ts
+      - .github/workflows/jscallback-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    strategy:
+      fail-fast: false
+      matrix:
+        bun: [bun-v1.3.13/bun-windows-x64-baseline, bun-v1.4.4/bun-windows-x64-baseline]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Watch a JSCallback's pages while the process allocates
+        shell: pwsh
+        run: |
+          $Zip = Join-Path $env:RUNNER_TEMP "bun.zip"
+          Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/${{ matrix.bun }}.zip" -OutFile $Zip
+          Expand-Archive $Zip -DestinationPath (Join-Path $env:RUNNER_TEMP "bun")
+          $Bun = (Get-ChildItem (Join-Path $env:RUNNER_TEMP "bun") -Recurse -Filter bun.exe | Select-Object -First 1).FullName
+          & $Bun --version
+          $env:CHURN_MS = "90000"
+          & $Bun scripts/repro-jscallback-pages.ts
+          "exit $LASTEXITCODE"
