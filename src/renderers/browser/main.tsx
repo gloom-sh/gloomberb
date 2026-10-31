@@ -114,6 +114,7 @@ async function boot(): Promise<void> {
           plugins={getBrowserPlugins(externalPlugins)}
           desktopDeepLinkBridge={deepLinkBridge}
           updatesEnabled={false}
+          setupEnabled={false}
         />
       </DomHostProviders>
     </DomErrorBoundary>,

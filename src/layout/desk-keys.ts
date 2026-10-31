@@ -5,3 +5,6 @@
  */
 export const DESK_KEYS = ["equities", "options", "futures", "rates", "fx", "active"] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
+
+/** The most desks the step takes: the few someone trades most, not one of each. */
+export const MAX_DESK_PICKS = 3;

@@ -1,10 +1,8 @@
 import { Box, useUiCapabilities } from "../../ui";
 import { t } from "../../i18n";
 import { DESKS, deskFunctions, type DeskKey } from "../../layout/desks";
+import { MAX_DESK_PICKS } from "../../layout/desk-keys";
 import { ToggleList } from "../toggle-list";
-
-/** The most desks the step takes: the few someone trades most, not one of each. */
-const MAX_DESK_PICKS = 3;
 
 /**
  * Ticks or unticks a desk; the ticked ones keep the order they were ticked
