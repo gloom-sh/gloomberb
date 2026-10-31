@@ -1,4 +1,5 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
+import type { DesktopWindowResizeEdge } from "../../shared/protocol";
 
 const WINDOWS_HANDLE_MAX_ATTEMPTS = 20;
 const WINDOWS_HANDLE_RETRY_DELAY_MS = 100;
@@ -57,6 +58,10 @@ function loadWin32() {
       args: [FFIType.u32, FFIType.ptr],
       returns: FFIType.bool,
     },
+    IsZoomed: {
+      args: [FFIType.ptr],
+      returns: FFIType.bool,
+    },
   });
 }
 
@@ -93,6 +98,8 @@ export function fitPageToClientArea(windowHandle: Pointer): boolean {
 const WM_NCLBUTTONDOWN = 0x00a1;
 const WM_CANCELMODE = 0x001f;
 const HTCAPTION = 2;
+/** HTTOP, HTTOPLEFT, HTTOPRIGHT. */
+const TOP_EDGE_HIT_TESTS: Record<DesktopWindowResizeEdge, number> = { top: 12, "top-left": 13, "top-right": 14 };
 /** GUITHREADINFO on 64-bit Windows: two DWORDs, six window handles, a RECT. */
 const GUI_THREAD_INFO_SIZE = 72;
 const GUI_THREAD_INFO_CAPTURE_OFFSET = 24;
@@ -126,12 +133,30 @@ function mouseCaptureOnThreadOf(win32: Win32, windowHandle: Pointer): Pointer | 
 export function startSystemWindowMove(windowHandle: Pointer): boolean {
   const win32 = win32OrNull();
   if (!win32) return false;
+  return pressNonClientArea(win32, windowHandle, HTCAPTION);
+}
+
+/**
+ * Hands a press on the page's top edge to Windows as a press on the frame's
+ * top edge, which the page covers: its size loop then resizes the window until
+ * the button comes up. A maximized window has no edge to pull, so the press
+ * moves it, as one at the top of a maximized title bar does. False off Windows.
+ */
+export function startSystemWindowResize(windowHandle: Pointer, edge: DesktopWindowResizeEdge): boolean {
+  const win32 = win32OrNull();
+  if (!win32) return false;
+  const hitTest = win32.symbols.IsZoomed(windowHandle) ? HTCAPTION : TOP_EDGE_HIT_TESTS[edge];
+  return pressNonClientArea(win32, windowHandle, hitTest);
+}
+
+/** Presses the window's frame at `hitTest` where the pointer is, after the page lets go of the mouse. */
+function pressNonClientArea(win32: Win32, windowHandle: Pointer, hitTest: number): boolean {
   const point = new Int32Array(2);
   if (!win32.symbols.GetCursorPos(ptr(point))) return false;
   const capture = mouseCaptureOnThreadOf(win32, windowHandle);
   if (capture && capture !== windowHandle) win32.symbols.PostMessageW(capture, WM_CANCELMODE, 0n, 0n);
   const position = ((point[1]! & 0xffff) << 16) | (point[0]! & 0xffff);
-  return win32.symbols.PostMessageW(windowHandle, WM_NCLBUTTONDOWN, BigInt(HTCAPTION), BigInt(position >>> 0));
+  return win32.symbols.PostMessageW(windowHandle, WM_NCLBUTTONDOWN, BigInt(hitTest), BigInt(position >>> 0));
 }
 
 export function wideString(value: string): Uint8Array {
