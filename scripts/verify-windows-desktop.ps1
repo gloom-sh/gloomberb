@@ -1650,6 +1650,14 @@ foreach ($Path in $RequiredPaths) {
   }
 }
 
+# Bun 1.3 writes the code behind bun:ffi into heap memory it marks executable,
+# which Windows' heap can commit again as read-write: the app then crashes on
+# its next native callback, often seconds after it opens (electrobun.config.ts).
+$BundledBunVersion = "$(& (Join-Path $BundleDir "bin\bun.exe") --version)".Trim()
+if (-not ($BundledBunVersion -match '^\d+\.\d+\.\d+') -or [version]$Matches[0] -lt [version]"1.4.0") {
+  throw "The app ships Bun $BundledBunVersion; Windows builds need Bun 1.4 or later"
+}
+
 Assert-WindowsUpdateManifest $UpdateManifestPath
 Assert-LegacyUpdateArchive $LegacyUpdateArchivePath
 if ((Get-FileHash $LegacyInstallerPath).Hash -ne (Get-FileHash $InstallerPath).Hash) {
