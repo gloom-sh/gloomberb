@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [copy-1, copy-2, copy-3, copy-4, stop-only-1, copy-recorder-1]
+        variant: [copy-recorder-1, copy-recorder-2, copy-recorder-3, copy-recorder-4, stop-only-recorder-1]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +58,7 @@ jobs:
           }
           if ($Variant -like "*recorder*") {
             $env:GLOOM_DIAG_VEH_DLL = (Resolve-Path veh/veh.dll).Path
+            $env:GLOOM_DIAG_VEH_MEMORY = "1"
             $env:GLOOM_DIAG_VEH_LOG = Join-Path (Get-Location) "artifacts/windows-update-launch-repro/$Variant/exceptions.txt"
             $Arguments.Prelude = 'try { import.meta.require("bun:ffi").dlopen(process.env.GLOOM_DIAG_VEH_DLL, { veh_installed: { args: [], returns: "i32" } }).symbols.veh_installed(); } catch (e) { console.error("veh", e); }'
           }

@@ -1,25 +1,175 @@
 // Diagnostic only: records every first-chance exception in the process it is
 // loaded into, ahead of any other handler, then lets the exception go on.
-// The handler only copies into static memory (a thread out of stack can still
-// run it); a logger thread writes the records, thread names and modules out.
+// It also records every change to executable memory: ntdll's protect, commit
+// and free system calls are routed through it, and a call is kept when it
+// makes memory executable, or touches memory that has been executable.
+// The handlers only copy into static memory (a thread out of stack can still
+// run them); a logger thread writes the records, thread names and modules out.
 #include <windows.h>
 #include <intrin.h>
 #include <psapi.h>
+#include <string.h>
 
 #define MAX_ENTRIES 256
 #define STACK_WORDS 96
+#define MAX_CALLS 32768
+#define CALL_FRAMES 12
+#define MAX_WATCHED 16384
+
+typedef LONG NTSTATUS;
+typedef NTSTATUS(NTAPI* NtProtectFn)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+typedef NTSTATUS(NTAPI* NtAllocFn)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+typedef NTSTATUS(NTAPI* NtFreeFn)(HANDLE, PVOID*, PSIZE_T, ULONG);
+typedef USHORT(NTAPI* CaptureFn)(ULONG, ULONG, PVOID*, PULONG);
 
 typedef struct {
   volatile LONG state; // 0 empty, 1 recorded, 2 written
   DWORD code, tid, words;
   ULONG64 address, rsp, stack_base, stack_limit, deallocation, info0, info1, when;
   ULONG64 stack[STACK_WORDS];
+  // VirtualQuery of the faulting data address (info1) for access violations.
+  int queried;
+  ULONG64 q_base, q_alloc_base, q_size;
+  DWORD q_alloc_protect, q_state, q_protect, q_type;
 } Entry;
+
+typedef struct {
+  volatile LONG state;
+  char kind; // p protect, a alloc, f free
+  DWORD tid;
+  NTSTATUS status;
+  ULONG64 when, base, size, arg, old;
+  ULONG64 frames[CALL_FRAMES];
+  USHORT frame_count;
+} Call;
 
 static Entry g_entries[MAX_ENTRIES];
 static volatile LONG g_next = 0;
+static Call g_calls[MAX_CALLS];
+static volatile LONG g_next_call = 0;
+static ULONG64 g_watched_base[MAX_WATCHED], g_watched_end[MAX_WATCHED];
+static volatile LONG g_watched = 0;
 static HANDLE g_log = INVALID_HANDLE_VALUE;
 static int g_installed = 0;
+static int g_hooked = 0;
+static NtProtectFn g_protect;
+static NtAllocFn g_alloc;
+static NtFreeFn g_free;
+static CaptureFn g_capture;
+
+#define EXEC_MASK (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)
+
+static int watched(ULONG64 base, ULONG64 end) {
+  LONG n = g_watched;
+  if (n > MAX_WATCHED) n = MAX_WATCHED;
+  for (LONG i = 0; i < n; ++i) {
+    if (base < g_watched_end[i] && g_watched_base[i] < end) return 1;
+  }
+  return 0;
+}
+
+static void watch(ULONG64 base, ULONG64 end) {
+  if (watched(base, end)) return;
+  LONG i = InterlockedIncrement(&g_watched) - 1;
+  if (i >= MAX_WATCHED) return;
+  g_watched_base[i] = base;
+  g_watched_end[i] = end;
+}
+
+static void record_call(char kind, NTSTATUS status, ULONG64 base, ULONG64 size, ULONG64 arg, ULONG64 old) {
+  LONG i = InterlockedIncrement(&g_next_call) - 1;
+  if (i >= MAX_CALLS) return;
+  Call* c = &g_calls[i];
+  c->kind = kind;
+  c->tid = __readgsdword(0x48);
+  c->status = status;
+  c->when = *(volatile ULONG64*)0x7FFE0008;
+  c->base = base;
+  c->size = size;
+  c->arg = arg;
+  c->old = old;
+  c->frame_count = g_capture ? g_capture(2, CALL_FRAMES, (PVOID*)c->frames, NULL) : 0;
+  InterlockedExchange(&c->state, 1);
+}
+
+static int own_process(HANDLE process) {
+  return process == (HANDLE)(LONG_PTR)-1;
+}
+
+static NTSTATUS NTAPI hook_protect(HANDLE process, PVOID* base, PSIZE_T size, ULONG protect, PULONG old) {
+  NTSTATUS status = g_protect(process, base, size, protect, old);
+  if (own_process(process) && base && size) {
+    ULONG64 b = (ULONG64)*base, e = b + *size;
+    ULONG prior = old ? *old : 0;
+    int exec = (protect & EXEC_MASK) != 0;
+    if (exec || (prior & EXEC_MASK) || watched(b, e)) {
+      record_call('p', status, b, e - b, protect, prior);
+      if (exec && status >= 0) watch(b, e);
+    }
+  }
+  return status;
+}
+
+static NTSTATUS NTAPI hook_alloc(HANDLE process, PVOID* base, ULONG_PTR zero_bits, PSIZE_T size, ULONG type, ULONG protect) {
+  ULONG64 asked = base ? (ULONG64)*base : 0;
+  NTSTATUS status = g_alloc(process, base, zero_bits, size, type, protect);
+  if (own_process(process) && base && size) {
+    ULONG64 b = status >= 0 ? (ULONG64)*base : asked, e = b + *size;
+    int exec = (protect & EXEC_MASK) != 0;
+    if ((exec && (type & MEM_COMMIT)) || (b && watched(b, e))) {
+      record_call('a', status, b, e - b, ((ULONG64)type << 32) | protect, 0);
+      if (exec && (type & MEM_COMMIT) && status >= 0) watch(b, e);
+    }
+  }
+  return status;
+}
+
+static NTSTATUS NTAPI hook_free(HANDLE process, PVOID* base, PSIZE_T size, ULONG type) {
+  ULONG64 asked = base ? (ULONG64)*base : 0;
+  NTSTATUS status = g_free(process, base, size, type);
+  if (own_process(process) && base && size) {
+    ULONG64 b = status >= 0 ? (ULONG64)*base : asked, e = b + *size;
+    if (b && watched(b, e ? e : b + 1)) record_call('f', status, b, e - b, type, 0);
+  }
+  return status;
+}
+
+// ntdll's system call stubs begin "mov r10, rcx; mov eax, <number>". The
+// original call goes through a copy of that, and the stub jumps to the hook.
+static void* hook_stub(HMODULE ntdll, const char* name, void* hook, unsigned char* trampoline) {
+  unsigned char* stub = (unsigned char*)GetProcAddress(ntdll, name);
+  if (!stub || stub[0] != 0x4C || stub[1] != 0x8B || stub[2] != 0xD1 || stub[3] != 0xB8) return NULL;
+  unsigned char tramp[] = {0x4C, 0x8B, 0xD1, 0xB8, stub[4], stub[5], stub[6], stub[7], 0x0F, 0x05, 0xC3};
+  memcpy(trampoline, tramp, sizeof(tramp));
+  unsigned char patch[12] = {0x48, 0xB8};
+  ULONG64 target = (ULONG64)hook;
+  memcpy(patch + 2, &target, 8);
+  patch[10] = 0xFF;
+  patch[11] = 0xE0;
+  DWORD old;
+  if (!VirtualProtect(stub, sizeof(patch), PAGE_EXECUTE_READWRITE, &old)) return NULL;
+  memcpy(stub, patch, sizeof(patch));
+  VirtualProtect(stub, sizeof(patch), old, &old);
+  FlushInstructionCache(GetCurrentProcess(), stub, sizeof(patch));
+  return trampoline;
+}
+
+static void install_hooks(void) {
+  HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+  if (!ntdll) return;
+  g_capture = (CaptureFn)GetProcAddress(ntdll, "RtlCaptureStackBackTrace");
+  unsigned char* page = (unsigned char*)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+  if (!page) return;
+  // The trampolines' own page is never watched: allocate it before the hooks.
+  g_alloc = (NtAllocFn)(page + 32);
+  g_free = (NtFreeFn)(page + 64);
+  g_protect = (NtProtectFn)(page + 0);
+  int ok = 0;
+  ok += hook_stub(ntdll, "NtAllocateVirtualMemory", (void*)hook_alloc, page + 32) != NULL;
+  ok += hook_stub(ntdll, "NtFreeVirtualMemory", (void*)hook_free, page + 64) != NULL;
+  ok += hook_stub(ntdll, "NtProtectVirtualMemory", (void*)hook_protect, page + 0) != NULL;
+  g_hooked = ok;
+}
 
 static LONG CALLBACK record_exception(PEXCEPTION_POINTERS info) {
   DWORD code = info->ExceptionRecord->ExceptionCode;
@@ -38,6 +188,19 @@ static LONG CALLBACK record_exception(PEXCEPTION_POINTERS info) {
   e->stack_limit = __readgsqword(0x10);
   e->deallocation = __readgsqword(0x1478);
   e->when = *(volatile ULONG64*)0x7FFE0008; // interrupt time, 100 ns
+  if (code == EXCEPTION_ACCESS_VIOLATION) {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery((LPCVOID)e->info1, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+      e->queried = 1;
+      e->q_base = (ULONG64)mbi.BaseAddress;
+      e->q_alloc_base = (ULONG64)mbi.AllocationBase;
+      e->q_size = mbi.RegionSize;
+      e->q_alloc_protect = mbi.AllocationProtect;
+      e->q_state = mbi.State;
+      e->q_protect = mbi.Protect;
+      e->q_type = mbi.Type;
+    }
+  }
   ULONG64 sp = e->rsp;
   DWORD n = 0;
   while (n < STACK_WORDS && sp >= e->stack_limit && sp + 8 <= e->stack_base) {
@@ -76,6 +239,7 @@ static DWORD WINAPI write_records(LPVOID unused) {
   static ULONG64 seen[1024];
   int seen_count = 0;
   LONG written = 0;
+  LONG calls_written = 0;
   GetThreadDescriptionFn describe = (GetThreadDescriptionFn)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetThreadDescription");
   ULONG64 last_scan = 0;
   for (;;) {
@@ -105,6 +269,25 @@ static DWORD WINAPI write_records(LPVOID unused) {
         }
       }
     }
+    // Memory changes first: a crash waits only for its own record.
+    while (calls_written < MAX_CALLS && g_calls[calls_written].state == 1) {
+      Call* c = &g_calls[calls_written];
+      char* p = put_str(line, "mem ");
+      *p++ = c->kind;
+      p = put_str(p, " at "); p = put_hex(p, c->when / 10000);
+      p = put_str(p, "ms thread "); p = put_hex(p, c->tid);
+      p = put_str(p, " base "); p = put_hex(p, c->base);
+      p = put_str(p, " size "); p = put_hex(p, c->size);
+      p = put_str(p, " arg "); p = put_hex(p, c->arg);
+      p = put_str(p, " old "); p = put_hex(p, c->old);
+      p = put_str(p, " status "); p = put_hex(p, (ULONG)c->status);
+      p = put_str(p, " frames");
+      for (USHORT f = 0; f < c->frame_count; ++f) { *p++ = ' '; p = put_hex(p, c->frames[f]); }
+      *p++ = '\n';
+      write_out(line, p);
+      InterlockedExchange(&c->state, 2);
+      ++calls_written;
+    }
     while (written < MAX_ENTRIES && g_entries[written].state == 1) {
       Entry* e = &g_entries[written];
       char* p = put_str(line, "exception ");
@@ -129,6 +312,15 @@ static DWORD WINAPI write_records(LPVOID unused) {
       p = put_str(p, " rsp "); p = put_hex(p, e->rsp);
       p = put_str(p, " stack "); p = put_hex(p, e->stack_limit); *p++ = '-'; p = put_hex(p, e->stack_base);
       p = put_str(p, " reserved from "); p = put_hex(p, e->deallocation);
+      if (e->queried) {
+        p = put_str(p, "\n  page base "); p = put_hex(p, e->q_base);
+        p = put_str(p, " allocation "); p = put_hex(p, e->q_alloc_base);
+        p = put_str(p, " size "); p = put_hex(p, e->q_size);
+        p = put_str(p, " allocated as "); p = put_hex(p, e->q_alloc_protect);
+        p = put_str(p, " state "); p = put_hex(p, e->q_state);
+        p = put_str(p, " protect "); p = put_hex(p, e->q_protect);
+        p = put_str(p, " type "); p = put_hex(p, e->q_type);
+      }
       p = put_str(p, "\n  words");
       for (DWORD w = 0; w < e->words; ++w) { *p++ = ' '; p = put_hex(p, e->stack[w]); }
       *p++ = '\n';
@@ -141,7 +333,7 @@ static DWORD WINAPI write_records(LPVOID unused) {
   return 0;
 }
 
-__declspec(dllexport) int veh_installed(void) { return g_installed; }
+__declspec(dllexport) int veh_installed(void) { return g_installed | (g_hooked << 4); }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
@@ -150,9 +342,12 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
   if (n == 0 || n >= MAX_PATH) return TRUE;
   g_log = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (g_log == INVALID_HANDLE_VALUE) return TRUE;
-  char hello[64];
+  if (GetEnvironmentVariableA("GLOOM_DIAG_VEH_MEMORY", NULL, 0)) install_hooks();
+  char hello[96];
   char* p = put_str(hello, "installed in pid ");
-  p = put_hex(p, GetCurrentProcessId()); *p++ = '\n';
+  p = put_hex(p, GetCurrentProcessId());
+  p = put_str(p, " memory hooks "); p = put_hex(p, g_hooked);
+  *p++ = '\n';
   write_out(hello, p);
   if (AddVectoredExceptionHandler(1, record_exception)) g_installed = 1;
   CreateThread(NULL, 1 << 20, write_records, NULL, 0, NULL);
