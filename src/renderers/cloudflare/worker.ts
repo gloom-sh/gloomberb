@@ -15,6 +15,14 @@ const LAYOUT_SHARE_PATH = /^\/l\/[a-f0-9]{32}\/?$/;
 const API_PATH = /^\/api(?:\/|$)/;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ROBOTS_PATH = "/robots.txt";
+/**
+ * Files the web build names after their contents (`main-<hash>.js`, the launch
+ * frame, the bundled plugins: `withContentHash` in scripts/build-web.ts). A
+ * name never serves other bytes, so a browser keeps them for a year without
+ * asking again. Lazy chunks keep plain names and are revalidated as before.
+ */
+const IMMUTABLE_ASSET_PATH = /^\/assets\/.+-[a-z0-9]{12,}\.(?:js|css)$/;
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 /**
  * Crawling stays allowed on purpose. Deep links are kept out of the index by
@@ -64,13 +72,15 @@ export const SECURITY_HEADERS = {
   "x-frame-options": "DENY",
 } as const;
 
-export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean } = {}): Response {
+export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean; immutable?: boolean } = {}): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   const html = (headers.get("content-type") ?? "").includes("text/html");
   if (options.share) headers.set("x-robots-tag", "noindex, nofollow, noarchive");
   else if (options.noindex && html) headers.set("x-robots-tag", "noindex");
   if (html) headers.set("cache-control", "no-store");
+  // Only the file itself: a name the build no longer has falls back to the app's HTML, which stays no-store.
+  else if (options.immutable && (response.ok || response.status === 304)) headers.set("cache-control", IMMUTABLE_CACHE_CONTROL);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -135,7 +145,7 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   // `/?ticker=GPC&tab=executives` would be indexed as thin duplicates. Only the
   // bare root stays indexable.
   const deepLink = url.pathname !== "/" || url.search !== "";
-  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink });
+  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, immutable: IMMUTABLE_ASSET_PATH.test(url.pathname) });
 }
 
 export default {

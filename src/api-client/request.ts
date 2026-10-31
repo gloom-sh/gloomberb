@@ -82,6 +82,16 @@ type CloudApiStreamFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
+/** A response with its body read, which several callers can each parse. */
+interface CloudApiAnswer {
+  response: CloudApiResponse;
+  text: string;
+}
+interface SharedRead {
+  answer: Promise<CloudApiAnswer>;
+  controller: AbortController;
+  waiters: number;
+}
 
 export interface CloudApiFetchTransportOptions {
   /**
@@ -228,6 +238,8 @@ export class CloudApiRequestTransport {
   /** Requests waiting under a deadline: the check that the service answers runs only while one is. */
   private pending = 0;
   private probe: AbortController | null = null;
+  /** GETs still out, by URL and headers, that an identical GET joins instead of sending its own (`readShared`). */
+  private readonly sharedReads = new Map<string, SharedRead>();
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -569,21 +581,26 @@ export class CloudApiRequestTransport {
     headers.set("Origin", this.baseUrl);
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
+    const url = `${this.baseUrl}${path}`;
+    const read = async (signal: AbortSignal | null | undefined): Promise<CloudApiAnswer> => {
+      const response = await this.reachService(() => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(url, {
+        ...options,
+        headers,
+        credentials: "include",
+        signal,
+      }), signal);
+      throwIfRequestAborted(signal);
+      return { response, text: await response.text() };
+    };
     const request = async () => {
-      const res = await this.reachService(() => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
-        `${this.baseUrl}${path}`,
-        {
-          ...options,
-          headers,
-          credentials: "include",
-        },
-      ), options?.signal);
+      const shared = !send && (options?.method ?? "GET").toUpperCase() === "GET" && options?.body == null;
+      const { response: res, text } = shared
+        ? await this.readShared(`${url}\n${[...headers].map(([name, value]) => `${name}:${value}`).sort().join("\n")}`, options?.signal, read)
+        : await read(options?.signal);
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;
       if (ownsCredential) this.extractSessionCookie(res);
       const sessionTokenAfterHeaders = this.sessionToken;
-      const text = await res.text();
-      throwIfRequestAborted(options?.signal);
 
       if (!res.ok) {
         const msg = parseApiErrorMessage(text);
@@ -639,6 +656,47 @@ export class CloudApiRequestTransport {
             )
           : request(),
     );
+  }
+
+  /**
+   * Identical GETs (same URL and headers, so the same credential) asked while
+   * one is still out share it: each caller gets the same answer and parses its
+   * own copy. Panes that open together ask for the same quote or history from
+   * several places at once, and the browser would otherwise send each one and
+   * queue them behind each other. A caller that gives up leaves the request
+   * running for the others; the last one to give up cancels it.
+   */
+  private readShared(
+    key: string,
+    signal: AbortSignal | null | undefined,
+    read: (signal: AbortSignal) => Promise<CloudApiAnswer>,
+  ): Promise<CloudApiAnswer> {
+    throwIfRequestAborted(signal);
+    let flight = this.sharedReads.get(key);
+    if (!flight) {
+      const controller = new AbortController();
+      const created: SharedRead = { answer: read(controller.signal), controller, waiters: 0 };
+      void created.answer.then(
+        () => { if (this.sharedReads.get(key) === created) this.sharedReads.delete(key); },
+        () => { if (this.sharedReads.get(key) === created) this.sharedReads.delete(key); },
+      );
+      this.sharedReads.set(key, created);
+      flight = created;
+    }
+    const current = flight;
+    current.waiters += 1;
+    if (!signal) return current.answer;
+    return new Promise<CloudApiAnswer>((resolve, reject) => {
+      const leave = () => {
+        current.waiters -= 1;
+        reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+        if (current.waiters > 0) return;
+        if (this.sharedReads.get(key) === current) this.sharedReads.delete(key);
+        current.controller.abort(signal.reason);
+      };
+      signal.addEventListener("abort", leave, { once: true });
+      current.answer.then(resolve, reject).finally(() => signal.removeEventListener("abort", leave));
+    });
   }
 
   private extractSessionCookie(res: CloudApiResponse): void {

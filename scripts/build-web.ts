@@ -1,5 +1,5 @@
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
-import { join, relative, resolve } from "path";
+import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { basename, dirname, extname, join, relative, resolve } from "path";
 import { buildViewBundle, pageBootFrameScript, pageBuildId, type PageBootFrame } from "../src/renderers/dom/build-assets";
 import { BROWSER_STORAGE_KEYS } from "../src/data/json-storage";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
@@ -46,6 +46,21 @@ await writeFile(join(outdir, "manifest.webmanifest"), `${JSON.stringify({
   ],
 }, null, 2)}\n`);
 
+/**
+ * Renames a file after its contents (`main.js` to `main-<hash>.js`). The page
+ * and the app name these files, which never change under one name, so the
+ * Worker serves them as immutable (`IMMUTABLE_ASSET_PATH` in
+ * src/renderers/cloudflare/worker.ts): a visit after the first loads them
+ * without asking the server whether they changed.
+ */
+async function withContentHash(path: string): Promise<string> {
+  const hash = new Bun.CryptoHasher("sha256").update(await readFile(path)).digest("hex").slice(0, 16);
+  const ext = extname(path);
+  const hashed = join(dirname(path), `${basename(path, ext)}-${hash}${ext}`);
+  await rename(path, hashed);
+  return hashed;
+}
+
 interface PageText {
   title: string;
   /** Shown until the script draws, on a page with no launch frame. */
@@ -61,7 +76,7 @@ async function buildPage(
   htmlName: string,
   extraDefines: Record<string, string> = {},
 ) {
-  const { script, stylesheet } = await buildViewBundle({
+  const built = await buildViewBundle({
     entrypoint,
     outdir: join(outdir, "assets", name),
     sourcemap: "none",
@@ -70,7 +85,10 @@ async function buildPage(
     failureMessage: `Failed to build the ${name} web page`,
     missingEntryMessage: `${name} build did not emit JavaScript`,
   });
-  if (!stylesheet) throw new Error(`${name} build did not emit CSS`);
+  if (!built.stylesheet) throw new Error(`${name} build did not emit CSS`);
+  // Lazy chunks keep their names: the bundle imports them by path.
+  const script = await withContentHash(built.script);
+  const stylesheet = await withContentHash(built.stylesheet);
   const href = (path: string) => `/${relative(outdir, path).replaceAll("\\", "/")}`;
   const loading = loadingText ? `<div class="gloom-loading">${loadingText}</div>` : "";
   // A file of its own, not inline: the Worker's content security policy runs
@@ -128,12 +146,12 @@ async function buildBundledPlugins(): Promise<WebBundledPluginDescriptor[]> {
 
   // Plugins added for an audit are not served by the worker, so their hosts are not checked.
   const extra = extraPluginDirs.length ? await compileExtraWebPlugins(pluginsDir, extraPluginDirs, { minify: !keepNames }) : [];
-  return [...compiled, ...extra].map(({ plugin, file }) => ({
+  return Promise.all([...compiled, ...extra].map(async ({ plugin, file }) => ({
     id: plugin.id,
     name: plugin.name,
     version: plugin.version,
-    url: `/${relative(outdir, join(pluginsDir, file)).replaceAll("\\", "/")}`,
-  }));
+    url: `/${relative(outdir, await withContentHash(join(pluginsDir, file))).replaceAll("\\", "/")}`,
+  })));
 }
 
 const bundledPlugins = await buildBundledPlugins();

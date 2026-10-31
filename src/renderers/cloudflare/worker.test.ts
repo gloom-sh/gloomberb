@@ -72,6 +72,23 @@ describe("static Cloudflare host", () => {
     expect(response.headers.has("x-robots-tag")).toBe(false);
   });
 
+  test("keeps files named after their contents for a year, and nothing else", async () => {
+    const served = (body: string, type: string): WorkerEnv => ({
+      ASSETS: { async fetch() { return new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=0, must-revalidate" } }); } },
+    });
+    const script = served("export {}", "text/javascript");
+    for (const path of ["/assets/app/main-0123456789abcdef.js", "/assets/app/main-0123456789abcdef.css", "/assets/plugins/gloom-polls/index-0123456789abcdef.js"]) {
+      const response = await handleRequest(new Request(`https://term.example${path}`), script);
+      expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    }
+    // A lazy chunk keeps its name across builds, so it is still revalidated.
+    const chunk = await handleRequest(new Request("https://term.example/assets/app/natural-earth/index.chunk.js"), script);
+    expect(chunk.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    // A name an older build had falls back to the app's page, which must not be kept.
+    const gone = await handleRequest(new Request("https://term.example/assets/app/main-fedcba9876543210.js"), served("<!doctype html>", "text/html"));
+    expect(gone.headers.get("cache-control")).toBe("no-store");
+  });
+
   test("serves a robots.txt that lets crawlers reach the noindex header", async () => {
     const { env, requests } = fixture();
     const response = await handleRequest(new Request("https://term.example/robots.txt"), env);

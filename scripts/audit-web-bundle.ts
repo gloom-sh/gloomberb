@@ -77,11 +77,17 @@ for (const path of outputFiles) {
  * the list, still starts and still passes every check above. It just quietly
  * drops the panes.
  */
-const appBundle = await readFile(join(root, "assets", "app", "main.js"), "utf8");
+// Entry files are named after their contents (`main-<hash>.js`).
+const named = (dir: string, stem: string, ext: string) => outputFiles
+  .map((path) => relative(root, path).replaceAll("\\", "/"))
+  .filter((name) => name.startsWith(`${dir}/${stem}-`) && name.endsWith(ext) && !name.slice(dir.length + 1).includes("/"));
+const appBundleName = named("assets/app", "main", ".js")[0];
+if (!appBundleName) throw new Error("Web bundle audit failed:\nassets/app/main-<hash>.js: missing app bundle");
+const appBundle = await readFile(join(root, ...appBundleName.split("/")), "utf8");
 for (const packageName of WEB_BUNDLED_PLUGIN_PACKAGES) {
-  const module = `assets/plugins/${packageName}/index.js`;
-  if (!outputFiles.includes(join(root, ...module.split("/")))) {
-    failures.push(`${module}: missing bundled plugin module`);
+  const module = named(`assets/plugins/${packageName}`, "index", ".js")[0];
+  if (!module) {
+    failures.push(`assets/plugins/${packageName}/index-<hash>.js: missing bundled plugin module`);
   } else if (!appBundle.includes(`/${module}`)) {
     failures.push(`${module}: built but not referenced by the app bundle`);
   }
@@ -102,7 +108,7 @@ for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
   }
 }
 if (!appBundle.includes(`import(${JSON.stringify(WORLD_MAP_DATA_SPECIFIER)})`)) {
-  failures.push("assets/app/main.js: the world map's land data is not wired in");
+  failures.push(`${appBundleName}: the world map's land data is not wired in`);
 }
 
 const shareScripts = outputFiles.filter((path) => /assets\/share\/.*\.js$/.test(path));
