@@ -33,10 +33,12 @@ describe("13F data cache", () => {
         filed_as_of_date: "2026-08-14", submission_type: "13F-HR" },
     ];
     let latestFilings = forms;
+    let formLists = 0;
     setHttpFetchTransport(async (url) => {
       const request = new URL(String(url));
       const path = request.pathname.split("/").at(-1);
       const withManager = (rows: any[]) => rows.map((form) => ({ ...form, cik: "1067983", company_name: "Fund" }));
+      if (path === "forms") formLists += 1;
       if (path === "forms") return json(withManager(forms.slice(Number(request.searchParams.get("offset") ?? 0), Number(request.searchParams.get("limit")))));
       if (path === "filings") return json(withManager(latestFilings));
       if (path === "funds") return json([{ cik: "1067983", name: "Fund" }]);
@@ -60,6 +62,13 @@ describe("13F data cache", () => {
     expect((await loadBrowserRows("funds", "Fund")).rows[0]).toMatchObject({ tableValueTotal: null, tableEntryTotal: null });
     latestFilings = [{ ...forms[0], period_of_report: "2026-03-31" }];
     expect((await loadBrowserRows("latest", "latest")).rows[0]).toMatchObject({ periodOfReport: "2026-03-31", tableValueTotal: null, tableEntryTotal: null });
+    // A restatement is its quarter's whole report: the latest list reads no fund's filings for it.
+    latestFilings = [{ ...forms[0], amendment_type: "RESTATEMENT", table_value_total: 70, table_entry_total: 4 }];
+    formLists = 0;
+    const restated = await loadBrowserRows("latest", "latest");
+    await restated.reportsLoaded;
+    expect(restated.rows[0]).toMatchObject({ tableValueTotal: 70, tableEntryTotal: 4 });
+    expect(formLists).toBe(0);
   });
 
   test("a missing prior report preserves current holdings and restores comparisons after refresh", async () => {
@@ -260,7 +269,8 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
         { ...form, accession_number: "addition", filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS", table_value_total: 50, table_entry_total: 1 },
       ]);
     }
-    if (path === "filings") return json([{ ...form }]);
+    // The latest list's NEW HOLDINGS amendment, whose quarter's totals need the fund's original filing.
+    if (path === "filings") return json([{ ...form, accession_number: "addition", filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS", table_value_total: 50, table_entry_total: 1 }]);
     if (path === "funds") return json([{ cik: "1067983", name: "Fund" }]);
     if (path === "topfunds") return json([{ cik: "1067983", name: "Fund", period_of_report: "2026-06-30", pnl: 4 }]);
     if (path === "tickers") return json([{ cusip: "111111111", ticker: "AAA" }]);
@@ -279,7 +289,7 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
   for (let i = 0; i < 30 && formCalls === 0; i++) await Promise.resolve();
   expect(formCalls).toBeGreaterThan(0);
   expect(pages.map((page) => page.rows[0]?.name)).toEqual(["Fund", "Fund", "0001067983", "Fund"]);
-  expect(pages[0]?.rows[0]?.tableValueTotal).toBe(100);
+  expect(pages[0]?.rows[0]?.tableValueTotal).toBeNull();
   expect(pages[1]?.rows[0]?.tableValueTotal).toBeUndefined();
   expect(pages[2]?.rows[0]?.tableValueTotal).toBeUndefined();
   expect(pages[3]?.rows[0]).toMatchObject({ estQuarterReturn: 4, tableValueTotal: undefined });
