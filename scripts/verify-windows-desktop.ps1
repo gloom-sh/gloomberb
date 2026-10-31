@@ -1250,6 +1250,122 @@ function Get-GlobalConfigPath {
   Join-Path (Join-Path $HomeDir ".gloomberb") "config.json"
 }
 
+function Get-ProcessesUnder {
+  param([string]$Folder)
+
+  @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Path -and $_.Path.StartsWith("$Folder\", [StringComparison]::OrdinalIgnoreCase) } catch { $false }
+  })
+}
+
+# An install from before the bundle identifier changed runs from
+# %LOCALAPPDATA%\com.vincelwt.gloomberb\stable\app once its updater has put
+# this build there, with the shortcuts and uninstall entry Electrobun's setup
+# made leading into it. Started there, this build quits, and a script moves
+# the folder to sh.gloom.desktop, points those at it and opens the app from
+# there. It writes the user's shortcuts and uninstall entries, so it runs
+# only on a CI machine.
+function Assert-AppMovesToNewIdentifier {
+  if ($env:GITHUB_ACTIONS -ne "true") {
+    Write-Host "Skipping the move to the new bundle identifier outside CI."
+    return
+  }
+  $Legacy = Join-Path $env:LOCALAPPDATA "com.vincelwt.gloomberb"
+  $Current = Join-Path $env:LOCALAPPDATA "sh.gloom.desktop"
+  $LegacyApp = Join-Path $Legacy "stable\app"
+  $CurrentApp = Join-Path $Current "stable\app"
+  $UninstallRoot = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+  $UninstallKey = Join-Path $UninstallRoot "com.vincelwt.gloomberb"
+  $MovedUninstallKey = Join-Path $UninstallRoot "sh.gloom.desktop"
+  $Shortcuts = @(
+    (Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom identifier check.lnk"),
+    (Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom identifier check.lnk")
+  )
+  if ((Test-Path $Legacy) -or (Test-Path $CurrentApp) -or (Test-Path $UninstallKey) -or (Test-Path $MovedUninstallKey)) {
+    throw "An install under either bundle identifier is already on this machine; cannot check the move."
+  }
+  # Where the reopened app keeps its data: the script opens it without this run's GLOOMBERB_HOME.
+  $UserData = Join-Path $env:USERPROFILE ".gloomberb"
+  $HadUserData = Test-Path $UserData
+  $Shell = New-Object -ComObject WScript.Shell
+  $PreviousGloomberbHome = $env:GLOOMBERB_HOME
+  try {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LegacyApp) | Out-Null
+    Copy-Item -Recurse -Path $BundleDir -Destination $LegacyApp
+    Disable-InstalledDesktopUpdates -InstallDir $LegacyApp
+    $DownloadedUpdate = Join-Path $Legacy "stable\self-extraction\0123abcd.tar"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DownloadedUpdate) | Out-Null
+    Set-Content -Path $DownloadedUpdate -Value "the update the old build downloaded"
+    $LegacyLauncher = Join-Path $LegacyApp "bin\launcher.exe"
+    foreach ($Path in $Shortcuts) {
+      $Shortcut = $Shell.CreateShortcut($Path)
+      $Shortcut.TargetPath = $LegacyLauncher
+      $Shortcut.WorkingDirectory = Join-Path $LegacyApp "bin"
+      $Shortcut.IconLocation = "$LegacyLauncher,0"
+      $Shortcut.Save()
+    }
+    New-Item -Path $UninstallKey -Force | Out-Null
+    New-ItemProperty -Path $UninstallKey -Name "DisplayName" -Value "Gloom (stable)" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKey -Name "InstallLocation" -Value $LegacyApp -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKey -Name "UninstallString" -Value "cmd.exe /c rmdir /s /q `"$LegacyApp`"" -PropertyType String -Force | Out-Null
+
+    $env:GLOOMBERB_HOME = Join-Path $SmokeRoot "identifier-profile"
+    Start-Process -FilePath $LegacyLauncher -WorkingDirectory (Join-Path $LegacyApp "bin") | Out-Null
+    $Reopened = @()
+    for ($Attempt = 0; $Attempt -lt 180; $Attempt += 1) {
+      $Reopened = Get-ProcessesUnder $CurrentApp
+      if ($Reopened.Count -gt 0 -and -not (Test-Path $Legacy)) { break }
+      Start-Sleep -Seconds 1
+    }
+    Get-Content (Join-Path $Current "identifier-move.log") -ErrorAction SilentlyContinue
+    if (Test-Path $Legacy) {
+      Get-ChildItem -Path $Legacy -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+      throw "The old folder is still there: $Legacy"
+    }
+    if ($Reopened.Count -eq 0) {
+      throw "The app did not open again from $CurrentApp"
+    }
+    foreach ($Required in @("bin\launcher.exe", "bin\bun.exe", "Resources\version.json")) {
+      if (-not (Test-Path (Join-Path $CurrentApp $Required))) {
+        throw "The app did not move whole: no $Required in $CurrentApp"
+      }
+    }
+    if (-not (Test-Path (Join-Path $Current "stable\self-extraction\0123abcd.tar"))) {
+      throw "The downloaded update did not move with the app"
+    }
+    foreach ($Path in $Shortcuts) {
+      $Shortcut = $Shell.CreateShortcut($Path)
+      if ($Shortcut.TargetPath -ne (Join-Path $CurrentApp "bin\launcher.exe")) {
+        throw "$Path still leads to $($Shortcut.TargetPath)"
+      }
+      if ($Shortcut.WorkingDirectory -ne (Join-Path $CurrentApp "bin")) {
+        throw "$Path still starts in $($Shortcut.WorkingDirectory)"
+      }
+    }
+    if (Test-Path $UninstallKey) {
+      throw "The uninstall entry kept the old identifier's name"
+    }
+    $Entry = Get-ItemProperty -Path $MovedUninstallKey
+    if ($Entry.InstallLocation -ne $CurrentApp) {
+      throw "The uninstall entry still names $($Entry.InstallLocation)"
+    }
+    if ($Entry.UninstallString -ne "cmd.exe /c rmdir /s /q `"$CurrentApp`"") {
+      throw "The uninstall entry still removes $($Entry.UninstallString)"
+    }
+    Write-Host "An install under the old identifier moved to $CurrentApp, its shortcuts and uninstall entry with it."
+  } finally {
+    Restore-EnvironmentVariable "GLOOMBERB_HOME" $PreviousGloomberbHome
+    foreach ($Folder in @($LegacyApp, $CurrentApp)) {
+      Get-ProcessesUnder $Folder | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 2
+    Remove-Item -Recurse -Force $Legacy, $CurrentApp, (Join-Path $Current "stable\self-extraction") -ErrorAction SilentlyContinue
+    Remove-Item -Force $Shortcuts -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $UninstallKey, $MovedUninstallKey -ErrorAction SilentlyContinue
+    if (-not $HadUserData) { Remove-Item -Recurse -Force $UserData -ErrorAction SilentlyContinue }
+  }
+}
+
 function Stop-ProcessIds {
   param([object[]]$ProcessIds)
 
@@ -1914,3 +2030,4 @@ try {
 }
 
 Assert-InstallerMovesLegacyInstall
+Assert-AppMovesToNewIdentifier

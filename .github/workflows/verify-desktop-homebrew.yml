@@ -137,6 +137,28 @@ jobs:
             "$root/profile/desktop-view-ids.json" "$root/expected.json" || { cat "$root/launch.log"; exit 1; }
           rm -rf "$root"
 
+      # An install from before the bundle identifier changed keeps its
+      # downloaded updates in Application Support under the old one. Started,
+      # this build moves that folder under the new one.
+      - name: Verify the app moves its folder to the new bundle identifier
+        run: |
+          set -euo pipefail
+          support="$HOME/Library/Application Support"
+          legacy="$support/com.vincelwt.gloomberb"
+          root="$HOME/.cache/gloom-smoke/desktop-identifier"
+          rm -rf "$root" "$legacy"
+          mkdir -p "$root/Applications" "$root/profile" "$legacy/stable/self-extraction"
+          echo "the update the old build downloaded" >"$legacy/stable/self-extraction/0123abcd.tar"
+          ditto -x -k artifacts/stable-macos-arm64-Gloom.app.zip "$root/Applications"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$root/Applications/Gloom.app/Contents/Info.plist" | grep -qx sh.gloom.desktop
+          GLOOMBERB_HOME="$root/profile" "$root/Applications/Gloom.app/Contents/MacOS/launcher" >"$root/launch.log" 2>&1 &
+          for _ in $(seq 1 60); do [ -e "$legacy" ] || break; sleep 1; done
+          pkill -f "$root/Applications/Gloom.app" || true
+          ls -la "$support"
+          test ! -e "$legacy" || { cat "$root/launch.log"; exit 1; }
+          grep -qx "the update the old build downloaded" "$support/sh.gloom.desktop/stable/self-extraction/0123abcd.tar"
+          rm -rf "$root"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
