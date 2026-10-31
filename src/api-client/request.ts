@@ -83,6 +83,17 @@ type CloudApiStreamFetch = (
 ) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
 /**
+ * Whether a GET may join an identical one still out (`readShared`): market
+ * data reads, which panes opening together ask for at once, and only when the
+ * caller did not ask the HTTP cache for a fresh copy. Elsewhere a read asked
+ * after another is often asked because the first may be stale (a forced
+ * refresh), and joining it would hand back the older answer.
+ */
+function isSharedRead(path: string, options: RequestInit | undefined): boolean {
+  return path.startsWith("/market/") && options?.cache === undefined;
+}
+
+/**
  * Whether a request can change what a later read answers. POSTs under the
  * market and cloud data paths are batch reads (quotes, histories, perps,
  * exposure), and telemetry and research activity reports change nothing a
@@ -100,10 +111,14 @@ function headerLines(headers: Headers): string {
   headers.forEach((value, name) => { lines.push(`${name}:${value}`); });
   return lines.sort().join("\n");
 }
-/** A response with its body read, which several callers can each parse. */
+/**
+ * A response and the read of its body, which several callers can each parse.
+ * The body is read apart from the headers: a caller takes the session cookie
+ * from the headers even when the body never arrives.
+ */
 interface CloudApiAnswer {
   response: CloudApiResponse;
-  text: string;
+  text: Promise<string>;
 }
 interface SharedRead {
   answer: Promise<CloudApiAnswer>;
@@ -386,7 +401,7 @@ export class CloudApiRequestTransport {
     return this.withDeadline(path, this.deadlineFor(path), options?.signal, (signal) => this.performRequest<T>(path, {
       ...options,
       signal,
-    }, canApplySession ?? (() => true), undefined, !canApplySession && !path.startsWith("/auth/")));
+    }, canApplySession ?? (() => true), undefined, !canApplySession && isSharedRead(path, options)));
   }
 
   /**
@@ -597,9 +612,10 @@ export class CloudApiRequestTransport {
     canApplySession: () => boolean,
     send?: CloudApiFetchTransport,
     /**
-     * Whether an identical GET already out can answer this one (`readShared`).
-     * Never for a request tied to a session check: a newer check must reach
-     * the server rather than take an answer about an older credential.
+     * Whether an identical GET already out can answer this one (`readShared`,
+     * `isSharedRead`). Never for a request tied to a session check: a newer
+     * check must reach the server rather than take an answer about an older
+     * credential.
      */
     shareable = false,
   ): Promise<T> {
@@ -630,17 +646,21 @@ export class CloudApiRequestTransport {
         signal,
       }), signal);
       throwIfRequestAborted(signal);
-      return { response, text: await response.text() };
+      const text = response.text();
+      text.catch(() => { /* Intentional ignore: every caller awaits this body after reading the headers. */ });
+      return { response, text };
     };
     const answer = async () => {
       const shared = shareable && !send && method === "GET" && options?.body == null;
-      const { response: res, text } = shared
+      const { response: res, text: body } = shared
         ? await this.readShared(`${url}\n${headerLines(headers)}`, options?.signal, read)
         : await read(options?.signal);
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;
       if (ownsCredential) this.extractSessionCookie(res);
       const sessionTokenAfterHeaders = this.sessionToken;
+      const text = await body;
+      throwIfRequestAborted(options?.signal);
 
       if (!res.ok) {
         const msg = parseApiErrorMessage(text);
@@ -722,27 +742,44 @@ export class CloudApiRequestTransport {
     let flight = this.sharedReads.get(key);
     if (!flight) {
       const controller = new AbortController();
-      const created: SharedRead = { answer: read(controller.signal), controller, waiters: 0 };
-      void created.answer.then(
-        () => { if (this.sharedReads.get(key) === created) this.sharedReads.delete(key); },
-        () => { if (this.sharedReads.get(key) === created) this.sharedReads.delete(key); },
-      );
+      // Joinable until its body is in, not only its headers, and not a moment
+      // longer: a caller that has the body can ask again and must go out.
+      const done = () => { if (this.sharedReads.get(key) === created) this.sharedReads.delete(key); };
+      const answer = read(controller.signal).then((first) => {
+        const text = first.text.finally(done);
+        text.catch(() => { /* Intentional ignore: each waiter awaits this body and sees its failure. */ });
+        return { response: first.response, text };
+      }, (error: unknown) => {
+        done();
+        throw error;
+      });
+      const created: SharedRead = { answer, controller, waiters: 0 };
       this.sharedReads.set(key, created);
       flight = created;
     }
     const current = flight;
     current.waiters += 1;
     if (!signal) return current.answer;
-    return new Promise<CloudApiAnswer>((resolve, reject) => {
-      const leave = () => {
+    // A caller stays on the request until its body is in: giving up while the
+    // body is still arriving counts as leaving, as it does before the headers.
+    let leave = () => {};
+    const left = new Promise<never>((_, reject) => {
+      leave = () => {
         current.waiters -= 1;
         reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
         if (current.waiters > 0) return;
         if (this.sharedReads.get(key) === current) this.sharedReads.delete(key);
         current.controller.abort(signal.reason);
       };
-      signal.addEventListener("abort", leave, { once: true });
-      current.answer.then(resolve, reject).finally(() => signal.removeEventListener("abort", leave));
+    });
+    left.catch(() => { /* Intentional ignore: the race below hands this abort to the caller. */ });
+    signal.addEventListener("abort", leave, { once: true });
+    const stop = () => signal.removeEventListener("abort", leave);
+    void current.answer.then((answer) => answer.text).then(stop, stop);
+    return Promise.race([current.answer, left]).then((answer) => {
+      const text = Promise.race([answer.text, left]);
+      text.catch(() => { /* Intentional ignore: the caller awaits this body and sees its failure. */ });
+      return { response: answer.response, text };
     });
   }
 

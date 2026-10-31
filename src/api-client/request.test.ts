@@ -314,15 +314,28 @@ describe("CloudApiRequestTransport shared reads after a change", () => {
 
   test("a GET asked after a write, or during one, goes out again", async () => {
     const { transport, asked, answerAll } = pendingReads();
-    const before = transport.request("/notes?scope=me");
-    await transport.request("/notes/n1", { method: "PUT", body: "{}" });
-    const after = transport.request("/notes?scope=me");
+    const before = transport.request("/market/quote?symbol=NVDA");
+    await transport.request("/brokers/alpaca/orders", { method: "POST", body: "{}" });
+    const after = transport.request("/market/quote?symbol=NVDA");
     // A batch read sent as a POST changes nothing: the next GET still joins.
     await transport.request("/market/quotes/batch", { method: "POST", body: "{}" });
-    const joined = transport.request("/notes?scope=me");
+    const joined = transport.request("/market/quote?symbol=NVDA");
     answerAll();
     await Promise.all([before, after, joined]);
-    expect(asked).toEqual(["GET /notes", "PUT /notes/n1", "GET /notes", "POST /market/quotes/batch"]);
+    expect(asked).toEqual(["GET /market/quote", "POST /brokers/alpaca/orders", "GET /market/quote", "POST /market/quotes/batch"]);
+  });
+
+  test("only market reads are shared, and not when the caller wants a fresh copy", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    const reads = [
+      transport.request("/market/history?symbol=NVDA"),
+      transport.request("/market/history?symbol=NVDA", { cache: "no-cache" }),
+      transport.request("/cloud/sec/13f/funds?name=Berkshire"),
+      transport.request("/cloud/sec/13f/funds?name=Berkshire"),
+    ];
+    answerAll();
+    await Promise.all(reads);
+    expect(asked).toEqual(["GET /market/history", "GET /market/history", "GET /cloud/sec/13f/funds", "GET /cloud/sec/13f/funds"]);
   });
 
   test("a GET asked after signing in or out, or after the session changes, goes out again", async () => {
