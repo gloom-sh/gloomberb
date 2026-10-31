@@ -59,6 +59,26 @@ describe("analyst research headless model", () => {
     const ratings = byFirm.sections[1]!.rows ?? [];
     expect(ratings.map((row) => row.firm)).toEqual(["Beta", "Alpha"]);
   });
+  test("prints a reason under its action with the article, and no reason column without one", async () => {
+    const reason = { text: "on margin improvements", url: "https://www.investing.com/news/analyst-ratings/bofa-raises-93CH-2", source: "Investing.com" };
+    const plain = await createAnalystResearchHeadless({ loadData: async () => data }).load(args(), createTestHeadlessContext());
+    expect(plain.sections[1]!.columns!.map((column) => column.key)).toEqual(["date", "firm", "action", "current", "target", "prior"]);
+    expect(plain.sections[1]!.rows!.some((row) => "reasonUrl" in row)).toBe(false);
+
+    const headless = createAnalystResearchHeadless({ loadData: async () => ({
+      ...data,
+      ratings: [{ ...data.ratings[1]!, reason }, data.ratings[0]!],
+    }) });
+    const result = await headless.load(args(), createTestHeadlessContext());
+    const section = result.sections[1]!;
+    const reasonColumn = section.columns!.find((column) => column.key === "reason")!;
+    expect(reasonColumn.underRow).toBe(true);
+    const [withReason, without] = section.rows!;
+    expect(withReason).toMatchObject({ firm: "Alpha", reasonUrl: reason.url });
+    expect(reasonColumn.format!(withReason!.reason, withReason!)).toBe("on margin improvements");
+    expect(reasonColumn.textFormat!(withReason!.reason, withReason!)).toBe(`on margin improvements · ${reason.url}`);
+    expect(reasonColumn.textFormat!(without!.reason, without!)).toBe("");
+  });
   test("measures the upside from Last, as `analyst` does, and dates the price it is from", async () => {
     // 150 when the research was fetched; Last is the 160 close.
     const quote: Quote = {

@@ -491,6 +491,18 @@ interface AnalystRecommendationTrend {
   strongSell?: number;
 }
 
+/** Why a firm took an action, as public news coverage of it quotes the firm, word for word. */
+export interface AnalystRatingReason {
+  /** One line from the article, as it prints it. */
+  text: string;
+  /** The article. */
+  url: string;
+  /** Its publisher, when known. */
+  source?: string;
+  /** ISO time the article was published. */
+  publishedAt?: string;
+}
+
 export interface AnalystRatingRecord {
   date: string;
   firm: string;
@@ -499,6 +511,8 @@ export interface AnalystRatingRecord {
   prior?: string;
   currentPriceTarget?: number;
   priorPriceTarget?: number;
+  /** Absent when no coverage of the action gives a reason. */
+  reason?: AnalystRatingReason;
 }
 
 export interface AnalystEstimateRecord {
