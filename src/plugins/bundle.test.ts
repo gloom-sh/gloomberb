@@ -215,6 +215,35 @@ describe("bundleExternalPlugin", () => {
     }
   });
 
+  test("compiles a sibling plugin it imports from the sibling's folder, without its link", async () => {
+    // IBKR Gateway's view imports Interactive Brokers. On Windows the link
+    // between them can be in place and still not resolve in the process that
+    // compiles the view, so the bundler must not need it.
+    const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-bundle-siblings-"));
+    const peer = join(pluginsDir, "gloom-fixture-peer");
+    const gateway = join(pluginsDir, "gloom-fixture-gateway");
+    mkdirSync(peer);
+    mkdirSync(gateway);
+    writeFileSync(join(peer, "package.json"), JSON.stringify({ name: "gloom-fixture-peer" }));
+    writeFileSync(join(peer, "bridge.ts"), `export const bridge = "from the sibling";\n`);
+    writeFileSync(join(gateway, "package.json"), JSON.stringify({
+      name: "gloom-fixture-gateway",
+      main: "index.tsx",
+      peerDependencies: { "gloom-fixture-peer": ">=1.0.0" },
+    }));
+    writeFileSync(join(gateway, "index.tsx"), `
+      import { bridge } from "gloom-fixture-peer/bridge";
+      export default { id: "fixture-gateway", name: bridge, version: "1.0.0" };
+    `);
+    try {
+      const result = await bundleExternalPlugin(gateway, join(pluginsDir, "out"), { exportNamesFor: fakeExports });
+
+      expect(await Bun.file(result.outputPath).text()).toContain("from the sibling");
+    } finally {
+      rmSync(pluginsDir, { recursive: true, force: true });
+    }
+  });
+
   test("rejects a directory with no entry file", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gloom-bundle-empty-"));
     mkdirSync(join(dir, "src"), { recursive: true });
