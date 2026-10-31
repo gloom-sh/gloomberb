@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
+import type { OnboardingProgress } from "../../types/config";
 import {
   getOnboardingProgress,
   listOnboardingPositions,
   pickLargestBrokerPosition,
   pickLargestPosition,
+  previousOnboardingStage,
 } from "./wizard-model";
 import { createTestTicker } from "../../test-support/ticker";
 
@@ -70,5 +72,44 @@ describe("onboarding positions", () => {
       })).toMatchObject({ stage: expected, accountStatus: "signed-in" });
     }
     expect(getOnboardingProgress(config).stage).toBe("portfolio");
+  });
+});
+
+describe("onboarding steps", () => {
+  const built = { version: 1, path: "manual", portfolioId: "main", tickerSymbol: "AAPL", desks: ["rates"] } as const;
+  const at = (stage: OnboardingProgress["stage"], extra: Partial<OnboardingProgress> = {}): OnboardingProgress => ({ ...built, desks: [...built.desks], stage, ...extra });
+
+  test("Back retraces the steps the user came through and passes over the finished ones", () => {
+    // Portfolio, desks, the workspace, then Gloom Cloud: Back is the workspace, not the portfolio.
+    expect(previousOnboardingStage(at("account"), ["portfolio", "desks", "research"]))
+      .toEqual({ stage: "research", visited: ["portfolio", "desks"] });
+    // Pro, then Gloom Cloud from the header, then Back: Pro again, where the user was.
+    expect(previousOnboardingStage(at("account"), ["portfolio", "desks", "research", "account", "upgrade"]))
+      .toEqual({ stage: "upgrade", visited: ["portfolio", "desks", "research", "account"] });
+    // Nothing left to retrace but finished steps.
+    expect(previousOnboardingStage(at("account"), ["portfolio", "desks"])).toEqual({ stage: "research", visited: [] });
+    // An account with Pro has nothing to do on the Pro step, which only moves it on.
+    expect(previousOnboardingStage(at("ready", { accountStatus: "signed-in" }), ["research", "account", "upgrade"], { pro: true }))
+      .toEqual({ stage: "account", visited: ["research"] });
+    expect(previousOnboardingStage(at("ready", { accountStatus: "signed-in" }), [], { pro: true })?.stage).toBe("account");
+  });
+
+  test("with nothing to retrace, Back is the step before, never a finished one", () => {
+    expect(previousOnboardingStage(at("account"), [])?.stage).toBe("research");
+    // Older builds saved no desks; a holding at a later stage means the workspace was built.
+    expect(previousOnboardingStage(at("account", { desks: undefined }), [])?.stage).toBe("research");
+    expect(previousOnboardingStage(at("account", { tickerSymbol: undefined, desks: undefined }), [])?.stage).toBe("portfolio");
+    expect(previousOnboardingStage(at("upgrade"), [])?.stage).toBe("account");
+    expect(previousOnboardingStage(at("ready", { accountStatus: "signed-in" }), [])?.stage).toBe("upgrade");
+    expect(previousOnboardingStage(at("ready"), [])?.stage).toBe("account");
+    expect(previousOnboardingStage(at("research"), ["portfolio", "desks"])).toBeNull();
+  });
+
+  test("a profile saved on the portfolio after its workspace was built resumes on the workspace", () => {
+    const config = createDefaultConfig("/tmp/onboarding");
+    expect(getOnboardingProgress({ ...config, onboardingProgress: at("portfolio") }).stage).toBe("research");
+    expect(getOnboardingProgress({ ...config, onboardingProgress: at("desks") }).stage).toBe("research");
+    // Mid-flow, before the desks are picked, both steps are still open.
+    expect(getOnboardingProgress({ ...config, onboardingProgress: at("desks", { desks: undefined }) }).stage).toBe("desks");
   });
 });

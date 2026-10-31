@@ -359,7 +359,8 @@ export function OnboardingHeader({
   }
 
   // Progress, not navigation: three segments, the current one lit, the ones
-  // behind it filled. A filled segment is still a way back.
+  // behind it filled. A filled segment is a way back unless the wizard marks
+  // it unavailable: a step done for good stays filled and is not offered again.
   const activeIndex = sections.findIndex((section) => section.id === active);
   return (
     <Box flexDirection="row" alignItems="flex-start" justifyContent="space-between" minWidth={0}>

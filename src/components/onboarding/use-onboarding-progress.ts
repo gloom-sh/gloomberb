@@ -10,7 +10,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { resolvePlanAccess } from "../../api-client/plan-access";
 import type { PortfolioSub } from "./onboarding-steps";
 import type { useOnboardingPositions } from "./wizard-positions";
-import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
+import { applyFirstRunLayout, buildFirstRunLayout, onboardingDeskLayoutId, planFirstRunWatchlist } from "./first-run-workspace";
 import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
 import {
@@ -99,8 +99,9 @@ export function useOnboardingWorkspace({
 
   /**
    * Seeds the watchlist and swaps Home for the first-run workspace built
-   * around `symbol`, with the picked desks as tabs right after it. The config
-   * comes back for the caller to persist with its own progress patch.
+   * around `symbol`, with the picked desks as tabs right after it. Run again,
+   * it replaces the layouts it made before instead of adding copies. The
+   * config comes back for the caller to persist with its own progress patch.
    */
   const buildFirstRunWorkspace = useCallback(async (
     baseConfig: AppConfig,
@@ -150,13 +151,15 @@ export function useOnboardingWorkspace({
     const pro = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess;
     // A desk that fails to build is left out; it never holds up the first run.
     const deskTabs = await Promise.all(desks.map((key) => (
-      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).catch((error) => {
-        onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
-        return null;
-      })
+      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).then(
+        (tab) => (tab ? { ...tab, id: onboardingDeskLayoutId(key) } : null),
+        (error) => {
+          onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
+          return null;
+        },
+      )
     )));
-    const tabs = deskTabs.filter((tab) => tab !== null);
-    return { ...workspace, layouts: [workspace.layouts[0]!, ...tabs, ...workspace.layouts.slice(1)] };
+    return applyFirstRunLayout(config, home, deskTabs.filter((tab) => tab !== null));
   }, [dispatch, pluginRegistry, stateRef]);
 
   const commitWorkspaceProgress = useCallback(async (
@@ -187,7 +190,7 @@ export function useOnboardingWorkspace({
   }, [positions, saveProgressInBackground]);
 
   /**
-   * Leaves "What do you trade?": builds the workspace with the picked desks as
+   * Leaves "What do you trade most?": builds the workspace with the picked desks as
    * tabs (none when skipped, which is today's workspace) and moves on.
    */
   const finishDesks = useCallback((desks: readonly DeskKey[]) => {

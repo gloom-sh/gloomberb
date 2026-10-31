@@ -58,7 +58,7 @@ export function useOnboardingKeyboard({
   submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
   brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
   setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
-  setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground,
+  setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack,
 }: {
   stage: OnboardingStage;
   progress: OnboardingProgress;
@@ -102,6 +102,8 @@ export function useOnboardingKeyboard({
   dialogOpen: boolean;
   commandBarOpen: boolean;
   saveProgressInBackground: (patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">, baseConfig?: AppConfig | undefined) => void;
+  /** Back on the card: to the step the user came from. */
+  goBack: () => void;
 }) {
   const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
     ? "portfolio"
@@ -234,7 +236,7 @@ export function useOnboardingKeyboard({
           continueAccount();
         } else if (escape) {
           if (account.accountSub === "qr" || account.accountSub === "login") account.returnToAccountForm();
-          else goToSection("portfolio");
+          else goBack();
         } else if (letter(BROWSER_SIGN_IN_KEY) && accountForm) {
           account.beginQrSignIn();
         } else if (letter(SKIP_SETUP_KEY)) {
@@ -251,7 +253,7 @@ export function useOnboardingKeyboard({
         if (enter) {
           primaryUpgradeAction();
         } else if (escape) {
-          goToSection("cloud");
+          goBack();
         } else if (!planAccess.hasProAccess && letter(KEEP_FREE_KEY)) {
           continueFree();
         } else if (!planAccess.hasProAccess && (isPlainKey(event, "left") || letter("h"))) {
@@ -266,7 +268,7 @@ export function useOnboardingKeyboard({
 
       if (stage === "ready") {
         if (enter) void finish();
-        else if (escape) goToSection(progress.accountStatus === "signed-in" ? "pro" : "cloud");
+        else if (escape) goBack();
         else return false;
         return true;
       }

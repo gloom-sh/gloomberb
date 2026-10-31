@@ -282,9 +282,9 @@ async function waitForAddedPosition(): Promise<void> {
   }
 }
 
-/** Leaves "What do you trade?" without a desk, which keeps today's first-run workspace. */
+/** Leaves "What do you trade most?" without a desk, which keeps today's first-run workspace. */
 async function skipDesks(): Promise<void> {
-  await waitForFrame("What do you trade?");
+  await waitForFrame("What do you trade most?");
   await emitKeypress({ name: "s", sequence: "s" });
 }
 
@@ -468,7 +468,7 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Built around AAPL");
   });
 
-  test("What do you trade? opens the ticked desks as tabs after Home, in the order they were ticked", async () => {
+  test("What do you trade most? opens up to three ticked desks as tabs after Home, and running it again adds no copies", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-desks-"));
     const pluginRegistry = await createDeskRegistry(new JsonTickerRepository());
     const config = {
@@ -478,7 +478,8 @@ describe("OnboardingWizard", () => {
     await tui.render(<WizardHarness config={config} pluginRegistry={pluginRegistry} />, { width: 100, height: 32 });
     await tui.setup().renderOnce();
     const frame = tui.frame();
-    expect(frame).toContain("What do you trade?");
+    expect(frame).toContain("What do you trade most?");
+    expect(frame).toContain("Everything else is one search away.");
     for (const label of ["Equities", "Options", "Futures & commodities", "Rates & credit", "FX & macro", "Active trading"]) {
       expect(frame).toContain(label);
     }
@@ -488,13 +489,16 @@ describe("OnboardingWizard", () => {
     await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
     expect(capturedConfig?.onboardingProgress?.stage ?? "desks").toBe("desks");
 
-    // Rates, then Equities, then FX & macro with the mouse; then Equities off again.
+    // Rates, then Equities, then FX & macro with the mouse; Options is a fourth
+    // and stays unticked; then Equities off again.
     for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
     await pressSpace();
     for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "k", sequence: "k" });
     await pressSpace();
     await tui.clickFrameText("FX & macro");
-    for (let step = 0; step < 4; step += 1) await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await pressSpace();
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await pressSpace();
     await pressEnter();
 
@@ -505,6 +509,25 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.layouts[1]?.layout.instances.map((instance) => instance.paneId)).toEqual([
       "rate-path", "yield-curve", "money-markets", "fixed-income", "central-bank-rates",
     ]);
+
+    // Run again over that workspace, with a layout of the user's own: the
+    // layouts onboarding made are replaced, not copied.
+    const firstRun = capturedConfig!;
+    const mine = { name: "Mine", layout: firstRun.layout };
+    await tui.render(<WizardHarness config={{
+      ...firstRun,
+      layouts: [...firstRun.layouts, mine],
+      onboardingProgress: { version: 1, stage: "desks", path: "manual", portfolioId: "main", tickerSymbol: "AAPL" },
+    }} pluginRegistry={pluginRegistry} />, { width: 100, height: 32 });
+    await waitForFrame("What do you trade most?");
+    for (let step = 0; step < 3; step += 1) await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    await emitKeypress({ name: "j", sequence: "j" });
+    await pressSpace();
+    await pressEnter();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the second run to build the workspace");
+    expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro", "Mine"]);
+    expect(capturedConfig?.layouts[5]).toEqual(mine);
   });
 
   test("the first-run milestone that ends onboarding names the desks picked", async () => {
@@ -1313,6 +1336,38 @@ describe("OnboardingWizard", () => {
     await tui.emitKeypress({ name: "return", sequence: "\r", meta: true }, { trackPropagation: true });
     await waitForFrame("Connect Gloom Cloud");
     expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("Back and Esc from Gloom Cloud return to the workspace it was opened from, never to the finished portfolio", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-cloud-back-"));
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "research" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL", desks: [] },
+    };
+    await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+    await tui.setup().renderOnce();
+    const openCloud = async () => {
+      await tui.emitKeypress({ name: "return", sequence: "\r", meta: true });
+      await waitForFrame("Connect Gloom Cloud");
+    };
+    const backOnWorkspace = async () => {
+      await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the workspace coach");
+      expect(await waitForFrame("Built around AAPL")).not.toContain("What do you hold?");
+    };
+
+    await openCloud();
+    await tui.clickFrameText("Back");
+    await backOnWorkspace();
+
+    // Esc first leaves the email field. The portfolio's digit no longer goes
+    // back to it, and the second Esc goes where the first Back did.
+    await openCloud();
+    await pressEscape();
+    await emitKeypress({ name: "1", sequence: "1" });
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+    await pressEscape();
+    await backOnWorkspace();
   });
 
   test("the research coach shows its dismiss key beside Keep exploring at 80x24, and the key dismisses it", async () => {
