@@ -2,12 +2,13 @@ import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
 import {
+  encodeResponseBody,
   readRequestInit,
-  toResponseEnvelope,
+  toResponseHead,
   type HttpProxyRequestEnvelope,
   type HttpProxyResponseEnvelope,
 } from "../../utils/http-proxy-response";
-import { fetchCheckingRedirects } from "../../utils/http-proxy-redirects";
+import { fetchCheckingRedirects, readBytesWithin } from "../../utils/http-proxy-upstream";
 import { isPublicAddress } from "../../utils/public-address";
 import type { DesktopPaneShotApiProxy, DesktopPaneShotBridge } from "../desktop-pane-shot";
 import type { MarketContext } from "../types";
@@ -102,6 +103,8 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
 ]);
 
 const SHOT_BRIDGE_HTTP_TIMEOUT_MS = 20_000;
+/** Feeds and API answers are far smaller; the answer goes to the page whole, as JSON. */
+const SHOT_BRIDGE_HTTP_MAX_BYTES = 25 * 1024 * 1024;
 /** What panes send through `httpFetch` while they draw: reads, and the POST a few APIs take a query as. */
 const SHOT_BRIDGE_HTTP_METHODS = new Set(["GET", "HEAD", "POST"]);
 
@@ -151,6 +154,11 @@ export function createDesktopShotBridge(
  * address is on the public internet. Panes read public APIs and news feeds;
  * nothing they draw lives on this machine or its network, and a URL that
  * names one (or a host that resolves to one) is refused.
+ *
+ * The fetch looks the name up again, so a name whose answer changes between
+ * the two lookups is not caught here. Pinning the fetch to the checked
+ * address needs a Host header and a TLS server name on an IP URL, and Bun's
+ * fetch does not verify or pool such connections predictably enough to rely on.
  */
 async function checkShotHttpTarget(
   raw: string,
@@ -204,5 +212,13 @@ async function runDesktopShotHttpFetch(
     signal: AbortSignal.timeout(SHOT_BRIDGE_HTTP_TIMEOUT_MS),
   });
   if ("error" in result) throw new Error(result.error);
-  return toResponseEnvelope(result.response);
+  const { response } = result;
+  const tooLarge = `The response from ${target.url.hostname} is larger than ${SHOT_BRIDGE_HTTP_MAX_BYTES / (1024 * 1024)} MB.`;
+  if (init.method !== "HEAD" && Number(response.headers.get("content-length") ?? 0) > SHOT_BRIDGE_HTTP_MAX_BYTES) {
+    await response.body?.cancel().catch(() => { /* Intentional ignore: an answer over the cap is dropped unread. */ });
+    throw new Error(tooLarge);
+  }
+  const body = await readBytesWithin(response.body, SHOT_BRIDGE_HTTP_MAX_BYTES);
+  if (body === null) throw new Error(tooLarge);
+  return { ...toResponseHead(response), ...encodeResponseBody(body) };
 }

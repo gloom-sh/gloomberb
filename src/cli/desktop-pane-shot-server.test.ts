@@ -10,14 +10,24 @@ import {
 
 // The page's Cloud API reads go over one socket (a page's fetches share six connections to its origin);
 // each must reach the API as the proxy sends it, with the session the page never holds.
-const asked: Array<{ method: string; path: string; cookie: string | null; origin: string | null }> = [];
+const asked: Array<{ method: string; path: string; cookie: string | null; origin: string | null; headers: Headers; body: string }> = [];
 const upstream = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
-  fetch(request) {
+  async fetch(request) {
     const url = new URL(request.url);
-    asked.push({ method: request.method, path: `${url.pathname}${url.search}`, cookie: request.headers.get("cookie"), origin: request.headers.get("origin") });
+    asked.push({
+      method: request.method,
+      path: `${url.pathname}${url.search}`,
+      cookie: request.headers.get("cookie"),
+      origin: request.headers.get("origin"),
+      headers: request.headers,
+      body: await request.text(),
+    });
     if (url.pathname === "/v1/market/gone") return new Response(null, { status: 204 });
+    if (url.pathname === "/v1/auth/get-session") return Response.json({ session: { token: "session-token" }, user: { id: "u1", name: "Ada" } });
+    const moved = { "/v1/market/moved": "/v1/market/quote?symbol=GLE", "/v1/market/away": "/v1/account/mcp/keys", "/v1/market/off": "https://evil.example/x" }[url.pathname];
+    if (moved) return new Response(null, { status: 302, headers: { location: moved } });
     return Response.json({ status: "success", data: { symbol: url.searchParams.get("symbol"), name: "Société Générale" } }, { headers: { "x-served": "yes" } });
   },
 });
@@ -46,7 +56,15 @@ test("a read sent over the page's socket reaches the API with the session, and i
     expect(JSON.parse(await answerShotApiCall(JSON.stringify({ id: 9, path, headers: [] }), apiProxy))).toEqual({ id: 9, error: "Not an API path." });
   }
   // Reads the page has no use for, the account's among them, are refused before they reach the API.
-  for (const path of ["/teams", "/account/mcp/keys", "/chat/channels", "/cloud/auth/browser-handoff", "/market/..%2fauth%2fsign-out"]) {
+  for (const path of [
+    "/teams",
+    "/account/mcp/keys",
+    "/chat/channels",
+    "/cloud/auth/browser-handoff",
+    "/cloud/Auth/browser-handoff",
+    "/cloud/%61uth/browser-handoff",
+    "/market/..%2fauth%2fsign-out",
+  ]) {
     expect(JSON.parse(await answerShotApiCall(JSON.stringify({ id: 10, path, headers: [] }), apiProxy))).toMatchObject({ id: 10, status: 403 });
   }
   expect(asked.length).toBe(count);
@@ -154,9 +172,9 @@ test("the API proxy sends the reads panes make and refuses anything that acts on
   const server = serveShotPage(new Map(), "<html></html>", apiProxy, null);
   try {
     const page = server.url;
-    const send = (method: string, path: string, body?: unknown) => fetch(shotRouteUrl(`${SHOT_API_PROXY_PREFIX}${path}`, page), {
+    const send = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => fetch(shotRouteUrl(`${SHOT_API_PROXY_PREFIX}${path}`, page), {
       method,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const count = asked.length;
@@ -171,17 +189,51 @@ test("the API proxy sends the reads panes make and refuses anything that acts on
       ["PATCH", "/market/quote"],
       ["POST", "/cloud/search/saved"],
       ["GET", "/account/calendar-feed"],
+      ["POST", "/theses"],
+      ["DELETE", "/layouts/1"],
+      ["POST", "/brokers/ibkr/connect"],
     ] as const) {
       expect((await send(method, path, method === "GET" ? undefined : {})).status).toBe(403);
     }
     expect(asked.length).toBe(count);
 
-    // A batch read sent as POST still reaches the API, with the user's session.
-    const batch = await send("POST", "/market/quotes/batch", { targets: [{ symbol: "GLE", exchange: "EPA" }], mode: "cache-first" });
+    // A batch read sent as POST still reaches the API, whole and with the user's session; the caller's own
+    // address, key or method override does not.
+    const batch = await send("POST", "/market/quotes/batch", { targets: [{ symbol: "GLE", exchange: "EPA" }] }, {
+      "x-http-method-override": "DELETE",
+      "x-forwarded-for": "203.0.113.9",
+      "x-real-ip": "203.0.113.9",
+      "cf-connecting-ip": "203.0.113.9",
+      "x-api-key": "page-key",
+      authorization: "Bearer page",
+      "x-gloom-features": "charts",
+    });
     expect(batch.status).toBe(200);
-    expect(asked.at(-1)).toMatchObject({ method: "POST", path: "/v1/market/quotes/batch" });
-    expect(asked.at(-1)!.cookie).toContain("secret");
-    expect((await send("GET", "/auth/get-session")).status).toBe(200);
+    const sent = asked.at(-1)!;
+    expect(sent).toMatchObject({ method: "POST", path: "/v1/market/quotes/batch", body: '{"targets":[{"symbol":"GLE","exchange":"EPA"}]}' });
+    expect(sent.cookie).toContain("secret");
+    expect(sent.headers.get("x-gloom-features")).toBe("charts");
+    for (const name of ["x-http-method-override", "x-forwarded-for", "x-real-ip", "cf-connecting-ip", "x-api-key", "authorization"]) {
+      expect(sent.headers.get(name)).toBeNull();
+    }
+
+    // The session read gives the page its user, never the session's token.
+    const session = await send("GET", "/auth/get-session");
+    expect(session.status).toBe(200);
+    expect(await session.json()).toEqual({ user: { id: "u1", name: "Ada" } });
+
+    // Reads a signed-in pane makes: theses, layouts, a signed-in broker's catalog and holdings.
+    for (const path of ["/theses?scope=mine", "/layouts", "/brokers/connectors", "/brokers/ibkr/snapshot"]) {
+      expect((await send("GET", path)).status).toBe(200);
+    }
+
+    // A redirect is followed within the API to a read the page may make, and nowhere else.
+    expect(await (await send("GET", "/market/moved")).json()).toMatchObject({ data: { symbol: "GLE" } });
+    expect(asked.at(-1)!.path).toBe("/v1/market/quote?symbol=GLE");
+    const before = asked.length;
+    expect((await send("GET", "/market/away")).status).toBe(502);
+    expect((await send("GET", "/market/off")).status).toBe(502);
+    expect(asked.map((call) => call.path).slice(before)).toEqual(["/v1/market/away", "/v1/market/off"]);
   } finally {
     server.stop();
   }

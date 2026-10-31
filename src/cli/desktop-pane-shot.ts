@@ -1,7 +1,6 @@
-import { logFailure } from "../utils/log-failure";
 import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
-import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -31,10 +30,11 @@ import {
   type ShotApiSocketReply,
 } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
-import { isShotApiRequestAllowed } from "./desktop-pane-shot-api-policy";
+import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
 import { errorMessage } from "../utils/errors";
+import { findChromeExecutable, launchShotBrowser, type CdpPage } from "./desktop-pane-shot-browser";
 
 export interface DesktopPaneShotIntradayHistory {
   target?: InstrumentRef;
@@ -192,17 +192,6 @@ interface ShotStatusLineVariants {
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
 
-type CdpResponse = {
-  id?: number;
-  result?: unknown;
-  error?: { message?: string; data?: string };
-};
-
-type PendingCdpCall = {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-};
-
 const SHOT_MODE_CSS = [
   "[data-gloom-role='composite-chart-toolbar']",
   "[data-gloom-role='chart-series-quick-add']",
@@ -219,10 +208,7 @@ const SHOT_MODE_CSS = [
   + " line-height: var(--cell-h); font-size: 12px; letter-spacing: 0.02em; color: var(--gloom-text-dim, #888);"
   + " pointer-events: none; z-index: 1000; }";
 
-// Chrome gets 30 s (300 polls x 100 ms) to open its DevTools port: 8 s was not enough on a busy machine.
-const CHROME_POLL_ATTEMPTS = 300;
 const SHOT_READY_TIMEOUT_MS = 45_000;
-const CDP_CALL_TIMEOUT_MS = 10_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
 
 export async function renderDesktopPaneScreenshot(
@@ -448,46 +434,49 @@ function serveShotAsset(url: URL, view: ShotViewFiles, html: string): Response {
   return new Response(body, { headers: { "Content-Type": `${type}; charset=utf-8` } });
 }
 
+/**
+ * The request headers the proxy passes on: what the page accepts and sends, a
+ * cached copy's validators and the client's feature list. Everything else is
+ * the proxy's to set (the session cookie, the API's origin) or nobody's: a
+ * client address, a method override, a key.
+ */
+const SHOT_API_REQUEST_HEADERS = ["accept", "accept-language", "content-type", "if-modified-since", "if-none-match", "x-gloom-features"];
+/** Response headers that belong to the API's own origin, not the page's. */
+const SHOT_API_DROPPED_RESPONSE_HEADERS = [
+  "access-control-allow-credentials",
+  "access-control-allow-origin",
+  "content-encoding",
+  "content-length",
+  "set-cookie",
+  "transfer-encoding",
+];
+const SHOT_API_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const SHOT_API_MAX_REDIRECTS = 5;
+
+function shotApiError(message: string, status: number): Response {
+  return Response.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+/**
+ * Sends one of the page's API requests with the user's session, if the page
+ * may send it (`isShotApiRequestAllowed`). A redirect is followed only within
+ * the API, to a path the page may ask for too.
+ */
 async function proxyShotApiRequest(
   request: Request,
   requestUrl: URL,
   apiProxy: DesktopPaneShotApiProxy,
 ): Promise<Response> {
   const baseUrl = new URL(apiProxy.baseUrl);
-  const proxiedPath = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
-  if (!isShotApiRequestAllowed(request.method, proxiedPath)) {
-    return Response.json({ error: "The pane screenshot does not send this request." }, { status: 403 });
-  }
-  const target = new URL(baseUrl);
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
-  target.pathname = `${basePath}${proxiedPath.startsWith("/") ? proxiedPath : `/${proxiedPath}`}`;
-  target.search = requestUrl.search;
-  target.hash = "";
-  const headers = new Headers(request.headers);
-  for (const name of [
-    "authorization",
-    "connection",
-    "content-length",
-    "cookie",
-    "host",
-    "origin",
-    "proxy-authorization",
-    "referer",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-    "x-forwarded-for",
-    "x-forwarded-host",
-    "x-forwarded-proto",
-  ]) {
-    headers.delete(name);
+  let path = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
+  let method = request.method.toUpperCase();
+  if (!isShotApiRequestAllowed(method, path)) return shotApiError("The pane screenshot does not send this request.", 403);
+  const headers = new Headers();
+  for (const name of SHOT_API_REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
   }
-  const browserOwnedHeaders: string[] = [];
-  headers.forEach((_value, name) => {
-    if (name.startsWith("sec-") || name === "accept-encoding") browserOwnedHeaders.push(name);
-  });
-  for (const name of browserOwnedHeaders) headers.delete(name);
   headers.set("Origin", baseUrl.origin);
   if (apiProxy.sessionToken) {
     headers.set(
@@ -495,57 +484,60 @@ async function proxyShotApiRequest(
       SESSION_COOKIE_NAMES.map((name) => `${name}=${apiProxy.sessionToken}`).join("; "),
     );
   }
+  let target = new URL(baseUrl);
+  target.pathname = `${basePath}${path}`;
+  target.search = requestUrl.search;
+  target.hash = "";
 
   try {
-    const response = await fetch(target, {
-      method: request.method,
-      headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-      redirect: "follow",
-    });
-    const responseHeaders = new Headers(response.headers);
-    for (const name of [
-      "access-control-allow-credentials",
-      "access-control-allow-origin",
-      "content-encoding",
-      "content-length",
-      "set-cookie",
-      "transfer-encoding",
-    ]) {
-      responseHeaders.delete(name);
+    let body = method === "GET" || method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
+    for (let followed = 0; ; followed += 1) {
+      const response = await fetch(target, { method, headers, body, redirect: "manual" });
+      const location = SHOT_API_REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
+      if (location === null) return await shotApiResponse(response, path);
+      await response.body?.cancel().catch(() => { /* Intentional ignore: a redirect's own body is never read, only dropped. */ });
+      if (followed >= SHOT_API_MAX_REDIRECTS) return shotApiError("Cloud API redirected too many times.", 502);
+      const next = new URL(location, target);
+      if (
+        (response.status === 303 && method !== "GET" && method !== "HEAD")
+        || ((response.status === 301 || response.status === 302) && method === "POST")
+      ) {
+        method = "GET";
+        body = undefined;
+        headers.delete("content-type");
+      }
+      const inApi = next.origin === baseUrl.origin && (next.pathname === basePath || next.pathname.startsWith(`${basePath}/`));
+      path = next.pathname.slice(basePath.length) || "/";
+      if (!inApi || !isShotApiRequestAllowed(method, path)) return shotApiError("Cloud API redirected the request elsewhere.", 502);
+      target = next;
     }
-    responseHeaders.set("Cache-Control", "no-store");
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    });
   } catch {
-    return Response.json({ error: "Cloud API request failed." }, { status: 502 });
+    // Intentional ignore: the page is told the read failed, as a dropped connection tells fetch.
+    return shotApiError("Cloud API request failed.", 502);
   }
 }
 
-async function findChromeExecutable(): Promise<string> {
-  const candidates = [
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    Bun.which("google-chrome"),
-    Bun.which("google-chrome-stable"),
-    Bun.which("chromium"),
-    Bun.which("chromium-browser"),
-    // Windows installs Chrome outside PATH, per machine or per user.
-    ...["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"].map((name) => {
-      const dir = process.env[name];
-      return dir ? join(dir, "Google", "Chrome", "Application", "chrome.exe") : null;
-    }),
-  ].filter((value): value is string => !!value);
-
-  for (const candidate of candidates) {
-    const file = Bun.file(candidate);
-    if (await file.exists()) return candidate;
+/**
+ * The API's answer as the page gets it: without the API origin's headers, and
+ * for the session read only its user, since the session's token rides along
+ * in that answer and the page never holds the session.
+ */
+async function shotApiResponse(response: Response, path: string): Promise<Response> {
+  const headers = new Headers(response.headers);
+  for (const name of SHOT_API_DROPPED_RESPONSE_HEADERS) headers.delete(name);
+  headers.set("Cache-Control", "no-store");
+  if (!isShotSessionPath(path)) {
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
-  throw new Error("Drawing a pane needs Google Chrome or Chromium, and neither was found. Install one, or set CHROME_PATH to its executable.");
+  let user: unknown = null;
+  try {
+    const answer = await response.json() as { user?: unknown } | null;
+    user = answer?.user ?? null;
+  } catch {
+    // Intentional ignore: an answer that is not JSON names no user, which reads as signed out.
+  }
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify({ user }), { status: response.status, statusText: response.statusText, headers });
 }
 
 async function capturePageScreenshot({
@@ -571,41 +563,9 @@ async function capturePageScreenshot({
   statusLine?: ShotStatusLine;
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult> {
-  await mkdir(userDataDir, { recursive: true });
-  const proc = Bun.spawn([
-    chrome,
-    "--headless=new",
-    "--disable-gpu",
-    // Software WebGL for GPU-drawn panes (the 3D volatility surface).
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-background-networking",
-    "--disable-default-apps",
-    "--disable-extensions",
-    "--disable-popup-blocking",
-    "--hide-scrollbars",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--allow-file-access-from-files",
-    // Chrome picks a free port and writes it to DevToolsActivePort in the
-    // profile. A port picked here can be one Windows has reserved, where
-    // Chrome runs on without DevTools until the wait below times out.
-    "--remote-debugging-port=0",
-    `--user-data-dir=${userDataDir}`,
-    `--window-size=${widthPx},${heightPx}`,
-    url,
-  ], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  let session: CdpSession | null = null;
+  const browser = await launchShotBrowser(chrome, { widthPx, heightPx, userDataDir });
+  const session = browser.page;
   try {
-    const wsUrl = await waitForPageWebSocket(userDataDir, url);
-    session = await CdpSession.connect(wsUrl);
-    await session.send("Page.enable");
     await session.send("Runtime.enable");
     await session.send("Emulation.setDeviceMetricsOverride", {
       width: widthPx,
@@ -616,6 +576,7 @@ async function capturePageScreenshot({
     await session.send("Emulation.setDefaultBackgroundColorOverride", {
       color: { r: 0, g: 0, b: 0, a: 0 },
     });
+    await browser.open(url);
     await waitForShotReady(session);
     if (fitRows) await growToFitRows(session, { widthPx, heightPx, deviceScaleFactor, ...fitRows });
     const rendered = await readRenderedPaneState(session);
@@ -637,9 +598,7 @@ async function capturePageScreenshot({
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(message);
   } finally {
-    session?.close();
-    proc.kill();
-    await proc.exited.catch(() => { /* Intentional ignore: The screenshot browser was killed during cleanup; preserve the capture result. */ });
+    await browser.close();
   }
 }
 
@@ -649,7 +608,7 @@ async function capturePageScreenshot({
  * taller pane to settle: a board a default capture would cut (FUT's last
  * sectors) shows every row, and a docs page its whole text.
  */
-async function growToFitRows(session: CdpSession, size: {
+async function growToFitRows(session: CdpPage, size: {
   widthPx: number;
   heightPx: number;
   deviceScaleFactor: number;
@@ -730,7 +689,7 @@ function stateMarkers(text: string, patterns: RegExp[]): string[] {
   )))];
 }
 
-async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneShotRenderResult> {
+async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const root = document.getElementById("root") || document.body;
@@ -957,7 +916,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */
-async function fitShotStatusLine(session: CdpSession, { variants, dates }: ShotStatusLineVariants): Promise<string | null> {
+async function fitShotStatusLine(session: CdpPage, { variants, dates }: ShotStatusLineVariants): Promise<string | null> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
@@ -970,40 +929,7 @@ async function fitShotStatusLine(session: CdpSession, { variants, dates }: ShotS
   return typeof value === "string" ? value : null;
 }
 
-/**
- * The port Chrome's DevTools listen on: 0 while the file's first line is
- * incomplete, and a rejection before Chrome has written the file at all.
- */
-async function readDevToolsPort(userDataDir: string): Promise<number> {
-  const text = await Bun.file(join(userDataDir, "DevToolsActivePort")).text();
-  const lineEnd = text.indexOf("\n");
-  const port = lineEnd > 0 ? Number(text.slice(0, lineEnd)) : 0;
-  return Number.isInteger(port) && port > 0 ? port : 0;
-}
-
-async function waitForPageWebSocket(userDataDir: string, targetUrl: string): Promise<string> {
-  for (let attempt = 0; attempt < CHROME_POLL_ATTEMPTS; attempt += 1) {
-    try {
-      const port = await readDevToolsPort(userDataDir);
-      const response = port ? await fetch(`http://127.0.0.1:${port}/json/list`) : null;
-      if (response?.ok) {
-        const targets = await response.json() as Array<{ url?: string; type?: string; webSocketDebuggerUrl?: string }>;
-        const page = targets.find((target) => (
-          target.type === "page"
-          && target.webSocketDebuggerUrl
-          && (target.url === targetUrl || target.url?.startsWith("file:"))
-        ));
-        if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
-      }
-    } catch {
-      // Intentional ignore: Chrome may still be starting; the polling deadline reports failure.
-    }
-    await sleep(100);
-  }
-  throw new Error("Timed out waiting for Chrome DevTools.");
-}
-
-async function waitForShotReady(session: CdpSession): Promise<void> {
+async function waitForShotReady(session: CdpPage): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < SHOT_READY_TIMEOUT_MS) {
     const result = await session.send("Runtime.evaluate", {
@@ -1020,95 +946,4 @@ async function waitForShotReady(session: CdpSession): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-class CdpSession {
-  private nextId = 1;
-  private readonly pending = new Map<number, PendingCdpCall>();
-
-  private constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => {
-      void this.handleMessage(event.data);
-    });
-    ws.addEventListener("close", () => {
-      for (const pending of this.pending.values()) {
-        pending.reject(new Error("Chrome DevTools connection closed."));
-      }
-      this.pending.clear();
-    });
-  }
-
-  static connect(url: string): Promise<CdpSession> {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
-      ws.addEventListener("open", () => resolve(new CdpSession(ws)), { once: true });
-      ws.addEventListener("error", () => reject(new Error("Could not connect to Chrome DevTools.")), { once: true });
-    });
-  }
-
-  send(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      if (this.ws.readyState !== WebSocket.OPEN) {
-        reject(new Error("Chrome DevTools connection is not open."));
-        return;
-      }
-
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Timed out waiting for Chrome DevTools method ${method}.`));
-      }, CDP_CALL_TIMEOUT_MS);
-      const settle = {
-        resolve: (value: unknown) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        reject: (error: Error) => {
-          clearTimeout(timer);
-          reject(error);
-        },
-      };
-
-      this.pending.set(id, settle);
-      try {
-        this.ws.send(JSON.stringify({ id, method, params }));
-      } catch (error) {
-        this.pending.delete(id);
-        settle.reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }
-
-  close(): void {
-    this.ws.close();
-  }
-
-  private async handleMessage(data: unknown): Promise<void> {
-    let response: CdpResponse;
-    try {
-      response = JSON.parse(await stringifyWebSocketMessage(data)) as CdpResponse;
-    } catch (error) {
-      logFailure("cli.screenshot", "Decode screenshot browser response failed")(error);
-      return;
-    }
-    if (!response.id) return;
-    const pending = this.pending.get(response.id);
-    if (!pending) return;
-    this.pending.delete(response.id);
-    if (response.error) {
-      pending.reject(new Error([response.error.message, response.error.data].filter(Boolean).join("\n")));
-    } else {
-      pending.resolve(response.result);
-    }
-  }
-}
-
-async function stringifyWebSocketMessage(data: unknown): Promise<string> {
-  if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (ArrayBuffer.isView(data)) {
-    return new TextDecoder().decode(data as Uint8Array);
-  }
-  if (typeof Blob !== "undefined" && data instanceof Blob) return data.text();
-  return String(data);
 }

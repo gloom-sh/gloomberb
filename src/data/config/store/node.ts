@@ -1,6 +1,6 @@
 import { logFailure } from "../../../utils/log-failure";
 import { existsSync, readdirSync, type Dirent } from "fs";
-import { readFile, rename, rm, writeFile } from "fs/promises";
+import { readFile, rename, rm } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { expandUserHome, getGloomberbDirs } from "../home";
 import type { AppConfig } from "../../../types/config";
@@ -170,8 +170,9 @@ export async function resetAllData(dataDir: string): Promise<void> {
 
 export async function exportConfig(config: AppConfig, destPath: string): Promise<void> {
   const { dataDir, ...rest } = config;
-  // The export carries broker credentials as config.json does.
-  await writeFile(expandHomePath(destPath), JSON.stringify(rest, null, 2), { encoding: "utf-8", mode: 0o600 });
+  // The export carries broker credentials as config.json does: readable by the
+  // user alone, an existing file included, and never written through a link.
+  await writePrivateFile(expandHomePath(destPath), JSON.stringify(rest, null, 2));
 }
 
 export async function importConfig(dataDir: string, srcPath: string): Promise<AppConfig> {

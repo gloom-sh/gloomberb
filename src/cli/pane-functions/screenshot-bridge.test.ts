@@ -60,3 +60,21 @@ test("the HTTP bridge reaches public hosts only, and checks every redirect like 
   await expect(bridge.httpFetch({ url: "https://feeds.example.com/named" })).rejects.toThrow("redirect was refused");
   expect(fetched.slice(count).map((entry) => entry.url)).toEqual(["https://feeds.example.com/inside", "https://feeds.example.com/named"]);
 });
+
+// The answer goes to the page whole, in memory: an endless or oversized body is cut off, not buffered.
+test("the HTTP bridge refuses an answer past its size cap", async () => {
+  const big = 25 * 1024 * 1024 + 1;
+  let pulled = 0;
+  const { bridge } = bridgeWith({ "feeds.example.com": ["93.184.215.14"] }, (url) => {
+    if (url.endsWith("/declared")) return new Response("x", { headers: { "content-length": String(big) } });
+    return new Response(new ReadableStream({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(1024 * 1024));
+      },
+    }));
+  });
+  await expect(bridge.httpFetch({ url: "https://feeds.example.com/declared" })).rejects.toThrow("larger than 25 MB");
+  await expect(bridge.httpFetch({ url: "https://feeds.example.com/endless" })).rejects.toThrow("larger than 25 MB");
+  expect(pulled).toBeLessThan(40);
+});
