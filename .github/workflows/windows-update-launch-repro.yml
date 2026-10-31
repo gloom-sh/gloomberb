@@ -9,6 +9,10 @@ on:
       - scripts/diag-veh/**
       - .github/workflows/windows-update-launch-repro.yml
   workflow_dispatch:
+    inputs:
+      installer_run:
+        description: Verify Windows run whose windows-x64-installer to test
+        default: "41164809882"
 
 permissions:
   contents: read
@@ -48,7 +52,7 @@ jobs:
         with:
           name: windows-x64-installer
           path: installer
-          run-id: 41164809882
+          run-id: ${{ inputs.installer_run || '41164809882' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Open the app from its Start menu shortcut, again and again
         shell: pwsh
