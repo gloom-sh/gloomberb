@@ -10,7 +10,7 @@ import { aggregatePriceBars, futuresOpenMinuteOf, withBuiltBarSize } from "./bar
 import type { TickerFinancials } from "../types/financials";
 import { isMarketFieldId } from "./field-catalog";
 import { chartPriceHistoryIntegrityNotices } from "./market";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
 import { bufferPriceComparison, clipPriceComparison, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
 import { readSeedListingFacts } from "./parsed-history-cache";

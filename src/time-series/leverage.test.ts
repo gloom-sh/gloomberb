@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import type { ChartStudySpec, ResolvedSeries } from "./types";
 
 // TQQQ and QQQ daily closes, 21 Sep to 21 Oct 2026 (CMP TQQQ,QQQ --rangePreset 1M).
