@@ -6,12 +6,14 @@ import {
   ToastHostProvider,
   type ToastHost,
   type ToastStore,
+  useToastsShown,
 } from "../../ui/toast";
 import { WebButton } from "./desktop/controls";
 import { WebIconButton } from "./desktop/icons";
 
 function ToastViewport({ store }: { store: ToastStore }) {
   const toasts = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useToastsShown(toasts);
   const { dismiss } = store;
   const actionShortcut = useActionShortcut("notification-action");
   const dismissShortcut = useActionShortcut("notification-dismiss");

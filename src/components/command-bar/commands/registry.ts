@@ -276,7 +276,7 @@ export const commands: Command[] = [
     id: "toggle-attention-counts",
     prefix: "",
     label: "Attention Counts",
-    description: "Opt in to sharing ticker research counts for Gloom Trending",
+    description: "Turn ticker research counts on or off (on by default)",
     category: "Config",
   },
 

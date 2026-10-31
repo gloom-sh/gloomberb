@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig, createPaneInstance } from "../types/config";
+import { createDefaultConfig, createPaneInstance, type TelemetryConfig } from "../types/config";
 import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../layout/pane-manager";
 import type { PricePoint } from "../types/financials";
 import type { TickerPosition, TickerRecord } from "../types/ticker";
@@ -120,6 +120,46 @@ describe("core sync contributors", () => {
       portfolio: { metric: "beta", shared: "canonical" },
       application: { section: "shortcuts" },
     });
+  });
+
+  // Attention Counts off is the account's: one device turning it off has to
+  // stop the others counting, and a device's own stale on must not undo it.
+  test("an Attention Counts off reaches the account's other devices; only a later explicit on clears it", async () => {
+    const merge = __syncContributorInternalsForTests.mergeConfigPayload;
+    const device = (telemetry?: TelemetryConfig) => ({
+      ...createDefaultConfig("/tmp/gloomberb-sync-attention-test"),
+      ...(telemetry ? { telemetry } : {}),
+    });
+    const payloadOf = async (config: ReturnType<typeof device>) => (
+      await coreConfigSyncContributor.collect({ state: createInitialState(config) })
+    ) as Record<string, unknown>;
+    const off = await payloadOf(device({ attention: false }));
+    const on = await payloadOf(device({ attention: true }));
+    // What a build from before the field pushed.
+    const { attentionOff: _, ...older } = on;
+
+    expect(off.attentionOff).toBe(true);
+    // First sync after updating, whether on by default or from an earlier opt-in: the off wins.
+    for (const telemetry of [undefined, { attention: true }, { attentionNoticeShownTo: ["me"] }]) {
+      const local = device(telemetry);
+      expect(merge(local, off, local, older)?.telemetry?.attention).toBe(false);
+    }
+    // An off made here since the last sync, or before this device ever synced (signed out), is pushed, not overwritten.
+    const turnedOff = device({ attention: false });
+    expect(merge(turnedOff, on, turnedOff, on)?.telemetry?.attention).toBe(false);
+    expect(merge(turnedOff, on, turnedOff)?.telemetry?.attention).toBe(false);
+    const neverSynced = device();
+    expect(merge(neverSynced, off, neverSynced)?.telemetry?.attention).toBe(false);
+    // Turned back on here after the off arrived: this device's newer choice stands.
+    const turnedOn = device({ attention: true });
+    expect(merge(turnedOn, off, turnedOn, off)?.telemetry?.attention).toBe(true);
+    // Turned back on elsewhere: a device whose off came from the account follows.
+    const synced = device({ attention: false });
+    expect(merge(synced, on, synced, off)?.telemetry?.attention).toBe(true);
+    // A copy from an older build says nothing either way.
+    expect(merge(synced, older, synced, off)?.telemetry?.attention).toBe(false);
+    const fresh = device();
+    expect(merge(fresh, older, fresh, older)?.telemetry).toBeUndefined();
   });
 
   // Two signed-in clients used to hand each other their view on every poll:

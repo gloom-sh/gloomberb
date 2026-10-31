@@ -982,6 +982,8 @@ export interface AppNotificationRequest {
     label: string;
     onClick: () => void;
   };
+  /** Runs once, when the in-app toast is first drawn. Not called when `toast` is false. */
+  onShown?: () => void;
 }
 
 export interface BrokerInstanceUpdateOptions {

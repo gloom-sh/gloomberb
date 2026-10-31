@@ -14,7 +14,7 @@ export const ATTENTION_SERIES: readonly SeriesDefinition[] = [{
   frequency: "intraday",
   group: "Alternative data",
   tags: ["attention", "research", "trending", "researcher-hours"],
-  description: "Rounded researcher-hours opt-in users spent on the ticker in each published hour, as ATTN charts them; an hour below the privacy threshold is a gap. Needs Pro.",
+  description: "Rounded researcher-hours Gloom users spent on the ticker in each published hour, as ATTN charts them; an hour below the privacy threshold is a gap. Needs Pro.",
   input: "ticker",
   load: async ({ ticker }) => {
     const data = await fetchAttention("now", ticker!);
