@@ -15,7 +15,7 @@ import {
   valuationPriceIssues,
 } from "./fundamentals";
 import { extractSecuritySeries } from "./market";
-import { activeStudyInputSeriesIds } from "./studies";
+import { activeStudyInputSeriesIds } from "./studies/resolve";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { compareChartQuoteRecency } from "./live-quotes";
 import { marketSeriesFrequency } from "./market";

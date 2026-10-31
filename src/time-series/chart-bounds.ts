@@ -15,7 +15,7 @@ import {
   type ManualChartResolution,
 } from "./resolution";
 import { TIME_RANGES, type TimeRange } from "./range";
-import { maxStudyWarmupPoints } from "./studies";
+import { maxStudyWarmupPoints } from "./studies/resolve";
 import type { PriceComparison } from "./price-comparison";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
 import { latestSessionStart, latestTradingSessionOpen, priorSessionClose } from "../market-data/market/trading-sessions";

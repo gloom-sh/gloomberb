@@ -2,7 +2,7 @@ import { limitSeriesObservations } from "./financial-period-coverage";
 import type { ManualChartResolution } from "./resolution";
 import { getTimeSeriesField } from "./field-catalog";
 import { collectPriceHistoryIntegrity } from "./market";
-import { activeStudyInputSeriesIds } from "./studies";
+import { activeStudyInputSeriesIds } from "./studies/resolve";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
 import type { StudyAnchor } from "./leverage";

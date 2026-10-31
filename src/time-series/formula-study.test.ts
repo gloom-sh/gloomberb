@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { validateChartSpec } from "./spec";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { contractPriceUnit, perBarrelUnit, perTonneUnit } from "./price-units";
 import { CHART_SPEC_VERSION, type ChartStudySpec, type ResolvedSeries, type TimeSeriesPoint } from "./types";
