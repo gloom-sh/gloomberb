@@ -750,7 +750,7 @@
           {
             "code": "MAP",
             "name": "World Map",
-            "description": "A world map with trading venues and their hours; ships, ports, energy and airports as layers."
+            "description": "A world map with trading venues and their hours; ships, ports, energy, airports and AI buildout facilities as layers."
           },
           {
             "code": "CHOKE",
@@ -813,6 +813,7 @@
           "account-management",
           "askg",
           "buildout",
+          "buildout-company",
           "chat",
           "congress-trades",
           "team",
@@ -850,12 +851,12 @@
           {
             "code": "TBO",
             "name": "TheBuildout",
-            "description": "Open TheBuildout infrastructure intelligence.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Open TheBuildout infrastructure intelligence: themes, companies, sites and intel."
+          },
+          {
+            "code": "TBOC",
+            "name": "TheBuildout Company",
+            "description": "One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site and the signals that name it."
           },
           {
             "code": "CG",
