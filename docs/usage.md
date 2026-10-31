@@ -825,10 +825,10 @@ An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or 30-day
 - The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloom alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
 - Readings stay on the device and only a rule going off or changing is synced. Gloom Cloud does not check these, so they reach no phone.
 
-An **IPO** alert follows a company or keyword on the IPO calendar (`IPO`), worldwide and with no symbol: `Stripe`, or a word such as `therapeutics`. It matches a deal whose ticker is the keyword, or whose name, in either script, has a word starting with it, in any case: `Stripe` matches Stripe, Inc. but not Pinstripe. A keyword of two or three characters matches a ticker only (`ARM`), since `in`, `co` or `AI` start a word in most names. In Chinese or Japanese, which put no spaces between words, it matches anywhere in a name. The `IPO` search the alert opens shows every name containing the keyword, so it can list more deals than the alert follows.
+An **IPO** alert follows a company or keyword on the IPO calendar (`IPO`), worldwide: `Stripe`, or a word such as `therapeutics`. It matches the ticker, or a word in the deal's name that starts with the keyword (`Stripe` matches Stripe, Inc., not Pinstripe). Two or three letters match a ticker only (`ARM`).
 
-- Gloom Cloud sends it once per deal at each step: on the calendar, dated (the first listing date, expected or confirmed), priced, and trading. A deal that arrives already dated or priced sends one alert, for where it stands.
-- Only steps reached after you set the rule count. A postponed or withdrawn deal sends nothing, and neither does a step Gloom first sees more than four days after the deal's listing date (or, for a filing with no date yet, its filing date): a deal that listed long ago never alerts as new.
+- Gloom Cloud sends it once per deal at each step: on the calendar, dated, priced, and trading.
+- Only new steps count. A postponed or withdrawn deal, or one that listed long ago, sends nothing.
 
 From the shell, `gloom alerts add` takes every rule **Add Event Alert** offers:
 
