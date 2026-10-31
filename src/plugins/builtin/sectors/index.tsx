@@ -232,8 +232,9 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     // for these funds, until that history is one research interval old.
     const funds = sectorDefs.map((item) => item.etf).join(",");
     const stored = historiesRef.current;
-    const researchMs = researchIntervalMinutes * 60_000;
-    const reuse = background && stored?.funds === funds && (!(researchMs > 0) || Date.now() - stored.loadedAt < researchMs);
+    // The app's own research cadence (app-runtime): a minute at least, and an unreadable setting reloads.
+    const researchMs = Math.max(1, researchIntervalMinutes) * 60_000;
+    const reuse = background && stored?.funds === funds && Date.now() - stored.loadedAt < researchMs;
     const histories: SectorHistories = reuse ? stored!.histories : new Map();
     const updateRows = (updater: (rows: SectorRow[]) => SectorRow[]) => {
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, updater));
