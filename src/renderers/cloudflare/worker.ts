@@ -17,11 +17,13 @@ const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association
 const ROBOTS_PATH = "/robots.txt";
 /**
  * Files the web build names after their contents (`main-<hash>.js`, the launch
- * frame, the bundled plugins: `withContentHash` in scripts/build-web.ts). A
- * name never serves other bytes, so a browser keeps them for a year without
- * asking again. Lazy chunks keep plain names and are revalidated as before.
+ * frame, the bundled plugins: `withContentHash` in scripts/build-web.ts, the
+ * first 16 hex digits of a SHA-256). A name never serves other bytes, so a
+ * browser keeps them for a year without asking again; the bundle audit checks
+ * each such name against its file. Lazy chunks keep plain names and are
+ * revalidated as before.
  */
-const IMMUTABLE_ASSET_PATH = /^\/assets\/.+-[a-z0-9]{12,}\.(?:js|css)$/;
+export const IMMUTABLE_ASSET_PATH = /^\/assets\/.+-[a-f0-9]{16}\.(?:js|css)$/;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 /**
  * The icons and the install manifest keep their names from build to build.

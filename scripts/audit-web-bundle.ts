@@ -3,6 +3,7 @@ import { dirname, join, relative } from "path";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
 import { WORLD_MAP_DATA_SPECIFIER } from "../src/renderers/dom/build-assets";
 import { isProxiedHost } from "../src/utils/plugin-proxy-hosts";
+import { IMMUTABLE_ASSET_PATH } from "../src/renderers/cloudflare/worker";
 
 const root = join(process.cwd(), "dist", "web");
 
@@ -77,6 +78,23 @@ for (const path of outputFiles) {
  * the list, still starts and still passes every check above. It just quietly
  * drops the panes.
  */
+// The Worker keeps a file for a year when its name says it is named after its
+// contents: each such name has to be its file's hash, or a change under the
+// same name would never reach a browser that has it.
+for (const path of outputFiles) {
+  const name = `/${relative(root, path).replaceAll("\\", "/")}`;
+  if (!IMMUTABLE_ASSET_PATH.test(name)) continue;
+  const hash = new Bun.CryptoHasher("sha256").update(await readFile(path)).digest("hex").slice(0, 16);
+  if (!name.endsWith(`-${hash}${name.slice(name.lastIndexOf("."))}`)) failures.push(`${name.slice(1)}: kept as immutable, but its contents hash to ${hash}`);
+}
+// What a page loads before it paints is all kept that way.
+for (const page of ["index.html", "share.html"]) {
+  const html = await readFile(join(root, page), "utf8");
+  for (const [, href] of html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)) {
+    if (!IMMUTABLE_ASSET_PATH.test(href!)) failures.push(`${page}: ${href} is not named after its contents`);
+  }
+}
+
 // Entry files are named after their contents (`main-<hash>.js`).
 const named = (dir: string, stem: string, ext: string) => outputFiles
   .map((path) => relative(root, path).replaceAll("\\", "/"))

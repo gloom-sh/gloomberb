@@ -93,12 +93,14 @@ async function buildPage(
   const loading = loadingText ? `<div class="gloom-loading">${loadingText}</div>` : "";
   // A file of its own, not inline: the Worker's content security policy runs
   // no inline script. Classic and synchronous, so the frame is drawn before
-  // the first paint; named for the build, so no cache serves another build's.
+  // the first paint; named for the build and then for its own contents, since
+  // the frame can change while the bundle and stylesheet it is named for do not.
   let frameScript = "";
   if (bootFrame) {
     const build = await pageBuildId(script, stylesheet);
-    const bootScript = join(outdir, "assets", name, `boot-frame-${build}.js`);
-    await writeFile(bootScript, `${pageBootFrameScript({ ...bootFrame, build })}\n`);
+    const framePath = join(outdir, "assets", name, `boot-frame-${build}.js`);
+    await writeFile(framePath, `${pageBootFrameScript({ ...bootFrame, build })}\n`);
+    const bootScript = await withContentHash(framePath);
     frameScript = `\n  <script src="${href(bootScript)}"></script>`;
   }
   await writeFile(join(outdir, htmlName), `<!doctype html>

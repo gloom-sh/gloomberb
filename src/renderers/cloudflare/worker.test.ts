@@ -81,6 +81,11 @@ describe("static Cloudflare host", () => {
       const response = await handleRequest(new Request(`https://term.example${path}`), script);
       expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     }
+    // Only the build's own hash: a name that merely ends in letters and digits is revalidated.
+    for (const path of ["/assets/app/boot-frame-cgqhseqiov4g-tr2eugf187e4.js", "/assets/app/main-0123456789abcdeg.js", "/assets/app/main-0123456789abcd.js"]) {
+      const response = await handleRequest(new Request(`https://term.example${path}`), script);
+      expect(response.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    }
     const icon = await handleRequest(new Request("https://term.example/favicon.svg"), served("<svg/>", "image/svg+xml"));
     expect(icon.headers.get("cache-control")).toBe("public, max-age=86400");
     // A lazy chunk keeps its name across builds, so it is still revalidated.
