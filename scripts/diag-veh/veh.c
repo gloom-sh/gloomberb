@@ -6,6 +6,7 @@
 // calls also go to a ring, and a watcher thread checks the pages made
 // executable: when one stops being executable with no call recorded for it,
 // the ring's calls since the page was last seen executable are written out.
+// Calls keep raw stack words; the reader keeps those inside modules.
 // The handlers only copy into static memory (a thread out of stack can still
 // run them); a logger thread writes the records, thread names and modules out.
 #include <windows.h>
@@ -16,9 +17,9 @@
 #define MAX_ENTRIES 256
 #define STACK_WORDS 96
 #define MAX_CALLS 32768
-#define CALL_FRAMES 12
+#define CALL_FRAMES 64
 #define MAX_WATCHED 16384
-#define RING 65536
+#define RING 16384
 #define MAX_PAGES 8192
 
 typedef LONG NTSTATUS;
@@ -26,7 +27,6 @@ typedef NTSTATUS(NTAPI* NtProtectFn)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
 typedef NTSTATUS(NTAPI* NtAllocFn)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
 typedef NTSTATUS(NTAPI* NtFreeFn)(HANDLE, PVOID*, PSIZE_T, ULONG);
 typedef NTSTATUS(NTAPI* NtAllocExFn)(HANDLE, PVOID*, PSIZE_T, ULONG, ULONG, PVOID, ULONG);
-typedef USHORT(NTAPI* CaptureFn)(ULONG, ULONG, PVOID*, PULONG);
 
 typedef struct {
   volatile LONG state; // 0 empty, 1 recorded, 2 written
@@ -70,7 +70,6 @@ static ULONG64 g_pages[MAX_PAGES];
 static volatile LONG g_page_state[MAX_PAGES]; // 0 executable, 1 released by a recorded call, 2 reported
 static ULONG64 g_page_seen[MAX_PAGES];
 static volatile LONG g_page_count = 0;
-static CaptureFn g_capture;
 
 #define EXEC_MASK (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)
 
@@ -101,7 +100,13 @@ static __declspec(noinline) void fill_call(Call* c, char kind, char other, NTSTA
   c->size = size;
   c->arg = arg;
   c->old = old;
-  c->frame_count = g_capture ? g_capture(3, CALL_FRAMES, (PVOID*)c->frames, NULL) : 0;
+  // Raw stack words, not a stack walk: walking takes the function table
+  // lock, which a thread growing the heap from RtlAddFunctionTable holds.
+  ULONG64 sp = (ULONG64)_AddressOfReturnAddress();
+  ULONG64 top = __readgsqword(0x08);
+  USHORT n = 0;
+  while (n < CALL_FRAMES && sp + 8 <= top) { c->frames[n++] = *(ULONG64*)sp; sp += 8; }
+  c->frame_count = n;
 }
 
 static __declspec(noinline) void ring_call(char kind, char other, NTSTATUS status, ULONG64 base, ULONG64 size, ULONG64 arg, ULONG64 old) {
@@ -230,7 +235,6 @@ static void* hook_stub(HMODULE ntdll, const char* name, void* hook, unsigned cha
 static void install_hooks(void) {
   HMODULE ntdll = GetModuleHandleA("ntdll.dll");
   if (!ntdll) return;
-  g_capture = (CaptureFn)GetProcAddress(ntdll, "RtlCaptureStackBackTrace");
   unsigned char* page = (unsigned char*)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
   if (!page) return;
   // The trampolines' own page is never watched: allocate it before the hooks.
@@ -319,7 +323,12 @@ static char* put_call(char* p, const char* prefix, Call* c) {
   p = put_str(p, " old "); p = put_hex(p, c->old);
   p = put_str(p, " status "); p = put_hex(p, (ULONG)c->status);
   p = put_str(p, " frames");
-  for (USHORT f = 0; f < c->frame_count && f < CALL_FRAMES; ++f) { *p++ = ' '; p = put_hex(p, c->frames[f]); }
+  // Images load high; words there are likely return addresses.
+  for (USHORT f = 0; f < c->frame_count && f < CALL_FRAMES; ++f) {
+    ULONG64 w = c->frames[f];
+    if (w < 0x7FF000000000ULL || w >= 0x800000000000ULL) continue;
+    *p++ = ' '; p = put_hex(p, w);
+  }
   *p++ = '\n';
   return p;
 }
