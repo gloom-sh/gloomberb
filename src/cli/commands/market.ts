@@ -54,6 +54,7 @@ import {
   analystReferenceMetadata,
   analystUpside,
   formatAnalystReference,
+  ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
@@ -878,7 +879,14 @@ function analystRows(data: AnalystResearchData) {
     current: rating.current ?? "",
     prior: rating.prior ?? "",
     target: rating.currentPriceTarget ?? null,
+    ...(ratingReason(rating) ? { reason: rating.reason } : {}),
   }));
+}
+
+/** The reason coverage of an action gave, under its row with the article. */
+function analystRowNote(row: { reason?: AnalystResearchData["ratings"][number]["reason"] }): string | null {
+  const reason = row.reason;
+  return reason ? `${reason.text} · ${reason.url}` : null;
 }
 
 /** Provider values carry binary floating-point noise such as 0.26940000000000003. */
@@ -2681,6 +2689,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: listingHeading(identity),
       rows: analystRows,
       summary: (research) => analystSummary(research, quote),
+      rowNote: analystRowNote,
       columns: [
         { key: "date", header: "Date" },
         { key: "firm", header: "Firm" },
