@@ -7,7 +7,7 @@ import { nonUsHolderCaveat } from "./report-header";
 /**
  * A US listing's 13F holders from the SEC 13F holder index, the list `fn 13F`
  * pages through: every filer that reported the security for the latest
- * quarter, largest first, 25 to a page. HDS shows them in the units of the
+ * quarter, largest first. HDS shows them in the units of the
  * source's own short list (each position at the latest price, the stake as a
  * share of the class that list divides by), and keeps that short list for a
  * listing abroad and whenever the index cannot be read.
@@ -96,26 +96,35 @@ export function indexedHolderPage(holdings: TickerHoldings): IndexedHolderList {
   };
 }
 
-/** Rows the service gives a page, as `fn 13F` asks for them. */
-const INDEX_PAGE_ROWS = 25;
 /**
- * Pages one list reads at most: twice what the most rows take, for pages
- * whose options and exits leave fewer holders, and never without end.
+ * Rows the pane asks a page for. The service reads a stored quarter's holders
+ * by key and gives up to 200 a page; one that builds the page from the funds'
+ * filings (an older one, or a quarter not stored yet) gives 25, and the next
+ * page starts where it stopped.
  */
-const INDEX_PAGES_MAX = Math.ceil(HOLDER_ROWS_MAX / INDEX_PAGE_ROWS) * 2;
+const INDEX_PAGE_ROWS = 100;
+/** Rows the service gives a page at most, as one that builds it from the funds' filings does. */
+const INDEX_PAGE_ROWS_MIN = 25;
+/**
+ * Pages one list reads at most: twice what the most rows take at the
+ * smallest page, for pages whose options and exits leave fewer holders, and
+ * never without end.
+ */
+const INDEX_PAGES_MAX = Math.ceil(HOLDER_ROWS_MAX / INDEX_PAGE_ROWS_MIN) * 2;
 
 /** The client the pages come through; headless reports pass their own. */
 export type IndexedHolderClient = Pick<typeof apiClient, "getCloudSec13F">;
 
-/** One page of 25, as `fn 13F` asks for it, so the two share the service's copy. */
+/** One page of the holders from `offset`, `rows` asked (the service may give fewer). */
 export async function loadIndexedHolderPage(
   ticker: string,
   offset: number,
   signal?: AbortSignal,
   client: IndexedHolderClient = apiClient,
+  rows = INDEX_PAGE_ROWS,
 ): Promise<IndexedHolderList> {
   signal?.throwIfAborted();
-  const holdings = await client.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: INDEX_PAGE_ROWS }, { signal }) as TickerHoldings;
+  const holdings = await client.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: rows }, { signal }) as TickerHoldings;
   signal?.throwIfAborted();
   if (!Array.isArray(holdings?.rows) || typeof holdings.period !== "string") throw new Error(`13F holders of ${ticker} are unreadable`);
   const page = indexedHolderPage(holdings);
@@ -132,8 +141,9 @@ function appendIndexedHolders(current: IndexedHolderList, page: IndexedHolderLis
 
 /**
  * The largest `limit` holders, paging as far as that takes, never more than
- * `INDEX_PAGES_MAX` pages. A later page that fails keeps the holders already
- * loaded, marked partial; only a first page that fails leaves the source's list.
+ * `INDEX_PAGES_MAX` pages: one request for a stored quarter. A later page
+ * that fails keeps the holders already loaded, marked partial; only a first
+ * page that fails leaves the source's list.
  */
 export async function loadIndexedHolders(
   ticker: string,
@@ -141,12 +151,14 @@ export async function loadIndexedHolders(
   signal?: AbortSignal,
   client: IndexedHolderClient = apiClient,
 ): Promise<IndexedHolderList> {
-  let list = await loadIndexedHolderPage(ticker, 0, signal, client);
+  // Asked for in full: exits and options can leave a page with fewer holders than rows.
+  const rows = Math.min(HOLDER_ROWS_MAX, Math.max(limit, 1));
+  let list = await loadIndexedHolderPage(ticker, 0, signal, client, rows);
   for (let pages = 1; list.hasMore && list.rows.length < limit && pages < INDEX_PAGES_MAX; pages += 1) {
     const offset = list.nextOffset;
     let page: IndexedHolderList;
     try {
-      page = await loadIndexedHolderPage(ticker, offset, signal, client);
+      page = await loadIndexedHolderPage(ticker, offset, signal, client, rows);
     } catch (error) {
       if (signal?.aborted) throw error;
       logFailure("holders.index", "Read a later page of the 13F holder index failed", null)(error);
