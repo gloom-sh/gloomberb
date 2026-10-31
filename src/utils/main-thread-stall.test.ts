@@ -100,6 +100,37 @@ test("stalls keep naming the work before them, with a SQLite statement's facts a
   ]);
 });
 
+// A window's request is measured around its handler, so it ends after any
+// statement inside it. Taking the step from that statement dropped whether
+// it waited on a lock, and how many tries it took.
+test("a statement that held the thread through most of a request stays the step, with its facts", () => {
+  const harness = createHarness();
+  harness.advance(250);
+  harness.fire();
+
+  const blocked = { operation: "save session snapshot", attempts: 3, lockWait: true };
+  measurePerf("rpc.request.save-session", () => {
+    recordPerfSample("sqlite.blocked", 900, blocked);
+  });
+  harness.advance(1_250);
+  harness.fire();
+
+  // A short statement before the request's real work does not name it.
+  measurePerf("rpc.request.load-layout", () => {
+    recordPerfSample("sqlite.blocked", 1, blocked);
+    const until = performance.now() + 5;
+    while (performance.now() < until) { /* the request's own work */ }
+  });
+  harness.advance(1_250);
+  harness.fire();
+  harness.stop();
+
+  expect(harness.reports.map(({ context }) => ({ lastMeasured: context.lastMeasured, sqlite: context.sqlite }))).toEqual([
+    { lastMeasured: "sqlite.blocked", sqlite: blocked },
+    { lastMeasured: "rpc.request.load-layout", sqlite: undefined },
+  ]);
+});
+
 // Windows keeps the timers' clock running while the computer sleeps, so a
 // closed lid read as a freeze of minutes. Only the awake part of a late
 // timer is a stall, and the platform's clocks say whether the thread was

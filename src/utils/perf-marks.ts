@@ -25,6 +25,7 @@ function now(): number {
 // object, kept by reference.
 let lastSampleName: string | null = null;
 let lastSampleEndedAt = 0;
+let lastSampleDurationMs = 0;
 let lastSampleMetadata: Record<string, unknown> | undefined;
 /** Inside `withoutLastStep`: samples are logged, and none becomes the last step. */
 let quietDepth = 0;
@@ -39,15 +40,28 @@ export function lastPerfSample(): { name: string; endedAt: number; metadata?: Re
   return { name: lastSampleName, endedAt: lastSampleEndedAt, ...(lastSampleMetadata ? { metadata: lastSampleMetadata } : {}) };
 }
 
+/**
+ * Whether the last step ended inside a section that started at `startedAt`
+ * and took at least half of its `durationMs`. That step says more about the
+ * time than the section around it: a SQLite statement that held the thread
+ * through most of a window's request keeps its lock and try facts, where a
+ * short one before the request's real work does not.
+ */
+function lastStepAccountsForSection(startedAt: number, durationMs: number): boolean {
+  return lastSampleName != null && lastSampleEndedAt >= startedAt && lastSampleDurationMs * 2 >= durationMs;
+}
+
 function logSlowPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
   lastStep = true,
+  startedAt?: number,
 ): void {
-  if (lastStep && quietDepth === 0) {
+  if (lastStep && quietDepth === 0 && (startedAt === undefined || !lastStepAccountsForSection(startedAt, durationMs))) {
     lastSampleName = name;
     lastSampleEndedAt = now();
+    lastSampleDurationMs = durationMs;
     lastSampleMetadata = metadata;
   }
   const payload = {
@@ -97,6 +111,10 @@ export function recordPerfSample(
   logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false);
 }
 
+/**
+ * Measures `fn`. A step measured inside it that took most of its time stays
+ * the step a stall names (`lastStepAccountsForSection`).
+ */
 export function measurePerf<T>(
   name: string,
   fn: () => T,
@@ -106,7 +124,7 @@ export function measurePerf<T>(
   try {
     return fn();
   } finally {
-    logSlowPerfSample(name, now() - start, metadata);
+    logSlowPerfSample(name, now() - start, metadata, true, start);
   }
 }
 
