@@ -929,6 +929,23 @@ function Assert-WindowControlPaddingMeasurement {
   }
 }
 
+function Assert-ExecutableDetails {
+  param([string]$Path)
+
+  # What Task Manager, a file's properties and Windows' security prompts show.
+  $Details = (Get-Item -LiteralPath $Path).VersionInfo
+  $Name = Split-Path -Leaf $Path
+  Write-Host "$Name details: $($Details.FileDescription), $($Details.ProductName), $($Details.CompanyName), $($Details.ProductVersion)"
+  foreach ($Field in @("FileDescription", "ProductName", "CompanyName")) {
+    if ($Details.$Field -ne "Gloom") {
+      throw "$Name shows $Field '$($Details.$Field)' instead of Gloom"
+    }
+  }
+  if ($Details.ProductVersion -ne $PackageJson.version) {
+    throw "$Name shows version '$($Details.ProductVersion)' instead of $($PackageJson.version)"
+  }
+}
+
 function Assert-IcoFile {
   param(
     [string]$Path,
@@ -1665,6 +1682,14 @@ Export-AssociatedIcon `
   -ExecutablePath (Join-Path $BundleDir "bin\bun.exe") `
   -OutputPath (Join-Path $GuiArtifactDir "windows-icon-bun.png") `
   -Label "TUI runtime"
+$AppExecutables = @(Get-ChildItem -LiteralPath (Join-Path $BundleDir "bin") -Filter "*.exe" -File |
+  Where-Object { $_.Name -in @("launcher.exe", "bun.exe") -or $_.Name -like "bun Helper*.exe" })
+if ($AppExecutables.Count -lt 3) {
+  throw "Missing the launcher, runtime or Chromium helpers in $(Join-Path $BundleDir 'bin')"
+}
+foreach ($Executable in $AppExecutables) {
+  Assert-ExecutableDetails $Executable.FullName
+}
 Export-AssociatedIcon `
   -ExecutablePath $InstallerPath `
   -OutputPath (Join-Path $GuiArtifactDir "windows-icon-installer.png") `
