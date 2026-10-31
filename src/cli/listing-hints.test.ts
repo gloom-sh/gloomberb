@@ -101,7 +101,7 @@ test("a bare symbol several companies list is named once per report: fn by quote
   });
   const market = { ...deps, dataProvider: provider };
   expect(await quotedListingChoiceNotes(await resolveCliListing("CAR", undefined, market), market))
-    .toEqual(["CAR = Avis Budget Group, NASDAQ (a different company on XETRA)"]);
+    .toEqual(["CAR = Avis Budget Group, NASDAQ (a different company on Xetra)"]);
   expect(await quotedListingChoiceNotes(await resolveCliListing("CAR:ASX", undefined, market), market)).toEqual([]);
 
   const run = createTestCliContext({ dataProvider: provider });

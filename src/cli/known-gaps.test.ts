@@ -86,8 +86,12 @@ test("freight rates and the Baltic indices are said to be uncovered, naming what
   expect(gap).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
   for (const proxy of ["BDRY", "SBLK", "GNK", "DSX", "fn CHOKE", "news \"dry bulk\""]) expect(gap).toContain(proxy);
   for (const query of ["Baltic Dry", "dry-bulk", "Panamax", "freight rates", "FFA", "BDI", "charter rates"]) expect(knownGapMessage(query), query).toBe(gap);
-  // Only the whole query: a company, a sector or a ticker that merely carries the word is not the gap.
-  for (const query of ["baltic sea", "freight forwarder stocks", "BDIX", "BDRY", "ocean freight carriers"]) expect(knownGapMessage(query), query).toBeNull();
+  // A term among words that only qualify it matches on its tokens.
+  for (const query of ["panamax rates", "shipping rates", "bulk freight", "freight cost", "capesize spot rate", "dry bulk shipping rates"]) {
+    expect(knownGapMessage(query), query).toBe(gap);
+  }
+  // A company, a sector or a ticker that merely carries the word is not the gap: another word makes it another question.
+  for (const query of ["baltic sea", "freight forwarder stocks", "BDIX", "BDRY", "ocean freight carriers", "shipping stocks"]) expect(knownGapMessage(query), query).toBeNull();
   expect(knownGapForTicker("BDI")).toBe(gap);
   for (const symbol of ["FFA", "freight", "BDRY", "EUA"]) expect(knownGapForTicker(symbol), symbol).toBeNull();
 

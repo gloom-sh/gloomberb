@@ -27,12 +27,16 @@ const QUOTES: Record<string, ReturnType<typeof createTestQuote>> = {
   "2222:JPX": createTestQuote({ symbol: "2222", name: "Kotobuki Spirits Co., Ltd.", currency: "JPY", instrumentType: "EQUITY", listingExchangeName: "JPX" }),
   "2222:TADAWUL": createTestQuote({ symbol: "2222", name: "Saudi Arabian Oil Co.", currency: "SAR", instrumentType: "EQUITY", listingExchangeName: "TADAWUL" }),
   AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NASDAQ" }),
+  // BDI is Black Diamond Group in Toronto and on Cboe Canada (NEO), a code only the venue names know.
+  "BDI:TSX": createTestQuote({ symbol: "BDI", name: "Black Diamond Group Limited", currency: "CAD", instrumentType: "EQUITY", listingExchangeName: "TSX" }),
+  "BDI:NEO": createTestQuote({ symbol: "BDI", name: "Black Diamond Group Ltd.", currency: "CAD", instrumentType: "EQUITY", listingExchangeName: "NEO" }),
   // The bare coin ticker is a fund, as the data service answers it.
   ETH: createTestQuote({ symbol: "ETH", name: "Grayscale Ethereum Mini Trust ETF", currency: "USD", instrumentType: "ETF", listingExchangeName: "ARCA" }),
 };
 const VENUES: Record<string, Array<[string, string]>> = {
   "2222": [["JPX", "Kotobuki Spirits Co., Ltd."], ["TADAWUL", "Saudi Arabian Oil Co."]],
   AAPL: [["NASDAQ", "Apple Inc."]],
+  BDI: [["TSX", "Black Diamond Group Limited"], ["NEO", "Black Diamond Group Ltd."], ["BSE", "B. D. Industries (Pune) Limited"]],
 };
 const BARS = Array.from({ length: 5 }, (_, day) => ({
   date: new Date(Date.UTC(2026, 9, 5 + day)), open: 30, high: 30, low: 30, close: 30, volume: 1_000,
@@ -101,6 +105,16 @@ test("a chart reads a bare code several companies list as quote does: it asks wh
   expect(charted.failure.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom fn G 2222:TADAWUL)");
   // Each retry keeps the rest of the argument.
   expect((await run(["G", "2222:volume, AAPL"], "fn")).failure.details).toContain("(try: gloom fn G 2222:JPX:volume, AAPL)");
+});
+
+test("fn G charts every listing its exchange question offers, written SYMBOL:EXCH or given --exchange", async () => {
+  expect((await run(["G", "BDI"], "fn")).failure.details).toContain("BDI:NEO Black Diamond Group Ltd. (try: gloom fn G BDI:NEO)");
+  for (const [args, name] of [[["G", "BDI:NEO"], "Black Diamond Group Ltd."], [["G", "BDI", "--exchange", "neo"], "Black Diamond Group Ltd."],
+    [["G", "BDI", "--exchange", "TSX"], "Black Diamond Group Limited"]] as const) {
+    const { failure, printed } = await run([...args], "fn");
+    expect(failure.message, args.join(" ")).toBeUndefined();
+    expect((printed!.result.data as { series: Array<{ name?: string }> }).series.map((series) => series.name)).toEqual([name]);
+  }
 });
 
 test("a chart of a bare coin ticker read as a fund says where the coin is, as quote does", async () => {

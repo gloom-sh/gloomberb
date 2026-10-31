@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { printCliResult, serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
 import { printCliError } from "./errors";
 import { captureConsole } from "../test-support/console";
-import { setCliColorEnabledOverride, setCliPlainOverride } from "../utils/cli-output";
+import { setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 import type { CliGlobalOptions } from "./options";
 import type { ReportFreshness } from "./pane-functions/freshness";
 
@@ -306,6 +306,36 @@ test("large research reports remain complete through a pipe after stdout initial
   const report = JSON.parse(stdout);
   expect(report.data.rows).toHaveLength(6000);
   expect(report.data.rows.at(-1)).toEqual({ id: 5999, name: "東京 — research report" });
+});
+
+test("a narrow --width wraps a report's heading, summary, notes and warnings, keeping the gaps between its facts", async () => {
+  const data = [{ date: "2026-10-29", close: 28.89 }, { date: "2026-10-30", close: 28.36 }];
+  const heading = "Star Bulk Carriers Corp.  ·  NASDAQ\nCurrency USD  ·  daily bars  ·  2026-09-30 to 2026-10-30  ·  23 bars";
+  const drawdown = "Max drawdown -9.9% (daily closes): peak 30.84 on 2026-10-05, trough 27.79 on 2026-10-16, not back to the peak by 2026-10-30";
+  const warning = "GOGL = Corgi GOOGL 2x Daily ETF, Cboe BZX (a different company on the Warsaw Stock Exchange)";
+  const render: CliResultRenderOptions = { heading: `${heading}\n${drawdown}`, footnote: drawdown, dateKey: "date" };
+  setCliColorEnabledOverride(false);
+  try {
+    setCliWidthOverride(56);
+    const { stderr } = await captureConsole(() => printCliResult({ data, warnings: [warning] }, baseOptions, render));
+    const text = serializeCliResult({ data }, baseOptions, render);
+    expect(text.split("\n").slice(0, 5)).toEqual([
+      "Star Bulk Carriers Corp.  ·  NASDAQ",
+      "Currency USD  ·  daily bars  ·  2026-09-30 to",
+      "2026-10-30  ·  23 bars",
+      "Max drawdown -9.9% (daily closes): peak 30.84 on",
+      "2026-10-05, trough 27.79 on 2026-10-16, not back to the",
+    ]);
+    expect([...text.split("\n"), ...stderr.split("\n")].filter((line) => line.length > 56)).toEqual([]);
+    expect(stderr.split("\n")).toEqual(["warning: GOGL = Corgi GOOGL 2x Daily ETF, Cboe BZX (a", "different company on the Warsaw Stock Exchange)"]);
+    expect(serializeCliResult({ data }, { ...baseOptions, format: "json" }, render)).not.toContain("\\n2026-10-30");
+    // Unfitted, every line prints whole.
+    setCliWidthOverride(null);
+    expect(serializeCliResult({ data }, baseOptions, render).split("\n").slice(0, 3)).toEqual(`${heading}\n${drawdown}`.split("\n"));
+  } finally {
+    setCliWidthOverride(null);
+    setCliColorEnabledOverride(null);
+  }
 });
 
 test("COLUMNS fits piped text to its width and never changes JSON, CSV or NDJSON", () => {

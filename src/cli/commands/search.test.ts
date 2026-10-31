@@ -42,6 +42,38 @@ test("a search the data service was too busy for or never answered fails, unlike
   expect((partial.printed[0]!.data as Array<{ symbol: string }>).map((row) => row.symbol)).toEqual(["EGLE"]);
 });
 
+/**
+ * "baltic dry" printed only "Search is busy" about half the time: the gap line
+ * and its proxies are the answer, and they need no lookup.
+ */
+test("a busy or unreachable ticker lookup still prints the freight gap line first, then fails for the tickers alone", async () => {
+  const run = async (answer: () => Promise<never[]>, json: boolean) => {
+    const dataProvider = createTestDataProvider({ search: answer });
+    const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+    const logged: string[] = [];
+    const log = console.log;
+    console.log = (line: unknown) => { logged.push(String(line)); };
+    try {
+      const failure = await search("baltic dry", { initMarketData, ...json ? { printResult: () => {} } : {} })
+        .then(() => null, (error: unknown) => error as { code: string; message: string; details?: string; retryable?: boolean });
+      return { failure, logged: logged.join("\n") };
+    } finally {
+      console.log = log;
+    }
+  };
+  const busy = async () => { throw new ProviderBusyError(); };
+  const text = await run(busy, false);
+  expect(text.logged).toContain("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
+  expect(text.failure).toMatchObject({ code: "search_busy", message: "Ticker search is busy, try again in a moment.", retryable: true });
+  // JSON has one document: the failure carries the line.
+  const json = await run(busy, true);
+  expect(json.logged).toBe("");
+  expect(json.failure?.details).toContain("Traded proxies: BDRY");
+  const offline = await run(async () => { throw new DataServiceUnreachableError(new TypeError("Failed to fetch")); }, false);
+  expect(offline.logged).toContain("fn CHOKE");
+  expect(offline.failure).toMatchObject({ code: "service_unreachable", retryable: true });
+});
+
 test("a name typed in kana or kanji is searched as typed, matches no saved ticker, and says what to type when nothing lists it", async () => {
   const saved = ["AAPL", "AMC", "AMZN", "BRK.B", "BTC-USD"].map((symbol) => createTestTicker(symbol, symbol));
   const run = async (query: string, answer: (query: string) => Promise<never[]>) => {

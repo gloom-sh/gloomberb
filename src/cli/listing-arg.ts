@@ -17,7 +17,7 @@ import {
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import { findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
-import { lineMayHaveMoved, loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
+import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
 import { groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
@@ -25,6 +25,7 @@ import {
   canonicalExchange,
   exchangeCodeVenues,
   exchangeLabel,
+  exchangeName,
   isKnownExchangeCode,
   isSharedExchangeCode,
   isUsListingExchange,
@@ -414,9 +415,15 @@ export function listingChoiceNote(
     .filter((exchange) => exchange !== chosen.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
-  const named = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
+  const named = `${others.slice(0, MAX_OTHER_LISTINGS).map(venueInProse).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
   const which = others.length === 1 ? "a different company" : "different companies";
-  return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (${which} on ${named})`;
+  return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${exchangeName(chosen.exchange)} (${which} on ${named})`;
+}
+
+/** A venue as a sentence names it, in full: "the Warsaw Stock Exchange", "Xetra", "NASDAQ" (a name that is its code). */
+function venueInProse(code: string): string {
+  const name = exchangeName(code);
+  return /\b(?:Exchange|Bourse|Market)$/.test(name) ? `the ${name}` : name;
 }
 
 // Quotes of these never name a company's listing, so they are never a choice between companies.
@@ -803,6 +810,11 @@ export interface ReadListing {
   name: string | null;
   /** A bare coin ticker read as a listing that is not the coin (`coinListingNotes`); null otherwise. */
   coinNote: string | null;
+  /**
+   * What became of the company that had the symbol, as `quote` says it ("GOGL was Golden Ocean Group until
+   * 2025, now Cmb.Tech: CMBT"), when asked for (`successor`); null otherwise.
+   */
+  successorNote?: string | null;
 }
 
 /**
@@ -818,13 +830,19 @@ export async function readBareListing(
   symbol: string,
   deps: ListingDeps,
   request: ListingDataRequest,
-  { refresh = false }: { refresh?: boolean } = {},
+  /** `successor`: also say what became of the company that had the symbol, looked up beside its quote. */
+  { refresh = false, successor = false }: { refresh?: boolean; successor?: boolean } = {},
 ): Promise<ReadListing | null> {
   const listing = await resolveCliListing(symbol, null, deps);
   if (listing.exchange) return null;
+  const changes = successor ? startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange) : null;
   const answer = await loadListingQuoteAnswer(deps.dataProvider, listing);
   if (answer.quote) {
-    return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null, coinNote: coinListingNotes(listing, answer.quote)[0] ?? null };
+    const successorNote = changes
+      ? listingChangeLine(await loadListingFate(listing, deps.dataProvider, { quote: answer.quote, changes, graceMs: SUCCESSOR_CHANGE_WAIT_MS }))
+      : null;
+    return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null, coinNote: coinListingNotes(listing, answer.quote)[0] ?? null,
+      ...successorNote ? { successorNote } : {} };
   }
   if (!isNoProviderError(answer.error)) return null;
   const other = await quoteBareListing(listing, deps, request, { refresh });
@@ -878,10 +896,12 @@ export function listingFateLoader(
   listing: Pick<CliListing, "symbol" | "exchange" | "request">,
   deps: Pick<ListingDeps, "dataProvider">,
   quote: Promise<Quote | null>,
+  /** `successor`: the command says what became of the company too (GOGL's merger), so the lookup is waited for. */
+  { successor = false }: { successor?: boolean } = {},
 ): () => Promise<ListingFate> {
   const changes = startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange);
   let fate: Promise<ListingFate> | null = null;
-  return () => fate ??= loadListingFate(listing, deps.dataProvider, { quote, changes });
+  return () => fate ??= loadListingFate(listing, deps.dataProvider, { quote, changes, ...successor ? { graceMs: SUCCESSOR_CHANGE_WAIT_MS } : {} });
 }
 
 /**

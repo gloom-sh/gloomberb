@@ -93,6 +93,12 @@ export function isKnownExchangeCode(value?: string): boolean {
   return !!normalized && KNOWN_EXCHANGE_CODES.has(normalized);
 }
 
+/** "Warsaw Stock Exchange" for a venue with a name, the canonical code otherwise (NASDAQ, whose name is its code). */
+export function exchangeName(value?: string): string {
+  const code = canonicalExchange(value);
+  return EXCHANGE_NAMES[code] ?? code;
+}
+
 /** "Euronext Paris (EPA)" for a venue with a name, the canonical code otherwise. */
 export function exchangeLabel(value?: string): string {
   const code = canonicalExchange(value);

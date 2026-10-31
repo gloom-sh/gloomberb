@@ -87,8 +87,15 @@ export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are l
  * `tickers` are terms that are also a real ticker (BDI is Black Diamond Group):
  * a query that is only that word still gets the line, but `quote` adds it only
  * to the exchange question or the failure of the bare symbol, never to a quote.
+ *
+ * An entry with `words` matches on tokens, not only the whole query: a query
+ * holding one of its terms, every other word a term or one of `words`
+ * ("panamax rates", "bulk freight", "freight cost"). A word outside both keeps
+ * it a different question ("freight forwarder stocks", "ocean freight
+ * carriers"). An entry without `words` matches the whole query alone, since
+ * its terms are words of company names too ("carbon", "second").
  */
-const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly string[]; message: string }> = [
+const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; words?: readonly string[]; tickers?: readonly string[]; message: string }> = [
   {
     terms: ["EUA", "EUAs", "EU ETS", "EU allowance", "EU allowances", "EU carbon", "carbon", "carbon allowance", "carbon allowances",
       "carbon price", "carbon prices", "carbon credits", "emission allowances", "emissions allowances"],
@@ -107,8 +114,12 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly s
   {
     terms: ["Baltic", "Baltic Dry", "Baltic Dry Index", "Baltic Exchange", "Baltic index", "Baltic indices", "BDI", "BDIY", "freight",
       "freight rate", "freight rates", "freight index", "freight futures", "freight forward", "freight forwards", "freight forward agreement",
-      "freight forward agreements", "FFA", "FFAs", "capesize", "panamax", "supramax", "charter rate", "charter rates", "dry bulk",
-      "dry bulk rates", "dry bulk freight"],
+      "freight forward agreements", "FFA", "FFAs", "capesize", "panamax", "supramax", "handysize", "kamsarmax", "newcastlemax",
+      "charter rate", "charter rates", "dry bulk", "dry bulk rates", "dry bulk freight", "shipping rate", "shipping rates", "shipping cost",
+      "shipping costs", "time charter", "TCE"],
+    words: ["rate", "rates", "cost", "costs", "price", "prices", "index", "indices", "indexes", "level", "levels", "chart", "charts",
+      "history", "historical", "data", "spot", "today", "current", "latest", "daily", "weekly", "market", "markets", "bulk", "dry",
+      "bulker", "bulkers", "vessel", "vessels", "ship", "ships", "route", "routes", "earnings", "equivalent", "futures", "the", "of", "for"],
     tickers: ["BDI"],
     message: "Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered. Traded proxies: BDRY (freight futures ETF), "
       + "SBLK, GNK, DSX (dry-bulk shipowners); chokepoint transits: fn CHOKE; news \"dry bulk\".",
@@ -406,7 +417,23 @@ export function knownGapForTicker(symbol: string): string | null {
 }
 
 /**
- * The line for a query that names a known subject as a whole ("carbon allowances", "EUA"), a Treasury yield
+ * Whether a query names a known subject: as a whole ("Baltic Dry", "dry-bulk"), or, for an entry with `words`,
+ * by a term among words that only qualify it ("panamax rates", "bulk freight").
+ */
+function namesKnownGap(gap: (typeof KNOWN_GAPS)[number], query: string): boolean {
+  const key = lookupKey(query);
+  if (gap.terms.some((term) => lookupKey(term) === key)) return true;
+  if (!gap.words) return false;
+  const asked = words(query);
+  const named = new Set(gap.terms.flatMap((term) => {
+    const parts = words(term);
+    return containsWords(asked, parts) ? parts : [];
+  }));
+  return named.size > 0 && asked.every((word) => named.has(word) || gap.words!.includes(word));
+}
+
+/**
+ * The line for a query that names a known subject ("carbon allowances", "EUA", "panamax rates"), a Treasury yield
  * typed as a ticker (US10Y), a topic with no function ("defense budget"), or a macro release no series carries
  * ("ISM manufacturing", "GDPNow"), else null.
  */
@@ -414,7 +441,7 @@ export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
   if (!key) return null;
   const tenor = treasuryYieldTenor(query);
-  return KNOWN_GAPS.find((gap) => gap.terms.some((term) => lookupKey(term) === key))?.message
+  return KNOWN_GAPS.find((gap) => namesKnownGap(gap, query))?.message
     ?? (tenor ? treasuryYieldLine(tenor) : null)
     ?? topicPointer(query)?.message
     ?? macroReleaseTopic(query)?.line ?? null;

@@ -252,7 +252,7 @@ import {
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
-import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
+import { bareListingNote, listingFateNotes, noLongerTradingNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
@@ -1055,7 +1055,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       const listing = asked[index]!;
       // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
       if (result.quote && bareListingNote(listing, result.quote)) return { change: null, formerIssuer: null };
-      const payload = await changes.get(listing)?.settle() ?? null;
+      const payload = await changes.get(listing)?.settle(SUCCESSOR_CHANGE_WAIT_MS) ?? null;
       const current = tradingListing(result.quote, now);
       return { change: describeTickerChange(listing.symbol, payload, current), formerIssuer: describeFormerIssuer(listing.symbol, payload, current) };
     }));
@@ -1402,7 +1402,7 @@ async function loadListingHistory(
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
   const quoted = quoteAnswer.then((answer) => answer.quote);
-  const fate = lookups ? listingFateLoader(listing, market, quoted) : null;
+  const fate = lookups ? listingFateLoader(listing, market, quoted, { successor: true }) : null;
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [loaded, quote] = await Promise.all([
     loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
@@ -2772,7 +2772,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const refresh = ctx.cliOptions.refresh;
     const venues = loadBareVenues(listing, market);
     const quotePromise = loadListingQuote(market.dataProvider, listing);
-    const fate = listingFateLoader(listing, market, quotePromise);
+    const fate = listingFateLoader(listing, market, quotePromise, { successor: true });
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
     const now = Date.now();
     // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.

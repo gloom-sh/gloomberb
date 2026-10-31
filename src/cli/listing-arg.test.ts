@@ -269,12 +269,12 @@ test("the line naming a bare symbol's listing names only other companies' venues
     { exchange: "LSE", name: "W.A.G Payment Solutions plc" },
   ];
   expect(listingChoiceNote("EWG", { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" }, ewg))
-    .toBe("EWG = iShares MSCI Germany Index Fund, ARCA (different companies on CSE, LSE)");
+    .toBe("EWG = iShares MSCI Germany Index Fund, NYSE Arca (different companies on the Canadian Securities Exchange, the London Stock Exchange)");
   // Another issuer's fund under the symbol is another company's.
   expect(listingChoiceNote("INDA", { exchange: "BATS", name: "iShares MSCI India ETF" }, [
     { exchange: "BATS", name: "iShares MSCI India ETF" },
     { exchange: "XETRA", name: "Amundi STOXX Europe 600 Banks UCITS ETF Acc" },
-  ])).toBe("INDA = iShares MSCI India ETF, BATS (a different company on XETRA)");
+  ])).toBe("INDA = iShares MSCI India ETF, Cboe BZX (a different company on Xetra)");
   // A US fund's receipt in Buenos Aires is the fund, however it is named, so a symbol that means one thing says nothing.
   const xlk = { exchange: "ARCA", name: "State Street Technology Select Sector SPDR ETF" };
   expect(listingChoiceNote("XLK", xlk, [xlk, { exchange: "BYMA", name: "Technology Select Sector SPDR Fund" }])).toBeNull();
@@ -325,7 +325,7 @@ test("every command agrees with quote on where a symbol trades: a venue search l
   // The one line naming which company a bare CAR went to, and the companies it did not.
   const venues = await listingVenues("CAR", deps);
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, [...venues, { exchange: "ASX", name: "CAR Group Limited" }]))
-    .toBe("CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)");
+    .toBe("CAR = Avis Budget Group, NASDAQ (different companies on Xetra, the Australian Securities Exchange)");
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
     .toBeNull();
 });

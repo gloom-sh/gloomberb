@@ -235,13 +235,14 @@ export function createHeadlessPaneContext(
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
         command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
-      }, { refresh: !!context.refresh });
+      }, { refresh: !!context.refresh, successor: true });
       if (!read) return null;
       return {
         symbol: read.symbol,
         ...read.exchange ? { exchange: read.exchange } : {},
         ...read.name ? { name: read.name } : {},
         ...read.coinNote ? { coinNote: read.coinNote } : {},
+        ...read.successorNote ? { successorNote: read.successorNote } : {},
       };
     },
   };
@@ -545,6 +546,8 @@ function renderRows(
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
       minTableWidth: column.minTableWidth,
+      optional: column.optional,
+      dropPriority: column.dropPriority,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
@@ -902,7 +905,8 @@ export function renderHeadlessPaneText(
 ): string {
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
-  const notices = textNotices(result);
+  // A notice wraps to a narrow --width, as the notes and errors under the tables do.
+  const notices = textNotices(result).map((notice) => wrapToTerminal(notice));
   if (notices.length) lines.push(...notices, "");
   const gate = reportGate(definition, result);
   const reason = emptyReportReason(definition, result, args, token, gate);
