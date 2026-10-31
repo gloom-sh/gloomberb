@@ -4,7 +4,7 @@ import { formatUtcTime, parseReportTime } from "../../../utils/utc-time";
 import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, fetchGpuModelPreviews, gpuPreviewModels, loadGpuEquityHistory } from "./client";
 import {
   GPU_TABS, gpuBasisLabel, gpuChange, gpuChangesLocked, gpuEquityGap, gpuEquityModels, gpuEquityRows, gpuEventDate, gpuFamilies, gpuFamily,
-  gpuLabel, gpuNoMatch, gpuPrice, gpuProvenanceLabel, gpuRows, gpuSource, gpuTab,
+  gpuLabel, gpuNoMatch, gpuPrice, gpuProvenanceLabel, gpuRows, gpuSettleRows, gpuSource, gpuTab, GPU_SETTLE_SECTION,
 } from "./model";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { countOf, freePreviewNote } from "../shared/free-preview";
@@ -33,6 +33,13 @@ const columns = [
   { key: "observedAt", header: "As of", format: minute },
 ];
 
+const settleColumns = [
+  { key: "gpu", header: "GPU" }, { key: "status", header: "Settle" },
+  { key: "price", header: "$/GPU-hr", align: "right" as const, format: price },
+  { key: "change1d", header: "1D", align: "right" as const, format: percent }, { key: "change7d", header: "7D", align: "right" as const, format: percent },
+  { key: "change30d", header: "30D", align: "right" as const, format: percent }, { key: "settleAt", header: "Settled", format: minute },
+];
+
 export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
   // Observed rental prices; the Equities tab's quotes keep their market line.
   shape: "bundle", freshness: { dataset: true }, argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100, h-100 or B200." },
@@ -41,6 +48,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     limitations: ["List prices, provider-declared spot and asks are distinct bases.",
       "Hyperscaler and Neocloud rows are list indexes: the median of the providers' list prices linked over time, so a provider joining or leaving causes no jump; sample.rawMedian is the raw median of today's providers and can differ slightly.",
       "1D/7D/30D need sufficient observation history; unavailable changes remain null.",
+      "The Gloom daily settle is Gloom's official price per GPU and form factor, set at 20:00 UTC and never revised; a day with too few prices has no settle.",
       "Free preview: three board rows, or the latest rows of the GPU asked for; Pro unlocks every provider, the moves and the history."] },
   describe: "GPU rental prices in USD per GPU-hour",
   async load(args, ctx) {
@@ -113,7 +121,11 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const boardRows = gpuRows(rows, model).map((row) => ({ ...observationRow(row), change1d: row.change1d, change7d: row.change7d,
       change30d: row.change30d, stale: row.stale, sample: row.stats ?? null, ...(gpuChangesLocked(row) ? { changesLocked: true } : {}) }));
-    return { sections: [{ title: "GPU rental prices", columns, rows: boardRows, empty: `No ${model ? `${model} ` : ""}rental prices have been observed yet.` }],
+    const settles = gpuSettleRows(board.settles, model).map(({ settle }) => ({ gpu: gpuLabel(settle), status: settle.status === "settled" ? "settled" : "no settle",
+      price: settle.pricePerGpuHr, change1d: settle.change1d, change7d: settle.change7d, change30d: settle.change30d, settleAt: settle.settleAt,
+      date: settle.date, ...(settle.kind === "correction" ? { corrected: true } : {}) }));
+    return { sections: [...(settles.length ? [{ title: GPU_SETTLE_SECTION, columns: settleColumns, rows: settles }] : []),
+      { title: "GPU rental prices", columns, rows: boardRows, empty: `No ${model ? `${model} ` : ""}rental prices have been observed yet.` }],
       freshness, complete: !board.access?.locked, metadata, errors: [...locks, ...board.gaps] };
   },
 };

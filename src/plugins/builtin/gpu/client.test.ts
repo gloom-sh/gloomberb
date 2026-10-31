@@ -3,7 +3,7 @@ import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { GpuBoardPayload, GpuHistoryPayload, GpuHistoryQuery } from "../../../api-client/gpu";
 import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, gpuCacheScope, getCachedGpuBoard, gpuBoardCache, GPU_NOT_AVAILABLE, loadGpuBoard } from "./client";
-import { gpuBoard, gpuEvent, gpuRow } from "./test-fixture";
+import { gpuBoard, gpuEvent, gpuRow, gpuSettle } from "./test-fixture";
 
 describe("GPU API boundary", () => {
   test("missing routes and uncollected prices are unavailable while failures retain their cause", async () => {
@@ -17,6 +17,17 @@ describe("GPU API boundary", () => {
     for (const error of [new ApiRequestError("Sign in required", 401), new ApiRequestError("Bad gateway", 502), new Error("Network failed")]) {
       await expect(fetchGpuBoard({ getCloudGpuBoard: async () => { throw error; } })).rejects.toBe(error);
     }
+  });
+
+  test("a settle that does not read right is left out and the board stays", async () => {
+    const settles = [gpuSettle(), gpuSettle({ id: "12", formFactor: "PCIe", status: "no-settle", pricePerGpuHr: null }),
+      gpuSettle({ id: "13", pricePerGpuHr: null }), gpuSettle({ id: "14", status: "no-settle" }), gpuSettle({ id: "15", date: "Oct 2" }),
+      { ...gpuSettle({ id: "16" }), change1d: Number.NaN }];
+    const board = await fetchGpuBoard({ getCloudGpuBoard: async () => gpuBoard({ settles }) });
+    expect(board.rows).toHaveLength(1);
+    expect(board.settles!.map((settle) => settle.id)).toEqual(["11", "12"]);
+    expect((await fetchGpuBoard({ getCloudGpuBoard: async () => gpuBoard() })).settles).toBeUndefined();
+    expect((await fetchGpuBoard({ getCloudGpuBoard: async () => ({ ...gpuBoard(), settles: "x" }) as unknown as GpuBoardPayload })).settles).toEqual([]);
   });
 
   test("missing returns remain null and a bad row or duplicate series refuses the whole board", async () => {
