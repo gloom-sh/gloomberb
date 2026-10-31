@@ -249,11 +249,11 @@ test("ownership fields: share counts compact, short % of float and institutional
   for (const field of OWNERSHIP_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
 });
 
-test("quality fields: leverage as multiples, returns and growth signed like the growth fields, N/M as FA prints it", () => {
+test("quality fields: leverage as multiples, growth signed like the growth fields, returns unsigned like margins, N/M as FA prints it", () => {
   expect([formatScreenValue("netDebtToEbitda", 0.1307), formatScreenValue("netDebtToEbitda", -0.124), formatScreenValue("debtToEquity", 0.784),
-    formatScreenValue("roicPercent", 71.27), formatScreenValue("fcfYieldPercent", -2.04), formatScreenValue("revenueCagr5YPercent", 8.677),
+    formatScreenValue("roicPercent", 71.27), formatScreenValue("fcfYieldPercent", 3.28), formatScreenValue("fcfYieldPercent", -2.04), formatScreenValue("revenueCagr5YPercent", 8.677),
     formatScreenValue("epsCagr3YPercent", 0.01), formatScreenValue("forwardEpsGrowthPercent", 95.23), formatScreenValue("revenueGrowthPercent", 8.677)])
-    .toEqual(["0.1x", "-0.1x", "0.8x", "+71.3", "-2.0", "+8.7", "0.0", "+95.2", "+8.7"]);
+    .toEqual(["0.1x", "-0.1x", "0.8x", "71.3", "3.3", "-2.0", "+8.7", "0.0", "+95.2", "+8.7"]);
   // A value FA calls not meaningful, kept apart from a missing one.
   expect(formatScreenMetric("netDebtToEbitda", { value: null, notMeaningful: true })).toBe("N/M");
   expect(formatScreenMetric("netDebtToEbitda", { value: null })).toBe("--");

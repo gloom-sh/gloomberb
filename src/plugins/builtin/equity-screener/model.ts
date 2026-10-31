@@ -159,8 +159,7 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
   "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
   "iv30Change1d", "iv30Change5d",
-  // A negative return on capital or free cash flow means as much as a shrinking business.
-  "roicPercent", "fcfYieldPercent", "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
+  "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
   "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */

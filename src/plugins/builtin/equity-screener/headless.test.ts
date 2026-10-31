@@ -218,7 +218,7 @@ test("--preset value, quality and garp run on the fundamental fields, leading wi
   });
   const section = quality.sections![0]!;
   expect(section.columns!.find((column) => column.key === "value")!.header).toBe("ROIC%");
-  expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "+71.3", unit: "%", asOf: "2026-06-27" });
+  expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "71.3", unit: "%", asOf: "2026-06-27" });
   // N/M as FA prints it, not a missing value.
   const leverage = await load({ preset: "value", metric: "netDebtToEbitda" });
   expect(leverage.sections![0]!.rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
