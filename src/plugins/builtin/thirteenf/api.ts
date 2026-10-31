@@ -133,7 +133,15 @@ async function fetchForms13F<T>(
 
   if (!options.forceRefresh) {
     const pending = activeRequests.get(key) as Promise<T> | undefined;
-    if (pending) return cached != null ? cached.value : pending;
+    if (pending) {
+      if (cached != null) return cached.value;
+      // Another reader's request, which that reader may stop (a fund read ahead
+      // while the cursor rested on it): this reader then asks again on its own.
+      return pending.catch((error: unknown) => {
+        if (options.signal?.aborted || !(error instanceof Error && error.name === "AbortError")) throw error;
+        return fetchForms13F<T>(path, params, options);
+      });
+    }
   }
 
   const slot: { promise?: Promise<T> } = {};

@@ -23,7 +23,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
-import { corporateSplitFactor, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors } from "./data";
+import { corporateSplitFactor, createFundPrefetcher, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
@@ -196,13 +196,11 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     blurSearch();
     setDetailSeed({ cik: row.cik, name: row.name });
   }, [blurSearch]);
-  // Every request behind a fund detail is cached per path, so warming it
-  // while the cursor rests on the row makes Enter read from cache.
-  const prefetchDetail = useCallback((row: FundBrowserRow) => {
-    void loadFundDetail(row.cik, row.name).catch(() => {
-      // Intentional ignore: speculative prefetch is retried and failures are shown when the fund opens.
-    });
-  }, []);
+  // The fund's first requests are read ahead while the cursor rests on its
+  // row, one fund at a time, and stopped when the cursor moves on.
+  const prefetcher = useMemo(() => createFundPrefetcher(), []);
+  useEffect(() => () => prefetcher.cancel(), [prefetcher]);
+  const prefetchDetail = useCallback((row: FundBrowserRow) => prefetcher.prefetch(row.cik), [prefetcher]);
 
   const browserStatusInfo = useMemo<PaneFooterSegment[]>(() => [
         ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
