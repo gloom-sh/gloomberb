@@ -2,7 +2,6 @@ import type { PaneTemplateContext, ShortcutArgError } from "../../../types/plugi
 import { findNamedCollection, unknownCollectionArgError } from "../../../portfolio/collection-name";
 import type { PluginModule } from "../plugin-module";
 import { exposureHeadless } from "./headless";
-import { ExposurePane } from "./pane";
 
 const SOURCE = /^(PORT|WATCH):(.+)$/i;
 
@@ -29,7 +28,7 @@ function unknownSourceArg(arg: string, context: PaneTemplateContext): ShortcutAr
 }
 
 export const exposureModule: PluginModule = {
-  panes: [{ id: "exposure", name: "Exposure", icon: "E", component: ExposurePane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 138, height: 31 }, tableExport: true, headless: exposureHeadless,
+  panes: [{ id: "exposure", name: "Exposure", icon: "E", get component(): typeof import("./pane").ExposurePane { const { ExposurePane } = require("./pane"); return ExposurePane; }, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 138, height: 31 }, tableExport: true, headless: exposureHeadless,
     personalData: "holdings",
     portableShare: { private: { params: true, settings: true, state: true } } }],
   paneTemplates: [{ id: "exposure-pane", paneId: "exposure", label: "Exposure", description: "Pro scenario exposures across holdings, geographic revenue and supply chains, with source evidence and portfolio concentrations.",

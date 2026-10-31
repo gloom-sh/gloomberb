@@ -1,12 +1,11 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { RealizedVolPane } from "./pane";
 import { realizedVolHeadless } from "./headless";
 import { ESTIMATOR_OPTIONS, WINDOW_OPTIONS } from "./settings";
 
 export const realizedVolModule: PluginModule = {
   panes: [{
-    id: "realized-vol", name: "Realized Volatility", icon: "V", component: RealizedVolPane,
+    id: "realized-vol", name: "Realized Volatility", icon: "V", get component(): typeof import("./pane").RealizedVolPane { const { RealizedVolPane } = require("./pane"); return RealizedVolPane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 112, height: 36 },
     tableExport: true,
     quickSettings: [{ type: "toggle", key: "showIv", icon: "zap", label: "Current ATM IV" }],

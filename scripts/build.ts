@@ -401,7 +401,7 @@ async function build(targetConfig: BuildTarget) {
   // plugin-host smoke below imports such a package so this flag stays.
   const buildExitCode = await runProcess(
     [
-      "bun", "build", "--compile", "--production", "--compile-autoload-package-json",
+      "bun", "build", "--compile", "--production", "--splitting", "--compile-autoload-package-json",
       `--target=${target}`, compileEntry, `--outfile=${outfile}`,
     ],
     `Failed to build ${target}`,

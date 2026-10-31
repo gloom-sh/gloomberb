@@ -1,5 +1,4 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
-import { CommentLettersPane } from "./pane";
 import { COMMENT_LETTERS_PANE_ID, COMMENT_LETTERS_PLUGIN_ID } from "./types";
 
 const createCommentLettersPaneInstance = (options?: PaneTemplateCreateOptions) => {
@@ -37,7 +36,7 @@ export const commentLettersPlugin: GloomPlugin = {
       reportFreshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "comment letters" },
       name: "Comment Letters",
       icon: "L",
-      component: CommentLettersPane,
+      get component(): typeof import("./pane").CommentLettersPane { const { CommentLettersPane } = require("./pane"); return CommentLettersPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },

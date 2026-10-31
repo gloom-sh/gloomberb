@@ -1,6 +1,6 @@
 import { join } from "path";
 import { logFailure } from "../../utils/log-failure";
-import { VERSION } from "../../version";
+import { versionCommand } from "./version";
 import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
@@ -9,7 +9,7 @@ import { readBaseCurrency } from "../../utils/base-currency";
 import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
 import type { BuiltinCliCommandDef } from "../command-options";
-import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
+import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
@@ -189,32 +189,6 @@ function resourceCacheStats(
 }
 
 export function createSystemCliCommands(): CliCommandDef[] {
-  const versionCommand: CliCommandDef = {
-    name: "version",
-    aliases: ["--version", "-v"],
-    description: "Print the version, runtime, and data folder",
-    help: { group: CLI_COMMAND_GROUPS.app, usage: ["version"] },
-    execute: async (_args, ctx) => {
-      // Where the data lives, or will once a command or the app first runs:
-      // printing the version never creates the folder.
-      let dataDir: string | null = null;
-      try {
-        dataDir = await resolveCliDataDir();
-      } catch (error) {
-        logFailure("cli-system", "Resolve data directory failed")(error);
-        dataDir = null;
-      }
-      ctx.printResult({
-        data: [{
-          version: VERSION,
-          bun: typeof Bun === "undefined" ? null : Bun.version,
-          platform: process.platform,
-          arch: process.arch,
-          dataDir,
-        }],
-      }, { layout: "record" });
-    },
-  };
 
   const doctorCommand: CliCommandDef = {
     name: "doctor",

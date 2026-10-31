@@ -38,9 +38,8 @@ import {
   parseAlertCommandValues,
   parseAlertShortcutValues,
 } from "./command";
-import { POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
+import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
 import { alertHistoryLockNote, alertsHeadless } from "./headless";
-import { AlertsPane } from "./pane";
 import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
@@ -81,7 +80,7 @@ function slashSpellsListing(symbol: string): boolean {
 }
 
 export const alertsPlugin: GloomPlugin = {
-  id: "alerts",
+  id: ALERTS_PLUGIN_ID,
   name: "Alerts",
   version: "1.0.0",
   description: "Price, valuation, daily technical and event alerts",
@@ -464,7 +463,7 @@ export const alertsPlugin: GloomPlugin = {
       reportLockNote: alertHistoryLockNote,
       name: "Alerts",
       icon: "A",
-      component: AlertsPane,
+      get component(): typeof import("./pane").AlertsPane { const { AlertsPane } = require("./pane"); return AlertsPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 20 },

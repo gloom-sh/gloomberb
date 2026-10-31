@@ -1,13 +1,12 @@
 import type { PluginModule } from "../plugin-module";
 import { volatilityHeadless } from "./headless";
-import { VolatilityPane } from "./pane";
 import { VOLATILITY_SERIES } from "./series";
 
 
 export const volatilityModule: PluginModule = {
   series: VOLATILITY_SERIES,
   panes: [{
-    id: "volatility-term-structure", name: "Volatility", icon: "V", component: VolatilityPane,
+    id: "volatility-term-structure", name: "Volatility", icon: "V", get component(): typeof import("./pane").VolatilityPane { const { VolatilityPane } = require("./pane"); return VolatilityPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 110, height: 34 },
     tableExport: true, headless: volatilityHeadless,
   }],

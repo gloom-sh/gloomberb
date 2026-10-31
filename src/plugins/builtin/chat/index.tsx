@@ -16,11 +16,9 @@ import { CHAT_KEEP_CONVERSATION_VALUE, createChatSearchProvider } from "./comman
 import { chatController } from "./controller";
 import { buildChatConversations, selectChatConversations } from "./conversations";
 import { pickChatPaneToReuse } from "./pane-state";
-import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { chatHandlePromptStore } from "./handle-prompt";
 import { ChatStatusWidget } from "./status-widget";
-import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
 import { attachChatPaneLinkPanes } from "./pane-links/previews";
 import { attachChatCommands, cachedChatFunctions, chatFunctionsChanged } from "./pane-links/commands";
@@ -65,7 +63,7 @@ export const chatModule: PluginModule = {
     reportFreshness: { local: true },
     name: "Chat",
     icon: "C",
-    component: ChatPane,
+    get component(): typeof import("./pane").ChatPane { const { ChatPane } = require("./pane"); return ChatPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 30 },
@@ -85,7 +83,7 @@ export const chatModule: PluginModule = {
     // Mentions and replies from every conversation, DMs included.
     personalData: "messages",
     icon: "U",
-    component: UnreadInboxPane,
+    get component(): typeof import("./unread-inbox-pane").UnreadInboxPane { const { UnreadInboxPane } = require("./unread-inbox-pane"); return UnreadInboxPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 88, height: 16 },
@@ -97,6 +95,7 @@ export const chatModule: PluginModule = {
     description: "Open the floating chat window for a channel",
     keywords: ["new", "chat", "pane", "message"],
     shortcut: { prefix: "CHAT", argPlaceholder: "channel", argKind: "text" },
+    catalogSettings: {},
     createInstance: async (context, options) => {
       const rawArg = options?.arg?.trim() ?? "";
       // The command bar's New DM keeps the open pane on its conversation.

@@ -1,6 +1,5 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
 import { normalizeTrialFilters, TRIAL_REPORT_OPTIONS, ALL } from "./model";
-import { TrialsPane } from "./pane";
 import { CLINICAL_TRIALS_PANE_ID, CLINICAL_TRIALS_PLUGIN_ID } from "./types";
 
 function createTrialsPaneInstance(options?: PaneTemplateCreateOptions) {
@@ -40,7 +39,7 @@ export const clinicalTrialsPlugin: GloomPlugin = {
       reportOptions: TRIAL_REPORT_OPTIONS,
       name: "Trials",
       icon: "C",
-      component: TrialsPane,
+      get component(): typeof import("./pane").TrialsPane { const { TrialsPane } = require("./pane"); return TrialsPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },

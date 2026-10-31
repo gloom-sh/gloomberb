@@ -1,6 +1,5 @@
 import type { GloomPlugin } from "../../../types/plugin";
 import { MARKET_HALTS_PANE_ID } from "./model";
-import { MarketHaltsPane } from "./pane";
 
 export const marketHaltsPlugin: GloomPlugin = {
   id: "market-halts",
@@ -20,7 +19,7 @@ export const marketHaltsPlugin: GloomPlugin = {
       reportFreshness: { source: "Nasdaq Trader" },
       name: "Market Halts",
       icon: "H",
-      component: MarketHaltsPane,
+      get component(): typeof import("./pane").MarketHaltsPane { const { MarketHaltsPane } = require("./pane"); return MarketHaltsPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 124, height: 26 },
