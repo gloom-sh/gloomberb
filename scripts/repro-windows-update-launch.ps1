@@ -12,6 +12,9 @@ param(
   # A line of JS run first in the installed Resources\main.js.
   [string]$Prelude = "",
   [string]$Label = "repro",
+  # Patch the installed bun.exe's load config: "decommit" stops the process
+  # heap decommitting free memory, "execute" makes it commit executable memory (with HEAP_GROWABLE kept).
+  [ValidateSet("none", "decommit", "execute")][string]$HeapPatch = "none",
   [string]$EvidenceDir = (Join-Path (Get-Location) "artifacts\windows-update-launch-repro")
 )
 
@@ -89,6 +92,42 @@ if ($Build.chromiumFlags) {
   if (@($Build.chromiumFlags.PSObject.Properties).Count -eq 0) { $Build.PSObject.Properties.Remove("chromiumFlags") }
   [IO.File]::WriteAllText($BuildJsonPath, ($Build | ConvertTo-Json -Depth 10 -Compress), (New-Object System.Text.UTF8Encoding $false))
 }
+function Set-LoadConfigFields {
+  param([string]$Path, [hashtable]$Fields)
+  $Bytes = [System.IO.File]::ReadAllBytes($Path)
+  $Pe = [BitConverter]::ToInt32($Bytes, 0x3c)
+  $SectionCount = [BitConverter]::ToUInt16($Bytes, $Pe + 6)
+  $OptionalSize = [BitConverter]::ToUInt16($Bytes, $Pe + 20)
+  $Optional = $Pe + 24
+  $ConfigRva = [BitConverter]::ToUInt32($Bytes, $Optional + 112 + 10 * 8)
+  $ConfigOffset = -1
+  for ($i = 0; $i -lt $SectionCount; $i++) {
+    $Section = $Optional + $OptionalSize + $i * 40
+    $VirtualSize = [BitConverter]::ToUInt32($Bytes, $Section + 8)
+    $VirtualAddress = [BitConverter]::ToUInt32($Bytes, $Section + 12)
+    $RawPointer = [BitConverter]::ToUInt32($Bytes, $Section + 20)
+    if ($ConfigRva -ge $VirtualAddress -and $ConfigRva -lt $VirtualAddress + $VirtualSize) { $ConfigOffset = $RawPointer + ($ConfigRva - $VirtualAddress) }
+  }
+  if ($ConfigOffset -lt 0) { throw "No load config in $Path" }
+  foreach ($Name in $Fields.Keys) {
+    $Field = $Fields[$Name]
+    $Value = [BitConverter]::GetBytes([UInt64]$Field.Value)
+    [Array]::Copy($Value, 0, $Bytes, $ConfigOffset + $Field.Offset, $Field.Width)
+    Write-Line "load config ${Name}: 0x$('{0:x}' -f [UInt64]$Field.Value)"
+  }
+  [System.IO.File]::WriteAllBytes($Path, $Bytes)
+}
+
+$InstalledBun = Join-Path $InstallDir "bin\bun.exe"
+if ($HeapPatch -eq "decommit") {
+  Set-LoadConfigFields $InstalledBun @{
+    DeCommitFreeBlockThreshold = @{ Offset = 0x18; Width = 8; Value = 0x40000000 }
+    DeCommitTotalFreeThreshold = @{ Offset = 0x20; Width = 8; Value = 0x40000000 }
+  }
+} elseif ($HeapPatch -eq "execute") {
+  Set-LoadConfigFields $InstalledBun @{ ProcessHeapFlags = @{ Offset = 0x48; Width = 4; Value = 0x40002 } }
+}
+
 if ($Prelude) {
   $MainJs = Join-Path $InstallDir "Resources\main.js"
   $Lines = [System.Collections.Generic.List[string]]([System.IO.File]::ReadAllLines($MainJs))

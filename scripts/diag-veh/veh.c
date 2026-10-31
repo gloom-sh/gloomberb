@@ -497,10 +497,18 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
   g_log = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (g_log == INVALID_HANDLE_VALUE) return TRUE;
   if (GetEnvironmentVariableA("GLOOM_DIAG_VEH_MEMORY", NULL, 0)) install_hooks();
-  char hello[96];
+  char hello[256];
   char* p = put_str(hello, "installed in pid ");
   p = put_hex(p, GetCurrentProcessId());
   p = put_str(p, " memory hooks "); p = put_hex(p, g_hooked);
+  {
+    // Segment heap signature 0xddeeddee at +0x10; NT heap: +0x10 0xffeeffee, flags at +0x70.
+    unsigned char* heap = (unsigned char*)GetProcessHeap();
+    p = put_str(p, " heap "); p = put_hex(p, (ULONG64)heap);
+    p = put_str(p, " sig "); p = put_hex(p, *(DWORD*)(heap + 0x10));
+    p = put_str(p, " flags "); p = put_hex(p, *(DWORD*)(heap + 0x70));
+    p = put_str(p, " force "); p = put_hex(p, *(DWORD*)(heap + 0x74));
+  }
   *p++ = '\n';
   write_out(hello, p);
   if (AddVectoredExceptionHandler(1, record_exception)) g_installed = 1;
