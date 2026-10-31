@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { homedir, tmpdir } from "os";
+import { delimiter, join } from "path";
 
-import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseRemoteHead, readPluginRemoteAsync } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseGitHubRef, parseRemoteHead, readPluginRemoteAsync, validatePluginDirectoryName } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -171,7 +171,9 @@ describe("plugins that import a sibling plugin", () => {
   }
 
   function setup() {
-    const root = mkdtempSync(join(tmpdir(), "gloom-peers-"));
+    const smoke = join(homedir(), ".cache", "gloom-smoke");
+    mkdirSync(smoke, { recursive: true });
+    const root = mkdtempSync(join(smoke, "plugin-peers-"));
     scratch.push(root);
     const remotes = join(root, "remotes");
     publish(remotes, "gloom-fixture-peer", {
@@ -261,4 +263,32 @@ describe("plugins that import a sibling plugin", () => {
       { name: "Fixture Gateway", error: null },
     ]);
   }, 30_000);
+});
+
+test("plugin names and references consume the complete name, including a trailing line ending", () => {
+  for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029"]) {
+    expect(() => validatePluginDirectoryName(`gloom-example${suffix}`)).toThrow("Invalid plugin name");
+    expect(() => parseGitHubRef(`owner/gloom-example${suffix}`)).toThrow();
+    expect(() => parseGitHubRef(`owner${suffix}/gloom-example`)).toThrow();
+  }
+  expect(parseGitHubRef("owner/gloom-example.git")).toEqual({
+    url: "https://github.com/owner/gloom-example.git", name: "gloom-example", repo: "owner/gloom-example",
+  });
+});
+
+test.skipIf(process.platform === "win32")("git is resolved before entering a plugin checkout, even with a relative PATH entry", async () => {
+  const dir = remote(["1.0.0", "1.1.0"]);
+  const marker = join(dir, "local-git-ran");
+  writeFileSync(join(dir, "git"), "#!/bin/sh\ntouch local-git-ran\nexit 0\n");
+  chmodSync(join(dir, "git"), 0o755);
+  writeFileSync(join(dir, "package.json"), "{}");
+  const previousPath = process.env.PATH;
+  try {
+    process.env.PATH = `.${delimiter}${previousPath}`;
+    expect(await hasLocalChanges(dir)).toBe(true);
+    expect(existsSync(marker)).toBe(false);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
 });

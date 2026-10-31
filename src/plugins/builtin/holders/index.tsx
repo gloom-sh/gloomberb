@@ -2,7 +2,6 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { beneficialOwnersCache } from "./beneficial-client";
 import { holdersHeadless } from "./headless";
-import { HoldersView } from "./pane";
 
 export const holdersModule: PluginModule = {
   setup(ctx) {
@@ -11,7 +10,7 @@ export const holdersModule: PluginModule = {
       id: "holders",
       name: "Holders",
       order: 42,
-      component: HoldersView,
+      get component(): typeof import("./pane").HoldersView { const { HoldersView } = require("./pane"); return HoldersView; },
       instruments: ["equity"],
     });
   },
@@ -24,7 +23,7 @@ export const holdersModule: PluginModule = {
       id: "holders",
       name: "Holders",
       icon: "H",
-      component: HoldersView,
+      get component(): typeof import("./pane").HoldersView { const { HoldersView } = require("./pane"); return HoldersView; },
       defaultPosition: "right",
       tickerFollower: true,
       defaultMode: "floating",

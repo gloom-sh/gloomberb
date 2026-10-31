@@ -1,4 +1,3 @@
-import { BuildoutPane } from "./pane";
 import type { PluginModule } from "../plugin-module";
 
 export const buildoutModule: PluginModule = {
@@ -7,7 +6,7 @@ export const buildoutModule: PluginModule = {
     reportFreshness: { status: "not-a-feed", basis: "infrastructure research" },
     name: "TheBuildout",
     icon: "T",
-    component: BuildoutPane,
+    get component(): typeof import("./pane").BuildoutPane { const { BuildoutPane } = require("./pane"); return BuildoutPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 110, height: 34 },

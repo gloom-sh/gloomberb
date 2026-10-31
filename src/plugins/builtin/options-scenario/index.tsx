@@ -1,8 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { OptionsScenarioPane } from "./pane";
 import { optionsScenarioHeadless } from "./headless";
-import { CspScreenPane } from "./csp-screen-pane";
 import { cspScreenHeadless } from "./csp-screen-headless";
 
 const scenarioSettingKeys = ["legs", "strategy", "strike", "delta", "putStrike", "callStrike", "shares", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
@@ -10,7 +8,7 @@ const scenarioSettingKeys = ["legs", "strategy", "strike", "delta", "putStrike",
 
 export const optionsScenarioModule: PluginModule = {
   panes: [{
-    id: "options-scenario", name: "Options Scenario", icon: "V", component: OptionsScenarioPane,
+    id: "options-scenario", name: "Options Scenario", icon: "V", get component(): typeof import("./pane").OptionsScenarioPane { const { OptionsScenarioPane } = require("./pane"); return OptionsScenarioPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 126, height: 36 },
     tableExport: true, headless: optionsScenarioHeadless,
     settings: {
@@ -26,7 +24,7 @@ export const optionsScenarioModule: PluginModule = {
       ],
     },
   }, {
-    id: "csp-screen", name: "Options Strategy Screen", icon: "V", component: CspScreenPane,
+    id: "csp-screen", name: "Options Strategy Screen", icon: "V", get component(): typeof import("./csp-screen-pane").CspScreenPane { const { CspScreenPane } = require("./csp-screen-pane"); return CspScreenPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 144, height: 24 },
     tableExport: true, headless: cspScreenHeadless,
     settings: {

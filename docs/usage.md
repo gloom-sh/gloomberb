@@ -1647,7 +1647,7 @@ The free routes the wall names, only when they have data for the ticker:
 | `fn JOBS NEM` | `fn HIRE NEM`, the free preview of the same hiring data |
 | `fn FLOW [ticker]` | `options <ticker>`, a chain with each contract's volume and open interest |
 
-`gloom config set telemetry.crashReports false` turns off automatic crash reports, and `gloom config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
+`gloom config set telemetry.crashReports false` turns off automatic crash reports, `gloom config set telemetry.usage false` turns off anonymous usage counts and the command bar search log, and, with Gloom closed, `gloom config set telemetry.attention false` turns off Attention Counts, the ticker research counts that are on by default (in the app, run Attention Counts in the command bar); see [Crash reports and usage counts](telemetry.md) for what each contains.
 
 On the third day you open the terminal app, after a minute on screen, the status bar asks once to star Gloom on GitHub. `Alt+Enter` opens the repository, `Alt+Backspace` or the × hides the line, and it never comes back either way. `gloom config set starPrompt.enabled false` turns it off before it ever shows.
 

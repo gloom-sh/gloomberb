@@ -14,6 +14,7 @@ import type { DesktopPaneShotApiProxy, DesktopPaneShotBridge } from "../desktop-
 import type { MarketContext } from "../types";
 import { resolvePersistedCloudSessionToken } from "./cloud-session";
 import { getCloudApiBaseUrl } from "../../api-client/request";
+import { fetchShotHttpAddress } from "./screenshot-http";
 
 const CREDENTIAL_FIELD_NAMES = new Set([
   "accesstoken",
@@ -154,16 +155,11 @@ export function createDesktopShotBridge(
  * address is on the public internet. Panes read public APIs and news feeds;
  * nothing they draw lives on this machine or its network, and a URL that
  * names one (or a host that resolves to one) is refused.
- *
- * The fetch looks the name up again, so a name whose answer changes between
- * the two lookups is not caught here. Pinning the fetch to the checked
- * address needs a Host header and a TLS server name on an IP URL, and Bun's
- * fetch does not verify or pool such connections predictably enough to rely on.
  */
 async function checkShotHttpTarget(
   raw: string,
   resolve: ResolveHost,
-): Promise<{ url: URL } | { error: string; status: number }> {
+): Promise<{ url: URL; address: string } | { error: string; status: number }> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -185,7 +181,9 @@ async function checkShotHttpTarget(
     return { error: `Could not resolve ${url.hostname}.`, status: 502 };
   }
   if (addresses.length === 0) return { error: `Could not resolve ${url.hostname}.`, status: 502 };
-  return addresses.every(isPublicAddress) ? { url } : refused;
+  if (!addresses.every(isPublicAddress)) return refused;
+  const address = addresses.find((candidate) => isIP(candidate) === 4) ?? addresses[0]!;
+  return { url, address };
 }
 
 /**
@@ -200,15 +198,26 @@ async function runDesktopShotHttpFetch(
   options: ShotHttpOptions,
 ): Promise<HttpProxyResponseEnvelope> {
   const resolve = options.resolveHost ?? resolveHost;
-  const target = await checkShotHttpTarget(typeof request?.url === "string" ? request.url : "", resolve);
+  const addresses = new Map<string, string>();
+  const checkTarget = async (raw: string) => {
+    const checked = await checkShotHttpTarget(raw, resolve);
+    if ("url" in checked) addresses.set(checked.url.href, checked.address);
+    return checked;
+  };
+  const target = await checkTarget(typeof request?.url === "string" ? request.url : "");
   if ("error" in target) throw new Error(target.error);
   const init = readRequestInit(request.init);
   if (!SHOT_BRIDGE_HTTP_METHODS.has(init.method)) {
     throw new Error(`Screenshot HTTP bridge refuses ${init.method} requests.`);
   }
   const result = await fetchCheckingRedirects(target.url, init, {
-    fetch: options.fetch ?? fetch,
-    check: (url) => checkShotHttpTarget(url, resolve),
+    fetch: options.fetch ?? (async (input, init) => {
+      const url = new URL(String(input));
+      const address = addresses.get(url.href);
+      if (!address) throw new Error("The screenshot target has not been checked.");
+      return fetchShotHttpAddress(url, init ?? {}, address);
+    }) as typeof fetch,
+    check: checkTarget,
     signal: AbortSignal.timeout(SHOT_BRIDGE_HTTP_TIMEOUT_MS),
   });
   if ("error" in result) throw new Error(result.error);

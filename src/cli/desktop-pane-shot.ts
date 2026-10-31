@@ -1,9 +1,10 @@
 import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
-import { mkdtemp, rm, writeFile } from "fs/promises";
+import { mkdtemp, rm } from "fs/promises";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
+import { writeOutputFile } from "./output-file";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
@@ -591,7 +592,7 @@ async function capturePageScreenshot({
         captureBeyondViewport: false,
       }) as { data?: string };
       if (!screenshot.data) throw new Error("Chrome did not return screenshot data.");
-      await writeFile(outputPath, Uint8Array.from(Buffer.from(screenshot.data, "base64")));
+      await writeOutputFile(outputPath, Buffer.from(screenshot.data, "base64"));
     }
     return rendered;
   } catch (error) {

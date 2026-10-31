@@ -3,7 +3,6 @@ import { commandRequestParams } from "../shared/command-tab";
 import { ipoCalendarCache } from "./client";
 import { ipoCalendarHeadless } from "./headless";
 import { IPO_CALENDAR_PANE_ID } from "./model";
-import { IpoCalendarPane } from "./pane";
 
 /**
  * `IPO japan` opens the calendar on that search, and so does a later `IPO europe`: one pane, the open one
@@ -44,7 +43,7 @@ export const ipoCalendarPlugin: GloomPlugin = {
       id: IPO_CALENDAR_PANE_ID,
       name: "IPO Calendar",
       icon: "I",
-      component: IpoCalendarPane,
+      get component(): typeof import("./pane").IpoCalendarPane { const { IpoCalendarPane } = require("./pane"); return IpoCalendarPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 28 },

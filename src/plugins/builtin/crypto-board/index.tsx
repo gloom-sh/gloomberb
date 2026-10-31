@@ -3,7 +3,6 @@ import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../../..
 import { cryptoMarketsCache, DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { BITCOIN_NETWORK_CACHES } from "./bitcoin-network";
 import { cryptoBoardHeadless } from "./headless";
-import { CryptoBoardPane } from "./pane";
 import { CRYPTO_SERIES } from "./series";
 
 export const cryptoBoardModule: PluginModule = {
@@ -13,7 +12,7 @@ export const cryptoBoardModule: PluginModule = {
       id: "crypto-board",
       name: "Crypto",
       icon: "C",
-      component: CryptoBoardPane,
+      get component(): typeof import("./pane").CryptoBoardPane { const { CryptoBoardPane } = require("./pane"); return CryptoBoardPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 120, height: 32 },

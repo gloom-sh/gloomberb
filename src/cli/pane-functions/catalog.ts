@@ -264,9 +264,9 @@ async function buildTemplateCatalogEntry(
   const sampleArg = sampleArgForTemplate(template);
   const createOptions: PaneTemplateCreateOptions | undefined = buildCreateOptions(template, sampleArg);
   const primarySymbol = createOptions?.symbol ?? createOptions?.symbols?.[0] ?? null;
-  let defaultSettings: Record<string, unknown> = {};
+  let defaultSettings: Record<string, unknown> = template.catalogSettings ?? {};
 
-  if (template.createInstance) {
+  if (template.catalogSettings === undefined && template.createInstance) {
     try {
       const spec = await template.createInstance(buildTemplateContext(context, primarySymbol), createOptions);
       defaultSettings = spec?.settings ?? {};

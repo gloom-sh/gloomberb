@@ -4,14 +4,9 @@ import { holdsActiveTicker } from "../../../shares/pane-image";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { FinancialAnalysisPane } from "./financials/pane";
-import { HistoricalPricesPane } from "./data-panes/historical-prices";
-import { ReturnsPane } from "./data-panes/returns-pane";
-import { TickerResearchPane } from "./pane";
 import { futuresContractCache } from "./overview/futures-contract";
 import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
-import { QuoteMonitorPane } from "./quote-monitor";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 import {
   buildQuoteMonitorSettingsDef,
@@ -47,7 +42,7 @@ export const tickerDetailModule: PluginModule = {
       id: TICKER_RESEARCH_PANE_ID,
       name: "Research",
       icon: "D",
-      component: TickerResearchPane,
+      get component(): typeof import("./pane").TickerResearchPane { const { TickerResearchPane } = require("./pane"); return TickerResearchPane; },
       defaultPosition: "right",
       tickerFollower: true,
       // DES and ADR open this pane; ADR's window is named by its params (the tab it asked for), so settings never say whose a window is.
@@ -70,7 +65,7 @@ export const tickerDetailModule: PluginModule = {
       id: "financial-analysis",
       name: "Financials",
       icon: "F",
-      component: FinancialAnalysisPane,
+      get component(): typeof import("./financials/pane").FinancialAnalysisPane { const { FinancialAnalysisPane } = require("./financials/pane"); return FinancialAnalysisPane; },
       headless: financialStatementsHeadless,
       defaultPosition: "right",
       tickerFollower: true,
@@ -82,7 +77,7 @@ export const tickerDetailModule: PluginModule = {
       id: "quote-monitor",
       name: "Quote Monitor",
       icon: "Q",
-      component: QuoteMonitorPane,
+      get component(): typeof import("./quote-monitor").QuoteMonitorPane { const { QuoteMonitorPane } = require("./quote-monitor"); return QuoteMonitorPane; },
       headless: quoteComparisonHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
@@ -97,7 +92,7 @@ export const tickerDetailModule: PluginModule = {
       id: "historical-prices",
       name: "Historical Prices",
       icon: "H",
-      component: HistoricalPricesPane,
+      get component(): typeof import("./data-panes/historical-prices").HistoricalPricesPane { const { HistoricalPricesPane } = require("./data-panes/historical-prices"); return HistoricalPricesPane; },
       headless: historicalPricesHeadless,
       defaultPosition: "right",
       tickerFollower: true,
@@ -110,7 +105,7 @@ export const tickerDetailModule: PluginModule = {
       reportFreshness: { status: "not-a-feed", basis: "price history" },
       name: "Returns",
       icon: "R",
-      component: ReturnsPane,
+      get component(): typeof import("./data-panes/returns-pane").ReturnsPane { const { ReturnsPane } = require("./data-panes/returns-pane"); return ReturnsPane; },
       headless: returnsHeadless,
       defaultPosition: "right",
       tickerFollower: true,

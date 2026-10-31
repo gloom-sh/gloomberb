@@ -11,7 +11,6 @@ import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../
 import { tickerInstrumentLabel } from "../../../tickers/instrument-label";
 import type { ChartSpec } from "../../../time-series/types";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
-import { DataCatalogPane } from "./data-catalog-pane";
 import { listFieldSeries } from "./field-series";
 import { registeredSeriesName } from "./series-expression";
 import {
@@ -525,7 +524,7 @@ export const chartComposerModule: PluginModule = {
     id: DATA_CATALOG_PANE_ID,
     name: "Data Catalog",
     icon: "C",
-    component: DataCatalogPane,
+    get component(): typeof import("./data-catalog-pane").DataCatalogPane { const { DataCatalogPane } = require("./data-catalog-pane"); return DataCatalogPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 110, height: 32 },

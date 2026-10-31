@@ -570,6 +570,13 @@ export interface PaneTemplateDef {
   reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis" | "local">;
   wizard?: WizardStep[];
   canCreate?: (context: PaneTemplateContext, options?: PaneTemplateCreateOptions) => boolean;
+  /**
+   * Settings shown by catalog discovery without running createInstance. Supply
+   * these when opening a pane needs live data or has side effects. An empty
+   * object means there are no settings to describe before the pane is opened.
+   * When omitted, discovery derives settings from createInstance as before.
+   */
+  catalogSettings?: Record<string, unknown>;
   createInstance?: (
     context: PaneTemplateContext,
     options?: PaneTemplateCreateOptions,
@@ -982,6 +989,8 @@ export interface AppNotificationRequest {
     label: string;
     onClick: () => void;
   };
+  /** Runs once, when the in-app toast is first drawn. Not called when `toast` is false. */
+  onShown?: () => void;
 }
 
 export interface BrokerInstanceUpdateOptions {
