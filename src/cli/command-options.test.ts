@@ -54,6 +54,13 @@ test("an undeclared option fails with the command's options, a close match and i
   );
 });
 
+test("--currency, which no command takes, names fx with the code typed", () => {
+  const quote: BuiltinCliCommandDef = { ...history, name: "quote", unknownOptionHint: undefined, help: { options: [{ flags: "--exchange <code>", description: "" }] } };
+  expect(failure(() => check(quote, ["SBLK", "--currency", "EUR"])).details).toStartWith(
+    "Prices are in each listing's own currency. To convert an amount, use fx: gloom fx 100 USD/EUR.");
+  expect(failure(() => check(quote, ["SBLK", "--ccy=gbp"])).details).toContain("gloom fx 100 USD/GBP");
+});
+
 test("financials --quarterly points at the functions that list quarters, with the symbol typed", () => {
   const financials = marketDataCliCommands.find((command) => command.name === "financials")!;
   const hint = "financials lists fiscal years. For quarters: gloom fn GF WFC --period quarterly --periods 40 (one metric at a time), "

@@ -24,7 +24,7 @@ import { initMarketData, withMarketData } from "../context";
 import { listingChangeLine, loadListingFate } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
-import { fail, failRetryable } from "../errors";
+import { fail, failRetryable, failWithError, isCliFailure, unreachableError } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import type { MarketContext } from "../types";
@@ -593,6 +593,34 @@ export function buildSearchReport({
   return lines.join("\n");
 }
 
+/**
+ * What a search says from its own text, whatever the ticker lookup does: the
+ * data no source carries and its proxies ("baltic dry"), the central bank the
+ * query names, the setting or report it names.
+ */
+function localSearchNotes(query: string): string[] {
+  const bank = searchedCentralBank(query);
+  return [knownGapMessage(query), bank ? centralBankLine(bank) : null, commandPointer(query)].filter((note): note is string => !!note);
+}
+
+/**
+ * A ticker lookup that was busy or never reached the data service fails only
+ * the ticker part of a search: the notes from local text print first (text) or
+ * ride in the failure's details (JSON), then the failure says that no tickers
+ * were looked up. A search with no such note fails as before.
+ */
+function failTickerLookup(error: unknown, query: string, printNotes: boolean): never {
+  const notes = localSearchNotes(query);
+  const busy = isCliFailure(error) && error.code === SEARCH_BUSY_CODE;
+  if (notes.length === 0 || !(busy || isNetworkFailure(error))) throw error;
+  if (printNotes) console.log([renderSection(`Search: ${query}`), "", ...notes.map((note) => wrapToTerminal(note))].join("\n"));
+  const failure = busy ? { code: SEARCH_BUSY_CODE, message: TICKER_SEARCH_BUSY_MESSAGE, retryable: true } : unreachableError();
+  return failWithError(printNotes ? failure : { ...failure, details: [failure.details, ...notes].filter(Boolean).join("\n") });
+}
+
+/** The busy line after a search's own notes printed: only the ticker lookup is missing. */
+const TICKER_SEARCH_BUSY_MESSAGE = "Ticker search is busy, try again in a moment.";
+
 /** The functions a search lists when it found no ticker, unless a known gap or a central bank already says where to look. */
 function searchedFunctions(
   query: string,
@@ -643,7 +671,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       tickers,
       dataProvider,
       ...quote ? { quote } : {},
-    });
+    }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
     const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
