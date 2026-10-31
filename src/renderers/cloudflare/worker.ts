@@ -23,6 +23,13 @@ const ROBOTS_PATH = "/robots.txt";
  */
 const IMMUTABLE_ASSET_PATH = /^\/assets\/.+-[a-z0-9]{12,}\.(?:js|css)$/;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+/**
+ * The icons and the install manifest keep their names from build to build.
+ * The browser asked whether each had changed before the first paint of every
+ * open; a copy up to a day old does no harm.
+ */
+const DAILY_ASSET_PATH = /^\/(?:favicon\.(?:ico|svg)|manifest\.webmanifest|app-icon-\d+\.png)$/;
+const DAILY_CACHE_CONTROL = "public, max-age=86400";
 
 /**
  * Crawling stays allowed on purpose. Deep links are kept out of the index by
@@ -72,7 +79,7 @@ export const SECURITY_HEADERS = {
   "x-frame-options": "DENY",
 } as const;
 
-export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean; immutable?: boolean } = {}): Response {
+export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean; keep?: "immutable" | "daily" } = {}): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   const html = (headers.get("content-type") ?? "").includes("text/html");
@@ -80,7 +87,9 @@ export function withSecurityHeaders(response: Response, options: { share?: boole
   else if (options.noindex && html) headers.set("x-robots-tag", "noindex");
   if (html) headers.set("cache-control", "no-store");
   // Only the file itself: a name the build no longer has falls back to the app's HTML, which stays no-store.
-  else if (options.immutable && (response.ok || response.status === 304)) headers.set("cache-control", IMMUTABLE_CACHE_CONTROL);
+  else if (options.keep && (response.ok || response.status === 304)) {
+    headers.set("cache-control", options.keep === "immutable" ? IMMUTABLE_CACHE_CONTROL : DAILY_CACHE_CONTROL);
+  }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -145,7 +154,8 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   // `/?ticker=GPC&tab=executives` would be indexed as thin duplicates. Only the
   // bare root stays indexable.
   const deepLink = url.pathname !== "/" || url.search !== "";
-  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, immutable: IMMUTABLE_ASSET_PATH.test(url.pathname) });
+  const keep = IMMUTABLE_ASSET_PATH.test(url.pathname) ? "immutable" : DAILY_ASSET_PATH.test(url.pathname) ? "daily" : undefined;
+  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, keep });
 }
 
 export default {
