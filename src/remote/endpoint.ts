@@ -1,5 +1,6 @@
-import { readFile, rm, writeFile, mkdir } from "fs/promises";
+import { readFile, rm } from "fs/promises";
 import { dirname, join } from "path";
+import { makePrivateDir, writePrivateFile } from "../utils/private-files";
 import type { RemoteAppKind, RemoteEndpoint } from "./types";
 
 const DEFAULT_ENDPOINT_FILE = "remote-control.json";
@@ -25,9 +26,10 @@ export async function removeRemoteEndpointFiles(dataDir: string, endpoint: Remot
   ]);
 }
 
+/** Readable by the user alone, an older copy included: it holds the token that controls the app. */
 async function writeRemoteEndpoint(filePath: string, endpoint: RemoteEndpoint): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(endpoint, null, 2), { encoding: "utf-8", mode: 0o600 });
+  await makePrivateDir(dirname(filePath));
+  await writePrivateFile(filePath, JSON.stringify(endpoint, null, 2));
 }
 
 async function removeRemoteEndpointIfOwned(filePath: string, endpoint: RemoteEndpoint): Promise<void> {

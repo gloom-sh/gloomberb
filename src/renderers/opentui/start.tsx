@@ -1,6 +1,7 @@
 import { hostname } from "os";
 import { getGloomberbDirs } from "../../data/config/home";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync } from "fs";
+import { makePrivateDirSync } from "../../utils/private-files";
 import { App } from "../../app";
 import { getDataDir, initDataDir, loadConfig, setConfigStoreHost } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
@@ -115,7 +116,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     const dataDir = await getDataDir() ?? getGloomberbDirs().data;
 
     if (!existsSync(dataDir)) {
-      mkdirSync(dataDir, { recursive: true });
+      makePrivateDirSync(dataDir);
     }
 
     const config = await measurePerfAsync("startup.opentui.init-data-dir", () => initDataDir(dataDir));

@@ -25,13 +25,13 @@ import { scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
-  SHOT_API_SOCKET_TOKEN_PARAM,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
   type ShotApiSocketCall,
   type ShotApiSocketReply,
 } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
+import { isShotApiRequestAllowed } from "./desktop-pane-shot-api-policy";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
 import { errorMessage } from "../utils/errors";
@@ -234,14 +234,12 @@ export async function renderDesktopPaneScreenshot(
   const chrome = await findChromeExecutable();
   const view = await loadShotView();
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
-  let server: ReturnType<typeof Bun.serve> | null = null;
+  let server: ShotServer | null = null;
   try {
-    // A socket opens only for this page (`isShotPageSocket`): its origin, and this token it alone is given.
-    const socketToken = randomBytes(32).toString("hex");
-    server = serveShotPage(view, shotPageHtml(view, payload, socketToken), apiProxy, options.bridge ?? null, socketToken);
+    server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
     return await capturePageScreenshot({
       chrome,
-      url: new URL("/", server.url).href,
+      url: server.url,
       outputPath,
       widthPx: payload.widthPx,
       heightPx: payload.heightPx,
@@ -258,13 +256,13 @@ export async function renderDesktopPaneScreenshot(
       } : {}),
     });
   } finally {
-    server?.stop(true);
+    server?.stop();
     await rm(tempDir, { recursive: true, force: true });
   }
 }
 
 /** The page for one capture: the shared view, with this capture's pane and data in its bootstrap script. */
-function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload, socketToken: string): string {
+function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): string {
   const payloadJson = JSON.stringify(encodeRpcValue(payload)).replace(/</g, "\\u003c");
   return renderElectrobunViewHtml({
     stylesheet: view.get(SHOT_VIEW_STYLESHEET) ?? "",
@@ -273,7 +271,6 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload, sock
     loadingText: "Rendering pane...",
     bootstrapScript: `
       window.__GLOOM_CLI_SHOT_PAYLOAD__ = ${payloadJson};
-      window.__GLOOM_CLI_SHOT_SOCKET_TOKEN__ = ${JSON.stringify(socketToken)};
       (() => {
         // A screenshot cannot be interacted with, so drawing tools, the
         // quick-add input and the close button only add noise to the image.
@@ -300,45 +297,70 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload, sock
   });
 }
 
-/**
- * Whether a socket request comes from this capture's page: sent from the
- * page's own origin, holding the token only the page was given. Any website
- * open in the user's browser can reach this port, and a socket's replies are
- * reads made with the user's session; a browser sends a page's true origin.
- */
-function isShotPageSocket(request: Request, url: URL, port: number | undefined, socketToken: string): boolean {
-  if (port === undefined || request.headers.get("origin") !== `http://127.0.0.1:${port}`) return false;
-  const given = Buffer.from(url.searchParams.get(SHOT_API_SOCKET_TOKEN_PARAM) ?? "");
-  const expected = Buffer.from(socketToken);
-  return given.length === expected.length && timingSafeEqual(given, expected);
+/** A capture's page server: `url` is the page Chrome opens, the only way in. */
+export interface ShotServer {
+  url: string;
+  stop(): void;
 }
 
+/**
+ * The route a request to the shot server asks for, or null when it is not
+ * the capture's own page asking. Any program on this machine and any website
+ * open in the user's browser can reach the port, and behind it are the
+ * capture's data, reads made with the user's session and fetches made from
+ * this machine. So every request must name the server as `127.0.0.1:<port>`
+ * (a website that rebinds its own name to this address sends its own name),
+ * come from no other origin, and start its path with the secret folder the
+ * page was opened at, which nothing but Chrome is given.
+ */
+function shotRequestRoute(request: Request, port: number | undefined, secret: string): URL | null {
+  if (port === undefined) return null;
+  const origin = `http://127.0.0.1:${port}`;
+  if (request.headers.get("host") !== `127.0.0.1:${port}`) return null;
+  const sentFrom = request.headers.get("origin");
+  if (sentFrom !== null && sentFrom !== origin) return null;
+  const url = new URL(request.url);
+  const folder = `/${secret}/`;
+  const given = Buffer.from(url.pathname.slice(0, folder.length));
+  const expected = Buffer.from(folder);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+  const route = new URL(url);
+  route.pathname = url.pathname.slice(folder.length - 1);
+  return route;
+}
+
+/**
+ * Serves one capture's page under a secret folder made for this run (see
+ * `shotRequestRoute`). The page reaches its API proxy, socket and bridges by
+ * paths relative to that folder.
+ */
 export function serveShotPage(
   view: ShotViewFiles,
   html: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null,
-  socketToken: string,
-): ReturnType<typeof Bun.serve> {
-  return Bun.serve({
+): ShotServer {
+  const secret = randomBytes(32).toString("hex");
+  const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 60,
     fetch(request, server) {
-      const url = new URL(request.url);
+      const url = shotRequestRoute(request, server.port, secret);
+      if (!url) return new Response("Forbidden", { status: 403 });
       if (url.pathname === SHOT_API_SOCKET_PATH) {
-        if (!socketToken || !isShotPageSocket(request, url, server.port, socketToken)) return new Response("Forbidden", { status: 403 });
+        // A browser always sends a socket's origin; only the page's own gets here.
+        if (request.headers.get("origin") === null) return new Response("Forbidden", { status: 403 });
         return server.upgrade(request, { data: undefined }) ? undefined : new Response("Expected a WebSocket upgrade", { status: 426 });
       }
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
         return proxyShotApiRequest(request, url, apiProxy);
       }
-      if (url.pathname === SHOT_MARKET_BRIDGE_PATH) {
-        return runShotMarketBridge(request, bridge);
+      if (url.pathname === SHOT_MARKET_BRIDGE_PATH || url.pathname === SHOT_HTTP_BRIDGE_PATH) {
+        if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+        return url.pathname === SHOT_MARKET_BRIDGE_PATH ? runShotMarketBridge(request, bridge) : runShotHttpBridge(request, bridge);
       }
-      if (url.pathname === SHOT_HTTP_BRIDGE_PATH) {
-        return runShotHttpBridge(request, bridge);
-      }
+      if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
       return serveShotAsset(url, view, html);
     },
     websocket: {
@@ -347,6 +369,10 @@ export function serveShotPage(
       },
     },
   });
+  return {
+    url: `http://127.0.0.1:${server.port}/${secret}/`,
+    stop: () => server.stop(true),
+  };
 }
 
 /**
@@ -429,6 +455,9 @@ async function proxyShotApiRequest(
 ): Promise<Response> {
   const baseUrl = new URL(apiProxy.baseUrl);
   const proxiedPath = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
+  if (!isShotApiRequestAllowed(request.method, proxiedPath)) {
+    return Response.json({ error: "The pane screenshot does not send this request." }, { status: 403 });
+  }
   const target = new URL(baseUrl);
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
   target.pathname = `${basePath}${proxiedPath.startsWith("/") ? proxiedPath : `/${proxiedPath}`}`;
