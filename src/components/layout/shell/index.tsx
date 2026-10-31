@@ -24,6 +24,7 @@ import {
   useAppStateRef,
 } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
+import { SPACE } from "../../../theme/ui-tokens";
 import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
@@ -41,6 +42,7 @@ import {
   makeSnapGuides,
   resolveExternalDockPreview,
 } from "./drag";
+import { magnetDistancesFor } from "./drag/magnets";
 import { resolveAppHeaderHeightCells } from "./chrome";
 import { useAppChromeShown } from "../presentation";
 import { useShellWindowMode } from "./window-mode";
@@ -133,7 +135,7 @@ export function Shell({
     () => paneManagementAccelerators(keybindings, shortcutDisplayMode),
     [keybindings, shortcutDisplayMode],
   );
-  const { nativePaneChrome = false, nativeContextMenu, precisePointer, titleBarOverlay, cellHeightPx } = useUiCapabilities();
+  const { nativePaneChrome = false, nativeContextMenu, precisePointer, titleBarOverlay, cellWidthPx, cellHeightPx } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
   const { width, height } = useViewport();
   const shellRef = useRef<BoxRenderable | null>(null);
@@ -198,9 +200,14 @@ export function Shell({
       // A whole text row overlaps the next pane's header buttons. Keep the
       // visible divider centered and share its smaller hit rect with the host.
       dividerSize: { horizontal: 1, vertical: Math.min(1, 8 / (cellHeightPx ?? 18)) },
+      // A small gap between docked panes: dense, but each pane reads as its own.
+      gap: { horizontal: SPACE.xs / (cellWidthPx ?? 8), vertical: SPACE.xs / (cellHeightPx ?? 18) },
     } : { reserveDividerGutters: true }
-  ), [nativePaneChrome, cellHeightPx]);
+  ), [nativePaneChrome, cellWidthPx, cellHeightPx]);
   const bounds = useMemo<LayoutBounds>(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  const magnetDistances = useMemo(() => magnetDistancesFor(
+    nativePaneChrome ? { width: cellWidthPx ?? 8, height: cellHeightPx ?? 18 } : null,
+  ), [cellHeightPx, cellWidthPx, nativePaneChrome]);
 
   // Every edit here starts from the visible layout, so the panes it hides go
   // back in before the layout is saved, rather than being deleted with it.
@@ -783,6 +790,7 @@ export function Shell({
     focusPane,
     focusedPaneId,
     handleFloatingClose,
+    magnetDistances,
     restoreFullscreen: exitTransientFocusLayout,
     menuState,
     nativePaneChrome,
@@ -837,27 +845,31 @@ export function Shell({
       {dataProvider && tickerRepository && (
         <FormModalHost dataProvider={dataProvider} pluginRegistry={pluginRegistry} tickerRepository={tickerRepository} />
       )}
-      <Box
-        position="absolute"
-        left={0}
-        top={0}
-        width={width}
-        height={contentHeight}
-        alignItems="center"
-        justifyContent="center"
-      >
-        <Box flexDirection="column" alignItems="center">
-          <AsciiText text="Gloom" font="wordmark" color={colors.textMuted} />
-          <Box height={1} />
-          {/* An empty layout starts at the command bar: a click opens it, the key is beside it. */}
-          <Button
-            label="Search or run a command"
-            shortcut={formatAdvertisedChord(keybindings, "command-bar", shortcutDisplayMode) || undefined}
-            onPress={openCommandBar}
-            stopPropagation
-          />
+      {/* Behind the panes, where nothing is docked: the desktop's gap between
+          docked panes would show slivers of it. */}
+      {screenDockLeafLayouts.length === 0 && (
+        <Box
+          position="absolute"
+          left={0}
+          top={0}
+          width={width}
+          height={contentHeight}
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Box flexDirection="column" alignItems="center">
+            <AsciiText text="Gloom" font="wordmark" color={colors.textMuted} />
+            <Box height={1} />
+            {/* An empty layout starts at the command bar: a click opens it, the key is beside it. */}
+            <Button
+              label="Search or run a command"
+              shortcut={formatAdvertisedChord(keybindings, "command-bar", shortcutDisplayMode) || undefined}
+              onPress={openCommandBar}
+              stopPropagation
+            />
+          </Box>
         </Box>
-      </Box>
+      )}
 
       <ShellNativeSurfaceSync
         appHeaderHeight={appHeaderHeight}

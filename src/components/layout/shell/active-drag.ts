@@ -2,6 +2,8 @@ import { useCallback, useRef } from "react";
 import {
   floatAtRect,
   getDockSplitGeometry,
+  MIN_FLOAT_HEIGHT,
+  MIN_FLOAT_WIDTH,
   getRememberedFloatingRect,
   resizeSplitAtPath,
   simulateDrop,
@@ -29,6 +31,10 @@ import {
 } from "./drag";
 import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
+import { NO_LATCH, snapMovedRect, snapResizedRect, type MagnetDistances, type MagnetLatch } from "./drag/magnets";
+
+/** A resize without edges is the bottom-right corner's (the terminal's only one). */
+const CORNER_EDGES = { x: 1, y: 1 } as const;
 
 interface UseShellActiveDragOptions {
   appHeaderHeight: number;
@@ -38,6 +44,8 @@ interface UseShellActiveDragOptions {
   dockLeafLayouts: DockLeafLayout[];
   dragRuntime: ShellDragRuntimeState;
   focusPane: (paneId: string) => void;
+  /** How close a moving or resizing pane's edge comes to another before it sticks, in cells. */
+  magnetDistances: MagnetDistances;
   nativePaneChrome: boolean;
   paneMap: Map<string, ResolvedPane>;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
@@ -57,6 +65,7 @@ export function useShellActiveDrag({
   dockLeafLayouts,
   dragRuntime,
   focusPane,
+  magnetDistances,
   nativePaneChrome,
   paneMap,
   persistLayout,
@@ -77,14 +86,17 @@ export function useShellActiveDrag({
     updateDockPreview,
     updateDragFloatingRect,
   } = dragRuntime;
-  // What one drag keeps between moves: a docked pane's floating size, and the
-  // last drop it simulated, so a move over the same target computes nothing.
+  // What one drag keeps between moves: a docked pane's floating size, the
+  // last drop it simulated, so a move over the same target computes nothing,
+  // and the edges its magnets hold, with the other panes' rects they hold to.
   const memoRef = useRef<{
     drag: unknown;
     baseRect: FloatingRect | null;
     dropKey: string | null;
     drop: DragPreview | null;
-  }>({ drag: null, baseRect: null, dropKey: null, drop: null });
+    latch: MagnetLatch;
+    magnetTargets: LayoutBounds[] | null;
+  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null });
 
   return useCallback((event: ShellMouseEvent) => {
     const shellY = event.y - appHeaderHeight;
@@ -106,7 +118,48 @@ export function useShellActiveDrag({
       memo.baseRect = null;
       memo.dropKey = null;
       memo.drop = null;
+      memo.latch = NO_LATCH;
+      memo.magnetTargets = null;
     }
+    // Every other pane on screen, docked or floating, whose edges a floating
+    // pane's edges stick to. Alt (Option) lets it go anywhere.
+    const magnetTargets = (paneId: string) => {
+      memo.magnetTargets ??= [
+        ...dockLeafLayouts.filter((leaf) => leaf.instanceId !== paneId).map((leaf) => leaf.rect),
+        ...baseLayout.floating
+          .filter((entry) => entry.instanceId !== paneId && paneMap.has(entry.instanceId))
+          .map(({ x, y, width: w, height: h }) => ({ x, y, width: w, height: h })),
+      ];
+      return memo.magnetTargets;
+    };
+    const magnetsOff = event.modifiers?.alt === true;
+    const magnetArea = { x: 0, y: 0, width, height: contentHeight };
+    const snapMove = (paneId: string, rect: FloatingRect): FloatingRect => {
+      if (magnetsOff) {
+        memo.latch = NO_LATCH;
+        return rect;
+      }
+      const snapped = snapMovedRect(rect, magnetTargets(paneId), magnetArea, magnetDistances, memo.latch);
+      memo.latch = snapped.latch;
+      return snapped.rect;
+    };
+    const snapResize = (paneId: string, rect: FloatingRect, edges: { x: -1 | 0 | 1; y: -1 | 0 | 1 }): FloatingRect => {
+      if (magnetsOff) {
+        memo.latch = NO_LATCH;
+        return rect;
+      }
+      const snapped = snapResizedRect(
+        rect,
+        edges,
+        { width: MIN_FLOAT_WIDTH, height: MIN_FLOAT_HEIGHT },
+        magnetTargets(paneId),
+        magnetArea,
+        magnetDistances,
+        memo.latch,
+      );
+      memo.latch = snapped.latch;
+      return snapped.rect;
+    };
     const dividerRatioAt = (x: number, y: number) => {
       if (drag.type !== "divider") return 0;
       const total = drag.axis === "horizontal" ? drag.bounds.width : drag.bounds.height;
@@ -159,7 +212,7 @@ export function useShellActiveDrag({
           return;
         }
 
-        const nextRect = resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight);
+        const nextRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight));
         updateDragFloatingRect({ paneId: drag.paneId, rect: nextRect });
 
         const hoveredOverlay = resolveHoverOverlay(hitX, hitShellY, dockLeafLayouts, drag.paneId);
@@ -185,7 +238,7 @@ export function useShellActiveDrag({
       } else if (drag.type === "float-resize") {
         updateDragFloatingRect({
           paneId: drag.paneId,
-          rect: resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight),
+          rect: snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), drag.edges ?? CORNER_EDGES),
         });
       }
       event.stopPropagation();
@@ -211,7 +264,7 @@ export function useShellActiveDrag({
           setHoverTarget(null);
           updateDragFloatingRect(null);
         } else {
-          const releaseRect = resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight);
+          const releaseRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight));
           const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview);
           if (windowMode) {
             updateWindowModePreviewLayout(nextLayout, drag.paneId);
@@ -224,7 +277,7 @@ export function useShellActiveDrag({
           updateDragFloatingRect(null);
         }
       } else if (drag.type === "float-resize") {
-        const releaseRect = resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight);
+        const releaseRect = snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), drag.edges ?? CORNER_EDGES);
         const nextLayout = floatAtRect(baseLayout, drag.paneId, releaseRect);
         if (windowMode) {
           updateWindowModePreviewLayout(nextLayout, drag.paneId);
@@ -249,6 +302,7 @@ export function useShellActiveDrag({
     endDrag,
     focusPane,
     live,
+    magnetDistances,
     nativePaneChrome,
     paneMap,
     persistLayout,

@@ -97,9 +97,13 @@ Takes the focused pane out of its layout into a new layout tab named after it (`
 
 **Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane docks in the first other tab). The pane keeps its ticker, tab, settings and lock.
 
-### Resizing
+### Moving and resizing
 
 Drag the line between docked panes, or a floating pane's bottom-right corner (any edge or corner on the desktop and web).
+
+A new floating pane opens where there is room: clear of the other floating panes and of the pane you are working in, or one step down and to the right of the frontmost window when the screen is full. It never opens exactly on top of another window.
+
+While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Over a drop target or a screen edge, an outline shows where the pane will land; on the desktop and web the pane turns see-through over it.
 
 ### Docs inside the app
 

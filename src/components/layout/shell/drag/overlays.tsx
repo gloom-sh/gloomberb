@@ -1,12 +1,15 @@
 import { useRef, type CSSProperties, type RefObject } from "react";
 import { Box, useUiCapabilities, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
-import type { DockLeafLayout, LayoutBounds } from "../../../../layout/pane-manager";
+import { SHELL_DRAG_Z, type DockLeafLayout, type LayoutBounds } from "../../../../layout/pane-manager";
 import type { DragPreview, HoverOverlay } from "./index";
 import { useLiveBoxFrame, useLiveDrag, useLiveHoverOverlay, type LiveDragGeometry, type LiveDragStore } from "./live";
 import { placeStyle } from "./slide";
 
 const CELL_POSITIONS = ["top", "left", "center", "right", "bottom"] as const;
+
+/** Desktop: how opaque a pane on the move is while it is over somewhere to land, so the preview under it shows. */
+export const ARMED_DRAG_OPACITY = 0.7;
 
 function selectDockedOutline(geometry: LiveDragGeometry) {
   const { paneDrag, floating } = geometry;
@@ -50,11 +53,15 @@ function TerminalDockedDragOutline({ live }: { live: LiveDragStore }) {
       borderStyle="single"
       borderColor={colors.borderFocused}
       backgroundColor={colors.panel}
-      zIndex={95}
+      zIndex={SHELL_DRAG_Z.under}
     />
   );
 }
 
+/**
+ * Terminal: the drop grid and where the release would land are outlines with
+ * nothing filled in, so what they are over stays readable.
+ */
 function TerminalDragOverlays({
   dockLeafLayouts,
   externalDockPreview,
@@ -82,8 +89,7 @@ function TerminalDragOverlays({
             border
             borderStyle="single"
             borderColor={active ? colors.borderFocused : colors.border}
-            backgroundColor={active ? colors.header : colors.panel}
-            zIndex={cell.position === "center" ? 98 : 97}
+            zIndex={cell.position === "center" ? SHELL_DRAG_Z.centerCell : SHELL_DRAG_Z.cell}
           />
         );
       })}
@@ -100,8 +106,7 @@ function TerminalDragOverlays({
           border
           borderStyle="single"
           borderColor={colors.borderFocused}
-          backgroundColor={colors.panel}
-          zIndex={96}
+          zIndex={SHELL_DRAG_Z.over}
         />
       )}
     </>
@@ -109,30 +114,34 @@ function TerminalDragOverlays({
 }
 
 /**
- * Desktop: an outline laid out at the shell's corner and drawn at `rect` by a
+ * Desktop: an overlay laid out at the shell's corner and drawn at `rect` by a
  * transform, hidden by opacity, so a new drop target restyles it in place.
+ * `framed` draws the border and fill of a pane (the outline a docked pane
+ * drags around); without it, styles.css draws the box by its role.
  */
-function OutlineBox({
+function OverlayBox({
   rect,
   zIndex,
-  borderColor = colors.borderFocused,
-  backgroundColor = colors.panel,
   role,
+  framed = false,
+  active,
+  opacity = 1,
   boxRef,
   follows = false,
 }: {
   rect: LayoutBounds | null;
   zIndex: number;
-  borderColor?: string;
-  backgroundColor?: string;
   role: string;
+  framed?: boolean;
+  active?: boolean;
+  opacity?: number;
   boxRef?: RefObject<BoxRenderable | null>;
   /** Its position follows the pointer outside React (`useLiveBoxFrame`). */
   follows?: boolean;
 }) {
   const style: CSSProperties = {
     ...(rect && !follows ? placeStyle(rect.x, rect.y) : undefined),
-    opacity: rect ? 1 : 0,
+    opacity: rect ? opacity : 0,
     pointerEvents: "none",
   };
   return (
@@ -143,13 +152,51 @@ function OutlineBox({
       top={0}
       width={rect?.width ?? 0}
       height={rect?.height ?? 0}
-      border
-      borderStyle="single"
-      borderColor={borderColor}
-      backgroundColor={backgroundColor}
+      {...(framed ? {
+        border: true,
+        borderStyle: "single",
+        borderColor: colors.borderFocused,
+        backgroundColor: colors.panel,
+      } : {})}
       zIndex={zIndex}
       data-gloom-role={role}
+      data-active={active === undefined ? undefined : active ? "true" : "false"}
       style={style}
+    />
+  );
+}
+
+/**
+ * Desktop: where a pane would land. The exact rectangle, outlined in the
+ * accent over a light tint of it (styles.css), so the panes under it still
+ * show; window mode's keyboard move draws the same.
+ */
+export function DesktopDropPreview({
+  rect,
+  zIndex,
+  role = "drop-preview",
+  attributes,
+}: {
+  rect: LayoutBounds | null;
+  zIndex: number;
+  role?: string;
+  attributes?: Record<string, string>;
+}) {
+  return (
+    <Box
+      position="absolute"
+      left={0}
+      top={0}
+      width={rect?.width ?? 0}
+      height={rect?.height ?? 0}
+      zIndex={zIndex}
+      data-gloom-role={role}
+      {...attributes}
+      style={{
+        ...(rect ? placeStyle(rect.x, rect.y) : undefined),
+        opacity: rect ? 1 : 0,
+        pointerEvents: "none",
+      }}
     />
   );
 }
@@ -190,7 +237,7 @@ function DesktopDragOverlayLayers({
   const outlineHeight = useLiveDrag(live, selectOutlineHeight);
   const outlineRef = useRef<BoxRenderable | null>(null);
   useLiveBoxFrame(live, outlineRef, followDockedOutline);
-  const outline = outlineWidth !== null && outlineHeight !== null && !effectiveDockPreview
+  const outline = outlineWidth !== null && outlineHeight !== null
     ? { x: 0, y: 0, width: outlineWidth, height: outlineHeight }
     : null;
   return (
@@ -199,18 +246,26 @@ function DesktopDragOverlayLayers({
         const cell = activeHoverOverlay?.cells.find((entry) => entry.position === position) ?? null;
         const active = !!activeHoverOverlay && isActiveCell(dockPreview, activeHoverOverlay, position);
         return (
-          <OutlineBox
+          <OverlayBox
             key={position}
             role="drop-cell"
             rect={cell?.rect ?? null}
-            borderColor={active ? colors.borderFocused : colors.border}
-            backgroundColor={active ? colors.header : colors.panel}
-            zIndex={position === "center" ? 98 : 97}
+            active={active}
+            zIndex={position === "center" ? SHELL_DRAG_Z.centerCell : SHELL_DRAG_Z.cell}
           />
         );
       })}
-      <OutlineBox role="drag-outline" rect={outline} zIndex={95} boxRef={outlineRef} follows />
-      <OutlineBox role="drop-preview" rect={effectiveDockPreview?.rect ?? null} zIndex={96} />
+      {/* The preview sits under what is moving, which turns see-through over it. */}
+      <DesktopDropPreview rect={effectiveDockPreview?.rect ?? null} zIndex={SHELL_DRAG_Z.under} />
+      <OverlayBox
+        role="drag-outline"
+        rect={outline}
+        zIndex={SHELL_DRAG_Z.over}
+        framed
+        opacity={effectiveDockPreview ? ARMED_DRAG_OPACITY : 1}
+        boxRef={outlineRef}
+        follows
+      />
     </>
   );
 }

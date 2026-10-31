@@ -681,7 +681,8 @@ describe("Shell", () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-live-floating-drag-test");
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
-    floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 10, zIndex: 75 }];
+    // Short enough that the move ends clear of the edges its magnets would catch.
+    floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 32, height: 8, zIndex: 75 }];
     // Every pane's chrome reads its quick settings when it renders.
     const chromeRenders: string[] = [];
     const registry = createShellPluginRegistry();

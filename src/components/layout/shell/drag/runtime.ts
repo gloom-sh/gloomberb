@@ -27,6 +27,7 @@ import {
 import type { ActionMenuState } from "../action-menu-overlay";
 import type { DividerPreviewState } from "../native/window-state";
 import { createLiveDragStore, IDLE_DRAG, type LiveDockGeometry, type LiveDragStore } from "./live";
+import type { MagnetDistances } from "./magnets";
 import { beginLiveResize, createCatchUp } from "../../../../ui/live-resize";
 import type { WindowEditState } from "../../window-edit/mode";
 import { useShellActiveDrag } from "../active-drag";
@@ -67,6 +68,8 @@ export interface ShellMouseEvent {
   /** Desktop: where the browser predicts the pointer a moment later, for drawing only. */
   predictedX?: number;
   predictedY?: number;
+  /** Alt (Option) held: a moving or resizing pane ignores its magnets. */
+  modifiers?: { alt?: boolean };
   /** Whether a later handler has claimed this pointer interaction. */
   isDefaultPrevented?: () => boolean;
   stopPropagation: () => void;
@@ -222,6 +225,8 @@ interface UseShellPointerRuntimeOptions {
   focusPane: (paneId: string) => void;
   focusedPaneId: string | null;
   handleFloatingClose: (paneId: string) => void;
+  /** How close a moving or resizing pane's edge comes to another before it sticks, in cells. */
+  magnetDistances: MagnetDistances;
   restoreFullscreen: () => void;
   menuState: ActionMenuState | null;
   nativePaneChrome: boolean;
@@ -259,6 +264,7 @@ export function useShellPointerRuntime({
   focusPane,
   focusedPaneId,
   handleFloatingClose,
+  magnetDistances,
   restoreFullscreen,
   menuState,
   nativePaneChrome,
@@ -287,6 +293,7 @@ export function useShellPointerRuntime({
     dockLeafLayouts,
     focusPane,
     dragRuntime,
+    magnetDistances,
     nativePaneChrome,
     paneMap,
     persistLayout,
