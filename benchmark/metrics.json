@@ -1,0 +1,66 @@
+{
+  "base": "11689928330b46831b657730e46538a26a5ab1bb",
+  "head": "425a893ae2920b8b64e97b80072124d428e72dc5",
+  "offline": true,
+  "shards": {
+    "expected": 8,
+    "finished": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "unfinished": []
+  },
+  "unsteady": [
+    "OVDV--root"
+  ],
+  "complete": true,
+  "views": 599,
+  "changed": 0,
+  "changedViews": [],
+  "oneSided": {
+    "gone": [],
+    "new": []
+  },
+  "failed": {
+    "before": [],
+    "after": []
+  },
+  "rawChanged": 1,
+  "rawChangedViews": [
+    "OVDV--root"
+  ],
+  "repeatedSameCode": [
+    {
+      "side": "before",
+      "width": 640,
+      "status": "compared",
+      "change": 0.03745919168994413
+    },
+    {
+      "side": "before",
+      "width": 1280,
+      "status": "compared",
+      "change": 0.0005365037971368715
+    },
+    {
+      "side": "after",
+      "width": 640,
+      "status": "compared",
+      "change": 2.4686627094972067e-05
+    },
+    {
+      "side": "after",
+      "width": 1280,
+      "status": "compared",
+      "change": 0.0005380444745111732
+    }
+  ],
+  "measurementsPerSide": 1197,
+  "skippedViewsPerSide": 78
+}

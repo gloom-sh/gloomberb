@@ -1,0 +1,44 @@
+  > Search or run a command  Ctrl+P                 Help ? SPY $104.484375 ◷15m
+┌─:: Watchlist ⚡ ──────── ?  ... ─┐ :: ZN=F                         ⚡
+  Main Portfolio  Watchlist            Overview  Chart  Options  News  Notes  T
+  Avg Day -0.36% vs prev close         Treasury futures ZN=F (CBT) ◷15m
+  TICKER           LAST       CHG →    104-15½  -0-12 (-0.36%) vs prev close
+  ◌ TY1          104-15½     -0-12
+  ◌ UB=F         104-15½     -0-12                                 105-01.01
+  ◌ ZB=F         104-15½     -0-12
+  ◌ ZBZ26.CBT    104-15½     -0-12       •••          •••••     •
+  ◌ ZF=F         104-15½     -0-12      • ░░•        •░░ ░•     •
+  ◌ ZN=F         104-15½     -0-12     •• ░░░•  ·  ·•░░░ ░░•·  ·•  104-04.94
+  ◌ ZNZ26.CBT    104-15½     -0-12     ░░ ░░░░••   ••░░░ ░░░•• •░
+  ◌ ZT=F         104-15½     -0-12     ░░ ░░░░ •••• ░░░░ ░░░░░••░
+                                       ░░ ░░░░ ░░░░ ░░░░ ░░░░░░░░
+                                       ░░ ░░░░ ░░░░ ░░░░ ░░░░░░░░  103-08.87
+                                       Aug 24 2026    Oct 31 2026
+
+                                       Price Return
+                                       1M +0.30%   3M -   6M -   1Y -   3Y -
+                                       5Y -
+
+                                       Fundamentals
+                                       Volume                         125.0k
+
+                                       Profile
+                                       Type                           FUTURE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ███
+  + NH27.CBT    104-15½ -0.36%
+└10:46 AM ◷15m             [d]elete┘ ◷15m
+  +                       v0.19.2 ☁ Log in ◷15m delayed data · upgrade Feedback

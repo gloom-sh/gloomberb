@@ -1,0 +1,16 @@
+{
+  "runtimeWarnings": [],
+  "fixtureWarnings": [
+    {
+      "source": "futures-contract",
+      "message": "Read futures contract terms failed"
+    }
+  ],
+  "startupPerformanceNotices": 35,
+  "rssKiB": [
+    464768,
+    464784
+  ],
+  "profile": "Removed after smoke",
+  "fixture": "Invented Treasury quotes/history through the shared cloud REST transport; socket connection stubbed; no live market validation."
+}

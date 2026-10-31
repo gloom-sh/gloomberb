@@ -1,0 +1,26 @@
+[
+  {
+    "side": "before",
+    "width": 640,
+    "status": "compared",
+    "change": 0.03745919168994413
+  },
+  {
+    "side": "before",
+    "width": 1280,
+    "status": "compared",
+    "change": 0.0005365037971368715
+  },
+  {
+    "side": "after",
+    "width": 640,
+    "status": "compared",
+    "change": 0.000024686627094972067
+  },
+  {
+    "side": "after",
+    "width": 1280,
+    "status": "compared",
+    "change": 0.0005380444745111732
+  }
+]
