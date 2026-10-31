@@ -19,7 +19,7 @@ function legVenue(series: ResolvedSeries | undefined): string | undefined {
 }
 
 /** A coin that trades round the clock, its daily bar the UTC day: BTC-USD on the crypto venue. */
-export function isRoundTheClockLeg(series: ResolvedSeries | undefined): boolean {
+function isRoundTheClockLeg(series: ResolvedSeries | undefined): boolean {
   if (!series) return false;
   const venue = legVenue(series);
   return (!!venue && isAlwaysOpenExchange(venue)) || isRoundTheClockCoin(series.listing?.symbol, series.listing?.exchange);
@@ -32,7 +32,7 @@ function sessionVenueOf(series: ResolvedSeries | undefined): string | null {
 }
 
 /** When the venue's regular session on its local `date` closed, or null when it had none that day. */
-export function sessionCloseOn(venue: string, date: string): number | null {
+function sessionCloseOn(venue: string, date: string): number | null {
   const zone = sessionCalendarTimeZone(venue);
   if (!zone) return null;
   const [year, month, day] = date.split("-").map(Number) as [number, number, number];
@@ -41,7 +41,7 @@ export function sessionCloseOn(venue: string, date: string): number | null {
 }
 
 /** `US` for a US listing's venue, else the venue's code, as the close a coin is measured against is named. */
-export function sessionMarketName(venue: string): string {
+function sessionMarketName(venue: string): string {
   return isUsListingExchange(venue) ? "US" : canonicalExchange(venue);
 }
 
