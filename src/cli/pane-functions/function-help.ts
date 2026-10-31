@@ -533,7 +533,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CAST", "DDIS"],
   },
   ATTN: {
-    summary: "See which tickers opted-in Gloom users are researching, with delayed privacy-qualified hourly counts, abnormal attention, sectors, countries and market context. Suppressed activity is unavailable, never zero.",
+    summary: "See which tickers Gloom users are researching, with delayed privacy-qualified hourly counts, abnormal attention, sectors, countries and market context. Suppressed activity is unavailable, never zero.",
     usage: ["ATTN", "ATTN 6758:JPX"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
     data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },

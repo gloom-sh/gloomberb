@@ -30,6 +30,7 @@ import { DEFAULT_THEME, themes } from "../../../theme/themes";
 import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
 import { sanitizeCommandBarOpens } from "../../../app/command-bar-intro";
 import { sanitizeUpdatesConfig } from "../../../updater/channel";
+import { ATTENTION_NOTICE_ACCOUNTS } from "../../../telemetry/attention-setting";
 
 const configLog = debugLog.createLogger("config");
 const reportedUnknownThemes = new Set<string>();
@@ -208,8 +209,14 @@ function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
     ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
     ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
     ...(typeof value.attention === "boolean" ? { attention: value.attention } : {}),
+    ...sanitizeAttentionNotice(value.attentionNoticeShownTo),
   };
   return Object.keys(telemetry).length > 0 ? telemetry : undefined;
+}
+
+function sanitizeAttentionNotice(value: unknown): Pick<TelemetryConfig, "attentionNoticeShownTo"> {
+  const accounts = sanitizeUniqueStringList(value).slice(-ATTENTION_NOTICE_ACCOUNTS);
+  return accounts.length > 0 ? { attentionNoticeShownTo: accounts } : {};
 }
 
 /**

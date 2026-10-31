@@ -236,8 +236,17 @@ export interface TelemetryConfig {
    * both off; absent means on.
    */
   usage?: boolean;
-  /** Ticker-level research counts. Only an explicit true opts in; absent is OFF. */
+  /**
+   * Ticker-level research counts (Attention Counts). On by default: `false`
+   * turns them off and `true` is an explicit on. While unset, an account is
+   * counted only once this installation has shown it the one-time notice.
+   */
   attention?: boolean;
+  /**
+   * The accounts this installation has shown the Attention Counts notice to,
+   * oldest first. Kept on this device; never synced or sent.
+   */
+  attentionNoticeShownTo?: string[];
 }
 
 /**

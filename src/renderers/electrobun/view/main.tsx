@@ -53,7 +53,7 @@ import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../..
 import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 import { forwardAttendedStalls } from "../../../telemetry/stall-reports-dom";
 import { currentTelemetryConfig } from "../../../telemetry/live-config";
-import { attentionCountsEnabled, installAttentionCounter } from "../../../telemetry/attention-counts";
+import { installAttentionCounter } from "../../../telemetry/attention-counts";
 import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
 import { cloudSyncController } from "../../../sync/controller";
@@ -160,7 +160,10 @@ async function boot() {
     getInstallId: () => init.telemetry.installId,
     officialPluginIds: loadOfficialPluginIds,
   });
-  installAttentionCounter(() => !init.telemetry.optedOut && !browserDoNotTrack() && attentionCountsEnabled(currentTelemetryConfig(init.config)));
+  installAttentionCounter({
+    allowed: () => !init.telemetry.optedOut && !browserDoNotTrack(),
+    launchConfig: () => init.config,
+  });
   // Desktop has no Debug Log: this window's freezes go to the Bun process, which keeps the stall log.
   setStallSink(forwardAttendedStalls(sendElectrobunStall).sink);
   installElectrobunCapabilityStreamClient();

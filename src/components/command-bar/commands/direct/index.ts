@@ -332,45 +332,18 @@ export function runDirectCommandAction(options: {
       return;
     }
     case "toggle-crash-reports":
-    case "toggle-usage-counts": {
-      const key = command.id === "toggle-crash-reports" ? "crashReports" : "usage";
+    case "toggle-usage-counts":
+    case "toggle-attention-counts": {
+      const key = command.id === "toggle-crash-reports" ? "crashReports" : command.id === "toggle-usage-counts" ? "usage" : "attention";
+      // All three are on by default: only an explicit false is off.
       const enabled = state.config.telemetry?.[key] === false;
       const nextConfig = { ...state.config, telemetry: { ...state.config.telemetry, [key]: enabled } };
+      // Reported before React commits, so turning Attention Counts off drops unsent counts at once.
       reportTelemetryConfig(nextConfig.telemetry);
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       persistConfig(nextConfig);
       notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
       closeAll({ revertThemePreview: false });
-      return;
-    }
-    case "toggle-attention-counts": {
-      const setEnabled = (enabled: boolean) => {
-        const current = getState().config;
-        const nextConfig = { ...current, telemetry: { ...current.telemetry, attention: enabled } };
-        // Clear unsent counts before React commits the settings update.
-        reportTelemetryConfig(nextConfig.telemetry);
-        dispatch({ type: "SET_CONFIG", config: nextConfig });
-        persistConfig(nextConfig);
-        notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
-      };
-      if (state.config.telemetry?.attention === true) {
-        setEnabled(false);
-        closeAll({ revertThemePreview: false });
-      } else {
-        openInlineConfirm({
-          confirmId: "enable-attention-counts",
-          title: "Share Attention Counts?",
-          body: [
-            "While signed in with a verified account, share the tickers you open in DES, charts, quotes and options, and add to watchlists.",
-            "Gloom uses your account to limit contributions. Published counts are delayed and rounded, and require at least 20 contributors. Your holdings, watchlist names and searches are not included.",
-            "This is separate from Usage Counts and is off by default. Turn it off at any time to stop collection and discard unsent counts. Already published anonymous totals cannot be removed.",
-          ],
-          confirmLabel: "Share Counts",
-          cancelLabel: "Keep Off",
-          tone: "default",
-          onConfirm: async () => { setEnabled(true); },
-        });
-      }
       return;
     }
     case "font-size-increase":
