@@ -476,8 +476,11 @@ puts a row-size `CompanyLogoMark` in the cell's `leading`, the same
 `LogoMark` tile as a broker's, with the logo Gloom Cloud serves for the
 ticker (`CRYPTO` reads the coin's), on a white plate since logos are drawn for
 a light page (a black coin mark on a clear field would vanish on a dark
-theme). A company with no logo gets its initial on the same tile, so a missing logo moves nothing, and a logo that failed to load
-is not asked for again while the app runs. The logo sits in the name cell, not
+theme). The plate is drawn only behind a logo that has loaded: until then, and
+for a company with no logo or a logo that failed to load, the tile shows the
+initial, so a missing or late logo moves nothing and no row shows a blank white
+square on a dark theme. A logo that failed to load is not asked for again while
+the app runs. The logo sits in the name cell, not
 the ticker's: the ticker column keeps its width and the name gives up the
 tile's room, so no column moves and no row grows. The terminal draws none and
 gets the cell as it was. Lists of people, funds, indices and sectors, and

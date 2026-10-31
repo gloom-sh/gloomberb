@@ -1245,8 +1245,8 @@ A coin pair's news is the stories filed under its pair. When none are, as for `B
 `ETFF` lists the daily net flows of the US spot bitcoin ETFs (`--asset eth` for ether): one row per US trading day, newest first, with the day's total and each fund's flow in US$ millions, in the order Farside Investors publishes them. Gloom Cloud reads Farside's tables every hour while funds report (20:00 UTC to 14:00 UTC the next morning on trading days) and every six hours otherwise, keeps every page it read, and serves the latest figures. The pane footer names the publisher and `o` opens its table.
 
 - **Pending.** The newest day fills in fund by fund. A fund that reported the day before and shows nothing yet reads `pending`, in the table and in `fn ETFF`, and the day's total is Farside's own total so far, not a sum.
-- **Figures.** Latest day, 5 days and 20 days sum the published daily totals; Since launch is every listed day, from the first fund's launch (2024-01-11 for bitcoin, 2024-07-23 for ether). Days the market was closed are left out.
-- **Chart and range.** The chart draws the running total since launch, over the range the table lists: 1M, 3M, 1Y or All (keys `1`-`4`). The figures above it always use the whole history.
+- **Figures.** Latest day, 5 days and 20 days sum the published daily totals. Days the market was closed are left out.
+- **Chart and range.** The chart draws the running total since the first fund's launch (2024-01-11 for bitcoin, 2024-07-23 for ether), with that date in its legend, over the range the table lists: 1M, 3M, 1Y or All (keys `1`-`4`). The figures above it do not change with the range.
 - **Stale.** When no read has succeeded for two days the footer says so, with the date of the last read.
 
 `gloom fn ETFF` prints the newest 20 days (`--limit` for more, `--json` for every fund's figure and `pending`), with a summary line and the source. `gloom catalog flows` finds it, and so do `ETF flows`, `bitcoin flows` and `ether flows` in search and the command bar.
