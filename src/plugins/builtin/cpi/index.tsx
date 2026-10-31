@@ -3,7 +3,6 @@ import type { PluginModule } from "../plugin-module";
 import { cpiBoardCache } from "./client";
 import { cpiHeadless } from "./headless";
 import { CPI_ROW_OPTIONS, cpiRowOption } from "./model";
-import { CpiPane } from "./pane";
 
 /** Opens on the table, or on the component typed after the mnemonic. */
 function cpiInstance(options?: PaneTemplateCreateOptions): PaneTemplateInstanceConfig {
@@ -14,7 +13,7 @@ function cpiInstance(options?: PaneTemplateCreateOptions): PaneTemplateInstanceC
 }
 
 export const cpiModule: PluginModule = {
-  panes: [{ id: "cpi", name: "US Consumer Prices", icon: "C", component: CpiPane,
+  panes: [{ id: "cpi", name: "US Consumer Prices", icon: "C", get component(): typeof import("./pane").CpiPane { const { CpiPane } = require("./pane"); return CpiPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 100, height: 36 },
     tableExport: true, headless: cpiHeadless }],
   paneTemplates: [{

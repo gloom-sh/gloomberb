@@ -1,3 +1,4 @@
+import { notesPluginMeta } from "../builtin-plugin-meta";
 import { apiClient } from "../../../api-client";
 import type { GloomPlugin } from "../../../types/plugin";
 import { teamStore } from "../../../team/store";
@@ -12,11 +13,7 @@ import { createNotesTab } from "./ticker-notes-tab";
 let disposeNotes: (() => void) | null = null;
 
 export const notesPlugin: GloomPlugin = {
-  id: "notes",
-  name: "Notes",
-  version: "2.0.0",
-  description: "Markdown notes on tickers and on their own, personal or shared with a team.",
-  toggleable: true,
+  ...notesPluginMeta,
   cliCommands: [notesCliCommand],
 
   setup(ctx) {

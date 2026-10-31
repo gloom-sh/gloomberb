@@ -2,7 +2,6 @@ import type { PluginModule } from "../plugin-module";
 import { statsCache } from "./cache";
 import { STAT_CATEGORIES } from "./defs";
 import { econStatisticsHeadless } from "./headless";
-import { EconStatisticsPane } from "./pane";
 import { resolveStatArg, STATS, DEFAULT_STAT_ID } from "./stats";
 
 
@@ -13,7 +12,7 @@ export const econStatisticsModule: PluginModule = {
     id: ECON_STATISTICS_PANE_ID,
     name: "Economic Statistics",
     icon: "E",
-    component: EconStatisticsPane,
+    get component(): typeof import("./pane").EconStatisticsPane { const { EconStatisticsPane } = require("./pane"); return EconStatisticsPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 120, height: 36 },

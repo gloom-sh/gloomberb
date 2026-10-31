@@ -2,7 +2,6 @@ import { findPaneInstance, type LayoutConfig } from "../../../types/config";
 import type { AppNotificationRequest, CommandResultDef, GloomPluginContext } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import type { AppAction } from "../../../state/app/context";
-import { LayoutMarketplacePane } from "../../../layout-marketplace/pane";
 import { apiClient } from "../../../api-client";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { getSharedRegistry } from "../../registry";
@@ -110,7 +109,7 @@ export const layoutManagerModule: PluginModule = {
       id: "layout-marketplace",
       name: "Layouts",
       icon: "L",
-      component: LayoutMarketplacePane,
+      get component(): typeof import("../../../layout-marketplace/pane").LayoutMarketplacePane { const { LayoutMarketplacePane } = require("../../../layout-marketplace/pane"); return LayoutMarketplacePane; },
       reportFreshness: { status: "not-a-feed", basis: "layout listings", local: true },
       defaultPosition: "right",
       defaultMode: "floating",

@@ -6,13 +6,11 @@ import {
   inferBrowserTabFromQuery,
   isCikQuery,
 } from "./model";
-import { ThirteenFPane } from "./pane";
 import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
 } from "./api";
 import { thirteenFHeadless } from "./headless";
-import { ThirteenFTickerPane } from "./signals-pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
 import { isKnownMutualFund } from "../../../tickers/instrument-kind";
 
@@ -32,7 +30,7 @@ export const thirteenFModule: PluginModule = {
       id: "thirteenf",
       name: "13F",
       order: 39,
-      component: ThirteenFTickerPane,
+      get component(): typeof import("./signals-pane").ThirteenFTickerPane { const { ThirteenFTickerPane } = require("./signals-pane"); return ThirteenFTickerPane; },
       instruments: ["equity", "fund"],
       isVisible: ({ ticker, financials }) => !isKnownNonUsListing(ticker) && !isKnownMutualFund(ticker, financials),
     });
@@ -47,7 +45,7 @@ export const thirteenFModule: PluginModule = {
       id: THIRTEENF_PANE_ID,
       name: "13F Funds",
       icon: "13F",
-      component: ThirteenFPane,
+      get component(): typeof import("./pane").ThirteenFPane { const { ThirteenFPane } = require("./pane"); return ThirteenFPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 36 },

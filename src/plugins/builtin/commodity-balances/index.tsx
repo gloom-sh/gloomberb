@@ -2,7 +2,6 @@ import type { PluginModule } from "../plugin-module";
 import { commandRequestParams } from "../shared/command-tab";
 import { commodityBalancesHeadless } from "./headless";
 import { PSD_CROPS, psdCrop, unknownCropMessage } from "./model";
-import { CommodityBalancesPane } from "./pane";
 
 export const commodityBalancesModule: PluginModule = {
   panes: [
@@ -10,7 +9,7 @@ export const commodityBalancesModule: PluginModule = {
       id: "commodity-balances",
       name: "Crop Balances",
       icon: "B",
-      component: CommodityBalancesPane,
+      get component(): typeof import("./pane").CommodityBalancesPane { const { CommodityBalancesPane } = require("./pane"); return CommodityBalancesPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 108, height: 28 },

@@ -2,10 +2,9 @@ import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
 import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
-import { FuturesCurvePane } from "./pane";
 
 export const futuresCurveModule: PluginModule = {
-  panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", component: FuturesCurvePane,
+  panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", get component(): typeof import("./pane").FuturesCurvePane { const { FuturesCurvePane } = require("./pane"); return FuturesCurvePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 98, height: 30 },
     tableExport: true, headless: futuresCurveHeadless,
     settings: (context) => ({ title: "Futures Curve Settings",
