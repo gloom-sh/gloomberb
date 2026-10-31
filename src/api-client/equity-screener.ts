@@ -23,6 +23,15 @@ export const OPTION_VOLATILITY_FIELDS = ["iv30Percent", "ivPercentile", "iv30Cha
  * listed only when asked (`include=ownership`), and omitted by a server from before them.
  */
 export const OWNERSHIP_FIELDS = ["sharesOutstanding", "floatShares", "shortPercentOfFloat", "institutionalOwnershipPercent"] as const;
+/**
+ * ROIC, FCF yield, leverage, revenue and EPS CAGRs and consensus growth, on the bases `FA` and `EE` use; listed only
+ * when asked (`include=quality`), and omitted by a server from before them.
+ */
+export const QUALITY_FIELDS = [
+  "roicPercent", "fcfYieldPercent", "netDebtToEbitda", "debtToEquity",
+  "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
+  "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
+] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -73,6 +82,7 @@ export const NUMERIC_FIELDS = [
   "ivToHv",
   ...OPTION_VOLATILITY_FIELDS,
   ...OWNERSHIP_FIELDS,
+  ...QUALITY_FIELDS,
   "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
   "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;
