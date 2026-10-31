@@ -82,7 +82,8 @@ function ChangelogDetail({
   );
 }
 
-function ChangelogPane({ focused, width, height }: PaneProps) {
+/** The Changelog, as its own pane (CHG) and as ROADMAP's Changelog view. */
+export function ChangelogPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
   const requestedVersion = paneInstance?.params?.version ?? null;
   const [releases, setReleases] = useState<ChangelogRelease[]>(() => releaseCache.peek(RELEASES, { stale: true }) ?? []);
