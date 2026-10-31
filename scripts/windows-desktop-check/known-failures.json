@@ -1,0 +1,7 @@
+{
+  "checks": {
+    "main-resize-top": "the page covers the frame's top edge, so a drag there moves the window",
+    "detached-title-double-click": "a double-click on the title bar does nothing",
+    "main-title-double-click": "a double-click on the title bar does nothing"
+  }
+}
