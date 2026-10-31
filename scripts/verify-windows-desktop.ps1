@@ -776,6 +776,27 @@ function Get-ScreenshotStats {
   }
 }
 
+# Electrobun's handlers for native window, webview, menu and tray events catch
+# their own errors, so a handler that cannot read what native code passed it
+# only shows in the app's stderr.
+function Assert-NativeEventsRead {
+  param(
+    [string]$Path,
+    [string]$Label
+  )
+
+  $Stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  try {
+    $Text = (New-Object System.IO.StreamReader $Stream).ReadToEnd()
+  } finally {
+    $Stream.Dispose()
+  }
+  $Failure = [regex]::Match($Text, '(?m)^.*(\[webviewEventJSCallback\] Error|error in eventBridgeHandler|error in internalBridgeHandler|error sending message to bun).*$')
+  if ($Failure.Success) {
+    throw "$Label could not read a native event: $($Failure.Value.Trim())"
+  }
+}
+
 function Assert-ScreenshotHasContent {
   param(
     [string]$Path,
@@ -1574,6 +1595,7 @@ function Capture-OnboardingScreenshot {
       -Path $OutputPath `
       -Label "Onboarding window" `
       -InitialDelaySeconds 8
+    Assert-NativeEventsRead (Join-Path $GuiArtifactDir "windows-onboarding-stderr.log") "The onboarding window"
   } catch {
     $OnboardingFailure = $_
     try {
@@ -1813,6 +1835,7 @@ try {
   $PopOutClientScreenshot = Join-Path $GuiArtifactDir "windows-gui-popout-client.png"
   Capture-WindowClientScreenshot $DetachedWindow $PopOutClientScreenshot
   Assert-ScreenshotHasContent $PopOutClientScreenshot "Detached pop-out client area"
+  Assert-NativeEventsRead (Join-Path $GuiArtifactDir "windows-main-stderr.log") "The app"
 
   $ControlPaddingMeasurements = @(
     Measure-WindowCloseGlyphPadding `
