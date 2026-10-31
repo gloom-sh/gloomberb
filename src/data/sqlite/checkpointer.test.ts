@@ -42,3 +42,35 @@ test("in the app, commits leave copying the WAL into the database to the checkpo
     database.close();
   }
 });
+
+// A thread stuck in a checkpoint sends no error event. The app's user writes
+// skip their flush while the checkpointer runs, so without a clock on its
+// answers they would go unflushed until the backstop checkpoint or close.
+test("a checkpointer stuck in a checkpoint gives the app's user writes their flush back", async () => {
+  const dbPath = createTempDbPath("checkpointer-stuck");
+  const database = new SqliteDatabase(dbPath, {
+    interactive: true,
+    checkpointer: {
+      stuckAfterMs: 300,
+      // Opens, then never answers a checkpoint.
+      workerSource: `self.onmessage = (event) => { if (event.data.type === "open") postMessage({ type: "ready" }); };`,
+    },
+  });
+  const { connection, access } = database;
+  const pragma = (name: string) => connection.query<Record<string, number>, []>(`PRAGMA ${name}`).get()?.[name];
+  const userWriteLevel = () => {
+    let level: number | undefined;
+    access.write("probe user write", () => { level = pragma("synchronous"); });
+    return level;
+  };
+  try {
+    // The write asks for a checkpoint a second later, which never answers.
+    expect(userWriteLevel()).toBe(1);
+    const deadline = performance.now() + 3_000;
+    while (userWriteLevel() === 1 && performance.now() < deadline) await Bun.sleep(50);
+    expect(userWriteLevel()).toBe(2);
+    expect(pragma("wal_autocheckpoint")).toBe(1_000);
+  } finally {
+    database.close();
+  }
+});

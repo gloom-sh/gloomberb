@@ -5,6 +5,7 @@ import {
   SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
   startWalCheckpointer,
   type WalCheckpointer,
+  type WalCheckpointerOptions,
 } from "./checkpointer";
 import { SQLITE_BUSY_TIMEOUT_MS, withSqliteBusyRetry } from "./retry";
 
@@ -74,6 +75,8 @@ export interface SqliteDatabaseOptions {
    * another program's lock (see access.ts). Commands and tests wait it out.
    */
   interactive?: boolean;
+  /** Tests only: the WAL checkpointer's thread and how long it may go silent. */
+  checkpointer?: WalCheckpointerOptions;
 }
 
 export class SqliteDatabase {
@@ -108,7 +111,7 @@ export class SqliteDatabase {
       this.checkpointer = startWalCheckpointer(dbPath, () => {
         checkpointerRunning = false;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
-      });
+      }, options.checkpointer);
       if (this.checkpointer) {
         checkpointerRunning = true;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
