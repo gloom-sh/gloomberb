@@ -8,7 +8,7 @@ import {
   resetThirteenFApiPersistence,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
-import { corporateSplitFactor, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
+import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
 import { filingGapText } from "./report-notes";
 import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
@@ -344,6 +344,60 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     asked.length = 0;
     await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
     expect(asked.some((request) => request.path === "/holdings")).toBe(false);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a fund read ahead asks its filing list, and its holdings only when small, one fund at a time; opening it joins the read even when the read ahead stops", async () => {
+  attachThirteenFApiPersistence(new MemoryPluginPersistence());
+  const asked: string[] = [];
+  let entries = 1_500;
+  let releaseList!: () => void;
+  let listGate: Promise<void> = Promise.resolve();
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>, options?: { signal?: AbortSignal }) => {
+    asked.push(`${path}:${params.cik}${params.accession_number ? `:${params.accession_number}` : ""}`);
+    if (path === "/forms") {
+      await listGate;
+      options?.signal?.throwIfAborted();
+      return [filedForm(`${Number(params.cik)}-current`, "2026-06-30", entries), filedForm(`${Number(params.cik)}-previous`, "2026-03-31", 400)];
+    }
+    if (path === "/holdings") return { rows: holdingRows(String(params.accession_number), 0, 3), complete: true };
+    throw new Error(`unexpected ${path}`);
+  }) as never);
+  try {
+    // 1,900 rows over the two quarters: both filings are read ahead, and opening the fund asks nothing more.
+    await prefetchFundDetail("1", new AbortController().signal);
+    expect(asked).toEqual(["/forms:0000000001", "/holdings:0000000001:1-current", "/holdings:0000000001:1-previous"]);
+    asked.length = 0;
+    await loadFundDetail("1", "Fund", undefined, { filingGap: false });
+    expect(asked).toEqual([]);
+    // A large filer's list alone.
+    entries = 23_395;
+    await prefetchFundDetail("2", new AbortController().signal);
+    expect(asked).toEqual(["/forms:0000000002"]);
+
+    // Resting on another fund stops the last one; opening a fund while its read ahead is in flight joins it,
+    // and asks again when the read ahead is stopped under it.
+    asked.length = 0;
+    listGate = new Promise((resolve) => { releaseList = resolve; });
+    const prefetched: string[] = [];
+    const prefetcher = createFundPrefetcher(async (cik, signal) => {
+      prefetched.push(cik);
+      await prefetchFundDetail(cik, signal);
+    });
+    prefetcher.prefetch("3");
+    prefetcher.prefetch("3");
+    await Bun.sleep(1);
+    const opened = loadFundDetail("3", "Fund", undefined, { filingGap: false });
+    await Bun.sleep(1);
+    prefetcher.prefetch("4");
+    releaseList();
+    const detail = await opened;
+    expect(prefetched).toEqual(["3", "4"]);
+    expect(detail.latestForm?.accessionNumber).toBe("3-current");
+    expect(asked.filter((request) => request === "/forms:0000000003")).toHaveLength(2);
+    prefetcher.cancel();
   } finally {
     spy.mockRestore();
   }

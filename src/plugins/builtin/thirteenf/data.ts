@@ -520,6 +520,50 @@ export async function loadFundPerformance(
   };
 }
 
+/** Rows a fund's two newest reports may hold together for their holdings to be read ahead. */
+const PREFETCH_HOLDINGS_MAX = 2_000;
+
+/**
+ * Reads ahead what opening a fund asks first, while the cursor rests on its
+ * row: its filing list, which every other request waits on, and the holdings
+ * of its two newest reports when they hold PREFETCH_HOLDINGS_MAX rows or fewer
+ * together. A large filer's holdings wait for Enter. These are loadFundDetail's
+ * own requests, so opening the fund reads them from cache or joins them.
+ */
+export async function prefetchFundDetail(cik: string, signal: AbortSignal): Promise<void> {
+  const now = new Date();
+  const forms = await listThirteenFForms(cik, isoDateYearsAgo(4, now), isoDateToday(now), 100, signal);
+  const filings = buildPeriodReports(forms).slice(0, 2).flatMap((report) => report.filings);
+  const rows = filings.reduce((sum, form) => sum + (form.tableEntryTotal ?? Infinity), 0);
+  if (!filings.length || rows > PREFETCH_HOLDINGS_MAX) return;
+  await Promise.all(filings.map((form) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, { entries: form.tableEntryTotal })));
+}
+
+/**
+ * One fund read ahead at a time (prefetchFundDetail): resting on another row
+ * stops the last one's requests, and `cancel` stops it when the list goes.
+ */
+export function createFundPrefetcher(prefetch: (cik: string, signal: AbortSignal) => Promise<void> = prefetchFundDetail) {
+  let current: { cik: string; controller: AbortController } | null = null;
+  return {
+    prefetch(cik: string) {
+      if (current?.cik === cik) return;
+      current?.controller.abort();
+      const entry = { cik, controller: new AbortController() };
+      current = entry;
+      void prefetch(cik, entry.controller.signal).catch(() => {
+        // Intentional ignore: a fund read ahead that fails is read again, and the failure shown, when it opens.
+      }).finally(() => {
+        if (current === entry) current = null;
+      });
+    },
+    cancel() {
+      current?.controller.abort();
+      current = null;
+    },
+  };
+}
+
 /**
  * A fund's latest report and the one before it, with their holdings. With
  * `onProgress`, the fund as it fills in: the latest report's holdings as
