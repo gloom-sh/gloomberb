@@ -81,3 +81,52 @@ export function unavailableOnServer(error: unknown, message: string, statuses: r
     ? new ApiRequestError(message, error.status, error.retryAfterMs, error.code, error.details)
     : error;
 }
+
+/**
+ * Reads ahead many items' payloads in batch requests (`read`, at most `max`
+ * ids each, sent side by side) into the cache their own loads read under
+ * `key`, skipping an item cached fresh unless `force`. Answers the ids stored, which a forced load can
+ * take as fresh; an item the batch failed or left out stays for its own load
+ * to ask, which says why. A batch route the server does not serve (404) is
+ * not asked again in this session.
+ */
+export function createCloudBatchAhead<T>(
+  cache: CloudCache<T>,
+  options: {
+    max: number;
+    validate: (payload: T) => T;
+    read: (ids: string[]) => Promise<Array<{ id: string; payload: T }>>;
+  },
+): (items: ReadonlyArray<{ id: string; key: string }>, force?: boolean) => Promise<Set<string>> {
+  let missing = false;
+  return async (items, force = false) => {
+    const stored = new Set<string>();
+    const keys = new Map<string, string>();
+    for (const { id, key } of items) {
+      const cached = cache.get(key);
+      if (force || !cached || cached.stale) keys.set(id, key);
+    }
+    const ids = [...keys.keys()];
+    if (missing || ids.length < 2) return stored;
+    const chunks = Array.from({ length: Math.ceil(ids.length / options.max) }, (_, index) => ids.slice(index * options.max, (index + 1) * options.max));
+    await Promise.all(chunks.map(async (chunk) => {
+      const read = await options.read(chunk).catch((error: unknown) => {
+        if (error instanceof ApiRequestError && error.status === 404) missing = true;
+        else logFailure("shared.cloud-resource", "Read a batch of cloud payloads ahead failed")(error);
+        return [];
+      });
+      await Promise.all(read.map(async ({ id, payload }) => {
+        const key = keys.get(id);
+        if (!key) return;
+        try {
+          const valid = options.validate(payload);
+          await cache.load(key, async () => valid, { force: true });
+          stored.add(id);
+        } catch (error) {
+          logFailure("shared.cloud-resource", "Store a batched cloud payload failed")(error);
+        }
+      }));
+    }));
+    return stored;
+  };
+}

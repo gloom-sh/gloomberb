@@ -84,8 +84,11 @@ export type PriceHistoryLoader = (symbol: string) => Promise<PricePoint[]>;
 
 /** Closes a month back are yesterday's news for half an hour. */
 const FX_HISTORY_TTL_MS = 30 * 60_000;
-/** Twenty-odd currencies at once; a few requests at a time keep the feed from refusing them. */
-const FX_HISTORY_CONCURRENCY = 4;
+/**
+ * Twenty-odd currencies, asked together: the API client sends them in history
+ * batches of sixteen, and asks a service without them a few at a time.
+ */
+const FX_HISTORY_CONCURRENCY = 32;
 const fxMoves = createTtlCache<number | null>({ ttlMs: FX_HISTORY_TTL_MS });
 
 /** A load that fails reads as unknown for everyone waiting on it and is asked again next time, never remembered as unknown. */

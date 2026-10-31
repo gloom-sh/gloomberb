@@ -92,7 +92,7 @@ export function useFrontContractReturns(
     const landed = coalescedBump(() => {
       if (!cancelled) setVersion((current) => current + 1);
     });
-    // Twelve reads at a time, shared with the rows' terms (`boardRead`); a board that moved on skips its turn.
+    // Asked together with the rows' terms (`boardRead`), in batch requests; a board that moved on skips its turn.
     void Promise.all(queue.map((symbol) => boardRead(async () => {
       if (cancelled) return;
       if (!await loadHistory(provider, symbol)) failed = true;

@@ -17,8 +17,9 @@ afterEach(() => {
   resetFrontContractReturns();
 });
 
-// Seventy-odd rows ask for a history and their terms each; twelve reads at a time is the board's whole share, not each hook's.
-test("a board's contract histories and terms share one limit of twelve reads at a time, and every read gets its turn", async () => {
+// Seventy-odd rows ask for a history and their terms each. Asked in one moment, the API client sends each kind in a
+// few batch requests; asked a few at a time, as the board once did, they go out as seventy-odd requests apiece.
+test("a board asks every row's contract history and terms in one moment, and every read is answered", async () => {
   let running = 0;
   let most = 0;
   let asked = 0;
@@ -47,7 +48,10 @@ test("a board's contract histories and terms share one limit of twelve reads at 
   try {
     await act(async () => { await tui.render(<Probe />, { width: 10, height: 3 }); });
     await act(async () => { await Bun.sleep(5); });
-    expect(asked).toBe(12);
+    const rows = FUTURES_CONTRACTS.length;
+    expect(terms).toHaveBeenCalledTimes(rows);
+    expect(asked).toBeGreaterThan(rows + 12);
+    expect(most).toBe(asked);
     for (let turn = 0; held.length > 0 && turn < 1_000; turn += 1) {
       await act(async () => {
         held.shift()!();
@@ -55,10 +59,6 @@ test("a board's contract histories and terms share one limit of twelve reads at 
       });
     }
     expect(held).toHaveLength(0);
-    expect(most).toBe(12);
-    // Every row's terms, and past twelve histories as well, so a limit for each would have run twenty-four: all read in turn.
-    expect(terms).toHaveBeenCalledTimes(FUTURES_CONTRACTS.length);
-    expect(asked - FUTURES_CONTRACTS.length).toBeGreaterThan(12);
   } finally {
     // The limit is the module's: a read left held would keep its place from the next test.
     while (held.length > 0) held.shift()!();

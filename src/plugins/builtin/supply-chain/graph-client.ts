@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphPayload, type GraphPath } from "../../../api-client/supply-chain-graph";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
 import { activeRelationship, isUnconfirmed } from "./trust";
@@ -83,4 +83,25 @@ export function graphOptions(input: Record<string, unknown>): GraphOptions {
     || options.sources.some(value => !["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value))
     || options.tiers.some(value => !["structured", "primary", "secondary", "imported"].includes(value))) throw new Error("Invalid supply chain graph filters");
   return options;
+}
+/** Symbols per graphs batch request: a ripple's sixty holdings are two, read sixteen at a time on the server. */
+const GRAPH_BATCH_MAX = 30;
+const graphsAheadByOptions = new Map<string, ReturnType<typeof createCloudBatchAhead<GraphPayload>>>();
+/**
+ * Reads many symbols' graphs on one query ahead in a request per 30 (EARN
+ * ripple's two hops), into the cache loadGraph reads. Answers the symbols stored.
+ */
+export function loadGraphsAhead(symbols: readonly string[], options: GraphOptions, access: string, force = false): Promise<Set<string>> {
+  const query = supplyGraphQuery(options);
+  let ahead = graphsAheadByOptions.get(query);
+  if (!ahead) {
+    ahead = createCloudBatchAhead(graphCache, {
+      max: GRAPH_BATCH_MAX,
+      validate: validateGraph,
+      read: async (ids) => (await apiClient.getCloudSupplyGraphs(ids, options)).items
+        .flatMap((item) => item.graph ? [{ id: item.symbol.toUpperCase(), payload: item.graph }] : []),
+    });
+    graphsAheadByOptions.set(query, ahead);
+  }
+  return ahead(symbols.map((symbol) => ({ id: symbol.toUpperCase(), key: key(symbol, "", options, access) })), force);
 }

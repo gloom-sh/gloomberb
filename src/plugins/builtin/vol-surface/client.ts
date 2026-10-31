@@ -17,7 +17,12 @@ import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpi
 import { optionModelSpot } from "../options/model-spot";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
-const SURFACE_LOAD_CONCURRENCY = 4;
+/**
+ * Expiries asked together: the API client sends one listing's expiries asked
+ * in one moment in options batches of six, side by side, and asks a service
+ * without them a few at a time.
+ */
+const SURFACE_LOAD_CONCURRENCY = 48;
 /** Each kept expiry must be at least this much further out than the previous one. */
 const SURFACE_TENOR_RATIO = 1.35;
 

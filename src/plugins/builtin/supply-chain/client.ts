@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { SupplyChainPayload, SupplyEntity, SupplyEvidenceItem, SupplyOptions, SupplyRow } from "../../../api-client/supply-chain";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { activeRelationship, canShowQuote, isUnconfirmed, publicEvidence, supplyOptions, TIER_OPTIONS, trustTier } from "./trust";
 
 export const SUPPLY_UNAVAILABLE = "Supply chain disclosures are not available yet.";
@@ -111,3 +111,24 @@ export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiCl
 const cacheKey = (symbol: string, access: string, options: SupplyOptions) => `${symbol.toUpperCase()}:${access}:${JSON.stringify(supplyOptions(options.tiers))}:${!!options.includeLeads}`;
 export const cachedSupplyChain = (symbol: string, access: string, options: SupplyOptions = {}) => cachedCloudResource(supplyChainCache, cacheKey(symbol, access, options), validateSupplyChain);
 export const loadSupplyChain = (symbol: string, access: string, force = false, options: SupplyOptions = {}) => loadCloudResource(supplyChainCache, cacheKey(symbol, access, options), () => fetchSupplyChain(symbol, apiClient, options), { force, validate: validateSupplyChain });
+/** Symbols per disclosures batch request: a ripple's sixty holdings are two, read sixteen at a time on the server. */
+const SUPPLY_BATCH_MAX = 30;
+const supplyChainsAheadByOptions = new Map<string, ReturnType<typeof createCloudBatchAhead<SupplyChainPayload>>>();
+/**
+ * Reads many symbols' disclosures ahead in a request per 30 (EARN ripple's
+ * holdings), into the cache loadSupplyChain reads. Answers the symbols stored.
+ */
+export function loadSupplyChainsAhead(symbols: readonly string[], access: string, force = false, options: SupplyOptions = {}): Promise<Set<string>> {
+  const optionsKey = JSON.stringify([supplyOptions(options.tiers), !!options.includeLeads]);
+  let ahead = supplyChainsAheadByOptions.get(optionsKey);
+  if (!ahead) {
+    ahead = createCloudBatchAhead(supplyChainCache, {
+      max: SUPPLY_BATCH_MAX,
+      validate: validateSupplyChain,
+      read: async (ids) => (await apiClient.getCloudSupplyChains(ids, options)).items
+        .flatMap((item) => item.chain ? [{ id: item.symbol.toUpperCase(), payload: item.chain }] : []),
+    });
+    supplyChainsAheadByOptions.set(optionsKey, ahead);
+  }
+  return ahead(symbols.map((symbol) => ({ id: symbol.toUpperCase(), key: cacheKey(symbol, access, options) })), force);
+}
