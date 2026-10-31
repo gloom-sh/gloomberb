@@ -69,3 +69,4 @@ jobs:
           path: |
             artifacts/windows-update-launch-repro/**/*.txt
             artifacts/windows-update-launch-repro/**/*.json
+            artifacts/windows-update-launch-repro/**/*.dmp

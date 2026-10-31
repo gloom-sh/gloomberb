@@ -132,7 +132,7 @@ $StopWatcher = Start-Job -ArgumentList $Stops -ScriptBlock {
     if ($Event) {
       $Stop = $Event.SourceEventArgs.NewEvent
       if ($Stop.ProcessName -match "bun|launcher|powershell|schtasks") {
-        Add-Content -LiteralPath $Path -Value ("{0:HH:mm:ss.fff} {1} pid {2} parent {3} exit 0x{4:X8}" -f (Get-Date), $Stop.ProcessName, $Stop.ProcessID, $Stop.ParentProcessID, [uint32]$Stop.ExitStatus)
+        Add-Content -LiteralPath $Path -Value ("{0:HH:mm:ss.fff} {1} pid {2} parent {3} exit 0x{4:X8}" -f (Get-Date), $Stop.ProcessName, $Stop.ProcessID, $Stop.ParentProcessID, $Stop.ExitStatus)
       }
       Remove-Event -EventIdentifier $Event.EventIdentifier
     }
@@ -167,7 +167,7 @@ for ($Launch = 1; $Launch -le $Launches; $Launch += 1) {
   }
   $Removed = -not (Test-Path -LiteralPath $UpdaterApp)
   if ($Process.HasExited) {
-    $BunCode = if ($Bun -and $Bun.HasExited) { "0x{0:X8}" -f [uint32]$Bun.ExitCode } else { "unknown" }
+    $BunCode = try { if ($Bun -and $Bun.HasExited) { "0x{0:X8}" -f $Bun.ExitCode } else { "unknown" } } catch { "unreadable: $($_.Exception.Message)" }
     $Line = "launch ${Launch}: launcher (pid $($Process.Id)) quit after $([math]::Round(($Process.ExitTime - $StartedAt).TotalSeconds, 1)) s with $($Process.ExitCode); bun.exe (pid $($Bun.Id)) with $BunCode; copy removed: $Removed"
     $Crashed += $Line
   } else {
