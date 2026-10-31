@@ -6,6 +6,7 @@ import { attentionNoticeShown } from "./attention-setting";
 import { telemetryOptedOut } from "./crash-reports";
 import { currentTelemetryConfig, subscribeTelemetryConfig } from "./live-config";
 import { automationActive } from "./usage-counts";
+import { cloudSyncController } from "../sync/controller";
 
 const FLUSH_MS = 60_000;
 const MAX_AGE_MS = 120_000;
@@ -151,13 +152,30 @@ interface AttentionCounterOptions {
   allowed(): boolean;
   /** The config the surface launched with; the app's live switches replace it once reported. */
   launchConfig(): { telemetry?: TelemetryConfig } | null | undefined;
+  /**
+   * Whether this surface has the signed-in account's synced settings, so an
+   * Attention Counts off made on another device has arrived before anything
+   * counts. Defaults to this session's cloud sync having pulled them; without
+   * cloud sync nothing counts. A popped-out desktop window gets them from the
+   * main window instead.
+   */
+  accountSettingsPulled?(): boolean;
+}
+
+function cloudSettingsPulled(): boolean {
+  return cloudSyncController.getStatus().lastPullAt !== null;
 }
 
 /** Installed only by interactive terminal, desktop and web entry points. */
-export function installAttentionCounter({ allowed, launchConfig }: AttentionCounterOptions): () => void {
+export function installAttentionCounter({
+  allowed,
+  launchConfig,
+  accountSettingsPulled = cloudSettingsPulled,
+}: AttentionCounterOptions): () => void {
   counter?.dispose();
   const next = new AttentionCounter({
     isEnabled: () => allowed()
+      && accountSettingsPulled()
       && attentionCountsEnabled(currentTelemetryConfig(launchConfig()), apiClient.getCurrentUser()?.id ?? null),
     verifiedSession: () => apiClient.getVerifiedSessionIdentity(),
     send: (payload, signal) => apiClient.reportAttentionCounts(payload, signal),

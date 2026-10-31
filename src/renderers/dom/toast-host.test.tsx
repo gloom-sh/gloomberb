@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { useToastHost, type ToastHost } from "../../ui/toast";
 import { WebToastHostProvider } from "./toast-host";
 import { createDomTestHarness } from "./test-utils";
@@ -56,6 +56,43 @@ test("DOM notifications show context and open from the whole card", async () => 
   });
   expect(opened).toBe(1);
   expect(container.querySelector(".gloom-toast")).toBeNull();
+
+  toastHost = null;
+});
+
+// The Attention Counts notice starts counting from onShown, so it must run
+// only once a viewport has drawn the toast, and only once.
+test("a DOM toast's onShown runs once, after a viewport first draws it", async () => {
+  const shown: string[] = [];
+  let showViewport: ((value: boolean) => void) | null = null;
+  function MaybeViewport() {
+    const [visible, setVisible] = useState(false);
+    showViewport = setVisible;
+    return visible ? <ToastViewport /> : <HostProbe />;
+  }
+  function HostProbe() {
+    toastHost = useToastHost();
+    return null;
+  }
+
+  const container = await renderDom(
+    <WebToastHostProvider>
+      <MaybeViewport />
+    </WebToastHostProvider>,
+  );
+  await act(async () => {
+    toastHost?.info("First", { duration: 0, onShown: () => shown.push("first") });
+  });
+  expect(shown).toEqual([]);
+
+  await act(async () => showViewport?.(true));
+  expect(container.querySelector(".gloom-toast")?.textContent).toContain("First");
+  expect(shown).toEqual(["first"]);
+
+  await act(async () => {
+    toastHost?.info("Second", { duration: 0, onShown: () => shown.push("second") });
+  });
+  expect(shown).toEqual(["first", "second"]);
 
   toastHost = null;
 });

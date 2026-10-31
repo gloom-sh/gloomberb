@@ -163,6 +163,8 @@ async function boot() {
   installAttentionCounter({
     allowed: () => !init.telemetry.optedOut && !browserDoNotTrack(),
     launchConfig: () => init.config,
+    // A popped-out window does not sync: the main window does, and sends it the settings it pulled.
+    ...(init.windowKind === "detached" ? { accountSettingsPulled: () => true } : {}),
   });
   // Desktop has no Debug Log: this window's freezes go to the Bun process, which keeps the stall log.
   setStallSink(forwardAttendedStalls(sendElectrobunStall).sink);

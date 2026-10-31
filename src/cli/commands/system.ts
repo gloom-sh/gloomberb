@@ -97,6 +97,21 @@ function describeTimezone(value: unknown): string {
   return typeof value === "string" && value ? value : "not set, times print in UTC alone";
 }
 
+/** What `config get telemetry.attention` prints while the setting is untouched. */
+const ATTENTION_DEFAULT = "default";
+
+/**
+ * Attention Counts as set, not as "on": unset is the default, which counts an
+ * account only once the app has shown it its notice, so it is not `true`.
+ */
+function attentionSetting(telemetry: TelemetryConfig | undefined): boolean | typeof ATTENTION_DEFAULT {
+  return telemetry?.attention ?? ATTENTION_DEFAULT;
+}
+
+function describeAttentionSetting(value: unknown): string {
+  return value === ATTENTION_DEFAULT ? "default: on once the app has shown its notice" : describeConfigValue(value);
+}
+
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "nothing";
@@ -334,7 +349,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           valueFlashingEnabled: context.config.valueFlashingEnabled,
           "telemetry.crashReports": context.config.telemetry?.crashReports !== false,
           "telemetry.usage": context.config.telemetry?.usage !== false,
-          "telemetry.attention": context.config.telemetry?.attention !== false,
+          "telemetry.attention": attentionSetting(context.config.telemetry),
           [STAR_PROMPT_CONFIG_KEY]: context.config.starPrompt?.enabled !== false,
           [TIMEZONE_CONFIG_KEY]: context.config.timezone ?? null,
           [UPDATE_CHANNEL_CONFIG_KEY]: context.config.updates?.channel ?? "stable",
@@ -349,6 +364,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ...(key === "theme" ? { format: (value: unknown) => describeThemeId(String(value)) } : {}),
               ...(key === TIMEZONE_CONFIG_KEY ? { format: describeTimezone } : {}),
               ...(key === "baseCurrency" ? { format: describeBaseCurrency } : {}),
+              ...(key === "telemetry.attention" ? { format: describeAttentionSetting } : {}),
             })),
           });
           return;
@@ -368,7 +384,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           ctx.printResult({ data: { key, value: safeConfig[key] } }, {
             text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value)
               : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value)
-                : key === "baseCurrency" ? describeBaseCurrency(data.value) : describeConfigValue(data.value),
+                : key === "baseCurrency" ? describeBaseCurrency(data.value)
+                  : key === "telemetry.attention" ? describeAttentionSetting(data.value) : describeConfigValue(data.value),
           });
           return;
         }

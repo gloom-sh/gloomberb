@@ -29,6 +29,7 @@ import { parseWindowModeCommandArg } from "../../layout-items";
 import type { CommandBarRoute } from "../../workflow/types";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 import { reportTelemetryConfig } from "../../../../telemetry/live-config";
+import { ATTENTION_OFF_MESSAGE } from "../../../../telemetry/attention-setting";
 import { NIGHTLY_CHANNEL_SUMMARY, withUpdateChannel } from "../../../../updater/channel";
 import { isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
@@ -342,7 +343,9 @@ export function runDirectCommandAction(options: {
       reportTelemetryConfig(nextConfig.telemetry);
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       persistConfig(nextConfig);
-      notify(`${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
+      notify(key === "attention" && !enabled
+        ? t(ATTENTION_OFF_MESSAGE)
+        : `${t(command.label)}: ${t(enabled ? "on" : "off")}`, { type: "success" });
       closeAll({ revertThemePreview: false });
       return;
     }

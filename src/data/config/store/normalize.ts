@@ -202,13 +202,18 @@ function withUpdates(updates: AppConfig["updates"]): Pick<AppConfig, "updates"> 
   return updates ? { updates } : {};
 }
 
-/** Only the switches that are set survive; an empty object is the same as none. */
+/**
+ * Only the switches that are set survive; an empty object is the same as none.
+ * Attention Counts is on by default, so a value that cannot be read turns it
+ * off instead: a hand-edited "false" or a broken block never counts as on.
+ */
 function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
-  if (!isRecord(value)) return undefined;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return { attention: false };
   const telemetry: TelemetryConfig = {
     ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
     ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
-    ...(typeof value.attention === "boolean" ? { attention: value.attention } : {}),
+    ...(value.attention !== undefined ? { attention: value.attention === true } : {}),
     ...sanitizeAttentionNotice(value.attentionNoticeShownTo),
   };
   return Object.keys(telemetry).length > 0 ? telemetry : undefined;

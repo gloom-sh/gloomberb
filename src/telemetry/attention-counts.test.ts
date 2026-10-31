@@ -58,11 +58,13 @@ describe("attention setting", () => {
       apiClient.setSessionToken(null);
     }
   });
-  test("cloud sync never exports the setting or changes it from another device", () => {
+  test("cloud sync carries only whether it is off, never the notice list or a remote telemetry block", () => {
     const local = createDefaultConfig("/tmp/attention-sync");
     const enabled = { ...local, telemetry: { attention: true, attentionNoticeShownTo: ["user-1"] } };
     const pushed = __syncContributorInternalsForTests.collectCoreConfigPayload(enabled);
     expect(JSON.stringify(pushed)).not.toContain("telemetry");
+    expect(JSON.stringify(pushed)).not.toContain("user-1");
+    expect((pushed as Record<string, unknown>).attentionOff).toBe(false);
     for (const telemetry of [{ attention: true }, { attentionNoticeShownTo: ["user-1"] }]) {
       const pulled = __syncContributorInternalsForTests.mergeConfigPayload(local, { telemetry });
       expect(attentionCountsEnabled(pulled, "user-1")).toBe(false);
@@ -72,8 +74,13 @@ describe("attention setting", () => {
     expect(remote?.telemetry?.attention).toBe(false);
   });
   test("the default counts an account only after its notice; an explicit choice wins either way", () => {
-    // Old, malformed and usage-only settings are the default.
-    for (const telemetry of [undefined, {}, { usage: true }, { usage: false }, { attention: "true" }, { attention: 1 }]) {
+    // Old and usage-only settings are the default; an unreadable one is off.
+    for (const telemetry of [{ attention: "true" }, { attention: 1 }, { attention: null }, "on", null]) {
+      const { config } = normalizeLoadedConfig({ ...createDefaultConfig("/tmp/attention-config"), telemetry } as never, "/tmp/attention-config");
+      expect(config.telemetry?.attention).toBe(false);
+      expect(attentionCountsEnabled({ ...config, telemetry: withAttentionNoticeShown(config.telemetry, "user-1") }, "user-1")).toBe(false);
+    }
+    for (const telemetry of [undefined, {}, { usage: true }, { usage: false }]) {
       const { config } = normalizeLoadedConfig({ ...createDefaultConfig("/tmp/attention-config"), telemetry }, "/tmp/attention-config");
       expect(attentionCountsEnabled(config, "user-1")).toBe(false);
       const shown = { ...config, telemetry: withAttentionNoticeShown(config.telemetry, "user-1") };

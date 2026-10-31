@@ -5,8 +5,13 @@ import type { TelemetryConfig } from "../types/config";
  * default: `telemetry.attention: false` turns it off and `true` is an
  * explicit on. While it is unset, an account counts only after this
  * installation has drawn the one-time notice for it; an explicit choice
- * either way never needs the notice.
+ * either way never needs the notice. While signed in, an off is the
+ * account's: cloud sync carries it to the account's other devices
+ * (`mergedAttentionTelemetry` in sync/core-contributors.ts).
  */
+
+/** What switching off says, from the notice or the command bar: counting stops, published totals stay. */
+export const ATTENTION_OFF_MESSAGE = "Attention Counts is off. Totals already published can't be withdrawn.";
 
 /** How many accounts an installation remembers showing the notice to. */
 export const ATTENTION_NOTICE_ACCOUNTS = 20;

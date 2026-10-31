@@ -179,8 +179,8 @@ export function createRootCommandItemBuilder({
         return state.config.telemetry?.usage === false ? "Currently off" : "Currently on";
       case "toggle-attention-counts":
         return state.config.telemetry?.attention === false
-          ? "Currently off. On by default: tickers you open count in hourly totals of 20+ people"
-          : "Currently on (the default): tickers you open count in hourly totals of 20+ people";
+          ? "Currently off. Signed in, this turns it off on your other devices too"
+          : "Currently on: tickers you open go to Gloom, published only as hourly totals of 20+ people";
       case "release-channel":
         if (resolveUpdateChannel(state.config) === "nightly") return `Currently nightly: ${NIGHTLY_CHANNEL_SUMMARY}`;
         return isPrereleaseVersion(VERSION)
