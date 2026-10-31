@@ -1,0 +1,71 @@
+name: Windows update check launch repro
+
+on:
+  push:
+    branches:
+      - chore/windows-update-launch-repro
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  recorder:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build the exception recorder
+        shell: cmd
+        run: cl /nologo /O2 /LD /MT scripts\diag-veh\veh.c /Fe:veh.dll /link kernel32.lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veh-dll
+          path: veh.dll
+
+  repro:
+    needs: recorder
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [copy-1, copy-2, copy-3, copy-4, stop-only-1, copy-recorder-1]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/download-artifact@v4
+        with:
+          name: veh-dll
+          path: veh
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: installer
+          run-id: 41164809882
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Open the app from its Start menu shortcut, again and again
+        shell: pwsh
+        run: |
+          $Variant = "${{ matrix.variant }}"
+          $Arguments = @{
+            Installer = (Resolve-Path installer/stable-win-x64-GloomSetup.exe).Path
+            Label = $Variant
+            Launches = 15
+            Copy = $Variant.StartsWith("copy")
+          }
+          if ($Variant -like "*recorder*") {
+            $env:GLOOM_DIAG_VEH_DLL = (Resolve-Path veh/veh.dll).Path
+            $env:GLOOM_DIAG_VEH_LOG = Join-Path (Get-Location) "artifacts/windows-update-launch-repro/$Variant/exceptions.txt"
+            $Arguments.Prelude = 'try { import.meta.require("bun:ffi").dlopen(process.env.GLOOM_DIAG_VEH_DLL, { veh_installed: { args: [], returns: "i32" } }).symbols.veh_installed(); } catch (e) { console.error("veh", e); }'
+          }
+          ./scripts/repro-windows-update-launch.ps1 @Arguments
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repro-${{ matrix.variant }}
+          path: |
+            artifacts/windows-update-launch-repro/**/*.txt
+            artifacts/windows-update-launch-repro/**/*.json
