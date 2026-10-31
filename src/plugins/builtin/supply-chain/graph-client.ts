@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphPayload, type GraphPath } from "../../../api-client/supply-chain-graph";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
-import { cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { batchReplyItems, cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
 import { activeRelationship, isUnconfirmed } from "./trust";
@@ -98,7 +98,7 @@ export function loadGraphsAhead(symbols: readonly string[], options: GraphOption
     ahead = createCloudBatchAhead(graphCache, {
       max: GRAPH_BATCH_MAX,
       validate: validateGraph,
-      read: async (ids) => (await apiClient.getCloudSupplyGraphs(ids, options)).items
+      read: async (ids) => batchReplyItems(await apiClient.getCloudSupplyGraphs(ids, options))
         .flatMap((item) => item.graph ? [{ id: item.symbol.toUpperCase(), payload: item.graph }] : []),
     });
     graphsAheadByOptions.set(query, ahead);

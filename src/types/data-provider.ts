@@ -142,6 +142,9 @@ export interface EarningsEvent {
   timing: "BMO" | "AMC" | "TNS" | "";
 }
 
+/** The reads a provider may send in batches (`DataProvider.batchesReads`). */
+export type BatchedReadMethod = "getPriceHistory" | "getOptionsChain";
+
 export interface MarketDataRequestContext {
   brokerId?: string;
   brokerInstanceId?: string;
@@ -160,6 +163,12 @@ export interface MarketDataRequestContext {
   historySession?: "extended";
   /** The listing's company, from its own quote: an SEC lookup for a non-US listing checks the registrant against it. */
   listingName?: string;
+  /**
+   * The caller asks many reads like this one in the same moment (a board's
+   * rows), having checked `batchesReads`: a provider that batches them may
+   * hold this one a moment to send it with the others.
+   */
+  batch?: boolean;
   /**
    * The caller prints what the quote's move is from: a short-lived process
    * (the CLI) waits briefly for the daily closes that date a previous close
@@ -264,6 +273,15 @@ export interface AssetDataProvider {
   primaryMarketSourceName?(): string | null | Promise<string | null>;
   getCachedFinancialsForTargets?(targets: CachedFinancialsTarget[], options?: { allowExpired?: boolean; includeStaleQuotes?: boolean }): Map<string, TickerFinancials> | Promise<Map<string, TickerFinancials>>;
   getQuotesBatch?(targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions): Promise<QuoteBatchResult[]>;
+  /**
+   * Whether reads of `method` asked with others in one moment (context
+   * `batch`) go out as batch requests (trailing history, dated option
+   * expiries), so a caller that otherwise keeps a few in flight may ask them
+   * all at once. A router answers true only when every source it could ask
+   * for them does; a remote transport asks the process that owns the router.
+   * Absent or false: ask a few at a time, without `batch`.
+   */
+  batchesReads?(method: BatchedReadMethod): boolean | Promise<boolean>;
   getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean; datesChangeBasis?: boolean }): Promise<TickerFinancialsBatchResult[]>;
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;

@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { SupplyChainPayload, SupplyEntity, SupplyEvidenceItem, SupplyOptions, SupplyRow } from "../../../api-client/supply-chain";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { batchReplyItems, cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { activeRelationship, canShowQuote, isUnconfirmed, publicEvidence, supplyOptions, TIER_OPTIONS, trustTier } from "./trust";
 
 export const SUPPLY_UNAVAILABLE = "Supply chain disclosures are not available yet.";
@@ -125,7 +125,7 @@ export function loadSupplyChainsAhead(symbols: readonly string[], access: string
     ahead = createCloudBatchAhead(supplyChainCache, {
       max: SUPPLY_BATCH_MAX,
       validate: validateSupplyChain,
-      read: async (ids) => (await apiClient.getCloudSupplyChains(ids, options)).items
+      read: async (ids) => batchReplyItems(await apiClient.getCloudSupplyChains(ids, options))
         .flatMap((item) => item.chain ? [{ id: item.symbol.toUpperCase(), payload: item.chain }] : []),
     });
     supplyChainsAheadByOptions.set(optionsKey, ahead);

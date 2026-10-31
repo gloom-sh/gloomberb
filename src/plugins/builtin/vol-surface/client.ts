@@ -17,12 +17,14 @@ import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpi
 import { optionModelSpot } from "../options/model-spot";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
+/** Expiries read at a time from a source that takes them one by one. */
+const SURFACE_LOAD_CONCURRENCY = 4;
 /**
- * Expiries asked together: the API client sends one listing's expiries asked
- * in one moment in options batches of six, side by side, and asks a service
- * without them a few at a time.
+ * Expiries asked at once from a source that batches them (`batchesExpiries`):
+ * the API client sends one listing's expiries asked in one moment in batch
+ * requests of six, side by side.
  */
-const SURFACE_LOAD_CONCURRENCY = 48;
+const SURFACE_BATCHED_CONCURRENCY = 48;
 /** Each kept expiry must be at least this much further out than the previous one. */
 const SURFACE_TENOR_RATIO = 1.35;
 
@@ -48,8 +50,10 @@ export function selectSurfaceExpiries(catalogue: readonly number[], limit: numbe
 }
 
 export interface SurfaceLoaderDependencies {
-  loadOptions(request: OptionsRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<OptionsChain>>;
+  loadOptions(request: OptionsRequest, options?: { forceRefresh?: boolean; batch?: boolean }): Promise<QueryEntry<OptionsChain>>;
   loadYieldCurve(): Promise<YieldPoint[]>;
+  /** Whether `loadOptions` reaches a source that batches expiries asked together; absent, four are read at a time. */
+  batchesExpiries?(): boolean | Promise<boolean>;
   now?: () => number;
 }
 
@@ -63,6 +67,7 @@ export function createSurfaceDependencies(
     loadOptions: (request, options) => coordinator
       ? coordinator.loadOptions(request, options)
       : Promise.reject(new Error("Market data coordinator unavailable")),
+    batchesExpiries: () => coordinator?.batchesOptions() ?? false,
     loadYieldCurve: () => cloudApi.getCloudYieldCurve(),
   };
 }
@@ -184,6 +189,8 @@ export async function loadVolatilitySurface(
   };
   checkAbort();
   publish();
+  // Asked while the catalogue loads, so it costs the expiries no wait.
+  const batched = Promise.resolve().then(() => dependencies.batchesExpiries?.()).then((answer) => answer === true, () => false);
   const treasury = Promise.resolve().then(() => dependencies.loadYieldCurve()).then((value) => {
     if (request.signal?.aborted) return;
     curve = value;
@@ -238,6 +245,9 @@ export async function loadVolatilitySurface(
     publish();
   }
 
+  // A source that takes expiries one by one is asked four at a time, and a cancelled load asks for no more.
+  const batch = await abortable(batched, request.signal, CANCELLED);
+  const concurrency = batch ? SURFACE_BATCHED_CONCURRENCY : SURFACE_LOAD_CONCURRENCY;
   let next = 0;
   const worker = async () => {
     while (!request.signal?.aborted && next < selected.length) {
@@ -245,7 +255,7 @@ export async function loadVolatilitySurface(
       try {
         // The catalogue response already refreshed its own slice, unless it came from cache.
         const entry = await dependencies.loadOptions({ instrument: request.instrument, expirationDate: expiration },
-          { forceRefresh: !!request.forceRefresh && (!!request.expiries || expiration !== catalogueExpiration) });
+          { forceRefresh: !!request.forceRefresh && (!!request.expiries || expiration !== catalogueExpiration), ...(batch ? { batch } : {}) });
         if (request.signal?.aborted) return;
         entries.set(expiration, entry);
         if (!resolveEntryValue(entry) && !entry.error) errors.set(expiration, "Options chain unavailable");
@@ -256,7 +266,7 @@ export async function loadVolatilitySurface(
       publish();
     }
   };
-  await abortable(Promise.all([treasury, ...Array.from({ length: Math.min(SURFACE_LOAD_CONCURRENCY, selected.length) }, worker)]), request.signal, CANCELLED);
+  await abortable(Promise.all([treasury, ...Array.from({ length: Math.min(concurrency, selected.length) }, worker)]), request.signal, CANCELLED);
   checkAbort();
   finished = true;
   const result = snapshot();

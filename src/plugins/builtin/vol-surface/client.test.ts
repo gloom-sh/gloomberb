@@ -83,7 +83,7 @@ describe("surface loader", () => {
     expect(selectSurfaceExpiry(result, typed)?.expiration).toBe(listed);
   });
 
-  test("caps default catalogue, publishes partial failures and asks every expiry at once, for the client to batch", async () => {
+  test("caps default catalogue, publishes partial failures and bounds concurrency at four", async () => {
     const outstanding = new Map<number, PromiseWithResolvers<QueryEntry<OptionsChain>>>();
     let active = 0, maximum = 0;
     const snapshots: SurfaceSnapshot[] = [];
@@ -97,7 +97,7 @@ describe("surface loader", () => {
       } };
     const loading = loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100, onSnapshot: (value) => snapshots.push(value) }, deps);
     await settle();
-    expect(outstanding.size).toBe(18);
+    expect(outstanding.size).toBe(4);
     const [first, second] = [...outstanding.keys()].sort((a, b) => a - b) as [number, number];
     outstanding.get(first)!.resolve(ready(emptyChain()));
     outstanding.get(second)!.reject(new Error("one expiry failed"));
@@ -113,7 +113,7 @@ describe("surface loader", () => {
       await settle();
     }
     const result = await loading;
-    expect(maximum).toBe(18);
+    expect(maximum).toBe(4);
     expect(result.catalogue).toHaveLength(22);
     expect(result.requested).toBe(18);
     expect(result.loaded).toBe(18);
@@ -134,14 +134,32 @@ describe("surface loader", () => {
       loadOptions: async (request) => { if (!request.expirationDate) return ready(emptyChain()); calls += 1; return gate.promise; },
     });
     await settle();
-    expect(calls).toBe(18);
+    expect(calls).toBe(4);
     controller.abort();
     await expect(loading).rejects.toMatchObject({ name: "AbortError" });
     const count = snapshots.length;
     gate.resolve(ready(emptyChain()));
     await settle();
     expect(snapshots).toHaveLength(count);
-    expect(calls).toBe(18);
+    expect(calls).toBe(4);
+  });
+
+  // A source that batches expiries asked together (the cloud) gets all eighteen in one moment; any other gets four at a time.
+  test("a source that batches expiries is asked for every one at once, each marked as asked with the others", async () => {
+    const batched: (boolean | undefined)[] = [];
+    const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
+    const loading = loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100 }, {
+      now: () => now, loadYieldCurve: async () => curve, batchesExpiries: async () => true,
+      loadOptions: async (request, options) => {
+        if (!request.expirationDate) return ready(emptyChain());
+        batched.push(options?.batch);
+        return gate.promise;
+      },
+    });
+    await settle();
+    expect(batched).toEqual(Array(18).fill(true));
+    gate.resolve(ready(emptyChain()));
+    expect((await loading).loaded).toBe(18);
   });
 
   test("rate failure preserves loaded slices and source failures instead of substituting a rate", async () => {

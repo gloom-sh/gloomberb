@@ -224,6 +224,15 @@ function isListingReadRetried(outcome: { response: CloudMarketResponse<unknown> 
   return isRetryableApiError(outcome.error) && (outcome.error as ApiRequestError).status !== 429;
 }
 
+/**
+ * `batch`: the caller asks many reads like this one in the same moment (a
+ * board's rows), so the read may wait a few milliseconds to go out in a batch
+ * request with them. Any other read goes out on its own at once.
+ */
+export interface BatchableRead {
+  batch?: boolean;
+}
+
 export class CloudDataApi {
   constructor(
     private readonly request: CloudApiRequest,
@@ -232,45 +241,54 @@ export class CloudDataApi {
   ) {}
 
   /**
-   * Histories asked in the same moment with the same bars (a futures board's
-   * contracts, SOVR's currencies) go out as `/market/history/batch` requests,
-   * each answered as its own `/market/history` would be. Sixteen a request,
-   * two of the server's rounds of eight, sent side by side: a board's
-   * seventy-two rows are five requests, and the first rows land as soon as
-   * sixteen reads have.
+   * Histories asked with others (`batch`) in the same moment with the same
+   * bars (a futures board's contracts, SOVR's currencies) go out as
+   * `/market/history/batch` requests, each answered as its own
+   * `/market/history` would be. Sixteen a request, sent side by side: a
+   * board's seventy-two rows are five requests, and the first rows land as
+   * soon as sixteen reads have.
    */
   private readonly histories = createReadCoalescer<
     { symbol: string; exchange: string; params: Pick<CloudHistoryParams, "interval" | "outputsize" | "rangeKey"> },
     CloudMarketResponse<CloudPricePointPayload[]>
   >({
     max: 16,
-    fallbackConcurrency: 6,
+    // Reads asked alone after a refused batch stay within what the panes kept in flight before: SOVR four, the board twelve with its terms.
+    fallbackConcurrency: 4,
     group: ({ params }) => `${params.interval ?? ""}|${params.outputsize ?? ""}|${params.rangeKey ?? ""}`,
     single: ({ symbol, exchange, params }) => this.request(cloudHistoryPath(symbol, exchange, params)),
     batch: async (keys) => {
       const { interval, outputsize, rangeKey } = keys[0]!.params;
+      // The server answers each target in the order asked, so a listing asked twice is asked once.
+      const targetKey = ({ symbol, exchange }: { symbol: string; exchange: string }) => `${symbol}\u001f${exchange}`;
+      const targets = [...new Map(keys.map((key) => [targetKey(key), { symbol: key.symbol, exchange: key.exchange }])).values()];
       const response = await this.request<CloudMarketResponse<{ items: Array<CloudMarketResponse<CloudPricePointPayload[]>> }>>("/market/history/batch", {
         method: "POST",
         body: JSON.stringify({
-          targets: keys.map(({ symbol, exchange }) => ({ symbol, exchange })),
+          targets,
           interval: interval ?? "1day",
           ...(outputsize != null ? { outputsize: String(outputsize) } : {}),
           ...(rangeKey ? { rangeKey } : {}),
         }),
       });
-      return keys.map((_, index) => response.data?.items[index]);
+      const items = response.data?.items;
+      // An answer that does not line up with the targets asked is not matched by place: each read is asked on its own.
+      if (!Array.isArray(items) || items.length !== targets.length) return keys.map(() => undefined);
+      const byTarget = new Map(targets.map((target, index) => [targetKey(target), items[index]]));
+      return keys.map((key) => byTarget.get(targetKey(key)));
     },
   });
 
   /**
-   * Futures terms asked in the same moment (a futures board's rows) go out as
+   * Futures terms asked with others in the same moment (a futures board's rows) go out as
    * `/cloud/futures/contracts` requests, sixteen a request like the histories.
    * A symbol without known terms answers null there, which reads as the 404
    * its own request answers.
    */
   private readonly futuresTerms = createReadCoalescer<string, FuturesContractTermsPayload | null>({
     max: 16,
-    fallbackConcurrency: 12,
+    // With the board's histories' four, the twelve reads it kept in flight before.
+    fallbackConcurrency: 8,
     group: () => "",
     single: (symbol) => this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) }),
     batch: async (symbols) => {
@@ -283,8 +301,8 @@ export class CloudDataApi {
   });
 
   /**
-   * Expiries of one listing's chain asked in the same moment (a volatility
-   * surface's) go out as `/market/options/batch` requests, each answered as
+   * Expiries of one listing's chain asked with others in the same moment (a
+   * volatility surface's) go out as `/market/options/batch` requests, each answered as
    * its own `/market/options` would be. Six a request, the server's one round,
    * sent side by side: a surface's eighteen expiries are three requests.
    */
@@ -309,6 +327,17 @@ export class CloudDataApi {
       return keys.map((key) => byExpiry.get(key.expirationDate));
     },
   });
+
+  /**
+   * Whether reads of `kind` asked together go out in batch requests now:
+   * false while the service answers that batch route 404, until it is asked
+   * again. A caller limiting its reads in flight asks them all at once only
+   * when they do.
+   */
+  batchesReads(kind: "history" | "options" | "futures-terms"): boolean {
+    const coalescer = kind === "history" ? this.histories : kind === "options" ? this.optionsChains : this.futuresTerms;
+    return coalescer.batching();
+  }
 
   /**
    * A listing's quote, history or financials, asked again once when the
@@ -513,9 +542,10 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
     expirationDate?: number,
+    options: BatchableRead = {},
   ): Promise<CloudMarketResponse<CloudOptionsChainPayload>> {
-    // A dated expiry may go out with the listing's other expiries asked in the same moment.
-    if (expirationDate != null) return this.optionsChains.read({ symbol, exchange, expirationDate });
+    // A dated expiry asked with others may go out with the listing's other expiries asked in the same moment.
+    if (expirationDate != null && options.batch) return this.optionsChains.read({ symbol, exchange, expirationDate });
     return this.request<CloudMarketResponse<CloudOptionsChainPayload>>(
       cloudOptionsChainPath(symbol, exchange, expirationDate),
     );
@@ -645,10 +675,10 @@ export class CloudDataApi {
     symbol: string,
     exchange: string,
     params: CloudHistoryParams = {},
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal } & BatchableRead = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    // Trailing bars, not a session, window or recovery of their own, may go out with others asked in the same moment.
-    const shared = !options.signal && !params.startDate && !params.endDate && !params.historyRecovery && !params.session;
+    // Trailing bars asked with others, not a session, window or recovery of their own, may go out with the others asked in the same moment.
+    const shared = options.batch && !options.signal && !params.startDate && !params.endDate && !params.historyRecovery && !params.session;
     return this.readListing(() => shared
       ? this.histories.read({ symbol, exchange, params: { interval: params.interval, outputsize: params.outputsize, rangeKey: params.rangeKey } })
       : this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
@@ -1172,7 +1202,8 @@ export class CloudDataApi {
   }
 
   /** What a futures symbol (GC=F, GCZ26, CL1) trades: its contract, terms and latest confirmed settlement. */
-  async getCloudFuturesContract(symbol: string): Promise<FuturesContractTermsPayload> {
+  async getCloudFuturesContract(symbol: string, options: BatchableRead = {}): Promise<FuturesContractTermsPayload> {
+    if (!options.batch) return this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) });
     const terms = await this.futuresTerms.read(symbol);
     if (!terms) throw new ApiRequestError("Not a futures symbol with known contract terms", 404);
     return terms;
