@@ -198,8 +198,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     id: `${ticker.metadata.ticker}:price`,
     label: `${ticker.metadata.ticker} Price`,
     color: priceColor(chartDelta),
-    // An index's axis reads in points: ^VIX at 20, never $20.
-    unit: unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType),
+    unit: unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType, quote?.priceBasis),
     style: "area",
     axis: "right",
     panelId: "price",
@@ -558,7 +557,6 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               series={[priceSeries]}
               panels={[{ id: "price" }]}
               levels={trade && researchTradeMatches(trade, instrumentFromTicker(ticker)) ? { seriesId: priceSeries.id, items: trade.levels } : undefined}
-              axisWidth={8}
               showLegend={false}
             />
           </Box>

@@ -1,4 +1,5 @@
 import { classifyInstrumentType, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
+import type { PriceBasis } from "../../types/instrument";
 
 /**
  * The unit an index level is in, as a chart's axis and series name it. A
@@ -28,11 +29,12 @@ export function quotePriceCurrency(quote: { currency?: string | null; instrument
 }
 
 /**
- * What a price chart of the instrument reads in: points for an index level,
- * otherwise its currency, so an axis never puts a dollar sign on ^VIX.
+ * What a price chart reads in: the quote's price basis, points for an index
+ * level, otherwise its currency.
  */
-export function priceSeriesUnit(currency: string, instrumentType: string | null | undefined): string {
-  return isIndexLevel(instrumentType) ? INDEX_POINTS_UNIT : currency;
+export function priceSeriesUnit(currency: string, instrumentType: string | null | undefined, priceBasis?: PriceBasis): string {
+  if (priceBasis === "thirty-seconds") return "32nds";
+  return priceBasis === "points" || isIndexLevel(instrumentType) ? INDEX_POINTS_UNIT : currency;
 }
 
 /**

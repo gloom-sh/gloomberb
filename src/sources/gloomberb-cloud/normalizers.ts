@@ -86,8 +86,8 @@ export function mapQuote(
   const changePercent = !impossibleClose && typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)
     ? quote.changePercent
     : Number.NaN;
-  // A generic future (VX1, TY1) reads in points or 32nds, and an index future's
-  // continuous symbol or contract (ES=F, SXOZ26.CME) in points, not dollars.
+  // Generics, continuous symbols and listed contracts share their root's
+  // price basis: index futures in points and Treasury futures in 32nds.
   const futuresBasis = isNonFutureType(quote.instrumentType) ? null
     : futuresListingPriceBasis(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
   const priceObservation = quote.priceBasis === "nav" ? "nav" : undefined;

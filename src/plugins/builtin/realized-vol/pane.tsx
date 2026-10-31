@@ -115,8 +115,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
   }) : null, [history.data, estimator, windows, lookback]);
   const chartInput = useMemo(() => model ? { history: model.history, rolling: model.series, windows: model.windows,
-    priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType), iv: showIv ? iv.data?.reference ?? null : null } : null,
-  [model, quote?.currency, quote?.instrumentType, showIv, iv.data]);
+    priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType, quote?.priceBasis), iv: showIv ? iv.data?.reference ?? null : null } : null,
+  [model, quote?.currency, quote?.instrumentType, quote?.priceBasis, showIv, iv.data]);
   const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
     ...(model?.warnings ?? []), model?.historyNote, model?.formingNote, ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
