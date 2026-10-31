@@ -60,7 +60,8 @@ export function useBuildoutDataRuntime({
         ? { ...current, refreshing: true, refreshError: null }
         : { status: "loading" });
 
-      const token = await getBuildoutProToken();
+      // A refresh the user pressed asks for access again: a plan bought or ended since shows at once.
+      const token = await getBuildoutProToken({ fresh: refreshVersion > 0 });
       const data = await loadBuildoutData(token);
       if (!cancelled) {
         onBeforeLoad();
@@ -230,8 +231,10 @@ export function useBuildoutDataRuntime({
     if (state.status !== "ready") return;
     const selectedList = activeTab === "themes" ? resolveBoardTheme(boardThemes(state.lists), themeSlug) : openedList;
     if ((activeTab !== "companies" && activeTab !== "themes") || !selectedList) return;
-    const loaded = state.companies.listSlug === selectedList.slug;
-    if (loaded && (state.companies.items.length > 0 || state.companies.loadingMore || state.companies.error)) return;
+    // A list that answered with no company this account can see is loaded too (no more pages), not asked again.
+    const { companies } = state;
+    const loaded = companies.listSlug === selectedList.slug;
+    if (loaded && (companies.items.length > 0 || companies.loadingMore || companies.error || !companies.hasMore)) return;
     if (activeTab === "companies") {
       void loadCompanies(selectedList, 0, false);
       return;

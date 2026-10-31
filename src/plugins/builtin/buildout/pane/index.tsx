@@ -66,6 +66,8 @@ import type { GeoScope } from "../../world-venue-map/local-layers";
 import { boardRows, boardThemes, resolveBoardTheme, ThemeBoard, ThemeStats, themeStatRows, useThemeStepKeys } from "./themes";
 
 const BUILDOUT_UPGRADE_URL = "https://thebuildout.ai/pricing";
+/** How long the cursor rests on a company before linked panes follow it. */
+const CURSOR_PUBLISH_MS = 150;
 
 /** A symbol the rest of the app can open: the dataset writes some Asian listings by number alone. */
 function linkableTicker(value: string | null | undefined): string | null {
@@ -191,8 +193,11 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   // theme it belongs to. Off the company tabs both stay where they were.
   const cursorCompany = detailRow?.kind === "company" ? detailRow.item : selectedRow?.kind === "company" ? selectedRow.item : null;
   const cursorTicker = linkableTicker(cursorCompany?.ticker);
+  // Published once the cursor rests: arrowing down a theme would otherwise load every company it passes.
   useEffect(() => {
-    if (cursorTicker) setCursorSymbol(cursorTicker);
+    if (!cursorTicker) return;
+    const timer = setTimeout(() => setCursorSymbol(cursorTicker), CURSOR_PUBLISH_MS);
+    return () => clearTimeout(timer);
   }, [cursorTicker, setCursorSymbol]);
   const companyTab = activeTab === "themes" || activeTab === "companies";
   const themeScope = companyTab && currentList && currentList.slug !== "all" ? currentList : null;

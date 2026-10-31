@@ -19,7 +19,7 @@ import type {
 } from "../../../api-client/geo";
 import type { LocalEntityQuery, LocalFeatureQuery, LocalGeoLayer } from "../world-venue-map/local-layers";
 import { createTtlCache } from "../../../data/ttl-cache";
-import { buildoutApi, getBuildoutProToken } from "./model";
+import { type BuildoutReader, buildoutApi, getBuildoutReader } from "./model";
 
 const FACILITIES_LAYER_ID = "facilities";
 
@@ -157,19 +157,26 @@ function facilitySet(payload: WorldMapPayload, keep: (point: WorldMapPoint) => b
   return { asOf: payload.generatedAt ?? null, rows, byId };
 }
 
-const allSites = createTtlCache<FacilitySet>({ ttlMs: ALL_TTL_MS });
+// Every entry is one reader's: the free set is the same for everyone signed
+// out or without Buildout, and a token's answer belongs to its account. A
+// sign-out, a plan that ends or one that starts reads under a new key.
+const allSites = createTtlCache<FacilitySet>({ ttlMs: ALL_TTL_MS, maxEntries: 4 });
 const scopedSites = createTtlCache<FacilitySet>({ ttlMs: SCOPED_TTL_MS, maxEntries: 64 });
 const themeCompanies = createTtlCache<Set<string>>({ ttlMs: ALL_TTL_MS, maxEntries: 64 });
 
-function loadAll(): Promise<FacilitySet> {
-  return allSites.load("all", async () => facilitySet(await buildoutApi<WorldMapPayload>("/sites/world-map", await getBuildoutProToken())));
+function readerKey(reader: BuildoutReader): string {
+  return reader.token ? `pro:${reader.account}` : "free";
+}
+
+function loadAll(reader: BuildoutReader): Promise<FacilitySet> {
+  return allSites.load(readerKey(reader), async () => facilitySet(await buildoutApi<WorldMapPayload>("/sites/world-map", reader.token)));
 }
 
 /** The company's own sites and the ones it is named at. An unknown ticker has none. */
-function loadCompany(symbol: string): Promise<FacilitySet> {
-  return scopedSites.load(`company:${symbol}`, async () => {
+function loadCompany(reader: BuildoutReader, symbol: string): Promise<FacilitySet> {
+  return scopedSites.load(`${readerKey(reader)}|company:${symbol}`, async () => {
     try {
-      return facilitySet(await buildoutApi<WorldMapPayload>(`/sites/world-map?company=${encodeURIComponent(symbol)}`, await getBuildoutProToken()));
+      return facilitySet(await buildoutApi<WorldMapPayload>(`/sites/world-map?company=${encodeURIComponent(symbol)}`, reader.token));
     } catch (error) {
       if (error instanceof Error && /not found|404/i.test(error.message)) return { asOf: null, rows: [], byId: new Map() };
       throw error;
@@ -178,14 +185,13 @@ function loadCompany(symbol: string): Promise<FacilitySet> {
 }
 
 /** The ids of the theme's companies this account can see. */
-function loadThemeCompanies(slug: string): Promise<Set<string>> {
-  return themeCompanies.load(slug, async () => {
+function loadThemeCompanies(reader: BuildoutReader, slug: string): Promise<Set<string>> {
+  return themeCompanies.load(`${readerKey(reader)}|${slug}`, async () => {
     const ids = new Set<string>();
-    const auth = await getBuildoutProToken();
     for (let offset = 0; offset < 2000; offset += THEME_PAGE) {
       const page = await buildoutApi<{ companies?: Array<{ id?: string }> } | Array<{ id?: string }>>(
         `/companies?list=${encodeURIComponent(slug)}&limit=${THEME_PAGE}&offset=${offset}&sort=marketCap&order=desc`,
-        auth,
+        reader.token,
       );
       const companies = Array.isArray(page) ? page : page.companies ?? [];
       for (const company of companies) if (company.id) ids.add(company.id);
@@ -196,11 +202,12 @@ function loadThemeCompanies(slug: string): Promise<Set<string>> {
 }
 
 async function loadScope(scope: string | null): Promise<FacilitySet> {
-  if (scope?.startsWith("company:")) return loadCompany(scope.slice("company:".length));
+  const reader = await getBuildoutReader();
+  if (scope?.startsWith("company:")) return loadCompany(reader, scope.slice("company:".length));
   if (scope?.startsWith("theme:")) {
     const slug = scope.slice("theme:".length);
-    return scopedSites.load(scope, async () => {
-      const [all, ids] = await Promise.all([loadAll(), loadThemeCompanies(slug)]);
+    return scopedSites.load(`${readerKey(reader)}|${scope}`, async () => {
+      const [all, ids] = await Promise.all([loadAll(reader), loadThemeCompanies(reader, slug)]);
       return {
         asOf: all.asOf,
         rows: all.rows.filter((row) => ids.has(all.byId.get(row.id)?.point.ownerCompanyId ?? "")),
@@ -208,7 +215,7 @@ async function loadScope(scope: string | null): Promise<FacilitySet> {
       };
     });
   }
-  return loadAll();
+  return loadAll(reader);
 }
 
 function inBbox(row: GeoEntityRow, bbox: GeoBbox | null): boolean {
@@ -282,7 +289,7 @@ export const facilitiesLayer: LocalGeoLayer = {
   },
   async entity(id: string, scope: string | null): Promise<GeoEntityPayload> {
     const set = await loadScope(scope);
-    const found = set.byId.get(id) ?? (await loadAll()).byId.get(id);
+    const found = set.byId.get(id) ?? (await loadAll(await getBuildoutReader())).byId.get(id);
     if (!found) throw new Error("Unknown facility");
     const { row, point } = found;
     const relevance = point.relevance?.tier

@@ -92,6 +92,16 @@ async function mergedCatalog(request: GeoRequest, init?: RequestInit): Promise<G
   return { layers: [...serverLayers, ...local.filter((layer) => !ids.has(layer.id))], asOf: server?.asOf ?? null };
 }
 
+/** A path segment as written when it is not valid percent-encoding (a stray `%` in an entity id). */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    // Intentional ignore: a segment that does not decode is matched as it was written.
+    return segment;
+  }
+}
+
 /**
  * A request that answers the local layers itself and sends everything else on.
  * `scope` narrows the local layers' answers; a new scope is a new request
@@ -103,7 +113,7 @@ export function withLocalGeoLayers(request: GeoRequest, scope: string | null = n
     const params = new URLSearchParams(search);
     const signal = init?.signal ?? undefined;
     if (route === "layers") return (localLayers.size ? mergedCatalog(request, init) : request(path, init)) as Promise<T>;
-    const parts = route.split("/").map(decodeURIComponent);
+    const parts = route.split("/").map(decodeSegment);
     const layer = parts.length >= 3 ? localLayers.get(parts[1]!) ?? null : null;
     if (parts[0] === "layers" && layer && parts[2] === "features") {
       return layer.features({

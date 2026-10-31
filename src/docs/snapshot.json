@@ -1517,7 +1517,7 @@
    "code": "TBO",
    "name": "TheBuildout",
    "description": "Infrastructure intelligence",
-   "detail": "Data center and semiconductor supply chain intelligence from TheBuildout: a board of AI buildout themes sized by market cap and coloured by median 1Y return, each theme's companies, sites, and intel. Limited free data; full access with a TheBuildout subscription.",
+   "detail": "Data center and semiconductor supply chain intelligence from TheBuildout: a board of AI buildout themes sized by market cap and coloured by median 1Y return, each theme's companies, sites, and intel. Limited free data; full access with Buildout.",
    "category": "cloud",
    "access": "cloud",
    "shot": "https://gloom.sh/screenshots/fn/TBO.png",
@@ -1527,7 +1527,7 @@
    "code": "TBOC",
    "name": "TheBuildout company",
    "description": "A company's deals, sites and hiring",
-   "detail": "One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site, and the signals that name it. Linked to TBO, it follows the company under the cursor. Signals are 72 hours delayed and hiring by site needs a TheBuildout subscription.",
+   "detail": "One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site, and the signals that name it. Linked to TBO, it follows the company under the cursor. Signals are 72 hours delayed and hiring by site needs Buildout.",
    "category": "cloud",
    "access": "cloud"
   },
