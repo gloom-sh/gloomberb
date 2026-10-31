@@ -13,6 +13,9 @@ on:
       installer_run:
         description: Verify Windows run whose windows-x64-installer to test
         default: "41164809882"
+      installer_artifact:
+        description: The artifact that holds stable-win-x64-GloomSetup.exe
+        default: windows-x64-installer
 
 permissions:
   contents: read
@@ -39,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [copy-recorder-1, copy-recorder-2, copy-recorder-decommit-1, copy-recorder-decommit-2, copy-recorder-decommit-3, copy-recorder-execute-1, copy-recorder-execute-2, copy-recorder-execute-3]
+        variant: [copy-recorder-1, copy-recorder-2, copy-recorder-3, copy-recorder-4, copy-recorder-5, copy-recorder-6]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +53,7 @@ jobs:
           path: veh
       - uses: actions/download-artifact@v4
         with:
-          name: windows-x64-installer
+          name: ${{ inputs.installer_artifact || 'windows-x64-installer' }}
           path: installer
           run-id: ${{ inputs.installer_run || '41164809882' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
