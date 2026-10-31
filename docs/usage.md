@@ -761,7 +761,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
 | `CHG` | Changelog |
-| `ROADMAP` | What is being built, planned and shipped; Pro members vote ([Roadmap](#roadmap)) |
+| `ROADMAP` | What is being built, planned and shipped, and the Changelog; Pro members vote ([Roadmap](#roadmap)) |
 | `HELP` | Open shortcut and layout help |
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio. `AW` also takes a pasted list of tickers |
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
@@ -2238,6 +2238,7 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - Anyone can read it, signed in or not.
 - Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
 - A vote that did not go through says so on its row, and the item's detail says why.
+- The Changelog tab shows the release notes as `CHG` does. `h` and `l` switch between the tabs, and each keeps its place.
 
 ## Localized interface
 

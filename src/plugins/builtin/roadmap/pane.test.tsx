@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { act, useCallback, useState } from "react";
+import { act, useCallback, useState, type ReactNode } from "react";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { RoadmapItem, RoadmapPayload } from "../../../api-client/roadmap";
@@ -7,14 +7,19 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import type { PaneProps } from "../../../types/plugin";
+import { ChangelogPane } from "../changelog";
 import { RoadmapClientContext, RoadmapPane, type RoadmapClient } from "./pane";
 
 const PANE = "roadmap:test";
 const tui = createOpenTuiTestHarness();
 let userSpy: { mockRestore(): void } | undefined;
+let fetchSpy: { mockRestore(): void } | undefined;
 afterEach(async () => {
   userSpy?.mockRestore();
   userSpy = undefined;
+  fetchSpy?.mockRestore();
+  fetchSpy = undefined;
   await tui.destroy();
 });
 
@@ -44,8 +49,9 @@ async function settle() {
   }
 }
 
-async function render(client: RoadmapClient, width = 100, height = 16): Promise<string> {
-  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-roadmap-test", { instanceId: PANE, paneId: "roadmap", binding: { kind: "none" } }));
+async function render(client: RoadmapClient, width = 100, height = 16, pane: { paneId: string; component: (props: PaneProps) => ReactNode } = { paneId: "roadmap", component: RoadmapPane }): Promise<string> {
+  const Pane = pane.component;
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-roadmap-test", { instanceId: PANE, paneId: pane.paneId, binding: { kind: "none" } }));
   initial.focusedPaneId = PANE;
   function Harness() {
     // The selected and open rows are pane state, so moving them needs a reducer.
@@ -54,7 +60,7 @@ async function render(client: RoadmapClient, width = 100, height = 16): Promise<
     return <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE} pluginId="application" runtime={createTestPluginRuntime()} width={width} height={height} footerKeys>
       {(body) => (
         <RoadmapClientContext value={client}>
-          <RoadmapPane paneId={PANE} paneType="roadmap" focused {...body} />
+          <Pane paneId={PANE} paneType={pane.paneId} focused {...body} />
         </RoadmapClientContext>
       )}
     </TestPaneFrame>;
@@ -277,4 +283,84 @@ test("a vote still on its way when the account changes leaves the next account's
   } finally {
     session.restore();
   }
+});
+
+/** The releases GitHub lists, a nightly build among them; every read of the list is counted. */
+const GITHUB_RELEASES = [
+  { id: 1912, tag_name: "v0.19.1", name: "v0.19.1 - Roadmap and votes", body: "## Added\n\n- ROADMAP lists what is building, planned and shipped.", published_at: "2026-10-29T09:00:00Z", html_url: "https://github.com/gloom-sh/gloomberb/releases/tag/v0.19.1" },
+  { id: 1911, tag_name: "v0.19.1-nightly.20261028.1.gabc1234", prerelease: true, name: "Nightly", body: "", published_at: "2026-10-28T09:00:00Z" },
+  { id: 1910, tag_name: "v0.19.0", name: "Faster charts", body: "- Charts draw in half the time.", published_at: "2026-10-22T09:00:00Z", html_url: "https://github.com/gloom-sh/gloomberb/releases/tag/v0.19.0" },
+];
+let releaseReads = 0;
+function stubReleases() {
+  const realFetch = globalThis.fetch;
+  fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (!url.startsWith("https://api.github.com/repos/gloom-sh/gloomberb/releases")) return realFetch(input, init);
+    releaseReads += 1;
+    return new Response(JSON.stringify(GITHUB_RELEASES), { status: 200 });
+  }) as typeof fetch);
+}
+
+const lines = (frame: string) => frame.split("\n");
+const changelogPane = { paneId: "changelog", component: ChangelogPane };
+
+test("ROADMAP opens on the roadmap; the Changelog tab lists the releases, and switching back keeps the roadmap's place", async () => {
+  stubReleases();
+  signedIn("pro");
+  const votes: Array<[string, boolean]> = [];
+  let frame = await render(client({ items: ITEMS, canVote: true }, votes));
+  expect(lines(frame)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(chatRow(frame)).toMatch(/\b7\b/);
+  frame = await press("v");
+  expect(chatRow(frame)).toMatch(/✓ 8\b/);
+
+  const reads = releaseReads;
+  frame = await press("l");
+  expect(lines(frame)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\s+TITLE/);
+  expect(lines(frame).find((line) => line.includes("v0.19.1"))).toMatch(/Oct 29, 2026\s+v0\.19\.1\s+Roadmap and votes/);
+  expect(lines(frame).find((line) => line.includes("v0.19.0"))).toMatch(/Oct 22, 2026\s+v0\.19\.0\s+Faster charts/);
+  expect(frame).not.toContain("nightly");
+  expect(frame).not.toContain("Threads in chat");
+  // The roadmap's vote hint belongs to its own view.
+  expect(frame).not.toMatch(/\[v\]/);
+  expect(releaseReads).toBeLessThanOrEqual(reads + 1);
+
+  frame = await press("h");
+  expect(chatRow(frame)).toMatch(/✓ 8\b/);
+  expect(frame).toMatch(/\[v\] unvote/);
+  expect(frame).not.toContain("Faster charts");
+
+  // Back on the Changelog: the list it read, not a second read.
+  const afterFirst = releaseReads;
+  frame = await press("l");
+  expect(frame).toContain("Faster charts");
+  expect(releaseReads).toBe(afterFirst);
+  expect(votes).toEqual([["chat", true]]);
+});
+
+test("the Changelog view draws what CHG draws, row for row, a release's notes too, from the same read", async () => {
+  stubReleases();
+  await render(client({ items: ITEMS, canVote: false }));
+  const inRoadmap = await press("l");
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  const notesInRoadmap = tui.frame();
+  expect(notesInRoadmap).toContain("ROADMAP lists what is building, planned and shipped.");
+  expect(notesInRoadmap).toMatch(/\[o\]pen/);
+  const reads = releaseReads;
+  await tui.destroy();
+
+  // CHG on its own, one row shorter: ROADMAP's first row is its tabs.
+  const alone = await render(client({ items: ITEMS, canVote: false }), 100, 15, changelogPane);
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  const notesAlone = tui.frame();
+
+  expect(lines(inRoadmap)[0]).toMatch(/Roadmap\s+Changelog/);
+  expect(lines(inRoadmap).slice(1)).toEqual(lines(alone));
+  expect(lines(notesInRoadmap).slice(1)).toEqual(lines(notesAlone));
+  expect(alone).not.toMatch(/Roadmap\s+Changelog/);
+  expect(releaseReads).toBe(reads);
 });

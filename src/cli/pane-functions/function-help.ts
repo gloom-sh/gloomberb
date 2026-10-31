@@ -1427,9 +1427,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   ROADMAP: {
-    summary: "What is being built, what is planned and what shipped, with each item's votes. Pro members vote on what is building or planned, once per item, and can take the vote back.",
+    summary: "What is being built, what is planned and what shipped, with each item's votes, and the Changelog in a second tab. Pro members vote on what is building or planned, once per item, and can take the vote back.",
     usage: ["ROADMAP"],
-    keys: [OPEN, key("v", "ote")],
+    keys: [TABS, OPEN, key("v", "ote")],
     data: null,
     bloomberg: [],
   },
