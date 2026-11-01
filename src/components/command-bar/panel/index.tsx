@@ -2,8 +2,8 @@ import { useLayoutEffect, useState } from "react";
 import { t, tf } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
-import { truncateToDisplayWidth } from "../../../utils/format";
-import { Button } from "../../ui";
+import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { Button, terminalButtonColumns } from "../../ui";
 import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { ThemePicker } from "../theme-picker";
@@ -18,6 +18,13 @@ import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
+const NEW_PANE_LABEL = "New pane";
+
+/** Ticker search's title when Enter changes a pane: the pane's name gives way first. */
+function changeTickerTitle(pane: string, width: number): string {
+  const full = tf("Change ticker · {pane}", { pane });
+  return displayWidth(full) <= width ? full : truncateToDisplayWidth(t("Change ticker"), width);
+}
 
 /**
  * The root screen keeps the closed prompt's own words. Opening the bar puts the
@@ -68,9 +75,12 @@ export function CommandBarPanel({
   themePickerFilter,
   themePickerRef,
   trailingWidth,
+  tickerSearchTarget = null,
+  onRunSecondary,
   visibleListState,
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
+  const newPaneColumns = terminalButtonColumns({ label: NEW_PANE_LABEL, shortcut: "Shift+Enter", compact: true });
   const palette = useCommandBarPalette(nativePaneChrome);
   // The count already includes this opening, so this reads the same until the bar closes.
   const intro = useAppSelector((state) => showsCommandBarIntro(state.config));
@@ -191,8 +201,25 @@ export function CommandBarPanel({
                     />
                     <Box width={2} />
                     <Text fg={palette.text} attributes={TextAttributes.BOLD}>
-                      {truncateToDisplayWidth(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
+                      {tickerSearchTarget
+                        ? changeTickerTitle(tickerSearchTarget, Math.max(1, queryDisplayWidth - 8 - newPaneColumns - 2))
+                        : truncateToDisplayWidth(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
                     </Text>
+                    {tickerSearchTarget && (
+                      <>
+                        <Box flexGrow={1} />
+                        {/* Enter changes the pane; opening another one is the secondary action. */}
+                        <Button
+                          label={NEW_PANE_LABEL}
+                          variant="plain"
+                          compact
+                          flush
+                          stopPropagation
+                          shortcut="Shift+Enter"
+                          onPress={onRunSecondary}
+                        />
+                      </>
+                    )}
                   </>
                 ) : rootShortcutFeedback ? (
                   // Says what Enter runs, and a click on it runs the same.

@@ -152,6 +152,12 @@ export interface PaneDef {
    */
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /**
+   * A single-ticker pane that keeps its ticker somewhere besides its binding (a chart's series)
+   * moves it here when ticker search changes the ticker the pane shows. The host has already set
+   * the binding and the title; `previous` is the ticker the pane showed until now.
+   */
+  retargetTicker?(pane: PaneInstanceConfig, symbol: string, previous: string | null): PaneInstanceConfig;
+  /**
    * Instrument kinds this pane has data for, such as `["equity"]` for company
    * data, as a research tab declares them. Bound to a ticker of another known
    * kind (an index, an ETF), the pane says so in place of its data, and `fn`

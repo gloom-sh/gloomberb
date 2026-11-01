@@ -9,6 +9,7 @@ import {
   getCollectionCommandAction,
   getCollectionCommandVerb,
   isCollectionCommand,
+  SECURITY_DESCRIPTION_SEARCH,
   type CollectionCommandId,
 } from "../../helpers";
 import type { ResultItem } from "../../list/model";
@@ -83,7 +84,7 @@ export function acceptRootShortcutTabAction(options: RootSelectionCommandOptions
   }
 
   if (intent.command.id === "security-description") {
-    options.openModeRoute("ticker-search", intent.argText);
+    options.openModeRoute("ticker-search", intent.argText, SECURITY_DESCRIPTION_SEARCH);
     return true;
   }
   if (isCollectionCommand(intent.command.id)) {

@@ -13,7 +13,7 @@ import {
   type AssistRowHandlers,
 } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
-import { isCollectionCommand } from "../../helpers";
+import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
 import { recentPaneTemplateArg } from "../../pane-templates/items";
 import { dedupeById } from "../../view-model";
 import type { ResultItem } from "../../list/model";
@@ -74,7 +74,7 @@ export interface RootResultModelOptions {
   hasPaneSettings: (paneId: string) => boolean;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
   nonShortcutPaneTemplateItems: (filterQuery?: string) => ResultItem[];
-  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string, payload?: Record<string, unknown>) => void;
   paneShortcutItems: (options?: PaneShortcutItemsOptions) => ResultItem[];
   pluginCommandItems: () => ResultItem[];
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
@@ -336,7 +336,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         detail: "Open security details after resolving a ticker",
         category: "Search",
         kind: "command",
-        action: () => openModeRoute("ticker-search", ""),
+        action: () => openModeRoute("ticker-search", "", SECURITY_DESCRIPTION_SEARCH),
       });
     } else if (match.arg) {
       items.push(...localTickerSearchResultItems(match.arg, { limit: 6 }));
@@ -372,7 +372,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         templatesForCode: getAvailablePaneShortcutTemplates,
         createTemplateItem: (template) => createPaneTemplateItem(template, { showShortcut: true }),
         lookUpCompany: availableCommands.some((command) => command.id === "security-description")
-          ? () => openModeRoute("ticker-search", "")
+          ? () => openModeRoute("ticker-search", "", SECURITY_DESCRIPTION_SEARCH)
           : null,
       }));
     }

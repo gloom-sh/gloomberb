@@ -41,6 +41,7 @@ import {
   buildValuationChartPreset,
 } from "./presets";
 import { buildChartComposerPaneSettingsDef } from "./settings";
+import { rebindResearchChartSpec } from "./chart-spec-edit";
 import type { PluginModule } from "../plugin-module";
 import {
   LIVE_STREAMING_QUICK_SETTING,
@@ -499,6 +500,17 @@ function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
   return symbols.size === 1;
 }
 
+/**
+ * Ticker search moves a chart of one security to another ticker: its series of that ticker move
+ * and keep their fields, as the research tab's chart does when its ticker changes.
+ */
+function retargetChartTicker(pane: PaneInstanceConfig, symbol: string, previous: string | null): PaneInstanceConfig {
+  const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
+  if (!spec) return pane;
+  const rebound = rebindResearchChartSpec(spec, previous, symbol);
+  return rebound === spec ? pane : { ...pane, settings: { ...pane.settings, [CHART_SPEC_SETTING_KEY]: rebound } };
+}
+
 export const chartComposerModule: PluginModule = {
   // Every ticker field, asking for the ticker when charted.
   series: listFieldSeries(),
@@ -509,6 +521,7 @@ export const chartComposerModule: PluginModule = {
     component: ChartComposerPane,
     defaultPosition: "right",
     tickerFollower: chartShowsOneSecurity,
+    retargetTicker: retargetChartTicker,
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 32 },
     portableShare: { prepare: prepareChartPaneForShare },

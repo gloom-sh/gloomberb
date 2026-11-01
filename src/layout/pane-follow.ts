@@ -13,9 +13,10 @@ export function paneTitleMnemonic(title: string | undefined): string | null {
 /**
  * The title a pin gives a follower: a pane linked from its menu keeps only its command ("OMON"),
  * and one linked some other way still names the ticker it opened on ("OMON AAPL"); both name the
- * pinned ticker ("OMON MSFT"). Any other title is the user's or the pane's own and stays.
+ * pinned ticker ("OMON MSFT"). Any other title is the user's or the pane's own and stays. Ticker
+ * search changing a pane's ticker (`retargetTickerPane`) names the new one the same way.
  */
-function pinnedTitle(instance: PaneInstanceConfig, pinned: string): string | null {
+export function pinnedTitle(instance: PaneInstanceConfig, pinned: string): string | null {
   if (instance.paneId === TICKER_RESEARCH_PANE_ID) return null;
   const title = instance.title?.trim();
   const mnemonic = paneTitleMnemonic(title);

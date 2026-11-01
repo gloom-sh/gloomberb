@@ -41,6 +41,12 @@ export interface ResultItem {
   /** Materialize this exact listing when another command consumes the row. */
   resolveTicker?: () => Promise<TickerRecord>;
   /**
+   * A ticker row's three choices: `des` opens it as DES does (the row's `action`), `new` in a
+   * new research pane (its `secondaryAction`), and `pane` changes the focused pane's ticker, as
+   * ticker search's Enter does.
+   */
+  pickTicker?: (how: TickerPick) => void;
+  /**
    * What the pane this row opens will load, so the bar can warm it while the
    * row is the pick. Unset when only opening can tell (a broker contract, a
    * saved ticker with several).
@@ -72,6 +78,9 @@ export interface ResultItem {
   disabled?: boolean;
   action: () => void | Promise<void>;
 }
+
+/** What choosing a ticker row does; see `ResultItem.pickTicker`. */
+export type TickerPick = "des" | "pane" | "new";
 
 /** A row plain Enter can run, so the untouched selection may rest on it. */
 export function isDefaultSelectable(item: ResultItem): boolean {

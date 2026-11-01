@@ -11,6 +11,12 @@ import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from ".
 interface PaneWrapperProps {
   paneId?: string;
   title?: string;
+  /**
+   * Desktop and web: the ticker the title shows, drawn as a control that opens ticker search for
+   * the pane (`onTitleTickerPress`).
+   */
+  titleTicker?: string | null;
+  onTitleTickerPress?: () => void;
   focused: boolean;
   windowModeSelected?: boolean;
   width?: number;
@@ -49,6 +55,8 @@ interface PaneWrapperProps {
 export function PaneWrapper({
   paneId,
   title,
+  titleTicker = null,
+  onTitleTickerPress,
   focused,
   windowModeSelected = false,
   width = 0,
@@ -116,6 +124,8 @@ export function PaneWrapper({
       {title && (
         <PaneHeader
           title={title}
+          titleTicker={titleTicker}
+          onTitleTickerPress={onTitleTickerPress}
           width={width}
           focused={focused}
           windowModeSelected={windowModeSelected}

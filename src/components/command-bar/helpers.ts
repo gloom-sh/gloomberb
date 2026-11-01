@@ -15,6 +15,12 @@ export {
 export type RouteCommandId = "security-description" | "layout";
 export type CollectionCommandId = "add-watchlist" | "add-portfolio" | "remove-watchlist" | "remove-portfolio";
 
+/**
+ * The ticker search DES opens: its rows open DES. A ticker search with no payload (the backtick,
+ * a pane header's ticker) changes the focused pane's ticker instead.
+ */
+export const SECURITY_DESCRIPTION_SEARCH = { action: "security-description" } as const;
+
 export function isRouteCommandId(commandId: string): commandId is RouteCommandId {
   return commandId === "security-description"
     || commandId === "layout";
