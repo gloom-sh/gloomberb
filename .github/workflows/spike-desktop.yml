@@ -24,6 +24,8 @@ env:
 
 jobs:
   macos:
+    # Measured at 6e4b78032; this run re-probes the Arm window with the Start menu closed.
+    if: false
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -73,6 +75,8 @@ jobs:
             artifacts/*.json
 
   windows-x64:
+    # Measured at 6e4b78032; this run re-probes the Arm window with the Start menu closed.
+    if: false
     runs-on: windows-latest
     timeout-minutes: 75
     steps:
@@ -185,6 +189,8 @@ jobs:
             artifacts/*.json
 
   linux-x64:
+    # Measured at 6e4b78032; this run re-probes the Arm window with the Start menu closed.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
