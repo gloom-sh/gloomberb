@@ -265,6 +265,29 @@ $PW = Scaled 1000
 $PH = Scaled 680
 $Result.probeScale = $Scale
 Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
+
+# The Arm image opens the Start menu at its first sign-in, over every
+# window: close whatever covers the window's centre before probing.
+function Covering-Class($H) {
+  $R = [W]::Visible($H)
+  $P = New-Object W+POINT
+  $P.X = [int](($R.Left + $R.Right) / 2); $P.Y = [int](($R.Top + $R.Bottom) / 2)
+  $Under = [W]::WindowFromPoint($P)
+  if ([W]::GetAncestor($Under, 2) -eq $H) { return $null }
+  return [W]::ClassOf($Under)
+}
+$CoveredBy = @()
+for ($Try = 0; $Try -lt 5; $Try++) {
+  $Over = Covering-Class $Main
+  if (-not $Over) { break }
+  $CoveredBy += $Over
+  [W]::Key(0x1B, $false); [W]::Key(0x1B, $true)
+  Get-Process StartMenuExperienceHost, SearchHost, ShellExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
+}
+$Result.coveredBy = $CoveredBy
+$Result.stillCovered = [bool](Covering-Class $Main)
 $Start = [W]::Visible($Main)
 $Result.startFrame = Rect-Object $Start
 $Result.startFit = Content-Fit $Main

@@ -24,6 +24,8 @@ env:
 
 jobs:
   macos:
+    # Measured at 273fbf595; this run re-probes the Arm window with the Start menu closed.
+    if: false
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -180,6 +182,8 @@ jobs:
             sizes.md
 
   linux-x64:
+    # Measured at 273fbf595; this run re-probes the Arm window with the Start menu closed.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
