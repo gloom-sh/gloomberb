@@ -24,6 +24,20 @@ afterEach(() => {
 });
 
 describe("AssetDataRouter", () => {
+  test("a source the host passes and a plugin also registers is asked once", async () => {
+    let reads = 0;
+    const cloud = () => createTestDataProvider({
+      id: "gloomberb-cloud",
+      getPriceHistory: async () => { reads += 1; return []; },
+    });
+    const router = new AssetDataRouter(null, [cloud()]);
+    attachTestRegistry(router, {
+      getEnabledCapabilities: ((kind: string) => kind === "asset-data" ? [assetDataProvider(cloud())] : []) as never,
+    });
+    await router.getPriceHistory("XLK", "", "1Y");
+    expect(reads).toBe(1);
+  });
+
   test("a failed batch quote carries its reason as text, which survives a JSON bridge", async () => {
     const router = new AssetDataRouter(null, []);
     const [result] = await router.getQuotesBatch([{ symbol: "ES=F", exchange: "" }]);

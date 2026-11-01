@@ -77,6 +77,23 @@ test("requests a boundary buffer when the prior-year date falls on a holiday", a
   expect(result?.row?.return1YStartDate).toBe("2025-10-10");
 });
 
+test("a refresh given the history a load read asks for quotes alone and keeps the returns", async () => {
+  const asked: string[] = [];
+  const sessionQuote = { ...quote("XLK"), changeSessionDate: "2026-10-12", lastUpdated: Date.parse("2026-10-12T18:00:00Z") };
+  const provider = {
+    getQuote: async () => { asked.push("quote"); return sessionQuote; },
+    getPriceHistory: async () => { asked.push("history"); return [{ date: new Date("2025-10-13"), close: 101 }, { date: new Date("2026-10-12"), close: 104 }]; },
+    getDetailedPriceHistory: async () => { asked.push("boundary"); return [{ date: new Date("2025-10-10"), close: 100 }]; },
+  } as unknown as DataProvider;
+  const histories = new Map<string, PricePoint[]>();
+  await loadSectorRows(sectors.slice(0, 1), provider, { histories });
+  expect(asked).toEqual(["quote", "history", "boundary"]);
+  asked.length = 0;
+  const [refreshed] = await loadSectorRows(sectors.slice(0, 1), provider, { histories });
+  expect(asked).toEqual(["quote"]);
+  expect(refreshed?.row?.return1Y).toBeCloseTo(5);
+});
+
 
 test("one missing baseline bar cannot change a fund's comparison window", async () => {
   const provider = {

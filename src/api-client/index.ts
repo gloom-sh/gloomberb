@@ -107,6 +107,8 @@ class GloomApiClient {
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
+  /** When a session check last answered for the credential in place (`recentSession`). */
+  private sessionCheckedAt: number | null = null;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
   private sessionRequest: PendingSessionRequest | null = null;
@@ -312,6 +314,8 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
+    // Another account, or a plan that changed, reads other answers: no later read joins one sent before.
+    if (changed) this.transport.forgetSharedReads();
     if (confirmSession) {
       this.clearSessionRevalidationTimer();
       this.verifiedSessionIdentity = user ? {} : null;
@@ -484,6 +488,17 @@ class GloomApiClient {
     }
   }
 
+  /**
+   * What a session check made within `maxAgeMs` found for the credential in
+   * place, or undefined when none did and the server has to be asked. Lets a
+   * view that opens right after the app checked its session use that answer.
+   */
+  recentSession(maxAgeMs: number): { user: AuthUser | null } | undefined {
+    if (!this.sessionChecked || this.sessionCheckedAt === null || this.sessionTransitions > 0 || this.sessionRequest) return undefined;
+    if (Date.now() - this.sessionCheckedAt > maxAgeMs) return undefined;
+    return { user: this.currentUser };
+  }
+
   async getSession(isCurrent: () => boolean = () => true): Promise<AuthUser | null> {
     if (!isCurrent()) return this.currentUser;
     const existing = this.sessionRequest;
@@ -507,6 +522,7 @@ class GloomApiClient {
         .then(({ user, validated }) => {
           if (validated && canApply()) {
             this.sessionChecked = true;
+            this.sessionCheckedAt = Date.now();
             this.clearSessionRevalidationTimer();
           }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);

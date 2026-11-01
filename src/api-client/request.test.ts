@@ -248,6 +248,110 @@ describe("CloudApiRequestTransport market deadlines", () => {
   });
 });
 
+describe("CloudApiRequestTransport shared reads", () => {
+  test("identical GETs asked while one is out share it, and one caller giving up leaves it to the others", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const { promise: body, resolve: answer } = Promise.withResolvers<string>();
+    const transport = new CloudApiRequestTransport({
+      fetchTransport: async (_url, init) => {
+        signals.push(init?.signal);
+        return responseWithBody(() => body);
+      },
+    });
+    const leaving = new AbortController();
+    const first = transport.request<{ price: number }>("/market/quote?symbol=NVDA");
+    const second = transport.request<{ price: number }>("/market/quote?symbol=NVDA", { signal: leaving.signal });
+    const other = transport.request("/market/quote?symbol=AAPL");
+    const posted = transport.request("/market/quote?symbol=NVDA", { method: "POST", body: "{}" });
+    leaving.abort(new Error("pane closed"));
+    await expect(second).rejects.toThrow("pane closed");
+    answer(JSON.stringify({ price: 1 }));
+    const [nvda] = await Promise.all([first, other, posted]);
+    expect(nvda).toEqual({ price: 1 });
+    expect(signals).toHaveLength(3);
+    expect(signals[0]?.aborted).toBe(false);
+    // Asked again once the answer is in, it goes out again.
+    await transport.request("/market/quote?symbol=NVDA");
+    expect(signals).toHaveLength(4);
+  });
+
+  test("the last caller to give up cancels the request", async () => {
+    let signal: AbortSignal | null | undefined;
+    const transport = new CloudApiRequestTransport({
+      fetchTransport: async (_url, init) => {
+        signal = init?.signal;
+        return new Promise<Response>(() => {});
+      },
+    });
+    const a = new AbortController();
+    const b = new AbortController();
+    const first = transport.request("/market/history?symbol=NVDA", { signal: a.signal });
+    const second = transport.request("/market/history?symbol=NVDA", { signal: b.signal });
+    a.abort(new Error("a left"));
+    await expect(first).rejects.toThrow("a left");
+    expect(signal?.aborted).toBe(false);
+    b.abort(new Error("b left"));
+    await expect(second).rejects.toThrow("b left");
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("CloudApiRequestTransport shared reads after a change", () => {
+  function pendingReads() {
+    const bodies: Array<(text: string) => void> = [];
+    const asked: string[] = [];
+    const transport = new CloudApiRequestTransport({
+      fetchTransport: async (url, init) => {
+        asked.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        if ((init?.method ?? "GET") !== "GET") return new Response("{}");
+        const { promise, resolve } = Promise.withResolvers<string>();
+        bodies.push(resolve);
+        return responseWithBody(() => promise);
+      },
+    });
+    return { transport, asked, answerAll: () => bodies.forEach((answer) => answer("{}")) };
+  }
+
+  test("a GET asked after a write, or during one, goes out again", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    const before = transport.request("/market/quote?symbol=NVDA");
+    await transport.request("/brokers/alpaca/orders", { method: "POST", body: "{}" });
+    const after = transport.request("/market/quote?symbol=NVDA");
+    // A batch read sent as a POST changes nothing: the next GET still joins.
+    await transport.request("/market/quotes/batch", { method: "POST", body: "{}" });
+    const joined = transport.request("/market/quote?symbol=NVDA");
+    answerAll();
+    await Promise.all([before, after, joined]);
+    expect(asked).toEqual(["GET /market/quote", "POST /brokers/alpaca/orders", "GET /market/quote", "POST /market/quotes/batch"]);
+  });
+
+  test("only market reads are shared, and not when the caller wants a fresh copy", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    const reads = [
+      transport.request("/market/history?symbol=NVDA"),
+      transport.request("/market/history?symbol=NVDA", { cache: "no-cache" }),
+      transport.request("/cloud/sec/13f/funds?name=Berkshire"),
+      transport.request("/cloud/sec/13f/funds?name=Berkshire"),
+    ];
+    answerAll();
+    await Promise.all(reads);
+    expect(asked).toEqual(["GET /market/history", "GET /market/history", "GET /cloud/sec/13f/funds", "GET /cloud/sec/13f/funds"]);
+  });
+
+  test("a GET asked after signing in or out, or after the session changes, goes out again", async () => {
+    const { transport, asked, answerAll } = pendingReads();
+    transport.setCookieSessionMode(true);
+    const signedOut = transport.request("/market/quote?symbol=NVDA");
+    await transport.request("/auth/sign-in/email", { method: "POST", body: "{}" });
+    const signedIn = transport.request("/market/quote?symbol=NVDA");
+    transport.forgetSharedReads();
+    const otherAccount = transport.request("/market/quote?symbol=NVDA");
+    answerAll();
+    await Promise.all([signedOut, signedIn, otherAccount]);
+    expect(asked.filter((line) => line.startsWith("GET"))).toHaveLength(3);
+  });
+});
+
 describe("putWithRevision", () => {
   class ItemConflictError extends RevisionConflictError<{ revision: number }> {}
   const refuse = async (_path: string, init?: RequestInit): Promise<never> => {

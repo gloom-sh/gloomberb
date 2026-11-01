@@ -1,5 +1,5 @@
 import type { AssetDataCapability, NewsCapability, PluginCapability } from "../../capabilities";
-import type { CapabilityRouteSource } from "../../types/capability-route-source";
+import { routeSourcePriority, type CapabilityRouteSource } from "../../types/capability-route-source";
 import type { DataProvider } from "../../types/data-provider";
 
 type RouteSourceCapability = AssetDataCapability | NewsCapability;
@@ -18,6 +18,31 @@ export function collectCapabilityRouteSources(capabilities: PluginCapability[]):
     capabilitySources.set(sourceId, mergeCapabilityRouteSource(capabilitySources.get(sourceId), capability));
   }
   return [...capabilitySources.values()];
+}
+
+/**
+ * One source per id. A host can hand the router a source a plugin also
+ * registers (the web app passes its own Gloom Cloud client, which stays when
+ * the plugin is turned off): asked as two, every read that falls through to
+ * the next source, or races it, sends the same request twice. The first one
+ * listed keeps its clients; the other fills in what it lacks.
+ */
+export function mergeRouteSourcesById(sources: readonly CapabilityRouteSource[]): CapabilityRouteSource[] {
+  const byId = new Map<string, CapabilityRouteSource>();
+  for (const source of sources) {
+    const kept = byId.get(source.id);
+    byId.set(source.id, kept ? {
+      id: kept.id,
+      name: kept.name,
+      priority: kept.priority === undefined && source.priority === undefined
+        ? undefined : Math.min(routeSourcePriority(kept), routeSourcePriority(source)),
+      cachePolicy: kept.cachePolicy ?? source.cachePolicy,
+      isEnabled: kept.isEnabled ?? source.isEnabled,
+      market: kept.market ?? source.market,
+      news: kept.news ?? source.news,
+    } : source);
+  }
+  return [...byId.values()];
 }
 
 function routeSourceFromMarketProvider(provider: DataProvider): CapabilityRouteSource {
