@@ -108,6 +108,33 @@ function keepTaskSchedulerLog(): void {
 }
 
 /**
+ * Ends a restart the app scheduled and every process run from the app's
+ * folder: an app a restart opens after a run holds Chromium's profile, and the
+ * next run's app then exits as it opens. Returns what it stopped.
+ */
+function stopApp(app: string): string[] {
+  const script = String.raw`
+$ErrorActionPreference = 'Continue'
+$App = $env:GLOOM_CHECK_APP.TrimEnd([char]92) + [char]92
+# The script first, so it cannot open the app once the app is gone.
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" | Where-Object { $_.ProcessId -ne $PID -and ([string]$_.CommandLine) -like '*gloom-restart-*' } | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  'stopped the restart script ' + $_.ProcessId
+}
+Get-ScheduledTask -TaskName 'GloomRestart-*' -ErrorAction SilentlyContinue | ForEach-Object {
+  Unregister-ScheduledTask -TaskName $_.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+  'removed the task ' + $_.TaskName
+}
+Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($App, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  'stopped ' + $_.Name + ' ' + $_.ProcessId
+}
+`;
+  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], { env: { ...process.env, GLOOM_CHECK_APP: app }, timeout: 60_000 });
+  return child.stdout.toString().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+/**
  * Why a restart brought no window back: the restart task as the Task Scheduler
  * has it and what its log says it did, the restart script's own log, and the
  * app's processes and the shells around them, with the session each runs in.
@@ -1876,8 +1903,10 @@ class Run {
       })()`, 5_000).catch(() => false);
       if (!sent) return { status: "fail", detail: "the page has no bridge to send the restart on" };
       const closing = Date.now();
-      while (win.isWindow(this.main.hwnd) && Date.now() - closing < 15_000) await sleep(200);
-      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: "the app did not close to restart" };
+      // The app gives its restart script 20 s to start before it stays open instead.
+      while (win.isWindow(this.main.hwnd) && Date.now() - closing < 45_000) await sleep(200);
+      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: `the app did not close to restart within 45 s; ${await restartReport(this.out, oldPid)}` };
+      const closedIn = (Date.now() - closing) / 1000;
       for (const window of [this.main, this.detached]) window?.page.cdp.close();
       let opened: win.WindowInfo | undefined;
       while (!opened && Date.now() - closing < 60_000) {
@@ -1899,7 +1928,7 @@ class Run {
       // Not this run's launch: stopped by its window.
       Bun.spawnSync(["taskkill", "/PID", String(opened.pid), "/T", "/F"]);
       await sleep(1_500);
-      return { status: drawn ? "pass" : "fail", detail: `"${opened.title}" opened ${took.toFixed(1)} s after the old one closed and ${painted}` };
+      return { status: drawn ? "pass" : "fail", detail: `the old window closed ${closedIn.toFixed(1)} s after the restart was asked; "${opened.title}" opened ${took.toFixed(1)} s after it was asked and ${painted}` };
     });
   }
 
@@ -2035,6 +2064,8 @@ class Run {
     this.pastErrors.push(...await this.pageErrors());
     for (const window of [this.main, this.detached]) window?.page.cdp.close();
     const pids = new Set(win.topLevelWindows().filter((info) => info.className === "BasicWindowClass" && (!this.knownWindows.has(info.hwnd) || info.hwnd === this.main?.hwnd || info.hwnd === this.detached?.hwnd)).map((info) => info.pid));
+    // Before the app goes: a restart it scheduled would open it again once it is gone.
+    for (const line of stopApp(this.app)) console.log(line);
     // The launcher's tree holds the app's Bun process even once its windows are gone.
     Bun.spawnSync(["taskkill", "/PID", String(this.launcher.pid), "/T", "/F"]);
     this.launcher.kill();
@@ -2093,6 +2124,8 @@ async function run(): Promise<void> {
   };
   const started = new Date().toISOString();
   let fatal: string | null = null;
+  const left = stopApp(app);
+  if (left.length) console.log(`Left by an earlier run: ${left.join("; ")}`);
   try {
     // First the popped-out window, while the main window has not been resized.
     await runner.start(null);
@@ -2139,8 +2172,11 @@ async function run(): Promise<void> {
 if (COMMAND === "install") await install(resolve(required("installer")), resolve(required("dir")));
 else if (COMMAND === "ports") await ports(resolve(required("app")), resolve(required("out")), option("label") ?? "app");
 else if (COMMAND === "enable-devtools") await enableDevtools(resolve(required("app")));
-else if (COMMAND === "run") await run();
-else {
+else if (COMMAND === "run") {
+  await run();
+  // A page connection the app left open would keep the check from exiting.
+  process.exit(0);
+} else {
   console.error("Usage: check.ts install --installer <GloomSetup.exe> --dir <dir> | ports --app <dir> --out <dir> [--label <name>] | enable-devtools --app <dir> | run --app <dir> --out <dir> [--label <name>] [--only <text>]");
   process.exit(2);
 }
