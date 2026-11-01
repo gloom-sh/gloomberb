@@ -207,6 +207,34 @@ export async function putWithRevision<T, Current extends { revision: number }>(
   }
 }
 
+/**
+ * Background traffic. Crash reports, usage counts and command-search reports:
+ * a rate-limited, timed-out or missing one must not show up as a Cloud outage
+ * in the connections pane, and one that never got out (an ad blocker refuses
+ * `/telemetry/` in a browser that reaches everything else) says nothing of
+ * whether the data service answers. Nor must the map's probe for geo layers,
+ * which a server without them answers with 404, or a ticker change lookup: a
+ * note beside a quote, never one of the refused market requests a lookup of
+ * many symbols waits out and retries. Nor the tickers beside a list of
+ * organization names, which say so in place, or a 13F filer's EDGAR filing
+ * list, whose report says it went unchecked, or a company's other listings,
+ * beside a list check that still answers for the listing itself. Nor the
+ * batched searches and ticker changes a list of symbols starts with: a service
+ * without them answers 404, and whatever they leave unanswered is looked up
+ * one symbol at a time, which is tracked.
+ */
+function isBackgroundRequest(path: string): boolean {
+  return path.startsWith("/telemetry/")
+    || path === "/assist/searches"
+    || path === "/cloud/geo/layers"
+    || path.startsWith("/cloud/sec/13f/filer?")
+    || path.startsWith("/market/ticker-changes?")
+    || path.startsWith("/market/issuer-listings?")
+    || path === "/market/ticker-changes/batch"
+    || path === "/market/search/batch"
+    || path === "/market/organization-tickers";
+}
+
 function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {
   if (!signal?.aborted) return;
   throw (
@@ -240,6 +268,9 @@ export class CloudApiRequestTransport {
   private recoveryDelayMs = RECOVERY_PROBE_FIRST_MS;
   /** Bumped by `dispose`, so a check still out does not schedule the next one. */
   private recoveryGeneration = 0;
+  /** The check whether an unreachable service answers again, while it is out, and when the last one went out. */
+  private recoveryProbe: AbortController | null = null;
+  private lastRecoveryProbeAt = Number.NEGATIVE_INFINITY;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -434,7 +465,7 @@ export class CloudApiRequestTransport {
           // The caller gave up first: its abort settles the request, and says nothing of the connection.
           if (callerSignal?.aborted) return;
           if (!answered()) {
-            this.recordNoAnswer(generation, true);
+            if (!isBackgroundRequest(path)) this.recordNoAnswer(generation, true);
             fail(new DataServiceUnreachableError(timedOut(deadline.answerMs)));
           } else if (deadline.limitMs > deadline.answerMs) {
             timers.push(setTimeout(() => fail(timedOut(deadline.limitMs)), deadline.limitMs - deadline.answerMs));
@@ -460,7 +491,11 @@ export class CloudApiRequestTransport {
    * A caller's abort stays an abort. An answer of any status says the
    * connection works, for the deadlines of the requests beside it.
    */
-  private async reachService<R>(fetch: () => Promise<R>, signal: AbortSignal | null | undefined): Promise<R> {
+  private async reachService<R>(
+    fetch: () => Promise<R>,
+    signal: AbortSignal | null | undefined,
+    background = false,
+  ): Promise<R> {
     const generation = cloudApiTransportGeneration;
     let response: R;
     try {
@@ -468,7 +503,8 @@ export class CloudApiRequestTransport {
     } catch (error) {
       if (signal?.aborted) throw error;
       const failure = asDataServiceFailure(error);
-      if (failure instanceof DataServiceUnreachableError) this.recordNoAnswer(generation, false);
+      // Background traffic that never got out says nothing of the service (`isBackgroundRequest`).
+      if (failure instanceof DataServiceUnreachableError && !background) this.recordNoAnswer(generation, false);
       throw failure;
     }
     this.recordAnswer();
@@ -490,11 +526,19 @@ export class CloudApiRequestTransport {
 
   /**
    * The service answered on another channel (the quote stream opened, or sent
-   * a frame): it is reachable again. It does not count toward the deadlines of
+   * a frame). That alone does not end an outage: a stream can run while
+   * requests still fail (a proxy that lets one through and not the other),
+   * and ending the outage on each frame would start it again at the stream's
+   * tick rate. While the service is unreachable this checks over HTTP at once
+   * instead (`runRecoveryCheck`), one check at a time and at most one per
+   * RECOVERY_PROBE_FIRST_MS. It does not count toward the deadlines of
    * requests in flight, which wait for an answer over this transport.
    */
   noteServiceAnswered(): void {
-    this.markReachable();
+    if (!this.unreachable || this.recoveryProbe) return;
+    if (Date.now() - this.lastRecoveryProbeAt < RECOVERY_PROBE_FIRST_MS) return;
+    this.stopRecoveryChecks();
+    this.runRecoveryCheck();
   }
 
   /**
@@ -517,7 +561,11 @@ export class CloudApiRequestTransport {
   private recordNoAnswer(generation: number, hung: boolean): void {
     if (!this.fetchTransport && generation !== cloudApiTransportGeneration) return;
     if (hung) this.hungAt = Date.now();
-    if (this.unreachable) return;
+    if (this.unreachable) {
+      // A chain of checks stopped by `dispose` starts again.
+      this.scheduleRecoveryCheck();
+      return;
+    }
     this.unreachable = true;
     this.connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
     this.recoveryDelayMs = RECOVERY_PROBE_FIRST_MS;
@@ -531,25 +579,34 @@ export class CloudApiRequestTransport {
    * a command's process open.
    */
   private scheduleRecoveryCheck(): void {
-    if (this.recoveryTimer || !this.unreachable) return;
-    const generation = this.recoveryGeneration;
+    if (this.recoveryTimer || this.recoveryProbe || !this.unreachable) return;
     const timer = setTimeout(() => {
       this.recoveryTimer = null;
-      if (!this.unreachable) return;
-      this.recoveryDelayMs = Math.min(this.recoveryDelayMs * 2, RECOVERY_PROBE_MAX_MS);
-      const controller = new AbortController();
-      const giveUp = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
-      (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
-        .then(() => this.recordAnswer(), () => {
-          // Intentional ignore: still unreachable; the next check is scheduled below.
-        })
-        .finally(() => {
-          clearTimeout(giveUp);
-          if (generation === this.recoveryGeneration) this.scheduleRecoveryCheck();
-        });
+      this.runRecoveryCheck();
     }, this.recoveryDelayMs);
     (timer as { unref?: () => void }).unref?.();
     this.recoveryTimer = timer;
+  }
+
+  /** Asks `/health` now whether the unreachable service answers; the next check is scheduled once this one is done. */
+  private runRecoveryCheck(): void {
+    if (!this.unreachable || this.recoveryProbe) return;
+    const generation = this.recoveryGeneration;
+    this.lastRecoveryProbeAt = Date.now();
+    this.recoveryDelayMs = Math.min(this.recoveryDelayMs * 2, RECOVERY_PROBE_MAX_MS);
+    const controller = new AbortController();
+    this.recoveryProbe = controller;
+    const giveUp = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
+    (giveUp as { unref?: () => void }).unref?.();
+    (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
+      .then(() => this.recordAnswer(), () => {
+        // Intentional ignore: still unreachable; the next check is scheduled below.
+      })
+      .finally(() => {
+        clearTimeout(giveUp);
+        if (this.recoveryProbe === controller) this.recoveryProbe = null;
+        if (generation === this.recoveryGeneration) this.scheduleRecoveryCheck();
+      });
   }
 
   private stopRecoveryChecks(): void {
@@ -557,10 +614,12 @@ export class CloudApiRequestTransport {
     this.recoveryTimer = null;
   }
 
-  /** Stops checking whether an unreachable service answers again. */
+  /** Stops checking whether an unreachable service answers again; a request that goes unanswered after starts the checks again. */
   dispose(): void {
     this.recoveryGeneration += 1;
     this.stopRecoveryChecks();
+    this.recoveryProbe?.abort();
+    this.recoveryProbe = null;
   }
 
   /**
@@ -651,7 +710,7 @@ export class CloudApiRequestTransport {
           headers,
           credentials: "include",
         },
-      ), options?.signal);
+      ), options?.signal, isBackgroundRequest(path));
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;
       if (ownsCredential) this.extractSessionCookie(res);
@@ -678,29 +737,7 @@ export class CloudApiRequestTransport {
       }
       return parsed as T;
     };
-    // Crash reports, usage counts and command-search reports are background
-    // traffic: a rate-limited, timed-out or missing one must not show up as a
-    // Cloud outage in the connections pane. Nor must the map's probe for geo
-    // layers, which a server without them answers with 404, or a ticker
-    // change lookup: a note beside a quote, never one of the refused market
-    // requests a lookup of many symbols waits out and retries. Nor the
-    // tickers beside a list of organization names, which say so in place,
-    // or a 13F filer's EDGAR filing list, whose report says it went unchecked,
-    // or a company's other listings, beside a list check that still answers
-    // for the listing itself. Nor the batched searches and ticker changes a
-    // list of symbols starts with: a service without them answers 404, and whatever they leave
-    // unanswered is looked up one symbol at a time, which is tracked.
-    if (
-      path.startsWith("/telemetry/")
-      || path === "/assist/searches"
-      || path === "/cloud/geo/layers"
-      || path.startsWith("/cloud/sec/13f/filer?")
-      || path.startsWith("/market/ticker-changes?")
-      || path.startsWith("/market/issuer-listings?")
-      || path === "/market/ticker-changes/batch"
-      || path === "/market/search/batch"
-      || path === "/market/organization-tickers"
-    ) return request();
+    if (isBackgroundRequest(path)) return request();
     return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,

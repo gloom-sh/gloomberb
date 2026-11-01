@@ -189,13 +189,75 @@ describe("CloudApiRequestTransport market deadlines", () => {
     await transport.request("/market/quote?symbol=MSFT");
     expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
     expect(recovered).toEqual(["gloom-cloud-http"]);
+    transport.dispose();
+  });
 
-    // The quote stream answering ends an outage too.
-    online = false;
-    await transport.request("/market/quote?symbol=AAPL").catch(() => {});
-    transport.noteServiceAnswered();
-    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
-    expect(recovered).toEqual(["gloom-cloud-http", "gloom-cloud-http"]);
+  // A stream that ticked while requests failed (a proxy that let it through)
+  // ended the outage at every frame, and the next failed request began it
+  // again: the note flickered and the panes reloaded at the tick rate.
+  test("the quote stream answering checks the service over HTTP, at most once in two seconds, instead of ending the outage", async () => {
+    jest.useFakeTimers();
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const recovered: string[] = [];
+    health.subscribeRecovery((sourceId) => recovered.push(sourceId));
+    let online = false;
+    let checks = 0;
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async (url) => {
+      if (new URL(url).pathname === "/health") checks += 1;
+      if (!online) throw Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), { code: "ConnectionRefused" });
+      return responseWithBody(async () => "{}");
+    } });
+    try {
+      await transport.request("/market/quote?symbol=AAPL").catch(() => {});
+      for (let frame = 0; frame < 50; frame += 1) transport.noteServiceAnswered();
+      await flush();
+      expect(checks).toBe(1);
+      jest.advanceTimersByTime(1_000);
+      transport.noteServiceAnswered();
+      await flush();
+      expect(checks).toBe(1);
+      expect(health.unreachableSince("gloom-cloud-http")).not.toBeNull();
+      expect(recovered).toEqual([]);
+
+      online = true;
+      jest.advanceTimersByTime(1_000);
+      transport.noteServiceAnswered();
+      await flush();
+      expect(checks).toBe(2);
+      expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+      expect(recovered).toEqual(["gloom-cloud-http"]);
+    } finally {
+      transport.dispose();
+    }
+  });
+
+  // An ad blocker refuses /telemetry/ in a browser that reaches everything
+  // else: each blocked report said the app was offline and reloaded the panes.
+  test("background traffic that never gets out says nothing of whether the service answers", async () => {
+    jest.useFakeTimers();
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const recovered: string[] = [];
+    health.subscribeRecovery((sourceId) => recovered.push(sourceId));
+    const asked: string[] = [];
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async (url) => {
+      const path = new URL(url).pathname;
+      asked.push(path);
+      if (path.startsWith("/telemetry/")) throw new TypeError("Failed to fetch");
+      return responseWithBody(async () => "{}");
+    } });
+    try {
+      await expect(transport.request("/telemetry/events", { method: "POST", body: "{}" })).rejects.toBeInstanceOf(DataServiceUnreachableError);
+      expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+      jest.advanceTimersByTime(30_000);
+      await flush();
+      await transport.request("/market/quote?symbol=AAPL");
+      expect(asked).toEqual(["/telemetry/events", "/market/quote"]);
+      expect(recovered).toEqual([]);
+    } finally {
+      transport.dispose();
+    }
   });
 
   // A web page offline asked nothing more once its panes had failed, so the
@@ -221,13 +283,23 @@ describe("CloudApiRequestTransport market deadlines", () => {
       expect(checks).toEqual([2_000, 6_000, 14_000]);
       expect(health.unreachableSince("gloom-cloud-http")).not.toBeNull();
 
+      // Stopped, the checks start again with the next request that goes unanswered.
+      transport.dispose();
+      jest.advanceTimersByTime(60_000);
+      await flush();
+      expect(checks).toHaveLength(3);
+      await transport.request("/market/quote?symbol=AAPL").catch(() => {});
+      jest.advanceTimersByTime(15_000);
+      await flush();
+      expect(checks).toHaveLength(4);
+
       online = true;
       jest.advanceTimersByTime(15_000);
       await flush();
       expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
       jest.advanceTimersByTime(60_000);
       await flush();
-      expect(checks).toHaveLength(4);
+      expect(checks).toHaveLength(5);
     } finally {
       transport.dispose();
     }
