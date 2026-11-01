@@ -112,7 +112,14 @@ Drag the line between docked panes, or a floating pane's bottom-right corner (an
 
 A new floating pane opens where there is room: clear of the other floating panes and of the pane you are working in, or one step down and to the right of the frontmost window when the screen is full. It never opens exactly on top of another window.
 
-While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Over a drop target or a screen edge, an outline shows where the pane will land; on the desktop and web the pane turns see-through over it.
+While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Where a release would put the pane somewhere else, an outline shows where it will land; on the desktop and web the pane turns see-through over it.
+
+A pane you move, floating or docked, finds its place in the dock two ways:
+
+- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. Let go before the outline shows and it stays floating. A pane parked against an edge or a corner of the window stays floating too.
+- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
+
+`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar.
 
 ### Docs inside the app
 

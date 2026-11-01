@@ -14,6 +14,7 @@ export {
   getDockLeafLayouts,
   getDockResizeTargets,
   getDockSplitGeometry,
+  showDockTab,
   type DockDividerLayout,
   type DockGeometryOptions,
   type DockLeafLayout,

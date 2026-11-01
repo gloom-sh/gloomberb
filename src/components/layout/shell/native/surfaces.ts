@@ -1,14 +1,13 @@
 import { useEffect, useMemo } from "react";
 import type {
   DockDividerLayout,
-  DockLeafLayout,
   FloatingRect,
   LayoutBounds,
   ResolvedPane,
 } from "../../../../layout/pane-manager";
 import { useNativeRenderer } from "../../../../ui";
 import type { DragPreview } from "../drag";
-import { IDLE_DRAG, useLiveDrag, useLiveHoverOverlay, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
+import { IDLE_DRAG, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import {
   buildNativeTransientOccluders,
   buildNativeWindowState,
@@ -32,8 +31,6 @@ interface ShellNativeSurfaceSyncProps {
   dialogOpen: boolean;
   dockDividerLayouts: DockDividerLayout[];
   dockedPanes: ResolvedPane[];
-  /** The tiled panes a moving pane can be dropped on. */
-  dockLeafLayouts: DockLeafLayout[];
   /** A pane from another window over this one's edge. */
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
@@ -44,7 +41,6 @@ interface ShellNativeSurfaceSyncProps {
   windowModeDockMovePreview: WindowEditDockMovePreview | null;
 }
 
-const NO_LEAVES: DockLeafLayout[] = [];
 const selectAll = (geometry: LiveDragGeometry) => geometry;
 const selectIdle = () => IDLE_DRAG;
 
@@ -59,7 +55,6 @@ export function ShellNativeSurfaceSync({
   dialogOpen,
   dockDividerLayouts,
   dockedPanes,
-  dockLeafLayouts,
   externalDockPreview,
   live,
   menuState,
@@ -77,9 +72,7 @@ export function ShellNativeSurfaceSync({
     dockPreview,
   } = useLiveDrag(live, nativeSurfaceManager ? selectAll : selectIdle);
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
-  const activeHoverOverlay = useLiveHoverOverlay(live, nativeSurfaceManager ? dockLeafLayouts : NO_LEAVES);
   const nativeTransientOccluders = useMemo(() => buildNativeTransientOccluders({
-    activeHoverOverlay,
     activePaneDrag,
     commandBarNativeOccluder,
     dragFloatingRect,
@@ -96,7 +89,6 @@ export function ShellNativeSurfaceSync({
     nativeWindowModePanelRect,
     windowModeDockMovePreview,
   }), [
-    activeHoverOverlay,
     activePaneDrag,
     commandBarNativeOccluder,
     dragFloatingRect,

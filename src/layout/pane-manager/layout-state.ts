@@ -51,11 +51,28 @@ function normalizeDetachedEntries(layout: LayoutConfig) {
     .map((entry) => ({ ...entry }));
 }
 
+/** A tab's way back into its stack: beside the tab it shows, or the first other one. */
+export function stackTabMemory(
+  dockRoot: DockLayoutNode | null,
+  stackPath: Array<0 | 1>,
+  instanceId: string,
+): Pick<DockedPlacementMemory, "anchorInstanceId" | "position"> {
+  const stack = getNodeAtPath(dockRoot, stackPath);
+  const members = stack ? getDockedInstanceIds(stack) : [];
+  const shown = stack ? getRepresentativeLeafId(stack, true) : undefined;
+  const anchorInstanceId = shown && shown !== instanceId ? shown : members.find((id) => id !== instanceId);
+  return { anchorInstanceId, position: "tab" };
+}
+
 function captureDockedMemory(dockRoot: DockLayoutNode | null): Map<string, DockedPlacementMemory> {
   const memory = new Map<string, DockedPlacementMemory>();
   const leaves = collectDockLeafRefs(dockRoot);
 
   for (const leaf of leaves) {
+    if (leaf.stackPath) {
+      memory.set(leaf.instanceId, { path: [...leaf.path], ...stackTabMemory(dockRoot, leaf.stackPath, leaf.instanceId) });
+      continue;
+    }
     if (leaf.path.length === 0) {
       memory.set(leaf.instanceId, { path: [] });
       continue;

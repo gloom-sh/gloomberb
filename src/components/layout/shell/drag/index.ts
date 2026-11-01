@@ -12,12 +12,6 @@ import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
 import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_HELP, PANE_HEADER_RESTORE } from "../../pane/header";
 
-export interface HoverOverlay {
-  targetId: string;
-  rect: LayoutBounds;
-  cells: Array<{ position: "top" | "left" | "center" | "right" | "bottom"; rect: LayoutBounds }>;
-}
-
 export type SnapGuidePosition =
   | "left"
   | "right"
@@ -121,22 +115,31 @@ export function constrainFloatingRectToBounds(
   };
 }
 
-function positionFloatingRectUnderPointer(
-  rect: FloatingRect,
+/**
+ * Where the pointer alone puts a pane on the move, before the screen's edges
+ * hold it in: a docked pane at its floating size, held where it was pressed
+ * (as far into it as it reaches); a floating one moved by the pointer.
+ */
+export function freePaneDragRect(
   drag: PaneDragRectState,
+  baseRect: FloatingRect,
   pointerX: number,
   pointerY: number,
   totalWidth: number,
   totalHeight: number,
 ): FloatingRect {
-  const fittedRect = constrainFloatingRectToBounds(rect, totalWidth, totalHeight);
-  const pointerOffsetX = Math.max(0, Math.min(fittedRect.width - 1, drag.startX - drag.origRect.x));
-  const pointerOffsetY = Math.max(0, Math.min(fittedRect.height - 1, drag.startY - drag.origRect.y));
-  return constrainFloatingRectToBounds({
-    ...fittedRect,
-    x: pointerX - pointerOffsetX,
-    y: pointerY - pointerOffsetY,
-  }, totalWidth, totalHeight);
+  if (drag.mode === "docked") {
+    const fittedRect = constrainFloatingRectToBounds(baseRect, totalWidth, totalHeight);
+    const pointerOffsetX = Math.max(0, Math.min(fittedRect.width - 1, drag.startX - drag.origRect.x));
+    const pointerOffsetY = Math.max(0, Math.min(fittedRect.height - 1, drag.startY - drag.origRect.y));
+    return { ...fittedRect, x: pointerX - pointerOffsetX, y: pointerY - pointerOffsetY };
+  }
+  return {
+    x: drag.origRect.x + (pointerX - drag.startX),
+    y: drag.origRect.y + (pointerY - drag.startY),
+    width: drag.origRect.width,
+    height: drag.origRect.height,
+  };
 }
 
 export function resolvePaneDragFloatingRect(
@@ -147,16 +150,7 @@ export function resolvePaneDragFloatingRect(
   totalWidth: number,
   totalHeight: number,
 ): FloatingRect {
-  if (drag.mode === "docked") {
-    return positionFloatingRectUnderPointer(baseRect, drag, pointerX, pointerY, totalWidth, totalHeight);
-  }
-
-  return constrainFloatingRectToBounds({
-    x: drag.origRect.x + (pointerX - drag.startX),
-    y: drag.origRect.y + (pointerY - drag.startY),
-    width: drag.origRect.width,
-    height: drag.origRect.height,
-  }, totalWidth, totalHeight);
+  return constrainFloatingRectToBounds(freePaneDragRect(drag, baseRect, pointerX, pointerY, totalWidth, totalHeight), totalWidth, totalHeight);
 }
 
 /**
@@ -188,82 +182,91 @@ export function resolveFloatResizeRect(
   return constrainFloatingRectToBounds({ x, y, width, height, zIndex: origRect.zIndex }, totalWidth, totalHeight);
 }
 
-function centerRectWithin(parent: LayoutBounds, width: number, height: number): LayoutBounds {
-  const nextWidth = Math.max(1, Math.min(parent.width, width));
-  const nextHeight = Math.max(1, Math.min(parent.height, height));
-  return {
-    x: parent.x + Math.floor((parent.width - nextWidth) / 2),
-    y: parent.y + Math.floor((parent.height - nextHeight) / 2),
-    width: nextWidth,
-    height: nextHeight,
-  };
+/** A distance on each axis, in cells. */
+export interface AxisDistance {
+  x: number;
+  y: number;
 }
 
-function compactOverlayRect(rect: LayoutBounds): LayoutBounds {
-  if (rect.width < 12 || rect.height < 7) return rect;
-  return centerRectWithin(
-    rect,
-    Math.max(9, Math.min(19, Math.floor(rect.width * 0.45))),
-    Math.max(5, Math.min(9, Math.floor(rect.height * 0.45))),
+const JOIN_SIDES = [
+  ["left", "x"],
+  ["right", "x"],
+  ["top", "y"],
+  ["bottom", "y"],
+] as const;
+
+type JoinSide = (typeof JOIN_SIDES)[number][0];
+
+/**
+ * Where a pane on the move would land on release, if anywhere but where it is
+ * drawn. Over another spot's title bar it becomes a tab there. Its edge
+ * pushed flush against the same edge of the spot under the pointer, where
+ * that spot meets another (never the dock's own edge, so a window parked at
+ * the screen's edge or corner stays floating), it joins the dock on that
+ * side: where it is drawn and where the pointer puts it, that edge is within
+ * `flush` of the spot's. The caller arms a join only once it has held (see
+ * JOIN_DWELL_MS). `join` false (Alt) leaves the edges out.
+ */
+export function resolvePaneDropTarget({
+  x,
+  y,
+  rect,
+  free,
+  leaves,
+  paneId,
+  area,
+  flush,
+  headerRows,
+  join,
+}: {
+  /** The pointer, in shell cells. */
+  x: number;
+  y: number;
+  /** Where the moving pane is drawn, its edges caught by the magnets. */
+  rect: LayoutBounds;
+  /** Where the pointer alone puts it, past the screen's edges if it goes there. */
+  free: LayoutBounds;
+  leaves: readonly DockLeafLayout[];
+  paneId: string;
+  /** The dock area. */
+  area: LayoutBounds;
+  /** How close its edge comes to a spot's edge to count as flush (the magnets' catch). */
+  flush: AxisDistance;
+  /** A docked pane's title bar, in rows. */
+  headerRows: number;
+  join: boolean;
+}): DropTarget | null {
+  if (!pointInRect(area, x, y)) return null;
+  const leaf = leaves.find((entry) => pointInRect(entry.rect, x, y));
+  if (!leaf) return null;
+  // Its own spot: alone there, nothing to land on; a tab of a stack can
+  // leave it for a side of the stack, but is a tab of it already.
+  const own = leaf.instanceId === paneId || (leaf.stack?.includes(paneId) ?? false);
+  const targetId = leaf.instanceId !== paneId ? leaf.instanceId : leaf.stack?.find((id) => id !== paneId);
+  if (!targetId) return null;
+  if (y < leaf.rect.y + headerRows) return own ? null : { kind: "tab", targetId };
+  if (!join) return null;
+  const edgeOf = (box: LayoutBounds, side: JoinSide) => (
+    side === "left" ? box.x : side === "right" ? box.x + box.width : side === "top" ? box.y : box.y + box.height
   );
-}
-
-function makeOverlayCellRects(rect: LayoutBounds): HoverOverlay["cells"] {
-  const col1 = Math.max(1, Math.floor(rect.width / 3));
-  const col2 = Math.max(1, Math.floor((rect.width - col1) / 2));
-  const col3 = Math.max(1, rect.width - col1 - col2);
-  const row1 = Math.max(1, Math.floor(rect.height / 3));
-  const row2 = Math.max(1, Math.floor((rect.height - row1) / 2));
-  const row3 = Math.max(1, rect.height - row1 - row2);
-  const cols = [col1, col2, col3];
-  const rows = [row1, row2, row3];
-  const cells: HoverOverlay["cells"] = [];
-  let y = rect.y;
-  for (let rowIndex = 0; rowIndex < 3; rowIndex += 1) {
-    let x = rect.x;
-    for (let colIndex = 0; colIndex < 3; colIndex += 1) {
-      const position = (
-        rowIndex === 0 && colIndex === 1 ? "top"
-          : rowIndex === 1 && colIndex === 0 ? "left"
-            : rowIndex === 1 && colIndex === 1 ? "center"
-              : rowIndex === 1 && colIndex === 2 ? "right"
-                : rowIndex === 2 && colIndex === 1 ? "bottom"
-                  : null
-      );
-      if (position) {
-        cells.push({
-          position,
-          rect: { x, y, width: cols[colIndex]!, height: rows[rowIndex]! },
-        });
-      }
-      x += cols[colIndex]!;
-    }
-    y += rows[rowIndex]!;
+  let best: { side: JoinSide; closeness: number } | null = null;
+  for (const [side, axis] of JOIN_SIDES) {
+    const line = edgeOf(leaf.rect, side);
+    // The dock's own edge is the screen's: parking there is not joining.
+    if (Math.abs(line - edgeOf(area, side)) <= flush[axis]) continue;
+    if (Math.abs(edgeOf(free, side) - line) > flush[axis]) continue;
+    const closeness = Math.abs(edgeOf(rect, side) - line) / Math.max(flush[axis], 1e-6);
+    if (closeness <= 1 && (!best || closeness < best.closeness)) best = { side, closeness };
   }
-  return cells;
+  return best ? { kind: "leaf", targetId, position: best.side } : null;
 }
 
-/** The drop grid drawn over a docked pane while another pane is dragged onto it. */
-export function hoverOverlayForLeaf(leaf: DockLeafLayout): HoverOverlay {
-  const overlayRect = compactOverlayRect(leaf.rect);
-  return {
-    targetId: leaf.instanceId,
-    rect: overlayRect,
-    cells: makeOverlayCellRects(overlayRect),
-  };
-}
-
-export function resolveHoverOverlay(
-  x: number,
-  y: number,
-  leaves: DockLeafLayout[],
-  draggedPaneId: string,
-): HoverOverlay | null {
-  const targetLeaf = leaves.find((leaf) => leaf.instanceId !== draggedPaneId && pointInRect(leaf.rect, x, y));
-  if (!targetLeaf) return null;
-  const overlay = hoverOverlayForLeaf(targetLeaf);
-  return pointInRect(overlay.rect, x, y) ? overlay : null;
-}
+/**
+ * How long an edge holds flush before the join arms and its preview shows, so
+ * a window moved past a docked pane's edge, or briefly lined up with it, does
+ * not dock on release.
+ */
+export const JOIN_DWELL_MS = 350;
 
 export function resolveDividerPreviewRect(
   axis: "horizontal" | "vertical",

@@ -86,10 +86,9 @@ const FLOATING_PANE_BASE_Z = 50;
  * pair at `under` and `over`: on the desktop the landing preview under the
  * pane on the move (lifted to `over` while it is over a target, or its outline
  * when it was docked); in the terminal, which cannot see through a pane, the
- * docked pane's outline under the landing outline. The drop grid of the pane
- * under the pointer is above both.
+ * docked pane's outline under the landing outline.
  */
-export const SHELL_DRAG_Z = { under: 95, over: 96, cell: 97, centerCell: 98 } as const;
+export const SHELL_DRAG_Z = { under: 95, over: 96 } as const;
 
 /** The lowest of the shell's fixed overlays over every pane. */
 const SHELL_PREVIEW_Z = SHELL_DRAG_Z.under;

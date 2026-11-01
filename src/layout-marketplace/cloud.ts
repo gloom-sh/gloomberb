@@ -4,6 +4,7 @@ import {
   type LayoutMarketplaceAuthor,
   type LayoutMarketplacePayload,
   parseMarketplaceLayoutPayload,
+  SHARED_STACK_STATE_KEY,
 } from "../shares/portable-layout";
 import { isRecord } from "../utils/guards";
 import { fnv1aHex } from "../utils/hash";
@@ -129,6 +130,13 @@ function canonicalJson(value: unknown): string {
  * settings do not, and a build that words it differently ("CTM BZ", now
  * "Curve · BZ") retitles the window on open, which is not an edit.
  */
+/** A pane's shared state without the stack it heads: like the rest of the arrangement, no edit of its content. */
+function arrangementFree(state: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!state || !(SHARED_STACK_STATE_KEY in state)) return state;
+  const { [SHARED_STACK_STATE_KEY]: _stack, ...rest } = state;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
 export function layoutContentFingerprint(
   payload: Pick<LayoutMarketplacePayload, "layout" | "paneState">,
   derivesTitle: (paneId: string) => boolean = () => false,
@@ -149,7 +157,7 @@ export function layoutContentFingerprint(
       : (instance.binding ?? null),
     params: instance.params ?? null,
     settings: instance.settings ?? null,
-    state: payload.paneState[instance.instanceId] ?? null,
+    state: arrangementFree(payload.paneState[instance.instanceId]) ?? null,
   })).sort();
   return `${items.length.toString(16)}-${fnv1aHex(items.join("\n"))}`;
 }

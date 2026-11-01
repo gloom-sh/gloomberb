@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes, type DockEdge } from "./frame";
-import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
+import { PaneHeader, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
 import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
@@ -35,6 +35,8 @@ interface PaneWrapperProps {
   topRule?: boolean;
   /** Desktop: the sides that face another docked pane across the gap between them. */
   dockEdges?: readonly DockEdge[];
+  /** Panes stacked as tabs in this spot. */
+  stack?: PaneHeaderStack | null;
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -68,6 +70,7 @@ export function PaneWrapper({
   quickSettings,
   topRule = false,
   dockEdges,
+  stack,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -133,6 +136,7 @@ export function PaneWrapper({
           showActions={showActions}
           quickSettings={quickSettings}
           tabs={headerTabs}
+          stack={stack}
           bodyBackground={bg}
           topRule={topRule}
           onHeaderMouseMove={onHeaderMouseMove}

@@ -11,6 +11,7 @@ import {
   type SavedLayout,
 } from "../types/config";
 import { paneMoveBackTarget } from "./pane-layout-move";
+import { buildDockStack } from "./pane-manager/dock-stack";
 
 const LIST = "portfolio-list:main";
 const RESEARCH = "ticker-detail:main";
@@ -125,6 +126,23 @@ describe("Move to New Layout", () => {
     expect(returned.binding).toEqual({ kind: "follow", sourceInstanceId: LIST });
     expect(returned.movedFrom).toBeUndefined();
     expect(back.paneState[RESEARCH]).toBe(researchState);
+  });
+
+  test("a tab moved out of a stack remembers the stack through a reload and Move Back stacks it there again", () => {
+    const original = { ...threePaneLayout(), dockRoot: { ...DOCK_ROOT, second: buildDockStack([RESEARCH, CHART], CHART)! } };
+    let state = stateWith([{ name: "Home", layout: original }]);
+
+    state = moveToNewLayout(state, CHART);
+    expect(state.config.layouts[0]!.layout.dockRoot).toEqual({ ...DOCK_ROOT, second: { kind: "pane", instanceId: RESEARCH } });
+    const movedFrom = findPaneInstance(state.config.layout, CHART)!.movedFrom!;
+    expect(movedFrom.docked).toMatchObject({ anchorInstanceId: RESEARCH, position: "tab" });
+
+    // Saved and loaded again, it still knows it was a tab there.
+    const reloaded = sanitizeLayout(JSON.parse(JSON.stringify(state.config.layout)), cloneLayout(state.config.layouts[0]!.layout));
+    expect(findPaneInstance(reloaded, CHART)?.movedFrom).toEqual(movedFrom);
+
+    const back = appReducer(state, { type: "MOVE_PANE_BACK", paneId: CHART });
+    expect(back.config.layout.dockRoot).toEqual({ ...DOCK_ROOT, second: buildDockStack([RESEARCH, CHART], CHART) });
   });
 
   test("relinks the panes that followed a moved list once the list is back", () => {

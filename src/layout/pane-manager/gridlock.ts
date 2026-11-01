@@ -1,4 +1,5 @@
-import type { FloatingPaneEntry, LayoutConfig } from "../../types/config";
+import type { DockLayoutNode, FloatingPaneEntry, LayoutConfig } from "../../types/config";
+import { buildDockStack } from "./dock-stack";
 import type { AppNotificationRequest } from "../../types/plugin";
 import {
   boundsForRects,
@@ -91,6 +92,15 @@ export function shouldShowTidyWindows(layout: LayoutConfig): boolean {
     || analyzeFloatingPaneVisibility(layout).some((pane) => pane.buried);
 }
 
+function withStacks(node: DockLayoutNode | null, stacks: ReadonlyMap<string, readonly string[]>): DockLayoutNode | null {
+  if (!node || stacks.size === 0) return node;
+  if (node.kind === "pane") {
+    const tabs = stacks.get(node.instanceId);
+    return tabs ? buildDockStack(tabs, node.instanceId) : node;
+  }
+  return { ...node, first: withStacks(node.first, stacks)!, second: withStacks(node.second, stacks)! };
+}
+
 export function gridlockAllPanes(
   layout: LayoutConfig,
   bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
@@ -99,8 +109,10 @@ export function gridlockAllPanes(
   const visibleLayout = paneTypes
     ? removeUnavailablePaneTypes(layout, paneTypes)
     : layout;
-  const dockedRects: GridlockRect[] = getDockLeafLayouts(visibleLayout, bounds)
-    .map((leaf) => ({ instanceId: leaf.instanceId, ...leaf.rect }));
+  const leaves = getDockLeafLayouts(visibleLayout, bounds);
+  const dockedRects: GridlockRect[] = leaves.map((leaf) => ({ instanceId: leaf.instanceId, ...leaf.rect }));
+  // A stack is tiled as the tab it shows and keeps its other tabs.
+  const stacks = new Map(leaves.flatMap((leaf) => (leaf.stack ? [[leaf.instanceId, leaf.stack] as const] : [])));
   const floatingRects: GridlockRect[] = visibleLayout.floating.map((entry) => ({
     instanceId: entry.instanceId,
     x: entry.x,
@@ -113,7 +125,7 @@ export function gridlockAllPanes(
 
   return finalizeLayout({
     ...visibleLayout,
-    dockRoot: inferDockTreeFromRects(allRects, boundsForRects(allRects)),
+    dockRoot: withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks),
     floating: [],
   });
 }
