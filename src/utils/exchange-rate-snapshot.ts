@@ -2,7 +2,7 @@ import { readIntradayBar, readStaleReason } from "../market-data/quotes/intraday
 import type { QuoteIntradayBar } from "../types/financials";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import { fixedUsdRate } from "./currency-units";
-import { fxFreshUntil } from "./fx-market-hours";
+import { fxFreshUntil, fxPreCloseRefetchAt } from "./fx-market-hours";
 
 export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
 const FX_FRESH_MS = 60 * 60_000;
@@ -68,6 +68,8 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   const staleAt = Math.min(declaredStaleAt ?? Infinity,
     fetchedAt === undefined ? Infinity : fxFreshUntil(fetchedAt, FX_FRESH_MS),
     asOf === undefined ? Infinity : fxFreshUntil(asOf, FX_FRESH_MS + delay),
+    // A rate this app read before the week closed is read again once the close is out: when it read it, not the source.
+    fxPreCloseRefetchAt(fallbackFetchedAt ?? fetchedAt, asOf, delay, now),
     data.stale === true ? now : Infinity);
   return {
     ...(fetchedAt !== undefined ? { fetchedAt } : {}),

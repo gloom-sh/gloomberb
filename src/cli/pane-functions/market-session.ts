@@ -8,7 +8,7 @@ import {
   nextRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import { futuresWeekendClosure } from "../../market-data/market/futures-week";
-import { currentFxClosureStart, isFxMarketOpen } from "../../utils/fx-market-hours";
+import { currentFxClosureStart, isFxMarketOpen, isFxWeekClosePrint } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type { ReportTime } from "../../utils/utc-time";
 import type { QuoteIndexSession } from "../../types/financials";
@@ -118,7 +118,6 @@ function quotedSessions({ timeZone, current, regular }: QuoteIndexSession, now: 
 
 /** The venue spot FX pairs trade on. It has no session calendar here; its week is in `fx-market-hours`. */
 const FX_VENUE = "CCY";
-const DAY_MS = 24 * 60 * 60_000;
 
 /**
  * The newest observation is its venue's latest close: the venue has not
@@ -128,13 +127,13 @@ const DAY_MS = 24 * 60 * 60_000;
 function closeDateOf(observation: SessionObservation, session: VenueSession, now: number): string | null {
   const time = observation.time;
   if (!time || time.dateOnly) return null;
-  // FX closes once a week, Friday 17:00 New York time, and its trading day turns
-  // at 17:00: a print from that last day, after Thursday's 17:00 close through
-  // Friday's, is that Friday's close. A tick after it, over the weekend, is no
-  // price of the week and keeps its own time.
+  // FX closes once a week, Friday 17:00 New York time: a print in its last
+  // minute is that Friday's close. An earlier print of the day (20:39Z) is no
+  // close, and a tick after it, over the weekend, is no price of the week:
+  // both keep their own time.
   const weekClose = canonicalExchange(observation.exchange) === FX_VENUE ? currentFxClosureStart(now) : null;
   if (weekClose != null) {
-    return time.time > weekClose - DAY_MS && time.time <= weekClose ? zonedDateKey(weekClose - 1, "America/New_York") : null;
+    return isFxWeekClosePrint(time.time, weekClose) ? zonedDateKey(weekClose - 1, "America/New_York") : null;
   }
   if (session.last && session.timeZone) {
     if (session.last.open != null && time.time < session.last.open) return null;

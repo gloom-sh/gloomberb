@@ -86,6 +86,32 @@ export function latestFxWeekOpen(time: number): number | null {
 }
 
 /**
+ * How close to the FX week's close a print is its close: Gloom Cloud dates the
+ * week's close by its last minute (20:59Z, or 21:59Z in winter).
+ */
+export const FX_CLOSE_PRINT_MS = 60_000;
+
+/** Whether a print made at `time` is the close of the FX week that closed at `weekClose`. */
+export function isFxWeekClosePrint(time: number, weekClose: number): boolean {
+  return time <= weekClose && time >= weekClose - FX_CLOSE_PRINT_MS;
+}
+
+/**
+ * When a rate fetched at `fetchedAt` before the FX week closed must be read
+ * again: once the week's close is out (its close, `delayMs` later for a
+ * delayed feed). A rate fetched at 20:39Z on a Friday is no close, yet the
+ * hours the market is shut do not age it (fxFreshUntil), so until Sunday's
+ * open it stood in for Friday's close. Infinity for a rate fetched after the
+ * latest close, and for one that is that close (isFxWeekClosePrint).
+ */
+export function fxPreCloseRefetchAt(fetchedAt: number | undefined, observedAt: number | undefined, delayMs: number, now: number): number {
+  const close = latestFxWeekClose(now);
+  if (close == null || fetchedAt == null || !Number.isFinite(fetchedAt) || fetchedAt >= close + delayMs) return Infinity;
+  if (observedAt != null && isFxWeekClosePrint(observedAt, close)) return Infinity;
+  return close + delayMs;
+}
+
+/**
  * When the closure the market is in began (Friday 17:00 New York time); null
  * while it trades. That is `latestFxWeekClose` for every moment the week is
  * shut, since a closure never lasts to the next Friday, daylight saving weeks
