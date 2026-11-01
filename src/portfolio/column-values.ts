@@ -400,6 +400,10 @@ function futuresContractSizeLabel(
 interface RowPositionMetrics {
   quoteCurrency: string;
   quote: Quote | undefined;
+  /** What the figures were worked out for: a context that disagrees works them out again. */
+  activeTab: string | undefined;
+  baseCurrency: string;
+  exchangeRates: Map<string, number>;
   /** In the position's own currency. */
   position: PortfolioPositionMetrics;
   /** Converted into the pane's currency (`ctx.baseCurrency`). */
@@ -414,8 +418,9 @@ const rowMetricsByOwner = new WeakMap<object, WeakMap<TickerRecord, RowPositionM
  * Lets the cells and sort keys read with `ctx` work out each row's position
  * figures once per quote, rather than twice a cell: a pane's rows recompute
  * every visible cell when a quote ticks. Contexts given the same `owner` share
- * the figures, so they must agree on the tab, currency and rates. Only for
- * records that are replaced when they change, never edited in place.
+ * the figures while they agree on the tab, currency and rates (a context that
+ * disagrees works them out again). Only for records that are replaced when
+ * they change, never edited in place.
  */
 export function sharePositionMetrics<T extends ColumnContext>(ctx: T, owner: object = ctx): T {
   let rows = rowMetricsByOwner.get(owner);
@@ -428,10 +433,13 @@ export function sharePositionMetrics<T extends ColumnContext>(ctx: T, owner: obj
 }
 
 function computeRowPositionMetrics(ticker: TickerRecord, ctx: ColumnContext, quoteCurrency: string, quote: Quote | undefined): RowPositionMetrics {
-  const { baseCurrency, exchangeRates } = ctx;
+  const { activeTab, baseCurrency, exchangeRates } = ctx;
   return {
     quoteCurrency,
     quote,
+    activeTab,
+    baseCurrency,
+    exchangeRates,
     position: getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote),
     base: getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
       currency: baseCurrency,
@@ -450,7 +458,14 @@ function rowPositionMetrics(
   const rows = sharedRowMetrics.get(ctx);
   if (!rows) return computeRowPositionMetrics(ticker, ctx, quoteCurrency, quote);
   const cached = rows.get(ticker);
-  if (cached && cached.quote === quote && cached.quoteCurrency === quoteCurrency) return cached;
+  if (
+    cached
+    && cached.quote === quote
+    && cached.quoteCurrency === quoteCurrency
+    && cached.activeTab === ctx.activeTab
+    && cached.baseCurrency === ctx.baseCurrency
+    && cached.exchangeRates === ctx.exchangeRates
+  ) return cached;
   const entry = computeRowPositionMetrics(ticker, ctx, quoteCurrency, quote);
   rows.set(ticker, entry);
   return entry;

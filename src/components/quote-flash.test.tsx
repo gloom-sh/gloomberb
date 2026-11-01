@@ -3,7 +3,7 @@ import { act, useMemo, useState } from "react";
 import { createManualFrameDriver, createTimerFrameDriver, installMarketDataFrameDriver, marketDataFrames } from "../market-data/frame-scheduler";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import type { TickerFinancials } from "../types/financials";
-import { QuoteFlashTracker, useQuoteFlashMap, type QuoteFlashDirection } from "./quote-flash";
+import { QuoteFlashTracker, useQuoteFlashDirection, useQuoteFlashMap, type QuoteFlashDirection } from "./quote-flash";
 
 describe("QuoteFlashTracker", () => {
   test("flashes each symbol on its own clock", () => {
@@ -33,11 +33,14 @@ describe("QuoteFlashTracker", () => {
   });
 });
 
-describe("useQuoteFlashMap", () => {
+describe("quote flash hooks", () => {
   const tui = createOpenTuiTestHarness();
   const clock = createManualFrameDriver(100);
   let renders: Array<Map<string, QuoteFlashDirection>> = [];
+  let directions: Array<QuoteFlashDirection | undefined> = [];
   let setPrice: ((price: number) => void) | null = null;
+  let setEnabled: ((enabled: boolean) => void) | null = null;
+  let setShown: ((shown: boolean) => void) | null = null;
 
   function FlashHarness() {
     const [price, update] = useState(100);
@@ -48,13 +51,33 @@ describe("useQuoteFlashMap", () => {
     return <text>{flashes.get("AAPL") ?? "-"}</text>;
   }
 
+  function Mounted() {
+    const [shown, show] = useState(true);
+    setShown = show;
+    return shown ? <FlashHarness /> : <text>-</text>;
+  }
+
+  function DirectionHarness() {
+    const [price, update] = useState(100);
+    const [enabled, enable] = useState(false);
+    setPrice = update;
+    setEnabled = enable;
+    const financials = useMemo(() => ({ quote: { price } } as TickerFinancials), [price]);
+    const direction = useQuoteFlashDirection(financials, enabled);
+    directions.push(direction);
+    return <text>{direction ?? "-"}</text>;
+  }
+
   beforeEach(() => {
     installMarketDataFrameDriver(clock.driver);
     renders = [];
+    directions = [];
   });
   afterEach(() => {
     installMarketDataFrameDriver(createTimerFrameDriver(0));
     setPrice = null;
+    setEnabled = null;
+    setShown = null;
   });
 
   test("a price flashes in the render that shows it, and the flash ends with a data frame rather than a commit of its own", async () => {
@@ -83,5 +106,27 @@ describe("useQuoteFlashMap", () => {
     await act(async () => clock.advance(1));
     expect(renders.at(-1)?.get("AAPL")).toBeUndefined();
     expect(clock.pending).toBe(false);
+  });
+
+  test("unmounting drops the render booked for a flash's end", async () => {
+    await tui.render(<Mounted />, { width: 8, height: 1 });
+    await act(async () => setPrice!(101));
+    expect(clock.pending).toBe(true);
+    await act(async () => setShown!(false));
+    expect(clock.pending).toBe(false);
+  });
+
+  test("a single quote shows no flash and books no render while flashing is off, and flashes on its next change once on", async () => {
+    await tui.render(<DirectionHarness />, { width: 8, height: 1 });
+    await act(async () => setPrice!(101));
+    expect(directions).toEqual([undefined, undefined]);
+    expect(clock.pending).toBe(false);
+
+    // Turned on within what would have been the flash, it does not show it late.
+    await act(async () => setEnabled!(true));
+    expect(directions.at(-1)).toBeUndefined();
+    expect(clock.pending).toBe(false);
+    await act(async () => setPrice!(100));
+    expect(directions.at(-1)).toBe("down");
   });
 });

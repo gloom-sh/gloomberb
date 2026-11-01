@@ -71,6 +71,12 @@ interface QueuedTask {
   rides: boolean;
 }
 
+/** How many riding (rideUntil) and other tasks a frame ran. */
+interface FrameTally {
+  riders: number;
+  others: number;
+}
+
 function monotonicNow(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
@@ -292,13 +298,14 @@ export class DataFrameScheduler {
     }, at - this.driver.now());
   }
 
-  /** The tasks due by `now`; `ridersOnly` stays true while every one of them was riding (rideUntil). */
-  private takeDue(phase: DataFramePhase, now: number, frame: { ridersOnly: boolean }): DataFrameTask[] {
+  /** The tasks due by `now`, counted into `frame` as riding (rideUntil) or not. */
+  private takeDue(phase: DataFramePhase, now: number, frame: FrameTally): DataFrameTask[] {
     const due: DataFrameTask[] = [];
     for (const [task, queued] of this.queues[phase]) {
       if (queued.notBefore > now) continue;
       due.push(task);
-      if (!queued.rides) frame.ridersOnly = false;
+      if (queued.rides) frame.riders += 1;
+      else frame.others += 1;
     }
     for (const task of due) this.queues[phase].delete(task);
     return due;
@@ -311,7 +318,7 @@ export class DataFrameScheduler {
     const now = driver.now();
     const previousFrameAt = this.lastFrameAt;
     this.lastFrameAt = now;
-    const frame = { ridersOnly: true };
+    const frame: FrameTally = { riders: 0, others: 0 };
     let notified = false;
     try {
       // Applying a batch may queue another applier (a flush feeding a
@@ -323,11 +330,11 @@ export class DataFrameScheduler {
       }
       // Listeners that write data while being notified are heard next frame.
       const listeners = this.takeDue("notify", now, frame);
-      notified = listeners.length > 0 && !frame.ridersOnly;
+      notified = listeners.length > 0 && frame.others > 0;
       runTasks(listeners);
     } finally {
       // Nothing but riders ran: the next frame is spaced from the last one that carried data.
-      if (frame.ridersOnly) this.lastFrameAt = previousFrameAt;
+      if (frame.riders > 0 && frame.others === 0) this.lastFrameAt = previousFrameAt;
       this.running = false;
       // Only a frame that told readers something sets off renders worth timing.
       if (notified && driver.afterFrame) {

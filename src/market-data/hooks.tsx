@@ -263,16 +263,16 @@ function usePatchedMap<K, V>(
   }
 
   // Key versions only grow, so an unchanged sum means no slot moved: a render
-  // for any other reason skips reading every slot's versions.
+  // for any other reason skips reading every slot's versions. Both are kept
+  // only once read, so a read that throws is tried again on the next render.
   if (aggregateVersion === state.aggregateVersion) return state.view;
-  state.aggregateVersion = aggregateVersion;
   let changed = false;
   for (let index = 0; index < state.slots.length; index += 1) {
     const slot = state.slots[index]!;
     const version = slotVersion(slot, versionOf, aggregateVersion);
     if (version === state.versions[index]) continue;
-    state.versions[index] = version;
     const value = slot.read();
+    state.versions[index] = version;
     if (value == null) {
       if (state.backing.delete(slot.key)) changed = true;
     } else if (state.backing.get(slot.key) !== value) {
@@ -280,6 +280,7 @@ function usePatchedMap<K, V>(
       changed = true;
     }
   }
+  state.aggregateVersion = aggregateVersion;
   if (!changed) return state.view;
   const view = new RetainedMapView(state.backing);
   state.view = view;

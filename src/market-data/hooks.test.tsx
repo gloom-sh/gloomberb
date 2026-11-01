@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { PaneInViewProvider } from "../state/app/activity";
@@ -339,6 +339,67 @@ test("one tick on a two-ticker board keeps the other ticker object identical", a
   expect(latestQuoteBoard?.get(buildQuoteKey(sie))).toBe(sieQuote);
   expect(financialReads).toBe(financialReadsAfterPaint + 1);
   expect(quoteReads).toBe(quoteReadsAfterPaint + 1);
+});
+
+test("a render with no store change reads no ticker's version, and a ticker whose read throws is read again", async () => {
+  const boardTickers = [
+    createTestTicker("SAP", "SAP", { exchange: "XETRA", currency: "EUR" }),
+    createTestTicker("SIE", "Siemens", { exchange: "XETRA", currency: "EUR" }),
+  ];
+  const sap = instrumentFromTicker(boardTickers[0]!, "SAP")!;
+  const versions = new Map<string, number>();
+  const listeners = new Set<() => void>();
+  const versionOf = (key: string) => versions.get(key) ?? 0;
+  let keyVersionReads = 0;
+  let sapPrice = 250;
+  let failSapRead = false;
+  setSharedMarketDataCoordinator({
+    subscribeKeys: (_keys: readonly string[], listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getKeysVersion: (keys: readonly string[]) => keys.reduce((sum, key) => sum + versionOf(key), 0),
+    getKeyVersion: (key: string) => {
+      keyVersionReads += 1;
+      return versionOf(key);
+    },
+    getTickerFinancialsSync: (instrument: InstrumentRef) => {
+      if (instrument.symbol === "SAP" && failSapRead) {
+        failSapRead = false;
+        throw new Error("read failed");
+      }
+      const price = instrument.symbol === "SAP" ? sapPrice : 180;
+      return { ...sampleFinancials, quote: { ...sampleFinancials.quote!, symbol: instrument.symbol, price } };
+    },
+  } as unknown as MarketDataCoordinator);
+
+  // The root logs a render it recovered from with the console.error it was made with.
+  const logged = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await tui.render(<BoardHarness tickers={boardTickers} instruments={[]} />, { width: 20, height: 1 });
+    const painted = latestBoard;
+    keyVersionReads = 0;
+    await act(async () => {
+      bumpHarness?.();
+      await tui.setup().renderOnce();
+    });
+    expect(latestBoard).toBe(painted);
+    expect(keyVersionReads).toBe(0);
+
+    // React renders again after a render that throws; that render reads SAP again.
+    sapPrice = 251;
+    failSapRead = true;
+    await act(async () => {
+      versions.set(buildQuoteKey(sap), 1);
+      for (const listener of listeners) listener();
+      await tui.setup().renderOnce();
+    });
+    expect(failSapRead).toBe(false);
+    expect(logged).toHaveBeenCalled();
+    expect(latestBoard?.get("SAP")?.quote?.price).toBe(251);
+  } finally {
+    logged.mockRestore();
+  }
 });
 
 test("a fresh loadQuoteEntry does not open a flight", async () => {
