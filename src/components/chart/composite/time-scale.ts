@@ -236,9 +236,13 @@ function buildMarketAnchors(
 ): MarketAnchorBuild {
   const timestamps = uniqueSeriesTimestamps(series);
   const configuredCadence = series.timeBasis?.cadenceMs;
-  // The anchors a tick leaves alone: those before the first timestamp it moved or added.
+  // The anchors a tick leaves alone: those before the first timestamp it moved
+  // or added. Their session dates are the zone's, so another zone keeps none;
+  // their gaps hold under any cadence, and their places only under the same
+  // one (below). Past MAX_PATCHED_ANCHORS changed bars, sorting the gaps
+  // afresh costs less than patching them one by one.
   let shared = 0;
-  if (previous && previous.timeZone === timeZone && previous.configuredCadence === configuredCadence) {
+  if (previous && previous.timeZone === timeZone) {
     const limit = Math.min(previous.timestamps.length, timestamps.length);
     while (shared < limit && previous.timestamps[shared] === timestamps[shared]) shared += 1;
     if (previous.timestamps.length - shared + timestamps.length - shared > MAX_PATCHED_ANCHORS) shared = 0;

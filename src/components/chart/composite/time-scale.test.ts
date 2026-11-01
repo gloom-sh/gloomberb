@@ -9,6 +9,31 @@ import {
 
 const HOUR_MS = 60 * 60 * 1_000;
 
+const at = (timestamp: string | number) => createTestSeriesPoint(typeof timestamp === "number" ? new Date(timestamp) : timestamp);
+
+/** A market series. With no cadence given, the bars' own spacing sets it. */
+function marketSeries(points: TimeSeriesPoint[], basis: { timeZone?: string; cadenceMs?: number } = {}): ResolvedSeries {
+  return createTestResolvedSeries({
+    id: "primary",
+    points,
+    dataShape: "ohlcv",
+    style: "candles",
+    timeBasis: { kind: "market", timeZone: basis.timeZone ?? "America/New_York", ...(basis.cadenceMs ? { cadenceMs: basis.cadenceMs } : {}) },
+  });
+}
+
+/** The same bars, copied, so no earlier build over the same history is there to patch. */
+const afresh = (points: readonly TimeSeriesPoint[], basis?: { timeZone?: string; cadenceMs?: number }) => (
+  marketSeries(points.map((point) => ({ ...point })), basis)
+);
+
+function layout(entry: ResolvedSeries) {
+  const times = entry.points.map((point) => point.date.getTime());
+  const scale = buildCompositeTimeScale([entry], Math.min(...times), Math.max(...times));
+  if (scale.kind !== "market") throw new Error("expected a market scale");
+  return { anchors: scale.anchors, cadenceMs: scale.cadenceMs, historyMsPerSlot: scale.historyMsPerSlot };
+}
+
 function series(timestamps: string[], market = false): ResolvedSeries {
   return createTestResolvedSeries({
     id: "primary",
@@ -81,22 +106,6 @@ describe("composite time scale", () => {
   // shares its history with the last one: the anchors are patched from the
   // last build, and must come out as building them afresh does.
   test("a tick that moves or adds the last bar lays the anchors out as building them afresh does", () => {
-    const at = (timestamp: string) => createTestSeriesPoint(timestamp);
-    // No configured cadence: the bars' own spacing sets it.
-    const marketSeries = (points: TimeSeriesPoint[]) => createTestResolvedSeries({
-      id: "primary",
-      points,
-      dataShape: "ohlcv",
-      style: "candles",
-      timeBasis: { kind: "market", timeZone: "America/New_York" },
-    });
-    // Copies of every point, so no earlier build over the same history is there to patch.
-    const afresh = (points: readonly TimeSeriesPoint[]) => marketSeries(points.map((point) => ({ ...point })));
-    const layout = (entry: ResolvedSeries) => {
-      const scale = buildCompositeTimeScale([entry], entry.points[0]!.date.getTime(), entry.points.at(-1)!.date.getTime());
-      if (scale.kind !== "market") throw new Error("expected a market scale");
-      return { anchors: scale.anchors, cadenceMs: scale.cadenceMs, historyMsPerSlot: scale.historyMsPerSlot };
-    };
     const history = [
       at("2025-01-03T14:30:00.000Z"),
       at("2025-01-03T15:00:00.000Z"),
@@ -128,6 +137,32 @@ describe("composite time scale", () => {
       const points = [...days, at(quoteTime)];
       expect(layout(marketSeries(points))).toEqual(layout(afresh(points)));
     }
+  });
+
+  // What the patch keeps holds only for the same zone and cadence, and is
+  // not worth keeping when most of the bars changed; bars out of order are
+  // put in order first.
+  test("a tick past what a patch is worth, in another zone or cadence, or over bars out of order lays the anchors out afresh", () => {
+    // Three sessions of half-hour bars from the New York open.
+    const history = ["2025-01-06", "2025-01-07", "2025-01-08"].flatMap((day) => Array.from(
+      { length: 13 },
+      (_, index) => at(Date.parse(`${day}T14:30:00.000Z`) + index * 30 * 60_000),
+    ));
+    const tick = [...history, at("2025-01-08T21:00:00.000Z")];
+    layout(marketSeries(history));
+    // The last two sessions move by ten minutes: more bars than a patch is worth.
+    const shifted = [...history.slice(0, 13), ...history.slice(13).map((point) => at(point.date.getTime() + 10 * 60_000))];
+    expect(layout(marketSeries(shifted))).toEqual(layout(afresh(shifted)));
+    // Read in Tokyo, each New York session spans two dates.
+    layout(marketSeries(history));
+    expect(layout(marketSeries(tick, { timeZone: "Asia/Tokyo" }))).toEqual(layout(afresh(tick, { timeZone: "Asia/Tokyo" })));
+    // A cadence set where the bars' spacing set it before.
+    layout(marketSeries(history));
+    expect(layout(marketSeries(tick, { cadenceMs: 15 * 60_000 }))).toEqual(layout(afresh(tick, { cadenceMs: 15 * 60_000 })));
+    // Bars out of order, one of them twice, lay out as the bars in order, and so does a tick over them.
+    const shuffled = [history[2]!, history[0]!, history[1]!, history[1]!, ...history.slice(3)];
+    expect(layout(marketSeries(shuffled))).toEqual(layout(afresh(history)));
+    expect(layout(marketSeries([...shuffled, tick.at(-1)!]))).toEqual(layout(afresh(tick)));
   });
 
   test("projecting a run of times, in order or out of it, places each where projecting it alone does", () => {
