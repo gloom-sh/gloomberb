@@ -1,12 +1,13 @@
 import {
   arrangementKey,
   cascadeFrame,
+  clampFrameToScreens,
   displayForFrame,
+  displayFromKey,
   displayKey,
-  fitFrameToDisplays,
-  isFrameReachable,
   isUsableRect,
   moveFrameToDisplay,
+  relocateFrame,
   sameRect,
   usableDisplays,
   type DesktopDisplay,
@@ -16,6 +17,7 @@ import {
   MAIN_WINDOW_ID,
   forgetWindow,
   hasArrangement,
+  latestPlacementFor,
   placementFor,
   rememberPlacement,
   withExtraWindows,
@@ -57,8 +59,9 @@ export interface DesktopWindowControllerOptions {
  * for the monitor arrangement in use, and putting them back when the screens
  * change. Unplugging a display folds its windows onto the displays that
  * remain, keeping their place on the screen in proportion; plugging it back
- * restores the setup saved for that arrangement. A window that ends up where
- * it cannot be reached is pulled back onto a display.
+ * restores the setup saved for that arrangement. Whatever the setup says,
+ * every window this side places lands on a screen that is connected: the
+ * shell does not pull back a window asked to open off screen.
  */
 export class DesktopWindowController {
   private setup: ScreenSetup;
@@ -116,15 +119,22 @@ export class DesktopWindowController {
     this.commit(withExtraWindows(this.setup, records));
   }
 
-  /** Where a window opens: what was saved for these screens, else a place of its own. */
+  /**
+   * Where a window opens, always on a connected screen: what was saved for
+   * these screens; else where it last sat on other screens, moved onto
+   * these (a monitor unplugged, a new resolution); else a place of its own.
+   */
   placementFor(windowId: string): WindowPlacement {
-    const saved = placementFor(this.setup, this.arrangement, windowId)
-      ?? (windowId === MAIN_WINDOW_ID ? this.options.legacyMainPlacement ?? null : null);
-    if (saved) return { ...saved, frame: this.reachable(saved.frame) };
+    const saved = placementFor(this.setup, this.arrangement, windowId);
+    if (saved) return { ...saved, frame: this.onScreen(saved.frame) };
+    const earlier = latestPlacementFor(this.setup, windowId, this.arrangement);
+    if (earlier) return { ...earlier, frame: this.carryOver(windowId, earlier) };
+    const legacy = windowId === MAIN_WINDOW_ID ? this.options.legacyMainPlacement : null;
+    if (legacy) return { ...legacy, frame: this.onScreen(legacy.frame) };
     if (windowId === MAIN_WINDOW_ID) {
-      return { frame: this.reachable(this.options.defaultMainFrame), maximized: false, fullscreen: false };
+      return { frame: this.onScreen(this.options.defaultMainFrame), maximized: false, fullscreen: false };
     }
-    return { frame: this.freshFrame(), maximized: false, fullscreen: false };
+    return { frame: this.onScreen(this.freshFrame()), maximized: false, fullscreen: false };
   }
 
   openWindow(windowId: string): void {
@@ -190,9 +200,28 @@ export class DesktopWindowController {
     return display ? cascadeFrame(anchor, display) : anchor;
   }
 
-  private reachable(frame: Rect): Rect {
-    if (!this.options.host.canPlaceWindows || this.displays.length === 0) return frame;
-    return isFrameReachable(frame, this.displays) ? frame : fitFrameToDisplays(frame, this.displays);
+  /**
+   * A frame on a connected screen. Where the system places windows itself
+   * (Wayland), only the size is this side's, and it still fits a screen.
+   */
+  private onScreen(frame: Rect): Rect {
+    if (this.displays.length === 0) return frame;
+    const fitted = clampFrameToScreens(frame, this.displays);
+    return this.options.host.canPlaceWindows ? fitted : { ...frame, width: fitted.width, height: fitted.height };
+  }
+
+  /** The display the windows fold onto when theirs is gone: the main window's, else the primary one. */
+  private foldTarget(windowId: string, displays: readonly DesktopDisplay[]): DesktopDisplay | null {
+    const mainFrame = windowId === MAIN_WINDOW_ID ? null : this.liveFrame(MAIN_WINDOW_ID);
+    return (mainFrame ? displayForFrame(mainFrame, displays) : null) ?? displays[0] ?? null;
+  }
+
+  /** A placement saved under other screens, moved onto these. */
+  private carryOver(windowId: string, placement: WindowPlacement): Rect {
+    const from = placement.display ? displayFromKey(placement.display) : null;
+    const target = this.foldTarget(windowId, this.displays);
+    const frame = target ? relocateFrame(placement.frame, from, this.displays, target) : placement.frame;
+    return this.onScreen(frame);
   }
 
   private liveFrame(windowId: string): Rect | null {
@@ -286,8 +315,9 @@ export class DesktopWindowController {
   /**
    * The screens changed. A setup saved for the new arrangement is put back
    * as it was; otherwise each window whose display is gone moves onto one
-   * that remains, the main window's display first, at the same place in
-   * proportion and in the same mode. Windows still on a display stay.
+   * that remains, at the same place in proportion and in the same mode: the
+   * same screen at its new resolution, else the main window's display.
+   * Windows still on a display stay. All of them end up on screen.
    */
   handleDisplays(nextDisplays: readonly DesktopDisplay[]): void {
     const displays = usableDisplays(nextDisplays);
@@ -307,26 +337,30 @@ export class DesktopWindowController {
         this.cancelSave(windowId);
         const saved = restoring ? placementFor(this.setup, key, windowId) : null;
         if (saved) {
-          this.place(windowId, { ...saved, frame: this.reachable(saved.frame) });
+          this.place(windowId, { ...saved, frame: this.onScreen(saved.frame) });
           restored.add(windowId);
           continue;
         }
-        const state = host.getWindowState(windowId);
+        // A window still waiting its turn to open has no native state yet; it opens where this puts it.
+        const waiting = this.windowedFrames.get(windowId);
+        const state = host.getWindowState(windowId)
+          ?? (waiting ? { frame: waiting, maximized: false, fullscreen: false, minimized: false } : null);
         if (!state) continue;
         // Where the window sat before the change: the system may already have moved it.
         const windowed = this.windowedFrames.get(windowId) ?? state.frame;
         const from = displayForFrame(windowed, previousDisplays);
         const stillThere = !!from && displays.some((display) => displayKey(display) === displayKey(from));
-        if (stillThere && isFrameReachable(windowed, displays)) {
-          if (!sameRect(state.frame, windowed) && !state.maximized && !state.fullscreen && host.canPlaceWindows) {
-            host.setFrame(windowId, windowed);
+        if (stillThere) {
+          const frame = this.onScreen(windowed);
+          this.windowedFrames.set(windowId, frame);
+          if (!sameRect(state.frame, frame) && !state.maximized && !state.fullscreen && host.canPlaceWindows) {
+            host.setFrame(windowId, frame);
           }
           continue;
         }
-        const mainFrame = windowId === MAIN_WINDOW_ID ? null : this.liveFrame(MAIN_WINDOW_ID);
-        const to = (mainFrame ? displayForFrame(mainFrame, displays) : null) ?? displays[0]!;
+        const target = this.foldTarget(windowId, displays) ?? displays[0]!;
         this.place(windowId, {
-          frame: moveFrameToDisplay(windowed, from, to),
+          frame: this.onScreen(relocateFrame(windowed, from, displays, target)),
           maximized: state.maximized,
           fullscreen: state.fullscreen,
         });

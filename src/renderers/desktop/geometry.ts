@@ -24,6 +24,11 @@ export interface DesktopDisplay {
 /** How much of a title bar has to sit on a screen for a window to count as reachable: enough to grab and drag. */
 const REACHABLE_STRIP_HEIGHT = 24;
 const REACHABLE_STRIP_WIDTH = 96;
+/**
+ * How far past a screen's edge a frame may reach and still count as on it:
+ * shadows and the invisible resize borders Windows counts in a frame.
+ */
+const EDGE_SLACK = 8;
 
 function finite(value: number): number {
   return Number.isFinite(value) ? Math.round(value) : 0;
@@ -120,34 +125,116 @@ export function isFrameReachable(frame: Rect, displays: readonly DesktopDisplay[
 }
 
 /**
- * Puts a frame on a connected display. A window that is still on one stays
- * put, pulled in just enough that its title bar can be reached. One left on
- * a display that is gone moves onto the display it overlaps most, or the
- * primary display, at that display's left edge, keeping its vertical place.
+ * Whether a window is on screen: all of it lies on the connected displays
+ * (across two of them counts), give or take its shadow, and its title bar
+ * sits in a work area where it can be grabbed.
  */
-export function fitFrameToDisplays(frame: Rect, displays: readonly DesktopDisplay[]): Rect {
+export function isFrameVisible(frame: Rect, displays: readonly DesktopDisplay[]): boolean {
   const usable = usableDisplays(displays);
-  if (usable.length === 0) return frame;
-  const display = displayForFrame(frame, usable) ?? usable[0]!;
-  const area = display.workArea;
-  const width = Math.min(frame.width, area.width);
-  const height = Math.min(frame.height, area.height);
-  if (overlapArea(frame, area) === 0) {
-    const maxY = area.y + area.height - height;
-    return { x: area.x, y: clamp(frame.y, area.y, Math.max(area.y, maxY)), width, height };
+  const insetX = Math.min(EDGE_SLACK, Math.floor(frame.width / 4));
+  const insetY = Math.min(EDGE_SLACK, Math.floor(frame.height / 4));
+  const inner: Rect = {
+    x: frame.x + insetX,
+    y: frame.y + insetY,
+    width: frame.width - insetX * 2,
+    height: frame.height - insetY * 2,
+  };
+  // Mirrored displays share their bounds: count each place once.
+  const places = new Set<string>();
+  let covered = 0;
+  for (const { bounds } of usable) {
+    const place = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+    if (places.has(place)) continue;
+    places.add(place);
+    covered += overlapArea(inner, bounds);
   }
-  const marginX = Math.min(48, width);
-  const marginY = Math.min(48, height);
-  const minX = area.x + marginX - width;
-  const maxX = area.x + area.width - marginX;
-  const maxY = area.y + area.height - marginY;
+  return covered >= inner.width * inner.height - 1 && isFrameReachable(frame, usable);
+}
+
+/** The display closest to a frame on none: the shortest way from its centre to a work area. */
+function nearestDisplay(frame: Rect, displays: readonly DesktopDisplay[]): DesktopDisplay | null {
+  const centerX = frame.x + frame.width / 2;
+  const centerY = frame.y + frame.height / 2;
+  let best: DesktopDisplay | null = null;
+  let bestDistance = Infinity;
+  for (const display of displays) {
+    const area = display.workArea;
+    const dx = Math.max(area.x - centerX, 0, centerX - (area.x + area.width));
+    const dy = Math.max(area.y - centerY, 0, centerY - (area.y + area.height));
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      best = display;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** A frame inside a work area, moved as little as it takes and shrunk to it when bigger. */
+function fitFrameInArea(frame: Rect, area: Rect): Rect {
+  const width = Math.min(Math.round(frame.width), area.width);
+  const height = Math.min(Math.round(frame.height), area.height);
   return {
-    x: width === area.width ? area.x : clamp(frame.x, minX, Math.max(minX, maxX)),
-    // Never above the work area: the title bar is how the window is moved.
-    y: height === area.height ? area.y : clamp(frame.y, area.y, Math.max(area.y, maxY)),
+    x: clamp(Math.round(frame.x), area.x, area.x + area.width - width),
+    y: clamp(Math.round(frame.y), area.y, area.y + area.height - height),
     width,
     height,
   };
+}
+
+/**
+ * Puts a window on a screen. One already on screen stays as it is. Any
+ * other moves onto the display it is mostly on, or the nearest one, by as
+ * little as it takes to lie in that display's work area, shrinking to it
+ * when it is bigger. Shells do not do this themselves: asked to open a
+ * window past a screen's edge, Electrobun leaves it there.
+ */
+export function clampFrameToScreens(frame: Rect, displays: readonly DesktopDisplay[]): Rect {
+  const usable = usableDisplays(displays);
+  if (usable.length === 0 || isFrameVisible(frame, usable)) return frame;
+  const display = displayForFrame(frame, usable) ?? nearestDisplay(frame, usable) ?? usable[0]!;
+  return fitFrameInArea(frame, display.workArea);
+}
+
+/** A display as `displayKey` wrote it, for a placement saved under screens that are not all connected now. */
+export function displayFromKey(key: string): DesktopDisplay | null {
+  const match = /^(-?\d+),(-?\d+) (\d+)x(\d+)@([\d.]+)$/.exec(key);
+  if (!match) return null;
+  const bounds = { x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) };
+  if (!isUsableRect(bounds)) return null;
+  return { id: "", bounds, workArea: bounds, scaleFactor: Number(match[5]) || 1, primary: false };
+}
+
+/**
+ * The connected display a display that is gone became: the one at the same
+ * place (a new resolution keeps a screen's corner), else the one with its id.
+ */
+function sameScreen(display: DesktopDisplay, displays: readonly DesktopDisplay[]): DesktopDisplay | null {
+  const { x, y } = display.bounds;
+  return displays.find(({ bounds }) => bounds.x === x && bounds.y === y)
+    ?? (display.id ? displays.find(({ id }) => id === display.id) : undefined)
+    ?? null;
+}
+
+/**
+ * Where a window that sat on `from` goes on the displays connected now,
+ * always on screen. Its display still there: where it was. The same screen
+ * at another resolution or place: the same place on it, in proportion.
+ * Its display gone: the same place in proportion on `fallback`. On no
+ * display at all: onto the nearest one.
+ */
+export function relocateFrame(
+  frame: Rect,
+  from: DesktopDisplay | null,
+  displays: readonly DesktopDisplay[],
+  fallback: DesktopDisplay,
+): Rect {
+  const usable = usableDisplays(displays);
+  if (!from || usable.some((display) => displayKey(display) === displayKey(from))) {
+    return clampFrameToScreens(frame, usable);
+  }
+  const target = sameScreen(from, usable) ?? fallback;
+  return clampFrameToScreens(moveFrameToDisplay(frame, from, target), usable);
 }
 
 /**
@@ -188,5 +275,5 @@ export function cascadeFrame(frame: Rect, display: DesktopDisplay, step = 32): R
   const x = frame.x + step;
   const y = frame.y + step;
   const fits = x + width <= area.x + area.width && y + height <= area.y + area.height;
-  return fits ? { x, y, width, height } : { x: area.x + step, y: area.y + step, width, height };
+  return fitFrameInArea(fits ? { x, y, width, height } : { x: area.x + step, y: area.y + step, width, height }, area);
 }

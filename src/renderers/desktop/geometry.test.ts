@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   arrangementKey,
+  clampFrameToScreens,
   displayForFrame,
-  fitFrameToDisplays,
+  displayFromKey,
+  displayKey,
   isFrameReachable,
+  isFrameVisible,
   moveFrameToDisplay,
+  relocateFrame,
   type DesktopDisplay,
 } from "./geometry";
 
@@ -49,13 +53,48 @@ describe("frames on displays", () => {
     expect(isFrameReachable({ x: 1480, y: 100, width: 800, height: 600 }, [laptop])).toBe(false);
   });
 
-  test("a frame off every display lands on the primary one, at its left edge", () => {
-    expect(fitFrameToDisplays({ x: 3000, y: 300, width: 800, height: 500 }, [laptop])).toEqual({
-      x: 0, y: 300, width: 800, height: 500,
+  test("on screen means all of it, across two screens or a shadow past an edge included", () => {
+    expect(isFrameVisible({ x: 1300, y: 100, width: 800, height: 600 }, [laptop, right])).toBe(true);
+    // The invisible resize border Windows counts in a frame.
+    expect(isFrameVisible({ x: -7, y: 25, width: 800, height: 600 }, [laptop])).toBe(true);
+    // Its title bar is on screen, most of it is not.
+    expect(isFrameVisible({ x: 1300, y: 100, width: 800, height: 600 }, [laptop])).toBe(false);
+    expect(isFrameVisible({ x: 100, y: 500, width: 800, height: 600 }, [laptop])).toBe(false);
+  });
+
+  test("a frame off every screen moves onto the nearest one, by as little as it takes", () => {
+    // Electrobun leaves a window asked for at x 2200 on a 1920 screen off it.
+    const hd = display("1", 0, 0, 1920, 1080, { primary: true, workArea: { x: 0, y: 0, width: 1920, height: 1040 } });
+    expect(clampFrameToScreens({ x: 2200, y: 120, width: 1000, height: 700 }, [hd])).toEqual({
+      x: 920, y: 120, width: 1000, height: 700,
     });
-    expect(fitFrameToDisplays({ x: 100, y: -300, width: 3000, height: 2000 }, [laptop])).toEqual({
+    expect(clampFrameToScreens({ x: -3000, y: 900, width: 1000, height: 700 }, [hd])).toEqual({
+      x: 0, y: 340, width: 1000, height: 700,
+    });
+    // Most of it past the edge, its title bar still on: pulled in whole.
+    expect(clampFrameToScreens({ x: 1300, y: 100, width: 800, height: 600 }, [laptop])).toEqual({
+      x: 712, y: 100, width: 800, height: 600,
+    });
+    // Bigger than the screen: it shrinks to the work area.
+    expect(clampFrameToScreens({ x: 100, y: -300, width: 3000, height: 2000 }, [laptop])).toEqual({
       x: 0, y: 25, width: 1512, height: 957,
     });
+    const onScreen = { x: 1300, y: 100, width: 800, height: 600 };
+    expect(clampFrameToScreens(onScreen, [laptop, right])).toBe(onScreen);
+  });
+
+  test("a window on a screen whose resolution changed stays on that screen", () => {
+    const smaller = { ...right, bounds: { ...right.bounds, width: 1920, height: 1080 }, workArea: { x: 1512, y: -175, width: 1920, height: 1055 } };
+    const frame = { x: 1512 + 2560 - 1000, y: -175, width: 1000, height: 700 };
+    // Saved under the old screens: the display is known only by its key.
+    const saved = displayFromKey(displayKey(right));
+    const moved = relocateFrame(frame, saved, [laptop, smaller], laptop);
+    // Still at the right edge, at the same size, inside the smaller work area.
+    expect(moved).toMatchObject({ x: 1512 + 920, width: 1000, height: 700 });
+    expect(moved.y).toBeGreaterThanOrEqual(smaller.workArea.y);
+    expect(moved.y + moved.height).toBeLessThanOrEqual(smaller.workArea.y + smaller.workArea.height);
+    // Unplugged: onto the fallback, at the same place in proportion.
+    expect(relocateFrame(frame, saved, [laptop], laptop)).toMatchObject({ x: 512, width: 1000, height: 700 });
   });
 
   test("moving to another display keeps the place in proportion", () => {

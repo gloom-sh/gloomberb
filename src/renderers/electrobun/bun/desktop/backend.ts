@@ -54,6 +54,7 @@ import { ElectrobunWindowHost } from "../window/electrobun-window-host";
 import { quitWindowsEventLoopOnItsThread } from "../window/windows-quit";
 import { readRememberedDesktopWindow, rememberedDesktopWindowPath } from "../window/remembered-frame";
 import { DesktopWindowController } from "../../../desktop/window-controller";
+import { SequentialWindowHost } from "../../../desktop/sequential-window-host";
 import { createExtraWindowId, MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
 import type { OpenWindowSpec } from "../../../desktop/window-host";
 import type { DesktopWindowInfo } from "../../../../types/desktop-window";
@@ -118,9 +119,15 @@ export class DesktopBackend {
   config: AppConfig | null = null;
   services: AppServices | null = null;
   workspace: DesktopWorkspace | null = null;
-  /** Every window and screen goes through these: the shell's host, and the full windows' placement on the screens. */
-  windowHost: ElectrobunWindowHost | null = null;
+  /**
+   * Every window and screen goes through these: the host, which opens
+   * native windows one at a time, and the full windows' placement on the
+   * screens. `nativeWindows` is the Electrobun host under it, for the calls
+   * only this shell makes.
+   */
+  windowHost: SequentialWindowHost | null = null;
   windowController: DesktopWindowController | null = null;
+  private nativeWindows: ElectrobunWindowHost | null = null;
 
   readonly rpcs = createDesktopRpcRegistry<DesktopRpc>();
   readonly stateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({
@@ -166,7 +173,12 @@ export class DesktopBackend {
    */
   startWindows(): void {
     if (this.windowHost) return;
-    const host = new ElectrobunWindowHost({ create: (spec, hooks) => this.createNativeWindow(spec, hooks.onFrameChange) });
+    const shell = new ElectrobunWindowHost({ create: (spec, hooks) => this.createNativeWindow(spec, hooks.onFrameChange) });
+    const host = new SequentialWindowHost(shell, {
+      canReopen: (spec) => spec.id !== MAIN_WINDOW_ID,
+      onNeverDrew: (id) => console.error("[desktop] a window never drew", { kind: paneIdFromDetachedRpcKey(id) ? "pane" : "app" }),
+    });
+    this.nativeWindows = shell;
     this.windowHost = host;
     const legacy = readRememberedDesktopWindow(rememberedDesktopWindowPath());
     this.windowController = new DesktopWindowController({
@@ -220,7 +232,7 @@ export class DesktopBackend {
 
   /** The Electrobun window for an RPC key, for the calls only this shell makes. */
   nativeWindow(windowKey: string | undefined): BrowserWindow | null {
-    return windowKey ? this.windowHost?.browserWindow(windowKey) ?? null : null;
+    return windowKey ? this.nativeWindows?.browserWindow(windowKey) ?? null : null;
   }
 
   /** The main window has its data: popped-out panes and extra windows open shortly after. */

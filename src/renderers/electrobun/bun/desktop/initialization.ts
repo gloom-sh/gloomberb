@@ -202,6 +202,8 @@ export async function initializeDesktopBackend(
   const windowTarget = normalizeInitWindowTarget(windowKey, payload);
   backend.rpcs.markWindowRpcReady(rpc);
   backend.stateBroadcaster.forgetWindowState(rpc);
+  // Its page loaded and runs: the next window waiting to open may.
+  if (windowKey) backend.windowHost?.windowDrawn(windowKey);
 
   await startDesktopBackend(backend);
   const config = backend.requireConfig();

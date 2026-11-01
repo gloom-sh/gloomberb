@@ -1,5 +1,6 @@
 import type { BrowserWindow } from "electrobun/bun";
 import type { NativeWindowEvent } from "../../../desktop/window-host";
+import { clampFrameToScreens, sameRect } from "../../../desktop/geometry";
 import { MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
 import { findPaneInstance } from "../../../../types/config";
 import { isPaneDetached } from "../../../../layout/pane-manager";
@@ -61,7 +62,7 @@ export class DesktopDetachedWindowManager {
 
   getWindowForRpcKey(rpcKey: string | undefined): BrowserWindow | null {
     const paneId = paneIdFromDetachedRpcKey(rpcKey);
-    return paneId && this.windows.has(paneId) ? this.backend.windowHost?.browserWindow(rpcKey!) ?? null : null;
+    return paneId && this.windows.has(paneId) ? this.backend.nativeWindow(rpcKey) : null;
   }
 
   /** A popped-out pane's window moved or closed. */
@@ -80,6 +81,16 @@ export class DesktopDetachedWindowManager {
     const config = this.backend.config;
     if (!workspace || !config || !isPaneDetached(config.layout, instanceId)) return;
     void this.backend.commitDesktopSnapshot(workspace.closeDetachedPane(instanceId));
+  }
+
+  /**
+   * A popped-out pane's saved frame, on a screen that is connected: one
+   * saved on a monitor since unplugged or at another resolution opens on
+   * screen, as the shell would leave it where it was asked.
+   */
+  private onScreen(frame: WindowFrame): WindowFrame {
+    const host = this.backend.windowHost;
+    return host?.canPlaceWindows ? clampFrameToScreens(frame, host.listDisplays()) : frame;
   }
 
   private frameOf(rpcKey: string): WindowFrame | null {
@@ -140,9 +151,14 @@ export class DesktopDetachedWindowManager {
       const hasLiveFrameUpdate = this.pendingMoveFlush.has(instanceId)
         || this.frameTimers.has(instanceId)
         || this.dockTimers.has(instanceId);
-      const nextFrame = currentFrame
+      const savedFrame = currentFrame
         ? normalizeWindowFrameWithMinimum(entry, currentFrame, DETACHED_WINDOW_MIN_SIZE)
         : null;
+      // Where the person left the window stays, even part off screen; a
+      // frame from elsewhere (or one saved off screen) lands on one.
+      const nextFrame = savedFrame && currentFrame && !sameRect(savedFrame, currentFrame)
+        ? this.onScreen(savedFrame)
+        : savedFrame;
       if (!hasLiveFrameUpdate
         && currentFrame
         && nextFrame
@@ -217,7 +233,7 @@ export class DesktopDetachedWindowManager {
       id: detachedRpcKey(instanceId),
       kind: "pane",
       title: this.resolveTitle(instanceId),
-      frame: normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE),
+      frame: this.onScreen(normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE)),
       minSize: DETACHED_WINDOW_MIN_SIZE,
     });
   }

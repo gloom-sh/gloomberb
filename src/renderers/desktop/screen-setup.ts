@@ -118,6 +118,20 @@ export function placementFor(setup: ScreenSetup, arrangement: string, windowId: 
   return setup.arrangements[arrangement]?.windows[windowId] ?? null;
 }
 
+/**
+ * Where a window last sat under any other arrangement, for screens the setup
+ * has not seen: the most recently saved arrangement that has it.
+ */
+export function latestPlacementFor(setup: ScreenSetup, windowId: string, except: string): WindowPlacement | null {
+  let latest: { savedAt: number; placement: WindowPlacement } | null = null;
+  for (const [key, entry] of Object.entries(setup.arrangements)) {
+    const placement = entry.windows[windowId];
+    if (key === except || !placement) continue;
+    if (!latest || entry.savedAt > latest.savedAt) latest = { savedAt: entry.savedAt, placement };
+  }
+  return latest?.placement ?? null;
+}
+
 export function hasArrangement(setup: ScreenSetup, arrangement: string): boolean {
   return !!setup.arrangements[arrangement];
 }
