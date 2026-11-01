@@ -168,6 +168,8 @@ export function useCompositeChartKeyboard({
   const [keyboardPlacement, setKeyboardPlacement] = useState<KeyboardToolPlacement | null>(null);
   // Whether the user moved into the chart from the pane's tab strip; see `inside`.
   const [entered, setEntered] = useState(false);
+  const enteredRef = useRef(entered);
+  enteredRef.current = entered;
   const keyboardId = `composite-chart:${useId()}`;
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
   useEffect(() => {
@@ -189,8 +191,14 @@ export function useCompositeChartKeyboard({
   }, []);
   const cancelKeyboardPlacement = useCallback(() => setKeyboardPlacement(null), []);
   // A press, drag or wheel on the chart moves into it, as Down or Enter do.
+  // Once inside, a wheel step sets nothing: setting the same state right
+  // after the chart rendered still costs React a render of the chart that
+  // bails out, and a pan or zoom renders it on every step.
   const activateFromPointer = useCallback(() => {
-    setEntered(true);
+    if (!enteredRef.current) {
+      enteredRef.current = true;
+      setEntered(true);
+    }
     onActivate?.();
   }, [onActivate]);
   const levelHost = useMemo(
