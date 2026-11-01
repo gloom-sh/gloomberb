@@ -149,6 +149,21 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      # Bun for Windows on Arm has no bun:ffi, which the check's input, window
+      # and screen calls go through, so there the check runs on x64 Bun under
+      # emulation: the Bun the app ships on Windows, whose crash handler leaves
+      # the emulator's own faults alone.
+      - name: Use x64 Bun for the check
+        if: matrix.machine == 'arm64'
+        shell: pwsh
+        run: |
+          $Dir = Join-Path $env:RUNNER_TEMP "bun-x64"
+          Invoke-WebRequest -UseBasicParsing "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-windows-x64-baseline.zip" -OutFile "$Dir.zip"
+          Expand-Archive "$Dir.zip" $Dir
+          $Bun = (Get-ChildItem $Dir -Recurse -Filter bun.exe | Select-Object -First 1).FullName
+          & $Bun --print "process.arch + ' ' + Bun.version"
+          "CHECK_BUN=$Bun" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
       - name: Download the release installer
         if: matrix.build == 'release'
         shell: pwsh
@@ -190,24 +205,28 @@ jobs:
 
       - name: Install
         shell: pwsh
-        run: bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          & $Bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
 
       # What the app listens on as installed, before the check opens DevTools.
       - name: Check what the app listens on
         shell: pwsh
         run: |
-          bun scripts/windows-desktop-check/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-ports" --label $env:LABEL
-          bun scripts/windows-desktop-check/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          & $Bun scripts/windows-desktop-check/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-ports" --label $env:LABEL
+          & $Bun scripts/windows-desktop-check/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
           exit 0
 
       - name: Drive the app at each scale
         shell: pwsh
         run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
           $Only = if ($env:ONLY) { @("--only", $env:ONLY) } else { @() }
           foreach ($Scale in $env:SCALES.Split(",")) {
             $Scale = $Scale.Trim()
             ./scripts/windows-desktop-check/display.ps1 -Scale $Scale
-            bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-$Scale" --label $env:LABEL @Only
+            & $Bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-$Scale" --label $env:LABEL @Only
           }
           ./scripts/windows-desktop-check/display.ps1 -Scale 100
           exit 0
