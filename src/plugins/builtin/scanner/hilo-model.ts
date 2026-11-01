@@ -1,4 +1,5 @@
-import type { ScannerHiloExtreme, ScannerHiloPayload } from "../../../api-client";
+import type { ScannerHiloExtreme, ScannerHiloPayload, ScannerStatus } from "../../../api-client";
+import { venueMarketLine } from "../../../cli/pane-functions/freshness";
 
 type HiloWindowKey = keyof ScannerHiloPayload["windows"];
 export type HiloMinPrice = "off" | "1" | "5";
@@ -93,4 +94,20 @@ export function filterHiloRows(
   return sort === "count"
     ? [...filtered].sort((left, right) => right.count - left.count || right.at - left.at)
     : [...filtered].sort((left, right) => right.at - left.at);
+}
+
+/**
+ * What an empty table says. The price filter when rows came in and it hid them all, or when the market is open and
+ * nothing has printed a new extreme yet. A closed market says so and when it reopens, in the status line's words
+ * (`Markets closed until Mon.`), as SCAN says its own close: its session has no new highs or lows to count.
+ */
+export function hiloEmptyState(
+  { filtered, status, now }: { filtered: boolean; status: ScannerStatus | undefined; now: number },
+): { title: string; hint?: string } {
+  if (filtered || status !== "closed") return { title: "Nothing above the price filter yet." };
+  const line = venueMarketLine("NYSE", now);
+  return {
+    title: line?.state === "closed" ? `${line.text[0]!.toUpperCase()}${line.text.slice(1)}.` : "Market closed.",
+    hint: "New highs and lows resume at the open.",
+  };
 }
