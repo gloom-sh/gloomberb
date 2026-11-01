@@ -57,7 +57,7 @@ test("an FX export names the pair and the currency the rate is in, which is the 
   await fx.execute(["ZAR"], run.context);
   expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
     "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
+    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
   ]);
 });
 

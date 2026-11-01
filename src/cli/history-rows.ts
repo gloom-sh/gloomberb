@@ -750,6 +750,11 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
     : { kind: "unknown", currency: null, unit: null };
 }
 
+/** The unit an export names for a history's prices: a pair's quote currency per base (`JPY per USD`), else its currency or unit. */
+export function historyExportUnit(unit: HistoryUnit): string | null {
+  return unit.kind === "pair" ? unit.unit : unit.currency ?? unit.unit;
+}
+
 function historyDate(value: string): string {
   return value.length > 10 ? formatUtcTime(value) : value;
 }

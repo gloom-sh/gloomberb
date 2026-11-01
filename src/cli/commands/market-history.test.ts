@@ -290,7 +290,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const csv = await run("csv", { points: [...old, ...shekels] });
     expect(csv.result.warnings).toEqual(warnings);
     // Dated by the January bar's last session, not the day it opens.
-    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS per USD,1mo,Gloom Cloud,1993-01-29"]);
     const text = await run("text", { points: [...old, ...shekels] });
     expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
     // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.

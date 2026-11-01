@@ -134,6 +134,7 @@ import {
   historyBarStatusNote,
   venueTradingDay,
   historyCoverageWarning,
+  historyExportUnit,
   historyFacts,
   historyFlagNote,
   historyWickNote,
@@ -594,6 +595,12 @@ const EXTENDED_CHANGE_EXPORT_COLUMNS = EXTENDED_SESSIONS.map((session) => ({
  * Why an exported quote row's figures are empty, for its status column: the
  * symbol's failure as the warning says it, or the figure it has no value for.
  */
+/** A pair's rate unit for an export (`JPY per USD` for USDJPY=X) when its quote is in the counter currency; null otherwise. */
+function pairExportUnit(symbol: string, currency: string): string | null {
+  const unit = historyUnit(symbol, { currency });
+  return unit.kind === "pair" && unit.currency === currency ? unit.unit : null;
+}
+
 function quoteExportStatus(row: QuoteRow): string {
   if (row.rawPrice == null || !Number.isFinite(row.rawPrice)) return row.error || "Last: no price";
   if (row.changePercent == null || !Number.isFinite(row.changePercent)) return "Chg%: no previous close";
@@ -1163,7 +1170,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
       exportIdentity: (row) => ({
         symbolOrSeries: row.symbol,
-        currencyOrUnit: row.currency || (row.yieldIndex ? "pct" : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+        // A pair's rate is its quote currency per base: JPY per USD, as `history` and `fx` export it.
+        currencyOrUnit: (row.currency && pairExportUnit(row.symbol, row.currency))
+          || row.currency || (row.yieldIndex ? "pct" : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
@@ -1657,7 +1666,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       columns: historyExportColumns(data),
       exportStatus: historyExportStatus,
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
-      exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
+      // A pair's rate is in its quote currency per base: JPY per USD, as the JSON's unit and every other export say.
+      exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: historyExportUnit(unit), interval },
     });
   });
 }
@@ -1767,7 +1777,7 @@ async function runHistoryList(
         const history = bySymbol.get(String(row.symbol));
         return {
           symbolOrSeries: String(row.symbol),
-          currencyOrUnit: history ? history.unit.currency ?? history.unit.unit : null,
+          currencyOrUnit: history ? historyExportUnit(history.unit) : null,
           interval: history?.interval ?? null,
           // A symbol with no bars has no as-of of its own.
           asOf: history ? history.freshness?.asOf ?? undefined : null,
@@ -3054,7 +3064,7 @@ async function runFxOnDate(
     warnings: warnings.length > 0 ? warnings : undefined,
   }, {
     text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
-    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "1day" },
+    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "1day" },
     columns: [
       { key: "currency", header: "Currency" },
       { key: "baseCurrency", header: "Base" },
@@ -3182,7 +3192,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
           `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
         ].join("\n"),
-        exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: `forward ${tenor.label}` },
+        exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: `forward ${tenor.label}` },
         columns: [
           { key: "pair", header: "Pair" },
           { key: "tenor", header: "Tenor" },
@@ -3218,8 +3228,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         rateText,
         ...peso ? pesoDollarRateLines(peso) : [],
       ].join("\n"),
-      // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
-      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "spot" },
+      // The rate is the base currency's price of one unit of the other, at the latest quote of each leg: USD per ZAR.
+      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },

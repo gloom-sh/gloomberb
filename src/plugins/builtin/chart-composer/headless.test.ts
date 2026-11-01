@@ -109,6 +109,54 @@ test("fn G 42*HO=F - CL=F charts the heating-oil crack per barrel, in the units 
   }
 });
 
+test("fn G exports a pair's rate and a currency future as quote per base, at the series' precision", async () => {
+  resetFuturesPriceUnits();
+  // USDJPY=X's weekly bars as served: float32 noise (113.044998) and a newer bar from a finer source (154.19901).
+  const weeks = ["2026-10-05", "2026-10-12", "2026-10-19"];
+  const closes: Record<string, number[]> = { "USDJPY=X": [113.044998, 154.054002, 154.19901], "6S=F": [1.0869, 1.077500033, 1.0841] };
+  const bars = (symbol: string) => weeks.map((day, index) => {
+    const close = closes[symbol]![index]!;
+    return { date: new Date(`${day}T00:00:00Z`), open: close, high: close, low: close, close };
+  });
+  const quote = (symbol: string) => ({ symbol, price: closes[symbol]!.at(-1)!, change: 0, changePercent: 0,
+    currency: symbol === "6S=F" ? "USD" : "JPY", instrumentType: symbol === "6S=F" ? "FUTURE" as const : "CURRENCY" as const,
+    lastUpdated: Date.parse("2026-10-23T20:00:00Z") });
+  const marketData = createTestDataProvider({
+    getTickerFinancials: async (symbol) => ({ quote: quote(symbol), annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getQuote: async (symbol) => quote(symbol),
+    getPriceHistoryForResolution: async (symbol) => bars(symbol),
+    getDetailedPriceHistory: async (symbol) => bars(symbol),
+  });
+  const csv = async (symbol: string) => {
+    const chartSpec = buildCustomChartPreset(symbol);
+    chartSpec.viewport.dateWindow = { start: "2026-10-05", end: "2026-10-24" };
+    const definition = chartHeadless("chart-composer-pane");
+    const result = await definition.load({ argument: symbol, rawArgument: symbol, symbols: [], options: {} }, createTestHeadlessContext({
+      marketData,
+      // The data service states no unit for the franc future: the catalog's stands.
+      apiClient: { getCloudFuturesContract: async () => { throw new Error("no terms"); } } as never,
+      settings: { chartSpec },
+    })) as ChartPaneModel;
+    const args = { argument: symbol, rawArgument: symbol, symbols: [], options: {} };
+    const freshness = deriveHeadlessFreshness(definition, result);
+    return renderReportCsv(headlessReportTables(definition, result, args, "G", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+      .split("\n");
+  };
+  try {
+    const jpy = await csv("USDJPY=X");
+    expect(jpy.slice(1, 4).map((line) => line.split(",").slice(1, 8).join(","))).toEqual([
+      "113.045,113.045,113.045,113.045,113.045,USDJPY=X,JPY per USD",
+      "154.054,154.054,154.054,154.054,154.054,USDJPY=X,JPY per USD",
+      "154.199,154.199,154.199,154.199,154.199,USDJPY=X,JPY per USD",
+    ]);
+    const franc = await csv("6S=F");
+    expect(franc[1]).toContain(",1.0869,6S=F,USD per CHF,");
+    expect(franc[2]).toContain(",1.0775,6S=F,USD per CHF,");
+  } finally {
+    resetFuturesPriceUnits();
+  }
+});
+
 test("a bar size the source does not serve for the range warns what came back and why, and each series names what it was asked as", async () => {
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");
   const monthly = [{ date: new Date("2026-08-01T00:00:00Z"), open: 16.2, high: 16.6, low: 16.1, close: 16.4 },
