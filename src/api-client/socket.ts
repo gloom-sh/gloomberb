@@ -39,11 +39,14 @@ export const SOCKET_CONNECT_TIMEOUT_MS = 10_000;
  */
 export const SOCKET_QUIET_PING_MS = 10_000;
 /**
- * An open connection silent this long, a ping unanswered, is taken for dead
- * (a half-open link: a laptop that slept, a network that changed under it).
- * It is dropped and opened again; until then prices it streamed read as stale.
+ * A connection that has not answered a ping in this long, nothing else come
+ * back meanwhile, is taken for dead (a half-open link: a laptop that slept, a
+ * network that changed under it). It is dropped and opened again; until then
+ * prices it streamed read as stale. Only an unanswered ping drops it: silence
+ * alone does not, since a check that runs late (a hidden tab's throttled
+ * timers, a wake from sleep) finds any connection silent.
  */
-export const SOCKET_SILENCE_LIMIT_MS = 20_000;
+export const SOCKET_PING_ANSWER_MS = 10_000;
 /** How often an open connection's silence is checked; it never needs to be exact. */
 const SOCKET_SILENCE_CHECK_MS = 2_500;
 /**
@@ -111,7 +114,7 @@ type CloudApiSocketDelegate = {
   clearWebSocketTokenForFallback: () => boolean;
   markCurrentUserUnverified: () => void;
   updateCurrentUserFromSocket: (user: Partial<AuthUser>) => void;
-  /** The service answered on this connection (it opened, or sent a frame): it is reachable. */
+  /** The service answered on this connection (it opened, or sent a frame); see `CloudApiRequestTransport.noteServiceAnswered`. */
   onServiceAnswered?: () => void;
 };
 
@@ -141,9 +144,9 @@ export class CloudApiSocket {
   private reconnectDelayMs = 1000;
   /** Gives up on a connection that has not opened in SOCKET_CONNECT_TIMEOUT_MS. */
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Checks the open connection's silence (SOCKET_QUIET_PING_MS, SOCKET_SILENCE_LIMIT_MS). */
+  /** Checks the open connection's silence (SOCKET_QUIET_PING_MS, SOCKET_PING_ANSWER_MS). */
   private silenceTimer: ReturnType<typeof setInterval> | null = null;
-  /** When the open connection last sent anything, and when it was last pinged for its silence. */
+  /** When the open connection last sent anything, and when the ping still unanswered went out. */
   private lastFrameAt = 0;
   private pingedAt: number | null = null;
 
@@ -979,19 +982,20 @@ export class CloudApiSocket {
   }
 
   /**
-   * A connection that went quiet is pinged; one that stays silent past
-   * SOCKET_SILENCE_LIMIT_MS is half open, and is dropped and opened again.
+   * A connection that went quiet is pinged; one that leaves the ping
+   * unanswered for SOCKET_PING_ANSWER_MS is half open, and is dropped and
+   * opened again. Anything it sends answers the ping.
    */
   private checkSilence(): void {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const silentMs = Date.now() - this.lastFrameAt;
-    if (silentMs >= SOCKET_SILENCE_LIMIT_MS) {
-      this.dropUnansweredSocket(ws, "No answer from the stream");
+    const now = Date.now();
+    if (this.pingedAt != null) {
+      if (now - this.pingedAt >= SOCKET_PING_ANSWER_MS) this.dropUnansweredSocket(ws, "No answer from the stream");
       return;
     }
-    if (silentMs >= SOCKET_QUIET_PING_MS && this.pingedAt == null) {
-      this.pingedAt = Date.now();
+    if (now - this.lastFrameAt >= SOCKET_QUIET_PING_MS) {
+      this.pingedAt = now;
       this.sendFrame({ type: "ping" });
     }
   }
