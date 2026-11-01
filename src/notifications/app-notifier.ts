@@ -16,14 +16,17 @@ function getRuntimePlatform(): NodeJS.Platform {
 export interface DesktopNotificationCommand {
   command: string;
   args: string[];
+  /** Added to the environment of the process, for text a command line must not carry. */
+  env?: Record<string, string>;
+}
+
+interface DesktopNotificationRunOptions {
+  env?: Record<string, string>;
+  onError?: (error: NodeJS.ErrnoException) => void;
 }
 
 export interface DesktopNotificationRunner {
-  run(
-    command: string,
-    args: string[],
-    handlers?: { onError?: (error: NodeJS.ErrnoException) => void },
-  ): void;
+  run(command: string, args: string[], options?: DesktopNotificationRunOptions): void;
 }
 
 export interface DesktopNotificationSink {
@@ -46,8 +49,14 @@ function escapeAppleScriptString(value: string): string {
     .replace(/"/g, "\\\"")}"`;
 }
 
-function escapePowerShellString(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+const WINDOWS_NOTIFICATION_TITLE_ENV = "GLOOM_NOTIFICATION_TITLE";
+const WINDOWS_NOTIFICATION_TEXT_ENV = "GLOOM_NOTIFICATION_TEXT";
+/** The most of a title or a body handed to Windows; a balloon shows far less, and an environment value has a hard limit. */
+const WINDOWS_NOTIFICATION_TEXT_LIMIT = 4_000;
+
+/** NUL ends an environment value early, and spawning with one in it fails. */
+function windowsEnvText(value: string): string {
+  return value.replaceAll("\0", "").slice(0, WINDOWS_NOTIFICATION_TEXT_LIMIT);
 }
 
 function mapLinuxUrgency(type: AppNotificationType | undefined): "low" | "normal" | "critical" {
@@ -105,6 +114,8 @@ export function buildDesktopNotificationCommand(
         DEFAULT_NOTIFICATION_TITLE,
         "--urgency",
         mapLinuxUrgency(notification.type),
+        // Text that starts with `-` is the title or the body, not an option.
+        "--",
         title,
         ...(linuxBody ? [linuxBody] : []),
       ],
@@ -112,14 +123,16 @@ export function buildDesktopNotificationCommand(
   }
 
   if (platform === "win32") {
-    const balloonBody = buildWindowsBody(notification);
+    // The script is the same for every notification. The title and the text
+    // reach it in the environment of the process, where PowerShell reads them
+    // as plain strings and never as code, whatever characters they hold.
     const script = [
       "Add-Type -AssemblyName System.Windows.Forms;",
       "Add-Type -AssemblyName System.Drawing;",
       "$notify = New-Object System.Windows.Forms.NotifyIcon;",
       `$notify.Icon = [System.Drawing.SystemIcons]::${mapWindowsIcon(notification.type)};`,
-      `$notify.BalloonTipTitle = ${escapePowerShellString(title)};`,
-      `$notify.BalloonTipText = ${escapePowerShellString(balloonBody)};`,
+      `$notify.BalloonTipTitle = $env:${WINDOWS_NOTIFICATION_TITLE_ENV};`,
+      `$notify.BalloonTipText = $env:${WINDOWS_NOTIFICATION_TEXT_ENV};`,
       "$notify.Visible = $true;",
       "$notify.ShowBalloonTip(5000);",
       "Start-Sleep -Seconds 6;",
@@ -128,6 +141,10 @@ export function buildDesktopNotificationCommand(
     return {
       command: "powershell.exe",
       args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+      env: {
+        [WINDOWS_NOTIFICATION_TITLE_ENV]: windowsEnvText(title),
+        [WINDOWS_NOTIFICATION_TEXT_ENV]: windowsEnvText(buildWindowsBody(notification)),
+      },
     };
   }
 
@@ -137,19 +154,22 @@ export function buildDesktopNotificationCommand(
 function defaultDesktopNotificationRunner(
   command: string,
   args: string[],
-  handlers?: { onError?: (error: NodeJS.ErrnoException) => void },
+  options?: DesktopNotificationRunOptions,
 ): void {
   if (typeof Bun !== "undefined" && typeof Bun.spawn === "function") {
     try {
-      const child = Bun.spawn([command, ...args], { stdio: ["ignore", "ignore", "ignore"] });
+      const child = Bun.spawn([command, ...args], {
+        stdio: ["ignore", "ignore", "ignore"],
+        ...(options?.env ? { env: { ...process.env, ...options.env } } : {}),
+      });
       child.unref();
     } catch (error) {
-      handlers?.onError?.(error as NodeJS.ErrnoException);
+      options?.onError?.(error as NodeJS.ErrnoException);
     }
     return;
   }
 
-  handlers?.onError?.(Object.assign(new Error("Desktop notifications require a native process host."), {
+  options?.onError?.(Object.assign(new Error("Desktop notifications require a native process host."), {
     code: "ENOSYS",
   }) as NodeJS.ErrnoException);
 }
@@ -203,6 +223,7 @@ export function createDesktopNotifier(
       if (desktopCommand && disabledCommand !== desktopCommand.command) {
         let requestFailed = false;
         runner.run(desktopCommand.command, desktopCommand.args, {
+          env: desktopCommand.env,
           onError: (error) => {
             requestFailed = true;
             if (error.code === "ENOENT") {

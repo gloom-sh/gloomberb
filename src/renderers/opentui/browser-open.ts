@@ -6,6 +6,8 @@
  * nothing opened and can show the link instead.
  */
 
+import { systemOpenCommand } from "../../utils/external-url";
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 function present(value: string | undefined): boolean {
@@ -35,27 +37,31 @@ export function browserOpenCommands(url: string, env: Env, platform: NodeJS.Plat
   const forwarded = present(env.BROWSER) ? envBrowserCommand(env.BROWSER!, url) : null;
 
   if (platform === "darwin") {
-    if (!remote) return [["open", url]];
+    const opener = systemOpenCommand(url, platform);
+    if (!remote) return opener ? [opener] : [];
     return forwarded ? [forwarded] : [];
   }
   if (platform === "win32") {
-    if (!remote) return [["cmd", "/c", "start", "", url]];
+    const opener = systemOpenCommand(url, platform);
+    if (!remote) return opener ? [opener] : [];
     return forwarded ? [forwarded] : [];
   }
 
   // Linux and the other unixes. WSL has no Linux browser, but Windows can
   // open the link: `wslview` when wslu is installed, else Windows' own handler.
   if (present(env.WSL_DISTRO_NAME) || present(env.WSL_INTEROP)) {
+    const windowsOpener = systemOpenCommand(url, "win32");
     return [
       ...(forwarded ? [forwarded] : []),
       ["wslview", url],
-      ["rundll32.exe", "url.dll,FileProtocolHandler", url],
+      ...(windowsOpener ? [windowsOpener] : []),
     ];
   }
   const display = present(env.DISPLAY) || present(env.WAYLAND_DISPLAY);
   // xdg-open reads $BROWSER itself, so a forwarding helper still applies.
   if (remote && !display && !forwarded) return [];
-  return [["xdg-open", url]];
+  const opener = systemOpenCommand(url, platform);
+  return opener ? [opener] : [];
 }
 
 /** How long an opener may run before it counts as having opened the browser. */
