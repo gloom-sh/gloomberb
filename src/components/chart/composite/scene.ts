@@ -17,6 +17,7 @@ import type {
 import {
   buildCompositeTimeScale,
   COMPOSITE_RIGHT_OFFSET_RATIO,
+  compositeTimeProjector,
   projectCompositeTimestamp,
   unprojectCompositeTimestamp,
 } from "./time-scale";
@@ -108,10 +109,33 @@ interface NormalizedPointsCache {
 // the last point in place, so the cache also keys on its time and value.
 const normalizedPointsCache = new WeakMap<ResolvedSeries, NormalizedPointsCache>();
 
+/**
+ * Points already in time order, one per instant and with no fiscal period,
+ * normalise in order: each is its own observation, at its own date. Null for
+ * anything else, which goes through the keyed sort.
+ */
+function orderedSourcePoints(points: readonly TimeSeriesPoint[]): NormalizedSourcePoint[] | null {
+  const normalized: NormalizedSourcePoint[] = [];
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    if (point.periodLabel !== undefined) return null;
+    const timestamp = pointTime(point);
+    if (timestamp === null || timestamp <= previous) return null;
+    previous = timestamp;
+    normalized.push({ point, timestamp, value: resolveTimeSeriesPointValue(point) });
+  }
+  return normalized;
+}
+
 function computeNormalizedSourcePoints(
   series: ResolvedSeries,
   timeScale?: CompositeTimeScale,
 ): NormalizedSourcePoint[] {
+  // Placed at their own dates, points in time order are already normalised;
+  // a live chart re-resolves its series on every tick.
+  const effectiveTimes = timeScale?.kind === "market" && !isMarketObservationSeries(series);
+  const ordered = effectiveTimes ? null : orderedSourcePoints(series.points);
+  if (ordered) return ordered;
   const byObservation = new Map<string, NormalizedSourcePoint>();
   for (const point of series.points) {
     const sourceTimestamp = pointTime(point);
@@ -165,16 +189,34 @@ function normalizedSourcePoints(
   return normalized;
 }
 
-function normalizedPoints(series: ResolvedSeries): Array<{
-  point: TimeSeriesPoint;
-  timestamp: number;
-  value: number;
-}> {
-  return normalizedSourcePoints(series).flatMap((entry) => (
-    entry.value === null
-      ? []
-      : [{ ...entry, value: entry.value }]
-  ));
+function hasDrawableValue(series: ResolvedSeries): boolean {
+  return normalizedSourcePoints(series).some((entry) => entry.value !== null);
+}
+
+/**
+ * The sorted union of timestamp lists that are each sorted, as
+ * `[...new Set(lists.flat())].sort()` gives it, merged in one pass.
+ */
+function mergeSortedTimestamps(lists: readonly (readonly number[])[]): number[] {
+  let merged: number[] = [];
+  for (const list of lists) {
+    const next: number[] = [];
+    let left = 0;
+    let right = 0;
+    while (left < merged.length || right < list.length) {
+      const fromLeft = right >= list.length || (left < merged.length && merged[left]! <= list[right]!);
+      const value = fromLeft ? merged[left++]! : list[right++]!;
+      if (next.length === 0 || next[next.length - 1] !== value) next.push(value);
+    }
+    merged = next;
+  }
+  return merged;
+}
+
+function timestampsOf(points: readonly NormalizedSourcePoint[]): number[] {
+  const timestamps = new Array<number>(points.length);
+  for (let index = 0; index < points.length; index += 1) timestamps[index] = points[index]!.timestamp;
+  return timestamps;
 }
 
 function explicitViewport(
@@ -198,10 +240,11 @@ function scopeSeriesToViewport(
   const placement = timeScale.kind === "market" && !isMarketObservationSeries(series)
     ? "next-market-slot" as const
     : "timestamp" as const;
+  const project = compositeTimeProjector(timeScale, placement);
   const visible = points.filter(({ timestamp }) => {
     if (timestamp >= startTime && timestamp <= endTime) return true;
     if (clipToViewport) return false;
-    const projected = projectCompositeTimestamp(timeScale, timestamp, placement);
+    const projected = project(timestamp);
     return !!projected && projected.ratio >= 0 && projected.ratio <= 1;
   });
   if (series.interpolation === "step-after" || series.style === "step") {
@@ -271,31 +314,67 @@ export function allocateCompositePanelHeights(
   return heights;
 }
 
-function seriesDomainValues(series: ResolvedSeries): number[] {
-  const values: number[] = [];
-  for (const point of series.points) {
-    const scalar = resolveTimeSeriesPointValue(point);
-    if (scalar !== null) values.push(scalar);
-    if (series.dataShape === "ohlcv") {
-      for (const candidate of [point.open, point.high, point.low, point.close]) {
-        if (isFiniteNumber(candidate)) values.push(candidate);
-      }
-    } else if (series.style === "band") {
-      for (const candidate of [point.high, point.low]) {
-        if (isFiniteNumber(candidate)) values.push(candidate);
-      }
-    }
-  }
-  if (series.style === "columns") values.push(0);
-  return values;
+/**
+ * The extremes of a set of values, of all of them and of the positive ones a
+ * log axis can show, gathered without keeping the values.
+ */
+interface DomainExtent {
+  count: number;
+  min: number;
+  max: number;
+  positiveCount: number;
+  positiveMin: number;
+  positiveMax: number;
 }
 
-function paddedDomain(values: number[], scale: PanelScale): { min: number; max: number } {
-  const usable = scale === "log" ? values.filter((value) => value > 0) : values;
-  if (usable.length === 0) return scale === "log" ? { min: 1, max: 10 } : { min: 0, max: 1 };
+function emptyDomainExtent(): DomainExtent {
+  return {
+    count: 0,
+    min: Number.POSITIVE_INFINITY,
+    max: Number.NEGATIVE_INFINITY,
+    positiveCount: 0,
+    positiveMin: Number.POSITIVE_INFINITY,
+    positiveMax: Number.NEGATIVE_INFINITY,
+  };
+}
 
-  const rawMin = Math.min(...usable);
-  const rawMax = Math.max(...usable);
+function addDomainValue(extent: DomainExtent, value: number): void {
+  extent.count += 1;
+  extent.min = Math.min(extent.min, value);
+  extent.max = Math.max(extent.max, value);
+  if (value > 0) {
+    extent.positiveCount += 1;
+    extent.positiveMin = Math.min(extent.positiveMin, value);
+    extent.positiveMax = Math.max(extent.positiveMax, value);
+  }
+}
+
+/** Every value a series holds its axis open for: its points, their bar extremes or band, and zero under columns. */
+function addSeriesDomainValues(extent: DomainExtent, series: ResolvedSeries): void {
+  const ohlc = series.dataShape === "ohlcv";
+  const band = !ohlc && series.style === "band";
+  for (const point of series.points) {
+    const scalar = resolveTimeSeriesPointValue(point);
+    if (scalar !== null) addDomainValue(extent, scalar);
+    if (ohlc) {
+      if (isFiniteNumber(point.open)) addDomainValue(extent, point.open);
+      if (isFiniteNumber(point.high)) addDomainValue(extent, point.high);
+      if (isFiniteNumber(point.low)) addDomainValue(extent, point.low);
+      if (isFiniteNumber(point.close)) addDomainValue(extent, point.close);
+    } else if (band) {
+      if (isFiniteNumber(point.high)) addDomainValue(extent, point.high);
+      if (isFiniteNumber(point.low)) addDomainValue(extent, point.low);
+    }
+  }
+  if (series.style === "columns") addDomainValue(extent, 0);
+}
+
+function paddedDomain(extent: DomainExtent, scale: PanelScale): { min: number; max: number } {
+  const usable = scale === "log" ? extent.positiveCount : extent.count;
+  if (usable === 0) return scale === "log" ? { min: 1, max: 10 } : { min: 0, max: 1 };
+
+  const rawMin = scale === "log" ? extent.positiveMin : extent.min;
+  const rawMax = scale === "log" ? extent.positiveMax : extent.max;
   if (rawMin === rawMax) {
     if (scale === "log") {
       return { min: rawMin / 1.1, max: rawMax * 1.1 };
@@ -342,15 +421,11 @@ function axisPriceReferences(axisSeries: ResolvedSeries[]): Record<string, numbe
  * session range of the bars, so a quiet session still shows where it opened
  * from; a far gap leaves the bars their full height.
  */
-function priorCloseInReach(series: readonly ResolvedSeries[], values: readonly number[]): number[] {
+function priorCloseInReach(series: readonly ResolvedSeries[], values: DomainExtent): number[] {
   const reference = series.find((entry) => isFiniteNumber(entry.priorClose) && entry.points.length > 0)?.priorClose;
-  if (reference === undefined || values.length === 0) return [];
-  let low = Number.POSITIVE_INFINITY;
-  let high = Number.NEGATIVE_INFINITY;
-  for (const value of values) {
-    if (value < low) low = value;
-    if (value > high) high = value;
-  }
+  if (reference === undefined || values.count === 0) return [];
+  const low = values.min;
+  const high = values.max;
   const span = high - low;
   return reference >= low - span && reference <= high + span ? [reference] : [];
 }
@@ -365,11 +440,16 @@ function buildAxisDomain(
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
-  const values = axisSeries.flatMap(seriesDomainValues);
+  const values = emptyDomainExtent();
+  for (const entry of axisSeries) addSeriesDomainValues(values, entry);
   const references = referenceLevels && axisSeries.some((entry) => entry.id === referenceLevels.seriesId)
     ? referenceLevels.items.map((level) => level.value).filter(Number.isFinite)
     : [];
-  const fitted = paddedDomain([...values, ...priorCloseInReach(axisSeries, values), ...references], scale);
+  const extra = [...priorCloseInReach(axisSeries, values), ...references];
+  const fitted = paddedDomain(extra.length === 0 ? values : extra.reduce((extent, value) => {
+    addDomainValue(extent, value);
+    return extent;
+  }, { ...values }), scale);
   const scaleKey = valueScaleKey(scale, axisSeries);
   // A range set by hand holds while the axis plots the same series and some
   // of their data is in it; otherwise the axis fits the data again.
@@ -463,6 +543,7 @@ function projectSeries(
     ? "next-market-slot" as const
     : "timestamp" as const;
   const stepSeries = series.interpolation === "step-after" || series.style === "step";
+  const project = compositeTimeProjector(timeScale, placement);
   for (const { point, timestamp, value } of normalizedSourcePoints(series, timeScale)) {
     if (value === null) {
       breakBefore = true;
@@ -473,7 +554,7 @@ function projectSeries(
       breakBefore = true;
       continue;
     }
-    const projectedTime = projectCompositeTimestamp(timeScale, timestamp, placement);
+    const projectedTime = project(timestamp);
     if (!projectedTime) continue;
     const beforeViewportStepAnchor = stepSeries
       && timestamp < startTime
@@ -667,6 +748,28 @@ function cursorPointForSeries(
   return points[low - 1] ?? null;
 }
 
+/**
+ * The latest unavailable observation at or before the cursor and after the
+ * value it reads there, which ends that value. Points are in time order, so
+ * the search stops at the first one older than that value.
+ */
+function gapAfterCursorValue(
+  points: readonly NormalizedSourcePoint[],
+  cursorTime: number,
+  projected: CompositeProjectedPoint | null,
+): NormalizedSourcePoint | undefined {
+  const after = projected?.timestamp ?? Number.NEGATIVE_INFINITY;
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const entry = points[index]!;
+    const { timestamp, point, value } = entry;
+    if (timestamp < after) return undefined;
+    if (timestamp > cursorTime) continue;
+    const later = timestamp > after || (timestamp === projected?.timestamp && point.observedAt > projected.point.observedAt);
+    if (later && (point.provenance?.priceHistoryIntegrity || value === null)) return entry;
+  }
+  return undefined;
+}
+
 function buildCursorValues(
   panels: CompositePanelScene[],
   cursorDate: Date | null,
@@ -688,11 +791,7 @@ function buildCursorValues(
     let projected = cursorPointForSeries(entry, cursorTime);
     // Sparse observations can carry forward, but an explicitly unavailable
     // observation ends that value at its date, including the idle legend.
-    const gap = normalizedSourcePoints(entry.source, viewport.timeScale).findLast(({ timestamp, point, value }) => (
-      timestamp <= cursorTime && (timestamp > (projected?.timestamp ?? Number.NEGATIVE_INFINITY)
-        || (timestamp === projected?.timestamp && point.observedAt > projected.point.observedAt))
-      && (point.provenance?.priceHistoryIntegrity || value === null)
-    ));
+    const gap = gapAfterCursorValue(normalizedSourcePoints(entry.source, viewport.timeScale), cursorTime, projected);
     if (gap) projected = null;
     // The drawn navigation buffer can include observations after the chosen
     // end. An unarmed legend describes the active window, including when the
@@ -799,13 +898,12 @@ export function buildCompositeChartScene(
 ): CompositeChartScene | null {
   const dataSeries = series
     .map((entry) => entry.style === "heikin-ashi" ? { ...entry, points: heikinAshiPoints(entry.points) } : entry)
-    .filter((entry) => normalizedPoints(entry).length > 0);
+    .filter(hasDrawableValue);
   if (dataSeries.length === 0) return null;
 
   // A known missing observation owns a date even though it has no drawable
   // value. Retain it in the window and cursor timeline, including trailing gaps.
-  const times = dataSeries.flatMap((entry) => normalizedSourcePoints(entry).map((point) => point.timestamp));
-  const uniqueTimes = [...new Set(times)].sort((left, right) => left - right);
+  const uniqueTimes = mergeSortedTimestamps(dataSeries.map((entry) => timestampsOf(normalizedSourcePoints(entry))));
   if (uniqueTimes.length === 0) return null;
   const firstTime = uniqueTimes[0]!;
   const lastTime = uniqueTimes.at(-1)!;
@@ -844,15 +942,12 @@ export function buildCompositeChartScene(
     // observation must remain inspectable. Other exchanges can trade before
     // or after its anchors. Nonmarket source dates stay excluded: filings
     // retain their availability-based placement on eligible market slots.
-    ? [...new Set([
-      ...timeScale.anchors.map(({ timestamp }) => timestamp),
+    ? mergeSortedTimestamps([
+      timeScale.anchors.map(({ timestamp }) => timestamp),
       ...scopedSeries.filter(isMarketObservationSeries)
-        .flatMap((entry) => normalizedSourcePoints(entry)
-          .filter(({ value, point }) => value !== null || point.provenance?.priceHistoryIntegrity)
-          .map(({ timestamp }) => timestamp)),
-    ])]
-      .filter((time) => time >= startTime && time <= plotEndTime)
-      .sort((left, right) => left - right)
+        .map((entry) => timestampsOf(normalizedSourcePoints(entry)
+          .filter(({ value, point }) => value !== null || point.provenance?.priceHistoryIntegrity))),
+    ]).filter((time) => time >= startTime && time <= plotEndTime)
     : [];
   const cursorTimes = timeScale.kind === "market" ? marketTimes : visibleTimes;
   const dates = (cursorTimes.length > 0
@@ -861,9 +956,8 @@ export function buildCompositeChartScene(
       ? [...new Set([startTime, endTime])]
       : uniqueTimes
   ).map((time) => new Date(time));
-  const dateRatios = dates.map((date) => (
-    projectCompositeTimestamp(timeScale, date.getTime())?.ratio ?? 0
-  ));
+  const projectDate = compositeTimeProjector(timeScale);
+  const dateRatios = dates.map((date) => projectDate(date.getTime())?.ratio ?? 0);
   const requestedCursor = options.cursorDate ?? null;
   const cursorDate = requestedCursor ? nearestDate(dates, requestedCursor) : null;
   const cursorXRatio = cursorDate
