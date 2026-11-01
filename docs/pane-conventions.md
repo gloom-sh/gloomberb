@@ -223,8 +223,9 @@ its fill in device pixels. Half a pixel is the line between centred and not.
 
 **App chrome** (the shell's, never a pane's): the header holds the command
 bar prompt, update notices and the market summary; the status bar at the
-bottom holds layout tabs, Tidy Windows, the version chip and the
-`status:widget` slot. A plugin puts a widget there only for app-wide state
+bottom holds layout tabs, Tidy Windows, the connection note (in the warning
+tone, only while the data service gives no answer at all), the version chip
+and the `status:widget` slot. A plugin puts a widget there only for app-wide state
 that matters outside its pane (unread count, account verification). Pane data
 never goes there.
 
