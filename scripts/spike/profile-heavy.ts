@@ -275,6 +275,43 @@ try {
     await settle(cdp, "body", 800, 10_000);
   }));
 
+  // Where the main thread's time goes during the resizes, native work included:
+  // a trace's self time by activity on the page's renderer main thread.
+  const traceEvents: Array<{ name: string; ph: string; ts: number; dur?: number; pid: number; tid: number; args?: { name?: string } }> = [];
+  let tracing = true;
+  cdp.on("Tracing.dataCollected", (params: { value: typeof traceEvents }) => { if (tracing) traceEvents.push(...params.value); });
+  await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline", transferMode: "ReportEvents" });
+  const traceStarted = performance.now();
+  await resizeRounds();
+  const traceWallMs = performance.now() - traceStarted;
+  const traceDone = cdp.once("Tracing.tracingComplete", 120_000);
+  await cdp.send("Tracing.end");
+  await traceDone;
+  tracing = false;
+  const activity = new Map<string, number>();
+  {
+    const mains = traceEvents.filter((event) => event.name === "thread_name" && event.args?.name === "CrRendererMain");
+    const counts = mains.map((main) => ({ main, count: traceEvents.filter((event) => event.pid === main.pid && event.tid === main.tid && event.ph === "X").length }));
+    const main = counts.sort((a, b) => b.count - a.count)[0]?.main;
+    if (main) {
+      const spans = traceEvents.filter((event) => event.pid === main.pid && event.tid === main.tid && event.ph === "X" && typeof event.dur === "number").sort((a, b) => a.ts - b.ts || (b.dur! - a.dur!));
+      const stack: Array<{ end: number; name: string; child: number; dur: number }> = [];
+      const close = (until: number) => {
+        while (stack.length && stack[stack.length - 1]!.end <= until) {
+          const done = stack.pop()!;
+          activity.set(done.name, (activity.get(done.name) ?? 0) + (done.dur - done.child) / 1000);
+          if (stack.length) stack[stack.length - 1]!.child += done.dur;
+        }
+      };
+      for (const span of spans) {
+        close(span.ts);
+        stack.push({ end: span.ts + span.dur!, name: span.name, child: 0, dur: span.dur! });
+      }
+      close(Number.POSITIVE_INFINITY);
+    }
+  }
+  await writeFile(join(outDir, "resize-trace-activity.json"), JSON.stringify(Object.fromEntries([...activity.entries()].sort((a, b) => b[1] - a[1])), null, 2));
+
   // The kernel in place: the same resizes with the TypeScript and the
   // WebAssembly raster, alternating, timing every panel raster in the page.
   const kernelRuns: Array<{ kernel: string; round: number; calls: number; rasterMs: number; pixels: number; fallbacks: number; busyMs: number; wallMs: number }> = [];
@@ -320,7 +357,10 @@ try {
   }
   sections.splice(4, 0, table("all phases, by area of the source", areas, wall, 20), "", table("all phases, by function (self time)", all, wall, 40), "", table("all phases, app functions by inclusive time", inclusive, wall, 40, busyOf(all)), "");
   const report = sections.join("\n");
-  const kernelTable = ["## Raster kernel in place (same resizes, alternating)", "", "| kernel | round | panel rasters | raster ms | Mpixels | fallbacks | main thread busy ms | wall ms |", "|---|---|---|---|---|---|---|---|",
+  const activityTotal = [...activity.entries()].filter(([name]) => !/^(ThreadControllerImpl::RunTask|RunTask)$/.test(name)).reduce((sum, [, ms]) => sum + ms, 0);
+  const activityTable = ["## Main thread by activity during the resizes (trace self time)", "", `Wall ${traceWallMs.toFixed(0)} ms.`, "", "| activity | self ms | share |", "|---|---|---|",
+    ...[...activity.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18).map(([name, ms]) => `| ${name} | ${ms.toFixed(1)} | ${((ms / Math.max(activityTotal, 1)) * 100).toFixed(1)}% |`), ""].join("\n");
+  const kernelTable = [activityTable, "## Raster kernel in place (same resizes, alternating)", "", "| kernel | round | panel rasters | raster ms | Mpixels | fallbacks | main thread busy ms | wall ms |", "|---|---|---|---|---|---|---|---|",
     ...kernelRuns.map((run) => `| ${run.kernel} | ${run.round} | ${run.calls} | ${run.rasterMs.toFixed(1)} | ${(run.pixels / 1e6).toFixed(1)} | ${run.fallbacks} | ${run.busyMs.toFixed(0)} | ${run.wallMs.toFixed(0)} |`),
     "", "## Raster kernel benchmark in the page", "", "```json", JSON.stringify({ ...bench, tsSamples: undefined, wasmSamples: undefined }, null, 2), "```", ""].join("\n");
   await writeFile(join(outDir, "profile.md"), `${report}\n\n${kernelTable}\n`);
