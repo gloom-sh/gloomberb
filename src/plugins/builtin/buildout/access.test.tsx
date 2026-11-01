@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
+import { ApiRequestError, SHOT_REQUEST_REFUSED } from "../../../api-client/errors";
 import type { AuthUser, BuildoutAccountResponse } from "../../../api-client/types";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
@@ -97,6 +98,16 @@ test("initial access failure has a retry that recovers without loading free data
   await tui.clickFrameText("Retry");
   await tui.waitForFrameToContain("All Companies");
   expect(dataRequests).toContain("/lists");
+});
+
+test("a screenshot that cannot carry the plan's token says so, not that access is unknown, and loads no free data", async () => {
+  token.mockRejectedValue(new ApiRequestError(SHOT_REQUEST_REFUSED, 403, undefined, SHOT_REQUEST_REFUSED));
+  await mount();
+  const frame = await tui.waitForFrameToContain("Not available in screenshots.");
+  expect(frame).not.toContain("Access check failed");
+  // A capture is a still picture: there is nothing to retry.
+  expect(frame).not.toContain("Retry");
+  expect(dataRequests).toEqual([]);
 });
 
 test("confirmed sign-out and inactive subscriptions retain free access; active plans retain the token", async () => {

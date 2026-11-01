@@ -1,4 +1,5 @@
 import { apiClient } from "../../../../api-client";
+import { isShotRequestRefused } from "../../../../api-client/errors";
 import { createTtlCache } from "../../../../data/ttl-cache";
 import { httpFetch } from "../../../../utils/http-transport";
 import { logFailure } from "../../../../utils/log-failure";
@@ -138,6 +139,9 @@ export interface BuildoutReader {
   token: string | null;
 }
 
+/** What a pane shows in a screenshot of an account with the plan, whose token the capture never holds. */
+export const NOT_IN_SCREENSHOTS = "Not available in screenshots.";
+
 const NO_GRANT: BuildoutGrant = { token: null, expiresAtMs: null };
 /** A token is asked for again this long before it lapses. */
 const TOKEN_RENEW_EARLY_MS = 60_000;
@@ -186,6 +190,8 @@ export async function getBuildoutReader({ fresh = false }: { fresh?: boolean } =
     const grant = await grants.load(user.id, () => issueGrant(restored !== null), { force: fresh });
     return { account: user.id, token: grant.token };
   } catch (error) {
+    // A capture's proxy never mints a plan's token: access is not unknown, the capture cannot carry it.
+    if (isShotRequestRefused(error)) throw new Error(NOT_IN_SCREENSHOTS);
     logFailure("buildout.model", "Check access failed")(error);
     throw new Error("Access check failed. Access is unknown.");
   }
