@@ -26,6 +26,9 @@ const WINDOWS_RELEASE_CHROMIUM_FLAGS = {
  */
 const WINDOWS_BUN_VERSION = "1.4.4";
 
+/** Prototype builds on CI: no signing identity, nothing notarized. */
+const UNSIGNED = Boolean(process.env.SPIKE_UNSIGNED);
+
 const config: ElectrobunConfig = {
   app: {
     // The bundle, the macOS menu bar and Dock, the update archives. Releases
@@ -61,9 +64,9 @@ const config: ElectrobunConfig = {
       "node_modules/**",
     ],
     mac: {
-      codesign: true,
+      codesign: !UNSIGNED,
       createDmg: true,
-      notarize: true,
+      notarize: !UNSIGNED,
       icons: "icon.iconset",
       defaultRenderer: "native",
     },

@@ -1,0 +1,217 @@
+name: Spike desktop shell
+
+# Prototype measurements only: builds the desktop app on each platform from
+# this branch, unsigned, and measures startup, memory, window behaviour and
+# size with scripts/spike/desktop-measure.ts. Publishes nothing.
+on:
+  push:
+    branches:
+      - "spike/desktop-shell"
+  workflow_dispatch:
+
+concurrency:
+  group: spike-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SPIKE_SHELL: electrobun-1.18.1
+  SPIKE_UNSIGNED: "1"
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build the desktop app (stable, unsigned)
+        run: bun run desktop:release
+
+      - name: Install it as an update or Homebrew would
+        run: |
+          set -euo pipefail
+          ls -l artifacts
+          command -v zstd || brew install zstd
+          mkdir -p "$RUNNER_TEMP/app"
+          zstd -d -o "$RUNNER_TEMP/app.tar" artifacts/stable-macos-arm64-Gloom.app.tar.zst
+          tar -xf "$RUNNER_TEMP/app.tar" -C "$RUNNER_TEMP/app"
+          ls "$RUNNER_TEMP/app"
+          {
+            echo "## Sizes"
+            echo
+            echo "| file | bytes |"
+            echo "|---|---|"
+            for file in artifacts/*; do echo "| $(basename "$file") | $(stat -f %z "$file") |"; done
+            echo "| installed Gloom.app | $(du -sk "$RUNNER_TEMP/app/Gloom.app" | cut -f1)000 (du KB x1000) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
+
+      - name: Can System Events drive windows here
+        continue-on-error: true
+        run: osascript -e 'tell application "System Events" to get name of every process whose background only is false'
+
+      - name: Measure
+        run: |
+          app="$RUNNER_TEMP/app/Gloom.app"
+          bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label macos-arm64 \
+            --launch "$app/Contents/MacOS/launcher" \
+            --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
+            --app-root "$app" --out spike-results --window-probe scripts/spike/mac-window-probe.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-macos-arm64
+          path: |
+            spike-results
+            sizes.md
+            artifacts/*.json
+
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build the desktop package
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spike-windows-installer
+          path: artifacts/stable-win-x64-GloomSetup.exe
+          retention-days: 5
+
+      - name: Larger screen
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution: $($_.Exception.Message)" }
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::AllScreens | Format-List
+
+      - name: Install
+        id: install
+        shell: pwsh
+        run: ./scripts/spike/win-install.ps1 -Installer artifacts/stable-win-x64-GloomSetup.exe
+
+      - name: Measure
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.install.outputs.folder }}"
+          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-x64 `
+            --launch "$Folder\bin\launcher.exe" `
+            --view-html "$Folder\Resources\app\views\mainview\index.html" `
+            --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-windows-x64
+          path: |
+            spike-results
+            sizes.md
+
+  windows-arm64:
+    needs: windows-x64
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: spike-windows-installer
+          path: installer
+
+      - name: Install
+        id: install
+        shell: pwsh
+        run: ./scripts/spike/win-install.ps1 -Installer installer/stable-win-x64-GloomSetup.exe
+
+      - name: Measure
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.install.outputs.folder }}"
+          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-arm64 `
+            --launch "$Folder\bin\launcher.exe" `
+            --view-html "$Folder\Resources\app\views\mainview\index.html" `
+            --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-windows-arm64
+          path: |
+            spike-results
+            sizes.md
+
+  linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+
+      - name: System libraries, a display and a window manager
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 xvfb openbox xdotool wmctrl x11-utils zstd
+
+      - name: Build the desktop app (stable)
+        run: bun node_modules/electrobun/bin/electrobun.cjs build --env=stable
+
+      - name: Install it
+        id: install
+        run: |
+          set -euo pipefail
+          ls -l artifacts
+          mkdir -p "$RUNNER_TEMP/app"
+          archive="$(ls artifacts/*.tar.zst | head -1)"
+          zstd -d -o "$RUNNER_TEMP/app.tar" "$archive"
+          tar -xf "$RUNNER_TEMP/app.tar" -C "$RUNNER_TEMP/app"
+          folder="$(dirname "$(dirname "$(find "$RUNNER_TEMP/app" -path '*/bin/launcher' | head -1)")")"
+          echo "folder=$folder" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Sizes"
+            echo
+            echo "| file | bytes |"
+            echo "|---|---|"
+            for file in artifacts/*; do echo "| $(basename "$file") | $(stat -c %s "$file") |"; done
+            echo "| installed folder | $(du -sb "$folder" | cut -f1) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
+
+      - name: Measure
+        run: |
+          Xvfb :99 +xinerama -screen 0 1920x1080x24 -screen 1 1920x1080x24 -nolisten tcp &
+          sleep 1
+          DISPLAY=:99 openbox &
+          sleep 1
+          folder="${{ steps.install.outputs.folder }}"
+          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label linux-x64 \
+            --launch "$folder/bin/launcher" \
+            --view-html "$folder/Resources/app/views/mainview/index.html" \
+            --app-root "$folder" --out spike-results --window-probe scripts/spike/linux-window-probe.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-linux-x64
+          path: |
+            spike-results
+            sizes.md
