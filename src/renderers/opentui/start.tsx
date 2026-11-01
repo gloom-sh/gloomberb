@@ -1,6 +1,7 @@
 import { hostname } from "os";
 import { getGloomberbDirs } from "../../data/config/home";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync } from "fs";
+import { makePrivateDirSync } from "../../utils/private-files";
 import { App } from "../../app";
 import { getDataDir, initDataDir, loadConfig, setConfigStoreHost } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
@@ -28,7 +29,7 @@ import { startRemoteControlServer, type RemoteControlServer } from "../../remote
 import { createAppServices } from "../../core/app-services";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
 import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
-import { flushCrashReports, installCrashReporter } from "../../telemetry/crash-reports";
+import { flushCrashReports, installCrashReporter, telemetryOptedOut } from "../../telemetry/crash-reports";
 import {
   CRASH_REPORT_EXIT_FLUSH_MS,
   createNodeCrashReporterHost,
@@ -45,7 +46,7 @@ import { setStallClocks, setStallSink } from "../../utils/main-thread-stall";
 import { createNodeUpdateFailureHost } from "../../telemetry/update-failures-node";
 import { terminalInstallKind } from "../../updater";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
-import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
+import { installAttentionCounter } from "../../telemetry/attention-counts";
 import { starPromptEnvironmentAllows } from "../../app/star-prompt/model";
 import { allowStarPrompt } from "../../app/star-prompt/runtime";
 
@@ -115,7 +116,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     const dataDir = await getDataDir() ?? getGloomberbDirs().data;
 
     if (!existsSync(dataDir)) {
-      mkdirSync(dataDir, { recursive: true });
+      makePrivateDirSync(dataDir);
     }
 
     const config = await measurePerfAsync("startup.opentui.init-data-dir", () => initDataDir(dataDir));
@@ -138,7 +139,10 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       getInstallId: () => readOrCreateInstallId(config.dataDir),
       officialPluginIds: loadOfficialPluginIds,
     });
-    const stopAttention = installAttentionCounter(() => attentionCountsEnabled(currentTelemetryConfig(config), process.env));
+    const stopAttention = installAttentionCounter({
+      allowed: () => !telemetryOptedOut(process.env),
+      launchConfig: () => config,
+    });
     allowStarPrompt(starPromptEnvironmentAllows({
       env: process.env,
       stdinIsTTY: process.stdin.isTTY,

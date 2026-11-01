@@ -183,6 +183,7 @@ function Get-MainPages {
 # in it focused that would take it as text; what the page says about the
 # update is kept for the evidence.
 function Send-RestartKey {
+  $Started = Get-Date
   foreach ($Page in Get-MainPages) {
     try {
       $Replies = Invoke-Cdp $Page.webSocketDebuggerUrl @(
@@ -193,7 +194,7 @@ function Send-RestartKey {
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyDown"; key = "u"; code = "KeyU"; text = "u"; unmodifiedText = "u"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } },
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyUp"; key = "u"; code = "KeyU"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } }
       )
-      Write-Host "Pressed U. The page says: $($Replies[0].result.result.value)"
+      Write-Host ("Pressed U in {0:N1} s. The page says: {1}" -f ((Get-Date) - $Started).TotalSeconds, $Replies[0].result.result.value)
     } catch {
       Write-Host "Could not press U: $($_.Exception.Message)"
     }
@@ -576,14 +577,27 @@ try {
     Write-Host "The page shows: $(Get-PageText)"
     throw "The app did not download the update into $Downloaded"
   }
-  $Restarted = $false
-  for ($Attempt = 0; $Attempt -lt 30 -and -not $Restarted; $Attempt += 1) {
+  # The restart is seen by the app processes that ran before U all ending: a
+  # press can still be waiting on the page while they quit and the updated
+  # app opens in the same folder. Its WebView helpers come and go on their
+  # own, so the quit starts when bun or the launcher ends.
+  $BeforeProcesses = @(Get-ProcessesUnder $InstallDir)
+  $Before = @($BeforeProcesses | ForEach-Object { $_.Id })
+  $BeforeMain = @($BeforeProcesses | Where-Object { $_.ProcessName -in @("bun", "launcher") } | ForEach-Object { $_.Id })
+  if ($BeforeMain.Count -eq 0) { throw "Neither bun nor the launcher runs from $InstallDir before U" }
+  $Quitting = $false
+  for ($Attempt = 0; $Attempt -lt 30 -and -not $Quitting; $Attempt += 1) {
+    $Pressed = Get-Date
     Send-RestartKey
-    $Restarted = Wait-Until 5 { (Get-ProcessesUnder $InstallDir).Count -eq 0 }
+    $Quitting = Wait-Until 5 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count }
   }
-  if (-not $Restarted) {
+  if (-not $Quitting) {
     throw "U did not restart the app into the downloaded update"
   }
+  if (-not (Wait-Until 60 { @(Get-Process -Id $Before -ErrorAction SilentlyContinue).Count -eq 0 })) {
+    throw "U started a restart, but the app still runs 60 s later: $((@(Get-Process -Id $Before -ErrorAction SilentlyContinue) | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
+  }
+  Write-Host ("The app quit {0:N1} s after the last U." -f ((Get-Date) - $Pressed).TotalSeconds)
   Assert-OpensFromInstallerFolder -Label "after-update" -Build $UpdateHash -Gone $UpdaterApp
 
   foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {

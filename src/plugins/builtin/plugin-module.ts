@@ -2,6 +2,7 @@ import { Fragment, createElement, type ReactNode } from "react";
 import type {
   GloomPlugin,
   GloomPluginContext,
+  PaneDef,
 } from "../../types/plugin";
 import { pluginContextInNamespace } from "../registry/plugin-state";
 import { withPluginStateNamespace } from "../runtime/context";
@@ -63,6 +64,19 @@ function moduleEntry(input: PluginModuleInput): PluginModuleEntry {
   return "module" in input ? input : { module: input };
 }
 
+/** Keep a pane's component lazy while moving its state into another plugin. */
+function paneInNamespace(pane: PaneDef, stateId: string): PaneDef {
+  let component: PaneDef["component"] | undefined;
+  return Object.create(Object.getPrototypeOf(pane), {
+    ...Object.getOwnPropertyDescriptors(pane),
+    component: {
+      enumerable: true,
+      configurable: true,
+      get: () => component ??= withPluginStateNamespace(stateId, pane.component),
+    },
+  });
+}
+
 /**
  * The module as it runs under a namespace other than its plugin's: every
  * surface it renders and the context its setup receives are moved there,
@@ -76,7 +90,7 @@ function moduleInNamespace(module: PluginModule, stateId: string): PluginModule 
   return {
     ...module,
     ...(module.panes ? {
-      panes: module.panes.map((pane) => ({ ...pane, component: withPluginStateNamespace(stateId, pane.component) })),
+      panes: module.panes.map((pane) => paneInNamespace(pane, stateId)),
     } : {}),
     ...(slots ? { slots } : {}),
     ...(module.setup ? {
@@ -84,7 +98,7 @@ function moduleInNamespace(module: PluginModule, stateId: string): PluginModule 
         const scoped = pluginContextInNamespace(ctx, stateId);
         return module.setup!({
           ...scoped,
-          registerPane: (pane) => ctx.registerPane({ ...pane, component: withPluginStateNamespace(stateId, pane.component) }),
+          registerPane: (pane) => ctx.registerPane(paneInNamespace(pane, stateId)),
           registerTickerResearchTab: (tab) => ctx.registerTickerResearchTab({
             ...tab,
             component: withPluginStateNamespace(stateId, tab.component),

@@ -10,7 +10,7 @@ export function attentionFixture(overrides: Partial<AttentionPayload> = {}): Att
     priceChangePct: 1.25 - i * .9, relativeVolume: 2.1 - i * .15, marketAsOf: "2026-10-02T15:00:00Z", relativeVolumeAsOf: "2026-10-02T14:00:00Z",
     news: [{ title: "Fixture headline: quarterly business update", url: "https://example.com/fixture-business-update", publishedAt: "2026-10-02T13:00:00Z" }],
     history: Array.from({ length: i === 5 ? 42 : 672 }, (_, j) => ({ bucketStart: new Date(Date.parse(i === 5 ? "2026-10-01T00:00:00Z" : "2026-09-04T18:00:00Z") + j * 3_600_000).toISOString(), researchUnits: Math.max(20, Math.round(((320 - i * 35) * (0.5 + Math.sin(j / 22) * .13)) / 5) * 5), publishedAt: new Date(Date.parse(i === 5 ? "2026-10-01T02:00:00Z" : "2026-09-04T20:00:00Z") + j * 3_600_000).toISOString(), minimumContributors: 20, rounding: 5, lagHours: 1, methodologyVersion: 1 })),
-    evidence: { source: "Gloom opt-in research counts", asOf: "2026-10-02T19:00:00Z", periodStart: "2026-10-02T17:00:00Z", periodEnd: "2026-10-02T18:00:00Z", unit: "rounded researcher-hours", confidence: "privacy-thresholded", methodologyVersion: 1 },
+    evidence: { source: "Gloom research counts", asOf: "2026-10-02T19:00:00Z", periodStart: "2026-10-02T17:00:00Z", periodEnd: "2026-10-02T18:00:00Z", unit: "rounded researcher-hours", confidence: "privacy-thresholded", methodologyVersion: 1 },
   }));
   const total = rows.reduce((sum, row) => sum + row.researchUnits, 0);
   for (const row of rows) {

@@ -1,6 +1,8 @@
 /**
  * Routes the pane screenshot page (cli-pane-shot-entry.tsx) calls on the Bun
- * server that serves it (desktop-pane-shot.ts).
+ * server that serves it (desktop-pane-shot.ts). The server answers only below
+ * the secret folder the page is opened at, so the page reaches each route
+ * relative to its own address (`shotRouteUrl`), never from the server's root.
  */
 export const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
 export const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
@@ -11,13 +13,11 @@ export const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
  * queued behind each other for seconds.
  */
 export const SHOT_API_SOCKET_PATH = "/__gloom_cli_api_socket__";
-/**
- * The socket URL's query parameter holding the token only this capture's page
- * is given: with the page's own origin, what lets a socket in. Any website open
- * in the user's browser can reach the local port, and the replies carry reads
- * made with the user's session.
- */
-export const SHOT_API_SOCKET_TOKEN_PARAM = "token";
+
+/** A route (`SHOT_API_PROXY_PREFIX` and the rest) inside the folder of the page at `pageUrl`. */
+export function shotRouteUrl(route: string, pageUrl: string): URL {
+  return new URL(`.${route}`, new URL("./", pageUrl));
+}
 
 /** A read the page sends over the socket: an API path with its query, and the request's headers. */
 export interface ShotApiSocketCall {

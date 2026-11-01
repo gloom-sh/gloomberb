@@ -1,7 +1,6 @@
 import type { PaneTemplateContext, PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { DEFAULT_FLOATING_SIZE, KELLY_PANE_ID } from "./constants";
-import { KellySizerPane } from "./pane";
 import { kellyHeadless } from "./headless";
 
 function resolveTemplateSymbol(context: PaneTemplateContext, options?: PaneTemplateCreateOptions): string | null {
@@ -21,7 +20,7 @@ export const positionSizerModule: PluginModule = {
       icon: "K",
       // The bankroll is the account's value.
       personalData: "holdings",
-      component: KellySizerPane,
+      get component(): typeof import("./pane").KellySizerPane { const { KellySizerPane } = require("./pane"); return KellySizerPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: DEFAULT_FLOATING_SIZE,

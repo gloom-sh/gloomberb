@@ -1,10 +1,9 @@
 import type { PluginModule } from "../plugin-module";
 import { ratePathCache } from "./client";
 import { ratePathHeadless } from "./headless";
-import { RatePathPane } from "./pane";
 
 export const ratePathModule: PluginModule = {
-  panes: [{ id: "rate-path", name: "US Rate Path", icon: "R", component: RatePathPane,
+  panes: [{ id: "rate-path", name: "US Rate Path", icon: "R", get component(): typeof import("./pane").RatePathPane { const { RatePathPane } = require("./pane"); return RatePathPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 86, height: 30 },
     tableExport: true, headless: ratePathHeadless }],
   paneTemplates: [{

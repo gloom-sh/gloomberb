@@ -10,7 +10,7 @@ import { appendLiveQuotePoint } from "./chart-data";
 import { LiveBarAccumulator } from "./live-bars";
 import { seedChartResolutionResult } from "./chart-seed";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import { buildPriceReturnFields } from "../market-data/performance";
 import { pricePointsToResolvedSeries } from "../components/chart/composite/price-series";
 import { applyCompositeChartCursor, buildCompositeChartScene } from "../components/chart/composite/scene";

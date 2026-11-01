@@ -1245,8 +1245,8 @@ A coin pair's news is the stories filed under its pair. When none are, as for `B
 `ETFF` lists the daily net flows of the US spot bitcoin ETFs (`--asset eth` for ether): one row per US trading day, newest first, with the day's total and each fund's flow in US$ millions, in the order Farside Investors publishes them. Gloom Cloud reads Farside's tables every hour while funds report (20:00 UTC to 14:00 UTC the next morning on trading days) and every six hours otherwise, keeps every page it read, and serves the latest figures. The pane footer names the publisher and `o` opens its table.
 
 - **Pending.** The newest day fills in fund by fund. A fund that reported the day before and shows nothing yet reads `pending`, in the table and in `fn ETFF`, and the day's total is Farside's own total so far, not a sum.
-- **Figures.** Latest day, 5 days and 20 days sum the published daily totals; Since launch is every listed day, from the first fund's launch (2024-01-11 for bitcoin, 2024-07-23 for ether). Days the market was closed are left out.
-- **Chart and range.** The chart draws the running total since launch, over the range the table lists: 1M, 3M, 1Y or All (keys `1`-`4`). The figures above it always use the whole history.
+- **Figures.** Latest day, 5 days and 20 days sum the published daily totals. Days the market was closed are left out.
+- **Chart and range.** The chart draws the running total since the first fund's launch (2024-01-11 for bitcoin, 2024-07-23 for ether), with that date in its legend, over the range the table lists: 1M, 3M, 1Y or All (keys `1`-`4`). The figures above it do not change with the range.
 - **Stale.** When no read has succeeded for two days the footer says so, with the date of the last read.
 
 `gloom fn ETFF` prints the newest 20 days (`--limit` for more, `--json` for every fund's figure and `pending`), with a summary line and the source. `gloom catalog flows` finds it, and so do `ETF flows`, `bitcoin flows` and `ether flows` in search and the command bar.
@@ -1457,6 +1457,26 @@ statistics state, which a CUSIP change causes. Over 100% is shown as partial wit
 reason, since a lent share is reported by its lender and by the fund that bought it.
 Insider ownership is not offered: the stored Form 4 filings cover recent trades, not
 every insider's holdings.
+
+The quality fields use the same bases and definitions as `FA` (see
+[financial-ratios.md](financial-ratios.md)), so a screen and `FA` agree for the same
+company and period. ROIC, FCF yield, net debt / EBITDA and debt / equity read `FA`'s
+leading annual column: the trailing four quarters when they run past the latest
+fiscal year, otherwise that year. ROIC is NOPAT over average invested capital, both
+ends from the same line; FCF yield is free cash flow over the market cap at the
+period's last close; net debt adds lease liabilities outside US GAAP, as `FA` does.
+Each is as of the period end. Revenue and EPS CAGR 3Y and 5Y run from the latest
+fiscal year back three or five years, both years from one series: the stored
+statements when they hold both, otherwise the company's annual SEC filings, the
+series `GF` charts (US filers). The statements keep about five fiscal years, so a 5Y
+CAGR mostly reads the filings. A company whose statement revenue includes a line its
+filings report apart (Walmart's membership income) is never compounded from one into
+the other. EPS is diluted, on the current share basis; a share class reads none from
+the filings, since those report the company's. Forward revenue and EPS growth are the
+growth `EE` shows for the fiscal year in progress: a fiscal year that has ended
+unreported gives way to the next. A field is N/M where `FA` prints N/M: EBITDA, equity
+or average invested capital at or below zero, or a base year at or below zero. A
+missing line is never read as zero.
 
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last

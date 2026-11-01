@@ -1,6 +1,10 @@
-import { expect, test } from "bun:test";
-import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
-import { findFunctionCode, limitationSentence } from "./catalog";
+import { expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { getLoadablePlugins } from "../../plugins/catalog";
+import { createDefaultConfig } from "../../types/config";
+import type { MarketContext } from "../types";
+import { buildPaneCatalogEntries, buildTemplateContext, findFunctionCode, limitationSentence } from "./catalog";
+import { createPaneCatalog } from "./discovery";
 
 test("limitations read as sentences, so one does not run into the next", () => {
   const limitations = ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"];
@@ -36,13 +40,35 @@ test("a function's code or alias is found in any case, with what it takes; a key
   expect(findFunctionCode(registry, "")).toBeNull();
 });
 
-test("DES, the command bar's name for the ticker research pane, is an alias of its function T", () => {
-  const template = tickerDetailModule.paneTemplates!.find((entry) => entry.shortcut?.prefix === "T")!;
-  const registry = {
-    panes: new Map([[template.paneId, { id: template.paneId, name: template.label }]]),
-    paneTemplates: new Map([[template.id, template]]),
-    destroy() {},
-  } as never;
-  expect(findFunctionCode(registry, "T")).toEqual({ argument: "<ticker>" });
-  expect(findFunctionCode(registry, "des")).toEqual({ argument: "<ticker>" });
+test("built-in catalog discovery stays offline while opening chat and chokepoint panes still resolves live arguments", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([
+    { id: "startup-test-channel", name: "Startup test", created_at: "2026-01-01" },
+  ]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const fetch = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Discovery must stay offline"));
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context, { unlisted: true });
+    expect(channels).not.toHaveBeenCalled();
+    expect(geo).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(entries.find((entry) => entry.token === "CHAT")?.defaultSettings).toEqual({});
+    expect(entries.find((entry) => entry.token === "CHOKE")?.defaultSettings).toEqual({});
+
+    const chat = registry.paneTemplates.get("new-chat-pane")!;
+    const openedChat = await chat.createInstance!(buildTemplateContext(context, null), { arg: "startup-test-channel" });
+    expect(openedChat?.settings?.channelId).toBe("startup-test-channel");
+    expect(channels).toHaveBeenCalledTimes(1);
+
+    const choke = registry.paneTemplates.get("chokepoint-chart-pane")!;
+    const openedChart = await choke.createInstance!(buildTemplateContext(context, null), { arg: "suez" });
+    expect(openedChart?.settings).toHaveProperty("chartSpec");
+    expect(geo).toHaveBeenCalledTimes(1);
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+    fetch.mockRestore();
+  }
 });

@@ -1,26 +1,15 @@
-import { CLI_COMMAND_GROUPS } from "../../../cli/help";
-import { rowsFreshness } from "../../../cli/freshness";
-import { humanizeCliKey } from "../../../cli/result";
+import { fearGreedPluginMeta } from "../builtin-plugin-meta";
+import { fearGreedCliCommand } from "./cli";
 import type { GloomPlugin } from "../../../types/plugin";
 import {
   attachFearGreedPersistence,
-  loadFearGreed,
   resetFearGreedPersistence,
 } from "./cache";
-import { FearGreedPane } from "./pane";
 import { fearGreedHeadless } from "./headless";
 import { FEAR_GREED_SERIES } from "./series";
 
-const SCORE_KEYS = new Set(["score", "previousClose", "previousWeek", "previousMonth", "previousYear"]);
-/** A score to a tenth of a point (17.9); a missing one leaves its cell empty, as before. */
-const scoreTenths = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(1) : "";
-
 export const fearGreedPlugin: GloomPlugin = {
-  id: "fear-greed",
-  name: "Fear & Greed",
-  version: "1.0.0",
-  description: "CNN Fear & Greed index with the seven indicator charts",
-  toggleable: true,
+  ...fearGreedPluginMeta,
 
   // One JSON endpoint over HTTPS, so every renderer. CNN sends no CORS
   // headers and wants a Referer, which is why the host is declared: the web
@@ -44,7 +33,7 @@ export const fearGreedPlugin: GloomPlugin = {
       id: "fear-greed",
       name: "Fear & Greed",
       icon: "G",
-      component: FearGreedPane,
+      get component(): typeof import("./pane").FearGreedPane { const { FearGreedPane } = require("./pane"); return FearGreedPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 36 },
@@ -63,42 +52,5 @@ export const fearGreedPlugin: GloomPlugin = {
     },
   ],
 
-  // `gloom fear-greed`, as before the plugin moved out of the host. Runs
-  // without the pane cache attached when invoked from the CLI, so it always
-  // fetches, which is what a CLI call wants anyway.
-  cliCommands: [
-    {
-      name: "fear-greed",
-      description: "Fetch CNN Fear & Greed gauge data",
-      help: { group: CLI_COMMAND_GROUPS.markets },
-      async execute(_args, ctx) {
-        const { data, stale } = await loadFearGreed(ctx.cliOptions.refresh);
-        const rows = [{
-          score: data.overall.score,
-          rating: data.overall.rating,
-          updatedAt: data.overall.updatedAt?.toISOString() ?? "",
-          previousClose: data.overall.previousClose,
-          previousWeek: data.overall.previousWeek,
-          previousMonth: data.overall.previousMonth,
-          previousYear: data.overall.previousYear,
-        }];
-        ctx.printResult({
-          data: rows,
-          // Exports cite CNN's reading as `fn FNG` does; the text stays the row alone.
-          exportFreshness: rowsFreshness(rows, { source: "CNN", status: stale ? "stale" : "not-a-feed", basis: "published index" }),
-          metadata: {
-            indicators: data.indicators.map((indicator) => ({
-              id: indicator.definition.id,
-              score: indicator.score,
-              rating: indicator.rating,
-            })),
-          },
-        }, {
-          // Scores read to a tenth of a point on the text table; exports keep every digit.
-          textColumns: Object.keys(rows[0]!).map((key) => ({ key, header: humanizeCliKey(key),
-            ...(SCORE_KEYS.has(key) ? { align: "right" as const, format: scoreTenths } : {}) })),
-        });
-      },
-    },
-  ],
+  cliCommands: [fearGreedCliCommand],
 };

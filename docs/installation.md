@@ -125,4 +125,6 @@ The variable moves the whole folder. A `config.json` carried along that still na
 
 On Linux, a new install with no `~/.gloomberb` and no `GLOOMBERB_HOME` follows the XDG Base Directory spec instead: `config.json` in `~/.config/gloomberb`, the database and installed plugins in `~/.local/share/gloomberb`, and the plugin cache in `~/.cache/gloomberb` (or wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` point). An existing `~/.gloomberb` keeps being used and is never moved, and once the XDG `config.json` exists it stays in use even if a `~/.gloomberb` appears later.
 
+On macOS and Linux the data folder and the folder holding `config.json` are open to your account alone (mode 700), and `config.json`, which holds broker credentials, the database and the logs are readable by you alone (mode 600). Each launch sets these modes again, so a profile made by an older version is tightened too.
+
 `gloom version` prints the data directory in use.

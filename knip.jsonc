@@ -15,8 +15,6 @@
     "scripts/pane-chrome/sync-poll-fixture.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
-    // Built by path into the Windows launcher by scripts/install-electrobun-tui-shim.ts.
-    "src/renderers/electrobun/launcher/preload.ts",
     "src/renderers/electrobun/view/main.tsx",
     "src/renderers/electrobun/view/app-services.ts",
     "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",

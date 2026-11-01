@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getTimeSeriesField } from "./field-catalog";
 import { normalizeChartSpec, validateChartSpec } from "./spec";
-import { maxStudyWarmupPoints, resolveStudies } from "./studies";
+import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import { applyResolvedSeriesTransform } from "./transforms";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import { createTestResolvedSeries, createTestSeriesPoint } from "../test-support/time-series";

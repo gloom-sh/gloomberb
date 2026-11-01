@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { extractPriceSeries, marketSeriesFrequency } from "./market";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import type { ChartStudySpec, ResolvedSeries, SecuritySeriesSource } from "./types";
 
 const source: SecuritySeriesSource = { kind: "security", instrument: { symbol: "BTC-USD", exchange: "CCC" }, fieldId: "market.ohlcv" };

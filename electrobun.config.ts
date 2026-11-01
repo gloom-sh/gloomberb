@@ -15,6 +15,17 @@ const WINDOWS_RELEASE_CHROMIUM_FLAGS = {
   "remote-allow-origins": false,
 };
 
+/**
+ * The Bun that Windows builds ship, in place of the 1.3 Electrobun brings.
+ * Bun 1.3 runs every bun:ffi call and callback through code it writes into
+ * heap memory and marks executable. Windows' heap later commits that memory
+ * again as read-write, and the app crashes the next time native code calls one
+ * of Electrobun's callbacks (often the window's first event, seconds after it
+ * opens). Bun 1.4 keeps that code in its own executable memory. Windows builds
+ * run on Windows.
+ */
+const WINDOWS_BUN_VERSION = "1.4.4";
+
 const config: ElectrobunConfig = {
   app: {
     // The bundle, the macOS menu bar and Dock, the update archives. Releases
@@ -34,6 +45,7 @@ const config: ElectrobunConfig = {
     copy: {
       "dist/electrobun-view": "views/mainview",
     },
+    ...(process.platform === "win32" ? { bunVersion: WINDOWS_BUN_VERSION } : {}),
     watch: [
       "src",
       "scripts/build-electrobun-view.ts",

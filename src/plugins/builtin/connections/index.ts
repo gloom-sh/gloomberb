@@ -1,7 +1,6 @@
 import type { PluginCapability } from "../../../capabilities";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginModule } from "../plugin-module";
-import { ConnectionsPane } from "./pane";
 
 export const CONNECTION_HEALTH_CAPABILITY_ID = "application.connection-health";
 
@@ -35,7 +34,7 @@ export const connectionsModule: PluginModule = {
     name: "Connections",
     personalData: "account",
     icon: "C",
-    component: ConnectionsPane,
+    get component(): typeof import("./pane").ConnectionsPane { const { ConnectionsPane } = require("./pane"); return ConnectionsPane; },
     reportFreshness: { status: "not-a-feed", basis: "connection health", local: true },
     defaultPosition: "right",
     defaultMode: "floating",

@@ -3,17 +3,14 @@ import { createInitialState } from "../../../../state/app/context";
 import { createDefaultConfig } from "../../../../types/config";
 import { reportTelemetryConfig, subscribeTelemetryConfig } from "../../../../telemetry/live-config";
 import type { PluginRegistry } from "../../../../plugins/registry";
-import type { ConfirmModalOptions } from "../../../form-modal/request";
 import { commands } from "../registry";
 import { runDirectCommandAction } from "./index";
 
-test("attention requires a separate confirmation, keeps current settings and disables synchronously", async () => {
+test("Attention Counts starts on: the toggle switches it off at once, then back on, keeping the notice record", () => {
   let state = createInitialState(createDefaultConfig("/tmp/attention-command"));
-  state.config.telemetry = { usage: true };
-  let confirmation: ConfirmModalOptions | undefined;
-  let saves = 0;
-  let changes = 0;
-  const stop = subscribeTelemetryConfig(() => { changes += 1; });
+  state.config.telemetry = { usage: false, attentionNoticeShownTo: ["user-1"] };
+  const reported: unknown[] = [];
+  const stop = subscribeTelemetryConfig(() => { reported.push(structuredClone(state.config.telemetry)); });
   const nothing = () => {};
   const run = () => runDirectCommandAction({
     command: commands.find((entry) => entry.id === "toggle-attention-counts")!,
@@ -22,29 +19,17 @@ test("attention requires a separate confirmation, keeps current settings and dis
     openBuiltInWorkflow: nothing, openModeRoute: nothing, openPaneSettings: nothing,
     pushRoute: nothing, quitApp: nothing, runSecurityDescriptionShortcut: nothing,
     setRootQuery: nothing, setRootThemeBaseId: nothing, cancelThemePreview: nothing,
-    pluginRegistry: {} as PluginRegistry, getState: () => state,
-    openInlineConfirm: (request) => { confirmation = request; },
+    pluginRegistry: {} as PluginRegistry, getState: () => state, openInlineConfirm: nothing,
     dispatch: (action) => { if (action.type === "SET_CONFIG") state = { ...state, config: action.config }; },
-    persistConfig: () => { saves += 1; },
+    persistConfig: nothing,
   });
   try {
     run();
-    expect(confirmation).toBeDefined();
-    expect(state.config.telemetry?.attention).toBeUndefined();
-    expect(saves).toBe(0);
-    expect(changes).toBe(0);
-    // Another setting changed while the dialog was open must survive consent.
-    state = { ...state, config: { ...state.config, telemetry: { usage: false } } };
-    await confirmation!.onConfirm();
-    expect(state.config.telemetry).toEqual({ usage: false, attention: true });
-    expect(saves).toBe(1);
-    expect(changes).toBe(1);
-    confirmation = undefined;
+    expect(state.config.telemetry).toEqual({ usage: false, attentionNoticeShownTo: ["user-1"], attention: false });
+    // Reported before the settings update commits, so the collector drops unsent counts first.
+    expect(reported).toEqual([{ usage: false, attentionNoticeShownTo: ["user-1"] }]);
     run();
-    expect(confirmation).toBeUndefined();
-    expect(state.config.telemetry).toEqual({ usage: false, attention: false });
-    expect(saves).toBe(2);
-    expect(changes).toBe(2);
+    expect(state.config.telemetry?.attention).toBe(true);
   } finally {
     stop();
     reportTelemetryConfig(undefined);

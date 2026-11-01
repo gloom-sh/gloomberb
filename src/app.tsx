@@ -31,7 +31,7 @@ import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-ser
 import { useThemeColors } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
-import type { CliLaunchRequest, GloomPlugin } from "./types/plugin";
+import type { AppNotificationRequest, CliLaunchRequest, GloomPlugin } from "./types/plugin";
 import type { DataProvider } from "./types/data-provider";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "./types/desktop-window";
 import type { DesktopApplicationMenuBridge } from "./types/desktop-menu";
@@ -70,6 +70,7 @@ import { AppLanguageConfigObserver } from "./app/language-observer";
 import { isPaneShareHandoff } from "./shares/location";
 import { apiClient } from "./api-client";
 import { reportTelemetryConfig } from "./telemetry/live-config";
+import { AttentionCountsNotice } from "./app/attention-notice";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
@@ -228,6 +229,7 @@ function AppInner({
             onClick: dismissAfter(() => notification.secondaryAction?.onClick()),
           }
           : undefined,
+        onShown: notification.onShown,
       };
       if (type === "success") toastId = toast.success(notification.body, options);
       else if (type === "error") toastId = toast.error(notification.body, options);
@@ -237,6 +239,9 @@ function AppInner({
   }), [rendererHost, toast]);
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });
+  }, [pluginRegistry]);
+  const notifyRequest = useCallback((request: AppNotificationRequest) => {
+    pluginRegistry.notify(request);
   }, [pluginRegistry]);
 
   useEffect(() => {
@@ -495,6 +500,7 @@ function AppInner({
             />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
+          {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}
           <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard

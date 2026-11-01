@@ -6,7 +6,6 @@ import { doeBoardCache } from "./client";
 import { doePriceCache } from "./prices";
 import { doeGasWord, doeHeadless } from "./headless";
 import { DOE_SERIES_OPTIONS, doeSeriesOption } from "./model";
-import { DoePane } from "./pane";
 
 /** Opens on a tab, or on the series typed after the mnemonic and its tab. */
 function doeInstance(tab: DoeTab, options?: PaneTemplateCreateOptions): PaneTemplateInstanceConfig {
@@ -25,7 +24,7 @@ const shortcut = (prefix: string, tab: DoeTab | null) => ({
 
 export const doeModule: PluginModule = {
   series: DOE_CATALOG_SERIES,
-  panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", component: DoePane,
+  panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", get component(): typeof import("./pane").DoePane { const { DoePane } = require("./pane"); return DoePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 34 },
     tableExport: true, headless: doeHeadless("all") }],
   paneTemplates: [{

@@ -109,6 +109,9 @@ export function createRootCommandItemBuilder({
         if (state.updateProgress?.phase === "ready") return "Update ready, restart to apply";
         if (state.updateProgress?.phase === "error") return failedUpdateLabel(state.updateProgress);
         return command.label;
+      // Unlike its neighbours it started out off, so the row says what the default is now.
+      case "toggle-attention-counts":
+        return `${command.label} (on by default)`;
       default:
         return command.label;
     }
@@ -175,9 +178,9 @@ export function createRootCommandItemBuilder({
       case "toggle-usage-counts":
         return state.config.telemetry?.usage === false ? "Currently off" : "Currently on";
       case "toggle-attention-counts":
-        return state.config.telemetry?.attention === true
-          ? "Currently on: share ticker research counts"
-          : "Currently off: opt in to sharing ticker research counts";
+        return state.config.telemetry?.attention === false
+          ? "Currently off. Signed in, this turns it off on your other devices too"
+          : "Currently on: tickers you open go to Gloom, published only as hourly totals of 20+ people";
       case "release-channel":
         if (resolveUpdateChannel(state.config) === "nightly") return `Currently nightly: ${NIGHTLY_CHANNEL_SUMMARY}`;
         return isPrereleaseVersion(VERSION)
@@ -201,7 +204,7 @@ export function createRootCommandItemBuilder({
       case "toggle-usage-counts":
         return state.config.telemetry?.usage === false ? "off" : "on";
       case "toggle-attention-counts":
-        return state.config.telemetry?.attention === true ? "on" : "off";
+        return state.config.telemetry?.attention === false ? "off" : "on";
       case "release-channel":
         return resolveUpdateChannel(state.config);
       default:

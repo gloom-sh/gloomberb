@@ -1,10 +1,7 @@
-import { BuildoutPane } from "./pane";
-import { BUILDOUT_COMPANY_PANE_ID, BuildoutCompanyPane } from "./company/pane";
-import { facilitiesLayer } from "./facilities";
+import { BUILDOUT_COMPANY_PANE_ID } from "./company/id";
 import type { PluginModule } from "../plugin-module";
 import type { PaneReportOptionDef } from "../../../types/plugin";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { registerLocalGeoLayer } from "../world-venue-map/local-layers";
 
 let removeFacilities: (() => void) | null = null;
 
@@ -20,6 +17,8 @@ const COMPANY_TAB_OPTION: PaneReportOptionDef = {
 export const buildoutModule: PluginModule = {
   // Facilities join the world map's layers for as long as the plugin is on.
   setup() {
+    const { facilitiesLayer } = require("./facilities") as typeof import("./facilities");
+    const { registerLocalGeoLayer } = require("../world-venue-map/local-layers") as typeof import("../world-venue-map/local-layers");
     removeFacilities?.();
     removeFacilities = registerLocalGeoLayer(facilitiesLayer);
   },
@@ -32,7 +31,7 @@ export const buildoutModule: PluginModule = {
     reportFreshness: { status: "not-a-feed", basis: "infrastructure research" },
     name: "TheBuildout",
     icon: "T",
-    component: BuildoutPane,
+    get component(): typeof import("./pane").BuildoutPane { const { BuildoutPane } = require("./pane"); return BuildoutPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 110, height: 34 },
@@ -44,7 +43,7 @@ export const buildoutModule: PluginModule = {
     // Short, since a linked pane's title adds the ticker and what it follows.
     name: "Buildout",
     icon: "T",
-    component: BuildoutCompanyPane,
+    get component(): typeof import("./company/pane").BuildoutCompanyPane { const { BuildoutCompanyPane } = require("./company/pane"); return BuildoutCompanyPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 120, height: 32 },

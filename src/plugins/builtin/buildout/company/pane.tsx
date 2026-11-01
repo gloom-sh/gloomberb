@@ -28,6 +28,7 @@ import { CLOUD_PLAN_KEY } from "../../shared/cloud-upgrade";
 import { useOpenDescription } from "../../shared/open-description";
 import { renderBuildoutCell } from "../cells";
 import { BuildoutDetail } from "../detail";
+import { BUILDOUT_COMPANY_PANE_ID } from "./id";
 import { metricNumber, moneyText, text, tickerSearchText, tickerSymbol } from "../format";
 import type { BuildoutColumn, BuildoutRow, BuildoutUpdate } from "../model/types";
 import { rowKey } from "../table-model";
@@ -42,7 +43,6 @@ import {
   type BuildoutRelation,
 } from "./model";
 
-export const BUILDOUT_COMPANY_PANE_ID = "buildout-company";
 const UPGRADE_URL = "https://thebuildout.ai/pricing";
 
 export type CompanyTab = "flow" | "sites" | "hiring" | "signals";

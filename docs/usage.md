@@ -606,7 +606,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `FUT` | Futures quote aliases across index, equity sectors, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
-| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical screens, saved screens and export |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, returns on capital and leverage, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical and fundamental screens, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
@@ -1013,7 +1013,7 @@ Running `gloom` with no arguments launches the terminal UI. Normal commands run 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
 - `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
-- `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
+- `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
 - Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
 
 **Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set to a non-empty value (an empty `NO_COLOR` is the same as unset) or the output is not a terminal (piped or redirected). `--no-plain` turns it off, piped or not.
@@ -1648,7 +1648,7 @@ The free routes the wall names, only when they have data for the ticker:
 | `fn JOBS NEM` | `fn HIRE NEM`, the free preview of the same hiring data |
 | `fn FLOW [ticker]` | `options <ticker>`, a chain with each contract's volume and open interest |
 
-`gloom config set telemetry.crashReports false` turns off automatic crash reports, and `gloom config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
+`gloom config set telemetry.crashReports false` turns off automatic crash reports, `gloom config set telemetry.usage false` turns off anonymous usage counts and the command bar search log, and, with Gloom closed, `gloom config set telemetry.attention false` turns off Attention Counts, the ticker research counts that are on by default (in the app, run Attention Counts in the command bar); see [Crash reports and usage counts](telemetry.md) for what each contains.
 
 On the third day you open the terminal app, after a minute on screen, the status bar asks once to star Gloom on GitHub. `Alt+Enter` opens the repository, `Alt+Backspace` or the × hides the line, and it never comes back either way. `gloom config set starPrompt.enabled false` turns it off before it ever shows.
 
@@ -2488,6 +2488,12 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
   - **INST OWN%** (`institutionalOwnershipPercent`): shares 13F filers reported for the latest complete quarter, each filer once, over the balance-sheet share count at that quarter end, as of the quarter end. Unavailable where no balance sheet falls within 7 days of the quarter end, or where the 13F holdings and the share count may not be the same shares, such as across a split or a CUSIP change. Over 100% is shown as partial with its reason: lent shares are reported by the lender and by the fund that bought them.
 
   A settlement more than 45 days old, a count no filing dates or a float above the shares outstanding leaves the field unavailable with its reason, never an old or mismatched value. Partial values screen and sort like any other: `floatShares lte 20M` with `shortPercentOfFloat gte 20` finds small, heavily shorted floats. There is no insider ownership field: the stored Form 4 filings do not reach every insider's holdings.
+- **Quality**, on the bases `FA` and `EE` use, so a screen and `FA` agree for the same company and period:
+  - **ROIC%** (`roicPercent`), **FCF YLD%** (`fcfYieldPercent`), **ND/EBITDA** (`netDebtToEbitda`) and **D/E** (`debtToEquity`): `FA`'s profitability, valuation and leverage ratios for its leading annual column, the trailing four quarters or the fiscal year when those quarters are it, each as of that period's end. FCF yield prices the period at its own close, as `FA`'s Valuation tab does.
+  - **REV CAGR 3Y%**, **REV CAGR 5Y%**, **EPS CAGR 3Y%** and **EPS CAGR 5Y%** (`revenueCagr3YPercent`, ...): compound annual growth from the fiscal year three or five years before the latest. Both years come from the stored statements, or both from the annual SEC filings `GF` charts (US filers), never one of each. EPS is diluted, on today's share basis.
+  - **FWD REV GR%** and **FWD EPS GR%** (`forwardRevenueGrowthPercent`, `forwardEpsGrowthPercent`): the consensus growth `EE` shows for the fiscal year in progress, as of when the consensus was read.
+
+  N/M marks a value `FA` would print N/M (EBITDA, equity or invested capital at or below zero, a base year at or below zero), kept apart from a missing one; both fail a comparison. `roicPercent gte 15` with `netDebtToEbitda lte 2` finds high returns on a light balance sheet.
 - **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal year over net income attributable to the parent, from SEC filings, so US filers only; unavailable when the income is zero or negative.
 - **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`, `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that stopped reads -100%; a company with too short a history or none paid in the base year has none. Distribution history is stored for most large USD payers and fewer elsewhere.
 
@@ -2501,7 +2507,7 @@ Results lead with the chosen metric and its covered-universe percentile, then on
 - Click a metric header to sort by it and make it the focus, again to reverse. The footer shows matches, covered listings, currency and the snapshot time.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 
-**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
+**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
 
 `s` saves a named screen to your Cloud account, **Saved** restores one, and **Save copy** creates another (saving an existing screen updates its revision). Conflicting edits from another device are reported. `x` exports all matches from the displayed snapshot, up to 5,000 rows, and the pane CSV menu exports the loaded rows. Expired snapshots ask for a refresh first.
 
@@ -2532,11 +2538,12 @@ gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria"
 gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
 ```
 
-`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
+`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`, `value`, `quality`, `garp`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
 
 ```sh
 gloom fn EQS --preset golden-cross
 gloom fn EQS --preset oversold-uptrend --metric priceVsSma200Percent --csv
+gloom fn EQS --preset quality --metric netDebtToEbitda
 ```
 
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app attention are Pro. On Free their rows read `locked` and the report says so once (`The free screener shows no KPI values; Gloom Pro shows each company's Backlog`). With Pro, a KPI column with gaps says how many rows have none, and missing data is not zero.

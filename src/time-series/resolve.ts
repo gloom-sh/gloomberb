@@ -43,7 +43,7 @@ import { FORWARD_PE_BASIS_NOTICE, REALIZED_NTM_PE_BASIS_NOTICE } from "./forward
 import { valuationPriceWarning } from "./valuation-price";
 import { VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
 import { chartPriceHistoryIntegrityNotices } from "./market";
-import { maxStudyWarmupPoints, resolveStudies } from "./studies";
+import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
 import { totalReturnSeries } from "./total-return";
 import {

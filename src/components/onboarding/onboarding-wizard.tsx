@@ -20,7 +20,7 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
-import { proStepCopy, proStepRealtimeTitle } from "../../account/upgrade-dialog";
+import { proStepCopy } from "../../account/upgrade-dialog";
 import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
@@ -254,10 +254,9 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     : null;
   const helpFocused = focusedInstance?.paneId === "help";
   const {
-    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree, personalTickers,
+    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
   } = useOnboardingUpgrade({
     stage, progress, saveProgressInBackground, persistProgress,
-    shown: !helpFocused && !dialogOpen && !commandBarOpen,
   });
 
   const goToSection = useCallback((section: OnboardingSectionId) => {
@@ -324,7 +323,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    personalTickers, goBack, rerun,
+    goBack, rerun,
   };
 }
 
@@ -339,7 +338,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    personalTickers, goBack, rerun,
+    goBack, rerun,
   } = useOnboardingWizard(props);
 
   if (helpFocused) {
@@ -653,7 +652,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
       : proCopy.note;
     // Ranked: the data itself first, then what reads it.
     const features = [
-      { title: proStepRealtimeTitle(personalTickers), description: t("Free is 15 minutes behind on quotes and 12 hours on news.") },
+      { title: t("Real-time market data"), description: t("Free is 15 minutes behind on quotes and 12 hours on news.") },
       { title: t("MCP server"), description: t("Claude Code, Codex or Cursor call Gloom's research tools.") },
       { title: t("Ask Gloom"), description: t("Answers cite filings, calls and news.") },
       { title: t("Earnings calls"), description: t("Transcripts, summaries, guidance and scores.") },

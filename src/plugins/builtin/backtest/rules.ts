@@ -1,4 +1,4 @@
-import { ema, rsi, sma, type IndexedValue } from "../../../time-series/studies";
+import { ema, rsi, sma, type IndexedValue } from "../../../time-series/studies/indicators";
 
 /** One daily bar as the rules see it. Open is optional; fills fall back to the close. */
 export interface BacktestBar {

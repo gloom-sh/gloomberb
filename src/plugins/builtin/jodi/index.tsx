@@ -1,7 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { jodiHeadless } from "./headless";
 import { JODI_PANE_ID } from "./model";
-import { JodiPane } from "./pane";
 
 export const jodiModule: PluginModule = {
   panes: [
@@ -9,7 +8,7 @@ export const jodiModule: PluginModule = {
       id: JODI_PANE_ID,
       name: "Oil and Gas Balances",
       icon: "O",
-      component: JodiPane,
+      get component(): typeof import("./pane").JodiPane { const { JodiPane } = require("./pane"); return JodiPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 30 },

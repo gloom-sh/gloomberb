@@ -53,6 +53,17 @@ describe("detached desktop snapshots", () => {
     }, "ticker-detail:main")).not.toBe(key);
   });
 
+  test("takes a telemetry change, so Turn off in the main window stops a popped-out window counting", () => {
+    const snapshot = createSnapshot();
+    const take = createDetachedSnapshotFilter("ticker-detail:main", snapshot);
+    const turnedOff: DesktopSharedStateSnapshot = {
+      ...snapshot,
+      config: { ...snapshot.config, telemetry: { attention: false } },
+    };
+
+    expect(take(turnedOff)?.config.telemetry?.attention).toBe(false);
+  });
+
   test("drops a state that changes only the tabs or font size, then takes the next one its pane changed, whole", () => {
     const snapshot = createSnapshot();
     const take = createDetachedSnapshotFilter("ticker-detail:main", snapshot);

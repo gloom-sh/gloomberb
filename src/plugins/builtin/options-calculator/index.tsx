@@ -3,7 +3,6 @@ import {
   OPTIONS_CALCULATOR_PANE_ID,
   OPTIONS_CALCULATOR_TEMPLATE_ID,
 } from "./model";
-import { OptionsCalculatorPane } from "./pane";
 import { optionsCalculatorHeadless } from "./headless";
 
 export const optionsCalculatorModule: PluginModule = {
@@ -12,7 +11,7 @@ export const optionsCalculatorModule: PluginModule = {
       id: OPTIONS_CALCULATOR_PANE_ID,
       name: "Options Calculator",
       icon: "V",
-      component: OptionsCalculatorPane,
+      get component(): typeof import("./pane").OptionsCalculatorPane { const { OptionsCalculatorPane } = require("./pane"); return OptionsCalculatorPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 28 },
