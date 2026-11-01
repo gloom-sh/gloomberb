@@ -121,6 +121,37 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
   return financials;
 }
 
+/** Where a ticker's snapshot load stands, for a pane with nothing of it to show yet. */
+export interface TickerSnapshotState {
+  /** Asked for, or about to be, with no answer yet. */
+  loading: boolean;
+  /** Why the last load came back with nothing, or null. */
+  error: string | null;
+  /** Asks again now, past a recent failure. */
+  retry: () => Promise<void>;
+}
+
+/** The snapshot load behind `useTickerFinancials`, as its entry stands. */
+export function useTickerSnapshotState(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): TickerSnapshotState {
+  const instrument = useTickerInstrument(symbol, ticker);
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
+  const keys = useMemo(() => (instrument ? [buildSnapshotKey(instrument)] : []), [instrumentKey]);
+  useCoordinatorKeysVersion(keys);
+  const coordinator = getSharedMarketDataCoordinator();
+  const entry = coordinator && instrument ? coordinator.getSnapshotEntry(instrument) : null;
+  const retry = useCallback(async () => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (coordinator && instrument) await coordinator.loadSnapshot(instrument, { forceRefresh: true });
+  }, [instrumentKey]);
+  const failed = !!entry && (entry.phase === "error" || entry.phase === "ready") && entry.error != null;
+  return {
+    // Idle is a load the hook is about to start.
+    loading: !!entry && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
+    error: failed ? entry.error!.message : null,
+    retry,
+  };
+}
+
 function buildTickerFinancialsKeys(tickers: TickerRecord[], options: TickerInstrumentOptions = {}): string[] {
   const keys: string[] = [];
   for (const ticker of tickers) {
@@ -188,6 +219,8 @@ interface PatchedMapSlot<K, V> {
 interface PatchedMapState<K, V> {
   signature: string;
   coordinator: SharedCoordinator | null;
+  /** The subscribed keys' summed version when the slots were last read. */
+  aggregateVersion: number;
   slots: Array<PatchedMapSlot<K, V>>;
   versions: number[];
   backing: Map<K, V>;
@@ -224,18 +257,22 @@ function usePatchedMap<K, V>(
       versions.push(slotVersion(slot, versionOf, aggregateVersion));
     }
     const view = new RetainedMapView(backing);
-    state = { signature, coordinator, slots, versions, backing, view };
+    state = { signature, coordinator, slots, versions, backing, view, aggregateVersion };
     stateRef.current = state;
     return view;
   }
 
+  // Key versions only grow, so an unchanged sum means no slot moved: a render
+  // for any other reason skips reading every slot's versions. Both are kept
+  // only once read, so a read that throws is tried again on the next render.
+  if (aggregateVersion === state.aggregateVersion) return state.view;
   let changed = false;
   for (let index = 0; index < state.slots.length; index += 1) {
     const slot = state.slots[index]!;
     const version = slotVersion(slot, versionOf, aggregateVersion);
     if (version === state.versions[index]) continue;
-    state.versions[index] = version;
     const value = slot.read();
+    state.versions[index] = version;
     if (value == null) {
       if (state.backing.delete(slot.key)) changed = true;
     } else if (state.backing.get(slot.key) !== value) {
@@ -243,6 +280,7 @@ function usePatchedMap<K, V>(
       changed = true;
     }
   }
+  state.aggregateVersion = aggregateVersion;
   if (!changed) return state.view;
   const view = new RetainedMapView(state.backing);
   state.view = view;
@@ -260,7 +298,9 @@ export function useTickerFinancialsMap(
 ): Map<string, TickerFinancials> {
   const coordinator = getSharedMarketDataCoordinator();
   const optionsKey = options.portfolioId ?? "";
-  const tickerKey = buildTickerFinancialsMapKey(tickers, options);
+  // Per list, not per render: a quote tick re-renders the pane but leaves its
+  // rows (immutable records, replaced when they change) and portfolio alone.
+  const tickerKey = useMemo(() => buildTickerFinancialsMapKey(tickers, options), [optionsKey, tickers]);
   const subscriptionKeys = useMemo(() => buildTickerFinancialsKeys(tickers, options), [optionsKey, tickerKey]);
   const keysVersion = useCoordinatorKeysVersion(subscriptionKeys);
 

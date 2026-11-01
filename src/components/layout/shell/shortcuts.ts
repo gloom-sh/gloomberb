@@ -50,7 +50,7 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
 
 export type PaneManagementAccelerators = Record<
   "menu" | "settings" | "fullscreen" | "newLayout" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "ask" | "close"
-  | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode",
+  | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode" | "tickerSearch",
   string | undefined
 >;
 
@@ -65,6 +65,8 @@ export function paneManagementAccelerators(
   mode: ShortcutDisplayMode = "platform",
 ): PaneManagementAccelerators {
   const terminalAsk = mode === "terminal" ? advertisedChord(keybindings, "pane-ask", "terminal") : null;
+  // The backtick has no modifier, so it is said as the terminal advertises it.
+  const tickerSearch = advertisedChord(keybindings, "ticker-search", mode);
   return {
     menu: menuAcceleratorFor(keybindings, "pane-menu"),
     settings: menuAcceleratorFor(keybindings, "pane-settings"),
@@ -82,6 +84,7 @@ export function paneManagementAccelerators(
     gridlockAll: menuAcceleratorFor(keybindings, "tidy-windows"),
     windowMode: menuAcceleratorFor(keybindings, "window-move-mode"),
     windowResizeMode: menuAcceleratorFor(keybindings, "window-resize-mode"),
+    tickerSearch: tickerSearch ? serializeKeyChord(tickerSearch) : undefined,
   };
 }
 

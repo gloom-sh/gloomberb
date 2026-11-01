@@ -173,6 +173,9 @@ export const ko: Record<string, string> = {
   "Reset Layout": "레이아웃 재설정",
   "Reset Current Layout": "현재 레이아웃 재설정",
   "Security Description": "종목 상세",
+  "Change ticker": "종목 변경",
+  "Change ticker · {pane}": "종목 변경 · {pane}",
+  "New pane": "새 패널",
 
   // ── Core command descriptions ────────────────────────────────
   "Show or hide the keyboard shortcuts bar": "키보드 단축키 표시줄 표시 또는 숨기기",
@@ -218,6 +221,7 @@ export const ko: Record<string, string> = {
   "Create or update a manual position without leaving the command bar.": "명령 팔레트에서 수동 포지션을 만들거나 업데이트합니다.",
   "Organize panes and saved layouts.": "패널과 저장된 레이아웃을 관리합니다.",
   "Resolve a ticker, then open its Ticker Research pane.": "종목코드를 확인한 뒤 종목 리서치 패널을 엽니다.",
+  "Resolve a ticker for the focused pane, or open it in a new pane.": "포커스 패널의 종목코드를 확인하거나 새 패널에서 엽니다.",
   "Toggle optional plugins without leaving the command bar.": "명령 팔레트에서 선택 플러그인을 켜거나 끕니다.",
 
   // ── Layout actions ───────────────────────────────────────────
@@ -254,6 +258,8 @@ export const ko: Record<string, string> = {
   "Unlink from Pane in Another Window": "다른 창의 패널과 연결 해제",
   "Open another app window with its own layout tabs, for another screen": "다른 화면용으로 자체 레이아웃 탭이 있는 앱 창을 하나 더 열기",
   "Move Window...": "창 이동...",
+  "Change Ticker...": "종목 변경...",
+  "Change Ticker": "종목 변경",
   "Resize Window...": "창 크기 조정...",
   "Move Window": "창 이동",
   "Resize Window": "창 크기 조정",
@@ -560,7 +566,8 @@ export const ko: Record<string, string> = {
   "Cycle windows or resize handles.": "창 또는 크기 조절점을 순환합니다.",
   "Commit pending changes or exit window mode.": "변경 사항을 적용하거나 창 모드를 종료합니다.",
   "Open command mode for actions, pane commands, and typed prefixes.": "작업, 패널 명령 및 접두사를 위한 명령 모드를 엽니다.",
-  "Open ticker search directly.": "종목 검색을 바로 엽니다.",
+  "Change the focused pane's ticker.": "포커스 패널의 종목을 변경합니다.",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "종목 검색: Enter는 포커스 패널과 연결된 패널의 종목을 변경합니다. 데스크톱과 웹에서는 패널 제목의 종목을 클릭해도 같습니다. Shift+Enter는 새 패널을 엽니다. 종목이 없는 패널에서는 DES를 엽니다.",
   "Open security details for a specific ticker.": "특정 종목의 상세 정보를 엽니다.",
   "Move through command bar results.": "명령 팔레트 결과 사이를 이동합니다.",
   "Run the selected result or its secondary action.": "선택한 결과 또는 해당 보조 작업을 실행합니다.",

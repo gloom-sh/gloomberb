@@ -94,7 +94,12 @@ function interestInstanceId(instanceId: string): string {
 function mapNode(node: DockLayoutNode | null, idMap: Map<string, string>): DockLayoutNode | null {
   if (!node) return null;
   if (node.kind === "pane") return { ...node, instanceId: idMap.get(node.instanceId) ?? node.instanceId };
-  return { ...node, first: mapNode(node.first, idMap)!, second: mapNode(node.second, idMap)! };
+  return {
+    ...node,
+    first: mapNode(node.first, idMap)!,
+    second: mapNode(node.second, idMap)!,
+    ...(node.tabs ? { tabs: { active: idMap.get(node.tabs.active) ?? node.tabs.active } } : {}),
+  };
 }
 
 /** Daily short volume becomes the short interest pane's volume tab, and sovereign CDS the index board's Sovereign tab. */

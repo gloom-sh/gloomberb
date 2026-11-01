@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneRuntimeState } from "../core/state/app/types";
 import type { PaneDef } from "../types/plugin";
+import type { DockLayoutNode, LayoutConfig } from "../types/config";
+import { buildDockStack } from "../layout/pane-manager/dock-stack";
+import { layoutContentFingerprint } from "../layout-marketplace/cloud";
 import {
   materializeMarketplaceLayout,
   parseMarketplaceLayoutEntry,
@@ -385,6 +388,46 @@ describe("layout marketplace payloads", () => {
     });
     expect(materialized.paneState["twitter-feed:copy-1"]).toEqual(entry.paneState.p1);
     expect(materialized.paneState.p1).toBeUndefined();
+  });
+
+  test("a stack travels side by side, which an older app opens, and comes back a stack here", () => {
+    const list = (instanceId: string) => ({ instanceId, paneId: "prediction-markets" });
+    const stackIds = Array.from({ length: 25 }, (_, index) => `tab-${index}`);
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "split", axis: "horizontal", ratio: 0.3, first: { kind: "pane", instanceId: "feed" }, second: buildDockStack(stackIds, "tab-3")! },
+      instances: [{ instanceId: "feed", paneId: "twitter-feed" }, ...stackIds.map(list)],
+      floating: [],
+      detached: [],
+    };
+    const paneState: Record<string, PaneRuntimeState> = { "tab-0": { pluginState: { keep: true } } } as Record<string, PaneRuntimeState>;
+    const payload = publishableMarketplaceLayout(layout, paneState, panes);
+
+    // No split carries tabs, the one key an older app or the gallery would refuse,
+    // and 25 tabs side by side stay well within the depth a share allows.
+    const depth = (node: DockLayoutNode | null): number => (node?.kind === "split" ? 1 + Math.max(depth(node.first), depth(node.second)) : 0);
+    expect(JSON.stringify(payload.layout.dockRoot)).not.toContain("tabs");
+    expect(depth(payload.layout.dockRoot)).toBeLessThanOrEqual(6);
+    expect(payload.paneState.p2).toEqual({ pluginState: { keep: true }, dockStack: { tabs: stackIds.map((_, index) => `p${index + 2}`), shown: "p5" } });
+
+    const opened = materializeMarketplaceLayout(payload, (paneId, index) => `${paneId}:copy-${index}`);
+    const copy = (id: string) => `prediction-markets:copy-${stackIds.indexOf(id) + 1}`;
+    expect(opened.layout.dockRoot).toEqual({
+      kind: "split", axis: "horizontal", ratio: 0.3,
+      first: { kind: "pane", instanceId: "twitter-feed:copy-0" },
+      second: buildDockStack(stackIds.map(copy), copy("tab-3"))!,
+    });
+    expect(opened.paneState[copy("tab-0")]).toEqual({ pluginState: { keep: true } });
+
+    // Which tab shows is no edit of a linked layout, as the rest of the arrangement is not.
+    const otherTab = publishableMarketplaceLayout({ ...layout, dockRoot: { ...layout.dockRoot!, second: buildDockStack(stackIds, "tab-9")! } as DockLayoutNode }, paneState, panes);
+    expect(layoutContentFingerprint(otherTab)).toBe(layoutContentFingerprint(payload));
+    expect(layoutContentFingerprint(payload)).not.toBe(layoutContentFingerprint({ ...payload, paneState: {} }));
+  });
+
+  test("a split marked with tabs is no share the gallery or an older app takes", () => {
+    const entry = validEntry();
+    const dockRoot = entry.layout.dockRoot as Extract<DockLayoutNode, { kind: "split" }>;
+    expect(parseMarketplaceLayoutEntry({ ...entry, layout: { ...entry.layout, dockRoot: { ...dockRoot, tabs: { active: "p1" } } } })).toBeNull();
   });
 
   test("opens a share made before the fold on the pane and tab that replaced it", () => {

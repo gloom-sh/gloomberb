@@ -30,3 +30,23 @@ function subscribeWindowFullscreen(listener: () => void): () => void {
 export function useWindowFullscreen(): boolean {
   return useSyncExternalStore(subscribeWindowFullscreen, isWindowFullscreen, () => false);
 }
+
+let windowMaximized = false;
+
+/**
+ * Whether the window hosting this view is maximized. On Windows it then has
+ * no edge to resize from, and its buttons run to the screen's top edge.
+ */
+export function setWindowMaximized(next: boolean): void {
+  if (windowMaximized === next) return;
+  windowMaximized = next;
+  for (const listener of [...listeners]) listener();
+}
+
+function isWindowMaximized(): boolean {
+  return windowMaximized;
+}
+
+export function useWindowMaximized(): boolean {
+  return useSyncExternalStore(subscribeWindowFullscreen, isWindowMaximized, () => false);
+}

@@ -37,7 +37,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | Key | Action |
 |-----|--------|
 | `Ctrl+P` | Open command mode |
-| `` ` `` | Open ticker search |
+| `` ` `` | Change the focused pane's ticker (ticker search) |
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
@@ -82,6 +82,15 @@ The focused pane's footer shows its actions with their keys, such as `[a]dd`. Th
 - Forms: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends from the last, `Cmd/Ctrl+S` sends from any field, `y` or `n` answers a confirm.
 - Pane settings: the arrows move between settings, `Left` / `Right` change a choice in place, `Enter` opens a field's editor.
 
+### Changing a pane's ticker
+
+`` ` `` opens ticker search for the focused pane. On the desktop and the web, a click on the ticker in a pane's title (`OMON SPY ⌄`) opens the same search; in the terminal the focused pane's footer shows the key (`` [`] ticker ``) and its menu has **Change Ticker...**. Enter on a result changes what the pane shows, and `Shift+Enter` (or **New pane** above the results) opens the ticker in a new pane instead.
+
+- A pane on its own ticker (`OMON SPY`) changes, and every pane linked to it moves with it.
+- A linked pane changes the pane it follows, so the group moves together: on the Options desk, changing `OPX` changes `OMON`, and `OPX`, `OVDV` and `HIVG` follow it. On the Equities desk, `DES`, `G` and `FA` change together.
+- A group linked to a watchlist, portfolio or scanner leaves the list and stays on the new ticker. The search never edits the list; **Link to** in the pane menu puts the group back on it.
+- A pane that shows no ticker (a list, a news feed, a market board, a chart of several tickers) opens the ticker in a Ticker Research pane, as `DES` does.
+
 ### Linking a pane to a list
 
 A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `FA`, company news) can follow a watchlist, portfolio or scanner like the research pane. Choose **Link to** and the list's name in its pane menu (`OPX NVDA  ⧉ Linked to Watchlist`).
@@ -103,9 +112,20 @@ The desktop app can open one full window per screen, each with its own header, c
 
 Closing a window gives its tabs back to the main window. Closing the main window quits the app, and the other windows open again at the next launch. Where each window sits (its screen, frame, and whether it is maximized or full screen) is remembered per monitor arrangement on this computer: unplugging a monitor moves its windows onto the screens that remain (a screen whose resolution changed keeps its own windows), plugging it back in puts them back, and a window that would open partly or wholly off the screens is moved onto one. A minimized or hidden window stops drawing market data until it is shown again. On Linux under Wayland the compositor chooses where windows open, so only their size and maximized state come back.
 
-### Resizing
+### Moving and resizing
 
 Drag the line between docked panes, or a floating pane's bottom-right corner (any edge or corner on the desktop and web).
+
+A new floating pane opens where there is room: clear of the other floating panes and of the pane you are working in, or one step down and to the right of the frontmost window when the screen is full. It never opens exactly on top of another window.
+
+While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Where a release would put the pane somewhere else, an outline shows where it will land; on the desktop and web the pane turns see-through over it.
+
+A pane you move, floating or docked, finds its place in the dock two ways:
+
+- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. Let go before the outline shows and it stays floating. A pane parked against an edge or a corner of the window stays floating too.
+- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
+
+`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar.
 
 ### Docs inside the app
 
@@ -598,7 +618,8 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |
-| `TBO` | TheBuildout infrastructure intelligence |
+| `TBO` | TheBuildout infrastructure intelligence: a board of AI buildout themes sized by market cap and colored by their companies' median 1Y return, each theme's companies, sites and intel |
+| `TBOC <ticker>` | One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site and the signals that name it. Linked to `TBO`, it follows the company under the cursor |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
 | `MAP` | World map with trading venues, country names and layers (`MAP venues` for venues alone) |
@@ -774,7 +795,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
 | `PS` | Open focused pane settings |
 | `LAY` | Open the layout browser to switch, publish, or add layouts |
-| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading |
+| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading. `DESK buildout` opens TheBuildout's theme board with a company's flow, its facilities on the map and its signals; `DESK buildout-map` gives the map the room |
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Tidy all windows |
@@ -1745,6 +1766,8 @@ The status is one of four:
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
 A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`), instead of listing the failed refresh as an error. A saved copy answers only a failure asking again may get past: no connection, a timeout, a rate limit, a server error, or an answer saying its source did not respond this time. A permanent reason, such as signing out, a plan that does not include the data, an unsupported symbol or series, or data Gloom Cloud does not serve yet (`not available yet`), and a reply that fails its checks are reported as errors even when a saved copy exists. A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. A history no source could load because one failed (a timeout, a rate limit) and none had it saved fails the same way with `No source could load history for BTC-USD just now` (`source_unavailable`, `retryable` `true`), for `--from` and `--to` as for `--range`, never as an empty history. A listing's quote, history or financials the data service failed to answer (a server error, or its own source not responding this time) is asked for once more; failing again, it says `Gloom's data service did not answer for YAR:OSL. Try again in a moment.` (`source_unavailable`, `retryable` `true`), never that no source covers the listing, and a table of several symbols names each one it could not fill. In the app, a pane showing such a copy (quotes, a fund's 13F filings, a list of earnings calls, the VIX board, a chart of a catalog series such as `CAP:volatility:vix-term-ratio`) says `saved copy from 15:31` first in its footer until a refresh answers, and a refusal clears it for its error or sign-in.
+
+While the data service gives no answer at all, the status bar says `Can't reach the data service` (`Offline` in a narrow terminal), and clicking it opens `CONN`. Offline, the app asks the service again every few seconds, backing off to 15 seconds. The note goes with the first answer, and what failed during the outage loads again by itself in the panes that show it: quotes, charts, Overview and the news lists. A pane with nothing loaded yet says `Loading overview...`, or `Overview unavailable.` with a retry, instead of standing empty. The quote stream is reopened when it fails to connect within 10 seconds, or when, quiet for 10 seconds, it leaves a ping unanswered for 10 more (a link left half open after sleep or a network change). Until it is back, the prices it was updating read as stale: `Stale quote` in the ticker's footer, and `as of` the last update under a perpetual's mark.
 
 **Venues polled apart.** A report over such venues dates each by its own newest observation and says how old its oldest price is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · funding = current estimate, pays 08:00 UTC`.
 

@@ -1,4 +1,4 @@
-import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
+import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds, showDockTab } from "../../../layout/pane-manager";
 import { pinFollowingPane } from "../../../layout/pane-follow";
 import {
   cloneLayout,
@@ -539,7 +539,8 @@ export function materializeDetachedLayouts(config: AppConfig): AppConfig {
 }
 
 export function focusPaneState(state: AppState, paneId: string): AppState {
-  const layout = bringFloatingToFront(state.config.layout, paneId);
+  // A tab of a stack is shown when it takes focus.
+  const layout = showDockTab(bringFloatingToFront(state.config.layout, paneId), paneId);
   const config = layout !== state.config.layout ? { ...state.config, layout } : state.config;
   const recentTickers = nextRecentTickers(
     state.recentTickers,
@@ -595,7 +596,7 @@ export function withFocusedPane(
     ? (options.focusedPaneId ?? null)
     : state.focusedPaneId;
   const focusedPaneId = resolveFocusedPaneId(nextConfig.layout, requestedFocusedPaneId);
-  const focusedLayout = focusedPaneId ? bringFloatingToFront(nextConfig.layout, focusedPaneId) : nextConfig.layout;
+  const focusedLayout = focusedPaneId ? showDockTab(bringFloatingToFront(nextConfig.layout, focusedPaneId), focusedPaneId) : nextConfig.layout;
   const focusedConfig = focusedLayout === nextConfig.layout ? nextConfig : { ...nextConfig, layout: focusedLayout };
   const syncedConfig = syncConfigActiveLayoutState(focusedConfig, nextPaneState, focusedPaneId);
   return {

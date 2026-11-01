@@ -176,6 +176,21 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   border: 0;
   border-radius: 0;
 }
+/* Docked panes sit a small gap apart (the shell's dock geometry). Each one
+   rules the sides that face another pane across it, in the colour of the line
+   that ran between them, so the gap reads in every theme. */
+[data-gloom-role="pane-window"][data-floating="false"][data-dock-edges]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 0 solid var(--gloom-border);
+  pointer-events: none;
+  z-index: 100;
+}
+[data-gloom-role="pane-window"][data-floating="false"][data-dock-edges~="left"]::after { border-left-width: 1px; }
+[data-gloom-role="pane-window"][data-floating="false"][data-dock-edges~="right"]::after { border-right-width: 1px; }
+[data-gloom-role="pane-window"][data-floating="false"][data-dock-edges~="top"]::after { border-top-width: 1px; }
+[data-gloom-role="pane-window"][data-floating="false"][data-dock-edges~="bottom"]::after { border-bottom-width: 1px; }
 [data-gloom-role="pane-window"][data-floating="false"][data-focused="true"] {
   box-shadow: inset 0 0 0 1px var(--pane-border-color, var(--gloom-border-focused));
 }
@@ -663,10 +678,25 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }
+/* Where a moving pane would land (a spot it would join or stack in, a
+   screen-edge snap, window mode's keyboard move): the exact rectangle,
+   outlined in the accent over a light tint of it, so the panes under it still
+   show. */
+[data-gloom-role="drop-preview"],
+[data-gloom-role="window-mode-drop-preview"] {
+  border: 2px solid var(--gloom-accent);
+  border-radius: var(--gloom-radius-md);
+  background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
+}
+/* The gap between the panes is the divider at rest; its line shows while it
+   is dragged or resized from the keyboard. */
 [data-gloom-role="dock-divider"]::before {
   content: "";
   position: absolute;
   background: var(--divider-color);
+  opacity: 0;
+}
+[data-gloom-role="dock-divider"][data-active="true"]::before {
   opacity: .9;
 }
 [data-gloom-role="dock-divider"][data-axis="horizontal"] {
@@ -1288,6 +1318,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    overflow clip without changing the layout size. */
 [data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+[data-gloom-role="pane-stack-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-label,
 .gloom-qb-value,
 .gloom-qb-text,
@@ -1298,6 +1329,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 [data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+[data-gloom-role="pane-stack-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-title,
 .gloom-qb-meta {
   padding-block: var(--gloom-space-xs);

@@ -1,7 +1,7 @@
 {
   "name": "gloomberb",
-  "version": "0.19.2",
-  "packageManager": "bun@1.3.11",
+  "version": "0.19.4",
+  "packageManager": "bun@1.3.14",
   "description": "Market research and portfolio tracker for the terminal",
   "module": "src/public/index.ts",
   "type": "module",
@@ -125,6 +125,7 @@
     "playwright-core": "1.60.0",
     "png-to-ico": "^2.1.8",
     "rcedit": "^4.0.1",
+    "resedit": "^3.1.0",
     "typescript": "^5.9.2",
     "wrangler": "^4.0.0"
   },

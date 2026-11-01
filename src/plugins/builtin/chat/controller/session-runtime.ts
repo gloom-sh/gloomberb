@@ -49,7 +49,10 @@ export function hydrateChatControllerSession({
   const storedSession = storage.readSessionState();
   const restoredUser = apiClient.getCurrentUser() ?? storedSession?.user ?? null;
   session.sessionToken = storedSession?.sessionToken ?? null;
-  apiClient.setSessionToken(session.sessionToken);
+  // Installing the credential already in place would discard its session
+  // check: the web app, which signs in with a cookie and stores no token,
+  // asked the server for its session a second time on every open.
+  if (apiClient.getSessionToken() !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
   // WebSocket tokens are short-lived connection credentials. Reusing a persisted
   // one can trap reconnects on an expired token even while the session cookie is valid.
   apiClient.setWebSocketToken(null);
@@ -88,6 +91,8 @@ export function applySignedOutChatControllerSession({
 
 interface RefreshChatControllerSessionOptions {
   isCurrent: () => boolean;
+  /** Use a session check the app made within this many milliseconds instead of asking again. */
+  reuseCheckWithinMs?: number;
   applySignedOut: () => void;
   channelStates: Map<string, ChannelRuntimeState>;
   emit: () => void;
@@ -106,6 +111,7 @@ interface RefreshChatControllerSessionOptions {
 
 export async function refreshChatControllerSession({
   isCurrent,
+  reuseCheckWithinMs,
   applySignedOut,
   channelStates,
   emit,
@@ -122,7 +128,8 @@ export async function refreshChatControllerSession({
   syncVerificationPolling,
 }: RefreshChatControllerSessionOptions): Promise<void> {
   const cachedToken = session.sessionToken;
-  const apiSession = await apiClient.getSession(isCurrent);
+  const recent = reuseCheckWithinMs === undefined ? undefined : apiClient.recentSession(reuseCheckWithinMs);
+  const apiSession = recent ? recent.user : await apiClient.getSession(isCurrent);
   if (!isCurrent()) return;
   if (!apiSession) {
     const persistedToken = apiClient.getSessionToken();

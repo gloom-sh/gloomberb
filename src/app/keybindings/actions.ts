@@ -85,7 +85,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "ticker-search",
     category: "Global Keys",
-    description: "Open ticker search directly.",
+    description: "Change the focused pane's ticker.",
     // One chord on purpose: the command bar already searches symbols for
     // free text, so a layout without a backtick key still has Ctrl+P and
     // typing. A dedicated key is a rebind away for anyone who wants one.

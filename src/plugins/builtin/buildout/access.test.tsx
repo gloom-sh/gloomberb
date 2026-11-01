@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
+import { ApiRequestError, SHOT_REQUEST_REFUSED } from "../../../api-client/errors";
 import type { AuthUser, BuildoutAccountResponse } from "../../../api-client/types";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
@@ -53,6 +54,8 @@ async function mount() {
   const initial = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/buildout-access-test`, {
     paneId: "buildout", instanceId: id,
   }));
+  // These read the list of lists, a tab over from the theme board the pane opens on.
+  initial.paneState = { ...initial.paneState, [id]: { ...initial.paneState[id], activeTab: "companies" } };
   const runtime = createTestPluginRuntime();
   function Harness() {
     const [state, dispatch] = useReducer(appReducer, initial);
@@ -97,6 +100,16 @@ test("initial access failure has a retry that recovers without loading free data
   expect(dataRequests).toContain("/lists");
 });
 
+test("a screenshot that cannot carry the plan's token says so, not that access is unknown, and loads no free data", async () => {
+  token.mockRejectedValue(new ApiRequestError(SHOT_REQUEST_REFUSED, 403, undefined, SHOT_REQUEST_REFUSED));
+  await mount();
+  const frame = await tui.waitForFrameToContain("Not available in screenshots.");
+  expect(frame).not.toContain("Access check failed");
+  // A capture is a still picture: there is nothing to retry.
+  expect(frame).not.toContain("Retry");
+  expect(dataRequests).toEqual([]);
+});
+
 test("confirmed sign-out and inactive subscriptions retain free access; active plans retain the token", async () => {
   signedIn.mockReturnValue(false);
   expect(await getBuildoutProToken()).toBeNull();
@@ -108,7 +121,46 @@ test("confirmed sign-out and inactive subscriptions retain free access; active p
   subscription.mockResolvedValueOnce({ ...account, subscription: { ...account.subscription, active: false } });
   expect(await getBuildoutProToken()).toBeNull();
   expect(token).not.toHaveBeenCalled();
-  expect(await getBuildoutProToken()).toBe("fixture-token");
+  expect(await getBuildoutProToken({ fresh: true })).toBe("fixture-token");
+});
+
+test("a token serves every read until a minute before it lapses, and an account without the plan is asked again a minute later", async () => {
+  const issued = Date.parse("2026-10-31T12:00:00Z");
+  setSystemTime(issued);
+  try {
+    token.mockResolvedValue({ token: "fixture-token", expiresAt: new Date(issued + 10 * 60_000).toISOString() });
+    expect(await getBuildoutProToken({ fresh: true })).toBe("fixture-token");
+    const asked = () => session.mock.calls.length + subscription.mock.calls.length + token.mock.calls.length;
+    const before = asked();
+    setSystemTime(issued + 8 * 60_000);
+    expect(await getBuildoutProToken()).toBe("fixture-token");
+    expect(asked()).toBe(before + 1); // who is signed in, not the token
+    setSystemTime(issued + 9 * 60_000 + 1);
+    expect(await getBuildoutProToken()).toBe("fixture-token");
+    expect(token.mock.calls.length).toBe(2);
+
+    subscription.mockResolvedValue({ ...account, subscription: { ...account.subscription, active: false } });
+    expect(await getBuildoutProToken({ fresh: true })).toBeNull();
+    subscription.mockResolvedValue(account);
+    expect(await getBuildoutProToken()).toBeNull();
+    setSystemTime(issued + 10 * 60_000 + 2);
+    expect(await getBuildoutProToken()).toBe("fixture-token");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a list with no company this account can see is asked for once, not again on every frame", async () => {
+  setHttpFetchTransport(async (input) => {
+    const path = new URL(String(input)).pathname;
+    dataRequests.push(path);
+    return Response.json(path === "/companies" ? { companies: [], blurredCount: 4 } : []);
+  });
+  await mount();
+  await tui.waitForFrameToContain("All Companies");
+  await tui.emitKeypress({ name: "return" });
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(dataRequests.filter((path) => path === "/companies")).toHaveLength(1);
 });
 
 test("a star that does not take is said on its row and in full in its detail, not in the footer", async () => {

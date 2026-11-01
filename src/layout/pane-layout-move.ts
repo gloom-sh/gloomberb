@@ -15,7 +15,7 @@ import { pinFollowingPane } from "./pane-follow";
 import { findDockLeaf, getNodeAtPath, getRepresentativeLeafId } from "./pane-manager/dock-tree";
 import { dockPane, insertAtRootEdge, resizeSplitAtPath } from "./pane-manager/docking";
 import { floatAtRect } from "./pane-manager/floating-actions";
-import { finalizeLayout, removePane } from "./pane-manager/layout-state";
+import { finalizeLayout, removePane, stackTabMemory } from "./pane-manager/layout-state";
 
 let nextSavedLayoutSeq = 0;
 
@@ -92,6 +92,7 @@ function pinOrphanedFollowers(
 function dockedPlacement(layout: LayoutConfig, paneId: string): PaneMovedFrom["docked"] {
   const leaf = findDockLeaf(layout, paneId);
   if (!leaf) return { path: [] };
+  if (leaf.stackPath) return { path: [...leaf.path], ...stackTabMemory(layout.dockRoot, leaf.stackPath, paneId) };
   if (leaf.path.length === 0) return { path: [] };
   const parent = getNodeAtPath(layout.dockRoot, leaf.path.slice(0, -1));
   if (!parent || parent.kind !== "split") return { path: [...leaf.path] };

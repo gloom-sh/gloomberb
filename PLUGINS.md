@@ -1517,6 +1517,8 @@ const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
 
 A pane that shows one ticker through these hooks can set `tickerFollower: true` on its `PaneDef`. Its pane menu then offers **Link to** each visible watchlist, portfolio, scanner, or other single-ticker pane, and once linked it follows that pane's selection, with **Unlink from** pinning it on the ticker it shows. A function decides per instance, for a pane that is single-ticker only in some setups (a price chart of one security, not a comparison or a fundamental graph). A linked pane changes ticker while mounted, so key the view by symbol and keep saved choices that only make sense for one ticker (an expiry, a strike) per symbol. Never write the pane's own `cursorSymbol`: it would win over the link.
 
+Such a pane also takes a new ticker from ticker search: the backtick, or a click on the ticker in its title on the desktop and the web, pins it (or the pane it follows) on the chosen ticker. The host sets the binding and the title. A pane that keeps its ticker somewhere else as well, such as a chart's series, sets `retargetTicker(pane, symbol, previous)` to return the instance with that moved too.
+
 `createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues`, `nextHeaderSort` (header clicks) and `cycleSortPreference` (the keyboard equivalent) from `gloomberb/utils` so mixed columns sort like the host's.
 
 ### Live quotes

@@ -1,7 +1,7 @@
-import type { DockDividerLayout, FloatingRect, LayoutBounds } from "../../../../layout/pane-manager";
+import { SHELL_DRAG_Z, type DockDividerLayout, type FloatingRect, type LayoutBounds } from "../../../../layout/pane-manager";
 import type { NativeOccluder, NativePaneLayer } from "../../../chart/native/surface/manager";
 import { DEFAULT_HEADER_HEIGHT } from "../chrome";
-import type { DragPreview, HoverOverlay } from "../drag";
+import type { DragPreview } from "../drag";
 import { MENU_Z_INDEX } from "../menu";
 import type { WindowEditDockMovePreview } from "../../window-edit/presentation";
 
@@ -28,8 +28,23 @@ export interface NativeTransientOccluder {
   zIndex: number;
 }
 
+/**
+ * The cells an outline drawn with nothing filled in covers: its four sides,
+ * one cell thick, so an image under it shows inside.
+ */
+function outlineOccluders(id: string, rect: LayoutBounds, zIndex: number): NativeTransientOccluder[] {
+  if (rect.width <= 2 || rect.height <= 2) return [{ id, rect, zIndex }];
+  const right = rect.x + rect.width - 1;
+  const bottom = rect.y + rect.height - 1;
+  return [
+    { id: `${id}:top`, rect: { x: rect.x, y: rect.y, width: rect.width, height: 1 }, zIndex },
+    { id: `${id}:bottom`, rect: { x: rect.x, y: bottom, width: rect.width, height: 1 }, zIndex },
+    { id: `${id}:left`, rect: { x: rect.x, y: rect.y + 1, width: 1, height: rect.height - 2 }, zIndex },
+    { id: `${id}:right`, rect: { x: right, y: rect.y + 1, width: 1, height: rect.height - 2 }, zIndex },
+  ];
+}
+
 export function buildNativeTransientOccluders({
-  activeHoverOverlay,
   activePaneDrag,
   commandBarNativeOccluder,
   dragFloatingRect,
@@ -38,7 +53,6 @@ export function buildNativeTransientOccluders({
   nativeWindowModePanelRect,
   windowModeDockMovePreview,
 }: {
-  activeHoverOverlay: HoverOverlay | null;
   activePaneDrag: { paneId: string; mode: "docked" | "floating" } | null;
   commandBarNativeOccluder: LayoutBounds | null;
   dragFloatingRect: FloatingPreviewRect | null;
@@ -49,16 +63,6 @@ export function buildNativeTransientOccluders({
 }): NativeTransientOccluder[] {
   const occluders: NativeTransientOccluder[] = [];
 
-  if (activeHoverOverlay) {
-    for (const cell of activeHoverOverlay.cells) {
-      occluders.push({
-        id: `drag-hover:${activeHoverOverlay.targetId}:${cell.position}`,
-        rect: cell.rect,
-        zIndex: cell.position === "center" ? 98 : 97,
-      });
-    }
-  }
-
   if (activePaneDrag
     && activePaneDrag.mode === "docked"
     && dragFloatingRect?.paneId === activePaneDrag.paneId
@@ -66,24 +70,16 @@ export function buildNativeTransientOccluders({
     occluders.push({
       id: `drag-preview:${activePaneDrag.paneId}`,
       rect: dragFloatingRect.rect,
-      zIndex: 95,
+      zIndex: SHELL_DRAG_Z.under,
     });
   }
 
   if (dockPreview) {
-    occluders.push({
-      id: `dock-preview:${dockPreview.kind}`,
-      rect: dockPreview.rect,
-      zIndex: 96,
-    });
+    occluders.push(...outlineOccluders(`dock-preview:${dockPreview.kind}`, dockPreview.rect, SHELL_DRAG_Z.over));
   }
 
   if (windowModeDockMovePreview) {
-    occluders.push({
-      id: "window-mode:drop-preview",
-      rect: windowModeDockMovePreview.rect,
-      zIndex: 96,
-    });
+    occluders.push(...outlineOccluders("window-mode:drop-preview", windowModeDockMovePreview.rect, MENU_Z_INDEX - 2));
   }
 
   if (menu) {

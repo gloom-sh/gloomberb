@@ -111,3 +111,24 @@ describe("desktop panel bitmap resize batching", () => {
     expect(plots.widths()).toEqual([]);
   });
 });
+
+test("new data at the drawn size is drawn in the commit that brings it, not one after", async () => {
+  let setPanel!: (next: CompositePanelScene) => void;
+  let commits = 0;
+  const drawnFor: unknown[] = [];
+  function Plot() {
+    const [scene, update] = useState(panel);
+    setPanel = update;
+    const bitmap = useCompositePanelBitmap({ panel: scene, bitmapSize: { pixelWidth: 40, pixelHeight: 20 }, colors, isDesktopWeb: true });
+    drawnFor.push(bitmap);
+    return <span data-width={bitmap?.width} />;
+  }
+  await harness.render(<Profiler id="plot" onRender={() => { commits += 1; }}><Plot /></Profiler>);
+  // Painted: the frames after a plot's first bitmap.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
+  const before = commits;
+  const first = drawnFor.at(-1);
+  await act(async () => setPanel({ ...panel, height: 6 }));
+  expect(commits - before).toBe(1);
+  expect(drawnFor.at(-1)).not.toBe(first);
+});

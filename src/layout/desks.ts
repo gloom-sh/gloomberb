@@ -56,8 +56,8 @@ interface DeskPane {
   studies?: readonly BuiltinStudySelection[];
 }
 
-export interface Desk {
-  key: DeskKey;
+export interface Desk<K extends string = DeskKey> {
+  key: K;
   /** What the picker calls it. */
   label: string;
   /** The tab's name. */
@@ -173,6 +173,39 @@ export const DESKS: readonly Desk[] = [
   },
 ];
 
+/**
+ * Desks DESK offers that the first-run question does not: a workspace around
+ * one dataset rather than a kind of trading. TheBuildout's starts from its
+ * theme board, and every other pane follows the company selected there; the
+ * map-first desk is the same panes with the facilities map given the room.
+ */
+export const MORE_DESKS: readonly Desk<"buildout" | "buildout-map">[] = [
+  {
+    key: "buildout",
+    label: "AI buildout",
+    name: "Buildout",
+    panes: [
+      { fn: "TBO" },
+      { fn: "TBOC", follows: 1 },
+      { fn: "MAP", arg: "facilities", follows: 1 },
+      { fn: "TBOC", options: { tab: "signals" }, follows: 1 },
+    ],
+    dock: row(0.5, pane(1), column(0.54, pane(2), row(0.5, pane(3), pane(4)))),
+  },
+  {
+    key: "buildout-map",
+    label: "AI buildout, map first",
+    name: "Buildout Map",
+    panes: [
+      { fn: "TBO" },
+      { fn: "MAP", arg: "facilities", follows: 1 },
+      { fn: "TBOC", follows: 1 },
+      { fn: "TBOC", options: { tab: "signals" }, follows: 1 },
+    ],
+    dock: row(0.6, column(0.6, pane(2), pane(1)), column(0.55, pane(3), pane(4))),
+  },
+];
+
 export function getDesk(key: DeskKey): Desk {
   return DESKS.find((desk) => desk.key === key)!;
 }
@@ -204,7 +237,7 @@ export function isDeskStock(
 }
 
 /** The mnemonics a desk opens, for a one-line summary. */
-export function deskFunctions(desk: Desk): string[] {
+export function deskFunctions(desk: Desk<string>): string[] {
   return [...new Set(desk.panes.map((entry) => entry.fn))];
 }
 
@@ -298,7 +331,7 @@ export interface BuildDeskOptions {
  * than shown as a placeholder, and its neighbours take the room. Null when
  * the host has none of them.
  */
-export async function buildDesk(desk: Desk, { catalog, config, company, pro }: BuildDeskOptions): Promise<DeskLayout | null> {
+export async function buildDesk(desk: Desk<string>, { catalog, config, company, pro }: BuildDeskOptions): Promise<DeskLayout | null> {
   const entries = pro && desk.pro?.length ? [...desk.panes, ...desk.pro] : desk.panes;
   const available = entries.flatMap((entry, index) => {
     const template = deskTemplate(catalog, entry.fn);

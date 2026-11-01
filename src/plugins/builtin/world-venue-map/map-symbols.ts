@@ -18,6 +18,9 @@ export type MapSymbolId =
   | "terminal"
   | "field"
   | "chokepoint"
+  | "rack"
+  | "bolt"
+  | "chip"
   | "dot";
 
 export interface MapSymbol {
@@ -84,6 +87,17 @@ export const MAP_SYMBOLS: Record<MapSymbolId, MapSymbol> = {
     size: 13,
     landmark: true,
     cell: "◆",
+  },
+  // A server rack: the cabinet and its shelves, for a data center.
+  rack: { d: "M-5 -7.2H5V7.2H-5ZM-5 -2.4H5M-5 2.4H5M-2.6 -4.8H-0.6M-2.6 0H-0.6M-2.6 4.8H-0.6", paint: "stroke", size: 13, cell: "▤" },
+  // A lightning bolt, for a power plant or substation.
+  bolt: { d: "M1.8 -8L-5.4 1.4H-0.6L-2 8L5.4 -1.8H0.6Z", paint: "fill", size: 13, cell: "↯" },
+  // A chip and its pins, for a fab or a packaging plant.
+  chip: {
+    d: "M-4.6 -4.6H4.6V4.6H-4.6ZM-2 -4.6V-7.6M2 -4.6V-7.6M-2 4.6V7.6M2 4.6V7.6M-4.6 -2H-7.6M-4.6 2H-7.6M4.6 -2H7.6M4.6 2H7.6",
+    paint: "stroke",
+    size: 13,
+    cell: "▣",
   },
   dot: { d: "M0 -3.4A3.4 3.4 0 1 1 0 3.4A3.4 3.4 0 1 1 0 -3.4Z", paint: "fill", size: 11, cell: "•" },
 };
@@ -162,6 +176,10 @@ const RULES: Record<string, SymbolRule> = {
   },
   terminal: () => fixed("terminal"),
   field: () => fixed("field"),
+  // Facilities (TheBuildout): by what the site is; anything else is a dot.
+  "data-center": () => fixed("rack"),
+  "power-plant": () => fixed("bolt"),
+  fab: () => fixed("chip"),
 };
 
 /** The layer registry: layer ids the app knows, then the kinds their entities carry. */

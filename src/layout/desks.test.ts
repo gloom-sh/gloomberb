@@ -7,7 +7,9 @@ import { browserBuiltinPlugins } from "../plugins/catalog-browser";
 import { uiBuiltinPlugins } from "../plugins/catalog-ui";
 import { createDefaultConfig, type DockLayoutNode } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
-import { buildDesk, DESK_KEYS, DESKS, deskTemplate, getDesk, type DeskCatalog, type DeskLayout } from "./desks";
+import { resolveTickerForPane, type AppState } from "../state/app/context";
+import { buildDesk, DESK_KEYS, DESKS, deskTemplate, getDesk, type DeskCatalog, type DeskKey, type DeskLayout } from "./desks";
+import { resolveTickerRetargetPane, retargetTickerPane } from "./ticker-retarget";
 
 const config = createDefaultConfig("/tmp/desks-test");
 const started: GloomPlugin[] = [];
@@ -98,6 +100,44 @@ describe("desks", () => {
     const intraday = parseChartSpec(trading.layout.instances[0]!.settings?.chartSpec);
     expect(intraday?.viewport.range).toBe("1D");
     expect(getSelectedBuiltinStudies(intraday!)).toEqual(["volume", "vwap"]);
+  });
+
+  test("ticker search on any pane of a desk's linked group changes the group, and panes without a ticker open one", async () => {
+    const catalog = await terminalCatalog;
+    const groups: Partial<Record<DeskKey, { group: string[]; without: string[] }>> = {
+      equities: { group: ["DES", "G", "FA"], without: ["ERN", "TOP", "EQS"] },
+      options: { group: ["OMON", "OPX", "OVDV", "HIVG"], without: ["VOLS"] },
+      futures: { group: ["GP", "SEAS"], without: ["FUT", "CTM", "COT"] },
+      active: { group: ["GIP", "TAS"], without: ["QQ", "MOST", "HALT", "N"] },
+    };
+    for (const [key, { group, without }] of Object.entries(groups) as [DeskKey, { group: string[]; without: string[] }][]) {
+      const desk = getDesk(key);
+      const built = await buildDesk(desk, { catalog, config, company: "MSFT", pro: false });
+      expectWholeLayout(built);
+      const { layout } = built;
+      const byFn = new Map(desk.panes.map((entry, index) => [entry.fn, layout.instances[index]!]));
+      const root = byFn.get(group[0]!)!;
+      for (const fn of group) {
+        expect({ fn, target: resolveTickerRetargetPane(layout, byFn.get(fn)!.instanceId, catalog.panes)?.instanceId })
+          .toEqual({ fn, target: root.instanceId });
+      }
+      for (const fn of without) {
+        expect({ fn, target: resolveTickerRetargetPane(layout, byFn.get(fn)!.instanceId, catalog.panes) }).toEqual({ fn, target: null });
+      }
+
+      const state = (next: typeof layout) => ({ config: { ...config, layout: next }, paneState: {} }) as unknown as AppState;
+      const previous = resolveTickerForPane(state(layout), root.instanceId);
+      const next = retargetTickerPane(layout, root, "NVDA", { previous, paneDef: catalog.panes.get(root.paneId) });
+      for (const fn of group) {
+        expect({ fn, ticker: resolveTickerForPane(state(next), byFn.get(fn)!.instanceId) }).toEqual({ fn, ticker: "NVDA" });
+      }
+      // A chart keeps its ticker in its series too; they move with it.
+      const spec = parseChartSpec(next.instances.find((instance) => instance.instanceId === root.instanceId)!.settings?.chartSpec);
+      if (spec) {
+        expect(spec.series.flatMap((series) => series.source.kind === "security" ? [series.source.instrument.symbol] : []))
+          .toEqual(["NVDA"]);
+      }
+    }
   });
 
   test("the web build leaves out the functions it does not ship, and the rest of the desk closes up", async () => {

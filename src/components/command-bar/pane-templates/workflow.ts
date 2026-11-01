@@ -256,6 +256,12 @@ export function useCommandBarPaneTemplateActions({
         },
       };
     }
+    // Plain ticker search (the backtick, a pane header's ticker) changes the focused pane's ticker;
+    // a search DES opened keeps opening DES.
+    if (!routeAction && item.pickTicker) {
+      const pick = item.pickTicker;
+      return { ...item, action: () => pick("pane") };
+    }
     return item;
   }, [executeCollectionCommand, notify, openPaneTemplateDirect, pluginRegistry.paneTemplates]);
 

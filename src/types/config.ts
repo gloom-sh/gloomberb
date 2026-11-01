@@ -1,6 +1,7 @@
 import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
+import { buildDockStack } from "../layout/pane-manager/dock-stack";
 
 export const CURRENT_CONFIG_VERSION = 28;
 
@@ -42,7 +43,8 @@ export type PaneBinding =
 export interface DockedPlacementMemory {
   path?: Array<0 | 1>;
   anchorInstanceId?: string;
-  position?: "left" | "right" | "above" | "below";
+  /** "tab": a tab of the stack `anchorInstanceId` is in. */
+  position?: "left" | "right" | "above" | "below" | "tab";
 }
 
 export interface FloatingPlacementMemory {
@@ -114,6 +116,11 @@ export interface DockSplitNode {
   ratio: number;
   first: DockLayoutNode;
   second: DockLayoutNode;
+  /**
+   * Set on every split of a stack of tabs, with the pane it shows: the panes
+   * under it share one spot (see layout/pane-manager/dock-stack.ts).
+   */
+  tabs?: { active: string };
 }
 
 export type DockLayoutNode = DockPaneNode | DockSplitNode;
@@ -624,6 +631,7 @@ function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
     ratio: node.ratio,
     first: cloneDockNode(node.first),
     second: cloneDockNode(node.second),
+    ...(node.tabs ? { tabs: { active: node.tabs.active } } : {}),
   };
 }
 
@@ -645,6 +653,14 @@ function normalizeDockNode(
 
   if ((node as DockSplitNode).kind !== "split") return null;
   const split = node as DockSplitNode;
+  if (split.tabs) {
+    // Whatever is under a stack is its tabs, nested or not: a pane put back
+    // at a place inside it (its remembered spot) joins it.
+    const plain: DockSplitNode = { kind: "split", axis: split.axis, ratio: split.ratio, first: split.first, second: split.second };
+    const flat = normalizeDockNode(plain, validInstanceIds, seenPaneIds);
+    const active = typeof split.tabs.active === "string" ? split.tabs.active : null;
+    return flat ? buildDockStack(getDockedPaneIdsFromNode(flat), active) : null;
+  }
   const first = normalizeDockNode(split.first, validInstanceIds, seenPaneIds);
   const second = normalizeDockNode(split.second, validInstanceIds, seenPaneIds);
   if (!first && !second) return null;

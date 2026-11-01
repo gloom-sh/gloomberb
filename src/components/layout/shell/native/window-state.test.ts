@@ -9,9 +9,11 @@ import type { DragPreview } from "../drag";
 import { buildNativeTransientOccluders, buildNativeWindowState } from "./window-state";
 
 const HEADER = 1;
-// Screen cells: under the open pane menu, under a dock preview, and clear of both.
+// Screen cells: under the open pane menu, under a dock preview's outline, inside
+// that outline (which fills nothing in), and clear of both.
 const UNDER_MENU = { x: 75, y: 10 };
-const UNDER_PREVIEW = { x: 15, y: 10 };
+const UNDER_PREVIEW = { x: 10, y: 10 };
+const INSIDE_PREVIEW = { x: 15, y: 10 };
 const CLEAR = { x: 40, y: 10 };
 
 function floatingLayout(zIndexes: [number, number]): LayoutConfig {
@@ -32,7 +34,6 @@ function floatingLayout(zIndexes: [number, number]): LayoutConfig {
 /** The cells of CRYP's chart band that keep the image, with its pane menu open and a dock preview showing. */
 function crypChartFragments(layout: LayoutConfig): CellRect[] {
   const transient = buildNativeTransientOccluders({
-    activeHoverOverlay: null,
     activePaneDrag: null,
     commandBarNativeOccluder: null,
     dragFloatingRect: null,
@@ -77,7 +78,8 @@ test("windows raised back and forth stay under the pane menu and drag previews, 
   expect(cryp!.zIndex!).toBeGreaterThan(news!.zIndex!);
   // Unbounded, CRYP reached z 171 here, over the dock preview (96), which then no longer cut its chart.
   const fragments = crypChartFragments(layout);
-  expect([drawn(fragments, UNDER_MENU), drawn(fragments, UNDER_PREVIEW), drawn(fragments, CLEAR)]).toEqual([false, false, true]);
+  expect([drawn(fragments, UNDER_MENU), drawn(fragments, UNDER_PREVIEW), drawn(fragments, INSIDE_PREVIEW), drawn(fragments, CLEAR)])
+    .toEqual([false, false, true, true]);
 });
 
 test("a layout saved with its windows stacked past the pane menu loads renumbered in the same order", () => {

@@ -22,8 +22,9 @@ function mockFetch(
   return handler as unknown as typeof fetch;
 }
 
+/** Runs the batched subscription sends, short of the socket's connect timeout and silence checks, which never run out. */
 function flushQuoteSubscriptionUpdates(): void {
-  jest.runAllTimers();
+  jest.advanceTimersByTime(1_000);
 }
 
 afterEach(() => {
@@ -928,7 +929,8 @@ describe("apiClient scanner subscriptions", () => {
 
     jest.useFakeTimers();
     socket.closeWith({ code: 1006, reason: "network" });
-    jest.runAllTimers();
+    // The reconnect waits up to one and a half seconds (one, jittered).
+    jest.advanceTimersByTime(1_500);
     const reconnected = sockets[1]!;
     reconnected.open();
     expect(reconnected.sent).toContainEqual({

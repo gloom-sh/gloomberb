@@ -174,6 +174,9 @@ export const es: Record<string, string> = {
   "Reset Layout": "Restablecer diseño",
   "Reset Current Layout": "Restablecer diseño actual",
   "Security Description": "Descripción del valor",
+  "Change ticker": "Cambiar ticker",
+  "Change ticker · {pane}": "Cambiar ticker · {pane}",
+  "New pane": "Nuevo panel",
 
   // ── Core command descriptions ────────────────────────────────
   "Show or hide the keyboard shortcuts bar": "Mostrar u ocultar la barra de atajos",
@@ -219,6 +222,7 @@ export const es: Record<string, string> = {
   "Create or update a manual position without leaving the command bar.": "Crea o actualiza una posición manual sin salir de la barra de comandos.",
   "Organize panes and saved layouts.": "Organiza paneles y diseños guardados.",
   "Resolve a ticker, then open its Ticker Research pane.": "Resuelve un ticker y abre su panel de análisis.",
+  "Resolve a ticker for the focused pane, or open it in a new pane.": "Resuelve un ticker para el panel activo o ábrelo en un panel nuevo.",
   "Toggle optional plugins without leaving the command bar.": "Alterna plugins opcionales sin salir de la barra de comandos.",
 
   // ── Layout actions ───────────────────────────────────────────
@@ -255,6 +259,8 @@ export const es: Record<string, string> = {
   "Unlink from Pane in Another Window": "Desvincular del panel de otra ventana",
   "Open another app window with its own layout tabs, for another screen": "Abrir otra ventana de la app con sus propias pestañas de diseño, para otra pantalla",
   "Move Window...": "Mover ventana...",
+  "Change Ticker...": "Cambiar ticker...",
+  "Change Ticker": "Cambiar ticker",
   "Resize Window...": "Redimensionar ventana...",
   "Move Window": "Mover ventana",
   "Resize Window": "Redimensionar ventana",
@@ -561,7 +567,8 @@ export const es: Record<string, string> = {
   "Cycle windows or resize handles.": "Alternar ventanas o controles de tamaño.",
   "Commit pending changes or exit window mode.": "Confirmar cambios pendientes o salir del modo ventana.",
   "Open command mode for actions, pane commands, and typed prefixes.": "Abrir el modo comando para acciones, comandos de panel y prefijos.",
-  "Open ticker search directly.": "Abrir directamente la búsqueda de tickers.",
+  "Change the focused pane's ticker.": "Cambia el ticker del panel activo.",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "Búsqueda de tickers: Enter cambia el ticker del panel activo y de los paneles vinculados a él, como un clic en el ticker del título de un panel en el escritorio y la web. Shift+Enter abre un panel nuevo. Desde un panel sin ticker abre DES.",
   "Open security details for a specific ticker.": "Abrir los detalles de un ticker específico.",
   "Move through command bar results.": "Moverse por los resultados de la barra de comandos.",
   "Run the selected result or its secondary action.": "Ejecutar el resultado seleccionado o su acción secundaria.",

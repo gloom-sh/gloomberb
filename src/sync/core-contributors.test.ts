@@ -358,6 +358,20 @@ describe("core sync contributors", () => {
     expect(on.layout.floating).toEqual(local.layout.floating);
   });
 
+  test("the tab a stack shows is this device's, as stacking order is: switching tabs is no workspace edit", () => {
+    const pane = (instanceId: string) => ({ kind: "pane" as const, instanceId });
+    const stack = (active: string) => ({ kind: "split" as const, axis: "horizontal" as const, ratio: 0.5, first: pane("a"), second: pane("b"), tabs: { active } });
+    const payload = (dockRoot: unknown) => {
+      const layout = { dockRoot, instances: [], floating: [], detached: [] };
+      return { layout, layouts: [{ name: "Main", layout }], activeLayoutIndex: 0 };
+    };
+    const { layoutIntent } = __syncContributorInternalsForTests;
+    expect(layoutIntent(payload(stack("b")))).toBe(layoutIntent(payload(stack("a"))));
+    // Unstacking the two is an edit.
+    const { tabs: _tabs, ...split } = stack("a");
+    expect(layoutIntent(payload(split))).not.toBe(layoutIntent(payload(stack("a"))));
+  });
+
   test("preserves local broker identity when applying sanitized portfolios", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
     config.portfolios = [{

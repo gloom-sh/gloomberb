@@ -1,0 +1,255 @@
+name: Windows desktop check
+
+# Installs the Windows desktop app and drives it with real OS input
+# (scripts/windows-desktop-check): window resizing from every edge and corner,
+# maximize and restore, snapping, minimize and restore, dock dividers,
+# floating panes, a popped-out window and typing, at several display scales,
+# pictured step by step. It checks this commit's build against the list of
+# known failures, and runs the same steps on the latest release to compare,
+# on x64 and, when asked, on Windows on Arm.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag to compare against (the latest release when empty)
+        required: false
+        default: ""
+      scales:
+        description: Display scales in percent, comma separated
+        required: false
+        default: "100,125,150"
+      app_ref:
+        description: Branch, tag or commit whose app to build and check (this run's commit when empty); the steps always come from this run's commit
+        required: false
+        default: ""
+      builds:
+        description: Builds to check, as a JSON list of head and release
+        required: false
+        default: '["head","release"]'
+      machines:
+        description: Machines to check on, as a JSON list of x64 and arm64 (Windows on Arm runs the x64 app under emulation)
+        required: false
+        default: '["x64"]'
+      installer_run:
+        description: A run whose installer to check as head instead of building one (this workflow's or Verify Windows')
+        required: false
+        default: ""
+      installer_artifact:
+        description: The name of that run's installer artifact
+        required: false
+        default: GloomSetup-windows-x64
+      only:
+        description: Check only the steps whose id or title has this text
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - ".github/workflows/windows-desktop-check.yml"
+      - "scripts/windows-desktop-check/**"
+      - "src/renderers/electrobun/**"
+      - "src/renderers/dom/**"
+      - "src/components/layout/**"
+      - "electrobun.config.ts"
+      - "patches/electrobun@*.patch"
+      - "scripts/build-windows-desktop-package.ps1"
+      - "scripts/build-windows-installer.ps1"
+      - "scripts/windows-installer.iss"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/windows-desktop-check.yml"
+      - "scripts/windows-desktop-check/**"
+      - "src/renderers/electrobun/**"
+      - "src/renderers/dom/**"
+      - "src/components/layout/**"
+      - "electrobun.config.ts"
+      - "patches/electrobun@*.patch"
+      - "scripts/build-windows-desktop-package.ps1"
+      - "scripts/build-windows-installer.ps1"
+      - "scripts/windows-installer.iss"
+
+concurrency:
+  group: windows-desktop-check-${{ github.ref }}-${{ inputs.app_ref }}-${{ inputs.installer_run }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    name: build
+    if: contains(inputs.builds || '["head","release"]', 'head') && inputs.installer_run == ''
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.app_ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build the desktop package
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          ./scripts/build-windows-installer.ps1
+          exit $LASTEXITCODE
+
+      # The installer under check, to install and try by hand.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GloomSetup-windows-x64
+          path: artifacts/stable-win-x64-GloomSetup.exe
+          retention-days: 14
+
+  check:
+    name: ${{ matrix.build }} ${{ matrix.machine }}
+    needs: build
+    if: ${{ !cancelled() && needs.build.result != 'failure' }}
+    runs-on: ${{ matrix.machine == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(inputs.builds || '["head","release"]') }}
+        machine: ${{ fromJSON(inputs.machines || '["x64"]') }}
+    env:
+      SCALES: ${{ inputs.scales || '100,125,150' }}
+      LABEL: ${{ matrix.build }}-${{ matrix.machine }}
+      ONLY: ${{ inputs.only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.app_ref }}
+
+      # The steps come from this run's commit even when the app comes from another.
+      - uses: actions/checkout@v4
+        if: inputs.app_ref != ''
+        with:
+          path: harness
+          sparse-checkout: scripts/windows-desktop-check
+
+      - name: Take the steps from this run's commit
+        if: inputs.app_ref != ''
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force scripts/windows-desktop-check -ErrorAction SilentlyContinue
+          Move-Item harness/scripts/windows-desktop-check scripts/windows-desktop-check
+          Remove-Item -Recurse -Force harness
+          git log -1 --format="Checking the app at %H %s"
+
+      - uses: ./.github/actions/setup-bun
+
+      # Bun for Windows on Arm has no bun:ffi, which the check's input, window
+      # and screen calls go through, so there the check runs on x64 Bun under
+      # emulation: the Bun the app ships on Windows, whose crash handler leaves
+      # the emulator's own faults alone.
+      - name: Use x64 Bun for the check
+        if: matrix.machine == 'arm64'
+        shell: pwsh
+        run: |
+          $Dir = Join-Path $env:RUNNER_TEMP "bun-x64"
+          Invoke-WebRequest -UseBasicParsing "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-windows-x64-baseline.zip" -OutFile "$Dir.zip"
+          Expand-Archive "$Dir.zip" $Dir
+          $Bun = (Get-ChildItem $Dir -Recurse -Filter bun.exe | Select-Object -First 1).FullName
+          & $Bun --print "process.arch + ' ' + Bun.version"
+          "CHECK_BUN=$Bun" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Download the release installer
+        if: matrix.build == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $Tag = $env:RELEASE
+          if (-not $Tag) { $Tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName }
+          gh release download $Tag --repo $env:GITHUB_REPOSITORY --pattern stable-win-x64-GloomSetup.exe --dir installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "Checking release $Tag"
+
+      - uses: actions/download-artifact@v4
+        if: matrix.build == 'head' && inputs.installer_run == ''
+        with:
+          name: GloomSetup-windows-x64
+          path: installer
+
+      - uses: actions/download-artifact@v4
+        if: matrix.build == 'head' && inputs.installer_run != ''
+        with:
+          name: ${{ inputs.installer_artifact }}
+          path: installer
+          run-id: ${{ inputs.installer_run }}
+          github-token: ${{ github.token }}
+
+      - name: Find the installer
+        shell: pwsh
+        run: |
+          $Installer = Get-ChildItem installer -Filter *.exe -File | Select-Object -First 1
+          if (-not $Installer) { throw "No installer was downloaded" }
+          "INSTALLER=$($Installer.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Checking $($Installer.Name) on $env:PROCESSOR_ARCHITECTURE"
+
+      - name: Set the screen to its largest mode
+        shell: pwsh
+        run: ./scripts/windows-desktop-check/display.ps1 -Largest
+
+      # The Arm image opens on the privacy settings screen of a first sign-in,
+      # over every window, where it takes the check's input.
+      - name: Clear the desktop
+        if: matrix.machine == 'arm64'
+        shell: pwsh
+        run: ./scripts/windows-desktop-check/clear-desktop.ps1 -Log "windows-desktop-check\$env:LABEL-desktop.log"
+
+      - name: Install
+        shell: pwsh
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          & $Bun scripts/windows-desktop-check/check.ts install --installer $env:INSTALLER --dir "$env:RUNNER_TEMP\Gloom check"
+
+      # What the app listens on as installed, before the check opens DevTools.
+      - name: Check what the app listens on
+        shell: pwsh
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          & $Bun scripts/windows-desktop-check/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-ports" --label $env:LABEL
+          & $Bun scripts/windows-desktop-check/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
+          exit 0
+
+      - name: Drive the app at each scale
+        shell: pwsh
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          $Only = if ($env:ONLY) { @("--only", $env:ONLY) } else { @() }
+          foreach ($Scale in $env:SCALES.Split(",")) {
+            $Scale = $Scale.Trim()
+            ./scripts/windows-desktop-check/display.ps1 -Scale $Scale
+            & $Bun scripts/windows-desktop-check/check.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-$Scale" --label $env:LABEL @Only
+          }
+          ./scripts/windows-desktop-check/display.ps1 -Scale 100
+          exit 0
+
+      - name: Report
+        shell: pwsh
+        run: |
+          if ("${{ matrix.build }}" -eq "head") {
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check --known scripts/windows-desktop-check/known-failures.json
+          } else {
+            bun scripts/windows-desktop-check/report.ts windows-desktop-check
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-desktop-check-${{ matrix.build }}-${{ matrix.machine }}
+          path: windows-desktop-check
+          if-no-files-found: warn

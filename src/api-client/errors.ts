@@ -22,6 +22,14 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** What a pane screenshot's local proxy answers (403) to a request the capture does not send. */
+export const SHOT_REQUEST_REFUSED = "The pane screenshot does not send this request.";
+
+/** Whether `error` is the capture's own refusal of a request, not an answer of the service. */
+export function isShotRequestRefused(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 403 && error.code === SHOT_REQUEST_REFUSED;
+}
+
 /**
  * A write refused with 412 because the server holds a newer revision than the
  * one the write was based on. `current` is what the server holds now, or null

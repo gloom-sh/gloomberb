@@ -37,6 +37,68 @@ test("coalesces requests into frames spaced by the interval and honours not-befo
   expect(clock.pending).toBe(false);
 });
 
+test("a riding task joins the first frame that is due, sets one off only at its limit, and holds no data back", () => {
+  const clock = createManualFrameDriver(100);
+  const frames = new DataFrameScheduler(clock.driver);
+  const runs: string[] = [];
+  const quote = () => runs.push(`quote@${clock.driver.now()}`);
+  const wake = () => runs.push(`wake@${clock.driver.now()}`);
+
+  frames.request(quote);
+  clock.advance(0);
+  // Due at 150, it waits for the quote frame at 220 instead of taking a frame of its own.
+  frames.request(wake, { phase: "notify", notBefore: 150, rideUntil: 250 });
+  clock.advance(220);
+  frames.request(quote);
+  clock.advance(0);
+  expect(runs).toEqual(["quote@0", "quote@220", "wake@220"]);
+
+  // With no data it goes alone at its limit, and that frame does not delay the quote right after it.
+  frames.request(wake, { phase: "notify", notBefore: 400, rideUntil: 500 });
+  clock.advance(280);
+  frames.request(quote);
+  clock.advance(0);
+  expect(runs.slice(3)).toEqual(["wake@500", "quote@500"]);
+  expect(clock.pending).toBe(false);
+});
+
+test("a task requested twice keeps the earlier times, and stops riding once any request does not ride", () => {
+  const clock = createManualFrameDriver(100);
+  const frames = new DataFrameScheduler(clock.driver);
+  const runs: string[] = [];
+  const quote = () => runs.push(`quote@${clock.driver.now()}`);
+  const wake = () => runs.push(`wake@${clock.driver.now()}`);
+  const ride = (notBefore: number, rideUntil?: number) => frames.request(wake, { phase: "notify", notBefore, rideUntil });
+
+  // The earlier start: it rides a quote frame due before the later one.
+  ride(150, 300);
+  ride(100, 200);
+  clock.advance(120);
+  frames.request(quote);
+  clock.advance(0);
+  expect(runs).toEqual(["quote@120", "wake@120"]);
+
+  // The earlier limit: with no quotes, it goes alone at that one.
+  ride(250, 400);
+  ride(300, 350);
+  clock.advance(229);
+  expect(runs).toHaveLength(2);
+  clock.advance(1);
+  expect(runs.slice(2)).toEqual(["wake@350"]);
+
+  // Asked for once without riding, it sets its frame off at that time, and the
+  // frame spaces the next one like any frame that carries data.
+  ride(400, 600);
+  ride(450);
+  clock.advance(100);
+  frames.request(quote);
+  clock.advance(99);
+  expect(runs.slice(3)).toEqual(["wake@450"]);
+  clock.advance(1);
+  expect(runs.slice(3)).toEqual(["wake@450", "quote@550"]);
+  expect(clock.pending).toBe(false);
+});
+
 test("frames that set off expensive renders are spaced out, and return to full rate once cheap", () => {
   const clock = createManualFrameDriver(100);
   const frames = new DataFrameScheduler(clock.driver);

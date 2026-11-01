@@ -46,10 +46,11 @@ function brokerContractForTicker(
   const contracts = ticker?.metadata.broker_contracts ?? [];
   const portfolioId = options.portfolioId;
   if (portfolioId) {
-    const positions = ticker?.metadata.positions.filter((position) => position.portfolio === portfolioId && position.shares !== 0) ?? [];
-    const selected = new Map<string, BrokerContractRef>();
+    // Rows ask on every render of a list: nothing is allocated for a portfolio's lots until one names a contract.
+    let selected: Map<string, BrokerContractRef> | null = null;
     let hasPublicPosition = false;
-    for (const position of positions) {
+    for (const position of ticker?.metadata.positions ?? []) {
+      if (position.portfolio !== portfolioId || position.shares === 0) continue;
       const hasExplicitId = position.brokerContractId != null;
       const hasExplicitIdentity = position.brokerContractIdentity != null;
       const hasLegacyScope = position.broker !== "manual" && !!position.broker && !!position.brokerInstanceId;
@@ -68,11 +69,13 @@ function brokerContractForTicker(
         hasPublicPosition = true;
         continue;
       }
+      selected ??= new Map();
       for (const contract of matches) {
         const key = scopedBrokerContractIdentityKey(contract);
         selected.set(key, contract);
       }
     }
+    if (!selected) return null;
     // One ticker quote must identify every selected lot. Never choose by array order.
     if (selected.size > 1 || (selected.size > 0 && hasPublicPosition)) return undefined;
     return selected.values().next().value ?? null;

@@ -4,6 +4,7 @@ import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateProgress } from "../../../updater";
+import type { TickerSearchPayload } from "./command-bar-launch";
 
 export interface PaneRuntimeState {
   cursorSymbol?: string | null;
@@ -33,6 +34,8 @@ interface CommandBarLaunchRequestBase {
 interface CommandBarTickerSearchLaunchRequest extends CommandBarLaunchRequestBase {
   kind: "ticker-search";
   query?: string;
+  /** The search route's payload: `SECURITY_DESCRIPTION_SEARCH` opens DES rather than changing the focused pane. */
+  payload?: TickerSearchPayload;
 }
 
 /**
@@ -54,7 +57,7 @@ interface CommandBarAddListingLaunchRequest extends CommandBarLaunchRequestBase 
 
 /** Forms open in their own modal (`openFormModal`), so the bar launches only its own screens. */
 type CommandBarLaunch =
-  | { kind: "ticker-search"; query?: string }
+  | { kind: "ticker-search"; query?: string; payload?: TickerSearchPayload }
   | { kind: "run-query"; query: string }
   | { kind: "add-listing"; collectionId: string; collectionKind: "watchlist" | "portfolio" };
 

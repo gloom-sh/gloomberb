@@ -106,8 +106,8 @@ function sanitizeDockedPlacementMemory(raw: unknown): DockedPlacementMemory | un
   const anchorInstanceId = typeof (raw as { anchorInstanceId?: unknown }).anchorInstanceId === "string"
     ? (raw as { anchorInstanceId: string }).anchorInstanceId
     : undefined;
-  const position = ["left", "right", "above", "below"].includes(String((raw as { position?: unknown }).position))
-    ? (raw as { position: "left" | "right" | "above" | "below" }).position
+  const position = ["left", "right", "above", "below", "tab"].includes(String((raw as { position?: unknown }).position))
+    ? (raw as { position: NonNullable<DockedPlacementMemory["position"]> }).position
     : undefined;
   if (!path && !anchorInstanceId && !position) return undefined;
   return {

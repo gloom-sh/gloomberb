@@ -1,4 +1,5 @@
 import { errorMessage } from "../utils/errors";
+import { logFailure } from "../utils/log-failure";
 
 type ConnectionHealthKind = "asset-data" | "news" | "api" | "websocket" | "capability";
 export type ConnectionHealthStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
@@ -33,6 +34,12 @@ export interface ConnectionHealthState extends ConnectionHealthSource {
   socketState: ConnectionSocketState | null;
   lastTransitionAt: number | null;
   currentDetail: string | null;
+  /**
+   * Since when the service behind the source gave no answer at all (a refused
+   * connection, or one that hung with nothing back), while nothing it sent has
+   * come back since; null while it answers. See `reportReachability`.
+   */
+  unreachableSince: number | null;
 }
 
 export interface ConnectionHealthSnapshot {
@@ -60,6 +67,7 @@ export const GLOOM_CLOUD_FRED_CONNECTION_ID = "gloom-cloud-fred";
 
 const MAX_RECENT_REQUESTS = 20;
 const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
+const logRecoveryListenerFailure = logFailure("core.connection-health", "A recovery listener failed");
 
 function socketStatus(state: ConnectionSocketState): ConnectionHealthStatus {
   if (state === "open") return "connected";
@@ -82,6 +90,7 @@ export class ConnectionHealthRegistry {
   private readonly sources = new Map<string, ConnectionHealthState>();
   private readonly registrations = new Map<string, symbol>();
   private readonly listeners = new Set<() => void>();
+  private readonly recoveryListeners = new Set<(sourceId: string) => void>();
   private readonly external = new Map<string, ConnectionHealthState[]>();
   private readonly now: () => number;
   private readonly clock: () => number;
@@ -110,6 +119,7 @@ export class ConnectionHealthRegistry {
       socketState: source.kind === "websocket" ? "idle" : null,
       lastTransitionAt: null,
       currentDetail: source.detail ?? null,
+      unreachableSince: null,
     });
 
     this.emit();
@@ -156,6 +166,63 @@ export class ConnectionHealthRegistry {
     this.emit();
   }
 
+  /**
+   * Whether the service behind a source answers at all. A request refused, or
+   * hung with nothing back, makes it unreachable; the first answer of any kind
+   * after that makes it reachable again, and `subscribeRecovery` listeners
+   * hear of it, so what failed during the outage can be asked again.
+   */
+  reportReachability(sourceId: string, reachable: boolean): void {
+    const source = this.sources.get(sourceId);
+    if (!source || (source.unreachableSince === null) === reachable) return;
+    this.sources.set(sourceId, { ...source, unreachableSince: reachable ? null : this.now() });
+    this.emit();
+    if (reachable) this.emitRecovery(sourceId);
+  }
+
+  /**
+   * Tells recovery listeners the source answers again. They run inside the
+   * request that brought the answer: one that throws must fail neither that
+   * request nor the listeners after it.
+   */
+  private emitRecovery(sourceId: string): void {
+    for (const listener of [...this.recoveryListeners]) {
+      try {
+        listener(sourceId);
+      } catch (error) {
+        logRecoveryListenerFailure(error);
+      }
+    }
+  }
+
+  /** Since when the source's service gave no answer at all, or null while it answers (`reportReachability`). */
+  unreachableSince(sourceId: string): number | null {
+    return this.peek(sourceId)?.unreachableSince ?? null;
+  }
+
+  /** A websocket source's state as last reported, or null for another kind of source or one not registered. */
+  socketState(sourceId: string): ConnectionSocketState | null {
+    return this.peek(sourceId)?.socketState ?? null;
+  }
+
+  /**
+   * The source's state as `getSnapshot` shows it, without a copy: another
+   * process's (`replaceExternalSnapshot`) over this one's own.
+   */
+  private peek(sourceId: string): ConnectionHealthState | null {
+    for (const external of this.external.values()) {
+      const source = external.find((entry) => entry.id === sourceId);
+      if (source) return source;
+    }
+    return this.sources.get(sourceId) ?? null;
+  }
+
+  /** Called with the source's id each time its service answers again after it went unanswered. */
+  subscribeRecovery(listener: (sourceId: string) => void): () => void {
+    this.recoveryListeners.add(listener);
+    return () => this.recoveryListeners.delete(listener);
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -182,8 +249,16 @@ export class ConnectionHealthRegistry {
   }
 
   replaceExternalSnapshot(namespace: string, snapshot: ConnectionHealthSnapshot): void {
-    this.external.set(namespace, snapshot.sources.map(cloneState));
+    const previous = this.external.get(namespace) ?? [];
+    const next = snapshot.sources.map(cloneState);
+    this.external.set(namespace, next);
     this.emit();
+    // Another process's service answering again is a recovery here too (the desktop app's data requests run in its backend).
+    for (const source of next) {
+      if (source.unreachableSince != null) continue;
+      if (previous.find((entry) => entry.id === source.id)?.unreachableSince == null) continue;
+      this.emitRecovery(source.id);
+    }
   }
 
   clearExternalSnapshot(namespace: string): void {

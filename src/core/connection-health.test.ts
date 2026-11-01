@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   ConnectionHealthRegistry,
+  GLOOM_CLOUD_HTTP_CONNECTION_ID,
   registerGloomCloudConnectionSources,
 } from "./connection-health";
 
@@ -116,6 +117,45 @@ describe("ConnectionHealthRegistry", () => {
       lastOperation: "getQuote",
       lastLatencyMs: 5,
     });
+  });
+
+  // The desktop app sends its data requests from its backend: the window
+  // must hear the outage end through the backend's snapshot, or nothing in
+  // it loads again.
+  test("hears another process's data service answer again through its snapshot, once", () => {
+    const renderer = new ConnectionHealthRegistry();
+    const backend = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(backend);
+    const recovered: string[] = [];
+    renderer.subscribeRecovery((sourceId) => recovered.push(sourceId));
+
+    renderer.replaceExternalSnapshot("backend", backend.getSnapshot());
+    backend.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    renderer.replaceExternalSnapshot("backend", backend.getSnapshot());
+    expect(renderer.unreachableSince(GLOOM_CLOUD_HTTP_CONNECTION_ID)).not.toBeNull();
+    expect(recovered).toEqual([]);
+
+    backend.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+    renderer.replaceExternalSnapshot("backend", backend.getSnapshot());
+    renderer.replaceExternalSnapshot("backend", backend.getSnapshot());
+    expect(renderer.unreachableSince(GLOOM_CLOUD_HTTP_CONNECTION_ID)).toBeNull();
+    expect(recovered).toEqual([GLOOM_CLOUD_HTTP_CONNECTION_ID]);
+  });
+
+  // Recovery listeners run inside the request that got the answer: one that
+  // threw failed that request and kept the listeners after it from hearing.
+  test("a recovery listener that throws fails neither the report nor the listeners after it", () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const recovered: string[] = [];
+    health.subscribeRecovery(() => {
+      throw new Error("listener broke");
+    });
+    health.subscribeRecovery((sourceId) => recovered.push(sourceId));
+
+    health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    expect(() => health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true)).not.toThrow();
+    expect(recovered).toEqual([GLOOM_CLOUD_HTTP_CONNECTION_ID]);
   });
 
   test("overlays external sources by canonical id without duplicate rows", () => {

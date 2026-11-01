@@ -16,6 +16,8 @@ import type {
 } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
 import { isRecord } from "../utils/guards";
+import { buildDockStack, isDockStack } from "../layout/pane-manager/dock-stack";
+import { getDockedInstanceIds } from "../layout/pane-manager/dock-tree";
 
 const MAX_LAYOUT_BYTES = 128 * 1024;
 // Pane runtime state doubles as a cache (news panes keep six figures of bytes of
@@ -464,6 +466,81 @@ function mapDockNode(node: DockLayoutNode | null, ids: ReadonlyMap<string, strin
   };
 }
 
+/**
+ * A stack of tabs travels as its panes side by side, the form every app and
+ * the gallery accept, with its tabs in the state of its first pane under this
+ * key: an app that knows stacks puts them back together, and an older one
+ * shows them side by side and ignores the key.
+ */
+export const SHARED_STACK_STATE_KEY = "dockStack";
+
+interface SharedStack {
+  /** The stack's panes in tab order. */
+  tabs: string[];
+  /** The one it shows. */
+  shown: string;
+}
+
+/** Panes side by side, as even as a split tree goes, as shallow as it goes too: a long stack stays within the depth a share allows. */
+function sideBySide(ids: readonly string[]): DockLayoutNode {
+  if (ids.length === 1) return { kind: "pane", instanceId: ids[0]! };
+  const half = Math.ceil(ids.length / 2);
+  return {
+    kind: "split",
+    axis: "horizontal",
+    ratio: half / ids.length,
+    first: sideBySide(ids.slice(0, half)),
+    second: sideBySide(ids.slice(half)),
+  };
+}
+
+/** `node` with every stack laid out side by side, the stacks it had added to `stacks`. */
+function withStacksSideBySide(node: DockLayoutNode | null, stacks: SharedStack[]): DockLayoutNode | null {
+  if (!node || node.kind === "pane") return node;
+  if (isDockStack(node)) {
+    const tabs = getDockedInstanceIds(node);
+    stacks.push({ tabs, shown: tabs.includes(node.tabs.active) ? node.tabs.active : tabs[0]! });
+    return sideBySide(tabs);
+  }
+  return {
+    kind: "split",
+    axis: node.axis,
+    ratio: node.ratio,
+    first: withStacksSideBySide(node.first, stacks)!,
+    second: withStacksSideBySide(node.second, stacks)!,
+  };
+}
+
+function parseSharedStack(value: unknown): SharedStack | null {
+  if (!isRecord(value) || !Array.isArray(value.tabs) || typeof value.shown !== "string") return null;
+  const tabs = value.tabs.filter((id): id is string => typeof id === "string");
+  return tabs.length === value.tabs.length ? { tabs, shown: value.shown } : null;
+}
+
+/**
+ * `node` with the panes of `stack` stacked again, where they still fill one
+ * part of the tree on their own; as it is otherwise.
+ */
+function restack(node: DockLayoutNode | null, stack: SharedStack): DockLayoutNode | null {
+  const want = new Set(stack.tabs);
+  let done = false;
+  const visit = (current: DockLayoutNode): { node: DockLayoutNode; ids: string[] } => {
+    if (current.kind === "pane") return { node: current, ids: [current.instanceId] };
+    const first = visit(current.first);
+    const second = visit(current.second);
+    const ids = [...first.ids, ...second.ids];
+    if (!done && ids.length === want.size && ids.every((id) => want.has(id))) {
+      done = true;
+      return { node: buildDockStack(stack.tabs, stack.shown)!, ids };
+    }
+    return {
+      node: first.node === current.first && second.node === current.second ? current : { ...current, first: first.node, second: second.node },
+      ids,
+    };
+  };
+  return node && want.size > 1 ? visit(node).node : node;
+}
+
 function mapBinding(binding: PaneBinding | undefined, ids: ReadonlyMap<string, string>): PaneBinding | undefined {
   return binding?.kind === "follow"
     ? { kind: "follow", sourceInstanceId: ids.get(binding.sourceInstanceId) ?? binding.sourceInstanceId }
@@ -525,8 +602,17 @@ function publishableLayout(
       ...(settings ? { settings } : {}),
     };
   });
+  const stacks: SharedStack[] = [];
+  const dockRoot = mapDockNode(withStacksSideBySide(publicLayout.dockRoot, stacks), ids);
+  for (const stack of stacks) {
+    const tabs = stack.tabs.map((id) => ids.get(id) ?? id);
+    projectedState[tabs[0]!] = {
+      ...projectedState[tabs[0]!],
+      [SHARED_STACK_STATE_KEY]: { tabs, shown: ids.get(stack.shown) ?? stack.shown },
+    } as PaneRuntimeState;
+  }
   const projected: LayoutConfig = {
-    dockRoot: mapDockNode(publicLayout.dockRoot, ids),
+    dockRoot,
     instances,
     floating: publicLayout.floating.map(({ instanceId, x, y, width, height, zIndex }) => ({
       instanceId: ids.get(instanceId) ?? instanceId,
@@ -665,8 +751,19 @@ export function materializeMarketplaceLayout(
     createId(instance.paneId, index),
   ]));
   if (new Set(ids.values()).size !== ids.size) throw new Error("Could not create unique pane ids for this layout.");
+  // The stacks travel side by side, their tabs noted in their first pane's state.
+  let dockRoot = mapDockNode(source.layout.dockRoot, ids);
+  for (const [id, state] of Object.entries(source.paneState)) {
+    const stack = parseSharedStack(state?.[SHARED_STACK_STATE_KEY]);
+    if (!stack) continue;
+    const tabs = stack.tabs.map((tab) => ids.get(folded.idMap.get(tab) ?? tab)).filter((tab): tab is string => !!tab);
+    const shown = ids.get(folded.idMap.get(stack.shown) ?? stack.shown);
+    if (tabs.length > 1 && tabs.length === new Set(tabs).size) dockRoot = restack(dockRoot, { tabs, shown: shown ?? tabs[0]! });
+    const { [SHARED_STACK_STATE_KEY]: _stack, ...rest } = state;
+    source.paneState[id] = rest as PaneRuntimeState;
+  }
   const layout: LayoutConfig = {
-    dockRoot: mapDockNode(source.layout.dockRoot, ids),
+    dockRoot,
     instances: source.layout.instances.map((instance) => ({
       ...structuredClone(instance),
       instanceId: ids.get(instance.instanceId)!,

@@ -16,11 +16,14 @@ const AUTH_IN_FAMILY = /^\/cloud\/auth(?:\/|$)/;
  * session cut to its user, see `isShotSessionPath`), plan prices, the service
  * probe, the roadmap, the layout gallery (marketplace and team layouts),
  * theses, and a signed-in broker's catalog, connection status, holdings,
- * orders and fills.
+ * orders and fills. The Buildout plan is one: its answer is the plan and its
+ * prices, never the token `POST /account/buildout/token` mints, which stays
+ * refused, so the Buildout panes cannot be drawn with a plan's data.
  */
 const READ_PATHS = [
   /^\/auth\/get-session$/,
   /^\/account\/cloud$/,
+  /^\/account\/buildout$/,
   /^\/pricing$/,
   /^\/health$/,
   /^\/roadmap$/,
@@ -30,8 +33,13 @@ const READ_PATHS = [
   /^\/brokers\/connectors$/,
   /^\/brokers\/[a-z][a-z0-9-]{0,31}(?:\/(?:snapshot|orders|executions))?$/,
 ];
-/** Reads sent as a POST because their query is a list: batches, scans and analyses. */
+/**
+ * Reads sent as a POST because their query is a list or a definition: batches,
+ * scans, analyses and the equity screen's query. Its saved-screen writes,
+ * ticker check and export are not here.
+ */
 const READ_POSTS = new Set([
+  "/cloud/equity-screener/query",
   "/cloud/exposure/analyze",
   "/cloud/perps/equities",
   "/market/financials/batch",

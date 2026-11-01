@@ -2,8 +2,8 @@ import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
-import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
+import { PaneBodyFrame, getPaneWindowAttributes, type DockEdge } from "./frame";
+import { PaneHeader, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
 import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
@@ -11,6 +11,12 @@ import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from ".
 interface PaneWrapperProps {
   paneId?: string;
   title?: string;
+  /**
+   * Desktop and web: the ticker the title shows, drawn as a control that opens ticker search for
+   * the pane (`onTitleTickerPress`).
+   */
+  titleTicker?: string | null;
+  onTitleTickerPress?: () => void;
   focused: boolean;
   windowModeSelected?: boolean;
   width?: number;
@@ -27,6 +33,10 @@ interface PaneWrapperProps {
   quickSettings?: PaneHeaderQuickSetting[];
   /** A dock divider line is drawn over the top row (the pane is below another). */
   topRule?: boolean;
+  /** Desktop: the sides that face another docked pane across the gap between them. */
+  dockEdges?: readonly DockEdge[];
+  /** Panes stacked as tabs in this spot. */
+  stack?: PaneHeaderStack | null;
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -47,6 +57,8 @@ interface PaneWrapperProps {
 export function PaneWrapper({
   paneId,
   title,
+  titleTicker = null,
+  onTitleTickerPress,
   focused,
   windowModeSelected = false,
   width = 0,
@@ -57,6 +69,8 @@ export function PaneWrapper({
   showActions = false,
   quickSettings,
   topRule = false,
+  dockEdges,
+  stack,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -105,6 +119,7 @@ export function PaneWrapper({
         focused,
         windowModeSelected,
         showBorderColor: true,
+        dockEdges,
       })}
       onMouseDown={onMouseDown}
       onMouseDownCapture={onMouseDownCapture}
@@ -112,6 +127,8 @@ export function PaneWrapper({
       {title && (
         <PaneHeader
           title={title}
+          titleTicker={titleTicker}
+          onTitleTickerPress={onTitleTickerPress}
           width={width}
           focused={focused}
           windowModeSelected={windowModeSelected}
@@ -119,6 +136,7 @@ export function PaneWrapper({
           showActions={showActions}
           quickSettings={quickSettings}
           tabs={headerTabs}
+          stack={stack}
           bodyBackground={bg}
           topRule={topRule}
           onHeaderMouseMove={onHeaderMouseMove}

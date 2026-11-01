@@ -36,6 +36,9 @@ import { useCommandBarRouteEffects } from "../routing/effects";
 import { useCommandBarEnvironment } from "./environment";
 import { useCommandBarActionRuntime } from "../action-runtime";
 import { requestKeybindingCapture } from "../../../app/keybindings";
+import { resolveTickerRetargetPane } from "../../../layout/ticker-retarget";
+import { findPaneInstance } from "../../../types/config";
+import { getBasePaneDisplayTitle } from "../../layout/pane/title";
 import { isDialogOpen } from "../../../ui/dialog-stack";
 
 interface CommandBarProps {
@@ -635,7 +638,18 @@ export function CommandBar({
     visibleListStateRef,
   });
 
+  // Plain ticker search changes the focused pane's ticker when it shows one; DES's own search opens DES.
+  const tickerSearchTarget = useMemo(() => {
+    if (currentRoute?.kind !== "mode" || currentRoute.screen !== "ticker-search" || currentRoute.payload?.action) return null;
+    const layout = state.config.layout;
+    if (!resolveTickerRetargetPane(layout, state.focusedPaneId, pluginRegistry.panes)) return null;
+    const focused = findPaneInstance(layout, state.focusedPaneId!);
+    const paneDef = focused ? pluginRegistry.panes.get(focused.paneId) : undefined;
+    return focused && paneDef ? getBasePaneDisplayTitle(state, focused, paneDef, pluginRegistry.panes) : null;
+  }, [currentRoute, pluginRegistry.panes, state]);
+  const runSecondary = useCallback(() => activateListSelection({ secondary: true }), [activateListSelection]);
+
   return (
-    <CommandBarPanel {...panelProps} />
+    <CommandBarPanel {...panelProps} tickerSearchTarget={tickerSearchTarget} onRunSecondary={runSecondary} />
   );
 }

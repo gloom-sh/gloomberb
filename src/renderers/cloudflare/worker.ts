@@ -15,6 +15,23 @@ const LAYOUT_SHARE_PATH = /^\/l\/[a-f0-9]{32}\/?$/;
 const API_PATH = /^\/api(?:\/|$)/;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ROBOTS_PATH = "/robots.txt";
+/**
+ * Files the web build names after their contents (`main-<hash>.js`, the launch
+ * frame, the bundled plugins: `withContentHash` in scripts/build-web.ts, the
+ * first 16 hex digits of a SHA-256). A name never serves other bytes, so a
+ * browser keeps them for a year without asking again; the bundle audit checks
+ * each such name against its file. Lazy chunks keep plain names and are
+ * revalidated as before.
+ */
+export const IMMUTABLE_ASSET_PATH = /^\/assets\/.+-[a-f0-9]{16}\.(?:js|css)$/;
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+/**
+ * The icons and the install manifest keep their names from build to build.
+ * The browser asked whether each had changed before the first paint of every
+ * open; a copy up to a day old does no harm.
+ */
+const DAILY_ASSET_PATH = /^\/(?:favicon\.(?:ico|svg)|manifest\.webmanifest|app-icon-\d+\.png)$/;
+const DAILY_CACHE_CONTROL = "public, max-age=86400";
 
 /**
  * Crawling stays allowed on purpose. Deep links are kept out of the index by
@@ -64,13 +81,17 @@ export const SECURITY_HEADERS = {
   "x-frame-options": "DENY",
 } as const;
 
-export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean } = {}): Response {
+export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean; keep?: "immutable" | "daily" } = {}): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   const html = (headers.get("content-type") ?? "").includes("text/html");
   if (options.share) headers.set("x-robots-tag", "noindex, nofollow, noarchive");
   else if (options.noindex && html) headers.set("x-robots-tag", "noindex");
   if (html) headers.set("cache-control", "no-store");
+  // Only the file itself: a name the build no longer has falls back to the app's HTML, which stays no-store.
+  else if (options.keep && (response.ok || response.status === 304)) {
+    headers.set("cache-control", options.keep === "immutable" ? IMMUTABLE_CACHE_CONTROL : DAILY_CACHE_CONTROL);
+  }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -135,7 +156,8 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   // `/?ticker=GPC&tab=executives` would be indexed as thin duplicates. Only the
   // bare root stays indexable.
   const deepLink = url.pathname !== "/" || url.search !== "";
-  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink });
+  const keep = IMMUTABLE_ASSET_PATH.test(url.pathname) ? "immutable" : DAILY_ASSET_PATH.test(url.pathname) ? "daily" : undefined;
+  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink, keep });
 }
 
 export default {

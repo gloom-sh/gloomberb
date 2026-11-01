@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { AppState } from "../../../state/app/context";
+import type { TickerSearchPayload } from "../../../core/state/app/command-bar-launch";
 
 interface UseCommandBarLaunchRequestOptions {
   commandBarLaunchRequest: AppState["commandBarLaunchRequest"];
@@ -7,7 +8,7 @@ interface UseCommandBarLaunchRequestOptions {
   openModeRoute: (
     screen: "ticker-search" | "layout",
     initialQuery?: string,
-    payload?: Record<string, unknown>,
+    payload?: TickerSearchPayload,
   ) => void;
 }
 
@@ -29,7 +30,7 @@ export function useCommandBarLaunchRequest({
     processedLaunchSequenceRef.current = launch.sequence;
 
     if (launch.kind === "ticker-search") {
-      openModeRoute("ticker-search", launch.query ?? "");
+      openModeRoute("ticker-search", launch.query ?? "", launch.payload);
     }
     // Submitting text needs the selection runtime, which the surface wires up
     // after this hook; it watches for run-query itself.

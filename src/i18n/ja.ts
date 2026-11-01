@@ -175,6 +175,9 @@ export const ja: Record<string, string> = {
   "Reset Layout": "レイアウトをリセット",
   "Reset Current Layout": "現在のレイアウトをリセット",
   "Security Description": "銘柄詳細",
+  "Change ticker": "銘柄を変更",
+  "Change ticker · {pane}": "銘柄を変更 · {pane}",
+  "New pane": "新しいペイン",
 
   // ── Core command descriptions ────────────────────────────────
   "Show or hide the keyboard shortcuts bar": "キーボードショートカットバーを表示／非表示",
@@ -220,6 +223,7 @@ export const ja: Record<string, string> = {
   "Create or update a manual position without leaving the command bar.": "コマンドバー内で手動ポジションを作成または更新します。",
   "Organize panes and saved layouts.": "ペインと保存されたレイアウトを整理します。",
   "Resolve a ticker, then open its Ticker Research pane.": "銘柄コードを確認して銘柄リサーチを開きます。",
+  "Resolve a ticker for the focused pane, or open it in a new pane.": "選択中のペインの銘柄コードを確認するか、新しいペインで開きます。",
   "Toggle optional plugins without leaving the command bar.": "コマンド バーを離れることなく、オプションのプラグインを切り替えます。",
 
   // ── Layout actions ───────────────────────────────────────────
@@ -256,6 +260,8 @@ export const ja: Record<string, string> = {
   "Unlink from Pane in Another Window": "別ウィンドウのパネルとのリンクを解除",
   "Open another app window with its own layout tabs, for another screen": "別の画面用に、専用のレイアウトタブを持つアプリウィンドウをもう一つ開く",
   "Move Window...": "ウィンドウを移動...",
+  "Change Ticker...": "銘柄を変更...",
+  "Change Ticker": "銘柄を変更",
   "Resize Window...": "ウィンドウのサイズを変更...",
   "Move Window": "ウィンドウを移動",
   "Resize Window": "ウィンドウのサイズを変更",
@@ -562,7 +568,8 @@ export const ja: Record<string, string> = {
   "Cycle windows or resize handles.": "ウィンドウを循環させるか、ハンドルのサイズを変更します。",
   "Commit pending changes or exit window mode.": "保留中の変更をコミットするか、ウィンドウ モードを終了します。",
   "Open command mode for actions, pane commands, and typed prefixes.": "アクション、ペイン コマンド、および入力されたプレフィックスのコマンド モードを開きます。",
-  "Open ticker search directly.": "銘柄検索を直接開きます。",
+  "Change the focused pane's ticker.": "選択中のペインの銘柄を変更します。",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "銘柄検索: Enter で選択中のペインとリンクされたペインの銘柄を変更します。デスクトップと Web ではペインのタイトルの銘柄をクリックしても同じです。Shift+Enter で新しいペインを開きます。銘柄のないペインからは DES を開きます。",
   "Open security details for a specific ticker.": "指定した銘柄の詳細を開きます。",
   "Move through command bar results.": "コマンド バーの結果を移動します。",
   "Run the selected result or its secondary action.": "選択した結果またはその二次アクションを実行します。",

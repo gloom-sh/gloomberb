@@ -103,6 +103,7 @@ import { perpetualDisplaySymbol, perpetualListing, perpetualVenueName } from "..
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
+import { sharePositionMetrics } from "../../../../portfolio/column-values";
 import { withFuturesContractSizes } from "../../../../portfolio/futures-positions";
 import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
@@ -124,6 +125,8 @@ const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"
 const FOOTER_TOTALS_THROTTLE_MS = 250;
 const WEIGHT_TOTAL_THROTTLE_MS = 1_000;
 const DAY_MS = 86_400_000;
+/** One fallback for every render: a fresh `{}` would read as a changed value each time. */
+const NO_COLLECTION_SORTS: Record<string, CollectionSortPreference> = {};
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
@@ -139,7 +142,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const [currentCollectionId, setCurrentCollectionId] = usePaneStateValue<string>("collectionId", paneCollection.collectionId ?? "");
   const [committedCursorSymbol, setCommittedCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
-  const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", {});
+  const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
 
@@ -322,11 +325,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     totalsCurrency,
     valuationBasis,
   ]);
-  const columnContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now }), [baseColumnContext, now]);
+  // Cells and sort keys share each row's position figures: the clock does not move them.
+  const columnContext: ColumnContext = useMemo(() => sharePositionMetrics({ ...baseColumnContext, now }, baseColumnContext), [baseColumnContext, now]);
   // The order only follows the per-second clock when sorting by quote age;
   // day-based columns read the day, which the day's start stands for.
   const sortNow = activeSort.columnId === "latency" ? now : Math.floor(now / DAY_MS) * DAY_MS;
-  const sortContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now: sortNow }), [baseColumnContext, sortNow]);
+  const sortContext: ColumnContext = useMemo(() => sharePositionMetrics({ ...baseColumnContext, now: sortNow }, baseColumnContext), [baseColumnContext, sortNow]);
 
   const candidateSortedTickers = useMemo(
     () => sortTickers(tickers, financialsMap, activeSort, sortContext, columns),

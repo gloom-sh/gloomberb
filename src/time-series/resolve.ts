@@ -26,6 +26,8 @@ import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider } from "../types/data-provider";
 import type { CorporateActionsData, EarningsAction, Quote, TickerFinancials } from "../types/financials";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
+import { getSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { resolveEntryData } from "../market-data/selectors";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import { fredCreditCoverageNotice } from "./economic";
 import {
@@ -392,6 +394,16 @@ async function resolveChartSpecPass(
   const loadQuoteMetadata = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
     const key = instrumentKey(source);
     let pending = cache.quoteMetadataByInstrument.get(key);
+    // The pane showing this listing has usually just read its quote: its
+    // currency and type answer without asking the server for the quote again.
+    const held = resolveEntryData(getSharedMarketDataCoordinator()?.getQuoteEntry(source.instrument));
+    const heldMetadata = held ? quoteMetadataFromQuote(held) : null;
+    if (!pending && heldMetadata?.currency && heldMetadata.instrumentType
+      && quoteMetadataMatchesTarget(heldMetadata, source.instrument.symbol, source.instrument.exchange)) {
+      pending = Promise.resolve(heldMetadata);
+      cache.quoteMetadataByInstrument.set(key, pending);
+      cache.revision += 1;
+    }
     if (!pending) {
       const provider = sources.dataProvider!;
       pending = Promise.resolve().then(() => provider.getQuoteMetadata

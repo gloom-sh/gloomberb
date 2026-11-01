@@ -175,6 +175,9 @@ export const zhTW: Record<string, string> = {
   "Reset Layout": "重置版面設定",
   "Reset Current Layout": "重置目前版面設定",
   "Security Description": "證券詳情",
+  "Change ticker": "變更股票代號",
+  "Change ticker · {pane}": "變更股票代號 · {pane}",
+  "New pane": "新面板",
 
   // ── Core command descriptions ────────────────────────────────
   "Show or hide the keyboard shortcuts bar": "顯示或隱藏快速鍵狀態列",
@@ -220,6 +223,7 @@ export const zhTW: Record<string, string> = {
   "Create or update a manual position without leaving the command bar.": "直接在命令列建立或更新手動部位。",
   "Organize panes and saved layouts.": "管理面板與已儲存的版面設定。",
   "Resolve a ticker, then open its Ticker Research pane.": "解析股票代號並開啟其研究面板。",
+  "Resolve a ticker for the focused pane, or open it in a new pane.": "為目前面板解析股票代號，或在新面板中開啟。",
   "Toggle optional plugins without leaving the command bar.": "在命令列內直接啟停可選外掛。",
 
   // ── Layout actions ───────────────────────────────────────────
@@ -256,6 +260,8 @@ export const zhTW: Record<string, string> = {
   "Unlink from Pane in Another Window": "取消與其他視窗面板的連結",
   "Open another app window with its own layout tabs, for another screen": "為另一個螢幕再開啟一個擁有獨立版面設定標籤的應用程式視窗",
   "Move Window...": "移動視窗...",
+  "Change Ticker...": "變更股票代號...",
+  "Change Ticker": "變更股票代號",
   "Resize Window...": "調整視窗大小...",
   "Move Window": "移動視窗",
   "Resize Window": "調整視窗大小",
@@ -562,7 +568,8 @@ export const zhTW: Record<string, string> = {
   "Cycle windows or resize handles.": "循環切換視窗或縮放控制點。",
   "Commit pending changes or exit window mode.": "確認待處理的變更或結束視窗模式。",
   "Open command mode for actions, pane commands, and typed prefixes.": "開啟命令模式：操作、面板命令與字首輸入。",
-  "Open ticker search directly.": "直接開啟股票搜尋。",
+  "Change the focused pane's ticker.": "變更目前面板的股票代號。",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "股票搜尋：Enter 變更目前面板及其連結面板的股票代號，與在桌面版和網頁版中點擊面板標題中的代號相同。Shift+Enter 在新面板中開啟。在沒有代號的面板中則開啟 DES。",
   "Open security details for a specific ticker.": "開啟指定股票的證券詳情。",
   "Move through command bar results.": "在命令列結果間移動。",
   "Run the selected result or its secondary action.": "執行所選結果或其次要操作。",

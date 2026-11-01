@@ -175,6 +175,9 @@ export const zhCN: Record<string, string> = {
   "Reset Layout": "重置布局",
   "Reset Current Layout": "重置当前布局",
   "Security Description": "证券详情",
+  "Change ticker": "更改股票代码",
+  "Change ticker · {pane}": "更改股票代码 · {pane}",
+  "New pane": "新面板",
 
   // ── Core command descriptions ────────────────────────────────
   "Show or hide the keyboard shortcuts bar": "显示或隐藏快捷键状态栏",
@@ -220,6 +223,7 @@ export const zhCN: Record<string, string> = {
   "Create or update a manual position without leaving the command bar.": "在命令栏内直接创建或更新手动持仓。",
   "Organize panes and saved layouts.": "管理面板与已存布局。",
   "Resolve a ticker, then open its Ticker Research pane.": "解析股票代码并打开其研究面板。",
+  "Resolve a ticker for the focused pane, or open it in a new pane.": "为当前面板解析股票代码，或在新面板中打开。",
   "Toggle optional plugins without leaving the command bar.": "在命令栏内直接启停可选插件。",
 
   // ── Layout actions ───────────────────────────────────────────
@@ -256,6 +260,8 @@ export const zhCN: Record<string, string> = {
   "Unlink from Pane in Another Window": "取消与其他窗口面板的链接",
   "Open another app window with its own layout tabs, for another screen": "为另一块屏幕再打开一个带有独立布局标签的应用窗口",
   "Move Window...": "移动窗口...",
+  "Change Ticker...": "更改股票代码...",
+  "Change Ticker": "更改股票代码",
   "Resize Window...": "调整窗口大小...",
   "Move Window": "移动窗口",
   "Resize Window": "调整窗口大小",
@@ -562,7 +568,8 @@ export const zhCN: Record<string, string> = {
   "Cycle windows or resize handles.": "循环切换窗口或缩放控制点。",
   "Commit pending changes or exit window mode.": "提交更改或退出窗口模式。",
   "Open command mode for actions, pane commands, and typed prefixes.": "打开命令模式：操作、面板命令与前缀输入。",
-  "Open ticker search directly.": "直接打开股票搜索。",
+  "Change the focused pane's ticker.": "更改当前面板的股票代码。",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "股票搜索：Enter 更改当前面板及其链接面板的股票代码，与在桌面版和网页版中点击面板标题中的代码相同。Shift+Enter 在新面板中打开。在没有代码的面板中则打开 DES。",
   "Open security details for a specific ticker.": "打开指定股票的证券详情。",
   "Move through command bar results.": "在命令栏结果间移动。",
   "Run the selected result or its secondary action.": "执行所选结果或其次要操作。",

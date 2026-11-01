@@ -34,6 +34,8 @@ const CHIP_NAME_COLUMNS = 12;
 /** The message on arrival never takes more columns than this, and does not show in fewer than the least. */
 const PREVIEW_MOST_COLUMNS = 48;
 const PREVIEW_LEAST_COLUMNS = 12;
+/** A session the app checked this recently (the web app does before its first paint) is not asked for again on mount. */
+const RECENT_SESSION_CHECK_MS = 30_000;
 
 /** Who the chip names: the sender of the newest message for you, and whether it came in a DM or group chat. */
 interface ChipWho {
@@ -183,7 +185,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
       setUsername(nextSnapshot.user?.username ?? null);
       setHasSavedSession(nextSnapshot.hasSavedSession);
     });
-    void controller.refreshSession().catch(() => {});
+    void controller.refreshSession({ reuseCheckWithinMs: RECENT_SESSION_CHECK_MS }).catch(() => {});
     return unsubscribe;
   }, [controller]);
 

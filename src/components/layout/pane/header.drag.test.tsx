@@ -8,8 +8,9 @@ import { WebBox } from "../../../renderers/dom/host/box";
 import { WebSpan, WebText } from "../../../renderers/dom/host/text";
 import { WebIcon, WebIconButton } from "../../../renderers/dom/desktop/icons";
 import { WebTabs } from "../../../renderers/dom/host/tabs";
+import { WebButton } from "../../../renderers/dom/desktop/controls";
 import { WebInputHostProvider } from "../../../renderers/dom/input-host";
-import { PaneHeader } from "./header";
+import { findTitleTicker, PaneHeader } from "./header";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi: false });
 
@@ -29,6 +30,7 @@ function desktopUi(): UiHost {
     Icon: WebIcon,
     IconButton: WebIconButton,
     Tabs: WebTabs,
+    Button: WebButton,
     SpinnerMark: () => null,
   } as unknown as UiHost;
 }
@@ -122,6 +124,42 @@ test("a press anywhere on the bar outside its controls drags the pane to the rel
     docs.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, button: 0 }));
   });
   expect(seen.filter((event) => event === "docs")).toEqual(["docs"]);
+});
+
+test("the ticker in a pane's title opens ticker search and never drags the pane", async () => {
+  const seen: string[] = [];
+  const container = await renderDom(
+    <UiHostProvider ui={desktopUi()} renderer={noopRendererHost}><WebInputHostProvider>
+      <PaneHeader
+        title={"Chart: NVDA  \u29c9 Linked to Ticker Research"}
+        titleTicker="NVDA"
+        onTitleTickerPress={() => seen.push("search")}
+        width={80}
+        focused
+        onHeaderMouseDown={() => seen.push("drag")}
+      />
+    </WebInputHostProvider></UiHostProvider>,
+  );
+  const title = container.querySelector("[data-gloom-role='pane-title']") as HTMLElement;
+  const ticker = container.querySelector("[data-gloom-role='pane-title-ticker'] button") as HTMLButtonElement;
+  // One title, read as it was: the ticker sits in its line.
+  expect(title.textContent).toBe("Chart: NVDA  \u29c9 Linked to Ticker Research");
+  expect(ticker.textContent).toBe("NVDA");
+  await act(async () => press(ticker));
+  await act(async () => { ticker.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, button: 0 })); });
+  expect(seen).toEqual(["search"]);
+  // The rest of the title still moves the pane.
+  await act(async () => press(title));
+  expect(seen).toEqual(["search", "drag"]);
+});
+
+test("a title's ticker is found only as a word of its own", () => {
+  expect(findTitleTicker("OMON SPY", "SPY")).toEqual({ start: 5, end: 8 });
+  expect(findTitleTicker("NVDA", "NVDA")).toEqual({ start: 0, end: 4 });
+  // A longer symbol that starts with it, and a series name that contains it, are not the ticker.
+  expect(findTitleTicker("OMON SPYG", "SPY")).toBeNull();
+  expect(findTitleTicker("Chart: NVDA.Revenue NVDA", "NVDA")).toEqual({ start: 20, end: 24 });
+  expect(findTitleTicker("Top News", "AAPL")).toBeNull();
 });
 
 test("a floating pane still moves from its title", async () => {

@@ -6,13 +6,13 @@ import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useMemo, type ReactNode } from "react";
-import { EmptyState, ExternalLinkText, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
-import { useFxRateObservations } from "../../../market-data/hooks";
+import { useFxRateObservations, type TickerSnapshotState } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
@@ -103,10 +103,33 @@ interface OverviewTabProps {
   onOpenFunction?: (link: OverviewFunctionLink) => void;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
   dividend?: OverviewDividendState;
+  /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
+  snapshot?: TickerSnapshotState;
+}
+
+/** Nothing of the ticker is in yet: no quote, profile, figures or history. */
+function hasNothingToShow(financials: TickerFinancials | null): boolean {
+  if (!financials) return true;
+  return !financials.quote && !financials.profile && (financials.priceHistory?.length ?? 0) === 0
+    && Object.keys(financials.fundamentals ?? {}).length === 0
+    && financials.annualStatements.length === 0 && financials.quarterlyStatements.length === 0;
 }
 
 export function OverviewTab(props: OverviewTabProps) {
   if (!props.ticker) return <EmptyState title={t("No ticker selected.")} />;
+  // Before anything of the ticker is in, the tab says it is loading, or why it could not, rather than standing empty.
+  const { snapshot } = props;
+  if (snapshot && (snapshot.loading || snapshot.error) && hasNothingToShow(props.financials)) {
+    return (
+      <PaneStatusBody
+        loading={snapshot.loading}
+        error={snapshot.loading ? null : snapshot.error}
+        subject="overview"
+        errorTitle={unavailableText(t("Overview"))}
+        retry={{ onRetry: snapshot.retry }}
+      />
+    );
+  }
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 

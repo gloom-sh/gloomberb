@@ -11,6 +11,12 @@ import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 interface FloatingPaneWrapperProps {
   paneId?: string;
   title: string;
+  /**
+   * Desktop and web: the ticker the title shows, drawn as a control that opens ticker search for
+   * the pane (`onTitleTickerPress`).
+   */
+  titleTicker?: string | null;
+  onTitleTickerPress?: () => void;
   x: number;
   y: number;
   width: number;
@@ -68,6 +74,8 @@ function TerminalFloatingPaneBorder({ width, height }: { width: number; height: 
 export function FloatingPaneWrapper({
   paneId,
   title,
+  titleTicker = null,
+  onTitleTickerPress,
   x,
   y,
   width,
@@ -135,6 +143,8 @@ export function FloatingPaneWrapper({
     >
       <PaneHeader
         title={title}
+        titleTicker={titleTicker}
+        onTitleTickerPress={onTitleTickerPress}
         width={width}
         focused={focused}
         windowModeSelected={windowModeSelected}
