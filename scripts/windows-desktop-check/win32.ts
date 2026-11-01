@@ -31,6 +31,7 @@ function load() {
     GetClientRect: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
     ClientToScreen: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
     GetWindowLongPtrW: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
+    GetClassLongPtrW: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
     SetWindowPos: { args: [FFIType.ptr, FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.bool },
     ShowWindow: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.bool },
     SetForegroundWindow: { args: [FFIType.ptr], returns: FFIType.bool },
@@ -131,6 +132,11 @@ export const isHung = (hwnd: Hwnd) => user32.IsHungAppWindow(hwnd as never);
 export const foregroundWindow = (): Hwnd => Number(user32.GetForegroundWindow() ?? 0);
 /** Whether the window still holds the data its window procedure keeps on it (GWLP_USERDATA). */
 export const hasWindowData = (hwnd: Hwnd) => BigInt(user32.GetWindowLongPtrW(hwnd as never, -21)) !== 0n;
+/** The window's procedure and its class's (GWLP_WNDPROC, GCLP_WNDPROC): they differ once something subclasses the window. */
+export function windowProcedures(hwnd: Hwnd): { window: string; windowClass: string } {
+  const hex = (value: number | bigint) => `0x${BigInt.asUintN(64, BigInt(value)).toString(16)}`;
+  return { window: hex(user32.GetWindowLongPtrW(hwnd as never, -4)), windowClass: hex(user32.GetClassLongPtrW(hwnd as never, -24)) };
+}
 
 export function windowRect(hwnd: Hwnd): Rect {
   const buffer = new Int32Array(4);

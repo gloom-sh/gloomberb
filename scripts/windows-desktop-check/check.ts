@@ -772,7 +772,8 @@ class Run {
       where = `a ${gap} px gap between the top of the frame and the page, ${border} px at the sides (frame ${fmt(frame)}, page ${fmt(client)})`;
     }
     const style = win.windowStyle(window.hwnd);
-    return `${where}; style ${style.flags.join(" ") || style.value}; window data ${win.hasWindowData(window.hwnd) ? "set" : "gone"}${win.isHung(window.hwnd) ? "; not responding" : ""}`;
+    const procedures = win.windowProcedures(window.hwnd);
+    return `${where}; style ${style.flags.join(" ") || style.value}; window data ${win.hasWindowData(window.hwnd) ? "set" : "gone"}; window procedure ${procedures.window}, its class's ${procedures.windowClass}${win.isHung(window.hwnd) ? "; not responding" : ""}`;
   }
 
   /** The windows that came out of a step with a native title bar, each once until it goes. */
@@ -960,6 +961,10 @@ class Run {
     this.profile = join(this.out, "..", `profile-${basename(this.out)}-${this.launches}`);
     await seedProfile(this.profile, this.seedFrames());
     await this.launch(this.profile);
+    // Read before the windows are placed: placing one makes Windows lay out its frame again.
+    const shots: string[] = [];
+    const captions = this.captionsAfter(`launch-${this.launches}`, shots);
+    if (captions.length) this.record({ id: "launch-native-caption", title: "The windows open with no native title bar over the page", status: "fail", detail: `launch ${this.launches}: ${captions.join("; ")}`, shots, ms: 0 });
     await this.place(this.main, this.baseRect);
     if (this.detached?.hwnd) await this.place(this.detached, this.detachedRect);
     if (reason) {
