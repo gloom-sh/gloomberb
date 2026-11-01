@@ -30,21 +30,39 @@ describe("desktop notification commands", () => {
 
     expect(command).toEqual({
       command: "notify-send",
-      args: ["--app-name", "Gloom", "--urgency", "critical", "Chat mention", "#everyone\n@bob mentioned you"],
+      args: ["--app-name", "Gloom", "--urgency", "critical", "--", "Chat mention", "#everyone\n@bob mentioned you"],
     });
   });
 
-  test("builds a Windows notification command", () => {
-    const command = buildDesktopNotificationCommand({
-      title: "Chat mention",
-      body: "@bob mentioned you",
-      subtitle: "#everyone",
-    }, "win32");
+  test("passes Linux notification text after `--`, so a leading dash is text", () => {
+    const command = buildDesktopNotificationCommand({ title: "--hint=int:x:1", body: "-u critical" }, "linux");
+
+    expect(command?.args).toEqual(["--app-name", "Gloom", "--urgency", "normal", "--", "--hint=int:x:1", "-u critical"]);
+  });
+
+  test("keeps notification text out of the Windows command line", () => {
+    const title = "It\u2019s \u2018a\u201A \u201Bb' $(calc) `x` \"q\" ; & | %PATH%\nline";
+    const body = "\u2019; Remove-Item -Recurse C:\\ ; '\u2018 $(Start-Process calc)\r\n'--";
+    const command = buildDesktopNotificationCommand({ title, body, subtitle: "#all\u2019 ; calc" }, "win32");
 
     expect(command?.command).toBe("powershell.exe");
-    expect(command?.args[0]).toBe("-NoProfile");
-    expect(command?.args.at(-1)).toContain("$notify.BalloonTipTitle = 'Chat mention';");
-    expect(command?.args.at(-1)).toContain("$notify.BalloonTipText = '#everyone\n@bob mentioned you';");
+    expect(command?.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"]);
+    const argv = command!.args.join("\n");
+    for (const fragment of ["\u2018", "\u2019", "\u201A", "\u201B", "'a", "$(", "calc", "Remove-Item", "PATH", "line", "#all"]) {
+      expect(argv).not.toContain(fragment);
+    }
+    expect(command?.env).toEqual({
+      GLOOM_NOTIFICATION_TITLE: title,
+      GLOOM_NOTIFICATION_TEXT: `#all\u2019 ; calc\n${body}`,
+    });
+    expect(command?.args.at(-1)).toContain("$notify.BalloonTipTitle = $env:GLOOM_NOTIFICATION_TITLE;");
+    expect(command?.args.at(-1)).toContain("$notify.BalloonTipText = $env:GLOOM_NOTIFICATION_TEXT;");
+  });
+
+  test("runs one Windows script for every notification", () => {
+    const script = (title: string) => buildDesktopNotificationCommand({ title, body: "x" }, "win32")?.args.at(-1);
+
+    expect(script("a")).toBe(script("b\u2019; calc"));
   });
 
   test("adds macOS notification sound when requested", () => {
@@ -165,9 +183,9 @@ describe("desktop notifier", () => {
     const notifier = createDesktopNotifier({
       platform: "linux",
       runner: {
-        run(command, _args, handlers) {
+        run(command, _args, options) {
           calls.push(command);
-          handlers?.onError?.(Object.assign(new Error("missing"), { code: "ENOENT" }));
+          options?.onError?.(Object.assign(new Error("missing"), { code: "ENOENT" }));
         },
       },
     });
@@ -178,6 +196,20 @@ describe("desktop notifier", () => {
     expect(calls).toEqual(["notify-send"]);
     expect(firstDelivery).toBe(false);
     expect(secondDelivery).toBe(false);
+  });
+
+  test("hands the notification text to the runner as environment, not arguments", () => {
+    const runs: Array<{ args: string[]; env?: Record<string, string> }> = [];
+    const notifier = createDesktopNotifier({
+      platform: "win32",
+      runner: { run: (_command, args, options) => { runs.push({ args, env: options?.env }); } },
+    });
+
+    notifier.notify({ title: "T\u2019; calc", body: "B\u2018; calc" });
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.args.join(" ")).not.toContain("calc");
+    expect(runs[0]!.env).toEqual({ GLOOM_NOTIFICATION_TITLE: "T\u2019; calc", GLOOM_NOTIFICATION_TEXT: "B\u2018; calc" });
   });
 
   test("plays requested sounds alongside desktop notifications", () => {
