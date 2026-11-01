@@ -1,6 +1,6 @@
 {
   "name": "gloomberb",
-  "version": "0.19.4",
+  "version": "0.19.5",
   "packageManager": "bun@1.3.14",
   "description": "Market research and portfolio tracker for the terminal",
   "module": "src/public/index.ts",
