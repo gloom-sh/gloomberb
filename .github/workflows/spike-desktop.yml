@@ -72,9 +72,8 @@ jobs:
         shell: bash
         run: |
           bunx @tauri-apps/cli@2 signer generate --ci -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" -w "$RUNNER_TEMP/updater.key"
-          echo "TAURI_SIGNING_PRIVATE_KEY<<EOF" >> "$GITHUB_ENV"
-          cat "$RUNNER_TEMP/updater.key" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+          # The build takes the key as a path too.
+          echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/updater.key" >> "$GITHUB_ENV"
 
       - name: Build the Tauri app
         working-directory: desktop-tauri/src-tauri
