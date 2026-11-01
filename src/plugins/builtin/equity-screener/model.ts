@@ -9,6 +9,8 @@ import {
   QUALITY_FIELDS,
   RESEARCH_FIELDS,
   KPI_FIELDS,
+  MEMBERSHIP_FIELDS,
+  SCORE_FIELDS,
   SOCIAL_FIELDS,
   TECHNICAL_FIELDS,
   VOLATILITY_FIELDS,
@@ -137,6 +139,22 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   epsCagr5YPercent: "EPS CAGR 5Y%",
   forwardRevenueGrowthPercent: "FWD REV GR%",
   forwardEpsGrowthPercent: "FWD EPS GR%",
+  piotroskiFScore: "F-SCORE",
+  altmanZScore: "ALTMAN Z",
+  grahamNumber: "GRAHAM #",
+  grahamUpsidePercent: "GRAHAM UPS%",
+  lynchFairValue: "LYNCH FV",
+  lynchUpsidePercent: "LYNCH UPS%",
+  earningsYieldPercent: "EBIT/EV%",
+  returnOnCapitalPercent: "ROC%",
+  magicFormulaRank: "MAGIC RANK",
+  totalReturn1YPercent: "1Y TR%",
+  rsRating: "RS RATING",
+  profitableYears: "PROFIT YRS",
+  revenueGrowthYears: "REV GR YRS",
+  dividendGrowthYears: "DIV GR YRS",
+  sp500Member: "S&P 500",
+  dowMember: "DOW",
   hiringOpenRoles: "OPEN ROLES",
   hiringNetAddsWeek: "NET ROLES/WK",
   hiringRemotePercent: "REMOTE%",
@@ -161,14 +179,20 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   "iv30Change1d", "iv30Change5d",
   "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
   "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
+  "totalReturn1YPercent", "grahamUpsidePercent", "lynchUpsidePercent",
 ]);
-/** Moves whose sign is the news: they take the sign colour. */
+/** Moves whose sign is the news: they take the sign colour. A fair value's upside reads as the analysts' does. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent",
-  "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent"]);
+  "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
+  "totalReturn1YPercent", "grahamUpsidePercent", "lynchUpsidePercent"]);
 const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank", "ivPercentile", "hvRank",
   "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
-  "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile"]);
-const MONETARY = new Set<NumericField>(["price", "marketCap", "kpiArr", "kpiRpo", "kpiCrpo", "kpiGmv", "kpiBacklog"]);
+  "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile",
+  "piotroskiFScore", "magicFormulaRank", "rsRating", "profitableYears", "revenueGrowthYears", "dividendGrowthYears"]);
+const MONETARY = new Set<NumericField>(["price", "marketCap", "kpiArr", "kpiRpo", "kpiCrpo", "kpiGmv", "kpiBacklog", "grahamNumber", "lynchFairValue"]);
+/** Prices and scores read to two decimals, as the quote and beta are. */
+const HUNDREDTHS = new Set<NumericField>(["price", "beta", "altmanZScore", "grahamNumber", "lynchFairValue"]);
+const MEMBERSHIP = new Set<NumericField>(MEMBERSHIP_FIELDS);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
 
@@ -178,7 +202,8 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
   if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
   if (COUNTS.has(field)) return formatNumber(value, 0);
-  if (field === "price" || field === "beta") return formatNumber(value, 2);
+  if (MEMBERSHIP.has(field)) return value === 1 ? "Yes" : "No";
+  if (HUNDREDTHS.has(field)) return formatNumber(value, 2);
   // A value that rounds to zero prints 0.0, never -0.0.
   const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
@@ -393,6 +418,22 @@ export const screenLabel = (field: string) =>
     epsCagr5YPercent: "EPS CAGR 5Y %",
     forwardRevenueGrowthPercent: "Forward revenue growth %",
     forwardEpsGrowthPercent: "Forward EPS growth %",
+    piotroskiFScore: "Piotroski F-score",
+    altmanZScore: "Altman Z-score",
+    grahamNumber: "Graham number",
+    grahamUpsidePercent: "Graham number upside %",
+    lynchFairValue: "Lynch fair value",
+    lynchUpsidePercent: "Lynch fair value upside %",
+    earningsYieldPercent: "Earnings yield (EBIT / EV) %",
+    returnOnCapitalPercent: "Return on capital (Greenblatt) %",
+    magicFormulaRank: "Magic Formula rank",
+    totalReturn1YPercent: "1Y total return %",
+    rsRating: "RS rating",
+    profitableYears: "Profitable years",
+    revenueGrowthYears: "Revenue growth years",
+    dividendGrowthYears: "Dividend growth years",
+    sp500Member: "S&P 500 member",
+    dowMember: "Dow member",
     hiringOpenRoles: "Hiring open roles",
     hiringNetAddsWeek: "Net open roles per week",
     hiringRemotePercent: "Remote roles %",
@@ -479,6 +520,9 @@ export function criterionText(criterion: ScreenCriterion): string {
   };
   const value = !("value" in criterion)
     ? ""
+    // Membership is 1 or 0: `S&P 500 member = yes`.
+    : MEMBERSHIP.has(criterion.field as NumericField) && typeof criterion.value === "number" && [0, 1].includes(criterion.value)
+      ? ` ${criterion.value === 1 ? "yes" : "no"}`
     : Array.isArray(criterion.value)
       ? ` ${criterion.value.map((item) => (typeof item === "number" ? thresholdText(item) : item)).join(", ")}`
       : ` ${thresholdText(criterion.value)}`;
@@ -488,6 +532,8 @@ export function criterionText(criterion: ScreenCriterion): string {
 const OBSERVED_SUBSET_FIELDS: readonly string[] = ["insiderPurchases90d", "insiderSales90d"];
 const NUMERIC_OPERATORS: ScreenOperator[] = ["gte", "lte", "gt", "lt", "eq", "between", "present", "missing"];
 const OBSERVED_SUBSET_OPERATORS: ScreenOperator[] = ["gte", "gt", "present", "missing"];
+/** Index membership is 1 or 0: equal to one, or there or not. */
+const MEMBERSHIP_OPERATORS: ScreenOperator[] = ["eq", "present", "missing"];
 const CATEGORY_OPERATORS: ScreenOperator[] = ["in", "present", "missing"];
 
 /**
@@ -513,6 +559,7 @@ function unknownFieldText(field: unknown): string {
 /** The operators a definition may use on a field, or null for a field screens do not have. */
 function screenFieldOperators(field: string): ScreenOperator[] | null {
   if (OBSERVED_SUBSET_FIELDS.includes(field)) return [...OBSERVED_SUBSET_OPERATORS];
+  if ((MEMBERSHIP_FIELDS as readonly string[]).includes(field)) return [...MEMBERSHIP_OPERATORS];
   if ((NUMERIC_FIELDS as readonly string[]).includes(field)) return [...NUMERIC_OPERATORS];
   if ((CATEGORY_FIELDS as readonly string[]).includes(field)) return [...CATEGORY_OPERATORS];
   return null;
@@ -530,6 +577,7 @@ export function screenDefinitionSyntax(): string {
     `Operators by field: numeric fields (the --metric values) take ${single.join(", ")} with one number,`,
     "between with [min, max], present and missing with no value;",
     `${OBSERVED_SUBSET_FIELDS.join(" and ")} take only ${OBSERVED_SUBSET_OPERATORS.join(", ")};`,
+    `${MEMBERSHIP_FIELDS.join(" and ")} take only ${MEMBERSHIP_OPERATORS.join(", ")}, eq with 1 for a member or 0;`,
     `category fields (${CATEGORY_FIELDS.join(", ")}) take in with an array of 1-25 names, present, missing.`,
   ].join(" ");
 }
@@ -706,9 +754,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility, dividend, technical, option volatility, ownership or quality
-      // fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research, volatility, dividend, technical, option volatility, ownership, quality or
+      // score fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

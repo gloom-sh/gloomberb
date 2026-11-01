@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../../../types/ticker";
-import { MEMBER_DESTINATIONS, MEMBER_WATCHLIST_LIMIT, memberDestinationChoices, memberSymbols, planMemberWatchlist, uniqueWatchlistName } from "./members-menu";
+import { screenWatchlistList } from "../equity-screener/watchlist";
+import { SCREEN_IDEAS } from "../equity-screener/ideas";
+import {
+  MEMBER_DESTINATIONS, MEMBER_WATCHLIST_LIMIT, memberDestinationChoices, memberListText, memberSymbols, NEW_WATCHLIST_CHOICE,
+  planMemberWatchlist, uniqueWatchlistName, watchlistTargetChoices,
+} from "./members-menu";
 
 const ticker = (symbol: string, watchlists: string[] = [], exchange = "NASDAQ"): TickerRecord => ({
   metadata: { ticker: symbol, exchange, currency: "USD", name: symbol, portfolios: [], watchlists, positions: [], custom: {}, tags: [] },
@@ -38,6 +43,35 @@ describe("members menu", () => {
 
     const large = planMemberWatchlist(new Map(), "iwm", Array.from({ length: MEMBER_WATCHLIST_LIMIT + 5 }, (_, index) => ({ symbol: `S${index}` })));
     expect(large.create).toHaveLength(MEMBER_WATCHLIST_LIMIT);
+  });
+
+  test("the save dialog offers a new watchlist, then each one there is with its count", () => {
+    const tickers = new Map([["AAPL", ticker("AAPL", ["core", "tech"])], ["MSFT", ticker("MSFT", ["tech"])]]);
+    expect(watchlistTargetChoices([{ id: "core", name: "Core" }, { id: "tech", name: "Tech" }, { id: "empty", name: "Empty" }], tickers)).toEqual([
+      { id: NEW_WATCHLIST_CHOICE, label: "New watchlist…" },
+      { id: "core", label: "Core", detail: "1 tickers" },
+      { id: "tech", label: "Tech", detail: "2 tickers" },
+      { id: "empty", label: "Empty", detail: "0 tickers" },
+    ]);
+  });
+
+  test("a screen's matches save as listed: the first 100 of all that match, each in its own currency", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => ({ symbol: `S${index}`, name: null, exchange: "LSE", currency: "GBp" }));
+    const magic = SCREEN_IDEAS.find((idea) => idea.id === "magic-formula")!;
+    const list = screenWatchlistList({ definition: magic.definition, rows, matched: 230 })!;
+    expect(list).toMatchObject({ title: "Magic Formula top", watchlistName: "Magic Formula top", noun: "matches", openIn: false });
+    expect(memberListText(list, 100)).toMatchObject({
+      saveTitle: "Save Magic Formula top matches to",
+      saveBody: "The first 100 of 230 matches, as listed.",
+    });
+    expect(memberListText({ ...list, total: 3 }, 3).saveBody).toBe("All 3 matches.");
+    // A theme's or fund's members read as they did.
+    expect(memberListText({ title: "IVV" }, 503).saveBody).toBe("The first 100 of 503 members, as listed.");
+    expect(planMemberWatchlist(new Map(), "uk", list.members).create[0]).toMatchObject({ ticker: "S0", exchange: "LSE", currency: "GBp" });
+    const edited = { ...magic.definition, criteria: [] };
+    expect(screenWatchlistList({ definition: edited, rows, matched: 230, savedName: "Cheap UK" })!.title).toBe("Cheap UK");
+    expect(screenWatchlistList({ definition: edited, rows, matched: 230 })!.watchlistName).toBe("EQS screen");
+    expect(screenWatchlistList({ definition: edited, rows: [], matched: 0 })).toBeNull();
   });
 
   test("a saved name never reuses a watchlist's name or id", () => {

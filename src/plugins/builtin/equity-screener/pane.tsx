@@ -48,6 +48,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank, formatPercentRaw } from "../../../utils/format";
 import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { useOpenDescription } from "../shared/open-description";
+import { useMembersMenu } from "../shared/members-menu";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
@@ -84,6 +85,7 @@ import {
   screenYtdBase,
 } from "./model";
 import { useScreenResults } from "./results";
+import { screenWatchlistList } from "./watchlist";
 import { unmatchedCategoryText, unmatchedCategoryValues } from "./categories";
 import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, sortLiveScreenRows, type LiveScreenRow } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
@@ -348,6 +350,16 @@ function EquityScreenView({
   const selected =
     opened ?? rows.find((row) => screenRowId(row) === selectedId) ?? rows[0];
   const currentSaved = saved.data?.find((row) => row.id === currentSavedId);
+  // The pane menu's Save to Watchlist… takes the matches loaded, in the order shown (the first page is 100). A live
+  // quote changes the rows but not who they are, so the menu is rebuilt only when the order does.
+  const shownOrder = rows.map(screenRowId).join(" ");
+  const watchlistList = useMemo(
+    () => mode === "results" && !openId && data && screenDefinitionKey(data.definition) === screenDefinitionKey(definition)
+      ? screenWatchlistList({ definition, rows, matched: data.universe.matched, savedName: currentSaved?.name })
+      : null,
+    [currentSaved?.name, data, definition, mode, openId, shownOrder], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  useMembersMenu("equity-screener:watchlist", watchlistList);
   const selectedSaved =
     saved.data?.find((row) => row.id === savedSelectedId) ?? saved.data?.[0];
   useEffect(() => {
