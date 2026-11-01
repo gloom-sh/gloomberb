@@ -9,6 +9,7 @@ import { loadShortInterest, type ShortInterestResult } from "./client";
 import { type CurrentFloat, type SettlementFloatStatistics, withPercentFloat } from "./model";
 import { buildShortWatchRow, type ShortWatchRow } from "./watch-model";
 import type { ShortInterestRecord } from "./types";
+import { logFailure } from "../../../utils/log-failure";
 
 const CONCURRENCY = 6;
 
@@ -47,7 +48,7 @@ async function loadFloats(
 ): Promise<FloatSnapshot[]> {
   const entries = await Promise.resolve()
     .then(() => loadSnapshots(symbols.map((symbol) => ({ symbol, exchange: "" })), options))
-    .catch(() => []);
+    .catch(logFailure("short-interest.watch-client", "Load float snapshots failed", []));
   return symbols.map((_symbol, index) => {
     const entry = entries[index];
     const fundamentals = (entry ? resolveEntryValue(entry) : null)?.fundamentals;

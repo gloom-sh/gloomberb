@@ -39,7 +39,7 @@ async function fetchPayload<T>(fetcher: () => Promise<T>, validate: (data: T) =>
 async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, validate: (data: T) => T, client: Client, unavailable = UNAVAILABLE) {
   try { return validate(await fetcher()); } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
-      const funds = await fetchFunds(client).then((payload) => payload.funds, () => []);
+      const funds = await fetchFunds(client).then((payload) => payload.funds, () => { /* Intentional ignore: an unreadable covered list leaves the server's own message. */ return []; });
       if (funds.length && !coveredFund(funds, fund)) throw new Error(notCoveredMessage(fund, funds));
     }
     throw unavailableOnServer(error, unavailable);

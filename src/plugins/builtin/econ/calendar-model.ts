@@ -320,6 +320,7 @@ function isCountryCode(code: string): boolean {
     try {
       regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
     } catch {
+      // Intentional ignore: a runtime without region names accepts any two-letter code instead.
       regionNames = null;
     }
   }
@@ -328,6 +329,7 @@ function isCountryCode(code: string): boolean {
     // ZZ is CLDR's "Unknown Region".
     return code !== "ZZ" && regionNames.of(code) !== undefined;
   } catch {
+    // Intentional ignore: a code the runtime's region names reject is no country code.
     return false;
   }
 }

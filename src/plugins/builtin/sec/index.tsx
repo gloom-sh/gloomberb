@@ -413,7 +413,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     const filing = visibleFilings.find((candidate) => candidate.accessionNumber === item.id);
     if (!coordinator || !filing) return;
     if (coordinator.getSecDocumentsEntry(filing.accessionNumber).phase !== "idle") return;
-    void coordinator.loadSecFilingDocuments(filing).catch(() => {});
+    void coordinator.loadSecFilingDocuments(filing).catch(() => { /* Intentional ignore: the coordinator keeps a failed warm-up's error, which the filing shows when opened. */ });
   }, [visibleFilings]);
 
   const refresh = useCallback(() => {

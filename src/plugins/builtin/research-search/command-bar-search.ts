@@ -16,6 +16,7 @@ import {
   RESEARCH_SEARCH_TEMPLATE_ID,
 } from "./model";
 import { parseMarkedSnippet } from "./snippet";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * Each hit costs two rows (title, then source and snippet), and the sheet now
@@ -123,7 +124,8 @@ function createCorpusSearchProvider(
           signal,
         );
         hits = response.hits ?? [];
-      } catch {
+      } catch (error) {
+        if (!signal.aborted) logFailure("research-search.command-bar-search", "Search documents for command bar failed")(error);
         return [];
       }
 

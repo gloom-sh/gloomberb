@@ -15,6 +15,7 @@ import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, optionExpiryVenue, unlistedExpiryText } from "../../../utils/option-expiry";
 import { optionModelSpot } from "../options/model-spot";
+import { logFailure } from "../../../utils/log-failure";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 /** Expiries read at a time from a source that takes them one by one. */
@@ -190,7 +191,7 @@ export async function loadVolatilitySurface(
   checkAbort();
   publish();
   // Asked while the catalogue loads, so it costs the expiries no wait.
-  const batched = Promise.resolve().then(() => dependencies.batchesExpiries?.()).then((answer) => answer === true, () => false);
+  const batched = Promise.resolve().then(() => dependencies.batchesExpiries?.()).then((answer) => answer === true, logFailure("vol-surface.client", "Read expiry batching support failed", false));
   const treasury = Promise.resolve().then(() => dependencies.loadYieldCurve()).then((value) => {
     if (request.signal?.aborted) return;
     curve = value;

@@ -3,6 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadSeasonalityHistory } from "./client";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { MONTH_LABELS, projectSeasonality, projectWeekdays, TURN_OF_MONTH_LABELS } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 const percent = (digits: number) => (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(digits)}%` : "--";
 const statColumns = (digits: number, countHeader: string) => [{ key: "mean", header: "Avg", format: percent(digits) },
@@ -50,7 +51,7 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Monthly bars are dated by their month's first day, which is no close while the month runs.
     const bar = model.asOf?.toISOString().slice(0, 10);
     // The venue whose sessions say whether the month still runs: the key's, or for a bare symbol its quote's.
-    const quote = bar && !instrument.exchange ? await ctx.marketData.getQuote(instrument.symbol, "").catch(() => null) : null;
+    const quote = bar && !instrument.exchange ? await ctx.marketData.getQuote(instrument.symbol, "").catch(logFailure("seasonality.headless", "Load seasonality quote failed", null)) : null;
     const venue = instrument.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
     const forming = formingHistoryBar("1mo", bar, venue, Date.now());
     const closed = forming ? null : closedHistoryBarDay("1mo", bar, venue, Date.now());

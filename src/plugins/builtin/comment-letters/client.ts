@@ -9,6 +9,7 @@ import type {
   CommentLetterIssuer,
   CommentLetterPage,
 } from "./types";
+import { logFailure } from "../../../utils/log-failure";
 
 const EFTS_URL = "https://efts.sec.gov/LATEST/search-index";
 const FETCH_TIMEOUT_MS = 15_000;
@@ -324,7 +325,7 @@ export function createCommentLettersLoader(
     }
     const company = issuer ? await issuer : null;
     if (company && offset === 0) {
-      const listed = await loadIssuerFilings(company.ticker, force).catch(() => null);
+      const listed = await loadIssuerFilings(company.ticker, force).catch(logFailure("comment-letters.client", "Load issuer filings for comment letters failed", null));
       issuerFromCloud = !!listed?.complete;
       if (listed?.complete) {
         const rows = listed.filings

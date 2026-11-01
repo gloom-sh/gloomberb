@@ -70,7 +70,7 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
         // Return the validated payload: restricted quotes and glosses have been removed.
         return { ...value, payload } as unknown as SupplyEvidence;
       }
-    } catch { return null; }
+    } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
   },
   mismatches(evidence, { resolved, payload }) {
     const settings = payload.config.layout.instances.find(entry => entry.instanceId === payload.paneId)?.settings;

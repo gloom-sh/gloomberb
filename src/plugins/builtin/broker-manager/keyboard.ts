@@ -1,6 +1,7 @@
 import { useShortcut, type KeyEventLike } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { BrokerEditKey } from "./detail";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * The edit form's keys beside its field ring (the detail's useFieldRing walks
@@ -48,7 +49,7 @@ export function useBrokerManagerKeyboard({
     }
     if (isPlainKey(event, "enter", "return")) {
       consume(event);
-      saveEdit().catch(() => {});
+      saveEdit().catch(logFailure("broker-manager.keyboard", "Save broker form failed"));
       return;
     }
     if (onSelectRow && isPlainKey(event, "left", "h", "right", "l", "space")) {

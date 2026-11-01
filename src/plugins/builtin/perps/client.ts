@@ -261,7 +261,7 @@ export async function nearestPerpMarkets(input: string, client: Pick<typeof apiC
         const rows = (await client.getCloudPerpsBoard({ search: text })).rows.filter((row) => !row.delisted
           && `${row.symbol} ${row.baseAsset} ${row.displayName}`.toUpperCase().includes(text));
         if (rows.length) return rows;
-      } catch { return []; }
+      } catch { /* Intentional ignore: a board that cannot be read suggests nothing, so the caller keeps its own examples. */ return []; }
     }
     return [];
   }));

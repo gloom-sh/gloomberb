@@ -26,6 +26,7 @@ import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards 
 import { useAwardsEvidence } from "./evidence";
 import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
   rankedAggregates } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
   | { kind: "section"; id: string; label: string; count: number } | { kind: "note"; id: string; text: string };
@@ -116,7 +117,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const [selectedId, setSelected] = usePluginPaneState<string | null>(`awards:selection:${tab}`, null);
   const search = useQueryBarSearch(), tickerSearch = useQueryBarSearch();
   const [snapshotSetting] = usePaneSettingValue<AwardsPayload | null>("awardsSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateAwards(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateAwards(snapshotSetting) : null; } catch (error) { return logFailure("awards.pane", "Validate awards snapshot failed", null)(error); } }, [snapshotSetting]);
   const filter = useMemo<AwardFilter>(() => ({ ticker: ticker.trim().toUpperCase() || undefined, query: query.trim() || undefined,
     jurisdiction: jurisdiction || undefined, currency: currency || undefined, source: source || undefined, awardType, agency: agency || undefined, sector: sector || undefined, parentId: parentId || undefined,
     from: parentId ? undefined : range === "all" ? from || undefined : new Date(Date.now() - Number(range) * 86_400_000).toISOString().slice(0, 10), to: parentId ? undefined : to || undefined, limit: 100,
