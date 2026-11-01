@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Box, Text } from "../../../ui";
 import { clamp } from "../../../utils/math";
 import type { SeriesAxisTag } from "./panel-labels";
@@ -28,7 +29,8 @@ export function placeSeriesAxisTags(tags: readonly SeriesAxisTag[], pixelHeight:
   return placed;
 }
 
-export function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
+/** Each series' value at the cursor, beside the axis; it renders when they move, not with the pointer's height. */
+export const SeriesAxisTags = memo(function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
   placed: ReturnType<typeof placeSeriesAxisTags>;
   pixelHeight: number;
   lanes: number;
@@ -71,4 +73,4 @@ export function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
       </Box>
     </Box>;
   });
-}
+});

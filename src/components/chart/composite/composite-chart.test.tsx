@@ -919,6 +919,45 @@ describe("CompositeChart", () => {
     expect(cursorChanges).toEqual(["2025-01-01T00:00:00.000Z"]);
   });
 
+  // A pointer move renders what draws the crosshair: the legend's values,
+  // the cursor's labels on the axes and the crosshair over the plot. The
+  // chart and the plot's raster and handlers hold still under it.
+  test("a pointer move redraws the crosshair and its readouts, not the chart under them", async () => {
+    await tui.render(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          series={[series("price", "main", "left", "USD", [100, 103, 101])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    const atRest = capturedSurfaceProps!;
+    const legend = () => tui.frame().split("\n")[0]!;
+    const cursorDay = () => tui.frame().match(/2025-01-0\d/)?.[0] ?? null;
+    expect(legend()).toContain("101");
+    expect(cursorDay()).toBeNull();
+
+    await act(async () => atRest.onMouseMove(pointerEvent(1, 3)));
+    await act(async () => tui.setup().renderOnce());
+    const moved = capturedSurfaceProps!;
+    expect(legend()).toContain("100");
+    expect(cursorDay()).toBe("2025-01-01");
+    expect(moved).not.toBe(atRest);
+    expect(moved.bitmaps).toBe(atRest.bitmaps);
+    expect(moved.onMouseMove).toBe(atRest.onMouseMove);
+    expect(moved.onMouseDown).toBe(atRest.onMouseDown);
+    expect(moved.onMouseScroll).toBe(atRest.onMouseScroll);
+
+    await act(async () => moved.onMouseOut());
+    await act(async () => tui.setup().renderOnce());
+    expect(legend()).toContain("101");
+    expect(cursorDay()).toBeNull();
+  });
+
   // Charts in one layout tab share one cursor: the last one moved holds it,
   // and a chart that held it before does not get its own back later.
   test("linked charts show one cursor, taken by the last chart moved and cleared from any of them", async () => {
