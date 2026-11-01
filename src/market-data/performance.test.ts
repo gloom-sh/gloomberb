@@ -88,6 +88,19 @@ describe("price performance", () => {
     expect(computePriceReturnForHorizon(us, horizon("1M"), "NASDAQ")).toBeCloseTo(0.5);
   });
 
+  test("the bars are normalized once across quote ticks, and read again when the history grows in place", () => {
+    const history = [point("2026-01-30", 100), point("2026-02-27", 110)];
+    const quoteAt = (price: number, at: string) => ({ price, lastUpdated: Date.parse(at) });
+    const first = appendQuoteToPriceReturnHistory(history, quoteAt(120, "2026-03-02T15:00:00Z"));
+    const second = appendQuoteToPriceReturnHistory(history, quoteAt(125, "2026-03-02T15:00:01Z"));
+    // The same normalized bars under both ticks' quotes.
+    expect(second.slice(0, 2).every((bar, index) => bar === first[index])).toBe(true);
+    expect(buildPriceReturnFields(second).find((field) => field.id === "1M")?.value).toBeCloseTo(0.25);
+
+    history.push(point("2026-03-02", 130));
+    expect(buildPriceReturnFields(history).find((field) => field.id === "1M")?.value).toBeCloseTo(0.3);
+  });
+
   test("a February 28 year boundary does not move forward to February 29 in a leap year", () => {
     const history = [point("2024-02-28", 100), point("2024-02-29", 150), point("2025-02-28", 200)];
     expect(computePriceReturnForHorizon(history, horizon("1Y"))).toBe(1);

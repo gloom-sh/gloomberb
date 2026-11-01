@@ -1,6 +1,22 @@
 import { measurePerf } from "../../utils/perf-marks";
 import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
 
+const uniqueKeyLists = new WeakMap<readonly string[], readonly string[]>();
+
+/**
+ * `keys` without repeats. React reads a hook's version on every store change
+ * and every render, always with the same memoized list, so its de-duplicated
+ * copy is kept with it rather than built each time.
+ */
+function uniqueKeys(keys: readonly string[]): readonly string[] {
+  let unique = uniqueKeyLists.get(keys);
+  if (!unique) {
+    unique = [...new Set(keys)];
+    uniqueKeyLists.set(keys, unique);
+  }
+  return unique;
+}
+
 /** Hears when a key gains its first listener and loses its last. */
 export interface KeyWatchHooks {
   watched?(key: string): void;
@@ -73,7 +89,7 @@ export class MarketDataCoordinatorEvents {
 
   getKeysVersion(keys: readonly string[]): number {
     let version = 0;
-    for (const key of new Set(keys)) {
+    for (const key of uniqueKeys(keys)) {
       version += this.getKeyVersion(key);
     }
     return version;
