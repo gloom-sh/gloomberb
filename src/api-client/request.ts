@@ -467,15 +467,33 @@ export class CloudApiRequestTransport {
   private forgetOtherTransport(): void {
     if (this.fetchTransport || this.connectionGeneration === cloudApiTransportGeneration) return;
     this.connectionGeneration = cloudApiTransportGeneration;
-    this.unreachable = false;
-    this.hungAt = null;
+    this.markReachable();
   }
 
   /** Something came back from the service: the connection works. */
   private recordAnswer(): void {
     this.answers += 1;
-    this.unreachable = false;
+    this.markReachable();
+  }
+
+  /**
+   * The service answered on another channel (the quote stream opened, or sent
+   * a frame): it is reachable again. It does not count toward the deadlines of
+   * requests in flight, which wait for an answer over this transport.
+   */
+  noteServiceAnswered(): void {
+    this.markReachable();
+  }
+
+  /**
+   * Ends an outage: requests stop failing fast, and the connections registry
+   * hears the service answers again, which asks again for what failed meanwhile.
+   */
+  private markReachable(): void {
     this.hungAt = null;
+    if (!this.unreachable) return;
+    this.unreachable = false;
+    this.connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
   }
 
   /**
@@ -485,8 +503,10 @@ export class CloudApiRequestTransport {
    */
   private recordNoAnswer(generation: number, hung: boolean): void {
     if (!this.fetchTransport && generation !== cloudApiTransportGeneration) return;
-    this.unreachable = true;
     if (hung) this.hungAt = Date.now();
+    if (this.unreachable) return;
+    this.unreachable = true;
+    this.connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
   }
 
   /**

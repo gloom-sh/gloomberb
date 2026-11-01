@@ -55,6 +55,7 @@ import {
   classifyError,
   createAttempt,
   errorEntry,
+  hasFailedLoad,
   hasFreshEntryData,
   hasFreshReadyEntry,
   readyChartEntry,
@@ -112,6 +113,12 @@ const STREAM_QUOTE_BASELINE_LIMIT = 256;
  * cap if this ceiling turns out to be too generous for it.
  */
 const RETAINED_ENTRIES_PER_STORE = 64;
+/**
+ * Past this many remembered reloads, those for keys no pane watches are
+ * dropped. A session browses hundreds of symbols; only what is on screen is
+ * asked again after an outage.
+ */
+const REMEMBERED_RELOADS_PRUNE_AT = 512;
 
 // A store hands out a fresh idle entry for every key it has never seen, so
 // two idle reads of the same key must count as the same entry.
@@ -133,6 +140,23 @@ export class MarketDataCoordinator {
   private destroyed = false;
   private readonly cachedQueries = new Map<string, { query: CachedQueryHandle<unknown>; dispose: () => void }>();
   private readonly streamQuoteBaselines = new Map<string, { baseline: TickerFinancials | null; readAt: number }>();
+  /**
+   * How to ask again for each key a load wrote, so what an outage failed is
+   * asked again for the panes still showing it once the data service answers
+   * (`reloadAfterOutage`).
+   */
+  private readonly reloads = new Map<string, { entry: () => QueryEntry<unknown>; reload: () => Promise<unknown> }>();
+  private reloadsPruneAt = REMEMBERED_RELOADS_PRUNE_AT;
+  /** When the data service last answered again after an outage: a failure before it no longer holds a load back. */
+  private failuresBefore = 0;
+  /**
+   * Since when the quote stream has been down, while it is down
+   * (`setQuoteStreamDown`): a streamed quote nothing refreshed since reads as
+   * stale. Null while the stream runs.
+   */
+  private quoteStreamDownSince: number | null = null;
+  /** Quote entries as read while the stream is down, so each keeps one identity for its readers. */
+  private interruptedQuoteEntries = new WeakMap<QueryEntry<Quote>, QueryEntry<Quote>>();
 
   private readonly retained: QueryStoreRetention = {
     maxRetainedEntries: RETAINED_ENTRIES_PER_STORE,
@@ -232,7 +256,39 @@ export class MarketDataCoordinator {
   }
 
   getQuoteEntry(instrument: InstrumentRef): QueryEntry<Quote> {
-    return this.quoteStore.get(buildQuoteKey(instrument));
+    const key = buildQuoteKey(instrument);
+    const entry = this.quoteStore.get(key);
+    if (!this.isInterruptedQuote(key, entry, [entry])) return entry;
+    let interrupted = this.interruptedQuoteEntries.get(entry);
+    if (!interrupted) {
+      const quote = resolveEntryData(entry)!;
+      const stale = { ...quote, stale: true as const };
+      interrupted = { ...entry, data: stale, lastGoodData: entry.lastGoodData === quote ? stale : entry.lastGoodData };
+      this.interruptedQuoteEntries.set(entry, interrupted);
+    }
+    return interrupted;
+  }
+
+  /**
+   * The quote stream went down at `since`, or runs again (null). While it is
+   * down, a quote a pane streams that nothing refreshed since reads as stale,
+   * so a price that stopped moving says so instead of passing for live. The
+   * held quote itself is kept: the next tick, or a refresh, replaces it.
+   */
+  setQuoteStreamDown(since: number | null): void {
+    if (this.destroyed || this.quoteStreamDownSince === since) return;
+    this.quoteStreamDownSince = since;
+    this.interruptedQuoteEntries = new WeakMap();
+    for (const key of this.quoteSubscriptionManager.streamingKeys()) this.events.bump(key);
+  }
+
+  /** A streamed quote shown from entries none of which was written since the stream went down. */
+  private isInterruptedQuote(key: string, quoteEntry: QueryEntry<Quote>, entries: ReadonlyArray<QueryEntry<unknown>>): boolean {
+    const since = this.quoteStreamDownSince;
+    if (since == null) return false;
+    const quote = resolveEntryData(quoteEntry);
+    return !!quote && quote.stale !== true && this.quoteSubscriptionManager.isStreaming(key)
+      && entries.every((entry) => (entry.fetchedAt ?? 0) <= since);
   }
 
   getSnapshotEntry(instrument: InstrumentRef): QueryEntry<TickerFinancials> {
@@ -277,25 +333,34 @@ export class MarketDataCoordinator {
     snapshotEntry: QueryEntry<TickerFinancials>;
     quoteEntry: QueryEntry<Quote>;
     chartEntry: QueryEntry<PricePoint[]>;
+    streamDownSince: number | null;
     financials: TickerFinancials | null;
   }>();
 
   getTickerFinancialsSync(instrument: InstrumentRef): TickerFinancials | null {
     const key = buildSnapshotKey(instrument);
+    const quoteKey = buildQuoteKey(instrument);
     const snapshotEntry = this.getSnapshotEntry(instrument);
-    const quoteEntry = this.getQuoteEntry(instrument);
+    // The quote as stored: it is resolved against the snapshot's first, and marked stale after.
+    const quoteEntry = this.quoteStore.get(quoteKey);
     const chartEntry = this.getChartEntry(createBaselineChartRequest(instrument));
+    const streamDownSince = this.quoteStreamDownSince;
     const cached = this.financialsSnapshotCache.get(key);
     if (
       cached
       && sameQueryEntry(cached.snapshotEntry, snapshotEntry)
       && sameQueryEntry(cached.quoteEntry, quoteEntry)
       && sameQueryEntry(cached.chartEntry, chartEntry)
+      && cached.streamDownSince === streamDownSince
     ) {
       return cached.financials;
     }
-    const financials = buildTickerFinancialsSnapshot(snapshotEntry, quoteEntry, chartEntry);
-    this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, financials });
+    let financials = buildTickerFinancialsSnapshot(snapshotEntry, quoteEntry, chartEntry);
+    // Marked after the quote is resolved: a stale streamed quote must not hand the price back to an older snapshot's.
+    if (financials?.quote && financials.quote.stale !== true && this.isInterruptedQuote(quoteKey, quoteEntry, [quoteEntry, snapshotEntry])) {
+      financials = { ...financials, quote: { ...financials.quote, stale: true } };
+    }
+    this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, streamDownSince, financials });
     return financials;
   }
 
@@ -359,6 +424,41 @@ export class MarketDataCoordinator {
     }
   }
 
+  /** Remembers how to ask again for `key` (`reloadAfterOutage`). */
+  private rememberReload<T>(key: string, store: QueryStore<T>, reload: () => Promise<unknown>): void {
+    this.reloads.set(key, { entry: () => store.get(key), reload });
+    if (this.reloads.size <= this.reloadsPruneAt) return;
+    for (const remembered of this.reloads.keys()) {
+      if (!this.events.hasKeyListeners(remembered)) this.reloads.delete(remembered);
+    }
+    this.reloadsPruneAt = Math.max(REMEMBERED_RELOADS_PRUNE_AT, this.reloads.size * 2);
+  }
+
+  /**
+   * The data service answers again after an outage. A failure from before now
+   * no longer holds a load back, and what a pane still shows that failed is
+   * asked again, as is what waits on a request sent into the outage, should
+   * that request fail. Keys no pane watches are left until something asks.
+   */
+  reloadAfterOutage(): void {
+    if (this.destroyed) return;
+    this.failuresBefore = Date.now();
+    const failed = logFailure("market-data.coordinator.index", "Loading again after an outage failed");
+    for (const [key, { entry, reload }] of [...this.reloads]) {
+      if (!this.events.hasKeyListeners(key)) {
+        this.reloads.delete(key);
+        continue;
+      }
+      const current = entry();
+      if (current.phase === "loading" || current.phase === "refreshing") {
+        // Joins the request in flight; a failure it ends in was the outage's.
+        void reload().then(() => (hasFailedLoad(entry()) ? reload() : undefined)).catch(failed);
+      } else if (hasFailedLoad(current)) {
+        void reload().catch(failed);
+      }
+    }
+  }
+
   private runSingleFlight<T>(key: string, task: () => Promise<T>): Promise<T> {
     const existing = this.inFlight.get(key);
     if (existing) {
@@ -375,12 +475,14 @@ export class MarketDataCoordinator {
     instrument: InstrumentRef,
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<TickerFinancials>> {
+    this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument));
     return loadFinancialsSnapshotEntry({
       dataProvider: this.dataProvider,
       instrument,
       options,
       runSingleFlight: (key, task) => this.runSingleFlight(key, task),
       stores: this.financialCacheStores,
+      failuresBefore: this.failuresBefore,
     });
   }
 
@@ -388,12 +490,16 @@ export class MarketDataCoordinator {
     instruments: InstrumentRef[],
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<TickerFinancials>[]> {
+    for (const instrument of instruments) {
+      this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument));
+    }
     return loadFinancialsSnapshotBatch({
       dataProvider: this.dataProvider,
       instruments,
       options,
       runSingleFlight: (key, task) => this.runSingleFlight(key, task),
       stores: this.financialCacheStores,
+      failuresBefore: this.failuresBefore,
     });
   }
 
@@ -401,6 +507,7 @@ export class MarketDataCoordinator {
     instrument: InstrumentRef,
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<Quote>> {
+    this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument));
     return loadQuoteEntry({
       dataProvider: this.dataProvider,
       instrument,
@@ -415,6 +522,9 @@ export class MarketDataCoordinator {
     instruments: InstrumentRef[],
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<Quote>[]> {
+    for (const instrument of instruments) {
+      this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument));
+    }
     return loadQuoteBatchEntries({
       dataProvider: this.dataProvider,
       instruments,
@@ -431,6 +541,7 @@ export class MarketDataCoordinator {
   ): Promise<QueryEntry<PricePoint[]>> {
     const key = buildChartKey(request);
     this.chartRequests.set(key, request);
+    this.rememberReload(key, this.chartStore, () => this.loadChart(request));
     const current = this.chartStore.get(key);
     const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
     if (!options.forceRefresh && currentData.length > 0 && hasFreshEntryData(current, CHART_CACHE_TTL_MS)) {
@@ -491,6 +602,7 @@ export class MarketDataCoordinator {
     options: { forceRefresh?: boolean; batch?: boolean } = {},
   ): Promise<QueryEntry<OptionsChain>> {
     const key = buildOptionsKey(request);
+    this.rememberReload(key, this.optionsStore, () => this.loadOptions(request, { batch: options.batch }));
     const loadingKey = options.forceRefresh ? `${key}|refresh` : key;
     const existing = this.optionsLoads.get(loadingKey);
     if (existing) return existing;
@@ -535,6 +647,7 @@ export class MarketDataCoordinator {
   }
 
   async loadSecFilings(request: SecFilingsRequest, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingItem[]>> {
+    this.rememberReload(buildSecFilingsKey(request), this.secFilingsStore, () => this.loadSecFilings(request));
     return this.loadCachedQuery("getSecFilings", [request.instrument.symbol, request.count ?? 50, request.instrument.exchange, toMarketDataContext(request.instrument)], buildSecFilingsKey(request), this.secFilingsStore, options.forceRefresh, (value) => value.length === 0) ?? loadSecFilingsEntry({
       forceRefresh: options.forceRefresh,
       dataProvider: this.dataProvider,
@@ -545,6 +658,7 @@ export class MarketDataCoordinator {
   }
 
   async loadSecFilingContent(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<string | null>> {
+    this.rememberReload(buildSecContentKey(filing.accessionNumber), this.secContentStore, () => this.loadSecFilingContent(filing));
     return this.loadCachedQuery("getSecFilingContent", [filing], buildSecContentKey(filing.accessionNumber), this.secContentStore, options.forceRefresh) ?? loadSecFilingContentEntry({
       forceRefresh: options.forceRefresh,
       dataProvider: this.dataProvider,
@@ -555,6 +669,7 @@ export class MarketDataCoordinator {
   }
 
   async loadSecFilingDocuments(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingDocument[]>> {
+    this.rememberReload(buildSecDocumentsKey(filing.accessionNumber), this.secDocumentsStore, () => this.loadSecFilingDocuments(filing));
     return this.loadCachedQuery("getSecFilingDocuments", [filing], buildSecDocumentsKey(filing.accessionNumber), this.secDocumentsStore, options.forceRefresh, (value) => value.length === 0) ?? loadSecFilingDocumentsEntry({
       forceRefresh: options.forceRefresh,
       dataProvider: this.dataProvider,
@@ -565,6 +680,7 @@ export class MarketDataCoordinator {
   }
 
   async loadArticleSummary(url: string): Promise<QueryEntry<string | null>> {
+    this.rememberReload(buildArticleSummaryKey(url), this.articleSummaryStore, () => this.loadArticleSummary(url));
     return this.loadCachedQuery("getArticleSummary", [url], buildArticleSummaryKey(url), this.articleSummaryStore) ?? loadArticleSummaryEntry({
       dataProvider: this.dataProvider,
       url,
@@ -574,6 +690,7 @@ export class MarketDataCoordinator {
   }
 
   async loadFxRate(currency: string, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<number>> {
+    this.rememberReload(buildFxKey(currency), this.fxStore, () => this.loadFxRate(currency));
     return this.loadCachedQuery("getExchangeRate", [currency], buildFxKey(currency), this.fxStore, options.forceRefresh) ?? loadFxRateEntry({
       dataProvider: this.dataProvider,
       currency,
@@ -647,6 +764,7 @@ export class MarketDataCoordinator {
     for (const { dispose } of this.cachedQueries.values()) dispose();
     this.cachedQueries.clear();
     this.streamQuoteBaselines.clear();
+    this.reloads.clear();
     for (const timer of this.fxLegTimers.values()) clearTimeout(timer);
     this.fxLegTimers.clear();
   }

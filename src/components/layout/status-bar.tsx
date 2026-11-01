@@ -55,6 +55,8 @@ import {
   usePublishStatusWidgetRoom,
 } from "./status-widget-space";
 import { StarPromptStatusLine } from "../../app/star-prompt/status-line";
+import { connectionHealth as sharedConnectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../../core/connection-health";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -65,6 +67,14 @@ type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) 
  * picks the installer for the visitor's OS, so one link serves every platform.
  */
 const DESKTOP_DOWNLOAD_URL = "https://gloom.sh/download/desktop";
+
+/**
+ * The note while the data service gives no answer at all, and its short form
+ * for a narrow terminal. Every pane's own failure says why; this says once,
+ * for the whole app, that it is the connection, and goes when it answers.
+ */
+const CONNECTION_NOTE = "Can't reach the data service";
+const CONNECTION_NOTE_SHORT = "Offline";
 
 type LayoutTabItem = {
   label: string;
@@ -88,6 +98,9 @@ type StatusBarViewProps = {
   openChangelog?: (event?: StatusBarEvent) => void;
   openLayoutContextMenu: (index: number, event: any) => void | Promise<unknown>;
   rightAvailableWidth: number;
+  /** The connection note to show (CONNECTION_NOTE or its short form), or null while the data service answers. */
+  connectionNote: string | null;
+  openConnections: () => void;
   setHoveredControl: SetHoveredControl;
   showTidyWindows: boolean;
 };
@@ -397,6 +410,17 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     onContextMenu: handleLayoutTabContextMenu,
   }));
 
+  // Unreachable from the first request that got no answer until anything answers again.
+  const health = registry?.connectionHealth ?? sharedConnectionHealth;
+  const subscribeHealth = useCallback((onChange: () => void) => health.subscribe(onChange), [health]);
+  const dataServiceUnreachable = useSyncExternalStore(
+    subscribeHealth,
+    () => health.unreachableSince(GLOOM_CLOUD_HTTP_CONNECTION_ID) != null,
+  );
+  const openConnections = () => {
+    registry?.showPane("connections");
+  };
+
   const claimedWidgetColumns = useClaimedStatusWidgetColumns();
   const tidyWindowsKey = actionKey("tidy-windows");
   const controlsWidth = (TERMINAL_NEW_LAYOUT_LABEL.length + 1)
@@ -413,6 +437,15 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
 
   if (!statusBarVisible) return null;
 
+  // Feedback keeps the bottom-right corner; the connection note comes before
+  // the version chip, which gives way first, also to a widget that claimed
+  // more than the usual room. A narrow terminal shortens the note.
+  const rightWidth = Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - claimedWidgetColumns - feedbackWidth);
+  const connectionNote = !dataServiceUnreachable ? null
+    : nativePaneChrome || rightWidth >= displayWidth(t(CONNECTION_NOTE)) + 1 ? CONNECTION_NOTE
+      : rightWidth >= displayWidth(t(CONNECTION_NOTE_SHORT)) + 1 ? CONNECTION_NOTE_SHORT : null;
+  const connectionNoteWidth = connectionNote && !nativePaneChrome ? displayWidth(t(connectionNote)) + 1 : 0;
+
   const viewProps: StatusBarViewProps = {
     activeLayoutIdx,
     activeLayoutValue,
@@ -425,9 +458,9 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     layoutTabsWidth: tabsWidth,
     openChangelog: onOpenChangelog ? openChangelog : undefined,
     openLayoutContextMenu,
-    // Feedback keeps the bottom-right corner; the version chip gives way first,
-    // also to a widget that claimed more than the usual room.
-    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - claimedWidgetColumns - feedbackWidth),
+    rightAvailableWidth: Math.max(0, rightWidth - connectionNoteWidth),
+    connectionNote,
+    openConnections,
     setHoveredControl,
     showTidyWindows,
     tidyWindowsKey,
@@ -464,6 +497,7 @@ function NativeStatusBar({
       <NativeNewLayout />
       {showTidyWindows && <NativeTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
+      <StatusBarConnectionNote nativePaneChrome {...props} />
       <StatusBarSummary nativePaneChrome {...props} />
       {/* Widgets keep their width; the layout tabs give way instead. */}
       <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
@@ -496,6 +530,7 @@ function TerminalStatusBar({
       <TerminalNewLayout {...props} />
       {showTidyWindows && <TerminalTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
+      <StatusBarConnectionNote nativePaneChrome={false} {...props} />
       <StatusBarSummary nativePaneChrome={false} {...props} />
       <StarPromptStatusLine />
       <PluginSlot name="status:widget" />
@@ -599,6 +634,33 @@ function StatusBarSummary({
   );
 }
 
+/**
+ * Says the data service is unreachable while it is, in the warning tone a
+ * pane footer gives a failure; it opens Connections, which has the detail.
+ */
+function StatusBarConnectionNote({
+  connectionNote,
+  hoveredControl,
+  nativePaneChrome,
+  openConnections,
+  setHoveredControl,
+}: Pick<StatusBarViewProps, "connectionNote" | "hoveredControl" | "openConnections" | "setHoveredControl"> & { nativePaneChrome: boolean }) {
+  if (!connectionNote) return null;
+  return (
+    <StatusBarChip
+      hoveredControl={hoveredControl}
+      id="connection"
+      label={t(connectionNote)}
+      nativePaneChrome={nativePaneChrome}
+      onPress={openConnections}
+      role="button"
+      setHoveredControl={setHoveredControl}
+      title={`${t(DATA_SERVICE_UNREACHABLE_MESSAGE)}. ${t("Open Connections")} (CONN)`}
+      tone="warning"
+    />
+  );
+}
+
 /** Opens Send Feedback from the bottom-right corner, on every renderer. */
 function StatusBarFeedback({
   hoveredControl,
@@ -619,7 +681,10 @@ function StatusBarFeedback({
   );
 }
 
-/** Dim text at the row's right edge that lights up when it can be pressed. */
+/**
+ * Dim text at the row's right edge that lights up when it can be pressed; a
+ * `warning` one keeps the warning tone, as a footer's failure does.
+ */
 function StatusBarChip({
   hoveredControl,
   id,
@@ -629,6 +694,7 @@ function StatusBarChip({
   role,
   setHoveredControl,
   title,
+  tone,
 }: Pick<StatusBarViewProps, "hoveredControl" | "setHoveredControl"> & {
   id: string;
   label: string;
@@ -636,13 +702,16 @@ function StatusBarChip({
   onPress?: (event?: StatusBarEvent) => void;
   role: "button" | "link";
   title?: string;
+  tone?: "warning";
 }) {
   const colors = useThemeColors();
   const hovered = hoveredControl === id;
   if (nativePaneChrome && onPress) {
     return (
       <Box paddingRight={1} flexShrink={0}>
-        <Button variant="plain" compact label={title ?? label} displayLabel={label} title={title} onPress={() => onPress()} />
+        <Button variant="plain" compact label={title ?? label} displayLabel={tone ? undefined : label} title={title} onPress={() => onPress()}>
+          {tone ? <Text fg={colors[tone]}>{label}</Text> : undefined}
+        </Button>
       </Box>
     );
   }
@@ -656,7 +725,7 @@ function StatusBarChip({
   return (
     <Box paddingRight={1} flexShrink={0}>
       <Text
-        fg={hovered && press ? colors.text : colors.textDim}
+        fg={tone ? colors[tone] : hovered && press ? colors.text : colors.textDim}
         {...(!nativePaneChrome ? { bg: hovered && press ? hoverBg(colors) : undefined } : {})}
         title={press ? title : undefined}
         aria-label={press ? title : undefined}

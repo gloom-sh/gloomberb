@@ -166,6 +166,38 @@ describe("CloudApiRequestTransport market deadlines", () => {
     expect(asked).toEqual([]);
   });
 
+  // After an outage nothing asked again for what had failed, and nothing said
+  // the app was offline: the transport knew, and kept it to itself.
+  test("an outage marks the data service unreachable, and the first answer after it ends it and is heard once", async () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const recovered: string[] = [];
+    health.subscribeRecovery((sourceId) => recovered.push(sourceId));
+    let online = false;
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async () => {
+      if (!online) throw Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), { code: "ConnectionRefused" });
+      return responseWithBody(async () => "{}");
+    } });
+
+    await expect(transport.request("/market/quote?symbol=AAPL")).rejects.toBeInstanceOf(DataServiceUnreachableError);
+    await expect(transport.request("/market/quote?symbol=MSFT")).rejects.toBeInstanceOf(DataServiceUnreachableError);
+    expect(health.unreachableSince("gloom-cloud-http")).not.toBeNull();
+    expect(recovered).toEqual([]);
+
+    online = true;
+    await transport.request("/market/quote?symbol=AAPL");
+    await transport.request("/market/quote?symbol=MSFT");
+    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+    expect(recovered).toEqual(["gloom-cloud-http"]);
+
+    // The quote stream answering ends an outage too.
+    online = false;
+    await transport.request("/market/quote?symbol=AAPL").catch(() => {});
+    transport.noteServiceAnswered();
+    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+    expect(recovered).toEqual(["gloom-cloud-http", "gloom-cloud-http"]);
+  });
+
   // Some searches take five seconds on a working connection. One that slow
   // made the client take the connection for hung and refuse to send anything
   // for five seconds, so `search insur` exited non-zero.
