@@ -53,9 +53,19 @@ export function clampFloatingRectWithinBounds(rect: FloatingRect, bounds: Layout
   };
 }
 
+/** A new floating pane's size: its own default, or 60% of the area each way. */
+export function defaultFloatingSize(termWidth: number, termHeight: number, def?: PaneDef): { width: number; height: number } {
+  const { width, height } = clampFloatingRect({
+    x: 0,
+    y: 0,
+    width: def?.defaultFloatingSize?.width ?? Math.floor(termWidth * 0.6),
+    height: def?.defaultFloatingSize?.height ?? Math.floor(termHeight * 0.6),
+  }, termWidth, termHeight);
+  return { width, height };
+}
+
 export function defaultFloatingRect(termWidth: number, termHeight: number, def?: PaneDef): FloatingRect {
-  const width = def?.defaultFloatingSize?.width ?? Math.floor(termWidth * 0.6);
-  const height = def?.defaultFloatingSize?.height ?? Math.floor(termHeight * 0.6);
+  const { width, height } = defaultFloatingSize(termWidth, termHeight, def);
   return clampFloatingRect({
     x: Math.floor((termWidth - width) / 2),
     y: Math.floor((termHeight - height) / 2),
@@ -71,8 +81,18 @@ export function maxFloatingZ(layout: LayoutConfig): number {
 /** Where floating panes stack from, above the docked panes and the dividers between them. */
 const FLOATING_PANE_BASE_Z = 50;
 
-/** The lowest of the shell's fixed overlays over every pane: the drag outline (95; the drop preview is 96). */
-const SHELL_PREVIEW_Z = 95;
+/**
+ * The shell's fixed overlays of a pane move, over every pane. A move draws a
+ * pair at `under` and `over`: on the desktop the landing preview under the
+ * pane on the move (lifted to `over` while it is over a target, or its outline
+ * when it was docked); in the terminal, which cannot see through a pane, the
+ * docked pane's outline under the landing outline. The drop grid of the pane
+ * under the pointer is above both.
+ */
+export const SHELL_DRAG_Z = { under: 95, over: 96, cell: 97, centerCell: 98 } as const;
+
+/** The lowest of the shell's fixed overlays over every pane. */
+const SHELL_PREVIEW_Z = SHELL_DRAG_Z.under;
 
 /**
  * How far above its own z a floating pane draws: its resize edges one level

@@ -2,7 +2,7 @@ import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
+import { PaneBodyFrame, getPaneWindowAttributes, type DockEdge } from "./frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
@@ -27,6 +27,8 @@ interface PaneWrapperProps {
   quickSettings?: PaneHeaderQuickSetting[];
   /** A dock divider line is drawn over the top row (the pane is below another). */
   topRule?: boolean;
+  /** Desktop: the sides that face another docked pane across the gap between them. */
+  dockEdges?: readonly DockEdge[];
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -57,6 +59,7 @@ export function PaneWrapper({
   showActions = false,
   quickSettings,
   topRule = false,
+  dockEdges,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -105,6 +108,7 @@ export function PaneWrapper({
         focused,
         windowModeSelected,
         showBorderColor: true,
+        dockEdges,
       })}
       onMouseDown={onMouseDown}
       onMouseDownCapture={onMouseDownCapture}

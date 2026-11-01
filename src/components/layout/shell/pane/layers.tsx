@@ -1,22 +1,25 @@
 import { memo, useCallback, useMemo, useRef, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
-import type {
-  DockDividerLayout,
-  DockLeafLayout,
-  FloatingRect,
-  LayoutBounds,
-  ResolvedPane,
+import {
+  SHELL_DRAG_Z,
+  type DockDividerLayout,
+  type DockLeafLayout,
+  type FloatingRect,
+  type LayoutBounds,
+  type ResolvedPane,
 } from "../../../../layout/pane-manager";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { LivePaneFrameContext, type CellSize, type LivePaneFrame } from "../../../../ui/live-stretch";
 import { constrainFloatingRectToBounds, sameRect, type ResizeEdges } from "../drag";
 import { useLiveBoxFrame, useLiveCatchUp, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
+import { ARMED_DRAG_OPACITY } from "../drag/overlays";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
 import { PaneWrapper } from "../../pane";
+import type { DockEdge } from "../../pane/frame";
 import type { PaneHeaderQuickSetting } from "../../pane/header";
 import { hasPaneFooterContent, PaneFooterKeys, PaneFooterProvider } from "../../pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "../../pane/sizing";
@@ -106,6 +109,8 @@ interface PaneLayerProps {
   fullscreen: boolean;
   /** Whether the header can start a move: not in fullscreen. */
   movable: boolean;
+  /** Desktop, docked: the sides that face another pane across the gap between them. */
+  dockEdges?: readonly DockEdge[];
   nativePaneChrome: boolean;
   nativeContextMenu: boolean;
   /** Ask Gloom takes questions about panes, so the header offers it. */
@@ -115,6 +120,28 @@ interface PaneLayerProps {
 }
 
 const EMPTY_OCCLUSION: ReadonlySet<string> = new Set();
+const ARMED_LAYER_STYLE = { opacity: ARMED_DRAG_OPACITY };
+const SIDES: readonly DockEdge[] = ["left", "right", "top", "bottom"];
+/** One array per combination of sides, so a docked layer's props stay equal between renders. */
+const DOCK_EDGE_SETS = new Map<string, readonly DockEdge[]>();
+
+/** The sides of a docked pane at `rect` that face another pane rather than the edge of the area. */
+function dockEdgesOf(rect: LayoutBounds, width: number, height: number): readonly DockEdge[] {
+  const inside = {
+    left: rect.x > 0.01,
+    right: rect.x + rect.width < width - 0.01,
+    top: rect.y > 0.01,
+    bottom: rect.y + rect.height < height - 0.01,
+  };
+  const edges = SIDES.filter((side) => inside[side]);
+  const key = edges.join(" ");
+  let set = DOCK_EDGE_SETS.get(key);
+  if (!set) {
+    set = edges;
+    DOCK_EDGE_SETS.set(key, set);
+  }
+  return set;
+}
 const selectFloatingDragActive = (geometry: LiveDragGeometry) => geometry.floating !== null;
 const selectNothing = () => null;
 const selectNoDrag = () => false;
@@ -160,6 +187,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
   inView,
   fullscreen,
   movable,
+  dockEdges,
   nativePaneChrome,
   nativeContextMenu,
   canAsk,
@@ -220,6 +248,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               showActions={showActions}
               quickSettings={quickSettings}
               topRule={rect.y > 0.01}
+              dockEdges={dockEdges}
               windowModeSelected={windowModeSelected}
               footer={footer}
               onMouseDownCapture={nativePaneChrome ? (event) => actions.paneMouseDown(paneId, event) : undefined}
@@ -486,6 +515,12 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return sameRect(resized, rect) ? null : resized;
   } : null), [contentHeight, paneId, rect, slide, width]);
   const resizeRect = useLiveCatchUp(live, selectCatchUp);
+  // Over somewhere to land, the desktop pane rises over its landing preview
+  // and turns see-through, so the preview shows under it.
+  const selectArmed = useCallback((geometry: LiveDragGeometry) => (
+    geometry.paneDrag?.paneId === paneId && geometry.dockPreview !== null
+  ), [paneId]);
+  const armed = useLiveDrag(live, slide ? selectArmed : selectNoDrag);
   const preview = dragRect
     ? constrainFloatingRectToBounds(dragRect, width, contentHeight)
     // The content catches up with the size; a left or top edge's move stays
@@ -513,7 +548,8 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
       top={0}
       width={0}
       height={0}
-      zIndex={zIndex}
+      zIndex={armed ? SHELL_DRAG_Z.over : zIndex}
+      style={armed ? ARMED_LAYER_STYLE : undefined}
     >
       {content}
       {frame.movable && !frame.hidden && (
@@ -742,6 +778,7 @@ export function ShellPaneLayers({
           <DockedPaneLayer
             key={`dock:${leaf.instanceId}`}
             {...layerProps(pane, transientFocusActive ? fullscreenRect : leaf.rect)}
+            dockEdges={nativePaneChrome && !transientFocusActive ? dockEdgesOf(leaf.rect, width, contentHeight) : undefined}
             live={live}
           />
         );
