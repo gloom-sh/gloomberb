@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   floatAtRect,
   getDockSplitGeometry,
@@ -18,6 +18,7 @@ import {
   finalizePaneDragRelease,
   freePaneDragRect,
   isMeaningfulPaneDrag,
+  JOIN_DWELL_MS,
   makeSnapGuides,
   PANE_DRAG_THRESHOLD,
   PRECISE_PANE_DRAG_THRESHOLD,
@@ -32,6 +33,18 @@ import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
 import { NO_LATCH, snapMovedRect, snapResizedRect, type MagnetDistances, type MagnetLatch } from "./drag/magnets";
 import { paneHeaderRows } from "../pane/sizing";
+
+/** A join the pointer has lined up: armed once it has held for JOIN_DWELL_MS. */
+interface PendingJoin {
+  key: string;
+  armed: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+function dropPendingJoin(memo: { join: PendingJoin | null }) {
+  if (memo.join?.timer) clearTimeout(memo.join.timer);
+  memo.join = null;
+}
 
 /** A resize without edges is the bottom-right corner's (the terminal's only one). */
 const CORNER_EDGES = { x: 1, y: 1 } as const;
@@ -87,7 +100,8 @@ export function useShellActiveDrag({
   } = dragRuntime;
   // What one drag keeps between moves: a docked pane's floating size, the
   // last drop it simulated, so a move over the same target computes nothing,
-  // and the edges its magnets hold, with the other panes' rects they hold to.
+  // the edges its magnets hold, with the other panes' rects they hold to, and
+  // the join it is holding still for.
   const memoRef = useRef<{
     drag: unknown;
     baseRect: FloatingRect | null;
@@ -95,7 +109,9 @@ export function useShellActiveDrag({
     drop: DragPreview | null;
     latch: MagnetLatch;
     magnetTargets: LayoutBounds[] | null;
-  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null });
+    join: PendingJoin | null;
+  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null });
+  useEffect(() => () => dropPendingJoin(memoRef.current), []);
 
   return useCallback((event: ShellMouseEvent) => {
     const shellY = event.y - appHeaderHeight;
@@ -119,6 +135,7 @@ export function useShellActiveDrag({
       memo.drop = null;
       memo.latch = NO_LATCH;
       memo.magnetTargets = null;
+      dropPendingJoin(memo);
     }
     // Every other pane on screen, docked or floating, whose edges a floating
     // pane's edges stick to. Alt (Option) lets it go anywhere.
@@ -174,6 +191,7 @@ export function useShellActiveDrag({
 
     if (event.type === "drag-cancel") {
       // The window lost focus or the system took the pointer: put everything back.
+      dropPendingJoin(memo);
       cancelActiveDrag();
       event.stopPropagation();
       event.preventDefault();
@@ -227,17 +245,43 @@ export function useShellActiveDrag({
           headerRows: paneHeaderRows(nativePaneChrome),
           join: !magnetsOff,
         });
-        if (target) {
-          const dropKey = target.kind === "tab" ? `tab:${target.targetId}` : target.kind === "leaf" ? `${target.targetId}:${target.position}` : target.edge;
-          if (memo.dropKey !== dropKey) {
-            const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
-            memo.dropKey = dropKey;
-            memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
-          }
-          updateDockPreview(memo.drop);
-        } else {
+        const showSnapGuide = () => {
           const snapGuide = resolveSnapGuide(hitX, hitShellY, snapGuides);
           updateDockPreview(snapGuide ? { kind: "snap", position: snapGuide.position, rect: snapGuide.previewRect } : null);
+        };
+        if (target) {
+          const dropKey = target.kind === "tab" ? `tab:${target.targetId}` : target.kind === "leaf" ? `${target.targetId}:${target.position}` : target.edge;
+          const showDrop = () => {
+            if (memo.dropKey !== dropKey) {
+              const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
+              memo.dropKey = dropKey;
+              memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
+            }
+            updateDockPreview(memo.drop);
+          };
+          if (target.kind === "leaf") {
+            // A join arms once the edge has held, and shows its preview then:
+            // a release before that leaves the pane floating where it is.
+            if (memo.join?.key !== dropKey) {
+              dropPendingJoin(memo);
+              const join: PendingJoin = { key: dropKey, armed: false, timer: null };
+              join.timer = setTimeout(() => {
+                if (memo.join !== join || dragRef.current !== drag) return;
+                join.armed = true;
+                join.timer = null;
+                showDrop();
+              }, JOIN_DWELL_MS);
+              memo.join = join;
+            }
+            if (memo.join?.armed) showDrop();
+            else showSnapGuide();
+          } else {
+            dropPendingJoin(memo);
+            showDrop();
+          }
+        } else {
+          dropPendingJoin(memo);
+          showSnapGuide();
         }
       } else if (drag.type === "float-resize") {
         updateDragFloatingRect({
@@ -251,6 +295,7 @@ export function useShellActiveDrag({
     }
 
     if (event.type === "up" || event.type === "drag-end") {
+      dropPendingJoin(memo);
       if (drag.type === "divider") {
         if (live.get().divider) {
           const nextLayout = resizeSplitAtPath(baseLayout, drag.path, dividerRatioAt(preciseX, preciseShellY));

@@ -58,5 +58,7 @@ describe("magnets", () => {
     const terminal = magnetDistancesFor(null);
     expect(snapMovedRect({ x: 69, y: 12, width: 30, height: 12 }, [NEIGHBOUR], AREA, terminal, NO_LATCH).rect.x).toBe(70);
     expect(snapMovedRect({ x: 68, y: 12, width: 30, height: 12 }, [NEIGHBOUR], AREA, terminal, NO_LATCH).rect.x).toBe(68);
+    // A desktop cell not measured yet catches as the terminal does, not at any distance.
+    expect(magnetDistancesFor({ width: 0, height: 0 })).toEqual(terminal);
   });
 });

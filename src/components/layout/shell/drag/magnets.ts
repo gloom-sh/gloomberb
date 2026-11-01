@@ -36,9 +36,15 @@ const MAGNET_RELEASE_PX = 12;
 /** Terminal magnets, in cells: the next cell catches, two let go. */
 const TERMINAL_MAGNETS: MagnetDistances = { catchX: 1, catchY: 1, releaseX: 2, releaseY: 2 };
 
-/** The magnets in cells: the desktop's px over its cell size (`cell`), or the terminal's whole cells. */
+/**
+ * The magnets in cells: the desktop's px over its cell size (`cell`), or the
+ * terminal's whole cells, also for a cell size not measured yet (zero), which
+ * would otherwise catch at any distance.
+ */
 export function magnetDistancesFor(cell: { width: number; height: number } | null): MagnetDistances {
-  if (!cell) return TERMINAL_MAGNETS;
+  if (!cell || !(cell.width > 0) || !(cell.height > 0) || !Number.isFinite(cell.width) || !Number.isFinite(cell.height)) {
+    return TERMINAL_MAGNETS;
+  }
   return {
     catchX: MAGNET_CATCH_PX / cell.width,
     catchY: MAGNET_CATCH_PX / cell.height,

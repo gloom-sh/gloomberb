@@ -198,14 +198,14 @@ const JOIN_SIDES = [
 type JoinSide = (typeof JOIN_SIDES)[number][0];
 
 /**
- * Where a pane on the move lands on release, if anywhere but where it is
+ * Where a pane on the move would land on release, if anywhere but where it is
  * drawn. Over another spot's title bar it becomes a tab there. Its edge
- * pushed flush against the same edge of the spot under the pointer, it joins
- * the dock on that side: where it is drawn and where the pointer puts it,
- * that edge is within `flush` of the spot's, so a window the screen's edge
- * holds back does not join for touching it. The pointer pushed past an edge
- * of the dock area joins on that side of the spot at that edge. `join` false
- * (Alt) leaves the edges out.
+ * pushed flush against the same edge of the spot under the pointer, where
+ * that spot meets another (never the dock's own edge, so a window parked at
+ * the screen's edge or corner stays floating), it joins the dock on that
+ * side: where it is drawn and where the pointer puts it, that edge is within
+ * `flush` of the spot's. The caller arms a join only once it has held (see
+ * JOIN_DWELL_MS). `join` false (Alt) leaves the edges out.
  */
 export function resolvePaneDropTarget({
   x,
@@ -236,28 +236,14 @@ export function resolvePaneDropTarget({
   headerRows: number;
   join: boolean;
 }): DropTarget | null {
-  const past: Record<JoinSide, number> = {
-    left: area.x - x,
-    right: x - (area.x + area.width) + 1e-6,
-    top: area.y - y,
-    bottom: y - (area.y + area.height) + 1e-6,
-  };
-  const at = {
-    x: Math.max(area.x, Math.min(area.x + area.width - 0.001, x)),
-    y: Math.max(area.y, Math.min(area.y + area.height - 0.001, y)),
-  };
-  const leaf = leaves.find((entry) => pointInRect(entry.rect, at.x, at.y));
+  if (!pointInRect(area, x, y)) return null;
+  const leaf = leaves.find((entry) => pointInRect(entry.rect, x, y));
   if (!leaf) return null;
   // Its own spot: alone there, nothing to land on; a tab of a stack can
   // leave it for a side of the stack, but is a tab of it already.
   const own = leaf.instanceId === paneId || (leaf.stack?.includes(paneId) ?? false);
   const targetId = leaf.instanceId !== paneId ? leaf.instanceId : leaf.stack?.find((id) => id !== paneId);
   if (!targetId) return null;
-  let pushed: { side: JoinSide; by: number } | null = null;
-  for (const [side] of JOIN_SIDES) {
-    if (past[side] > 0 && (!pushed || past[side] > pushed.by)) pushed = { side, by: past[side] };
-  }
-  if (pushed) return join ? { kind: "leaf", targetId, position: pushed.side } : null;
   if (y < leaf.rect.y + headerRows) return own ? null : { kind: "tab", targetId };
   if (!join) return null;
   const edgeOf = (box: LayoutBounds, side: JoinSide) => (
@@ -266,12 +252,21 @@ export function resolvePaneDropTarget({
   let best: { side: JoinSide; closeness: number } | null = null;
   for (const [side, axis] of JOIN_SIDES) {
     const line = edgeOf(leaf.rect, side);
+    // The dock's own edge is the screen's: parking there is not joining.
+    if (Math.abs(line - edgeOf(area, side)) <= flush[axis]) continue;
     if (Math.abs(edgeOf(free, side) - line) > flush[axis]) continue;
     const closeness = Math.abs(edgeOf(rect, side) - line) / Math.max(flush[axis], 1e-6);
     if (closeness <= 1 && (!best || closeness < best.closeness)) best = { side, closeness };
   }
   return best ? { kind: "leaf", targetId, position: best.side } : null;
 }
+
+/**
+ * How long an edge holds flush before the join arms and its preview shows, so
+ * a window moved past a docked pane's edge, or briefly lined up with it, does
+ * not dock on release.
+ */
+export const JOIN_DWELL_MS = 350;
 
 export function resolveDividerPreviewRect(
   axis: "horizontal" | "vertical",

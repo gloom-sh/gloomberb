@@ -107,7 +107,7 @@ While you move or resize a floating pane, its edges stick to the edges of other 
 
 A pane you move, floating or docked, finds its place in the dock two ways:
 
-- **Join:** push one of its edges flush against the same edge of a docked pane (the edge sticks) and it joins the dock on that side, sharing the room and resizing with its neighbours. Pushing the pointer past the edge of the window (onto the title bar or the status bar) joins on that side of the pane there. A pane the window's edge holds back because it is too big to go further stays floating.
+- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. Let go before the outline shows and it stays floating. A pane parked against an edge or a corner of the window stays floating too.
 - **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
 
 `Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar.

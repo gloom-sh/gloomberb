@@ -80,6 +80,8 @@ window.__check = {
     return { x: r.x, y: r.y, width: r.width, height: r.height };
   },
   paneRect(id) { return this.rect(this.pane(id)); },
+  /** A pane on screen: a stack's other tabs stay mounted, out of sight. */
+  shown(id) { const pane = this.pane(id); return !!pane && pane.getClientRects().length > 0; },
   part(id, role) { return this.pane(id)?.querySelector('[data-gloom-role=' + role + ']') ?? null; },
   tab(id, label) {
     return [...(this.pane(id)?.querySelectorAll('[role=tab]') ?? [])].find((tab) => tab.textContent.trim() === label) ?? null;
@@ -157,7 +159,7 @@ async function dockStack(cdp: Cdp, paneId: string, part: string, targetId: strin
   const before = { pane: await rectOf(cdp, paneId), target: await rectOf(cdp, targetId) };
   if (!before.pane || !before.target) fail("pane missing", before);
   await drag(cdp, await pointOf(cdp, paneId, part), [await pointOf(cdp, targetId, "title")]);
-  const stacked = `(() => { const tabs = __check.stackTabs(${JSON.stringify(paneId)}); return !__check.pane(${JSON.stringify(targetId)}) && tabs?.length === 2 && tabs.at(-1).selected; })()`;
+  const stacked = `(() => { const tabs = __check.stackTabs(${JSON.stringify(paneId)}); return !__check.shown(${JSON.stringify(targetId)}) && tabs?.length === 2 && tabs.at(-1).selected; })()`;
   if (await waitFor(cdp, stacked)) return;
   fail(`dropping ${paneId} on the title bar of ${targetId} did not stack them`, {
     stack: await evaluate(cdp, `__check.stackTabs(${JSON.stringify(paneId)})`),
@@ -993,7 +995,7 @@ const steps: Step[] = [
       await dockStack(cdp, "plain:a", "title", "plain:c");
       const tabOf = (id: string) => evaluate<Rect | null>(cdp, `__check.stackTabs("plain:a")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? __check.stackTabs("plain:c")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? null`);
       await click(cdp, center(await tabOf("plain:c") ?? fail("no plain:c tab")));
-      if (!await waitFor(cdp, `!__check.pane("plain:a") && __check.stackTabs("plain:c")?.find((tab) => tab.selected)?.value === "plain:c"`)) {
+      if (!await waitFor(cdp, `!__check.shown("plain:a") && __check.stackTabs("plain:c")?.find((tab) => tab.selected)?.value === "plain:c"`)) {
         fail("clicking the plain:c tab did not show it", await evaluate(cdp, `__check.stackTabs("plain:c")`));
       }
       // Out over the middle of another pane, clear of its edges: it floats there.
@@ -1004,18 +1006,50 @@ const steps: Step[] = [
     },
   },
   {
-    name: "floating pane: pushed flush against a docked pane's edge, it joins the dock there",
+    name: "floating pane: held flush against a docked pane's edge, it joins the dock there once the preview shows",
     scenario: "floating&titlebar=1",
     async run(cdp) {
       const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
       const target = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
       const from = await pointOf(cdp, "plain:float", "title");
-      // The left edge a few px inside plain:b's, which the magnet pulls flush;
-      // the pointer stays over plain:b's body, clear of its title bar.
+      // The left edge a few px inside plain:b's, where it meets tabs:a, which
+      // the magnet pulls flush; the pointer over plain:b's body, clear of its title bar.
       const to = { x: target.x + 3 + (from.x - pane.x), y: target.y + target.height / 2 };
-      await drag(cdp, from, [to]);
+      const preview = `(() => { const el = document.querySelector('[data-gloom-role="drop-preview"]'); if (!el || getComputedStyle(el).opacity === "0") return null; const r = el.getBoundingClientRect(); return Math.abs(r.x - ${target.x}) <= 2 ? true : null; })()`;
+      await dragHolding(cdp, from, to, async () => {
+        if (await evaluate(cdp, preview)) fail("the join preview showed before the edge had held");
+        if (!await waitFor(cdp, preview)) fail("holding the edge flush never showed the join preview");
+      });
       const joined = `(() => { const r = __check.paneRect("plain:float"); return r && __check.pane("plain:float").getAttribute("data-floating") === "false" && Math.abs(r.x - ${target.x}) <= 2; })()`;
-      if (!await waitFor(cdp, joined)) fail("pushing the window flush against plain:b's left edge did not dock it there", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")) });
+      if (!await waitFor(cdp, joined)) fail("releasing on the join preview did not dock it against plain:b's left edge", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")) });
+    },
+  },
+  {
+    name: "floating pane: parked at the screen's edge or corner, it stays floating",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      // The dock area: the docked panes reach every edge of it.
+      const docked = await Promise.all(["plain:a", "plain:c", "broken:a"].map(async (id) => await rectOf(cdp, id) ?? fail(`no ${id}`)));
+      const right = Math.max(...docked.map((r) => r.x + r.width));
+      const bottom = Math.max(...docked.map((r) => r.y + r.height));
+      const area = { x: docked[0]!.x, y: docked[0]!.y, width: right - docked[0]!.x, height: bottom - docked[0]!.y };
+      for (const corner of ["edge", "corner"] as const) {
+        const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+        const from = await pointOf(cdp, "plain:float", "title");
+        // A few px short of the right edge, which the magnet pulls flush, and
+        // for the corner the bottom one too; held well past the join's dwell.
+        const dx = area.x + area.width - 3 - (pane.x + pane.width);
+        const dy = corner === "corner" ? area.y + area.height - 3 - (pane.y + pane.height) : 0;
+        const to = { x: from.x + dx, y: from.y + dy };
+        await dragHolding(cdp, from, to, async () => {
+          await evaluate(cdp, "new Promise((done) => setTimeout(done, 700))");
+        });
+        await frames(cdp, 3);
+        const after = await rectOf(cdp, "plain:float");
+        if (await evaluate(cdp, `__check.pane("plain:float")?.getAttribute("data-floating")`) !== "true") {
+          fail(`a window parked at the screen's ${corner} docked`, { before: round(pane), after: round(after), area: round(area) });
+        }
+      }
     },
   },
   {
