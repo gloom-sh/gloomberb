@@ -3,6 +3,7 @@ import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { TickerFinancials } from "../../../types/financials";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { buildScenario, type ScenarioControls, type ScenarioModel, type ScenarioPosition } from "./model";
+import { EARNINGS_CALENDAR_UNAVAILABLE } from "./csp";
 import { isRecord, isStringArray } from "../../../utils/guards";
 
 export interface ScenarioEvidenceInput {
@@ -83,7 +84,7 @@ export const scenarioScreenshotEvidence: PaneScreenshotEvidenceHook<ScenarioEvid
       controls?: ScenarioControls | null;
       market?: unknown;
       inputSource?: string;
-      csp?: { earnings: { date: string | null } };
+      csp?: { earnings: { date: string | null; unavailable?: true } };
     } | undefined;
     const position = metadata?.position;
     const controls = metadata?.controls;
@@ -97,8 +98,8 @@ export const scenarioScreenshotEvidence: PaneScreenshotEvidenceHook<ScenarioEvid
         scenarioSnapshot: metadata?.scenario ?? null,
         scenarioMarketSnapshot: metadata?.market ?? null,
         scenarioSnapshotErrors: loaded.result.errors ?? [],
-        // A cash-secured put shows the earnings date the report read, not another lookup's.
-        ...(metadata?.csp ? { scenarioEarningsDate: metadata.csp.earnings.date } : {}),
+        // A cash-secured put shows the earnings date the report read, or that it could not read one, not another lookup's.
+        ...(metadata?.csp ? { scenarioEarningsDate: metadata.csp.earnings.unavailable ? EARNINGS_CALENDAR_UNAVAILABLE : metadata.csp.earnings.date } : {}),
         ...(position ? { seedPosition: position } : {}),
         ...(controls ? { date: new Date(controls.date).toISOString(), volShift: controls.volShift * 100,
           spotRange: controls.spotRange * 100 } : {}),

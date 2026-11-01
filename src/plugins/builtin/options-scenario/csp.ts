@@ -26,7 +26,7 @@ import { logFailure } from "../../../utils/log-failure";
  * - break-even = strike - entry price
  * - days to expiry = calendar days from the valuation date in New York to the expiry date
  * - earnings before expiry: yes when the next report is on or before the expiry date,
- *   no when it is after, unknown when the calendar has no upcoming date
+ *   no when it is after, unknown when the calendar has no upcoming date or could not be read
  */
 export interface CashSecuredPut {
   currency: string;
@@ -78,7 +78,16 @@ export interface CspEarnings {
   date: string | null;
   /** Null is unknown: no upcoming date to compare. */
   beforeExpiry: boolean | null;
+  /** The earnings calendar could not be read, so there may be a date it did not give. */
+  unavailable?: true;
 }
+
+/**
+ * What `loadNextEarningsDate` answers when the earnings calendar could not be
+ * read, in place of a date. Unlike null (no date published) it is reported as
+ * unavailable. A string, so a capture can keep it in the pane's settings.
+ */
+export const EARNINGS_CALENDAR_UNAVAILABLE = "calendar-unavailable";
 
 const DAY_MS = 86_400_000;
 const newYorkDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -95,8 +104,9 @@ export function calendarDaysToExpiry(asOf: number, expiry: string): { valuationD
     daysToExpiry: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${valuationDate}T00:00:00Z`)) / DAY_MS)) };
 }
 
-/** Whether the next report falls before the put expires; unknown without an upcoming date. */
+/** Whether the next report falls before the put expires; unknown without an upcoming date or a calendar to read one from. */
 export function earningsBeforeExpiry(earningsDate: string | null | undefined, valuationDate: string, expiry: string): CspEarnings {
+  if (earningsDate === EARNINGS_CALENDAR_UNAVAILABLE) return { date: null, beforeExpiry: null, unavailable: true };
   if (!earningsDate || !/^\d{4}-\d{2}-\d{2}$/.test(earningsDate) || earningsDate < valuationDate) return { date: null, beforeExpiry: null };
   return { date: earningsDate, beforeExpiry: earningsDate <= expiry };
 }
@@ -147,19 +157,25 @@ export function cashSecuredPut(
 /**
  * The next report date, YYYY-MM-DD, as every earnings surface resolves it
  * (shared/earnings-calendar): the calendar's, or once that date has passed
- * the next one on record; null when there is none or the calendar cannot be
- * read.
+ * the next one on record; null when there is none, and
+ * EARNINGS_CALENDAR_UNAVAILABLE when the calendar cannot be read.
  */
 export async function loadNextEarningsDate(provider: DataProvider | null | undefined, symbol: string, today = newYorkDay()): Promise<string | null> {
-  return (await loadNextEarningsDates(provider, [symbol], today)).get(symbol.trim().toUpperCase()) ?? null;
+  const dates = await loadNextEarningsDates(provider, [symbol], today);
+  return dates === EARNINGS_CALENDAR_UNAVAILABLE ? dates : dates.get(symbol.trim().toUpperCase()) ?? null;
 }
 
-/** The next report date of each symbol, by its upper-case symbol, from one calendar request; a symbol with none is left out. */
+/**
+ * The next report date of each symbol, by its upper-case symbol, from one
+ * calendar request; a symbol with none is left out. EARNINGS_CALENDAR_UNAVAILABLE
+ * when the calendar cannot be read.
+ */
 export async function loadNextEarningsDates(
   provider: DataProvider | null | undefined, symbols: readonly string[], today = newYorkDay(),
-): Promise<Map<string, string>> {
+): Promise<Map<string, string> | typeof EARNINGS_CALENDAR_UNAVAILABLE> {
   const keys = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))];
   const result = await loadEarningsCalendar(provider, keys).catch(logFailure("options-scenario.csp", "Load earnings calendar for cash-secured puts failed", null));
+  if (provider && !result) return EARNINGS_CALENDAR_UNAVAILABLE;
   if (!provider || !result?.events.length) return new Map();
   const listings = keys.map((key) => {
     const listing = parsePublicTickerKey(key);
@@ -185,6 +201,7 @@ function otmText(csp: CashSecuredPut): string {
 }
 
 function earningsText(earnings: CspEarnings): string {
+  if (earnings.unavailable) return "unknown (earnings calendar unavailable)";
   if (earnings.beforeExpiry == null) return "unknown (no upcoming date published)";
   return `${earnings.beforeExpiry ? "yes" : "no"} (next report ${earnings.date})`;
 }
@@ -250,6 +267,7 @@ export function cspStatItems(csp: CashSecuredPut): StatItem[] {
     { id: "csp-break-even", label: "Break-even", value: formatHedgePrice(csp.breakEven), detail: "per share" },
     { id: "csp-days", label: "DTE", value: String(csp.daysToExpiry), detail: csp.expiry },
     { id: "csp-earnings", label: "Earnings", value: earnings.beforeExpiry == null ? "unknown" : earnings.beforeExpiry ? "before expiry" : "after expiry",
-      detail: earnings.date ?? "no date", tone: earnings.beforeExpiry ? "warning" : undefined },
+      detail: earnings.unavailable ? "calendar unavailable" : earnings.date ?? "no date",
+      tone: earnings.beforeExpiry || earnings.unavailable ? "warning" : undefined },
   ];
 }
