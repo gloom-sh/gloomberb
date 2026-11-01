@@ -914,6 +914,7 @@ class GloomApiClient {
     this.sessionRequestGeneration += 1;
     this.sessionRequest = null;
     this.socket.dispose();
+    this.transport.dispose();
   }
 
   searchInstruments = this.data.searchInstruments.bind(this.data);

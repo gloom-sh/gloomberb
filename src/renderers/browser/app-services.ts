@@ -7,6 +7,7 @@ import { AssetDataRouter } from "../../sources/provider-router";
 import { JsonPersistence } from "../../data/json-persistence";
 import { isBrokerAccountSnapshotKey } from "../../brokers/account-cache";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
+import { registerGloomCloudConnectionSources } from "../../core/connection-health";
 
 export function createBrowserAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions) {
   const cloudProvider = createGloomberbCloudProvider();
@@ -27,7 +28,13 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
         priority: 0,
         provider: { fetchNews: (query) => cloudNews?.provider.fetchNews(query) ?? Promise.resolve([]) },
       }));
-      return pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
+      // The page sends its own Gloom Cloud requests and holds its own stream: their health is this registry's to keep.
+      const disposeCloudSources = registerGloomCloudConnectionSources(pluginRegistry.connectionHealth);
+      const stopRecording = pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
+      return () => {
+        stopRecording();
+        disposeCloudSources();
+      };
     },
   });
 }

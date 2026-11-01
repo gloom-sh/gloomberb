@@ -198,6 +198,41 @@ describe("CloudApiRequestTransport market deadlines", () => {
     expect(recovered).toEqual(["gloom-cloud-http", "gloom-cloud-http"]);
   });
 
+  // A web page offline asked nothing more once its panes had failed, so the
+  // outage never ended: nothing was left to get the answer that ends it.
+  test("an unreachable service is checked again on its own, backing off, until it answers", async () => {
+    jest.useFakeTimers();
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    let online = false;
+    const checks: number[] = [];
+    const startedAt = Date.now();
+    const transport = new CloudApiRequestTransport({ connectionHealth: health, fetchTransport: async (url) => {
+      if (new URL(url).pathname === "/health") checks.push(Date.now() - startedAt);
+      if (!online) throw Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), { code: "ConnectionRefused" });
+      return responseWithBody(async () => "{}");
+    } });
+    try {
+      await transport.request("/market/quote?symbol=AAPL").catch(() => {});
+      for (const step of [2_000, 4_000, 8_000]) {
+        jest.advanceTimersByTime(step);
+        await flush();
+      }
+      expect(checks).toEqual([2_000, 6_000, 14_000]);
+      expect(health.unreachableSince("gloom-cloud-http")).not.toBeNull();
+
+      online = true;
+      jest.advanceTimersByTime(15_000);
+      await flush();
+      expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+      jest.advanceTimersByTime(60_000);
+      await flush();
+      expect(checks).toHaveLength(4);
+    } finally {
+      transport.dispose();
+    }
+  });
+
   // Some searches take five seconds on a working connection. One that slow
   // made the client take the connection for hung and refuse to send anything
   // for five seconds, so `search insur` exited non-zero.

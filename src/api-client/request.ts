@@ -56,6 +56,13 @@ const UPLOAD_REQUEST_LIMIT_MS = 300_000;
  */
 const SERVICE_PROBE_TIMEOUT_MS = 3_000;
 const SERVICE_PROBE_PATH = "/health";
+/**
+ * While the service is unreachable it is asked whether it answers again, this
+ * soon after the outage began and then twice as long after each check up to
+ * the cap, so the app hears it is back without waiting for a pane to ask.
+ */
+export const RECOVERY_PROBE_FIRST_MS = 2_000;
+export const RECOVERY_PROBE_MAX_MS = 15_000;
 // Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
 const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
@@ -228,6 +235,11 @@ export class CloudApiRequestTransport {
   /** Requests waiting under a deadline: the check that the service answers runs only while one is. */
   private pending = 0;
   private probe: AbortController | null = null;
+  /** The next check whether an unreachable service answers again, and how long after it the one after waits. */
+  private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoveryDelayMs = RECOVERY_PROBE_FIRST_MS;
+  /** Bumped by `dispose`, so a check still out does not schedule the next one. */
+  private recoveryGeneration = 0;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -493,6 +505,7 @@ export class CloudApiRequestTransport {
     this.hungAt = null;
     if (!this.unreachable) return;
     this.unreachable = false;
+    this.stopRecoveryChecks();
     this.connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
   }
 
@@ -507,6 +520,47 @@ export class CloudApiRequestTransport {
     if (this.unreachable) return;
     this.unreachable = true;
     this.connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    this.recoveryDelayMs = RECOVERY_PROBE_FIRST_MS;
+    this.scheduleRecoveryCheck();
+  }
+
+  /**
+   * Checks again later whether the unreachable service answers: nothing else
+   * may be asking (no stream, no pane refreshing), and what failed in the
+   * outage is asked again only once something answers. The timer never holds
+   * a command's process open.
+   */
+  private scheduleRecoveryCheck(): void {
+    if (this.recoveryTimer || !this.unreachable) return;
+    const generation = this.recoveryGeneration;
+    const timer = setTimeout(() => {
+      this.recoveryTimer = null;
+      if (!this.unreachable) return;
+      this.recoveryDelayMs = Math.min(this.recoveryDelayMs * 2, RECOVERY_PROBE_MAX_MS);
+      const controller = new AbortController();
+      const giveUp = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
+      (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
+        .then(() => this.recordAnswer(), () => {
+          // Intentional ignore: still unreachable; the next check is scheduled below.
+        })
+        .finally(() => {
+          clearTimeout(giveUp);
+          if (generation === this.recoveryGeneration) this.scheduleRecoveryCheck();
+        });
+    }, this.recoveryDelayMs);
+    (timer as { unref?: () => void }).unref?.();
+    this.recoveryTimer = timer;
+  }
+
+  private stopRecoveryChecks(): void {
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  /** Stops checking whether an unreachable service answers again. */
+  dispose(): void {
+    this.recoveryGeneration += 1;
+    this.stopRecoveryChecks();
   }
 
   /**

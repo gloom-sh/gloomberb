@@ -6,7 +6,7 @@ import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useMemo, type ReactNode } from "react";
-import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
@@ -124,8 +124,8 @@ export function OverviewTab(props: OverviewTabProps) {
       <PaneStatusBody
         loading={snapshot.loading}
         error={snapshot.loading ? null : snapshot.error}
-        subject={t("overview")}
-        errorTitle={t("Overview unavailable.")}
+        subject="overview"
+        errorTitle={unavailableText(t("Overview"))}
         retry={{ onRetry: snapshot.retry }}
       />
     );
