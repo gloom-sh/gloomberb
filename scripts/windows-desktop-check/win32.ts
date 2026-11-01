@@ -26,6 +26,7 @@ function load() {
     IsWindowVisible: { args: [FFIType.ptr], returns: FFIType.bool },
     IsIconic: { args: [FFIType.ptr], returns: FFIType.bool },
     IsZoomed: { args: [FFIType.ptr], returns: FFIType.bool },
+    IsHungAppWindow: { args: [FFIType.ptr], returns: FFIType.bool },
     GetWindowRect: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
     GetClientRect: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
     ClientToScreen: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
@@ -126,7 +127,10 @@ export function topLevelWindows(): WindowInfo[] {
 export const isWindow = (hwnd: Hwnd) => user32.IsWindow(hwnd as never);
 export const isMinimized = (hwnd: Hwnd) => user32.IsIconic(hwnd as never);
 export const isMaximized = (hwnd: Hwnd) => user32.IsZoomed(hwnd as never);
+export const isHung = (hwnd: Hwnd) => user32.IsHungAppWindow(hwnd as never);
 export const foregroundWindow = (): Hwnd => Number(user32.GetForegroundWindow() ?? 0);
+/** Whether the window still holds the data its window procedure keeps on it (GWLP_USERDATA). */
+export const hasWindowData = (hwnd: Hwnd) => BigInt(user32.GetWindowLongPtrW(hwnd as never, -21)) !== 0n;
 
 export function windowRect(hwnd: Hwnd): Rect {
   const buffer = new Int32Array(4);

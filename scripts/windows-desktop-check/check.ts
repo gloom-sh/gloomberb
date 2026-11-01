@@ -693,6 +693,8 @@ type Edge = "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bo
 
 const fmt = (rect: Rect) => `${rect.left},${rect.top} ${win.rectWidth(rect)}x${win.rectHeight(rect)}`;
 const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance;
+/** Rounds of maximizing and restoring a window each way, in the cycles step. */
+const MAXIMIZE_ROUNDS = 4;
 
 class Run {
   readonly results: CheckResult[] = [];
@@ -709,6 +711,8 @@ class Run {
   pastErrors: string[] = [];
   /** Chromium GPU process exits already reported, by launch. */
   gpuExitsSeen = new Map<number, number>();
+  /** Windows reported with a native title bar, by launch and window, until it goes. */
+  captionsSeen = new Set<string>();
 
   constructor(readonly app: string, readonly out: string, readonly only: string | undefined) {
     this.shots = new Shots(join(out, "shots"));
@@ -736,11 +740,64 @@ class Run {
     const barShots: string[] = [];
     const opened = id === "command-bar-typing" ? null : await this.commandBarOpenedSince(started, id, barShots);
     const gpuExit = await this.gpuProcessExited();
+    const captionShots: string[] = [];
+    const captions = this.captionsAfter(id, captionShots);
     await this.shots.flush();
     this.record({ id, title, ...outcome, shots, ms: Date.now() - started });
     if (opened) this.record({ id: `${id}-opened-command-bar`, title: `${title}: the command bar stays closed`, status: "fail", detail: opened, shots: barShots, ms: 0 });
+    if (captions.length) this.record({ id: `${id}-native-caption`, title: `${title}: no native title bar over the page`, status: "fail", detail: captions.join("; "), shots: captionShots, ms: 0 });
     if (gpuExit) this.record({ id: `${id}-gpu-process-exited`, title: `${title}: Chromium's GPU process keeps running`, status: "fail", detail: gpuExit, shots: [], ms: 0 });
     return outcome.status;
+  }
+
+  /**
+   * A native title bar on a window that draws its own: Windows then keeps a
+   * caption's height between the top of the frame (of the work area, when
+   * maximized) and the page. Null without one.
+   */
+  nativeCaption(window: AppWindow | null): string | null {
+    if (!window?.hwnd || !win.isWindow(window.hwnd) || win.isMinimized(window.hwnd)) return null;
+    const client = win.clientRect(window.hwnd);
+    let where: string;
+    if (win.isMaximized(window.hwnd)) {
+      const work = win.monitorOf(window.hwnd).work;
+      const gap = client.top - work.top;
+      if (gap <= 2) return null;
+      where = `maximized, its page starts ${gap} px below the top of the work area (page ${fmt(client)}, work area ${fmt(work)})`;
+    } else {
+      const frame = win.visibleRect(window.hwnd);
+      const border = Math.max(1, Math.min(client.left - frame.left, frame.right - client.right));
+      const gap = client.top - frame.top;
+      if (gap <= border + 2) return null;
+      where = `a ${gap} px gap between the top of the frame and the page, ${border} px at the sides (frame ${fmt(frame)}, page ${fmt(client)})`;
+    }
+    const style = win.windowStyle(window.hwnd);
+    return `${where}; style ${style.flags.join(" ") || style.value}; window data ${win.hasWindowData(window.hwnd) ? "set" : "gone"}${win.isHung(window.hwnd) ? "; not responding" : ""}`;
+  }
+
+  /** The windows that came out of a step with a native title bar, each once until it goes. */
+  captionsAfter(id: string, shots: string[]): string[] {
+    const found: string[] = [];
+    for (const window of [this.main, this.detached]) {
+      if (!window?.hwnd) continue;
+      const key = `${this.launches}:${window.hwnd}`;
+      try {
+        const caption = this.nativeCaption(window);
+        if (!caption) {
+          this.captionsSeen.delete(key);
+          continue;
+        }
+        if (this.captionsSeen.has(key)) continue;
+        this.captionsSeen.add(key);
+        found.push(`${window === this.main ? "main window" : `"${window.title}"`}: ${caption}`);
+        const frame = win.visibleRect(window.hwnd);
+        const shot = this.shots.take(`${id}-native-caption`, { left: frame.left - 8, top: frame.top - 8, right: frame.right + 8, bottom: frame.top + Math.round(90 * window.scale) });
+        if (shot) shots.push(shot);
+      } catch {
+        // The window closed while it was read.
+      }
+    }
+    return found;
   }
 
   /**
@@ -1192,6 +1249,68 @@ class Run {
     return { problems, facts };
   }
 
+  async doubleClickTitle(window: AppWindow): Promise<boolean> {
+    const point = await evaluate<{ x: number; y: number } | null>(window.page.cdp, "window.__winCheck.titleBarPoint()");
+    if (!point) return false;
+    await win.click(this.toScreen(window, point), { double: true });
+    await sleep(900);
+    return true;
+  }
+
+  /**
+   * Maximizes and restores a window again and again, each way there is, and
+   * reads its frame after each: now and then a window came out of a maximize
+   * and restore with a native title bar above its page.
+   */
+  async maximizeCycles(window: AppWindow, name: string, start: Rect): Promise<void> {
+    const label = name === "main" ? "Main window" : "Popped-out window";
+    await this.step(`${name}-maximize-cycles`, `${label}: maximize and restore it ${MAXIMIZE_ROUNDS} times each way, and no native title bar comes`, async (shots) => {
+      await this.reset(window, start);
+      const ways: Array<{ way: string; maximize: () => Promise<unknown>; restore: () => Promise<unknown> }> = [
+        { way: "the window button", maximize: () => this.clickControl(window, "maximize"), restore: () => this.clickControl(window, "maximize") },
+        { way: "a double-click on the title bar", maximize: () => this.doubleClickTitle(window), restore: () => this.doubleClickTitle(window) },
+        {
+          way: "Win+Up and Win+Down",
+          maximize: async () => {
+            await this.focus(window);
+            await win.pressKeys(win.VK.win, win.VK.up);
+            await sleep(900);
+          },
+          restore: async () => {
+            await win.pressKeys(win.VK.win, win.VK.down);
+            await sleep(900);
+          },
+        },
+      ];
+      const caught = (when: string, caption: string) => {
+        this.captionsSeen.add(`${this.launches}:${window.hwnd}`);
+        const frame = win.visibleRect(window.hwnd);
+        const shot = this.shots.take(`${name}-maximize-cycles-caption`, { left: frame.left - 8, top: frame.top - 8, right: frame.right + 8, bottom: frame.top + Math.round(90 * window.scale) });
+        if (shot) shots.push(shot);
+        const desktop = this.shots.desktop(`${name}-maximize-cycles-caption-desktop`);
+        if (desktop) shots.push(desktop);
+        return { status: "fail" as const, detail: `${when}: ${caption}` };
+      };
+      let cycles = 0;
+      for (let round = 1; round <= MAXIMIZE_ROUNDS; round += 1) {
+        for (const { way, maximize, restore } of ways) {
+          await maximize();
+          if (!win.isMaximized(window.hwnd)) return { status: "fail", detail: `round ${round}: ${way} did not maximize it, after ${cycles} cycles` };
+          const maximized = this.nativeCaption(window);
+          if (maximized) return caught(`round ${round}, maximized with ${way}, after ${cycles} cycles`, maximized);
+          await restore();
+          if (win.isMaximized(window.hwnd)) return { status: "fail", detail: `round ${round}: ${way} did not restore it, after ${cycles} cycles` };
+          const restored = this.nativeCaption(window);
+          if (restored) return caught(`round ${round}, restored with ${way}, after ${cycles} cycles`, restored);
+          cycles += 1;
+        }
+      }
+      const frame = win.visibleRect(window.hwnd);
+      const client = win.clientRect(window.hwnd);
+      return { status: "pass", detail: `${cycles} maximize and restore cycles, the page at the frame's top after each: frame ${fmt(frame)}, page ${fmt(client)}` };
+    });
+  }
+
   async frameSteps(window: AppWindow, name: string, start: Rect): Promise<void> {
     const label = name === "main" ? "Main window" : "Popped-out window";
     const other = window === this.main ? this.detached : this.main;
@@ -1438,6 +1557,8 @@ class Run {
         detail: `${minimized ? "minimized" : "did not minimize"}; restored ${how}: ${restored ? fmt(rect) : "no"}${sameRect ? "" : ` (was ${fmt(start)})`}; ${fills.detail}`,
       };
     });
+
+    await this.maximizeCycles(window, name, start);
   }
 
   async paneSteps(): Promise<void> {
@@ -1843,6 +1964,40 @@ class Run {
     await this.windowSteps(window, "detached", this.detachedRect);
   }
 
+  /**
+   * What Windows calls the app's programs, in Task Manager, a file's
+   * properties and its security prompts: each one's description, product,
+   * publisher and version, and Task Manager's list with the app running.
+   */
+  async programDetails(): Promise<void> {
+    await this.step("program-details", "Windows shows the app's programs as Gloom", async (shots) => {
+      const bin = join(this.app, "bin");
+      const listing = Bun.spawnSync([
+        "powershell", "-NoProfile", "-Command",
+        `Get-ChildItem -LiteralPath '${bin.replaceAll("'", "''")}' -Filter *.exe -File | ForEach-Object { $v = $_.VersionInfo; '{0}|{1}|{2}|{3}|{4}' -f $_.Name, $v.FileDescription, $v.ProductName, $v.CompanyName, $v.ProductVersion }`,
+      ]).stdout.toString().trim().split(/\r?\n/).filter(Boolean);
+      const programs = listing.map((line) => {
+        const [file = "", description = "", product = "", company = "", version = ""] = line.split("|");
+        return { file, description, product, company, version };
+      });
+      // Task Manager starts through the shell, which elevates it where it asks to be.
+      Bun.spawnSync(["powershell", "-NoProfile", "-Command", "Start-Process taskmgr.exe"]);
+      await sleep(4_000);
+      const desktop = this.shots.desktop("task-manager");
+      if (desktop) shots.push(desktop);
+      Bun.spawnSync(["taskkill", "/IM", "Taskmgr.exe", "/F"]);
+      await sleep(500);
+      const named = (program: (typeof programs)[number]) => program.description === "Gloom" && program.product === "Gloom" && program.company === "Gloom";
+      const ours = programs.filter((program) => program.file === "launcher.exe" || program.file === "bun.exe" || program.file.startsWith("bun Helper"));
+      const unnamed = ours.filter((program) => !named(program));
+      const describe = (program: (typeof programs)[number]) => `${program.file}: ${[program.description, program.product, program.company, program.version].map((value) => value || "none").join(", ")}`;
+      return {
+        status: ours.length >= 3 && unnamed.length === 0 ? "pass" : "fail",
+        detail: `${unnamed.length ? `${unnamed.length} of ${ours.length} without Gloom's name; ` : ""}${programs.map(describe).join("; ")}`,
+      };
+    });
+  }
+
   async finish(): Promise<void> {
     await this.step("alive", "The app is still running, with no page errors", async () => {
       const alive = win.isWindow(this.main.hwnd);
@@ -1937,6 +2092,7 @@ async function run(): Promise<void> {
     // First the popped-out window, while the main window has not been resized.
     await runner.start(null);
     await runner.calibrate();
+    await runner.programDetails();
     await runner.detachedSteps();
     // Then the main window, the panes and the window's memory, on a fresh app.
     await runner.start(null);
