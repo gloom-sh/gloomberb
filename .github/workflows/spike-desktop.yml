@@ -83,6 +83,8 @@ jobs:
           path: spike-profile
 
   macos:
+    # Measured at 083a64724 (same kernel); only the Windows window profile changed since.
+    if: false
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -200,6 +202,8 @@ jobs:
             sizes.md
 
   windows-arm64:
+    # Measured at 083a64724 (same kernel); only the Windows window profile changed since.
+    if: false
     needs: windows-x64
     runs-on: windows-11-arm
     timeout-minutes: 60
@@ -235,6 +239,8 @@ jobs:
             sizes.md
 
   linux-x64:
+    # Measured at 083a64724 (same kernel); only the Windows window profile changed since.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

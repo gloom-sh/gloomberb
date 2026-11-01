@@ -55,7 +55,8 @@ function sourceOf(url: string, line: number, column: number): string | null {
   const map = maps.get(path);
   if (!map) return null;
   const position = originalPositionFor(map, { line: line + 1, column });
-  return position.source ? position.source.replace(/^(\.\.\/)+/, "") : null;
+  // Windows builds write their maps with backslashes.
+  return position.source ? position.source.replaceAll("\\", "/").replace(/^(\.\.\/)+/, "") : null;
 }
 
 /** Areas of the source, first match wins. */
@@ -216,11 +217,10 @@ async function desktopSession(exe: string): Promise<Session> {
   return {
     cdp,
     label: `desktop window, ${version.product}`,
-    async load() {
-      const loaded = cdp.once("Page.loadEventFired", 60_000);
-      await cdp.send("Page.reload", { ignoreCache: false });
-      await loaded;
-    },
+    // The app's window is already loading when DevTools reaches it, and a
+    // reload does not bring the desktop page back up: the profiled load is
+    // the first one, from the moment the page appears.
+    async load() {},
     async close() {
       cdp.close();
       const { spawnSync } = await import("child_process");
@@ -235,14 +235,21 @@ const session = desktopExe ? await desktopSession(desktopExe) : await webSession
 const { cdp } = session;
 try {
   await cdp.send("Profiler.enable");
-  // A first load fills the caches (the replay and the HTTP cache on the web), so the profiled one reads from them.
-  if (!desktopExe) await session.load();
-  await settle(cdp, "body", 1500, 30_000);
-  await sleep(2000);
+  if (!desktopExe) {
+    // A first load fills the replay and the HTTP cache, so the profiled one reads from them.
+    await session.load();
+    await settle(cdp, "body", 1500, 30_000);
+    await sleep(2000);
+  }
 
   const phases = [];
   phases.push(await record(cdp, "load", async () => {
     await session.load();
+    // The desktop page shows its shell before the backend answers: wait for the layout's panes first.
+    if (desktopExe) {
+      const until = Date.now() + 60_000;
+      while (Date.now() < until && await evaluate<number>(cdp, `document.querySelectorAll("[data-gloom-pane-id]").length`).catch(() => 0) < 10) await sleep(200);
+    }
     await settle(cdp, "body", 1500, 30_000);
   }));
   const panes = await evaluate<number>(cdp, `document.querySelectorAll("[data-gloom-pane-id]").length`);
