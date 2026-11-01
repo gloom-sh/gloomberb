@@ -295,7 +295,7 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
       // 54 columns fill the dialog; the prompt's default field is wider and runs past its frame.
       void dialog.prompt<string>({
         closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => <TextPromptDialog {...context} title={t("Save as Watchlist")}
+        content: (context: PromptContext<string>) => <TextPromptDialog {...context} title={t("New Watchlist")}
           body={[text.saveBody]} label={t("Name")} initialValue={list.watchlistName} confirmLabel={t("Save")} width={54} />,
       }).then((name) => {
         if (name?.trim()) save({ name });
