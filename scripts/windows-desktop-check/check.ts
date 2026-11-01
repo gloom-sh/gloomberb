@@ -1924,9 +1924,9 @@ class Run {
       })()`, 5_000).catch(() => false);
       if (!sent) return { status: "fail", detail: "the page has no bridge to send the restart on" };
       const closing = Date.now();
-      // The app gives its restart script 20 s to start before it stays open instead.
-      while (win.isWindow(this.main.hwnd) && Date.now() - closing < 45_000) await sleep(200);
-      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: `the app did not close to restart within 45 s; ${await restartReport(this.out, oldPid)}` };
+      // The app gives its restart script 120 s to start before it stays open instead.
+      while (win.isWindow(this.main.hwnd) && Date.now() - closing < 130_000) await sleep(200);
+      if (win.isWindow(this.main.hwnd)) return { status: "fail", detail: `the app did not close to restart within 130 s; ${await restartReport(this.out, oldPid)}` };
       const closedIn = (Date.now() - closing) / 1000;
       for (const window of [this.main, this.detached]) window?.page.cdp.close();
       let opened: win.WindowInfo | undefined;
@@ -2052,7 +2052,7 @@ class Run {
       ]).stdout.toString().trim().split(/\r?\n/).filter(Boolean);
       await sleep(500);
       const named = (program: (typeof programs)[number]) => program.description === "Gloom" && program.product === "Gloom" && program.company === "Gloom";
-      const ours = programs.filter((program) => program.file === "launcher.exe" || program.file === "bun.exe" || program.file.startsWith("bun Helper"));
+      const ours = programs.filter((program) => ["launcher.exe", "bun.exe", "bspatch.exe", "zig-zstd.exe"].includes(program.file) || program.file.startsWith("bun Helper"));
       const unnamed = ours.filter((program) => !named(program));
       const describe = (program: (typeof programs)[number]) => `${program.file}: ${[program.description, program.product, program.company, program.version].map((value) => value || "none").join(", ")}`;
       return {
