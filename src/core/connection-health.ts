@@ -189,15 +189,16 @@ export class ConnectionHealthRegistry {
     return this.peek(sourceId)?.socketState ?? null;
   }
 
-  /** The source's state as held, its own or another process's (`replaceExternalSnapshot`), without a copy. */
+  /**
+   * The source's state as `getSnapshot` shows it, without a copy: another
+   * process's (`replaceExternalSnapshot`) over this one's own.
+   */
   private peek(sourceId: string): ConnectionHealthState | null {
-    const own = this.sources.get(sourceId);
-    if (own) return own;
     for (const external of this.external.values()) {
       const source = external.find((entry) => entry.id === sourceId);
       if (source) return source;
     }
-    return null;
+    return this.sources.get(sourceId) ?? null;
   }
 
   /** Called with the source's id each time its service answers again after it went unanswered. */
@@ -238,7 +239,7 @@ export class ConnectionHealthRegistry {
     this.emit();
     // Another process's service answering again is a recovery here too (the desktop app's data requests run in its backend).
     for (const source of next) {
-      if (source.unreachableSince != null || this.sources.has(source.id)) continue;
+      if (source.unreachableSince != null) continue;
       if (previous.find((entry) => entry.id === source.id)?.unreachableSince == null) continue;
       for (const listener of [...this.recoveryListeners]) listener(source.id);
     }
