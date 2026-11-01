@@ -23,9 +23,12 @@ foreach ($Root in @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
 }
 if ($Keys.Count -eq 0) { throw "The installer left no uninstall entry matching $NamePattern" }
 $Entry = $Keys | Select-Object -Last 1
-$Folder = $Entry.InstallLocation
-if (-not $Folder -and $Entry.DisplayIcon) { $Folder = Split-Path ($Entry.DisplayIcon -replace '"', '' -replace ',\d+$', '') }
+# NSIS installers quote the location.
+$Folder = "$($Entry.InstallLocation)" -replace '"', ''
+if ((-not $Folder -or -not (Test-Path -LiteralPath $Folder)) -and $Entry.DisplayIcon) { $Folder = Split-Path ($Entry.DisplayIcon -replace '"', '' -replace ',\d+$', '') }
+if ((-not $Folder -or -not (Test-Path -LiteralPath $Folder)) -and $Entry.UninstallString) { $Folder = Split-Path ($Entry.UninstallString -replace '"', '' -replace ' /.*$', '') }
 $Folder = $Folder.TrimEnd("\")
+Write-Host "Uninstall entry: $($Entry | Select-Object DisplayName, InstallLocation, DisplayIcon, UninstallString | Format-List | Out-String)"
 $Bytes = (Get-ChildItem -LiteralPath $Folder -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
 $InstallerBytes = (Get-Item -LiteralPath $Installer).Length
 
