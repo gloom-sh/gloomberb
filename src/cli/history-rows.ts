@@ -511,10 +511,22 @@ export function historyVolume(
  * with a volume says the same (`historyVolumeBasis`): `volume in USD per UTC day, aggregate across venues`, `volume in
  * USD summed over 3 spot venues`.
  */
-export function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null, basis: string | null = null): string {
+function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null, basis: string | null = null): string {
   const text = interval === "1d" ? `volume in ${volume.unit} per UTC day` : `volume in ${volume.unit}`;
   if (!basis) return text;
   return basis === "aggregate" ? `${text}, aggregate across venues` : `${text} summed over ${basis}`;
+}
+
+/**
+ * What the status line says of a history's volume: a coin's unit and basis
+ * (historyVolumeText), or, for bars whose volume has no unit to state, what
+ * it counts when the history says (`volume basis: daily total` on an index's
+ * daily bars, `volume basis: intraday count` on its hourly ones, which sum
+ * below the day's). Null when neither is known.
+ */
+export function historyVolumeNote(volume: HistoryVolume | null, interval: ManualChartResolution | null, basis: string | null): string | null {
+  if (volume) return historyVolumeText(volume, interval, basis);
+  return basis ? `volume basis: ${basis}` : null;
 }
 
 /** What the volume of every bar that has one counts, when they all say the same; null otherwise. */
@@ -736,6 +748,11 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
   return code
     ? { kind: "currency", currency: code, unit: currencyUnitLabel(code, { ofMajor: true }) }
     : { kind: "unknown", currency: null, unit: null };
+}
+
+/** The unit an export names for a history's prices: a pair's quote currency per base (`JPY per USD`), else its currency or unit. */
+export function historyExportUnit(unit: HistoryUnit): string | null {
+  return unit.kind === "pair" ? unit.unit : unit.currency ?? unit.unit;
 }
 
 function historyDate(value: string): string {

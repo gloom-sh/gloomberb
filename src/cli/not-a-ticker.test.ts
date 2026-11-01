@@ -28,6 +28,13 @@ test("the search hint repeats the user's own spelling, one hint per symbol", () 
   expect(withSearchHints("No quote provider available for APPLE", ["Apple"])).toBe("No quote provider available for APPLE");
 });
 
+test("a currency's name that is no ticker points to its rate and its pair, once; a name several currencies share keeps the search", () => {
+  const hinted = "Not a ticker: YEN. Try `gloom fx JPY` for the yen's rate, or its pair USDJPY=X.";
+  expect(withSearchHints("Not a ticker: YEN.", ["yen"])).toBe(hinted);
+  expect(withSearchHints(hinted, ["yen"])).toBe(hinted);
+  expect(withSearchHints("Not a ticker: PESOS.", ["pesos"])).toBe("Not a ticker: PESOS. Try `gloom search pesos`.");
+});
+
 test("a FRED series the catalog charts points to the fred command, not a search that finds no ticker", () => {
   const isFred = (id: string) => id === "DFEDTARU";
   expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");

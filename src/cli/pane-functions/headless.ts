@@ -1,3 +1,4 @@
+import { currencyRateUnitText } from "../../time-series/price-units";
 import { getSharedRegistry } from "../../plugins/registry";
 import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
@@ -378,7 +379,9 @@ export function serializeHeadlessPaneResult(
     case "series": {
       const series = result as HeadlessSeriesResult;
       // `textDecimals` and `textCompact` only shape the text report; JSON keeps every digit and does not carry them.
-      return { ...common, series: series.series.map(({ textDecimals: _decimals, textCompact: _compact, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
+      return { ...common, series: series.series.map(({ textDecimals: _decimals, textCompact: _compact, ...kept }) => (
+        kept.unit ? { ...kept, unit: currencyRateUnitText(kept.unit) } : kept
+      )), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -600,7 +603,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       name: series.name?.trim() || null,
       latest: latest ? seriesLatestDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
-      unit: series.unit?.trim() || null,
+      unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       points: observationCount(series),
     };
   });
@@ -646,7 +649,8 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
     title: series.label,
     identity: {
       ...(series.symbol?.trim() ? { symbolOrSeries: series.symbol.trim() } : {}),
-      ...(series.unit?.trim() ? { currencyOrUnit: series.unit.trim() } : {}),
+      // A rate reads `JPY per USD` here as in every other export.
+      ...(series.unit?.trim() ? { currencyOrUnit: currencyRateUnitText(series.unit.trim()) } : {}),
       ...(series.interval?.trim() ? { interval: series.interval.trim() } : {}),
     },
     columns: [dates.every((date) => date.length <= 10) ? "Date" : "Time", ...fields.map(header)],

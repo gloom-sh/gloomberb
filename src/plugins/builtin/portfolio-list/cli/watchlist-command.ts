@@ -47,9 +47,10 @@ function requireWatchlistArgs(
     // A pasted list in the place of the name is a list, not a watchlist that is missing.
     const pasted = misplacedSymbolList(args, file, { noun: "watchlist", verb, collections: config.watchlists, usage });
     if (pasted) ctx.fail(pasted.message, pasted.details);
+    // The watchlist goes first: `watchlist add USDJPY=X USDCHF=X` read USDJPY=X as its name, so the form is said too.
     ctx.fail(
       `Watchlist "${args[0]}" was not found.`,
-      config.watchlists.length > 0 ? `Watchlists: ${config.watchlists.map((entry) => entry.name).join(", ")}` : undefined,
+      [config.watchlists.length > 0 ? `Watchlists: ${config.watchlists.map((entry) => entry.name).join(", ")}` : "", usage].filter(Boolean).join("\n"),
     );
   }
   return { watchlist: match.collection, rest: match.rest };

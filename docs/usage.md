@@ -1239,7 +1239,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 `gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
-- The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
+- The `--csv` header is a single symbol's. Each row names its symbol, its unit and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
 - A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved copy from <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
 - `--tail` and `--limit` apply per symbol. `--json` has the bars as one list, each with its `symbol`, and `metadata.symbols` describes each symbol or gives its `error`.
 
@@ -1435,7 +1435,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 **`quote` and `compare`** exit 1 when none of the symbols given has a quote and 0 when at least one does. The others are named in the table, on standard error and in `--json`'s `warnings`: a symbol with no quote, one that names no listing (`EQT:NYSE:US`), and an entry that is not a symbol (`N/A`, `$$$`).
 
-- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
+- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`). `Cur` is the currency and `currency_or_unit` the unit: the currency, a pair's quote currency per base (`JPY per USD` for `USDJPY=X`), `index points`, or `pct` for a yield. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
 **`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
 
@@ -1704,7 +1704,7 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | Column | What it holds |
 | --- | --- |
 | `symbol_or_series` | The symbol or series ID asked for: `USDZAR=X`, `SAN:EPA`, `DEXSFUS`; each row's own ticker in a table of several (`fn DVD MUB VTEB`); blank for a report about no one symbol |
-| `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
+| `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `JPY per USD` (a pair's quote currency per base), `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
 | `source` | The source the `# Source:` line names: `Gloom Cloud`, `FRED` |
 | `as_of` | The `# Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |

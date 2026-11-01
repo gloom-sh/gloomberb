@@ -242,6 +242,10 @@ test("one pasted list where the list name goes is a list of symbols, not a missi
   expect((await run(watchlistCliCommand, ["add", "watch two"]))?.message).toBe(watchlistUsage);
   expect((await run(watchlistCliCommand, ["add", "Groth"]))?.message).toBe('Watchlist "Groth" was not found.');
   expect((await run(watchlistCliCommand, ["add", "Groth", "NVDA"]))?.message).toBe('Watchlist "Groth" was not found.');
+  // Symbols typed with no watchlist first: the first reads as its name, so the failure names the form to type.
+  expect(await run(watchlistCliCommand, ["add", "USDJPY=X", "USDCHF=X"])).toMatchObject({
+    message: 'Watchlist "USDJPY=X" was not found.', details: `Watchlists: Growth, Watch Two\n${watchlistUsage}`,
+  });
   expect((await run(watchlistCliCommand, ["add", "My Lisst", "--file", "holdings.csv"]))?.message).toBe('Watchlist "My Lisst" was not found.');
 
   // With the name first the same paste adds.

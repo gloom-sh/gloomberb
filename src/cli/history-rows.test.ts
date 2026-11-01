@@ -3,7 +3,7 @@ import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
-  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeText,
+  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote,
 } from "./history-rows";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
@@ -187,13 +187,26 @@ describe("history rows", () => {
     // Its own field (the CSV's Volume basis), never the venue a venue-only count names.
     expect(hourRows.map(({ volumeBasis, volumeVenue }) => ({ volumeBasis, volumeVenue }))).toEqual([
       { volumeBasis: "3 spot venues", volumeVenue: undefined }, { volumeBasis: "3 spot venues", volumeVenue: undefined }]);
-    expect(historyVolumeText({ unit: "USD" }, "1h", historyVolumeBasis(hourRows))).toBe("volume in USD summed over 3 spot venues");
+    expect(historyVolumeNote({ unit: "USD" }, "1h", historyVolumeBasis(hourRows))).toBe("volume in USD summed over 3 spot venues");
     const dayRows = historyRows([mapPricePoint({ ...hourly[0]!, date: "2026-10-30", volume: 24_470_000_000, volumeBasis: "aggregate" }, 1, "CCC", true)], "1d");
-    expect(historyVolumeText({ unit: "USD" }, "1d", historyVolumeBasis(dayRows))).toBe("volume in USD per UTC day, aggregate across venues");
+    expect(historyVolumeNote({ unit: "USD" }, "1d", historyVolumeBasis(dayRows))).toBe("volume in USD per UTC day, aggregate across venues");
     // Bars that disagree, or a server that does not say, keep the plain unit.
     expect(historyVolumeBasis([...hourRows, ...dayRows])).toBeNull();
-    expect(historyVolumeText({ unit: "USD" }, "1d", historyVolumeBasis(historyRows([mapPricePoint({ ...hourly[0]!, volumeBasis: undefined }, 1, "CCC", true)], "1d"))))
+    expect(historyVolumeNote({ unit: "USD" }, "1d", historyVolumeBasis(historyRows([mapPricePoint({ ...hourly[0]!, volumeBasis: undefined }, 1, "CCC", true)], "1d"))))
       .toBe("volume in USD per UTC day");
+  });
+
+  test("an index's daily and hourly volumes say what they count, since the hours sum below the day", () => {
+    // ^GSPC on Fri 30 Oct 2026: the daily bar 6,149,170,000, the hourly bars 2,475,413,211 between them.
+    const day = historyRows([mapPricePoint({ date: "2026-10-30", open: 7631.07, high: 7637.48, low: 7527.56, close: 7580.07,
+      volume: 6_149_170_000, volumeBasis: "daily total" }, 1, "SNP")], "1d");
+    expect(day[0]).toMatchObject({ volume: 6_149_170_000, volumeBasis: "daily total" });
+    expect(historyVolumeNote(null, "1d", historyVolumeBasis(day))).toBe("volume basis: daily total");
+    const hour = historyRows([mapPricePoint({ date: "2026-10-30T19:30:00Z", open: 7552.04, high: 7588.76, low: 7547.23, close: 7580.95,
+      volume: 619_745_000, volumeBasis: "intraday count" }, 1, "SNP")], "1h");
+    expect(historyVolumeNote(null, "1h", historyVolumeBasis(hour))).toBe("volume basis: intraday count");
+    // A history that does not say keeps no note.
+    expect(historyVolumeNote(null, "1d", null)).toBeNull();
   });
 
   test("the latest trade a coin's intraday history ends with is part of the bar before it, never a bar without volume", () => {

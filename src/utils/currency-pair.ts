@@ -98,6 +98,12 @@ function pairBaseRank(code: string): number {
   return code === "JPY" ? PAIR_BASE_ORDER.length + 1 : PAIR_BASE_ORDER.length;
 }
 
+/** A currency's pair against the dollar, as markets quote it and as a listing: EURUSD=X for the euro, USDCHF=X for the franc. */
+export function dollarPairListing(code: string): string {
+  const currency = code.trim().toUpperCase();
+  return pairBaseRank(currency) < pairBaseRank("USD") ? `${currency}USD=X` : `USD${currency}=X`;
+}
+
 /**
  * A rate of `quote` per unit of `currency`, written the way markets quote
  * the pair, as `fx` reads a pair: 0.0067 USD per JPY is USD/JPY 149.25, and

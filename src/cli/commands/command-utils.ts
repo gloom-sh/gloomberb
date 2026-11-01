@@ -1,4 +1,5 @@
 import type { CliCommandContext } from "../../types/plugin";
+import { currencyNameStop } from "../currency-name-hint";
 
 export function takeOption(args: string[], name: string): string | undefined {
   const equalsPrefix = `${name}=`;
@@ -71,6 +72,9 @@ export function requireOneArg(
   ctx: CliCommandContext,
 ): string {
   const value = requireArg(args[0], `Usage: gloom ${usage}`, ctx);
+  // A currency's name in words (`ticker swiss franc`) is its pair, not two symbols.
+  const currency = noun === "symbol" && args.length > 1 ? currencyNameStop(args, usage.split(" ")[0]!) : null;
+  if (currency) ctx.fail(currency.message, currency.details);
   rejectExtraArgs(args, 1, { usage, takes: `one ${noun}`, advice: `Run it once per ${noun}.` }, ctx);
   return value;
 }
