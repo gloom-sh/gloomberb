@@ -64,6 +64,11 @@ jobs:
         shell: pwsh
         run: |
           try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution: $($_.Exception.Message)" }
+          # The Arm image signs in to the first-run privacy screen, which covers every window.
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE" /v DisablePrivacyExperience /t REG_DWORD /d 1 /f
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" /v ScoobeSystemSettingEnabled /t REG_DWORD /d 0 /f
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Format-Table Id, Name, MainWindowTitle -AutoSize | Out-String | Write-Host
+          Get-Process WWAHost, UserOOBEBroker -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
 
       - name: Build the view, the backend and the sidecar
         run: bun scripts/spike/build-tauri.ts
