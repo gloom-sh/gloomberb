@@ -14,22 +14,30 @@ import { MAX_CORRELATION_TICKERS } from "../correlation/settings";
 import { ROTATION_LIMIT } from "../relative-rotation/model";
 import { SHORT_WATCH_LIMIT } from "../short-interest/watch-model";
 
-/** One US-listed member of a theme or fund, in the order its list shows it. */
+/** One member of a theme, a fund or a screen's matches, in the order its list shows it. */
 export interface MemberListing {
   symbol: string;
   name?: string | null;
   exchange?: string | null;
+  /** The listing's quote currency; theme and fund members are US listings in dollars. */
+  currency?: string | null;
 }
 
 /** The members a pane shows, and what to call them. */
 export interface MemberList {
-  /** Names the members in dialog titles: a theme's name or a fund's ticker. */
+  /** Names the members in dialog titles: a theme's name, a fund's ticker or a screen's name. */
   title: string;
   /** The name the save dialog suggests. */
   watchlistName: string;
   members: readonly MemberListing[];
   /** A search narrowing the list: what was typed and how many members the whole list has. */
   search?: { query: string; total: number } | null;
+  /** What the dialogs and the report call them, plural: members unless said (a screen's are matches). */
+  noun?: string;
+  /** How many the whole list holds when `members` is its first part, as a screen's first page of matches is. */
+  total?: number;
+  /** Whether to offer the functions that take a list of tickers (RRG, CORR, SIW, RIPL); on unless false. */
+  openIn?: boolean;
 }
 
 interface MemberDestination {
@@ -98,21 +106,50 @@ export function memberDestinationChoices(symbols: readonly string[], destination
 /**
  * The dialog text for `count` distinct members. A search says what it matched
  * and how many members the whole list has, so a saved or opened subset never
- * reads as the whole fund.
+ * reads as the whole fund; so does a list that is the first part of a larger
+ * one (`total`), as a screen's loaded matches are.
  */
-function memberListText(list: Pick<MemberList, "title" | "search">, count: number) {
+export function memberListText(list: Pick<MemberList, "title" | "search" | "noun" | "total">, count: number) {
+  const noun = list.noun ?? "members";
   const query = list.search?.query.trim();
   const search = query ? { query, total: list.search!.total } : null;
   const saved = Math.min(count, MEMBER_WATCHLIST_LIMIT);
+  const total = Math.max(count, list.total ?? count);
   return {
-    openTitle: search ? tf("Open {title} members matching \"{query}\" in", { title: list.title, query: search.query })
-      : tf("Open {title} members in", { title: list.title }),
-    saveBody: count > MEMBER_WATCHLIST_LIMIT
-      ? search ? tf("The first {count} of the {matching} members matching \"{query}\", as listed.", { count: saved, matching: count, query: search.query })
-        : tf("The first {count} of {total} members, as listed.", { count: saved, total: count })
-      : search ? tf("{count} of {total} members match \"{query}\".", { count, total: search.total, query: search.query })
-      : tf("All {count} members.", { count }),
+    openTitle: search ? tf("Open {title} {noun} matching \"{query}\" in", { title: list.title, noun, query: search.query })
+      : tf("Open {title} {noun} in", { title: list.title, noun }),
+    saveTitle: tf("Save {title} {noun} to", { title: list.title, noun }),
+    saveBody: saved < count
+      ? search ? tf("The first {count} of the {matching} {noun} matching \"{query}\", as listed.", { count: saved, matching: count, noun, query: search.query })
+        : tf("The first {count} of {total} {noun}, as listed.", { count: saved, total, noun })
+      : search ? tf("{count} of {total} {noun} match \"{query}\".", { count, total: search.total, noun, query: search.query })
+      : saved < total ? tf("The first {count} of {total} {noun}, as listed.", { count: saved, total, noun })
+      : tf("All {count} {noun}.", { count, noun }),
   };
+}
+
+/** The save dialog's choice that names a new watchlist rather than one already there. */
+export const NEW_WATCHLIST_CHOICE = "watchlist:new";
+
+/**
+ * Where a list can be saved: a new watchlist, then each watchlist there is,
+ * in the order the app lists them, with how many tickers it holds.
+ */
+export function watchlistTargetChoices(
+  watchlists: readonly { id: string; name: string }[],
+  tickers: ReadonlyMap<string, TickerRecord>,
+) {
+  const held = new Map<string, number>();
+  for (const ticker of tickers.values())
+    for (const id of ticker.metadata.watchlists) held.set(id, (held.get(id) ?? 0) + 1);
+  return [
+    { id: NEW_WATCHLIST_CHOICE, label: t("New watchlist…") },
+    ...watchlists.map((watchlist) => ({
+      id: watchlist.id,
+      label: watchlist.name,
+      detail: tf("{count} tickers", { count: held.get(watchlist.id) ?? 0 }),
+    })),
+  ];
 }
 
 /** The requested name, numbered when a watchlist already has that name or id. */
@@ -158,18 +195,20 @@ export function planMemberWatchlist(
       }
       continue;
     }
-    // Theme and fund members are US listings quoted in dollars. The sector is
-    // left to the ticker's profile, so a list never mixes two sector schemes.
-    create.push({ ticker: key, name: member.name || symbol, exchange, currency: "USD",
+    // Theme and fund members are US listings quoted in dollars; a screen's
+    // matches say their currency. The sector is left to the ticker's profile,
+    // so a list never mixes two sector schemes.
+    create.push({ ticker: key, name: member.name || symbol, exchange, currency: member.currency?.trim() || "USD",
       portfolios: [], watchlists: [watchlistId], positions: [], custom: {}, tags: [] });
   }
   return { create, update, count: seen.size };
 }
 
 /**
- * Pane menu entries for a list of members (a theme's, a fund's): open them in
- * RRG, CORR, SIW or RIPL, or save them as a watchlist. Functions of disabled
- * plugins are left out; each destination gets as many as it takes.
+ * Pane menu entries for a list of members (a theme's, a fund's, a screen's
+ * matches): open them in RRG, CORR, SIW or RIPL, or save them to a new
+ * watchlist or one already there. Functions of disabled plugins are left out;
+ * each destination gets as many as it takes.
  */
 export function useMembersMenu(registrationId: string, list: MemberList | null) {
   const dialog = useOptionalDialog();
@@ -185,8 +224,9 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
       registry.paneTemplates.has(destination.templateId)
       && !registry.getDisabledPaneTemplateOwner?.(destination.templateId, disabledPlugins)
     ));
-    const choices = memberDestinationChoices(symbols, destinations);
+    const choices = list.openIn === false ? [] : memberDestinationChoices(symbols, destinations);
     const text = memberListText(list, symbols.length);
+    const noun = list.noun ?? "members";
     const openIn = () => {
       void dialog.prompt<string>({
         closeOnClickOutside: true,
@@ -198,16 +238,21 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
         if (choice) createPaneFromTemplate(choice.id, { symbols: choice.symbols, arg: formatTickerListInput(choice.symbols) });
       }).catch(logFailure("shared.members-menu", "Open members in a function failed"));
     };
-    const saveAsWatchlist = async (requested: string) => {
+    const saveToWatchlist = async (target: { name: string } | { id: string }) => {
       // The writes hold the app for about a second with a hundred names; let the dialog close on screen first.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      const name = uniqueWatchlistName(requested, getState().config.watchlists);
-      await createFormCollectionActions({ dataProvider: registry.marketData, dispatch, getState, pluginRegistry: registry,
-        tickerRepository: registry.tickerRepository }, (body, options) => {
-        if (options?.type === "error") notify({ body, type: "error" });
-      }).createWatchlist(name);
-      const watchlist = getState().config.watchlists.find((entry) => entry.name === name);
-      if (!watchlist) throw new Error(t("The watchlist was not created."));
+      let watchlist = "id" in target ? getState().config.watchlists.find((entry) => entry.id === target.id) : undefined;
+      if ("name" in target) {
+        const requested = uniqueWatchlistName(target.name, getState().config.watchlists);
+        await createFormCollectionActions({ dataProvider: registry.marketData, dispatch, getState, pluginRegistry: registry,
+          tickerRepository: registry.tickerRepository }, (body, options) => {
+          if (options?.type === "error") notify({ body, type: "error" });
+        }).createWatchlist(requested);
+        watchlist = getState().config.watchlists.find((entry) => entry.name === requested);
+        if (!watchlist) throw new Error(t("The watchlist was not created."));
+      }
+      if (!watchlist) throw new Error(t("The watchlist is no longer there."));
+      const name = watchlist.name;
       const plan = planMemberWatchlist(getState().tickers, watchlist.id, list.members);
       // One ticker that fails to save leaves the others on the list; the toast says how many made it.
       let failed = 0;
@@ -238,23 +283,42 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
       }
       for (const ticker of created) registry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
       notify(failed
-        ? { type: "error", body: tf("Saved {saved} of {count} members to {name}. {failed} could not be added.", { saved: plan.count - failed, count: plan.count, name, failed }) }
-        : { type: "success", body: tf("Saved {count} members to {name}.", { count: plan.count, name }) });
+        ? { type: "error", body: tf("Saved {saved} of {count} {noun} to {name}. {failed} could not be added.", { saved: plan.count - failed, count: plan.count, noun, name, failed }) }
+        : { type: "success", body: tf("Saved {count} {noun} to {name}.", { count: plan.count, noun, name }) });
+    };
+    const save = (target: { name: string } | { id: string }) => {
+      saveToWatchlist(target).catch((error: unknown) => {
+        notify({ type: "error", body: error instanceof Error ? error.message : t("The watchlist was not saved.") });
+      });
+    };
+    const nameNewWatchlist = () => {
+      // 54 columns fill the dialog; the prompt's default field is wider and runs past its frame.
+      void dialog.prompt<string>({
+        closeOnClickOutside: true,
+        content: (context: PromptContext<string>) => <TextPromptDialog {...context} title={t("Save as Watchlist")}
+          body={[text.saveBody]} label={t("Name")} initialValue={list.watchlistName} confirmLabel={t("Save")} width={54} />,
+      }).then((name) => {
+        if (name?.trim()) save({ name });
+      }).catch(logFailure("shared.members-menu", "Open save members as watchlist prompt failed"));
     };
     return [
       ...(choices.length ? [{ id: "members-open-in", label: t("Open Members In…"), onSelect: openIn }] : []),
-      { id: "members-save-watchlist", label: t("Save as Watchlist…"), onSelect: () => {
-        // 54 columns fill the dialog; the prompt's default field is wider and runs past its frame.
+      { id: "members-save-watchlist", label: t("Save to Watchlist…"), onSelect: () => {
+        // With no watchlist yet there is nothing to choose: the name comes first.
+        const watchlists = getState().config.watchlists;
+        if (!watchlists.length) {
+          nameNewWatchlist();
+          return;
+        }
         void dialog.prompt<string>({
           closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => <TextPromptDialog {...context} title={t("Save as Watchlist")}
-            body={[text.saveBody]} label={t("Name")} initialValue={list.watchlistName} confirmLabel={t("Save")} width={54} />,
-        }).then((name) => {
-          if (!name?.trim()) return;
-          saveAsWatchlist(name).catch((error: unknown) => {
-            notify({ type: "error", body: error instanceof Error ? error.message : t("The watchlist was not saved.") });
-          });
-        }).catch(logFailure("shared.members-menu", "Open save members as watchlist prompt failed"));
+          content: (context: PromptContext<string>) => <ChoiceDialog {...context} title={text.saveTitle}
+            choices={watchlistTargetChoices(watchlists, getState().tickers)} footer={text.saveBody} />,
+        }).then((id) => {
+          if (!id) return;
+          if (id === NEW_WATCHLIST_CHOICE) nameNewWatchlist();
+          else save({ id });
+        }).catch(logFailure("shared.members-menu", "Open save members to watchlist choice failed"));
       } },
     ];
   }, [createPaneFromTemplate, dialog, disabledPlugins, dispatch, getState, list, notify]);

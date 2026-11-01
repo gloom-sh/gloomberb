@@ -1478,6 +1478,24 @@ unreported gives way to the next. A field is N/M where `FA` prints N/M: EBITDA, 
 or average invested capital at or below zero, or a base year at or below zero. A
 missing line is never read as zero.
 
+The classic scores read the same statements, and the screen's own price and market
+cap. Piotroski's F-score compares the latest fiscal year with the one before (and the
+year before that for opening assets); Altman's Z, the Graham number, Lynch's fair value
+and Greenblatt's earnings yield and return on capital read `FA`'s leading annual
+column, so each is as of that period's end. Altman's Z is N/M for banks, insurers and
+other financial companies, the Magic Formula's inputs for those and utilities, an
+F-score for a balance sheet without current assets, and the Graham number and Lynch's
+value over a loss. A trailing EPS more than three times the one the quote states is
+not used: a quarter left on the share count before a split reads as one. The Magic
+Formula rank and the RS rating rank every covered US listing in dollars, so they move
+as listings enter and leave the screen. The 1Y total return adds the dividends that
+went ex in the year from the stored distribution history. Profitable years and revenue
+growth years read one series, the SEC filings (back to about 2008) when they hold the
+latest fiscal year, otherwise the stored statements; dividend growth years read the
+distribution history, about ten years. A count that reaches the first stored year is
+a lower bound and is marked partial. Index membership reads the IVV (S&P 500) and DIA
+(Dow) holdings `MEMB` reads; the Nasdaq-100 is not covered.
+
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last
 one. RSI 14 and the distance from the 20, 50 and 200-session simple averages are the

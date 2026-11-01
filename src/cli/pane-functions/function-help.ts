@@ -237,8 +237,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Screen covered stocks on valuation, growth, margins, returns on capital, leverage, liquidity, volatility, technicals, float and ownership, short interest, insider activity and 13F holders, then rank the matches by any metric. "
       + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest. IV percentile, IV30 change in vol points, HV20 and HV rank screen premium to sell. "
       + "Technical fields read the last completed session: RSI 14, price vs SMA 20, 50 and 200, trading days since a MACD or golden cross and since a new 20-day or 52-week high or low, and Bollinger width percentile (0 is a six-month squeeze). "
-      + "ROIC, FCF yield, net debt / EBITDA, debt / equity and the revenue and EPS CAGRs read FA's bases, and forward growth EE's consensus; N/M where FA prints it. Ideas holds ready technical screens and Value, Quality and GARP.",
-    usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality"],
+      + "ROIC, FCF yield, net debt / EBITDA, debt / equity and the revenue and EPS CAGRs read FA's bases, and forward growth EE's consensus; N/M where FA prints it. "
+      + "Classic scores: Piotroski F, Altman Z, the Graham number and Lynch fair value with their upside, Greenblatt's Magic Formula rank, the RS rating, years of profit, revenue and dividend growth, and S&P 500 and Dow membership. "
+      + "Ideas holds ready technical screens, Value, Quality and GARP, and screens on the classic scores. The pane menu saves the matches to a watchlist.",
+    usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality", "gloom fn EQS --preset magic-formula"],
     keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
