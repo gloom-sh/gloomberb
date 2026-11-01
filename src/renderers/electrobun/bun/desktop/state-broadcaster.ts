@@ -15,6 +15,21 @@ export interface DesktopStateRpc {
 
 interface DesktopStateBroadcasterOptions<Rpc extends DesktopStateRpc> {
   forEachReadyWindowRpc: (callback: (rpc: Rpc) => void) => void;
+  /**
+   * Which state a window draws: windows with the same view share one key.
+   * Without it every window gets the shared state.
+   */
+  viewKey?: (rpc: Rpc) => string;
+  /** The state for a view key, from the shared one; null sends that window nothing. */
+  project?: (viewKey: string, shared: DesktopSharedStateSnapshot) => DesktopSharedStateSnapshot | null;
+  /** Each state sent to a window, with the number it carries, which the window's next sync names as its base. */
+  delivered?: (rpc: Rpc, snapshot: DesktopSharedStateSnapshot) => void;
+}
+
+interface ProjectedState {
+  snapshot: DesktopSharedStateSnapshot | null;
+  key?: string;
+  encoded?: DesktopSharedStateSnapshot;
 }
 
 /**
@@ -29,6 +44,7 @@ function desktopStateKey(snapshot: DesktopSharedStateSnapshot): string {
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
     brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
+    linkedTickers: snapshot.linkedTickers ?? {},
   });
 }
 
@@ -37,6 +53,7 @@ export class DesktopStateBroadcaster<Rpc extends DesktopStateRpc> {
   private themePreview: DesktopThemePreviewState = { theme: null };
   /** The state held by each window that sends its whole state: what it last sent here or was sent. */
   private readonly heldStateKeys = new WeakMap<Rpc, string>();
+  private seq = 0;
 
   constructor(private readonly options: DesktopStateBroadcasterOptions<Rpc>) {}
 
@@ -50,6 +67,12 @@ export class DesktopStateBroadcaster<Rpc extends DesktopStateRpc> {
 
   resetDockPreview(): void {
     this.dockPreview = { paneId: null, edge: null };
+  }
+
+  /** Numbers a state handed to a window outside a broadcast (its `init`), in the same series. */
+  stamp(snapshot: DesktopSharedStateSnapshot): DesktopSharedStateSnapshot {
+    this.seq += 1;
+    return { ...snapshot, stateSeq: this.seq };
   }
 
   /** A window that sent its whole state holds it, and is not sent it back. */
@@ -72,18 +95,29 @@ export class DesktopStateBroadcaster<Rpc extends DesktopStateRpc> {
    */
   sendDesktopState(snapshot: DesktopSharedStateSnapshot | null): void {
     if (!snapshot) return;
-    let encodedSnapshot: DesktopSharedStateSnapshot | null = null;
-    let snapshotKey: string | null = null;
+    this.seq += 1;
+    const seq = this.seq;
+    const views = new Map<string, ProjectedState>();
+    const { viewKey, project, delivered } = this.options;
     this.options.forEachReadyWindowRpc((rpc) => {
+      const view = viewKey?.(rpc) ?? "";
+      let projected = views.get(view);
+      if (!projected) {
+        const shown = project ? project(view, snapshot) : snapshot;
+        projected = { snapshot: shown ? { ...shown, stateSeq: seq } : null };
+        views.set(view, projected);
+      }
+      if (!projected.snapshot) return;
       const heldKey = this.heldStateKeys.get(rpc);
       if (heldKey !== undefined) {
-        snapshotKey ??= desktopStateKey(snapshot);
-        if (heldKey === snapshotKey) return;
-        this.heldStateKeys.set(rpc, snapshotKey);
+        projected.key ??= desktopStateKey(projected.snapshot);
+        if (heldKey === projected.key) return;
+        this.heldStateKeys.set(rpc, projected.key);
       }
-      encodedSnapshot ??= encodeRpcValue(snapshot) as DesktopSharedStateSnapshot;
+      projected.encoded ??= encodeRpcValue(projected.snapshot) as DesktopSharedStateSnapshot;
+      delivered?.(rpc, projected.snapshot);
       rpc.send["desktop.state"]({
-        snapshot: encodedSnapshot,
+        snapshot: projected.encoded,
       });
     });
   }
@@ -101,11 +135,13 @@ export class DesktopStateBroadcaster<Rpc extends DesktopStateRpc> {
     });
   }
 
-  sendThemePreview(preview: DesktopThemePreviewState): void {
+  /** Every window but the one previewing (`fromRpc`) previews the theme too. */
+  sendThemePreview(preview: DesktopThemePreviewState, fromRpc?: Rpc): void {
     if (this.themePreview.theme === preview.theme) return;
     this.themePreview = preview;
     const encodedPreview = encodeRpcValue(preview) as DesktopThemePreviewState;
     this.options.forEachReadyWindowRpc((rpc) => {
+      if (rpc === fromRpc) return;
       rpc.send["desktop.themePreview"]({
         preview: encodedPreview,
       });

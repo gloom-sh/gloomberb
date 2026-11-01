@@ -106,6 +106,12 @@ Takes the focused pane out of its layout into a new layout tab named after it (`
 
 **Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane docks in the first other tab). The pane keeps its ticker, tab, settings and lock.
 
+### More windows (desktop)
+
+The desktop app can open one full window per screen, each with its own header, command bar and layout tabs. **New Window** is in the File menu and the command bar. A layout tab moves to another window from its right-click menu (**Move Layout to Window 2**, **Move Layout to New Window**) or `LMA`; a pane moves from its menu (**Move to Window 2**, **Move to New Window**). A moved pane keeps its ticker, settings and links: a pane that follows a list in another window keeps following it, and focusing it from there brings its window forward. The main window keeps its last tab, and only it pops panes out.
+
+Closing a window gives its tabs back to the main window. Closing the main window quits the app, and the other windows open again at the next launch. Where each window sits (its screen, frame, and whether it is maximized or full screen) is remembered per monitor arrangement on this computer: unplugging a monitor moves its windows onto the screens that remain (a screen whose resolution changed keeps its own windows), plugging it back in puts them back, and a window that would open partly or wholly off the screens is moved onto one. A minimized or hidden window stops drawing market data until it is shown again. On Linux under Wayland the compositor chooses where windows open, so only their size and maximized state come back.
+
 ### Moving and resizing
 
 Drag the line between docked panes, or a floating pane's bottom-right corner (any edge or corner on the desktop and web).

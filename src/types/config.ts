@@ -869,6 +869,11 @@ export function normalizePaneLayout(
     resolveOrphanSymbol?: (instanceId: string) => string | null;
     /** Pins an orphaned follower on its last symbol; by default only its binding changes. */
     pinOrphan?: (instance: PaneInstanceConfig, symbol: string | null) => PaneInstanceConfig;
+    /**
+     * Panes outside this layout that a pane here may follow: on another
+     * desktop window's tab. A link to one is not orphaned.
+     */
+    externalSourceIds?: ReadonlySet<string>;
   },
 ): LayoutConfig {
   const fallbackSourceId = options?.defaultFollowSourceInstanceId ?? null;
@@ -898,7 +903,11 @@ export function normalizePaneLayout(
     const orphanPins = new Map<string, PaneInstanceConfig>();
 
     for (const instance of nextLayout.instances) {
-      if (instance.binding?.kind === "follow" && !validInstanceIds.has(instance.binding.sourceInstanceId)) {
+      if (
+        instance.binding?.kind === "follow"
+        && !validInstanceIds.has(instance.binding.sourceInstanceId)
+        && !options?.externalSourceIds?.has(instance.binding.sourceInstanceId)
+      ) {
         // Structural helpers remove the source before the app can resolve its last ticker. Preserve
         // the dangling binding until the runtime normalizes again with a resolver.
         if (!options?.resolveOrphanSymbol) continue;

@@ -19,6 +19,7 @@ import { PANE_MANAGEMENT_ACCELERATORS, type PaneManagementAccelerators } from ".
 import { t, tf } from "../../../i18n";
 import { displayWidth } from "../../../utils/format";
 import { fireAndForget } from "../../../utils/fire-and-forget";
+import { getDesktopWindows, windowMoveTargets } from "../../../state/desktop-windows";
 
 const MENU_MIN_WIDTH = 18;
 const MENU_MAX_WIDTH = 44;
@@ -217,7 +218,9 @@ export function menuForPane(
     });
   }
 
-  if (desktopWindowBridge?.kind === "main" && desktopWindowBridge.popOutPane) {
+  // Popped-out panes belong to the main window; elsewhere a pane moves to a window instead.
+  const windows = getDesktopWindows();
+  if (desktopWindowBridge?.kind === "main" && desktopWindowBridge.popOutPane && (!windows || windows.windowId === "main")) {
     baseActions.push({
       id: "pop-out",
       label: "Pop Out",
@@ -226,6 +229,17 @@ export function menuForPane(
         fireAndForget(desktopWindowBridge.popOutPane?.(pane.instance.instanceId), "desktop.popOutPane");
       },
     });
+  }
+  if (windows) {
+    for (const move of windowMoveTargets(windows, { prefix: "pane" })) {
+      baseActions.push({
+        id: `move-to-window:${move.key}`,
+        label: move.label,
+        onSelect: () => {
+          fireAndForget(windows.movePane(pane.instance.instanceId, move.target), "desktop.movePaneToWindow");
+        },
+      });
+    }
   }
 
   const locked = isPaneLocked(pane.instance);

@@ -38,6 +38,7 @@ import {
   observeDesktopDeepLinks,
 } from "../../../api-client/research-activity";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
+import { setDesktopWindows } from "../../../state/desktop-windows";
 import type { DesktopApplicationMenuBridge } from "../../../types/desktop-menu";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
@@ -144,6 +145,9 @@ async function boot() {
     backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
   )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
+  // The main window does the app-wide work (account sync, the Dock badge,
+  // remote control, the boot frame); every other window draws its tabs.
+  const primaryWindow = init.windowKind === "main" && (init.windowId ?? "main") === "main";
   // The environment's opt-out comes from the Bun process; the config
   // switches are read live, so the command bar toggles apply at once.
   installCrashReporter({
@@ -163,16 +167,16 @@ async function boot() {
   installAttentionCounter({
     allowed: () => !init.telemetry.optedOut && !browserDoNotTrack(),
     launchConfig: () => init.config,
-    // A popped-out window does not sync: the main window does, and sends it the settings it pulled.
-    ...(init.windowKind === "detached" ? { accountSettingsPulled: () => true } : {}),
+    // Only the main window syncs, and sends the other windows the settings it pulled.
+    ...(!primaryWindow ? { accountSettingsPulled: () => true } : {}),
   });
   // Desktop has no Debug Log: this window's freezes go to the Bun process, which keeps the stall log.
   setStallSink(forwardAttendedStalls(sendElectrobunStall).sink);
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();
-  if (init.windowKind === "main") installElectrobunAppBadgeHost();
-  installDomMarketDataFrames();
+  if (primaryWindow) installElectrobunAppBadgeHost();
+  installDomMarketDataFrames((listener) => onBackendMessage("desktop.windowVisibility", ({ visible }) => listener(visible)));
   installScreenshotWatermark();
   const desktopSnapshot = init.windowKind === "detached" && init.paneId && init.desktopSnapshot
     ? prepareDetachedSnapshot(init.desktopSnapshot, init.paneId)
@@ -182,6 +186,8 @@ async function boot() {
   // Said by the app once it is up, as the terminal says it.
   setPluginSeedNotice(init.pluginSeedNotice ?? null);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
+  // Menus and the command bar offer the other windows from here.
+  setDesktopWindows(desktopWindowBridge.windows ?? null);
   const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
     subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),
   };
@@ -190,7 +196,7 @@ async function boot() {
   // id is made at the first push, and a gloom.sh link can bring a visitor id.
   const viewStorage = viewIdStorage();
   if (viewStorage) restoreViewIds(viewStorage, init.viewIds);
-  const mirrorViewIds = viewStorage && init.windowKind === "main"
+  const mirrorViewIds = viewStorage && primaryWindow
     ? createViewIdMirror(viewStorage, init.viewIds, (ids) => backendRequest("host.saveViewIds", { ids }))
     : () => {};
   mirrorViewIds();
@@ -257,7 +263,7 @@ async function boot() {
     if (marketplace) void activateUpdatedPlugins(directories, marketplace, pluginManager);
   });
 
-  const remoteControlAdapter = init.windowKind === "main"
+  const remoteControlAdapter = primaryWindow
     ? {
       registerHandler: setElectrobunRemoteRequestHandler,
       terminalDevice: { kind: "desktop" as const, name: init.hostName?.trim() || "Gloom desktop" },
@@ -292,7 +298,7 @@ async function boot() {
   });
   // A layout with neither panes nor a status bar has nothing to wait for.
   window.setTimeout(releaseBootFrame, BOOT_FRAME_RELEASE_FALLBACK_MS);
-  if (init.windowKind === "main") {
+  if (primaryWindow) {
     startBootFrameRecorder({
       doc: document,
       root: appRootElement,

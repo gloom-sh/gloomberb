@@ -52,6 +52,7 @@ export {
   getEffectiveThemeId,
   getFocusedCollectionId,
   getFocusedTickerSymbol,
+  linkedSourceIds,
   resolveCollectionForPane,
   syncConfigActiveLayoutState,
   resolveTickerForPane,
@@ -464,6 +465,9 @@ export function AppProvider({
   const storeRef = useRef<AppContextStoreValue | null>(null);
   const lastMainSyncRef = useRef<string | null>(null);
   const latestMainStateRevisionRef = useRef(desktopSnapshot?.mainStateRevision ?? 0);
+  // The last state this window took from the desktop process. Its syncs name
+  // it, so what another window changed since is not undone by this one.
+  const lastTakenStateSeqRef = useRef<number | null>(desktopSnapshot?.stateSeq ?? null);
   const lastDetachedPaneSyncRef = useRef<string | null>(null);
   const lastThemePreviewSyncRef = useRef<string | null | undefined>(undefined);
 
@@ -490,12 +494,15 @@ export function AppProvider({
     rawDispatch(dispatchedAction);
   }, [desktopBridge, rawDispatch]);
 
+  // The linked tickers go back as they came, so the desktop process knows
+  // this window holds them; it never reads them from a window.
   const buildDesktopSnapshot = useCallback((currentState: AppState): DesktopSharedStateSnapshot => ({
     config: currentState.config,
     paneState: currentState.paneState,
     focusedPaneId: currentState.focusedPaneId,
     statusBarVisible: currentState.statusBarVisible,
     brokerSyncErrors: currentState.brokerSyncErrors,
+    ...(currentState.linkedTickers ? { linkedTickers: currentState.linkedTickers } : {}),
   }), []);
 
   const serializeDesktopSnapshot = useCallback((snapshot: DesktopSharedStateSnapshot): string => JSON.stringify({
@@ -504,6 +511,7 @@ export function AppProvider({
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
     brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
+    linkedTickers: snapshot.linkedTickers ?? {},
   }), []);
 
   const serializePaneState = useCallback((paneState: PaneRuntimeState | undefined): string => JSON.stringify(paneState ?? {}), []);
@@ -559,6 +567,7 @@ export function AppProvider({
           snapshot.mainStateRevision,
         );
       }
+      if (typeof snapshot.stateSeq === "number") lastTakenStateSeqRef.current = snapshot.stateSeq;
       const currentSignature = serializeDesktopSnapshot(buildDesktopSnapshot(stateRef.current));
       const nextSignature = serializeDesktopSnapshot(snapshot);
       if (currentSignature === nextSignature) return;
@@ -582,7 +591,10 @@ export function AppProvider({
     // a newer one has replaced it, so the next effect run sends it again. The
     // two syncs below dedupe the same way.
     fireAndForget(
-      desktopBridge.syncMainState({ ...snapshot, mainStateRevision: latestMainStateRevisionRef.current }),
+      desktopBridge.syncMainState(
+        { ...snapshot, mainStateRevision: latestMainStateRevisionRef.current },
+        lastTakenStateSeqRef.current,
+      ),
       "desktop.syncMainState",
       () => {
         if (lastMainSyncRef.current === signature) lastMainSyncRef.current = null;
@@ -609,9 +621,11 @@ export function AppProvider({
     });
   }, [desktopBridge, state.themePreview]);
 
+  // Every window previews the theme Settings is trying out in another one.
   useEffect(() => {
-    if (desktopBridge?.kind !== "detached" || !desktopBridge.subscribeThemePreview) return;
+    if (!desktopBridge?.subscribeThemePreview) return;
     return desktopBridge.subscribeThemePreview((preview) => {
+      lastThemePreviewSyncRef.current = preview.theme;
       dispatch({ type: "PREVIEW_THEME", theme: preview.theme });
     });
   }, [desktopBridge, dispatch]);

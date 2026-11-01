@@ -287,6 +287,8 @@ export function sanitizeLayout(
   value: unknown,
   fallback: LayoutConfig,
   chartMigration: LegacyChartMigrationContext = {},
+  /** Panes on other tabs a pane here may follow: on another desktop window, a link may cross tabs. */
+  externalSourceIds?: ReadonlySet<string>,
 ): LayoutConfig {
   if (!isLayoutConfig(value)) {
     return cloneLayout(fallback);
@@ -312,6 +314,7 @@ export function sanitizeLayout(
   const normalized = normalizePaneLayout(layout, {
     defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout),
     resolveOrphanSymbol: () => null,
+    externalSourceIds,
   });
   return removeUnreachablePaneInstances(normalized);
 }

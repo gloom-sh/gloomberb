@@ -10,6 +10,7 @@ import { resolveTickerForPane, type AppState } from "../../../state/app/context"
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { paneTitleMnemonic, pinFollowingPane } from "../../../layout/pane-follow";
 import {
+  findPaneInstance,
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
   type PaneInstanceConfig,
@@ -34,7 +35,7 @@ export function tickerLinkMenuItems({
   instance: PaneInstanceConfig;
   layout: LayoutConfig;
   panes: ReadonlyMap<string, PaneDef>;
-  state: Pick<AppState, "config" | "paneState" | "tickers">;
+  state: Pick<AppState, "config" | "paneState" | "tickers" | "linkedTickers">;
   persistLayout: (nextLayout: LayoutConfig) => void;
 }): ContextMenuItem[] {
   const research = instance.paneId === TICKER_RESEARCH_PANE_ID;
@@ -77,7 +78,15 @@ export function tickerLinkMenuItems({
     });
   };
 
-  return layout.instances.flatMap((source): ContextMenuItem[] => {
+  // A source in another desktop window is not in this layout to list; the link can still be cut.
+  const remoteSymbol = sourceInstanceId && !findPaneInstance(layout, sourceInstanceId)
+    ? resolveTickerForPane(state as AppState, instance.instanceId)
+    : null;
+  const remoteUnlink: ContextMenuItem[] = remoteSymbol
+    ? [{ id: `unlink:${sourceInstanceId}`, label: "Unlink from Pane in Another Window", onSelect: () => unlink(remoteSymbol) }]
+    : [];
+
+  return [...remoteUnlink, ...layout.instances.flatMap((source): ContextMenuItem[] => {
     if (source.instanceId === instance.instanceId || !isPaneInLayout(layout, source.instanceId)) return [];
     const sourceDef = panes.get(source.paneId);
     if (!sourceDef) return [];
@@ -111,5 +120,5 @@ export function tickerLinkMenuItems({
         onSelect: () => unlink(symbol),
       }]
       : [];
-  });
+  })];
 }

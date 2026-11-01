@@ -14,6 +14,7 @@ import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import {
   getFocusedCollectionId,
+  linkedSourceIds,
   resolveTickerForPane,
   syncConfigActiveLayoutState,
   type AppAction,
@@ -89,6 +90,7 @@ export function useAppPaneRuntime({
     const normalizedLayout = normalizePaneLayout(layout, {
       resolveOrphanSymbol: (instanceId) => resolveTickerForPane(currentState, instanceId),
       pinOrphan: pinFollowingPane,
+      externalSourceIds: linkedSourceIds(currentState),
     });
     if (options?.pushHistory !== false) {
       dispatch({ type: "PUSH_LAYOUT_HISTORY" });

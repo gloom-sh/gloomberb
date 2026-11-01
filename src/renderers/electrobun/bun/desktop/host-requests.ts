@@ -38,9 +38,7 @@ function playNotificationSound(sound: string | undefined): void {
 }
 
 function windowForRpcKey(backend: DesktopBackend, windowKey: string | undefined): BrowserWindow | null {
-  return windowKey === MAIN_WINDOW_RPC_KEY
-    ? backend.mainWindow
-    : backend.detachedWindows.getWindowForRpcKey(windowKey);
+  return backend.nativeWindow(windowKey);
 }
 
 /**
@@ -78,17 +76,9 @@ function controlWindow(
   return true;
 }
 
-/** Exiting closes the popped-out windows, services and main window; with no main window it quits directly. */
+/** Exiting closes every window and the services, then quits. */
 function exitDesktopApp(backend: DesktopBackend): void {
-  backend.detachedWindows.closeAll();
-  backend.teardownServices();
-  const mainWindow = backend.mainWindow;
-  if (mainWindow) {
-    mainWindow.close();
-    backend.mainWindow = null;
-    return;
-  }
-  Utils.quit();
+  backend.quit();
 }
 
 function normalizeWindowResizeEdge(edge: unknown): DesktopWindowResizeEdge {
@@ -155,7 +145,7 @@ export async function handleDesktopHostRequest(
       return null;
     case "host.focusWindow": {
       const windowKey = backend.rpcs.getRpcWindowKey(rpc);
-      if (windowKey) backend.detachedWindows.focusWindowForRpcKey(windowKey);
+      backend.focusWindow(windowKey);
       return null;
     }
     case "host.copyPngImage": {

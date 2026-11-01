@@ -1,4 +1,4 @@
-import Electrobun, { ApplicationMenu, Screen, Utils } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, Utils } from "electrobun/bun";
 import { homedir } from "os";
 import { debugLog } from "../../../utils/debug-log";
 import { setConfigStoreHost } from "../../../data/config/store";
@@ -8,24 +8,7 @@ import { contextMenuSelectionMessage } from "./context-menu/click";
 import { applicationMenuCommand, createApplicationMenuGate } from "./application-menu/click";
 import { DesktopBackend } from "./desktop/backend";
 import { startDesktopBackend } from "./desktop/initialization";
-import {
-  MAIN_WINDOW_MIN_SIZE,
-  defaultMainWindowFrame,
-  normalizeWindowFrameWithMinimum,
-} from "./window/frame";
-import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
-import { createAppWindow } from "./window/create";
-import { desktopBootFramePath, desktopBootFramePreload, readDesktopBootFrame } from "./window/boot-frame";
-import { getWindowFrame } from "./window/events";
-import {
-  fitWindowFrameToDisplays,
-  readRememberedDesktopWindow,
-  rememberedDesktopWindowPath,
-  writeRememberedDesktopWindow,
-  type RememberedDesktopWindow,
-} from "./window/remembered-frame";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
-import { quitWindowsEventLoopOnItsThread } from "./window/windows-quit";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
@@ -123,87 +106,11 @@ backend.installApplicationMenu();
 // started from. Cleaning up here is what makes the stray actually die.
 reapStaleTerminalMedia();
 
-const mainRpc = backend.createWindowRpc(MAIN_WINDOW_RPC_KEY);
-const rememberedWindowPath = rememberedDesktopWindowPath();
-const rememberedWindow = readRememberedDesktopWindow(rememberedWindowPath);
-const fallbackMainWindowFrame = defaultMainWindowFrame();
-const initialMainWindowFrame = fitWindowFrameToDisplays(
-  normalizeWindowFrameWithMinimum(rememberedWindow?.frame, fallbackMainWindowFrame, MAIN_WINDOW_MIN_SIZE),
-  readDisplayWorkAreas(),
-);
-
-let windowedFrame = initialMainWindowFrame;
-let rememberTimer: ReturnType<typeof setTimeout> | null = null;
-
-function readDisplayWorkAreas() {
-  try {
-    return Screen.getAllDisplays().map((display) => ({
-      x: display.workArea?.x ?? display.bounds.x,
-      y: display.workArea?.y ?? display.bounds.y,
-      width: display.workArea?.width ?? display.bounds.width,
-      height: display.workArea?.height ?? display.bounds.height,
-      primary: display.isPrimary,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function rememberedFromWindow(): RememberedDesktopWindow | null {
-  const window = backend.mainWindow;
-  const live = getWindowFrame(window) ?? windowedFrame;
-  let minimized = false;
-  let fullscreen = false;
-  let maximized = false;
-  try { minimized = window?.isMinimized() === true; } catch { minimized = false; }
-  if (minimized) return null;
-  try { fullscreen = window?.isFullScreen() === true; } catch { fullscreen = false; }
-  try { maximized = !fullscreen && window?.isMaximized() === true; } catch { maximized = false; }
-  if (!fullscreen && !maximized) windowedFrame = live;
-  return { frame: windowedFrame, maximized, fullscreen };
-}
-
-function flushRememberedWindow(): void {
-  if (rememberTimer) {
-    clearTimeout(rememberTimer);
-    rememberTimer = null;
-  }
-  const next = rememberedFromWindow();
-  if (next) writeRememberedDesktopWindow(rememberedWindowPath, next);
-}
-
-function scheduleRememberedWindow(): void {
-  if (rememberTimer) clearTimeout(rememberTimer);
-  rememberTimer = setTimeout(() => {
-    rememberTimer = null;
-    const next = rememberedFromWindow();
-    if (next) writeRememberedDesktopWindow(rememberedWindowPath, next);
-  }, 300);
-}
-
-const mainWindow = createAppWindow({
-  title: "Gloom",
-  frame: initialMainWindowFrame,
-  rpc: mainRpc,
-  minSize: MAIN_WINDOW_MIN_SIZE,
-  onFrameChange: scheduleRememberedWindow,
-  // The layout the window last drew, which its page draws before its script
-  // has loaded (dom/boot-frame.ts).
-  preload: desktopBootFramePreload(readDesktopBootFrame(desktopBootFramePath())),
-});
-backend.mainWindow = mainWindow;
-quitWindowsEventLoopOnItsThread(mainWindow);
+// The main window opens where it was left on these screens; extra windows
+// follow once it has its data (desktop/window-controller.ts).
+backend.startWindows();
 // The window is loading its view; the services it will ask for start now
 // rather than when it asks. Its `init` reports a failure, and retries.
 startDesktopBackend(backend).catch((error) => {
   console.error("[desktop] startup failed", error instanceof Error ? error.stack ?? error.message : String(error));
 });
-// Windows has no way into fullscreen here, and builds whose frameless window
-// Windows took for fullscreen saved every window as fullscreen.
-if (rememberedWindow?.fullscreen && process.platform !== "win32") {
-  try { mainWindow.setFullScreen(true); } catch { /* the framed window is still the one they sized */ }
-} else if (rememberedWindow?.maximized) {
-  try { mainWindow.maximize(); } catch { /* the framed window is still the one they sized */ }
-}
-(mainWindow as { on?: (event: "close", listener: () => void) => void }).on?.("close", flushRememberedWindow);
-backend.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);

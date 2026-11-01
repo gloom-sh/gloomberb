@@ -31,13 +31,15 @@ import { markStartupComplete } from "../../../../utils/main-thread-stall";
 interface DesktopWindowTarget {
   kind: "main" | "detached";
   paneId?: string;
+  /** A full window's id: the main window's, or an extra window's. */
+  windowId?: string;
 }
 
 function normalizeInitWindowTarget(
   rpcKey: string | undefined,
   payload: DesktopBackendRequestPayload<"init">,
 ): DesktopWindowTarget {
-  if (rpcKey === MAIN_WINDOW_RPC_KEY) return { kind: "main" };
+  if (rpcKey === MAIN_WINDOW_RPC_KEY) return { kind: "main", windowId: MAIN_WINDOW_RPC_KEY };
 
   const detachedPaneId = paneIdFromDetachedRpcKey(rpcKey);
   if (detachedPaneId) {
@@ -46,6 +48,8 @@ function normalizeInitWindowTarget(
       paneId: detachedPaneId,
     };
   }
+  // Every other window the backend opens is a full window with its own tabs.
+  if (rpcKey) return { kind: "main", windowId: rpcKey };
 
   const kind = payload.kind === "detached" ? "detached" : "main";
   return {
@@ -75,13 +79,21 @@ function buildInitializationPayload(
   config: AppConfig,
   services: AppServices,
   windowTarget: DesktopWindowTarget,
+  windowKey: string | undefined,
 ): ElectrobunBackendInit {
+  const mainWindow = windowTarget.windowId === MAIN_WINDOW_RPC_KEY;
   // The main window says once what the launch's seed could not install.
-  const pluginSeedNotice = windowTarget.kind === "main" ? takePluginSeedNotice() : null;
+  const pluginSeedNotice = mainWindow ? takePluginSeedNotice() : null;
+  // Each full window draws its own tabs; a popped-out pane's draws the main
+  // window's. Numbered like every state sent, so the window's first sync is
+  // merged against it.
+  const projected = backend.workspace?.getWindowSnapshot(windowTarget.windowId ?? MAIN_WINDOW_RPC_KEY) ?? null;
+  const desktopSnapshot = projected ? backend.stateBroadcaster.stamp(projected) : null;
+  if (desktopSnapshot && windowKey) backend.workspace?.noteDelivered(windowKey, desktopSnapshot.stateSeq!, desktopSnapshot);
   return {
-    config,
+    config: desktopSnapshot?.config ?? config,
     sessionSnapshot: backend.getSessionSnapshot(),
-    desktopSnapshot: backend.workspace?.getSnapshot() ?? null,
+    desktopSnapshot,
     desktopThemePreview: backend.stateBroadcaster.currentThemePreview,
     pluginState: loadDesktopPluginState(services.pluginRegistry),
     savedResources: loadSavedResources(services, config),
@@ -90,6 +102,8 @@ function buildInitializationPayload(
     hostName: hostname(),
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
+    ...(windowTarget.windowId ? { windowId: windowTarget.windowId, windows: backend.windowInfos() } : {}),
+    ...(mainWindow ? { otherWindowTabs: backend.otherWindowTabsForInit() } : {}),
     ...(pluginSeedNotice ? { pluginSeedNotice } : {}),
     telemetry: {
       installId: readOrCreateInstallId(config.dataDir),
@@ -185,23 +199,28 @@ export async function initializeDesktopBackend(
   rpc: DesktopRpc,
   payload: DesktopBackendRequestPayload<"init">,
 ): Promise<ElectrobunBackendInit> {
-  const windowTarget = normalizeInitWindowTarget(backend.rpcs.getRpcWindowKey(rpc), payload);
+  const windowKey = backend.rpcs.getRpcWindowKey(rpc);
+  const windowTarget = normalizeInitWindowTarget(windowKey, payload);
   backend.rpcs.markWindowRpcReady(rpc);
   backend.stateBroadcaster.forgetWindowState(rpc);
+  // Its page loaded and runs: the next window waiting to open may.
+  if (windowKey) backend.windowHost?.windowDrawn(windowKey);
 
   await startDesktopBackend(backend);
   const config = backend.requireConfig();
   const services = backend.requireServices();
   if (!backend.workspace) {
-    backend.workspace = createDesktopWorkspace(config, backend.getSessionSnapshot());
-    backend.detachedWindows.reconcile();
+    backend.workspace = createDesktopWorkspace(config, backend.getSessionSnapshot(), backend.windowController?.screenSetup.windows);
+    backend.reconcileWindows();
   }
-  const init = buildInitializationPayload(backend, config, services, windowTarget);
+  // A window that loads again starts from this state: nothing sent before counts.
+  if (windowKey) backend.workspace.forgetWindow(windowKey);
+  const init = buildInitializationPayload(backend, config, services, windowTarget, windowKey);
   // The main window has what it needs to draw: this process is up, and the
-  // popped-out windows open next.
-  if (windowTarget.kind === "main") {
+  // popped-out panes and extra windows open next.
+  if (windowTarget.windowId === MAIN_WINDOW_RPC_KEY) {
     markStartupComplete();
-    backend.detachedWindows.openAfterMainWindow();
+    backend.openWindowsAfterMainWindow();
   }
   return init;
 }
