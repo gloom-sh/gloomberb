@@ -637,7 +637,7 @@ export const secModule: PluginModule = {
         label: "Fund Facts",
         description: "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT.",
         keywords: ["etf", "fund", "expense ratio", "fee", "nav", "premium", "discount", "aum", "net assets", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus",
-          "leveraged", "inverse", "daily objective", "daily-reset", "decay"],
+          "leveraged", "inverse", "daily objective", "daily-reset", "decay", "bond fund", "duration", "dv01", "hedge ratio", "steepener"],
         shortcut: "ETF",
         viewKey: "etf",
         canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),
