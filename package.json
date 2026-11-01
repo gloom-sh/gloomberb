@@ -62,7 +62,7 @@
     "desktop:dev": "bun run scripts/electrobun-dev.ts",
     "desktop:build": "electrobun build",
     "desktop:release": "electrobun build --env=stable",
-    "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
+    "desktop:release:windows": "electrobun build --env=stable",
     "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
@@ -118,7 +118,7 @@
     "@types/bun": "^1.3.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.165.0",
-    "electrobun": "^1.18.1",
+    "electrobun": "2.0.5",
     "gloom-polls": "github:gloom-sh/gloom-polls",
     "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
     "happy-dom": "^20.11.1",
@@ -141,7 +141,6 @@
   },
   "patchedDependencies": {
     "@opentui/core@0.3.2": "patches/@opentui%2Fcore@0.3.2.patch",
-    "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
     "react-reconciler@0.33.0": "patches/react-reconciler@0.33.0.patch"
   }
 }

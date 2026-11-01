@@ -6,8 +6,12 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$ArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"
-$ExtractRoot = Join-Path $Root "build\stable-win-x64\Gloom-inno-source"
+# Electrobun 2 builds for the host: win-x64 or win-arm64.
+$Archive = Get-ChildItem -LiteralPath (Join-Path $Root "artifacts") -Filter "stable-win-*-Gloom*.tar.zst" -ErrorAction SilentlyContinue | Select-Object -First 1
+Get-ChildItem -LiteralPath (Join-Path $Root "artifacts") -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "artifact: $($_.Name) $($_.Length)" }
+$ArchivePath = $(if ($Archive) { $Archive.FullName } else { Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst" })
+$Platform = $(if ($Archive -and $Archive.Name -match "^stable-(win-[a-z0-9]+)-") { $Matches[1] } else { "win-x64" })
+$ExtractRoot = Join-Path $Root "build\stable-$Platform\Gloom-inno-source"
 $SourceDir = Join-Path $ExtractRoot "Gloom"
 $OutputDir = Join-Path $Root "artifacts"
 $InstallerScript = Join-Path $Root "scripts\windows-installer.iss"
@@ -25,21 +29,37 @@ New-Item -ItemType Directory -Force -Path $ExtractRoot | Out-Null
 
 $Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
 if (-not (Test-Path $Zstd)) {
-  throw "zig-zstd.exe was not found: $Zstd"
+  # Electrobun 2 keeps its tools in the Hutch store.
+  $Found = @(foreach ($Store in @((Join-Path $env:USERPROFILE ".hutch"), (Join-Path $env:LOCALAPPDATA "hutch"), (Join-Path $env:LOCALAPPDATA ".hutch"))) {
+    Get-ChildItem -Path $Store -Recurse -Filter "zig-zstd.exe" -ErrorAction SilentlyContinue
+  }) | Select-Object -First 1
+  $Zstd = $(if ($Found) { $Found.FullName } else { $null })
 }
 
-$TarPath = Join-Path $ExtractRoot "Gloom.tar"
-& $Zstd decompress -i $ArchivePath -o $TarPath
-if ($LASTEXITCODE -ne 0) {
-  exit $LASTEXITCODE
+if ($Zstd) {
+  $TarPath = Join-Path $ExtractRoot "Gloom.tar"
+  & $Zstd decompress -i $ArchivePath -o $TarPath
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+  tar -xf $TarPath -C $ExtractRoot
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+  Remove-Item -Force $TarPath
+} else {
+  # Windows' own tar reads zstd.
+  tar -xf $ArchivePath -C $ExtractRoot
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
 }
 
-tar -xf $TarPath -C $ExtractRoot
-if ($LASTEXITCODE -ne 0) {
-  exit $LASTEXITCODE
+if (-not (Test-Path $SourceDir)) {
+  $Inner = Get-ChildItem -LiteralPath $ExtractRoot -Directory | Select-Object -First 1
+  Get-ChildItem -LiteralPath $ExtractRoot -Recurse -Depth 2 | ForEach-Object { Write-Host "extracted: $($_.FullName)" }
+  if ($Inner) { Rename-Item -LiteralPath $Inner.FullName -NewName "Gloom"; $SourceDir = Join-Path $ExtractRoot "Gloom" }
 }
-Remove-Item -Force $TarPath
-
 if (-not (Test-Path $SourceDir)) {
   throw "Windows desktop bundle was not extracted: $SourceDir"
 }
@@ -84,6 +104,6 @@ if (-not (Test-Path $InstallerPath)) {
   throw "Expected installer was not created: $InstallerPath"
 }
 
-$PrefixedInstallerPath = Join-Path $OutputDir "stable-win-x64-GloomSetup.exe"
+$PrefixedInstallerPath = Join-Path $OutputDir "stable-$Platform-GloomSetup.exe"
 Copy-Item -Force $InstallerPath $PrefixedInstallerPath
 Write-Host "Created installer: $PrefixedInstallerPath"

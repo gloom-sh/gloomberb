@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { dirname, join, relative, resolve } from "path";
 import type { BunPlugin } from "bun";
@@ -104,6 +105,7 @@ export async function buildViewBundle({
     plugins: [
       lazyChunkPlugin(outdir, outdir, chunks),
       ...(aliasRules.length > 0 ? [electrobunViewAliasPlugin(aliasRules)] : []),
+      electrobunDevkitPlugin(),
     ],
   });
 
@@ -258,6 +260,26 @@ async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, 
     }
     pending = [...nested.entries()];
   }
+}
+
+/**
+ * Electrobun 2 serves its SDK from the project's Hutch devkit, not from
+ * node_modules: `electrobun/view` resolves through the devkit's export map.
+ */
+function electrobunDevkitPlugin() {
+  const devkit = join(import.meta.dir, "..", "..", "..", ".hutch", "devkit");
+  return {
+    name: "electrobun-devkit",
+    setup(build: { onResolve(options: { filter: RegExp }, callback: (args: { path: string }) => unknown): void }) {
+      build.onResolve({ filter: /^electrobun(\/.*)?$/ }, (args) => {
+        const manifest = JSON.parse(readFileSync(join(devkit, "package.json"), "utf8")) as { exports: Record<string, string> };
+        const key = args.path === "electrobun" ? "." : `./${args.path.slice("electrobun/".length)}`;
+        const target = manifest.exports[key];
+        if (!target) throw new Error(`The Electrobun devkit exports no ${args.path}`);
+        return { path: join(devkit, target) };
+      });
+    },
+  };
 }
 
 function electrobunViewAliasPlugin(aliasRules: AliasRule[]) {

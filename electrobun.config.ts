@@ -41,6 +41,7 @@ const config: ElectrobunConfig = {
     urlSchemes: ["gloomberb"],
   },
   build: {
+    mainProcess: "bun",
     bun: {
       entrypoint: "src/renderers/electrobun/bun/index.ts",
       sourcemap: "external",
@@ -48,7 +49,6 @@ const config: ElectrobunConfig = {
     copy: {
       "dist/electrobun-view": "views/mainview",
     },
-    ...(process.platform === "win32" ? { bunVersion: WINDOWS_BUN_VERSION } : {}),
     watch: [
       "src",
       "scripts/build-electrobun-view.ts",

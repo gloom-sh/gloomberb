@@ -56,13 +56,13 @@ on run argv
       set value of attribute "AXFullScreen" of w to false
       delay 2.5
     end try
-    set buttons to ""
+    set btnList to ""
     try
-      repeat with b in (buttons of w)
-        set buttons to buttons & (subrole of b) & " "
+      repeat with b in (every button of w)
+        set btnList to btnList & (subrole of b) & " "
       end repeat
     end try
-    return "{\"windows\":" & winCount & ",\"setFrame\":[" & (item 1 of s1) & "," & (item 2 of s1) & "],\"minimumSize\":{\"asked\":[300,200],\"immediately\":[" & (item 1 of sImmediate) & "," & (item 2 of sImmediate) & "],\"after800ms\":[" & (item 1 of sLater) & "," & (item 2 of sLater) & "]},\"zoom\":\"" & zoomResult & "\",\"fullScreen\":\"" & fsResult & "\",\"buttons\":\"" & buttons & "\"}"
+    return "{\"windows\":" & winCount & ",\"setFrame\":[" & (item 1 of s1) & "," & (item 2 of s1) & "],\"minimumSize\":{\"asked\":[300,200],\"immediately\":[" & (item 1 of sImmediate) & "," & (item 2 of sImmediate) & "],\"after800ms\":[" & (item 1 of sLater) & "," & (item 2 of sLater) & "]},\"zoom\":\"" & zoomResult & "\",\"fullScreen\":\"" & fsResult & "\",\"buttons\":\"" & btnList & "\"}"
   end tell
 end run
 APPLESCRIPT
