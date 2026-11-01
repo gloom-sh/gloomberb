@@ -89,7 +89,7 @@ export function latestFxWeekOpen(time: number): number | null {
  * How close to the FX week's close a print is its close: Gloom Cloud dates the
  * week's close by its last minute (20:59Z, or 21:59Z in winter).
  */
-export const FX_CLOSE_PRINT_MS = 60_000;
+const FX_CLOSE_PRINT_MS = 60_000;
 
 /** Whether a print made at `time` is the close of the FX week that closed at `weekClose`. */
 export function isFxWeekClosePrint(time: number, weekClose: number): boolean {

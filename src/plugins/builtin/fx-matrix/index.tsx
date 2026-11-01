@@ -54,7 +54,7 @@ const FX_FALLBACK_REFRESH_MS = 60_000;
  * currency always kept. A board with more rows than `height` holds keeps a
  * cell for its scrollbar.
  */
-export function fxMatrixColumnsToFit<C extends DataTableColumn>(
+function fxMatrixColumnsToFit<C extends DataTableColumn>(
   columns: readonly C[], currencies: readonly string[], width: number, height: number,
 ): C[] {
   const scrollbar = currencies.length + 1 > height ? 1 : 0;
