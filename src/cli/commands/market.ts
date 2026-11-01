@@ -1613,11 +1613,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const window = historyWindowOption(args, rangeOption, ctx);
   const ask: HistoryAsk = { range: parseRange(rangeOption, ctx), window };
   const requestedExchange = takeOption(args, "--exchange");
+  // One row a date and a close column a symbol, as a spreadsheet lays several series side by side.
+  const wide = takeFlag(args, "--wide");
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
-  if (file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
-    return runHistoryList(args, file, requestedExchange, ask, ctx);
+  if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+    return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
   }
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
@@ -1676,6 +1678,44 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 type ListedHistory = { symbol: string; history: ListingHistory } | { symbol: string; error: string };
 
 /**
+ * `history USDJPY=X USDCHF=X EURCHF=X --wide`: one row a date and one close
+ * column a symbol, its unit in the header (`USDJPY=X close (JPY per USD)`),
+ * as a spreadsheet sets several series side by side. A symbol with no bar on
+ * a date (another market's holiday) leaves its cell blank. `interval` is the
+ * bars' size when every symbol came in one, else null.
+ */
+function wideHistoryTable(served: readonly ListingHistory[]): {
+  rows: Array<Record<string, string | number | null>>;
+  columns: CliResultColumn[];
+  interval: string | null;
+} {
+  const histories = served.filter((history, index) => served.findIndex((other) => other.listing.key === history.listing.key) === index);
+  const key = (history: ListingHistory) => `close:${history.listing.key}`;
+  const dates = [...new Set(histories.flatMap((history) => history.data.map((row) => row.date)))].sort();
+  const closes = histories.map((history) => new Map(history.data.map((row) => [row.date, row.close] as const)));
+  const rows = dates.map((date) => Object.fromEntries([
+    ["date", date],
+    ...histories.map((history, index) => [key(history), closes[index]!.get(date) ?? null] as const),
+  ]));
+  const intervals = new Set(histories.map((history) => history.interval));
+  return {
+    rows,
+    columns: [
+      { key: "date", header: histories.some((history) => history.intraday) ? "Time" : "Date" },
+      ...histories.map((history): CliResultColumn => {
+        const unit = historyExportUnit(history.unit);
+        const price = historyPrice(history.decimals);
+        return {
+          key: key(history), header: `${history.listing.key} close${unit ? ` (${unit})` : ""}`, align: "right",
+          format: (value) => value == null ? "" : price(value),
+        };
+      }),
+    ],
+    interval: intervals.size === 1 ? [...intervals][0] ?? null : null,
+  };
+}
+
+/**
  * `history --file holdings.txt` (or several symbols, or `-` for standard
  * input): every symbol's bars in one long table, `HISTORY_LIST_CONCURRENCY`
  * symbols loading at once. A symbol that serves nothing is one row with its
@@ -1687,6 +1727,7 @@ async function runHistoryList(
   exchange: string | undefined,
   ask: HistoryAsk,
   ctx: Parameters<CliCommandDef["execute"]>[1],
+  { wide = false }: { wide?: boolean } = {},
 ) {
   const usage = `Usage: gloom ${HISTORY_USAGE}`;
   await withMarketData(ctx, async (market) => {
@@ -1735,6 +1776,39 @@ async function runHistoryList(
     // reads it there): the list ends "couldn't refresh; saved copy from <time>" for the oldest copy among its symbols.
     const savedAt = served.flatMap((history) => history.freshness?.savedAt ?? []).sort()[0];
     const freshness = listFreshness && savedAt && !listFreshness.savedAt ? { ...listFreshness, savedAt } : listFreshness;
+    const symbolsMetadata = listed.map((entry) => "history" in entry ? {
+      ...listingMetadata(entry.history.identity),
+      currency: entry.history.unit.currency,
+      unit: entry.history.unit.unit,
+      interval: entry.history.interval,
+      firstDate: entry.history.data[0]?.date ?? null,
+      lastDate: entry.history.data.at(-1)?.date ?? null,
+      bars: entry.history.data.length,
+      asOf: entry.history.freshness?.asOf ?? null,
+    } : { symbol: entry.symbol, error: entry.error });
+    if (wide) {
+      const table = wideHistoryTable(served);
+      ctx.printResult({
+        data: table.rows,
+        metadata: {
+          range: ask.window ? null : ask.range,
+          requestedRange: ask.window ? null : ask.range,
+          ...(ask.window ? { requestedWindow: ask.window } : {}),
+          symbols: symbolsMetadata,
+        },
+        ...(notes.length > 0 ? { warnings: notes } : {}),
+        ...(served.length === 0 ? { failure: { code: "cli_error", message: `No history for ${symbols.join(", ")}.` } } : {}),
+        freshness,
+        ...(freshness ? {} : { exportFreshness: rowsFreshness([], { status: "not-a-feed", basis: "price bars" }) }),
+      }, {
+        dateKey: "date",
+        columns: table.columns,
+        // The unit is in each close column's header; a row of several symbols has no one symbol or unit to name.
+        exportIdentity: { symbolOrSeries: null, currencyOrUnit: null, interval: table.interval },
+      });
+      if (served.length === 0) process.exitCode = CLI_EXIT_CODES.error;
+      return;
+    }
     const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
     const intraday = served.some((history) => history.intraday);
     const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column
@@ -1749,16 +1823,7 @@ async function runHistoryList(
         requestedRange: ask.window ? null : ask.range,
         ...(ask.window ? { requestedWindow: ask.window } : {}),
         // Each symbol as a single `history` describes it, or the reason it has no bars.
-        symbols: listed.map((entry) => "history" in entry ? {
-          ...listingMetadata(entry.history.identity),
-          currency: entry.history.unit.currency,
-          unit: entry.history.unit.unit,
-          interval: entry.history.interval,
-          firstDate: entry.history.data[0]?.date ?? null,
-          lastDate: entry.history.data.at(-1)?.date ?? null,
-          bars: entry.history.data.length,
-          asOf: entry.history.freshness?.asOf ?? null,
-        } : { symbol: entry.symbol, error: entry.error }),
+        symbols: symbolsMetadata,
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       ...(served.length === 0 ? { failure: { code: "cli_error", message: `No history for ${symbols.join(", ")}.` } } : {}),
@@ -3359,6 +3424,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--from <year|date>, --start <year|date>", description: `${PRICE_WINDOW_FROM_HELP}. Up to five years come in daily bars, up to twenty weekly, longer monthly` },
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },
+        { flags: "--wide", description: "One row per date and one close column per symbol, its unit in the header, in place of one long table" },
         EXCHANGE_OPTION,
       ],
       sections: [{
@@ -3380,6 +3446,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its currency and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
           "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. --tail 5 keeps each symbol's newest five bars.",
+          "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],
       }, {
         title: "Long history",

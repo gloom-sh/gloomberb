@@ -471,6 +471,23 @@ async function runList(args: string[], bars: (symbol: string) => Promise<PriceHi
 const dailyBar = (close: number) => [{ date: new Date("2026-10-16"), open: close, high: close, low: close, close, volume: 1000 }];
 const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
 
+test("history --wide sets several pairs side by side: a row a date, a close column a symbol headed with its unit", async () => {
+  const bars: Record<string, Array<[string, number]>> = {
+    "USDJPY=X": [["2026-10-29", 157.68921], ["2026-10-30", 157.58847]],
+    "USDCHF=X": [["2026-10-29", 0.82431], ["2026-10-30", 0.82503]],
+    // A day one series has no bar for stays blank in its column.
+    "EURCHF=X": [["2026-10-30", 0.92074]],
+  };
+  const { csv, result } = await runList(["USDJPY=X", "USDCHF=X", "EURCHF=X", "--wide"], async (symbol) =>
+    bars[symbol]!.map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close })));
+  expect(csv).toEqual([
+    "Date,USDJPY=X close (JPY per USD),USDCHF=X close (CHF per USD),EURCHF=X close (CHF per EUR),symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-29,157.68921,0.82431,,,,1d,Gloom Cloud,2026-10-30",
+    "2026-10-30,157.58847,0.82503,0.92074,,,1d,Gloom Cloud,2026-10-30",
+  ]);
+  expect(result.failure).toBeUndefined();
+});
+
 test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
   const { result, csv } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);
   expect(process.exitCode).toBe(1);
