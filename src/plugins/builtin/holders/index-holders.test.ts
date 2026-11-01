@@ -43,23 +43,30 @@ describe("13F holder index pages", () => {
     expect(indexedHolderPage(holdings([], { holderCount: 25, nextOffset: 25 })).hasMore).toBe(false);
   });
 
-  test("pages 25 at a time until the limit is met or the holders run out", async () => {
-    const offsets: unknown[] = [];
-    const client: IndexedHolderClient = {
+  test("asks for the whole list at once, and pages on where a service gives 25, until the limit is met or the holders run out", async () => {
+    const asked: Array<[unknown, unknown]> = [];
+    // A service that builds pages from the funds' filings gives 25 whatever is asked.
+    const client = (pageRows?: number): IndexedHolderClient => ({
       getCloudSec13F: async (_path, params = {}) => {
-        offsets.push(params.offset);
+        asked.push([params.offset, params.limit]);
         const offset = Number(params.offset);
-        return holdings(Array.from({ length: 25 }, (_, index) => row(String(offset + index + 1))), { holderCount: 60, nextOffset: offset + 25, hasMore: true });
+        const rows = Math.min(pageRows ?? Number(params.limit), 60 - offset);
+        return holdings(Array.from({ length: rows }, (_, index) => row(String(offset + index + 1))), { holderCount: 60, nextOffset: offset + (pageRows ?? Number(params.limit)), hasMore: true });
       },
-    };
-    const some = await loadIndexedHolders("AAA", 30, undefined, client);
-    expect(offsets).toEqual([0, 25]);
-    expect(some.rows).toHaveLength(50);
-    offsets.length = 0;
-    const all = await loadIndexedHolders("AAA", 200, undefined, client);
-    expect(offsets).toEqual([0, 25, 50]);
-    expect(all.rows.map((holder) => holder.cik).slice(-1)).toEqual(["75"]);
+    });
+    const all = await loadIndexedHolders("AAA", 200, undefined, client());
+    expect(asked).toEqual([[0, 200]]);
+    expect(all.rows).toHaveLength(60);
     expect(all.hasMore).toBe(false);
+    asked.length = 0;
+    const some = await loadIndexedHolders("AAA", 30, undefined, client(25));
+    expect(asked).toEqual([[0, 30], [25, 30]]);
+    expect(some.rows).toHaveLength(50);
+    asked.length = 0;
+    const paged = await loadIndexedHolders("AAA", 200, undefined, client(25));
+    expect(asked.map(([offset]) => offset)).toEqual([0, 25, 50]);
+    expect(paged.rows.map((holder) => holder.cik).slice(-1)).toEqual(["60"]);
+    expect(paged.hasMore).toBe(false);
   });
 
   test("a page that does not move on ends the list, and a later page that fails keeps the holders loaded", async () => {

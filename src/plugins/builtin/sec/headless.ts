@@ -39,8 +39,12 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
 /** Some row has 8-K item codes; a column every row leaves `-` takes no room in the text table (exports keep it). */
 const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof row.items === "string" && row.items !== "");
 
+/** A current report's press release exhibit, printed only when some row has one; exports keep it with the filing's link. */
+const PRESS_RELEASE_COLUMN: HeadlessPaneColumn = { key: "pressReleaseUrl", header: "Press release" };
+
 function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
-  return hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
+  const columns = hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
+  return rows.some((row) => typeof row.pressReleaseUrl === "string" && row.pressReleaseUrl) ? [...columns, PRESS_RELEASE_COLUMN] : columns;
 }
 
 /**

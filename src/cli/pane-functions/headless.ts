@@ -1,9 +1,10 @@
 import { getSharedRegistry } from "../../plugins/registry";
+import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
-import { parsePublicTickerKey } from "../../utils/exchanges";
 import { findNamedCollection } from "../../portfolio/collection-name";
 import { readBareListing } from "../listing-arg";
 import { apiClient } from "../../api-client";
+import { resolveSavedInstrument } from "../../tickers/saved-instrument";
 import type { MarketContext } from "../types";
 import type {
   HeadlessArgumentExpansion,
@@ -190,7 +191,7 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries">> & {
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries" | "findCatalogSeriesNamed">> & {
   dataProvider: HeadlessPaneContext["marketData"];
 };
 
@@ -210,6 +211,11 @@ export function createHeadlessPaneContext(
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
     catalogSeriesName: (expression) => (getSharedRegistry()?.series.findByExpression(expression)?.definition
       ?? context.findCatalogSeries?.(expression))?.name,
+    catalogSeriesNamed: (word) => {
+      const registered = getSharedRegistry()?.series?.list().map(({ definition }) => definition) ?? [];
+      const definition = seriesNamedBy(registered, word) ?? context.findCatalogSeriesNamed?.(word);
+      return definition ? { expression: seriesExpression(definition), name: definition.name } : undefined;
+    },
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
       const portfolio = findNamedCollection(context.config.portfolios, id);
@@ -222,25 +228,21 @@ export function createHeadlessPaneContext(
       if (!watchlist) return null;
       return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(watchlist.id));
     },
-    async resolveInstrument(key) {
-      const parsed = parsePublicTickerKey(key);
-      const ticker = await context.store.loadTicker(key)
-        ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
-      return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
-    },
+    resolveInstrument: (key) => resolveSavedInstrument(key, (saved) => context.store.loadTicker(saved)),
     readDeviceState: <T,>(pluginId: string, key: string) =>
       context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
         command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
-      }, { refresh: !!context.refresh });
+      }, { refresh: !!context.refresh, successor: true });
       if (!read) return null;
       return {
         symbol: read.symbol,
         ...read.exchange ? { exchange: read.exchange } : {},
         ...read.name ? { name: read.name } : {},
         ...read.coinNote ? { coinNote: read.coinNote } : {},
+        ...read.successorNote ? { successorNote: read.successorNote } : {},
       };
     },
   };
@@ -544,12 +546,17 @@ function renderRows(
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
       minTableWidth: column.minTableWidth,
+      optional: column.optional,
+      dropPriority: column.dropPriority,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
-      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => (
-        row[column.key] == null || row[column.key] === "" ? [] : cell(row, column).split("\n")
-      ))),
+      // A value the text leaves out (a summary that only repeats the headline) takes no line.
+      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => {
+        const text = row[column.key] == null || row[column.key] === "" ? "" : cell(row, column);
+        return text === "" ? [] : text.split("\n");
+      })),
+      ...(under.length > 0 && under.every((column) => column.underRow === "line") ? { cutBelow: true } : {}),
     },
   );
 }
@@ -571,7 +578,7 @@ function renderBundle(
   return result.sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
-    ...(section.title ? [renderSection(section.title)] : []),
+    ...(section.title ? [renderSection(section.textTitle ?? section.title)] : []),
     "rows" in section && section.rows
       ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.textEntries ?? section.entries),
@@ -898,7 +905,8 @@ export function renderHeadlessPaneText(
 ): string {
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
-  const notices = textNotices(result);
+  // A notice wraps to a narrow --width, as the notes and errors under the tables do.
+  const notices = textNotices(result).map((notice) => wrapToTerminal(notice));
   if (notices.length) lines.push(...notices, "");
   const gate = reportGate(definition, result);
   const reason = emptyReportReason(definition, result, args, token, gate);

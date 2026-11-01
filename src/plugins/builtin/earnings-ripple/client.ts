@@ -4,8 +4,8 @@ import { DEFAULT_GRAPH_OPTIONS, type GraphOptions, type GraphPayload } from "../
 import { errorMessage } from "../../../utils/errors";
 import { addDays, newYorkToday } from "../earnings/board-model";
 import { loadEarningsBoard } from "../earnings/client";
-import { loadSupplyChain } from "../supply-chain/client";
-import { cachedGraph, loadGraph } from "../supply-chain/graph-client";
+import { loadSupplyChain, loadSupplyChainsAhead } from "../supply-chain/client";
+import { cachedGraph, loadGraph, loadGraphsAhead } from "../supply-chain/graph-client";
 import { projectRipple, projectSecondHop, rippleCompanyTickers, RIPPLE_DAYS, secondHopLinks, type RippleRow, type SecondHopRow } from "./model";
 
 export interface RippleSources {
@@ -13,6 +13,10 @@ export interface RippleSources {
   calendar(query: EarningsCalendarQuery): Promise<EarningsCalendarPayload>;
   /** SPLC's graph, which returns both hops around a holding in one call. Absent when the account sees one hop only. */
   graph?(symbol: string, options: GraphOptions): Promise<GraphPayload>;
+  /** Reads every holding's disclosures ahead in batch requests, for `supplyChain` to find. */
+  supplyChainsAhead?(symbols: readonly string[]): Promise<void>;
+  /** Reads these holdings' graphs ahead in batch requests, for `graph` to find. */
+  graphsAhead?(symbols: readonly string[], options: GraphOptions): Promise<void>;
 }
 
 /**
@@ -60,14 +64,29 @@ export interface RippleSnapshot {
  */
 export function cachedRippleSources(accessKey: string, force = false, graph: "off" | "load" | "cached" = "off"): RippleSources & { staleFlags: boolean[] } {
   const staleFlags: boolean[] = [];
+  // A forced read takes what this refresh read ahead as fresh.
+  const chainsAhead = new Set<string>();
+  const graphsAhead = new Set<string>();
   return {
     staleFlags,
-    supplyChain: async (symbol) => { const result = await loadSupplyChain(symbol, accessKey, force); staleFlags.push(result.stale); return result.payload; },
+    supplyChainsAhead: async (symbols) => {
+      for (const symbol of await loadSupplyChainsAhead(symbols, accessKey, force)) chainsAhead.add(symbol);
+    },
+    supplyChain: async (symbol) => {
+      const result = await loadSupplyChain(symbol, accessKey, force && !chainsAhead.has(symbol.toUpperCase()));
+      staleFlags.push(result.stale);
+      return result.payload;
+    },
     calendar: async (query) => { const result = await loadEarningsBoard(query, force); staleFlags.push(result.stale); return result.payload; },
     // Cached by the full query, apart from SPLC Graph's default one.
     ...(graph !== "off" ? { graph: async (symbol: string, options: GraphOptions) => {
       const cached = graph === "cached" ? cachedGraph(symbol, "", options, accessKey) : null;
-      const result = cached ?? await loadGraph(symbol, "", options, accessKey, force); staleFlags.push(result.stale); return result.payload;
+      const result = cached ?? await loadGraph(symbol, "", options, accessKey, force && !graphsAhead.has(symbol.toUpperCase()));
+      staleFlags.push(result.stale);
+      return result.payload;
+    } } : {}),
+    ...(graph === "load" ? { graphsAhead: async (symbols: readonly string[], options: GraphOptions) => {
+      for (const symbol of await loadGraphsAhead(symbols, options, accessKey, force)) graphsAhead.add(symbol);
     } } : {}),
   };
 }
@@ -84,8 +103,12 @@ async function eachLimited(symbols: readonly string[], load: (symbol: string) =>
 const locked = () => ({ graphs: new Map<string, GraphPayload>(), failures: [] as Failure[], locked: true });
 const isPreview = (graphs: ReadonlyMap<string, GraphPayload>) => [...graphs.values()].some((graph) => graph.access === "preview");
 
-/** One graph call per holding. The first answer says whether the account sees two hops; a one-hop preview skips the rest. */
-async function loadGraphs(holdings: readonly string[], graph: NonNullable<RippleSources["graph"]>) {
+/**
+ * One graph per holding. The first answer says whether the account sees two
+ * hops; a one-hop preview skips the rest, which are otherwise read ahead in
+ * batch requests.
+ */
+async function loadGraphs(holdings: readonly string[], graph: NonNullable<RippleSources["graph"]>, ahead?: RippleSources["graphsAhead"]) {
   const graphs = new Map<string, GraphPayload>();
   const failures: Failure[] = [];
   const load = async (symbol: string) => {
@@ -95,6 +118,7 @@ async function loadGraphs(holdings: readonly string[], graph: NonNullable<Ripple
   const [first, ...rest] = holdings;
   if (first) await load(first);
   if (isPreview(graphs)) return locked();
+  await ahead?.(rest, RIPPLE_GRAPH_OPTIONS);
   await eachLimited(rest, load);
   // Only when the first holding failed can a preview get this far.
   if (isPreview(graphs)) return locked();
@@ -107,11 +131,12 @@ export async function loadRipple(holdings: readonly string[], sources: RippleSou
   const symbols = [...new Set(holdings.map((symbol) => symbol.toUpperCase()))];
   const chains = new Map<string, SupplyChainPayload>();
   const failures: Failure[] = [];
+  await sources.supplyChainsAhead?.(symbols);
   await eachLimited(symbols, async (symbol) => {
     try { chains.set(symbol, await sources.supplyChain(symbol)); }
     catch (error) { failures.push({ symbol, error: errorMessage(error) }); }
   });
-  const second = !secondHop ? null : sources.graph ? await loadGraphs(symbols, sources.graph) : locked();
+  const second = !secondHop ? null : sources.graph ? await loadGraphs(symbols, sources.graph, sources.graphsAhead) : locked();
   const graphs = second?.graphs ?? new Map<string, GraphPayload>();
   const companies = [...rippleCompanyTickers(chains), ...secondHopLinks(chains, graphs).map((link) => link.company.ticker!.toUpperCase())];
   const reports: EarningsCalendarPayload["reports"] = [];

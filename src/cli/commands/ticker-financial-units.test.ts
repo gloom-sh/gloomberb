@@ -150,6 +150,25 @@ test("an EV off market cap + debt - cash is labelled as the provider's with the 
   expect(valuation(withdrawn)).toContain("Enterprise Value unavailable");
   expect(valuation(withdrawn)).toContain(
     "EV unavailable: the provider's 128B USD is 2.0x the 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  // An IFRS balance sheet's leases are in the bridge, and the line says so.
+  const leased = withCheck({ enterpriseValue: 70e9, enterpriseValueCheck: { ...check, leases: 1.5e9, computed: 65.4e9, status: "differs", source: 70e9 } });
+  expect(valuation(leased)).toContain("EV 70B USD (provider) vs 65.4B computed from market cap + total debt + leases - cash (balance sheet 2026-06-30).");
+  // IAG on the LSE: EUR statements converted at the balance sheet's rate, the GBP figure converted twice.
+  const twice = withCheck({
+    unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+    enterpriseValueCheck: { ...check, currency: "GBP", status: "withdrawn", source: 18.57e9, leases: 5.95e9, computed: 22.1e9,
+      fx: { from: "EUR", rate: 0.86135 }, convertedFrom: "EUR", convertedTwice: true },
+  });
+  expect(valuation(twice)).toContain("EV unavailable: the provider's 18.57B GBP is 0.8x the 22.1B computed from market cap + total debt"
+    + " + leases - cash (balance sheet 2026-06-30, EUR at 0.8613 GBP); it converts EUR to GBP twice.");
+  // A converted EV no balance sheet checked gives Gloom Cloud's reason, not a generic one.
+  const unchecked = withCheck({
+    unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+    enterpriseValueCheck: { status: "withdrawn", source: 306e9, currency: "USD", convertedFrom: "EUR",
+      reason: "Source EV is converted from EUR and was not checked against the balance sheet" },
+  });
+  expect(valuation(unchecked)).toContain("Enterprise Value unavailable");
+  expect(valuation(unchecked)).toContain("EV unavailable: source EV is converted from EUR and was not checked against the balance sheet.");
   // A matching EV, or a check beside another source's EV, prints as before.
   for (const fundamentals of [
     { enterpriseValue: 63e9, enterpriseValueCheck: { ...check, status: "matches" as const, source: 63e9 } },
@@ -557,4 +576,15 @@ test("the rate line reads as markets quote the pair, is printed once, and except
   expect(today).toContain("Cost Basis 2,800.00 CAD\n");
   expect(today.match(/figures at/g)).toHaveLength(1);
   expect(today).toContain("CAD figures at USD/CAD 1.4, as of 2026-10-20 06:00 UTC.");
+});
+
+test("a coin's volume says it is traded value in the quote currency; a stock's stays a share count", async () => {
+  const volumeLine = async (symbol: string, exchangeName: string | undefined) => {
+    const text = (await buildTickerReport({ symbol, tickerFile: null, config, toBase: async value => value,
+      financials: { quote: { ...quote, symbol, exchangeName, volume: 75_244_118_016 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] },
+    })).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+    return text.split("\n").find((line) => line.trim().startsWith("Volume"))?.trim();
+  };
+  expect(await volumeLine("BTC-USD", "CCC")).toBe("Volume 75,244,118,016 USD");
+  expect(await volumeLine("MARA", "NASDAQ")).toBe("Volume 75,244,118,016");
 });

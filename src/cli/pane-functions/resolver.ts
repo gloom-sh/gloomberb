@@ -11,7 +11,7 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
-import { ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import { listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
@@ -83,7 +83,7 @@ async function buildPaneInstance(
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
   const headlessArgKind = resolved.headless?.argument.kind;
-  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless)
+  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless, resolved.pane)
     ? null
     : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
       ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\s]+/)[0] ?? ""))
@@ -254,8 +254,9 @@ export async function applyListingArgument(
     }
     notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
   }
-  // One listing's notes come with its choice note; a list's are said here.
-  if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes));
+  // One listing's notes come with its choice note; a list's are said here, with a coin's code read as a listing
+  // (CORR RIOT,BTC: BTC is the Grayscale fund) as `quote BTC` says it.
+  if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes), ...await listCoinNotes(listings, context));
   return {
     ...args,
     arg: listings.map((listing) => listing.key).join(", "),
@@ -349,8 +350,8 @@ export async function resolvePaneFunction(
   if (!pane) {
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
-  const createOptions = buildCreateOptions(template, args.arg);
   const headless = getHeadlessPaneDefinition(template, pane);
+  const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane));
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
   if (resolutionSettings.tableSection) {
@@ -398,6 +399,27 @@ export async function resolvePaneFunction(
   };
   resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
+}
+
+/**
+ * A one-ticker template whose pane also opens on a list (`opensTickerList`:
+ * DVD's ranking): the list is passed as `symbols`, so `shot` draws the same
+ * tickers `fn` reads, in one pane, and fetches each; past the most the
+ * function's report takes, it is refused as `fn` refuses it. One ticker, and
+ * any other template, stays as it was.
+ */
+export function withTickerList(
+  template: PaneTemplateDef | undefined,
+  createOptions: PaneTemplateCreateOptions | undefined,
+  headless: HeadlessPaneDefinition | undefined,
+  arg: string,
+  token = template?.shortcut?.prefix ?? "",
+): PaneTemplateCreateOptions | undefined {
+  if (!template?.opensTickerList || !createOptions || createOptions.symbols?.length) return createOptions;
+  const symbols = [...new Set(arg.split(/[,\s]+/).map((word) => cleanTickerInput(word)).filter(Boolean))];
+  if (symbols.length < 2) return createOptions;
+  if (headless) validateSymbolCount(headless, token, symbols, "shot");
+  return { ...createOptions, symbol: symbols[0]!, arg: symbols.join(","), symbols };
 }
 
 function validateTickerCardinality(

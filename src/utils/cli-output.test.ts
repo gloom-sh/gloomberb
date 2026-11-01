@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { asciiText, localeReadsUtf8 } from "./ascii-text";
 import {
   cliArrow,
   cliTerminalWidth,
   plainWords,
   renderDefinitions,
   renderTable,
+  setCliAsciiLocaleOverride,
   setCliColorEnabledOverride,
   setCliPlainOverride,
   setCliWidthOverride,
@@ -170,6 +172,8 @@ test("plain output: no rule under the header, sort marks and arrows in words, a 
 
 test("--width fits tables whether or not stdout is a terminal, and clearing it restores the terminal's own width", () => {
   setCliColorEnabledOverride(false);
+  const columnsVariable = process.env.COLUMNS;
+  delete process.env.COLUMNS;
   try {
     const columns = [{ header: "Title" }, { header: "Volume", align: "right" as const }];
     const rows = [["A very long headline that would run past a narrow terminal for sure", "1,200"]];
@@ -178,11 +182,58 @@ test("--width fits tables whether or not stdout is a terminal, and clearing it r
     setCliWidthOverride(40);
     expect(cliTerminalWidth()).toBe(40);
     expect(renderTable(columns, rows).split("\n").every((line) => visibleLength(line) <= 40)).toBe(true);
+    setCliWidthOverride(null);
+    expect(cliTerminalWidth()).toBeNull();
+    // Piped output fits COLUMNS when it is set to a width (`COLUMNS=60 gloom ... | less`); --width still wins.
+    process.env.COLUMNS = "60";
+    expect(cliTerminalWidth()).toBe(60);
+    setCliWidthOverride(40);
+    expect(cliTerminalWidth()).toBe(40);
+    setCliWidthOverride(null);
+    for (const value of ["", "wide", "5", "80x"]) {
+      process.env.COLUMNS = value;
+      expect(cliTerminalWidth(), value).toBeNull();
+    }
   } finally {
     setCliWidthOverride(null);
     setCliColorEnabledOverride(null);
+    if (columnsVariable === undefined) delete process.env.COLUMNS;
+    else process.env.COLUMNS = columnsVariable;
   }
-  expect(cliTerminalWidth()).toBeNull();
+});
+
+test("plain output fitted narrow keeps what a row is (rank, coin, name) on its first line and moves the figures under it", () => {
+  const columns = [
+    { header: "#", align: "right" as const }, { header: "Coin" }, { header: "Name" },
+    { header: "Price USD", align: "right" as const }, { header: "Chg %", align: "right" as const },
+    { header: "7D %", align: "right" as const }, { header: "Vol 24h USD", align: "right" as const },
+  ];
+  const rows = [["1", "BTC", "Bitcoin", "76,410.90", "-1.77%", "-5.75%", "59.17B"], ["7", "HYPE", "Hyperliquid", "89.74", "+0.81%", "+16.54%", "2.52B"]];
+  setCliPlainOverride(true);
+  try {
+    const lines = renderTable(columns, rows, { maxWidth: 32 }).split("\n");
+    expect(lines.every((line) => visibleLength(line) <= 32)).toBe(true);
+    // Each row is heard by its coin and name first, then its figures.
+    expect(lines[1]!.trim().split(/\s+/).slice(0, 3)).toEqual(["1", "BTC", "Bitcoin"]);
+    expect(lines.find((line) => line.includes("HYPE"))!.trim().split(/\s+/).slice(0, 3)).toEqual(["7", "HYPE", "Hyperliquid"]);
+    expect(lines.some((line) => /^\s+Name /.test(line))).toBe(false);
+
+    // A quote table, no rank, whose figures a terminal keeps on the first line and the names under them:
+    // plain output says the symbol and company first, then the price and the changes.
+    const quoteColumns = [{ header: "Symbol" }, { header: "Name" }, { header: "Last", align: "right" as const },
+      { header: "Chg %", align: "right" as const }, { header: "1W %", align: "right" as const }, { header: "Volume", align: "right" as const }];
+    const quoteRows = [["IBIT", "iShares Bitcoin Trust ETF", "$43.10", "-1.20%", "-4.05%", "51.2M"], ["MARA", "MARA Holdings, Inc.", "$15.92", "-3.41%", "+2.10%", "38.2M"]];
+    const quote = renderTable(quoteColumns, quoteRows, { maxWidth: 44 }).split("\n");
+    expect(quote.every((line) => visibleLength(line) <= 44)).toBe(true);
+    expect(quote.find((line) => line.startsWith("IBIT"))).toMatch(/^IBIT\s+iShares Bitcoin Trust ETF\s+\$43\.10$/);
+    expect(quote.find((line) => line.startsWith("MARA"))).toMatch(/^MARA\s+MARA Holdings, Inc\.\s+\$15\.92$/);
+    expect(quote.some((line) => /^\s+Name /.test(line))).toBe(false);
+    // The terminal's own layout is unchanged: figures first, the name under them.
+    setCliPlainOverride(false);
+    expect(renderTable(quoteColumns, quoteRows, { maxWidth: 44 }).split("\n")).toContain("  Name iShares Bitcoin Trust ETF");
+  } finally {
+    setCliPlainOverride(null);
+  }
 });
 
 test("truncateDisplay keeps escape codes balanced and cuts on whole wide glyphs and emoji", () => {
@@ -200,4 +251,38 @@ test("renderDefinitions moves a long term's description under it instead of past
   expect(visibleLength(lines[0]!)).toBeLessThanOrEqual(80);
   expect(lines[0]).toContain("Statement period");
   expect(lines[2]!.indexOf("Statement line")).toBe(lines[0]!.indexOf("Statement period"));
+});
+
+test("plain output to a terminal that reads only ASCII spells out what it cannot show, and its columns still line up", () => {
+  // `quote` under LANG=C printed —, ·, € and ¢, which a cmd.exe code page garbles and which carry the unit.
+  expect(asciiText("SAP SE  €211.25  Corn 447.50¢/bu  US¢  —  Gloom Cloud · OSL")).toBe("SAP SE  EUR211.25  Corn 447.50c/bu  USc  -  Gloom Cloud | OSL");
+  expect(asciiText("CN¥7.12  ¥62,655  £12.30  Société Générale  Ørsted  −1.2  …")).toBe("CNY7.12  JPY62,655  GBP12.30  Societe Generale  Orsted  -1.2  ...");
+  expect(asciiText("plain text\x1b[1m stays\x1b[0m")).toBe("plain text\x1b[1m stays\x1b[0m");
+  setCliPlainOverride(true);
+  setCliAsciiLocaleOverride(true);
+  try {
+    expect(renderTable([{ header: "Symbol" }, { header: "Last", align: "right" }, { header: "After" }], [["SAP:XETRA", "€211.25", ""], ["ZC=F", "447.50¢", "—"]], { maxWidth: null }).split("\n")).toEqual([
+      "Symbol          Last  After",
+      "SAP:XETRA  EUR211.25  -",
+      "ZC=F         447.50c  -",
+    ]);
+  } finally {
+    setCliAsciiLocaleOverride(null);
+    setCliPlainOverride(null);
+  }
+});
+
+test("the locale decides whether the terminal reads UTF-8, and on Windows with none set the console's code page", () => {
+  const never = () => { throw new Error("the code page is not read when a locale is set"); };
+  expect(localeReadsUtf8({ LANG: "C", LC_ALL: "C" }, "linux", never)).toBe(false);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8", LC_ALL: "" }, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "C.utf8" }, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8", LC_ALL: "POSIX" }, "darwin", never)).toBe(false);
+  expect(localeReadsUtf8({ LANG: "de_DE.ISO-8859-1" }, "linux", never)).toBe(false);
+  // Nothing set: left as it is, except on Windows, where the console's code page decides.
+  expect(localeReadsUtf8({}, "linux", never)).toBe(true);
+  expect(localeReadsUtf8({}, "win32", () => 437)).toBe(false);
+  expect(localeReadsUtf8({}, "win32", () => 65001)).toBe(true);
+  expect(localeReadsUtf8({}, "win32", () => null)).toBe(true);
+  expect(localeReadsUtf8({ LANG: "en_US.UTF-8" }, "win32", never)).toBe(true);
 });

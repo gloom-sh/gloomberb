@@ -3,7 +3,7 @@ import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
-  ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
+  listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -269,12 +269,12 @@ test("the line naming a bare symbol's listing names only other companies' venues
     { exchange: "LSE", name: "W.A.G Payment Solutions plc" },
   ];
   expect(listingChoiceNote("EWG", { exchange: "ARCA", name: "iShares MSCI Germany Index Fund" }, ewg))
-    .toBe("EWG = iShares MSCI Germany Index Fund, ARCA (different companies on CSE, LSE)");
+    .toBe("EWG = iShares MSCI Germany Index Fund, NYSE Arca (different companies on the Canadian Securities Exchange, the London Stock Exchange)");
   // Another issuer's fund under the symbol is another company's.
   expect(listingChoiceNote("INDA", { exchange: "BATS", name: "iShares MSCI India ETF" }, [
     { exchange: "BATS", name: "iShares MSCI India ETF" },
     { exchange: "XETRA", name: "Amundi STOXX Europe 600 Banks UCITS ETF Acc" },
-  ])).toBe("INDA = iShares MSCI India ETF, BATS (a different company on XETRA)");
+  ])).toBe("INDA = iShares MSCI India ETF, Cboe BZX (a different company on Xetra)");
   // A US fund's receipt in Buenos Aires is the fund, however it is named, so a symbol that means one thing says nothing.
   const xlk = { exchange: "ARCA", name: "State Street Technology Select Sector SPDR ETF" };
   expect(listingChoiceNote("XLK", xlk, [xlk, { exchange: "BYMA", name: "Technology Select Sector SPDR Fund" }])).toBeNull();
@@ -325,7 +325,21 @@ test("every command agrees with quote on where a symbol trades: a venue search l
   // The one line naming which company a bare CAR went to, and the companies it did not.
   const venues = await listingVenues("CAR", deps);
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, [...venues, { exchange: "ASX", name: "CAR Group Limited" }]))
-    .toBe("CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)");
+    .toBe("CAR = Avis Budget Group, NASDAQ (different companies on Xetra, the Australian Securities Exchange)");
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
     .toBeNull();
+});
+
+test("a list's bare coin code read as a listing says so, as quote does: CORR RIOT,BTC names BTC-USD; RIOT and a named listing are not asked", async () => {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol: string) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, name: "Grayscale Bitcoin Mini Trust ETF", instrumentType: "ETF" });
+    },
+  });
+  const listing = (symbol: string, exchange = "") => ({ symbol, exchange, request: { symbol: exchange ? `${symbol}:${exchange}` : symbol, exchange } });
+  expect(await listCoinNotes([listing("RIOT"), listing("BTC"), listing("ETH", "ARCA")], { dataProvider }))
+    .toEqual(["BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD."]);
+  expect(asked).toEqual(["BTC"]);
 });

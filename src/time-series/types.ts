@@ -265,6 +265,8 @@ export interface ResolvedSeries {
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;
+  /** When the copy the points came from was saved (ms), when its refresh failed and that copy answered. */
+  savedAt?: number;
   /** Listed in the legend so it can be restored, but not drawn. */
   hidden?: boolean;
   /**
@@ -324,6 +326,11 @@ export interface ChartResolutionResult {
   loading: boolean;
   errors: string[];
   warnings: string[];
+  /**
+   * The oldest saved copy a shown series answered from after its refresh
+   * failed (ms), which the chart's footer dates: "saved copy from …".
+   */
+  savedAt?: number;
   /**
    * Where a series' source starts after the range asked for, and why (a
    * publisher's cap on history), as `warnings` also carries it, so a report

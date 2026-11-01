@@ -32,7 +32,7 @@ import {
   type UsageFunction,
 } from "../../telemetry/usage-counts";
 import { debugLog } from "../../utils/debug-log";
-import { startMainThreadStallMonitor } from "../../utils/main-thread-stall";
+import { markStartupComplete, startMainThreadStallMonitor } from "../../utils/main-thread-stall";
 import { measurePerfAsync } from "../../utils/perf-marks";
 
 const appLog = debugLog.createLogger("app");
@@ -161,6 +161,8 @@ export function useAppStartupRuntime({
       } catch (err) {
         logFailure("app.runtime.startup", "Workspace startup hydration failed")(err);
       }
+      // The workspace has its data (or gave up on it): stalls from here on are not startup ones.
+      markStartupComplete();
     })();
   }, [
     autoImportBrokerPositions,

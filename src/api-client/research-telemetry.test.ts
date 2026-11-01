@@ -5,7 +5,6 @@ import { currentTelemetryConfig, reportTelemetryConfig } from "../telemetry/live
 import { installUsageCounter, resetUsageCountsForTests, usageCountsEnabled } from "../telemetry/usage-counts";
 import {
   adoptDesktopHandoff,
-  exposeUpgradePersonalized,
   exposeWallTeaser,
   exposeWebExperiment,
   initializeBrowserResearchActivity,
@@ -92,7 +91,6 @@ test("all surfaces apply usage and environment opt-outs before sending or reserv
       recordResearchActivity("research_viewed", "research");
       recordResearchActivity("onboarding_completed");
       expect(await exposeWallTeaser()).toBeNull();
-      expect(await exposeUpgradePersonalized("upgrade-sheet")).toBeNull();
       await Bun.sleep(0);
       expect(requests).toHaveLength(before);
 

@@ -9,7 +9,8 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import { FIRED_LOG_KEY, readFiredAlerts } from "../alerts/fired-log";
 import { ALERTS_PLUGIN_ID } from "../alerts/constants";
 import { LiveScanClientContext, type LiveScanClient } from "./live-feed";
-import LiveScanPane from "./live-pane";
+import { DEFAULT_LIVE_SCAN } from "./live-model";
+import LiveScanPane, { liveScanColumns } from "./live-pane";
 
 const PANE = "scanner-live:test";
 const NOW = Date.now();
@@ -80,4 +81,37 @@ test("a refresh redraws the matches, and a new match with alerts on goes out as 
   expect(notices[0]!.body).toContain("(15m delayed)");
   const history = readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY));
   expect(history.map((entry) => [entry.kind, entry.symbol, entry.value, entry.source])).toEqual([["live_scan", "NVDA", 2.8, "15 min delayed"]]);
+});
+
+test("the status column takes room only when a shown row has a status", async () => {
+  const ids = (withStatus: boolean) => liveScanColumns(96, DEFAULT_LIVE_SCAN.conditions, withStatus).map((column) => column.id);
+  // With a status it is given room first; without one it takes none, and VS VWAP fits in its place.
+  expect(ids(true)).toContain("status");
+  expect(ids(true)).not.toContain("vwap");
+  expect(ids(false)).not.toContain("status");
+  expect(ids(false)).toContain("vwap");
+
+  const frameOf = async (answer: LiveScanPayload) => {
+    const client: LiveScanClient = { getLiveScan: async () => answer };
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-live-scan-test", { paneId: "scanner-live", instanceId: PANE }));
+    await act(async () => {
+      await tui.render(
+        <TestPaneProvider state={state} paneId={PANE} pluginId="scanner" runtime={createStatefulTestPluginRuntime()}>
+          <LiveScanClientContext value={client}>
+            <LiveScanPane paneId="scanner-live" paneType="scanner-live" focused width={110} height={14} />
+          </LiveScanClientContext>
+        </TestPaneProvider>,
+        { width: 110, height: 14 },
+      );
+    });
+    await settle();
+    return tui.frame();
+  };
+  // A print ten minutes behind the snapshot reads stale in the session; after the close nothing does.
+  const behind = { ...match("AAPL", 1.4), at: NOW - 10 * 60_000 };
+  const live = payload([behind], NOW);
+  expect(await frameOf(live)).toMatch(/AAPL[^\n]*stale/);
+  const closed = await frameOf({ ...live, status: "closed" });
+  expect(closed).toContain("AAPL");
+  expect(closed).not.toContain("STATUS");
 });

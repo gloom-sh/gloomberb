@@ -18,6 +18,8 @@ import {
   type StatItem,
 } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import {
@@ -123,6 +125,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freshnessWarning, setFreshnessWarning] = useState<string | null>(null);
+  // The history's refresh failed and the copy saved at this time (ms) answered instead.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [data, setData] = useState<FredSeriesData | null>(null);
   // Null follows the latest period.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -146,6 +150,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       setLoading(false);
       setError(null);
       setFreshnessWarning(null);
+      setSavedAt(null);
       return;
     }
 
@@ -156,6 +161,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
         setLoading(false);
         setError(null);
         setFreshnessWarning(null);
+        setSavedAt(null);
         return;
       }
     } else {
@@ -165,6 +171,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     setLoading(true);
     setError(null);
     setFreshnessWarning(null);
+    setSavedAt(null);
 
     loadCachedFredSeries(
       request,
@@ -174,12 +181,18 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       }),
     )
       .then((entry) => {
+        // A refusal or a reply that fails validation is thrown by the load, never covered by a saved copy.
+        const saved = entry.source === "stale-fallback";
         setData(entry.data);
-        setFreshnessWarning(entry.stale
-          ? `Cached ${new Date(entry.fetchedAt).toISOString().slice(0, 10)} · refresh failed`
+        // A copy a failed refresh left says when it was saved, in the footer as every pane does;
+        // a series its source has not updated since is a note.
+        setSavedAt(saved ? entry.fetchedAt : null);
+        setFreshnessWarning(entry.stale && !saved
+          ? `Source not updated since ${new Date(entry.fetchedAt).toISOString().slice(0, 10)}.`
           : null);
       })
       .catch((err) => {
+        if (isPermanentClientError(err)) setData(null);
         setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
@@ -199,6 +212,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   // which asks which one when there are several.
   const openTickerChoice = useOpenTickerChoice();
   const relatedTickers = useMemo(() => mapping?.relatedTickers ?? [], [mapping]);
+  usePaneFooter("econ-detail:saved", () => ({ info: savedCopyFooterInfo([savedAt]) }), [savedAt]);
   usePaneFooter("econ-detail:related", () => relatedTickers.length > 0 ? {
     hints: [{
       id: "related",

@@ -3,6 +3,7 @@ import { useSecFilingContent } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
+import { logFailure } from "../../../utils/log-failure";
 import { documentContentTarget, isInlineExhibitDocument } from "./filing-documents";
 
 interface ScopedFilingContentCache {
@@ -41,18 +42,32 @@ export function buildInlineFilingContentTargets(
     .map((document) => documentContentTarget(filing, document));
 }
 
+/** Filings whose content is read at once: the queue's head and the next ones read ahead. */
+const CONTENT_READS_AT_ONCE = 4;
+
+/** The first `count` targets not cached yet, once each, in the caller's priority order. */
+export function nextUncachedFilingContentTargets(
+  targets: readonly SecFilingItem[],
+  cache: ReadonlyMap<string, string | null>,
+  count: number,
+): SecFilingItem[] {
+  const seen = new Set<string>();
+  const next: SecFilingItem[] = [];
+  for (const target of targets) {
+    if (next.length >= count) break;
+    const key = target.accessionNumber;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!cache.has(key)) next.push(target);
+  }
+  return next;
+}
+
 export function nextUncachedFilingContentTarget(
   targets: readonly SecFilingItem[],
   cache: ReadonlyMap<string, string | null>,
 ): SecFilingItem | null {
-  const seen = new Set<string>();
-  for (const target of targets) {
-    const key = target.accessionNumber;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (!cache.has(key)) return target;
-  }
-  return null;
+  return nextUncachedFilingContentTargets(targets, cache, 1)[0] ?? null;
 }
 
 export function useSecFilingContentCache({
@@ -81,11 +96,28 @@ export function useSecFilingContentCache({
     return () => { retryGeneration.current += 1; };
   }, [scopeKey]);
 
-  const nextTarget = useMemo(
-    () => nextUncachedFilingContentTarget(targets, contentCache),
+  const upcoming = useMemo(
+    () => nextUncachedFilingContentTargets(targets, contentCache, CONTENT_READS_AT_ONCE),
     [contentCache, targets],
   );
+  const nextTarget = upcoming[0] ?? null;
   const contentEntry = useSecFilingContent(nextTarget);
+
+  // The queue takes one filing at a time; the next few are read beside it, and
+  // taken from the coordinator once the head settles (below). Each is asked
+  // once per scope: the coordinator shares a read in flight and keeps it.
+  const readAhead = useRef<{ scopeKey: string; keys: Set<string> }>({ scopeKey, keys: new Set() });
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator) return;
+    if (readAhead.current.scopeKey !== scopeKey) readAhead.current = { scopeKey, keys: new Set() };
+    const asked = readAhead.current.keys;
+    for (const target of upcoming.slice(1)) {
+      if (asked.has(target.accessionNumber)) continue;
+      asked.add(target.accessionNumber);
+      void coordinator.loadSecFilingContent(target).catch(logFailure("sec.filing-content", "Reading filing content ahead failed"));
+    }
+  }, [scopeKey, upcoming]);
 
   useEffect(() => {
     if (!nextTarget) return;

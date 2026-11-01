@@ -2,9 +2,11 @@ import { logFailure } from "../utils/log-failure";
 import { apiClient } from "../api-client";
 import type { AttentionAction, AttentionCountsPayload } from "../api-client/telemetry";
 import { CHART_COMPOSER_PANE_ID, TICKER_RESEARCH_PANE_ID, type TelemetryConfig } from "../types/config";
+import { attentionNoticeShown } from "./attention-setting";
 import { telemetryOptedOut } from "./crash-reports";
-import { subscribeTelemetryConfig } from "./live-config";
+import { currentTelemetryConfig, subscribeTelemetryConfig } from "./live-config";
 import { automationActive } from "./usage-counts";
+import { cloudSyncController } from "../sync/controller";
 
 const FLUSH_MS = 60_000;
 const MAX_AGE_MS = 120_000;
@@ -13,12 +15,19 @@ const MAX_EVENTS = 100;
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.^_:/=-]{0,63}$/;
 const ACTIONS = new Set<AttentionAction>(["des", "chart", "quote", "option_chain", "watchlist_add"]);
 
-/** Ticker-level counting always requires its own explicit consent. */
+/**
+ * Whether `account`'s ticker opens count. On by default: an explicit `true`
+ * counts, `false` never does, and while the setting is untouched the account
+ * counts only once this installation has drawn the notice for it.
+ */
 export function attentionCountsEnabled(
   config: { telemetry?: TelemetryConfig } | null | undefined,
+  account: string | null,
   env: Record<string, string | undefined> = {},
 ): boolean {
-  return config?.telemetry?.attention === true && !telemetryOptedOut(env);
+  const telemetry = config?.telemetry;
+  if (telemetryOptedOut(env) || telemetry?.attention === false) return false;
+  return telemetry?.attention === true || attentionNoticeShown(telemetry, account);
 }
 
 interface AttentionHost {
@@ -136,24 +145,73 @@ export class AttentionCounter {
 }
 
 let counter: AttentionCounter | null = null;
+let collectionAllowed: (() => boolean) | null = null;
+
+interface AttentionCounterOptions {
+  /** False under a privacy signal (`DO_NOT_TRACK`, browser Do Not Track or GPC): nothing counts and no notice shows. */
+  allowed(): boolean;
+  /** The config the surface launched with; the app's live switches replace it once reported. */
+  launchConfig(): { telemetry?: TelemetryConfig } | null | undefined;
+  /**
+   * Whether this surface has the signed-in account's synced settings, so an
+   * Attention Counts off made on another device has arrived before anything
+   * counts. Defaults to this session's cloud sync having pulled them; without
+   * cloud sync nothing counts. A popped-out desktop window gets them from the
+   * main window instead.
+   */
+  accountSettingsPulled?(): boolean;
+}
+
+function cloudSettingsPulled(): boolean {
+  return cloudSyncController.getStatus().lastPullAt !== null;
+}
 
 /** Installed only by interactive terminal, desktop and web entry points. */
-export function installAttentionCounter(isEnabled: () => boolean): () => void {
+export function installAttentionCounter({
+  allowed,
+  launchConfig,
+  accountSettingsPulled = cloudSettingsPulled,
+}: AttentionCounterOptions): () => void {
   counter?.dispose();
   const next = new AttentionCounter({
-    isEnabled,
+    isEnabled: () => allowed()
+      && accountSettingsPulled()
+      && attentionCountsEnabled(currentTelemetryConfig(launchConfig()), apiClient.getCurrentUser()?.id ?? null),
     verifiedSession: () => apiClient.getVerifiedSessionIdentity(),
     send: (payload, signal) => apiClient.reportAttentionCounts(payload, signal),
   });
   counter = next;
+  collectionAllowed = allowed;
   const config = subscribeTelemetryConfig(() => next.refresh());
   const auth = apiClient.subscribeCurrentUser(() => next.refresh());
   return () => {
     next.dispose();
     config();
     auth();
-    if (counter === next) counter = null;
+    if (counter === next) {
+      counter = null;
+      collectionAllowed = null;
+    }
   };
+}
+
+/**
+ * Whether this surface counts at all: an interactive entry point installed
+ * the collector and no privacy signal is set. The notice shows only here, so
+ * CLI commands, `shot`, tests and opted-out environments never draw it.
+ */
+export function attentionCollectionAvailable(): boolean {
+  try {
+    return counter !== null && collectionAllowed?.() === true;
+  } catch {
+    // Intentional ignore: an unreadable privacy signal counts as set.
+    return false;
+  }
+}
+
+/** Sends what the installed counter holds now instead of after its delay. */
+export async function __flushAttentionCountsForTests(): Promise<void> {
+  await counter?.flush();
 }
 
 export function captureAttentionAction(): (symbol: string, action: AttentionAction) => void {

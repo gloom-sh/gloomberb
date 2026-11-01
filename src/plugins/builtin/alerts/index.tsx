@@ -38,9 +38,8 @@ import {
   parseAlertCommandValues,
   parseAlertShortcutValues,
 } from "./command";
-import { POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
+import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
 import { alertHistoryLockNote, alertsHeadless } from "./headless";
-import { AlertsPane } from "./pane";
 import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
@@ -81,7 +80,7 @@ function slashSpellsListing(symbol: string): boolean {
 }
 
 export const alertsPlugin: GloomPlugin = {
-  id: "alerts",
+  id: ALERTS_PLUGIN_ID,
   name: "Alerts",
   version: "1.0.0",
   description: "Price, valuation, daily technical and event alerts",
@@ -278,11 +277,12 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news, IV levels, hiring and market moves",
+      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news, IPOs, IV levels, hiring and market moves",
       keywords: [
         "alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before",
         "filing", "filings", "sec", "8-k", "news", "keyword", "analyst", "52-week", "unusual volume", "volume",
         "short interest", "insider", "catalyst", "implied volatility", "iv spike", "iv level", "risk reversal", "skew", "options flow", "perps", "funding", "hiring", "jobs",
+        "ipo", "going public", "listing",
       ],
       category: "data",
       wizardLayout: "form",
@@ -463,7 +463,7 @@ export const alertsPlugin: GloomPlugin = {
       reportLockNote: alertHistoryLockNote,
       name: "Alerts",
       icon: "A",
-      component: AlertsPane,
+      get component(): typeof import("./pane").AlertsPane { const { AlertsPane } = require("./pane"); return AlertsPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 20 },

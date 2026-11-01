@@ -1,4 +1,4 @@
-import { ema, rsi, sma, type IndexedValue } from "../../../time-series/studies";
+import { ema, rsi, sma, type IndexedValue } from "../../../time-series/studies/indicators";
 
 /** One daily bar as the rules see it. Open is optional; fills fall back to the close. */
 export interface BacktestBar {
@@ -9,6 +9,8 @@ export interface BacktestBar {
   close: number;
   /** The bar's day had not ended when it was served: its close is the latest price. */
   partial?: true;
+  /** A future's session that closed before its settlement was in: its close is the last trade. */
+  unsettled?: true;
 }
 
 export type Operand =

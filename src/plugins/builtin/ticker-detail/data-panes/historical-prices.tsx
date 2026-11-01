@@ -24,7 +24,8 @@ import {
   barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
+  priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
@@ -130,7 +131,9 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
-      return date ? [{ point: pricePointValues(point), date, sourceIndex, partial: point.partial === true, filled: point.filled === true }] : [];
+      return date ? [{
+        point: pricePointValues(point), date, sourceIndex, partial: point.partial === true, filled: point.filled === true, contract: point.contract,
+      }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   const size = historyBarSize(sorted.map((entry) => entry.date.getTime()));
@@ -141,10 +144,21 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   const times = sorted.map((entry) => entry.date.getTime());
   const interval = size === "intraday" ? null : size;
   const afterGap = historyBarsAfterHole(times, interval);
-  const gapNotices = [historyMissingPeriodsNote(times, interval), historyChangeBaseNote(times, interval)]
-    .filter((notice): notice is string => notice != null);
+  // A continuous future's bar on another contract than the bar before has no change: two months' prices are no move.
+  let held: string | undefined;
+  const rolled = sorted.map((entry) => {
+    const roll = !!entry.contract && !!held && held !== entry.contract;
+    held = entry.contract ?? held;
+    return roll;
+  });
+  const rolls = sorted.flatMap((entry, index) => rolled[index] ? [`${entry.date.toISOString().slice(0, 10)} (${entry.contract})`] : []);
+  const gapNotices = [
+    historyMissingPeriodsNote(times, interval),
+    historyChangeBaseNote(times, interval),
+    rolls.length > 0 ? `No CHG at ${rolls.length === 1 ? "the roll" : "each roll"} to a new contract: ${rolls.join(", ")}` : null,
+  ].filter((notice): notice is string => notice != null);
   const rows = sorted.map((entry, index) => {
-    const previous = sorted[index - 1]?.point;
+    const previous = rolled[index] ? undefined : sorted[index - 1]?.point;
     const { point, date, sourceIndex, filled } = entry;
     const newest = index === sorted.length - 1;
     const partial = newest && (!!forming || dayToDate);
@@ -257,6 +271,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     [points, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
+  const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);
   const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({
     ...row.point, date: row.time, partial: row.partial, filled: row.filled,
   }))), [rows]);
@@ -356,7 +371,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    notices: [integrityNotice, wickNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -404,6 +419,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],
         ...(allStart ? [["Source starts", allStart]] : []),
         ...(integrityNotice ? [["Warning", integrityNotice]] : []),
+        ...(wickNotice ? [["Warning", wickNotice]] : []),
         ...gapNotices.map((notice) => ["Gap note", notice]),
         ...(volumeNotice ? [["Volume note", volumeNotice]] : []),
         ...(error ? [["Error", error]] : []),

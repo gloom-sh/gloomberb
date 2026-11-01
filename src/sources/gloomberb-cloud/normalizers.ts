@@ -86,8 +86,8 @@ export function mapQuote(
   const changePercent = !impossibleClose && typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)
     ? quote.changePercent
     : Number.NaN;
-  // A generic future (VX1, TY1) reads in points or 32nds, and an index future's
-  // continuous symbol or contract (ES=F, SXOZ26.CME) in points, not dollars.
+  // Generics, continuous symbols and listed contracts share their root's
+  // price basis: index futures in points and Treasury futures in 32nds.
   const futuresBasis = isNonFutureType(quote.instrumentType) ? null
     : futuresListingPriceBasis(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
   const priceObservation = quote.priceBasis === "nav" ? "nav" : undefined;
@@ -234,6 +234,11 @@ function venueVolume(value: unknown): { venueVolume: { venue: string; volume: nu
     : null;
 }
 
+/** What a served bar's volume counts, when it is a short plain phrase (`aggregate`, `3 spot venues`). */
+function volumeBasis(value: unknown): { volumeBasis: string } | null {
+  return typeof value === "string" && /^[a-z0-9][a-z0-9 ]{0,31}$/i.test(value.trim()) ? { volumeBasis: value.trim() } : null;
+}
+
 /**
  * One served bar. `coin`: the bars are a coin's, which trades every hour of every day. Its intraday volume is the
  * value traded in the bar on major spot venues, and a bar no venue reported has none rather than 0, so a 0 (from an
@@ -254,11 +259,16 @@ export function mapPricePoint(
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: coin && point.volume === 0 ? undefined : point.volume,
     ...(venueVolume(point.venueVolume) ?? {}),
+    ...(volumeBasis(point.volumeBasis) ?? {}),
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),
+    ...(typeof point.contract === "string" && FUTURES_CONTRACT_CODE.test(point.contract) ? { contract: point.contract } : {}),
   };
 }
+
+/** A listed contract as a continuous future's bar names it: root, month letter and year (NGZ26, ZQF27). */
+const FUTURES_CONTRACT_CODE = /^[A-Z0-9]{1,4}[FGHJKMNQUVXZ]\d{2}$/;
 
 /** Per-share bases the statistics block serves beside its multiples. */
 const CLOUD_PER_SHARE_BASES = ["forwardEps", "dividendRate"] as const;
@@ -361,6 +371,11 @@ export function isEmptyCloudStatus(
   status: CloudMarketResponse<unknown>["status"],
 ): boolean {
   return status === "empty" || status === "unsupported";
+}
+
+/** The service answered that its own source failed: `retryable_error`, or `fatal_error`, its catch-all for an upstream error. */
+export function isCloudSourceFailure(status: CloudMarketResponse<unknown>["status"]): boolean {
+  return status === "retryable_error" || status === "fatal_error";
 }
 
 export function mapBatchError<T>(

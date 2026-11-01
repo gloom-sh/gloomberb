@@ -197,6 +197,55 @@ describe("financial ratios", () => {
     expect(annual.rows.find((row) => row.id === "net-debt-ebitda:1")!.label).toBe("÷ EBITDA");
   });
 
+  test("IFRS net debt and EV include the balance sheet's leases, a US GAAP filer's operating leases stay out, and a row says which", () => {
+    // IAG's years in EUR: borrowings, IFRS 16 leases beside them, cash and short-term investments, EBITDA.
+    const B = 1e9;
+    const year = (date: string, debt: number, leases: number | undefined, cash: number, ebitda: number): FinancialStatement => ({
+      date, currency: "EUR", dateSource: "provider", totalDebt: debt * B, longTermDebt: debt * 0.8 * B, currentDebt: debt * 0.2 * B,
+      capitalLeaseObligations: leases === undefined ? undefined : leases * B, cashCashEquivalentsAndShortTermInvestments: cash * B,
+      ebitda: ebitda * B, ordinarySharesNumber: 4.9 * B,
+    });
+    const annual = (...annualStatements: FinancialStatement[]) => createTestFinancials({
+      quote: createTestQuote({ symbol: "IAG", currency: annualStatements[0]!.currency! }), annualStatements, quarterlyStatements: [],
+    });
+    const iag = annual(year("2023-12-31", 7.115, undefined, 6.806, 6.214), year("2024-12-31", 8.699, 8.646, 9.799, 6.829), year("2025-12-31", 7.272, 6.995, 8.29, 7.951));
+    const leverage = RATIO_TABS.find((tab) => tab.key === "leverage")!;
+    const table = ratioTableForFinancials(iag, leverage, "annual");
+    const netDebt = table.cells.get("net-debt-ebitda")!;
+    // -1.02bn and -0.13x without the leases.
+    expect(netDebt[0]!.inputs[0] as number / B).toBeCloseTo(7.272 + 6.995 - 8.29);
+    expect(netDebt[0]!.inputs[1]).toBe(6.995 * B);
+    expect(netDebt[0]!.value).toBeCloseTo((7.272 + 6.995 - 8.29) / 7.951);
+    // A balance sheet without its lease line has no net debt, never one without leases beside years with them.
+    expect(netDebt[2]).toEqual({ value: "not-reported", inputs: ["not-reported", "not-reported", 6.214 * B] });
+    expect(table.rows.filter((row) => row.kind === "input").slice(0, 3).map((row) => row.label)).toEqual(["Net Debt", "incl. leases", "\u00f7 EBITDA"]);
+    // A total that already holds the lease line counts the leases once.
+    const held = annual({ ...year("2025-12-31", 7.272, 6.995, 8.29, 7.951), totalDebt: (7.272 + 6.995) * B });
+    expect(ratioTableForFinancials(held, leverage, "annual").cells.get("net-debt-ebitda")![0]!.inputs[0] as number / B).toBeCloseTo(7.272 + 6.995 - 8.29);
+    // Valuation's EV is market cap plus the same net debt.
+    const valuation = ratioTableForFinancials(iag, RATIO_TABS.find((tab) => tab.key === "valuation")!, "annual", [day("2025-12-31", 4)]);
+    expect(valuation.cells.get("ev-ebitda")![0]!.inputs[0] as number / B).toBeCloseTo(4 * 4.9 + 7.272 + 6.995 - 8.29);
+    // Delta's statements are dated by its 10-Q: finance leases are in total debt, operating leases are not added.
+    const delta = annual({
+      date: "2026-09-30", currency: "USD", dateSource: "sec", totalDebt: 12.851 * B, capitalLeaseObligations: 5.984 * B,
+      cashCashEquivalentsAndShortTermInvestments: 3.787 * B, ebitda: 9.3 * B,
+    });
+    const gaap = ratioTableForFinancials(delta, leverage, "annual");
+    expect(gaap.cells.get("net-debt-ebitda")![0]).toEqual({ value: (12.851 - 3.787) / 9.3, inputs: [(12.851 - 3.787) * B, 5.984 * B, 9.3 * B] });
+    expect(gaap.rows.find((row) => row.id === "net-debt-ebitda:1")!.label).toBe("excl. op. leases");
+    // The basis follows the standard the issuer reports in, not the form: Alibaba's 20-F is US GAAP, though no
+    // 10-K or 10-Q dates its rows.
+    const alibaba = annual({
+      date: "2026-03-31", currency: "CNY", dateSource: "provider", accountingStandard: "us-gaap", totalDebt: 180 * B,
+      capitalLeaseObligations: 21 * B, cashCashEquivalentsAndShortTermInvestments: 500 * B, ebitda: 190 * B,
+    });
+    expect(ratioTableForFinancials(alibaba, leverage, "annual").rows.find((row) => row.id === "net-debt-ebitda:1")!.label)
+      .toBe("excl. op. leases");
+    // No lease line anywhere: no row about them.
+    expect(ratioTableForFinancials(annual(year("2025-12-31", 7.272, undefined, 8.29, 7.951)), leverage, "annual")
+      .rows.filter((row) => row.def.id === "net-debt-ebitda").map((row) => row.label)).toEqual(["Net Debt / EBITDA", "Net Debt", "\u00f7 EBITDA"]);
+  });
+
   test("liquidity's runway reads the months ticker reads, at the quarter's burn and the trailing year's", () => {
     // A fiscal year to December, its last quarter's year on file, and an inflow quarter that turns the burn off.
     const quarter = (date: string, operatingCashFlow: number, cash: number): FinancialStatement => ({

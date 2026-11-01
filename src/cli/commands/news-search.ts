@@ -72,14 +72,30 @@ export function newsFallbackText(symbol: string): string | null {
 }
 
 /**
- * The stories matching the text, in the service's order: stories with every
- * word in the headline first, then the ones with some only in the summary,
- * newest first within each. The service holds stories back from an account
+ * Stories newest first, as `news <words>` lists them. The service picks the
+ * best matches (every word in the headline before words only in the summary);
+ * the list is then read by date, which its help promises. A story with no
+ * date goes last; equal dates keep the service's order.
+ */
+function newestFirst(articles: readonly NewsArticle[]): NewsArticle[] {
+  const time = (article: NewsArticle) => {
+    const at = new Date(article.publishedAt as Date | string | number).getTime();
+    return Number.isFinite(at) ? at : -Infinity;
+  };
+  return articles.map((article, index) => ({ article, index, at: time(article) }))
+    .sort((left, right) => right.at - left.at || left.index - right.index)
+    .map(({ article }) => article);
+}
+
+/**
+ * The stories matching the text, newest first (`newestFirst`): the service
+ * chooses them, stories with every word in the headline ahead of the ones with
+ * some only in the summary. The service holds stories back from an account
  * without real-time access, as every other news request.
  */
 export async function searchNewsStories(text: string, limit: number, topics?: readonly string[]): Promise<NewsArticle[]> {
   const response = await apiClient.searchCloudNews(text, limit, topics);
-  return response.items.map((item) => mapCloudNewsArticle(item));
+  return newestFirst(response.items.map((item) => mapCloudNewsArticle(item)));
 }
 
 /** A search's stories, and whether they are its closest ones because no story has every word. */
@@ -96,7 +112,10 @@ export interface NewsSearchAnswer {
  */
 export async function searchClosestNewsStories(text: string, limit: number): Promise<NewsSearchAnswer> {
   const response = await apiClient.searchCloudNews(text, limit, undefined, { closest: true });
-  return { found: response.items.map((item) => mapCloudNewsArticle(item)), closest: response.match === "closest" };
+  const found = response.items.map((item) => mapCloudNewsArticle(item));
+  // The closest stories stay most words first, as their heading says; a match of every word is read by date.
+  const closest = response.match === "closest";
+  return { found: closest ? found : newestFirst(found), closest };
 }
 
 /** What the heading says of a search no story has every word of. */

@@ -1,7 +1,7 @@
 import type { ChartSpec, ChartStudyKind, ChartStudySpec, ResolvedSeries } from "../../../time-series/types";
 import { observationDate } from "../../../time-series/price-comparison";
 import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
-import { DEFAULT_PROFILE_ROWS, vwapAnchors, withVwapAnchors } from "../../../time-series/studies";
+import { DEFAULT_PROFILE_ROWS, vwapAnchors, withVwapAnchors } from "../../../time-series/studies/vwap";
 import { reconcilePanels } from "./chart-spec-edit";
 import { CHART_FIELD_IDS } from "./series-expression";
 

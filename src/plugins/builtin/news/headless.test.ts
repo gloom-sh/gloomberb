@@ -171,3 +171,23 @@ test("the text report lists a story's tickers and prints every time to the secon
     { publishedAt: "2026-09-04T20:00:00.000Z", tickers: ["AMD"] },
   ]);
 });
+
+test("fn CN prints a summary on one line under its row and none that repeats the headline, while exports keep each summary whole", async () => {
+  const losses = { ...story("losses", "negative", 33, "2026-10-15T11:52:00.000Z"),
+    headline: "September 2026 Monthly Release",
+    summary: "Allstate estimated September catastrophe losses at $220 million,\n\nbringing third-quarter losses to $1.65 billion." };
+  const echo = { ...story("echo", "neutral", 0, "2026-10-14T09:00:00.000Z"), headline: "Allstate declares dividend", summary: "Allstate declares dividend" };
+  const definition = createTickerNewsHeadless({
+    loadNews: async () => ({ items: [losses, echo], nextCursor: null }),
+    now: () => new Date("2026-10-16T00:00:00.000Z"),
+  });
+  const loadArgs = args("ALL", { sentiment: "any", minImportance: 0, limit: 50 });
+  const result = await definition.load(loadArgs, context);
+  const text = renderHeadlessPaneText(definition, result, loadArgs, "CN").split("\n");
+  const row = text.findIndex((line) => line.includes("September 2026 Monthly Release"));
+  expect(text[row + 1]).toBe("  Allstate estimated September catastrophe losses at $220 million, bringing third-quarter losses to $1.65 billion.");
+  const dividend = text.findIndex((line) => line.includes("Allstate declares dividend"));
+  expect(text[dividend + 1]?.trim().startsWith("Allstate declares dividend")).toBe(false);
+  const json = serializeHeadlessPaneResult(definition, result) as { items: Array<{ summary: string | null }> };
+  expect(json.items.map((item) => item.summary)).toEqual([losses.summary, echo.summary]);
+});

@@ -55,6 +55,21 @@ function declaredOptions(command: CliCommandDef): Map<string, DeclaredOption> | 
 const EXPLAIN_HINT = "--explain follows the reports of fn <function> and portfolio show. "
   + "gloom catalog explain <term> prints what one term means; gloom catalog glossary lists every term.";
 
+/** Options people reach for to see a price in another currency, which no command takes: `fx` converts. */
+const CURRENCY_OPTIONS = new Set(["--currency", "--ccy", "--cur", "--convert", "--fx", "--to-currency", "--in-currency"]);
+
+/**
+ * `quote SBLK --currency EUR`: prices are in each listing's currency, and
+ * `fx` converts an amount, so the error names it, with the code given.
+ */
+function currencyOptionHint(flag: string, args: readonly string[]): string | null {
+  if (!CURRENCY_OPTIONS.has(flag)) return null;
+  const at = args.findIndex((arg) => arg === flag || arg.startsWith(`${flag}=`));
+  const typed = (args[at]?.includes("=") ? args[at]!.slice(flag.length + 1) : args[at + 1] ?? "").trim().toUpperCase();
+  const code = /^[A-Z]{3}$/.test(typed) ? typed : "EUR";
+  return `Prices are in each listing's own currency. To convert an amount, use fx: gloom fx 100 USD/${code}.`;
+}
+
 function failUnknownOption(
   command: BuiltinCliCommandDef,
   flag: string,
@@ -65,7 +80,7 @@ function failUnknownOption(
   const suggestion = suggestCliOption(flag, flags);
   const help = `See gloom help ${command.name}.`;
   fail(`Unknown option ${flag} for ${command.name}.`, [
-    command.unknownOptionHint?.(flag, args) ?? (flag === "--explain" ? EXPLAIN_HINT : ""),
+    command.unknownOptionHint?.(flag, args) ?? currencyOptionHint(flag, args) ?? (flag === "--explain" ? EXPLAIN_HINT : ""),
     suggestion ? `Did you mean ${suggestion}?` : "",
     flags.length > 0 ? `Options: ${flags.join(", ")}. ${help}` : `${command.name} takes no options. ${help}`,
   ].filter(Boolean).join("\n"));

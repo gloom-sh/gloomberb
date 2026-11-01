@@ -1,10 +1,13 @@
-import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
+import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from "bun:test";
+import * as screenshotRender from "./screenshot-render";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { assessPaneScreenshot, shotStatusIssues } from "./screenshot-assessment";
 import type { PaneScreenshotResult } from "./screenshot-types";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
-import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { appendDomReportFooter, buildDomFunctionReport, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { askgLockNote } from "../../plugins/builtin/cloud/askg/lock-note";
+import type { MarketContext } from "../types";
 import { getPaneFunctionCapability } from "./capabilities";
 import { researchModule } from "../../plugins/builtin/research";
 import { filingEventsModule } from "../../plugins/builtin/filing-events";
@@ -394,3 +397,51 @@ test("a rendered pane with rows beside an error marker has data for its symbol a
   expect(bare.data.unavailableSymbols).toEqual(["AAPL"]);
   expect(reportFailure(bare.data, "fn DES AAPL", { tables: bare.tables })?.code).toBe("no_data");
 });
+
+test("a pane the sign-in wall covers whole reports the wall at once without a session, as the rendered wall reports it", async () => {
+  const { resolved, context } = askgFunction();
+  const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+  delete process.env.GLOOMBERB_SESSION_TOKEN;
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "which dividend stocks are cheap");
+    expect(report.data).toMatchObject({ locked: "sign-in", empty: true, complete: false });
+    expect(report.data.freshness).toBeUndefined();
+    expect(report.text).toStartWith("Ask Gloom\n\nAsk Gloom (ASKG in the app) needs only a free, verified Gloom account: log in or sign up free");
+    expect(appendDomReportFooter(report.text, domReportView(report.data), report.data.freshness))
+      .toEndWith("Rendered view: the pane is locked, so no values were read.");
+    expect(reportFailure(report.data, "fn ASKG")?.code).toBe("no_data");
+  } finally {
+    if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+    else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+  }
+});
+
+test("with a session, the same pane is rendered and answers, never the sign-in wall", async () => {
+  const { resolved, context } = askgFunction();
+  const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+  process.env.GLOOMBERB_SESSION_TOKEN = "session-fixture";
+  const render = spyOn(screenshotRender, "renderDesktopShot").mockImplementation(async () => { throw new Error("Capture renderer reached"); });
+  try {
+    const report = await buildDomFunctionReport(resolved, context, "which dividend stocks are cheap");
+    expect(render).toHaveBeenCalledTimes(1);
+    // The renderer's own failure, not the lock note.
+    expect(report.data.locked).toBeUndefined();
+    expect(report.text).toContain("Capture renderer reached");
+    expect(report.text).not.toContain("needs only a free, verified Gloom account");
+  } finally {
+    render.mockRestore();
+    if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+    else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+  }
+});
+
+/** ASKG as fn resolves it, with a market context that holds no saved session. */
+function askgFunction() {
+  const resolved = {
+    token: "ASKG", label: "Ask Gloom", options: {}, capability: { id: "askg-pane" }, instance: { settings: {} },
+    // Rendering it would need a browser; a pane that reaches the renderer here fails the test.
+    pane: { id: "askg", signInWall: true, reportLockNote: askgLockNote, component: () => { throw new Error("rendered"); } },
+  } as unknown as ResolvedPaneFunction;
+  const context = { persistence: { pluginState: { get: () => null } }, config: {}, dataProvider: {} } as unknown as MarketContext;
+  return { resolved, context };
+}

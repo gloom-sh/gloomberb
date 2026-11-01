@@ -103,8 +103,11 @@ function finiteOrFallback(value: number | undefined, fallback: number): number {
 }
 
 function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number, range?: QuoteSessionRange | null): PricePoint {
-  // A later quote cannot establish which reported OHLC field was wrong.
-  if (pricePointIntegrity(latest)) return latest;
+  if (pricePointIntegrity(latest)) {
+    // A later quote cannot establish which reported OHLC field was wrong, unless it names the bar's whole session: its
+    // open, range and price are the bar (GOGL's 2026-10-30 daily bar, served with a high under its open).
+    return range?.open === undefined ? latest : { ...latest, open: range.open, high: range.high, low: range.low, close: quotePrice };
+  }
   const open = finiteOrFallback(latest.open, latest.close);
   const high = finiteOrFallback(latest.high, Math.max(open, latest.close));
   const low = finiteOrFallback(latest.low, Math.min(open, latest.close));

@@ -7,7 +7,6 @@ import {
   RESEARCH_SEARCH_PANE_ID,
   RESEARCH_SEARCH_TEMPLATE_ID,
 } from "./model";
-import { ResearchSearchPane } from "./pane";
 
 const description =
   "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.";
@@ -40,7 +39,7 @@ export const researchSearchPlugin: GloomPlugin = {
       reportFreshness: { status: "not-a-feed", basis: "search results" },
       name: "Research Search",
       icon: "RS",
-      component: ResearchSearchPane,
+      get component(): typeof import("./pane").ResearchSearchPane { const { ResearchSearchPane } = require("./pane"); return ResearchSearchPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 118, height: 32 },

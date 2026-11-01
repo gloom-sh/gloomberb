@@ -505,13 +505,46 @@ function coversLatestYear(ttm: FinancialTableStatement, latestYear: FinancialSta
   return days <= 7;
 }
 
+/** Counts of the shares a company has issued or has outstanding, which are never zero; treasury shares can be. */
+const OUTSTANDING_COUNT_FIELDS = ["basicShares", "dilutedShares", "shareIssued", "ordinarySharesNumber"] as const;
+
+/**
+ * Share counts that cannot be the company's: zero, or under a thousandth of its
+ * typical count (IAG's 4,642 for Q3 2025, millions read as shares, which shows
+ * as 0.00 bn and a fall of 100%). They are missing, not a value to grow from.
+ */
+function withoutImpossibleShareCounts(
+  annualStatements: FinancialStatement[],
+  quarterlyStatements: FinancialStatement[],
+): { annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] } {
+  const all = [...annualStatements, ...quarterlyStatements];
+  const floors = new Map<string, number>();
+  for (const field of OUTSTANDING_COUNT_FIELDS) {
+    const counts = all.map((row) => row[field]).filter((value): value is number => typeof value === "number" && value > 0).sort((a, b) => a - b);
+    floors.set(field, counts.length ? counts[Math.floor(counts.length / 2)]! / 1000 : 0);
+  }
+  const impossible = (row: FinancialStatement, field: typeof OUTSTANDING_COUNT_FIELDS[number]) => {
+    const value = row[field];
+    return typeof value === "number" && (value <= 0 || value < floors.get(field)!);
+  };
+  const clean = (rows: FinancialStatement[]) => rows.map((row) => {
+    const drop = OUTSTANDING_COUNT_FIELDS.filter((field) => impossible(row, field));
+    if (!drop.length) return row;
+    const next = { ...row };
+    for (const field of drop) delete next[field];
+    return next;
+  });
+  return { annualStatements: clean(annualStatements), quarterlyStatements: clean(quarterlyStatements) };
+}
+
 export function selectFinancialStatements(
   period: FinancialPeriod,
   statement: string,
-  annualStatements: FinancialStatement[],
-  quarterlyStatements: FinancialStatement[],
+  servedAnnual: FinancialStatement[],
+  servedQuarterly: FinancialStatement[],
   limit = period === "annual" ? 5 : 6,
 ) {
+  const { annualStatements, quarterlyStatements } = withoutImpossibleShareCounts(servedAnnual, servedQuarterly);
   // A period with nothing on this statement (a fiscal year-end balance point on
   // the income statement) would render as an all-dash column.
   const tabRows = FINANCIAL_SUB_TABS.find((tab) => tab.key === statement)?.rows;

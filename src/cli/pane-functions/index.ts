@@ -46,6 +46,7 @@ import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-f
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import { shotOptionRefusal } from "./shot-options";
+import { listingChangeLine } from "../../tickers/listing-fate";
 import {
   GLOSSARY,
   glossaryRecord,
@@ -312,7 +313,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       let quoted: ReturnType<typeof loadListingQuoteAnswer> | null = null;
       const quoteAnswer = listing ? () => quoted ??= loadListingQuoteAnswer(context.dataProvider, listing) : null;
       const fate = listing && quoteAnswer && isTickerLinkPeer(resolved.instance, registry.panes)
-        ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote))
+        ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote), { successor: true })
         : null;
       const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
@@ -356,7 +357,10 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const data = glossary
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
-      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
+      // What became of the company that had the symbol (GOGL), as `quote` says it, leads.
+      const successor = fate ? listingChangeLine(await fate()) : null;
+      // A note the listing and the report both make (a coin's code charted as a fund) is said once.
+      const warnings = [...new Set([...successor ? [successor] : [], ...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []])];
       // A report with no data is printed as it is, and fails: exit 1, and `ok: false` in JSON with the reason.
       const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), {
         failsWithoutData: resolved.headless?.failsWithoutData, tables: report.tables });

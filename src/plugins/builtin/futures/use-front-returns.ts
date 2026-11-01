@@ -4,6 +4,9 @@ import type { DataProvider } from "../../../types/data-provider";
 import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import type { PricePoint } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
+import { coalescedBump } from "./coalesced-bump";
+import { readsInBatches } from "../../../market-data/batched-reads";
+import { boardReadGate } from "./board-reads";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
@@ -33,8 +36,6 @@ const HISTORY_TTL_MS = 30 * 60_000;
  * once a minute, not once a tick.
  */
 const HISTORY_RETRY_MS = 60_000;
-/** Forty-odd contracts open at once; a few requests at a time keep the board's quotes first. */
-const HISTORY_CONCURRENCY = 4;
 
 /**
  * Null when the source has no history for the contract (delisted, unknown),
@@ -43,16 +44,17 @@ const HISTORY_CONCURRENCY = 4;
  */
 const historyCache = createTtlCache<readonly PricePoint[] | null>({ ttlMs: HISTORY_TTL_MS, rejectionMs: HISTORY_RETRY_MS });
 
-function readHistory(provider: DataProvider, symbol: string): Promise<readonly PricePoint[] | null> {
-  return provider.getPriceHistory(symbol, "", "1Y").then((points) => points.length > 0 ? points : null, (error: unknown) => {
+/** `batch`: asked with every other row's, from a source that batches them (`DataProvider.batchesReads`). */
+function readHistory(provider: DataProvider, symbol: string, batch: boolean): Promise<readonly PricePoint[] | null> {
+  return provider.getPriceHistory(symbol, "", "1Y", batch ? { batch } : undefined).then((points) => points.length > 0 ? points : null, (error: unknown) => {
     if (isNoSourceAnswer(error)) return null;
     throw error;
   });
 }
 
 /** Whether the contract has an answer; false when the read failed. */
-function loadHistory(provider: DataProvider, symbol: string): Promise<boolean> {
-  return historyCache.load(symbol, () => readHistory(provider, symbol))
+function loadHistory(provider: DataProvider, symbol: string, batch: boolean): Promise<boolean> {
+  return historyCache.load(symbol, () => readHistory(provider, symbol, batch))
     .then(() => true, logFailure("futures", "Read a futures contract's history failed", false));
 }
 
@@ -89,18 +91,22 @@ export function useFrontContractReturns(
     let cancelled = false;
     let failed = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const worker = async () => {
-      for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        if (!await loadHistory(provider, symbol)) failed = true;
-        if (!cancelled) setVersion((current) => current + 1);
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(HISTORY_CONCURRENCY, queue.length) }, worker)).then(() => {
+    const landed = coalescedBump(() => {
+      if (!cancelled) setVersion((current) => current + 1);
+    });
+    // Twelve reads at a time, shared with the rows' terms (`boardRead`), or all at once from a source that
+    // batches them (`DataProvider.batchesReads`); a board that moved on skips its turn.
+    void readsInBatches(provider, "getPriceHistory").then((batch) => Promise.all(queue.map((symbol) => boardReadGate(batch)(async () => {
+      if (cancelled) return;
+      if (!await loadHistory(provider, symbol, batch)) failed = true;
+      landed.bump();
+    })))).then(() => {
+      landed.flush();
       if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), HISTORY_RETRY_MS);
     });
     return () => {
       cancelled = true;
-      queue.length = 0;
+      landed.cancel();
       clearTimeout(retryTimer);
     };
   }, [candidates, enabled, provider, today, retry]);

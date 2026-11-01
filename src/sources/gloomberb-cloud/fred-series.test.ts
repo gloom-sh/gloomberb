@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../test-support/plugin-persistence";
+import { outage } from "../../test-support/outage";
+import { ApiRequestError } from "../../api-client/errors";
 import {
   attachFredSeriesPersistence,
   isFredPublicationPending,
@@ -64,7 +66,7 @@ describe("FRED series cache", () => {
     expect(reopened.data).toEqual(updated);
     expect(reopened.fetchedAt).toBe(Date.parse(fetchedAt));
     expect(reopened.stale).toBe(false);
-    const offline = await loadCachedFredSeries(request, async () => { throw Error("offline"); }, { force: true });
+    const offline = await loadCachedFredSeries(request, async () => { throw outage("offline"); }, { force: true });
     expect(offline.stale).toBe(true);
     expect(offline.data.info?.observationEnd).toBe("2026-09-10");
     expect(offline.fetchedAt).toBe(Date.parse(fetchedAt));
@@ -107,13 +109,29 @@ describe("FRED series cache", () => {
     attachFredSeriesPersistence(persistence);
 
     const result = await loadCachedFredSeries(REQUEST, async () => {
-      throw new Error("network unavailable");
+      throw outage("network unavailable");
     });
 
     expect(result.source).toBe("stale-fallback");
     expect(result.stale).toBe(true);
     expect(result.refreshError).toBe("network unavailable");
     expect(result.data.observations[0]!.value).toBe(319);
+  });
+
+  // FRED charts, the VIX board and the econ detail read through here: a saved copy said "saved copy from" over a
+  // series Gloom Cloud stopped serving, a refused session and a reply for another series.
+  test("a refusal or a reply that fails validation is thrown, whatever copy is saved", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("fred-series", "CPIAUCSL:start=2021-05-24:sort=asc", makeSeries(319), {
+      sourceKey: "gloomberb-cloud", schemaVersion: 2, stale: true,
+    });
+    attachFredSeriesPersistence(persistence);
+    for (const error of [new ApiRequestError("Series not found", 404), new ApiRequestError("Sign in", 401),
+      new Error("Unexpected FRED series identity or units")]) {
+      await expect(loadCachedFredSeries(REQUEST, async () => { throw error; }, { force: true })).rejects.toBe(error);
+    }
+    expect((await loadCachedFredSeries(REQUEST, async () => { throw new ApiRequestError("Bad gateway", 502); }, { force: true })).source)
+      .toBe("stale-fallback");
   });
 });
 
@@ -136,7 +154,7 @@ test("a daily series cached before its morning publication is re-read within the
     expect((await loadCachedFredSeries(request, loader)).data).toEqual(beforeRelease);
     expect(calls).toBe(0);
     setSystemTime(new Date("2026-09-23T10:45:00Z"));
-    expect((await loadCachedFredSeries(request, async () => { throw Error("offline"); })).stale).toBe(false);
+    expect((await loadCachedFredSeries(request, async () => { throw outage("offline"); })).stale).toBe(false);
     const refreshed = await loadCachedFredSeries(request, loader);
     expect(calls).toBe(1);
     expect(refreshed.data.observations[0]!.date).toBe("2026-09-22");

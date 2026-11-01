@@ -2,6 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { CachePolicy } from "../types/persistence";
 import type { PluginPersistence } from "../types/plugin";
 import { CachedQuery, type CachedValue } from "./cached-query";
+import { isTransientFailure } from "../api-client/errors";
 
 export interface PluginCacheResult<T> {
   data: T;
@@ -10,6 +11,20 @@ export interface PluginCacheResult<T> {
   refreshError?: string;
   error?: unknown;
   source: "cache" | "network" | "stale-fallback";
+}
+
+/**
+ * `result`, or the failure of the refresh it stands in for when a saved copy
+ * may not answer for it. A saved copy covers only a failure asking again may
+ * get past (`isTransientFailure`: no connection, a timeout, a rate-limited or
+ * overloaded server, a reply whose source did not answer this time); a
+ * refusal (another 4xx, such as a series no longer served or a signed-out
+ * session) and an answer that failed validation are thrown, so they show as
+ * the errors they are instead of as old data.
+ */
+export function savedCopyForTransientFailure<R extends { source?: PluginCacheResult<unknown>["source"]; error?: unknown }>(result: R): R {
+  if (result.source === "stale-fallback" && !isTransientFailure(result.error)) throw result.error;
+  return result;
 }
 
 /** Shared persistence/request lifecycle; keys, codecs, validation and policies stay with the plugin. */

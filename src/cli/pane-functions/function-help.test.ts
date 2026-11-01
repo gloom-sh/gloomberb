@@ -51,4 +51,6 @@ test("EQS help names ATR% and says IV rank is a rank, not an IV percentile", () 
   expect(FUNCTION_HELP.EQS!.summary).toContain("IV rank is a rank, not an IV percentile");
   expect(FUNCTION_HELP.EQS!.summary).toContain("Technical fields read the last completed session");
   expect(FUNCTION_HELP.EQS!.usage).toContain("gloom fn EQS --preset golden-cross");
+  expect(FUNCTION_HELP.EQS!.summary).toContain("ROIC, FCF yield, net debt / EBITDA, debt / equity and the revenue and EPS CAGRs read FA's bases");
+  expect(FUNCTION_HELP.EQS!.usage).toContain("gloom fn EQS --preset quality");
 });

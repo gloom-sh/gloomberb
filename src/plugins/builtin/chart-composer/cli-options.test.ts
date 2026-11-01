@@ -11,6 +11,21 @@ describe("chart composer CLI options", () => {
     const restored = applyChartComposerCapabilityOptions(annual, "valuation-series", { period: "daily", metric: "evSales" });
     expect(restored.series.map((series) => series.source)).toEqual(daily.series.map((series) => ({ ...series.source, fieldId: "valuation.evSales" })));
   });
+  test("a comparison's --from and --to are its window, read from history that reaches back to it", () => {
+    const now = Date.now();
+    const since = applyChartComposerCapabilityOptions(buildComparisonChartPreset(["IAG:LSE", "LHA:XETRA"]), "price-comparison",
+      { rangePreset: "1Y", from: "2019-12-31" });
+    expect(since.viewport).toMatchObject({ range: "ALL", dateWindow: { start: "2019-12-31", end: new Date(now).toISOString().slice(0, 10) } });
+    const year = applyChartComposerCapabilityOptions(buildComparisonChartPreset(["IAG:LSE", "LHA:XETRA"]), "price-comparison",
+      { rangePreset: "1Y", from: "2021", to: "2021" });
+    expect(year.viewport).toMatchObject({ range: "ALL", dateWindow: { start: "2021-01-01", end: "2021-12-31" } });
+    const recent = new Date(now - 40 * 86_400_000).toISOString().slice(0, 10);
+    expect(applyChartComposerCapabilityOptions(buildComparisonChartPreset(["IAG:LSE", "LHA:XETRA"]), "price-comparison",
+      { rangePreset: "1Y", from: recent }).viewport.range).toBe("3M");
+    expect(() => applyChartComposerCapabilityOptions(buildComparisonChartPreset(["A", "B"]), "price-comparison", { to: "2021" }))
+      .toThrow("--to needs a --from");
+  });
+
   test("applies price and financial options to the persisted spec", () => {
     const candle = applyChartComposerCapabilityOptions(
       buildPriceChartPreset("AAPL"),

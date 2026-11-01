@@ -16,6 +16,7 @@ import {
   candidateExchange,
   LISTING_SEARCH_LIMIT,
   listingDistance,
+  primaryCompanyLine,
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
@@ -23,7 +24,7 @@ import { initMarketData, withMarketData } from "../context";
 import { listingChangeLine, loadListingFate } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
-import { fail, failRetryable } from "../errors";
+import { fail, failRetryable, failWithError, isCliFailure, unreachableError } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import type { MarketContext } from "../types";
@@ -34,8 +35,8 @@ import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { companyNameExtraWords, groupByCompany, sameCompany } from "../../tickers/company-name";
-import { namedByService } from "../../tickers/company-name-listing";
+import { companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
@@ -133,8 +134,8 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    return withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote)
-      .slice(0, totalLimit);
+    const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote);
+    return withOtherCompaniesApart(ordered).slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -283,17 +284,17 @@ function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate
     || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
   const marked = !!primary.result && namedByService(query, primary.result);
-  const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"
-    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company)
-    && (!marked || companyNameExtraWords(resolveSearchName(candidate), company) != null));
-  const score = (candidate: TickerSearchCandidate) => candidate.result?.popularity ?? candidate.popularity ?? null;
-  const [home] = [...lines].sort((a, b) => listingDistance(a) - listingDistance(b) || (score(b) ?? -1) - (score(a) ?? -1) || candidates.indexOf(a) - candidates.indexOf(b));
-  if (!home || home === primary) return candidates;
-  const closer = listingDistance(home) < listingDistance(primary);
-  const [homeScore, primaryScore] = [score(home), score(primary)];
-  const moreSearched = !marked && listingDistance(home) === listingDistance(primary) && homeScore != null
-    && (primaryScore == null || homeScore >= primaryScore * 2);
-  if (!closer && !moreSearched) return candidates;
+  // Never a line of another business its name is in (`companyLines`): Siemens Energy AG is not Siemens AG's.
+  const lines = companyLines(primary, candidates.filter((candidate) => candidate === primary || (candidate.kind === "search"
+    && candidate.category !== "Funds & Derivatives" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"))),
+  (candidate) => ({
+    name: resolveSearchName(candidate), exchange: candidateExchange(candidate),
+    receipt: listingDistance(candidate) === 2, home: candidate.result?.homeListing === true,
+  })).filter((candidate) => candidate === primary || !marked || companyNameExtraWords(resolveSearchName(candidate), company) != null);
+  const home = primaryCompanyLine(primary, lines, (candidate) => ({
+    distance: listingDistance(candidate), score: candidate.result?.popularity ?? candidate.popularity ?? null,
+  }), { named: marked });
+  if (home === primary) return candidates;
   const rest = candidates.filter((candidate) => candidate !== home);
   const at = rest.indexOf(primary);
   return [...rest.slice(0, at), { ...home, category: "Primary Listing" as const }, { ...primary, category: "Other Listings" as const }, ...rest.slice(at + 1)];
@@ -344,6 +345,35 @@ function withQuotedNames(symbol: string, candidates: TickerSearchCandidate[], qu
     const [, ...rest] = candidate.detail.split(" | ");
     return { ...candidate, detail: [name, ...rest].join(" | "), ...candidate.result ? { result: { ...candidate.result, name } } : {} };
   });
+}
+
+/** A symbol without a venue's suffix or code: DK for DK.BA or DK:BYMA. */
+const baseSymbol = (symbol: string) => symbol.toUpperCase().replace(/[:.][A-Z]{1,4}$/, "");
+
+/**
+ * Other Listings are the primary listing's company's own lines alone: by its
+ * name, a name it had (Cassava Sciences for Filana's FLNA), or, for a line
+ * search names no company for, its symbol on another venue. Another company's
+ * line, or a nameless line under another symbol (DKC1O on BYMA under
+ * `search DK`), is an Other Match, listed after them.
+ */
+function withOtherCompaniesApart(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+  // A line search names no company for: no name, or only its symbol (DKC1O).
+  const nameless = (candidate: TickerSearchCandidate) =>
+    isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
+  const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
+  // A primary line search names no company for gives nothing to tell its company's lines by.
+  if (!primary || nameless(primary)) return candidates;
+  const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
+  const ownLine = (candidate: TickerSearchCandidate) => nameless(candidate)
+    ? baseSymbol(candidate.symbol) === baseSymbol(primary.symbol)
+    : names.some((company) => sameCompany(resolveSearchName(candidate), company));
+  const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
+  if (others.length === 0) return candidates;
+  const kept = candidates.filter((candidate) => !others.includes(candidate));
+  const at = kept.findLastIndex((candidate) => candidate === primary || candidate.category === "Other Listings") + 1;
+  const apart = others.map((candidate) => ({ ...candidate, category: "Other Matches" as const }));
+  return [...kept.slice(0, at), ...apart, ...kept.slice(at)];
 }
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */
@@ -498,18 +528,19 @@ export function buildSearchReport({
   /** What the query was searched as: "Read VIX.X as ^VIX (Cboe Volatility Index)." */
   readAs?: string;
 }): string {
+  // Every note is prose: it wraps to a narrow --width.
   const lines = [renderSection(`Search: ${query}`)];
-  if (readAs) lines.push("", readAs);
+  if (readAs) lines.push("", wrapToTerminal(readAs));
   const notes = [...fate.notes, ...formerIssuerNotes(candidates, fate)];
-  if (notes.length > 0) lines.push("", ...notes);
+  if (notes.length > 0) lines.push("", ...notes.map((note) => wrapToTerminal(note)));
   const gap = knownGapMessage(query);
   const indexNote = gap ? null : indexRootNote(query, candidates);
-  if (indexNote) lines.push("", indexNote);
-  if (gap) lines.push("", gap);
+  if (indexNote) lines.push("", wrapToTerminal(indexNote));
+  if (gap) lines.push("", wrapToTerminal(gap));
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", wrapToTerminal(centralBankLine(bank)));
   const setting = commandPointer(query);
-  if (setting) lines.push("", setting);
+  if (setting) lines.push("", wrapToTerminal(setting));
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
   // be in a series name ("apple") list them after the tickers.
@@ -523,9 +554,9 @@ export function buildSearchReport({
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
     else if (!gap && !bank && !setting && !charted) {
       return [...lines, ...hasNonLatinLetters(query) ? [cliStyles.muted(OTHER_SCRIPT_NO_MATCH)]
-        : [cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))]].join("\n");
+        : [cliStyles.muted("No matches found."), cliStyles.muted(wrapToTerminal(catalogHint(query)))]].join("\n");
     }
-    if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
+    if (pointToCatalog) lines.push("", cliStyles.muted(wrapToTerminal(catalogHint(query))));
     return lines.join("\n");
   }
 
@@ -558,10 +589,38 @@ export function buildSearchReport({
     ));
   }
   if (charted && !seriesFirst) lines.push("", charted);
-  if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
+  if (pointToCatalog) lines.push("", cliStyles.muted(wrapToTerminal(catalogHint(query))));
 
   return lines.join("\n");
 }
+
+/**
+ * What a search says from its own text, whatever the ticker lookup does: the
+ * data no source carries and its proxies ("baltic dry"), the central bank the
+ * query names, the setting or report it names.
+ */
+function localSearchNotes(query: string): string[] {
+  const bank = searchedCentralBank(query);
+  return [knownGapMessage(query), bank ? centralBankLine(bank) : null, commandPointer(query)].filter((note): note is string => !!note);
+}
+
+/**
+ * A ticker lookup that was busy or never reached the data service fails only
+ * the ticker part of a search: the notes from local text print first (text) or
+ * ride in the failure's details (JSON), then the failure says that no tickers
+ * were looked up. A search with no such note fails as before.
+ */
+function failTickerLookup(error: unknown, query: string, printNotes: boolean): never {
+  const notes = localSearchNotes(query);
+  const busy = isCliFailure(error) && error.code === SEARCH_BUSY_CODE;
+  if (notes.length === 0 || !(busy || isNetworkFailure(error))) throw error;
+  if (printNotes) console.log([renderSection(`Search: ${query}`), "", ...notes.map((note) => wrapToTerminal(note))].join("\n"));
+  const failure = busy ? { code: SEARCH_BUSY_CODE, message: TICKER_SEARCH_BUSY_MESSAGE, retryable: true } : unreachableError();
+  return failWithError(printNotes ? failure : { ...failure, details: [failure.details, ...notes].filter(Boolean).join("\n") });
+}
+
+/** The busy line after a search's own notes printed: only the ticker lookup is missing. */
+const TICKER_SEARCH_BUSY_MESSAGE = "Ticker search is busy, try again in a moment.";
 
 /** The functions a search lists when it found no ticker, unless a known gap or a central bank already says where to look. */
 function searchedFunctions(
@@ -613,7 +672,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       tickers,
       dataProvider,
       ...quote ? { quote } : {},
-    });
+    }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
     const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");

@@ -1,11 +1,10 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { VolSurfacePane } from "./pane";
 import { volSurfaceHeadless } from "./headless";
 
 export const volSurfaceModule: PluginModule = {
   panes: [{
-    id: "vol-surface", name: "Volatility Surface", icon: "V", component: VolSurfacePane,
+    id: "vol-surface", name: "Volatility Surface", icon: "V", get component(): typeof import("./pane").VolSurfacePane { const { VolSurfacePane } = require("./pane"); return VolSurfacePane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 126, height: 36 },
     tableExport: true, headless: volSurfaceHeadless,
     settings: {

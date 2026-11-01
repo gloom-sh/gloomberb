@@ -34,6 +34,7 @@ import { convertCurrency } from "../../../../utils/format";
 import { nextHeaderSort } from "../../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import type { TickerRecord } from "../../../../types/ticker";
+import type { TickerFinancials } from "../../../../types/financials";
 import type { PaneProps } from "../../../../types/plugin";
 import type { InstrumentRef } from "../../../../market-data/request-types";
 import {
@@ -56,6 +57,7 @@ import {
 } from "../summary";
 import { usePortfolioAccountState } from "../summary/live-accounts";
 import { useOfflineBrokerFooter } from "../../shared/broker-reconnect";
+import { useQuoteDelayFooter } from "../../shared/cloud-upgrade";
 import {
   getCollectionEntries,
   getPortfolioPaneSettings,
@@ -598,6 +600,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     summaryAccountState,
   ], FOOTER_TOTALS_THROTTLE_MS);
   const fxWarning = !!(fxStatus.stale || fxStatus.unknownTime || fxStatus.unavailable);
+  // Signed out or free, the rows' prices are the delayed ones; a list of coins is live and says nothing.
+  const quoteDelay = useQuoteDelayFooter(rowQuotes(sortedTickers, financialsMap), "portfolio-delay");
   const summaryNotices = isPortfolioTab
     ? buildPortfolioSummaryNotices({
       totals: portfolioSummaryTotals,
@@ -675,6 +679,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       ...offlineBrokerFooter.status,
       ...(fxStatusText && !fxWarning ? [{ id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }] : []),
       ...(showsPerpetuals && perpetuals.stale ? [{ id: "perpetuals", parts: [{ text: "perpetuals stale", tone: "warning" as const }] }] : []),
+      ...(quoteDelay ? [quoteDelay] : []),
     ],
     hints: [
       ...offlineBrokerFooter.hints,
@@ -714,6 +719,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     isPortfolioTab,
     offlineBrokerFooter,
     perpetuals.stale,
+    quoteDelay,
     removalCollection,
     removeSelectedTicker,
     selectedTicker,
@@ -839,4 +845,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
     </Box>
   );
+}
+
+/** The quotes of the rows, in order, for the delayed clock, which stops at the first late one. */
+function* rowQuotes(tickers: readonly TickerRecord[], financialsMap: ReadonlyMap<string, TickerFinancials>) {
+  for (const ticker of tickers) yield financialsMap.get(ticker.metadata.ticker)?.quote;
 }

@@ -1,4 +1,7 @@
-import { FINANCIAL_VINTAGE_NOTICE, filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
+import {
+  FINANCIAL_VINTAGE_NOTICE, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+} from "../../../utils/financial-statements";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
@@ -6,7 +9,8 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
+  priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
@@ -48,6 +52,7 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-ba
 import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
+import { CLOSING_PRINT_PENDING_TEXT } from "../../../time-series/official-close";
 import {
   closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
   type HistoryBarSize,
@@ -151,18 +156,23 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     // Years filled from the listing's exchange, with the lines this table shows.
     const filled = table ? filledPeriodsNote(table.statements, financialSubTabFields(table.subTab)) : null;
+    const periodDates = dates.map(({ date }) => date);
+    const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
-      ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
+      ...(missing ? { errors: [missing] } : {}),
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
+      notes: [...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+        ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates))],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
         shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
         ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
+        // A quarter's change is against the quarter before it, which a reader of a table of quarters must be told.
+        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...requestedPeriod === "quarterly" ? [QUARTERLY_GROWTH_NOTICE] : [],
+          ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },
@@ -171,6 +181,44 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
 };
 
 const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
+
+/** What a table of quarters says its growth is measured against. */
+const QUARTERLY_GROWTH_NOTICE = "Growth is vs prior quarter.";
+
+type HeadlessContext = Parameters<typeof financialStatementsHeadless.load>[1];
+
+/** Whether GF, reading the listing's extended statement history, goes back further than the report (statementHistoryNotes). */
+function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "annual" | "quarterly", dates: readonly string[]) {
+  return hasOlderStatements(async () => {
+    const { symbol: bare, exchange } = await resolveHeadlessInstrument(ctx, symbol);
+    return ctx.marketData.getTickerFinancials(bare, exchange ?? "", { statementHistory: "extended" });
+  }, period, dates);
+}
+
+/**
+ * Why a statements report has no rows, and what to read instead: a listing
+ * with years but no quarters names its years, and says so of a company that
+ * reports half-yearly (Qantas on ASX). Null when it has years and quarters,
+ * whatever this table lacks.
+ */
+async function missingPeriodsError(
+  ctx: HeadlessContext,
+  symbol: string,
+  financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+  period: "annual" | "quarterly",
+  hasRequestedStatements: boolean,
+  statement: unknown,
+): Promise<string | null> {
+  const hasYears = financials.annualStatements.length > 0;
+  if (period === "annual" || !hasYears) return hasRequestedStatements ? null : `${symbol}: No ${period} financial statement coverage.`;
+  const exchange = await resolveHeadlessInstrument(ctx, symbol).then(({ exchange }) => canonicalExchange(exchange ?? ""))
+    .catch(logFailure("ticker-detail.headless", "Resolving the listing of a statements report failed", ""));
+  const halfYearly = reportsHalfYearly(exchange, financials.quarterlyStatements);
+  if (hasRequestedStatements && !halfYearly) return null;
+  const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
+  const years = `For its years: gloom fn FA ${symbol} --period annual${tab}`;
+  return halfYearly ? `${symbol} reports half-yearly, not quarterly. ${years}` : `${symbol}: No quarterly financial statement coverage. ${years}`;
+}
 
 /** The note that an offering filed after the latest balance sheet is not in its cash yet; a failed read leaves it out. */
 async function reportOfferingNote(
@@ -240,16 +288,18 @@ async function loadRatioReport(
   const runwayShown = liquidity && table.ratios.some((def) => def.format === "months"
     && table.cells.get(def.id)!.some((cell) => typeof cell.value === "number"));
   const offering = liquidity ? await reportOfferingNote(ctx, symbol, financials) : null;
+  const periodDates = dates.map(({ date }) => date);
+  const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, period, hasRequestedStatements, tab.key);
   return {
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
-    ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
+    ...(missing ? { errors: [missing] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     notes: [
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
       ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
-      ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
+      ...statementHistoryNotes(period, periodDates, symbol, await reportOlderStatements(ctx, symbol, period, periodDates)),
     ],
     metadata: {
       symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
@@ -453,7 +503,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const drawdown = maxDrawdown(shown);
     const drawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${historyBarSizeWord(size)} closes`, price: (value) => formatBarPrice(value, decimals),
       date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }) : null;
-    const reportNotices = [drawdownLine, notice].filter((line): line is string => line != null);
+    // A wick left out of the range is said, though the bar's close still counts.
+    const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
+    const reportNotices = [drawdownLine, notice, wickNotice].filter((line): line is string => line != null);
     return {
       rows: shown,
       columns: historyColumns(size, marked, false, false, decimals),
@@ -545,7 +597,10 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       ...figures,
       ...forming || dayToDate ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
     ];
-    const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
+    // A narrow table drops the dollar moves, the interval's first, rather than putting Total % on a line under every row.
+    const textFigures = figures.map((column) => column.key === "intervalChange" ? { ...column, optional: true, dropPriority: 2 }
+      : column.key === "totalChange" ? { ...column, optional: true, dropPriority: 1 } : column);
+    const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...textFigures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
       maxDrawdownLine,
@@ -568,8 +623,12 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         oldest: null,
         ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
-        // The window ends at the last session while the market is shut, which the status line says.
-        ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+        // The window ends at the last session while the market is shut, which the status line says, and whether its
+        // last bar ends on the official close yet.
+        ...(series.lastSession || series.closingPrintPending ? { note: [
+          series.lastSession ? closedMarketNote(series.lastSession, series.visibleTo) : null,
+          series.closingPrintPending ? CLOSING_PRINT_PENDING_TEXT : null,
+        ].filter(Boolean).join(", ") } : {}),
         ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` } : {}),
       },
       metadata: {

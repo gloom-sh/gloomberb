@@ -404,7 +404,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Net debt", aliases: ["net debt/ebitda", "net debt to ebitda", "net leverage"], functions: ["FA"], shown: ["Net Debt"],
-    definition: "Total debt less cash and short-term investments. Negative means more cash than debt. "
+    definition: "Total debt less cash and short-term investments, with the balance sheet's lease liabilities under IFRS (\"incl. leases\"); "
+      + "a company reporting under US GAAP (a 10-K, or a 20-F such as Alibaba's) keeps its operating leases out (\"excl. op. leases\"). Negative means more cash than debt. "
       + "Net debt / EBITDA is how many years of EBITDA would repay it; FA divides by a year of EBITDA, the trailing four quarters in a quarterly column.",
   },
   {

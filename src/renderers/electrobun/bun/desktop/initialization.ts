@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync } from "fs";
+import { existsSync } from "fs";
+import { makePrivateDirSync } from "../../../../utils/private-files";
 import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
@@ -25,6 +26,7 @@ import { telemetryOptedOut } from "../../../../telemetry/crash-reports";
 import { describeNodeOs, readOrCreateInstallId } from "../../../../telemetry/crash-reports-node";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 import { readDesktopViewIds } from "./view-ids";
+import { markStartupComplete } from "../../../../utils/main-thread-stall";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
@@ -102,7 +104,7 @@ function buildInitializationPayload(
 async function resolveDesktopDataDir(): Promise<string> {
   const dataDir = await getDataDir() ?? getGloomberbDirs().data;
   if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
+    makePrivateDirSync(dataDir);
   }
   return dataDir;
 }
@@ -194,5 +196,12 @@ export async function initializeDesktopBackend(
     backend.workspace = createDesktopWorkspace(config, backend.getSessionSnapshot());
     backend.detachedWindows.reconcile();
   }
-  return buildInitializationPayload(backend, config, services, windowTarget);
+  const init = buildInitializationPayload(backend, config, services, windowTarget);
+  // The main window has what it needs to draw: this process is up, and the
+  // popped-out windows open next.
+  if (windowTarget.kind === "main") {
+    markStartupComplete();
+    backend.detachedWindows.openAfterMainWindow();
+  }
+  return init;
 }

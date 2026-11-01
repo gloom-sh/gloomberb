@@ -227,6 +227,8 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       cik: filing.cik,
       companyName: filing.companyName ?? null,
       url: filing.filingUrl,
+      // A current report's press release exhibit, where its index names one: the page its figures are on.
+      ...(filing.pressReleaseUrl ? { pressReleaseUrl: filing.pressReleaseUrl } : {}),
     };
   });
 }

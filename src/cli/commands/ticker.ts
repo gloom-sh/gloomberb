@@ -72,6 +72,8 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
+import { getFormDescription } from "../../plugins/builtin/sec/model";
+import { rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
 import { isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
@@ -80,6 +82,7 @@ import {
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
 import { movedAwayChange } from "../../tickers/ticker-changes";
+import { listingChangeLine } from "../../tickers/listing-fate";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -303,6 +306,34 @@ function filingItemsMeta(filing: SecFilingItem): string {
 
 function normalizeComparable(value: string): string {
   return value.toUpperCase().replace(/\bFORM\b/g, "").replace(/[^A-Z0-9]+/g, "");
+}
+
+/** A recent filing with what an insider form's own XML says: who filed it and what it reports (`rowSummary`). */
+type RecentFiling = SecFilingItem & { summary?: string };
+
+/**
+ * The recent filings, each insider form (3, 4, 5, 144) with its filer and what it reports, read from the
+ * filing as fn SEC's rows read it: "Fred Thiel: sale of 50K shares". A filing that cannot be read keeps its
+ * form's meaning alone.
+ */
+async function withFilingSummaries(
+  filings: readonly SecFilingItem[],
+  dataProvider: { getSecFilingContent?(filing: SecFilingItem): Promise<string | null> },
+): Promise<RecentFiling[]> {
+  if (!dataProvider.getSecFilingContent) return [...filings];
+  return Promise.all(filings.map(async (filing) => {
+    const target = rowSummaryTarget(filing);
+    if (!target) return filing;
+    const content = await Promise.resolve().then(() => dataProvider.getSecFilingContent!(target))
+      .catch(logFailure("cli.commands-ticker", "Read an insider filing failed", null));
+    const summary = rowSummary(filing.form, content)?.title;
+    return summary ? { ...filing, summary } : filing;
+  }));
+}
+
+/** What the form is: the filing's own description, else the form's meaning ("Insider Transaction"); none beside an 8-K's items. */
+function filingMeaning(filing: SecFilingItem): string {
+  return getFilingDescription(filing) ?? (currentReportItemsLabel(filing.items) ? "" : getFormDescription(filing.form));
 }
 
 function getFilingDescription(filing: SecFilingItem): string | undefined {
@@ -1117,7 +1148,7 @@ export async function buildTickerReport({
   /** "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)", for a bare symbol several companies list. */
   listingNote?: string;
   recentNews?: NewsArticle[];
-  recentSecFilings?: SecFilingItem[];
+  recentSecFilings?: RecentFiling[];
   /** What `recentSecFilings` left out. */
   hiddenSecFilings?: HiddenFilings;
 }): Promise<string> {
@@ -1226,6 +1257,8 @@ export async function buildTickerReport({
       )
       : "—";
     const volume = reportedQuoteVolume(quote);
+    // A coin's volume is traded value in its quote currency (BTC-USD: US dollars), not a count of coins.
+    const volumeCurrency = quote.currency && isRoundTheClockCoin(quote.symbol ?? symbol, quote.exchangeName) ? ` ${quote.currency}` : "";
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
@@ -1247,7 +1280,7 @@ export async function buildTickerReport({
         : "—"],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
-      ["Volume", volume != null ? formatNumber(volume, 0) : "—"],
+      ["Volume", volume != null ? `${formatNumber(volume, 0)}${volumeCurrency}` : "—"],
       ["Updated", formatTimestamp(quoteHeadlineTime(quote))],
     ]);
 
@@ -1338,9 +1371,10 @@ export async function buildTickerReport({
     meta: [
       // The items by number and name, so a results 8-K reads apart from another 8-K filed the same day.
       filingItemsMeta(filing),
-      getFilingDescription(filing) ?? "",
-      filing.primaryDocument ? `Primary Document ${filing.primaryDocument}` : "",
+      // What the form is, and below it who filed an insider form and what it reports: the file name said neither.
+      filingMeaning(filing),
     ],
+    body: filing.summary,
     link: filing.filingUrl,
   })), hiddenFilingsNote(hiddenSecFilings));
 
@@ -1384,7 +1418,7 @@ function buildTickerStructuredData({
   config: AppConfig;
   notes: string;
   recentNews: NewsArticle[];
-  recentSecFilings: SecFilingItem[];
+  recentSecFilings: RecentFiling[];
   hiddenSecFilings: HiddenFilings;
 }) {
   const quote = financials.quote;
@@ -1472,6 +1506,8 @@ function buildTickerStructuredData({
       filingUrl: filing.filingUrl,
       primaryDocumentUrl: filing.primaryDocumentUrl ?? "",
       description: getFilingDescription(filing) ?? "",
+      // An insider form's filer and what it reports, as the text report shows it.
+      summary: filing.summary ?? "",
       items: secFilingItemCodes(filing.items) ?? "",
       // The items by number and name, as the text report shows them.
       itemsLabel: currentReportItemsLabel(filing.items) ?? "",
@@ -1524,7 +1560,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // So does what became of the symbol, read from the research's quote as `history` reads it: a
     // company that moved (HFC became DINO), with nothing new listed there, has no profile of its own.
     const researchQuote = Promise.withResolvers<Quote | null>();
-    const fate = listingFateLoader(listing, { dataProvider }, researchQuote.promise);
+    const fate = listingFateLoader(listing, { dataProvider }, researchQuote.promise, { successor: true });
     const request: ListingDataRequest = { command: "ticker", noun: "research", fate };
     /** Nothing to show: a company that moved is under its new symbol. */
     const failIfMovedAway = async () => {
@@ -1568,8 +1604,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const quote = resolvedFinancials.quote;
     // The quote is the old line's (stopped, or named for the company that left): the profile and figures are another security's.
     researchQuote.resolve(quote ?? null);
-    const { moved } = await fate();
-    if (moved) failMovedSymbol(moved, request);
+    const researchFate = await fate();
+    if (researchFate.moved) failMovedSymbol(researchFate.moved, request);
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
@@ -1630,14 +1666,18 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       (currency) => dataProvider.getExchangeRate(currency));
     const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
-    const { filings: recentSecFilings, hidden: hiddenSecFilings } = secFilingsResult.status === "fulfilled"
+    const { filings: secFilings, hidden: hiddenSecFilings } = secFilingsResult.status === "fulfilled"
       ? secFilingsResult.value : { filings: [], hidden: NOTHING_HIDDEN };
+    const recentSecFilings = await withFilingSummaries(secFilings, dataProvider);
 
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
+    const successor = listingChangeLine(researchFate);
     const choiceNotes = [
+      // What became of the company that had the symbol (GOGL), as `quote` says it, then the listing it was read as.
+      ...successor ? [successor] : [],
       ...await listingChoiceNotes(listing, { store, dataProvider }, quote, venues),
       ...quote || !tickerFile ? [] : coinListingNotes(listing, { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory }),
     ];

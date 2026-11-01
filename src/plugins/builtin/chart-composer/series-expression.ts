@@ -8,8 +8,8 @@ import {
   listTimeSeriesFields,
 } from "../../../time-series/field-catalog";
 import {
-  CANONICAL_EXCHANGE_ALIASES,
   canonicalExchange,
+  isKnownExchangeCode,
   publicTickerKey,
 } from "../../../utils/exchanges";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
@@ -73,7 +73,8 @@ export function normalizeInstrument(
   if (parts.length !== 2) return null;
   const symbol = normalizeBaseSymbol(parts[0]!);
   const exchangeToken = parts[1]!.trim().toUpperCase();
-  const knownExchange = Object.prototype.hasOwnProperty.call(CANONICAL_EXCHANGE_ALIASES, exchangeToken);
+  // Every venue the app names, as a listing's key writes it (BDI:NEO, Cboe Canada), not only the spellings it reads as another.
+  const knownExchange = isKnownExchangeCode(exchangeToken);
   if (!symbol || !/^[A-Z0-9._-]{1,24}$/.test(exchangeToken) || (!knownExchange && !allowUnknownExchange)) {
     return null;
   }

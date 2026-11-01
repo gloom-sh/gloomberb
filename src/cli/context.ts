@@ -9,8 +9,7 @@ import { createAppServices } from "../core/app-services";
 import type { PluginCapability } from "../capabilities";
 import type { AppConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
-import { getLoadablePlugins } from "../plugins/catalog";
-import { standaloneSeriesCatalog, standaloneSeriesInvoker } from "../series/standalone";
+import { standaloneSeriesCatalog, standaloneSeriesInvoker, standaloneSeriesNamed } from "../series/standalone";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { apiClient } from "../api-client";
@@ -73,11 +72,6 @@ function isUnreadableConfig(configFile: string): boolean {
   }
 }
 
-/** The data folder this profile uses, whether or not anything has created it yet. Never writes. */
-export async function resolveCliDataDir(): Promise<string> {
-  return await getDataDir() ?? getGloomberbDirs().data;
-}
-
 /**
  * The data folder and config a command works with. The first command on a new
  * profile creates them with the same `initDataDir` a first launch of the
@@ -120,7 +114,7 @@ function applyPersistedCloudSession(context: Pick<MarketContext, "persistence">)
 export async function initMarketData(options: CliContextOptions = {}): Promise<MarketContext> {
   const context = await initConfigData();
   applyPersistedCloudSession(context);
-  const plugins = options.plugins ?? getLoadablePlugins();
+  const plugins = options.plugins ?? (require("../plugins/catalog") as typeof import("../plugins/catalog")).getLoadablePlugins();
   const capabilities = resolveCliCapabilities(context.config, plugins);
   const dataProvider = new AssetDataRouter(null, [], context.persistence.resources);
   const registryAdapter: Pick<PluginRegistry, "brokers" | "getEnabledCapabilities"> = {
@@ -132,15 +126,18 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   dataProvider.setBackgroundRevalidation(false);
   const seriesCapabilities = standaloneSeriesInvoker(plugins, context.dataDir, context.config.disabledPlugins);
   const findCatalogSeries = standaloneSeriesCatalog(plugins, context.config.disabledPlugins);
-  return { ...context, dataProvider, seriesCapabilities, findCatalogSeries, statementSources: cloudStatementReportSources };
+  const findCatalogSeriesNamed = standaloneSeriesNamed(plugins, context.config.disabledPlugins);
+  return { ...context, dataProvider, seriesCapabilities, findCatalogSeries, findCatalogSeriesNamed, statementSources: cloudStatementReportSources };
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {
+  const { getLoadablePlugins } = require("../plugins/catalog") as typeof import("../plugins/catalog");
   const { dataDir, config, created } = await openCliDataDir();
   const services = createAppServices({
     config,
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
     externalPlugins: options.externalPlugins ?? [],
+    interactive: false,
   });
   services.providerRouter.setConfigAccessor(() => config);
   services.providerRouter.setBackgroundRevalidation(false);

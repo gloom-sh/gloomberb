@@ -45,6 +45,33 @@ export interface GpuBoardRow extends GpuObservation {
   lastError: string | null;
 }
 
+/**
+ * Gloom's daily settle: the official price of one GPU and form factor for a
+ * day, set at 20:00 UTC and never revised. A day with too few prices is
+ * "no-settle" with no price. A correction is a new entry naming the one it
+ * replaces.
+ */
+export interface GpuSettle {
+  id: string;
+  /** The settle day, YYYY-MM-DD. */
+  date: string;
+  /** The moment the price stands for: the day at 20:00 UTC. */
+  settleAt: string;
+  gpuModel: string;
+  formFactor: string;
+  memoryGb: number | null;
+  label: string;
+  status: "settled" | "no-settle";
+  pricePerGpuHr: number | null;
+  currency: "USD";
+  kind: "settle" | "correction";
+  corrects: string | null;
+  publishedAt: string;
+  change1d: number | null;
+  change7d: number | null;
+  change30d: number | null;
+}
+
 export interface GpuBoardPayload {
   access?: GpuAccess;
   generatedAt: string;
@@ -53,6 +80,8 @@ export interface GpuBoardPayload {
   stale: boolean;
   gaps: string[];
   rows: GpuBoardRow[];
+  /** Each GPU's latest daily settle, the same on every plan. Older servers send none. */
+  settles?: GpuSettle[];
 }
 
 export interface GpuHistoryPayload {

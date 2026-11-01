@@ -49,6 +49,14 @@ function seasonalRows(row: DoeSeriesRow) {
     fiveYearLow: level(min), fiveYearAverage: level(average), fiveYearHigh: level(max) }));
 }
 
+/** Words for natural gas storage, which `NGS` reads, rather than a series of the petroleum tables. */
+const GAS_WORDS = new Set(["ngs", "ng", "gas", "natgas", "naturalgas", "natgasstorage", "naturalgasstorage", "gasstorage", "storage", "workinggas"]);
+
+/** Whether `DOE` was given a word for gas storage (`NGS`, `natural gas`) rather than a series. */
+export function doeGasWord(argument: string): boolean {
+  return GAS_WORDS.has(argument.toLowerCase().replace(/[^a-z]/g, ""));
+}
+
 /** `DOE` reads every tab unless one is named; `NGS` starts on gas storage; a series argument adds its year. */
 export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -77,10 +85,13 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           nextExpectedAt: oldestReportTime(reports.map((report) => report.nextReleaseAt)) };
       };
       const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
-      if (argument) {
+      // `DOE NGS` or `DOE natural gas` is the gas storage tables `NGS` opens on, and says so; `NGS gas` is them already.
+      const gasWord = argument ? doeGasWord(argument) : false;
+      const ngs = defaultTab === "gas";
+      if (argument && !gasWord) {
         const option = doeSeriesOption(argument);
         const row = option ? data.series.find((entry) => entry.id === option.value) : null;
-        if (!row) throw new Error("Use a series such as cushing, gasoline, distillate or east");
+        if (!row) throw new Error(`Use a series such as cushing, gasoline, distillate or east${ngs ? "" : "; for gas storage, gloom fn NGS"}`);
         return {
           sections: [
             { title: doeHeaderLine(doeReport(data, row.tab)) ?? row.label, columns: SUMMARY_COLUMNS, rows: [reportRow(row)] },
@@ -95,8 +106,10 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           metadata: { ...data, series: [row], complete: data.status === "available" },
         };
       }
-      const tabs = args.options.tab === "all" || args.options.tab == null ? DOE_TABS.map(({ value }) => value) : [doeTab(args.options.tab)];
+      const tabs = gasWord ? ["gas" as const]
+        : args.options.tab === "all" || args.options.tab == null ? DOE_TABS.map(({ value }) => value) : [doeTab(args.options.tab)];
       return {
+        ...(gasWord && !ngs ? { warnings: [`Gas storage is its own function: gloom fn NGS (one region: gloom fn NGS east)`] } : {}),
         sections: tabs.map((tab) => ({
           title: `${DOE_TABS.find((entry) => entry.value === tab)!.label}${doeHeaderLine(doeReport(data, tab)) ? `: ${doeHeaderLine(doeReport(data, tab))}` : ""}`,
           columns: SUMMARY_COLUMNS,

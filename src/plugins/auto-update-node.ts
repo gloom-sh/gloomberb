@@ -37,24 +37,28 @@ function readJson(path: string): Record<string, unknown> | null {
 }
 
 async function readCheckouts(): Promise<PluginCheckout[]> {
-  const { installedPluginDirectories, readPluginRemote } = await installer();
+  const { installedPluginDirectories, readPluginRemoteAsync } = await installer();
   const pluginsDir = getPluginsDir();
-  return installedPluginDirectories().map((directory) => {
+  const checkouts: PluginCheckout[] = [];
+  // One git at a time: starting a process holds the thread for a moment, and
+  // starting them all at once adds those moments up into one pause.
+  for (const directory of installedPluginDirectories()) {
     const dir = join(pluginsDir, directory);
     const pkg = readJson(join(dir, "package.json"));
     const dependencies = pkg?.dependencies;
-    return {
+    checkouts.push({
       directory,
       id: readPluginManifest(dir).id,
-      repo: existsSync(join(dir, ".git")) ? readPluginRemote(dir) : null,
+      repo: existsSync(join(dir, ".git")) ? await readPluginRemoteAsync(dir) : null,
       commit: readPluginCommit(dir),
       version: typeof pkg?.version === "string" ? pkg.version : null,
       linked: lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink() === true,
       needsGloomberb: checkPluginCompatibility(dir)?.needsGloomberb ?? null,
       peers: installedPeerPlugins(dir, pluginsDir).map((peer) => peer.directory),
       hasDependencies: !!dependencies && typeof dependencies === "object" && Object.keys(dependencies).length > 0,
-    };
-  });
+    });
+  }
+  return checkouts;
 }
 
 function createNodeAutoUpdateDeps(manager: PluginManager): PluginAutoUpdateDeps {

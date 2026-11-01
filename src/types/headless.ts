@@ -127,6 +127,8 @@ export interface HeadlessPaneContext {
   capabilities?: CapabilityInvoker;
   /** The catalog's name for the series charted as an expression (`FRED:DFII10`); undefined for one it does not list. */
   catalogSeriesName?: (expression: string) => string | undefined;
+  /** The catalog series a bare word is an alias of (`hashrate` is CAP:bitcoin:hashrate); undefined for any other word. */
+  catalogSeriesNamed?: (word: string) => { expression: string; name: string } | undefined;
   /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
   resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
@@ -149,7 +151,9 @@ export interface HeadlessPaneContext {
    * `coinNote` is what `quote` says of a bare coin ticker read as a listing
    * that is not the coin (ETH, the Grayscale fund), for the report's warnings.
    */
-  resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string; coinNote?: string } | null>;
+  resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string; coinNote?: string;
+    /** What became of the company that had the symbol, as `quote` says it ("GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT"). */
+    successorNote?: string } | null>;
   /**
    * What a plugin keeps on this device only (its `ctx.resume` state, never
    * synced), such as ALRT's log of the alerts the app fired; null when none.
@@ -191,6 +195,13 @@ export interface HeadlessPaneColumn {
   stackRows?: number;
   /** The text table leaves the column out when fitted to fewer terminal columns than this; exports and piped output keep it. */
   minTableWidth?: number;
+  /**
+   * The narrow text table drops the column, rightmost first, before it moves any column under its rows: a figure
+   * the others imply (RETURN's interval $ beside its prices). Exports and a table that fits keep it.
+   */
+  optional?: boolean;
+  /** Among optional columns, a higher priority is dropped sooner. */
+  dropPriority?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */
@@ -209,9 +220,10 @@ export interface HeadlessPaneColumn {
   /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
-   * prints nothing. Exports keep it as a column.
+   * prints nothing. Exports keep it as a column. `"line"`: one line cut to
+   * the width, never wrapped (a story's summary under its headline).
    */
-  underRow?: boolean;
+  underRow?: boolean | "line";
 }
 
 export interface HeadlessPaneEntry {
@@ -284,6 +296,13 @@ export interface HeadlessPaneFreshness {
   delayMinutes?: number;
   /** What not-a-feed data is, in a few words: "filed data", "monthly release", "your inputs". */
   basis?: string;
+  /**
+   * The pane shows nothing from a market or a feed: the user's own notes and
+   * rules, the app's connections, documentation, an account. A screenshot's
+   * footer then carries no status line, which would date nothing or call the
+   * app's own state "not a live feed". `fn` still cites `source` and `basis`.
+   */
+  local?: boolean;
   /**
    * How often the data is published, when its dates mark the start of a period
    * (a monthly statistic is dated the 1st). The report then names the month,
@@ -404,11 +423,23 @@ export interface HeadlessPaneFreshness {
    */
   asOfLabel?: string;
   /**
+   * The newest observation is a bar of this many minutes that opens at the
+   * as-of: the line names its span, `last bar 15:00–16:00 UTC`, so the bar's
+   * open is not read as how far the data runs.
+   */
+  barMinutes?: number;
+  /**
    * Say when the rows were retrieved too, after the newest one's date: a list
    * dated by its newest filing was not read then (`newest filing Tue 27 Oct
    * 2026 · retrieved Wed 28 Oct 2026 19:07 UTC`).
    */
   retrievedToo?: boolean;
+  /**
+   * When the source last read the data, when that is not now: a page the
+   * server reads hourly is retrieved when it read it, not when the report
+   * asked the server. An ISO instant; ignored when in the future.
+   */
+  retrievedAt?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /**
@@ -504,6 +535,13 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
 export type HeadlessBundleSection =
   | {
     title: string;
+    /**
+     * The heading the text report prints in place of `title`, when it can say
+     * more than an export's section name should (the scale its amounts are
+     * printed in, "Total revenue, USD millions"). JSON, CSV and NDJSON keep
+     * `title`, so a section read by its name stays where it was.
+     */
+    textTitle?: string;
     columns?: HeadlessPaneColumn[];
     rows: HeadlessPaneRow[];
     /** What the report says when `rows` is empty, in place of "No data.": why there are none, and what to run instead. */
@@ -576,6 +614,7 @@ export type HeadlessBundleSection =
     /** In a report with `exportDated`: the period the figures cover, and when they were released (an ISO date or instant), which each exported line names in `period` and `released`. */
     period?: string;
     released?: string;
+    textTitle?: never;
     columns?: never;
     rows?: never;
     textColumns?: never;

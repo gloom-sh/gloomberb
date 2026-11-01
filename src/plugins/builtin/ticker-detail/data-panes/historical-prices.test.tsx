@@ -198,3 +198,22 @@ test("ALL says where the source's bars start, names a month without a bar, and m
   // The export keeps the change itself, as a number.
   expect(csv).toContain("2014-12-01,,,,102,1,0.99009900990099,");
 });
+
+/** `fn HP NG=F` read 2026-10-26's change from November's 2.640 to December's 3.050: two contracts' prices, no move. */
+test("a continuous future's bar on a new contract has no change, in the table and its export, and the notice names the roll", async () => {
+  setSystemTime(new Date("2026-10-31T12:00:00Z"));
+  const rows: Array<[string, number, string]> = [
+    ["2026-10-21", 2.79, "NGX26"], ["2026-10-22", 2.80, "NGX26"], ["2026-10-23", 2.64, "NGX26"],
+    ["2026-10-26", 3.05, "NGZ26"], ["2026-10-27", 3.00, "NGZ26"],
+  ];
+  const { frame, csv } = await mountHistory(rows.map(([date, close, contract]) => ({ date: new Date(`${date}T00:00:00Z`), close, contract })));
+  expect(frame).toContain("[!]");
+  expect(csv).toContain("Gap note,No CHG at the roll to a new contract: 2026-10-26 (NGZ26)");
+  const csvRow = (date: string) => csv.split("\n").find((line) => line.startsWith(date))!.split(",");
+  // The roll's change cells are blank; the bar after it moves from the new contract's close.
+  expect(csvRow("2026-10-26").slice(4, 7)).toEqual(["3.05", "", ""]);
+  expect(Number(csvRow("2026-10-27")[5])).toBeCloseTo(-0.05, 10);
+  expect(Number(csvRow("2026-10-23")[5])).toBeCloseTo(-0.16, 10);
+  const frameRow = frame.split("\n").find((line) => line.includes("2026-10-26"))!;
+  expect(frameRow).not.toMatch(/[+-]\d+\.\d+%/);
+});

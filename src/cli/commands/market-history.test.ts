@@ -4,10 +4,12 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { collectSavedCopies, servedFromSavedCopy } from "../../data/saved-copies";
 import { createDefaultConfig } from "../../types/config";
-import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
-import { fail, isCliFailure } from "../errors";
+import { fail, isCliFailure, printCliError } from "../errors";
+import { AssetDataRouter } from "../../sources/provider-router";
+import { captureConsole } from "../../test-support/console";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
@@ -17,7 +19,7 @@ const history = marketDataCliCommands.find((command) => command.name === "histor
 afterEach(() => { process.exitCode = 0; });
 
 /** Every history export's own columns, whatever the symbol or the market's state. */
-const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,status";
+const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,Volume basis,status";
 
 test("history CSV keeps the price columns first, every row ends with its flag, what it is a bar of, its currency, interval and source, and it ends with its source", async () => {
   const cli = createTestCliContext({
@@ -38,8 +40,8 @@ test("history CSV keeps the price columns first, every row ends with its flag, w
   const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   expect(lines.slice(0, 4)).toEqual([
     `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
-    "2025-10-09,,,,,,low>open,false,false,false,,,,,prices left blank: low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
-    "2025-10-10,249,258.15,249,256,4093192,,false,false,false,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
+    "2025-10-09,,,,,,low>open,false,false,false,,,,,,prices left blank: low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
+    "2025-10-10,249,258.15,249,256,4093192,,false,false,false,,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
     "",
   ]);
   expect(lines.slice(4).map((line) => line.split(":")[0])).toEqual(["# Source", "# Publisher", "# Observation date", "# Publication time", "# Retrieval time"]);
@@ -172,6 +174,11 @@ test("history shows today's session from the quote in every range, partial, whet
       expect(text.find((line) => line.startsWith("Source:"))).toContain("(daily bars) \u00b7 the newest bar is today so far");
       expect(result.freshness).toMatchObject({ basis: "daily bars", asOf: "2026-10-16T18:59:30.000Z" });
     }
+    // Signed out or free, the day so far is read from the delayed quote, and the status line says how late, not "not a live feed".
+    const delayed = await run([...finished, snapshot], { dataSource: "delayed" });
+    expect(delayed.result.freshness).toMatchObject({ status: "delayed", delayMinutes: 15 });
+    expect(delayed.text.find((line) => line.startsWith("Source:"))).toContain("15 min delayed");
+    expect(delayed.text.find((line) => line.startsWith("Source:"))).not.toContain("not a live feed");
     // Without a current quote the snapshot is not today's row, and a source with no bar for today shows none.
     for (const points of [[...finished, snapshot], finished]) {
       const { result } = await run(points, { stale: true });
@@ -283,7 +290,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const csv = await run("csv", { points: [...old, ...shekels] });
     expect(csv.result.warnings).toEqual(warnings);
     // Dated by the January bar's last session, not the day it opens.
-    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
     const text = await run("text", { points: [...old, ...shekels] });
     expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
     // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
@@ -296,6 +303,25 @@ test("a break in the series is flagged on the bar after it in every export, and 
   } finally {
     setSystemTime();
   }
+});
+
+/**
+ * At 08:12Z on 30 Oct 2026 `history BTC-USD --from 2025-10-31` printed "0 bars · No results" (`ok: true`, no rows)
+ * while `--range 1Y` failed with "No source could load history for BTC-USD just now".
+ */
+test("a window of dates no source could load is a retryable failure, never an empty history; a source with nothing keeps its empty answer", async () => {
+  const run = async (getDetailedPriceHistory: () => Promise<PriceHistoryResult["points"]>) => {
+    const provider = { ...fallbackProvider, id: "window-failure", getQuote: async () => createTestQuote({ symbol: "BTC-USD", currency: "USD" }), getDetailedPriceHistory };
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: new AssetDataRouter(provider) }, { format: "json" });
+    return history.execute(["BTC-USD", "--from", "2025-10-31"], cli.context).then(() => cli.printed[0]!.result);
+  };
+  const failure = await run(async () => { throw new Error("Request timed out"); }).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toBe("No source could load history for BTC-USD just now");
+  const printed = await captureConsole(() => printCliError(failure, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  expect(JSON.parse(printed.stderr)).toMatchObject({ ok: false, error: { code: "source_unavailable", retryable: true } });
+  // A source that answered with no bars in the window is no failure.
+  expect(await run(async () => []).catch((error: unknown) => error)).not.toBeInstanceOf(Error);
 });
 
 test("a past window reads its own dates' bars, in the size its span takes, with no bar from today's quote and no feed to go stale", async () => {
@@ -395,14 +421,14 @@ test("history of several symbols is one long table with the single-symbol header
     const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
     expect(lines.slice(0, 9)).toEqual([
       `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
-      "2026-10-21,344.5,344.5,344.5,344.5,1000,,false,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
-      "2026-10-22,348.22,348.22,348.22,348.22,1000,,false,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
-      "2026-10-23,349.12,351.73,347.26,347.79,9050207,,true,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
-      "2026-10-22,1223000,1223000,1223000,1223000,1000,,false,false,false,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
-      "2026-10-23,1277000,1277000,1277000,1277000,1000,,false,false,false,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
-      ",,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
+      "2026-10-21,344.5,344.5,344.5,344.5,1000,,false,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-22,348.22,348.22,348.22,348.22,1000,,false,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-23,349.12,351.73,347.26,347.79,9050207,,true,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-22,1223000,1223000,1223000,1223000,1000,,false,false,false,,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
+      "2026-10-23,1277000,1277000,1277000,1277000,1000,,false,false,false,,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
+      ",,,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
       // A window the source has no bar in is a row with its reason too, never left out.
-      ",,,,,,,,,,,,,,No bars for ENDED from 2026-10-21 to today.,ENDED,,,Gloom Cloud,",
+      ",,,,,,,,,,,,,,,No bars for ENDED from 2026-10-21 to today.,ENDED,,,Gloom Cloud,",
       "",
     ]);
     expect(result.warnings).toEqual(expect.arrayContaining(["Not a ticker: ZZZZQQ.", "No bars for ENDED from 2026-10-21 to today."]));
@@ -451,8 +477,8 @@ test("history of a list exits 1 only when no symbol is served, with every symbol
   expect(result.failure).toMatchObject({ message: "No history for ZZZZQQ, QQQQZZ." });
   expect(csv).toEqual([
     `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
-    ",,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
-    ",,,,,,,,,,,,,,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,",
+    ",,,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
+    ",,,,,,,,,,,,,,,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,",
   ]);
   // One served symbol is a result, whatever the others did.
   process.exitCode = 0;
@@ -650,6 +676,106 @@ test("a currency pair's bars count no volume: a source's 0 prints as missing in 
     for (const line of table) expect(line).not.toMatch(/\s0\s/);
     const csv = await run("csv");
     expect(csv.text.split("\n")[1]).toMatch(/^2025-04-14,1\.13417,1\.14247,1\.13007,1\.13533,,/);
+  } finally {
+    setSystemTime();
+  }
+});
+
+/** Every rendering of a `history` run: the text table, the CSV and the JSON, as the command prints them. */
+async function historyOutputs(args: string[], points: PriceHistoryResult["points"], quote: Parameters<typeof createTestQuote>[0]) {
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ currency: "USD", marketState: "CLOSED", ...quote }),
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points }),
+      getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution) => ({ resolution, points }),
+      getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => ({ resolution: interval, points }),
+    }),
+  }, { format: "json" });
+  await history.execute(args, cli.context);
+  const [{ result, options }] = cli.printed;
+  return {
+    result,
+    text: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, color: false }, options),
+    csv: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options),
+    json: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options),
+  };
+}
+
+const sessionBars = (days: string[], volumes: number[], time = "T00:00:00Z", contracts: string[] = []) => days.map((day, index) => {
+  const close = 100 + index;
+  return { date: new Date(`${day}${time}`), open: close, high: close, low: close, close, volume: volumes[index]!,
+    ...(contracts[index] ? { contract: contracts[index] } : {}) };
+});
+const OCT_DAYS = ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"];
+const QUIET_VOLUMES = [160_000, 150_000, 140_000, 155_000, 145_000, 150_000, 148_000, 15, 152_000, 0];
+
+/**
+ * A stock's day on 15 shares among days of 150,000, and a session with none, are no futures contract's thin bar:
+ * a stock's and an intraday history print as they did before contracts were read, the same bytes in text, CSV and JSON.
+ */
+test("a stock's daily and intraday history is unchanged by the futures marks: no thin bar, no roll, no contract column", async () => {
+  setSystemTime(new Date("2026-10-31T12:00:00Z"));
+  try {
+    const daily = await historyOutputs(["ACME", "--range", "1M"], sessionBars(OCT_DAYS, QUIET_VOLUMES), { symbol: "ACME", name: "Acme Corp", listingExchangeName: "NYSE" });
+    expect(daily.text).toBe([
+      "Acme Corp  ·  New York Stock Exchange (NYSE)",
+      "Currency USD  ·  daily bars  ·  2026-10-19 to 2026-10-30  ·  10 bars",
+      "Max drawdown 0.0% (daily closes): no close fell below an earlier one",
+      "Date          Open    High     Low   Close   Volume",
+      "──────────  ──────  ──────  ──────  ──────  ───────",
+      "2026-10-19  100.00  100.00  100.00  100.00  160,000",
+      "2026-10-20  101.00  101.00  101.00  101.00  150,000",
+      "2026-10-21  102.00  102.00  102.00  102.00  140,000",
+      "2026-10-22  103.00  103.00  103.00  103.00  155,000",
+      "2026-10-23  104.00  104.00  104.00  104.00  145,000",
+      "2026-10-26  105.00  105.00  105.00  105.00  150,000",
+      "2026-10-27  106.00  106.00  106.00  106.00  148,000",
+      "2026-10-28  107.00  107.00  107.00  107.00       15",
+      "2026-10-29  108.00  108.00  108.00  108.00  152,000",
+      "2026-10-30  109.00  109.00  109.00  109.00        0",
+      "",
+      "Source: Gloom Cloud · Fri 30 Oct 2026 · not a live feed (daily closes)",
+    ].join("\n"));
+    expect(daily.csv.split("\n")[0]).toBe(`${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`);
+    expect(daily.csv.split("\n")[8]).toBe("2026-10-28,107,107,107,107,15,,false,false,false,,,,,,,ACME,USD,1d,Gloom Cloud,2026-10-30");
+    expect(daily.json).not.toMatch(/"(contract|roll|thin)"/);
+    expect((daily.result.warnings ?? []).join("\n")).not.toMatch(/thin|roll/);
+
+    const intraday = await historyOutputs(["ACME", "--range", "1D", "--interval", "15m"],
+      sessionBars(OCT_DAYS.map(() => "2026-10-30"), QUIET_VOLUMES).map((bar, index) => ({ ...bar, date: new Date(Date.parse("2026-10-30T14:30:00Z") + index * 900_000) })),
+      { symbol: "ACME", name: "Acme Corp", listingExchangeName: "NYSE" });
+    expect(intraday.text).not.toMatch(/thin|roll|front month/);
+    expect(intraday.csv.split("\n")[0]).toBe(`${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`);
+    expect(intraday.json).not.toMatch(/"(contract|roll|thin)"/);
+  } finally {
+    setSystemTime();
+  }
+});
+
+/** `history NG=F --range 1M` on 30 Oct 2026 read November's bars and December's as one contract headed "Natural Gas Dec 2026". */
+test("a continuous future's history is headed as the front month, flags the roll and a thin bar, and exports each bar's contract", async () => {
+  setSystemTime(new Date("2026-10-31T12:00:00Z"));
+  try {
+    const contracts = OCT_DAYS.map((day) => day < "2026-10-26" ? "NGX26" : "NGZ26");
+    const volumes = [...QUIET_VOLUMES.slice(0, -1), 151_000];
+    const { result, text, csv } = await historyOutputs(["NG=F", "--range", "1M"], sessionBars(OCT_DAYS, volumes, "T00:00:00Z", contracts),
+      { symbol: "NG=F", name: "Natural Gas Dec 2026", listingExchangeName: "NYMEX", instrumentType: "Future" });
+    const lines = text.split("\n");
+    expect(lines[0]).toStartWith("Natural Gas front month");
+    expect(lines.find((line) => line.startsWith("2026-10-26"))).toEndWith("roll to NGZ26");
+    expect(lines.find((line) => line.startsWith("2026-10-28"))).toEndWith("thin");
+    expect(lines.filter((line) => /roll to|thin$/.test(line))).toHaveLength(2);
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      "NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked roll); drawdowns are read within one contract",
+      "2026-10-28 traded thin: under 5% of the volume of the bars around it",
+    ]));
+    const [header, ...rows] = csv.split("\n");
+    expect(header).toBe(`${HISTORY_CSV_HEADER.replace(",status", ",Contract,Roll,Thin,status")},symbol_or_series,currency_or_unit,interval,source,as_of`);
+    const cells = (date: string) => rows.find((row) => row.startsWith(date))!.split(",").slice(15, 18);
+    expect(cells("2026-10-23")).toEqual(["NGX26", "false", "false"]);
+    expect(cells("2026-10-26")).toEqual(["NGZ26", "true", "false"]);
+    expect(cells("2026-10-28")).toEqual(["NGZ26", "false", "true"]);
   } finally {
     setSystemTime();
   }

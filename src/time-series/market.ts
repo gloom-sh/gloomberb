@@ -1,5 +1,5 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { pricePointIntegrity, pricePointValues, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
+import { pricePointIntegrity, pricePointValues, pricePointWicks, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
@@ -73,8 +73,10 @@ function aggregatePriceHistory(
   for (const point of sorted) {
     const key = periodKey(point.date, period);
     const open = isFiniteNumber(point.open) ? point.open : point.close;
-    const high = isFiniteNumber(point.high) ? point.high : point.close;
-    const low = isFiniteNumber(point.low) ? point.low : point.close;
+    // A wick too far from its bar's body to have traded does not set the week's or month's range.
+    const wicks = pricePointWicks(point);
+    const high = isFiniteNumber(wicks.high) ? wicks.high : isFiniteNumber(point.high) ? Math.max(open, point.close) : point.close;
+    const low = isFiniteNumber(wicks.low) ? wicks.low : isFiniteNumber(point.low) ? Math.min(open, point.close) : point.close;
     const current = buckets.get(key);
     if (!current) {
       buckets.set(key, {

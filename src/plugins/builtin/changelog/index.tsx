@@ -82,7 +82,8 @@ function ChangelogDetail({
   );
 }
 
-function ChangelogPane({ focused, width, height }: PaneProps) {
+/** The Changelog, as its own pane (CHG) and as ROADMAP's Changelog view. */
+export function ChangelogPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
   const requestedVersion = paneInstance?.params?.version ?? null;
   const [releases, setReleases] = useState<ChangelogRelease[]>(() => releaseCache.peek(RELEASES, { stale: true }) ?? []);
@@ -289,7 +290,7 @@ export const changelogModule: PluginModule = {
       name: "Changelog",
       icon: "L",
       component: ChangelogPane,
-      reportFreshness: { status: "not-a-feed", basis: "release notes" },
+      reportFreshness: { status: "not-a-feed", basis: "release notes", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },

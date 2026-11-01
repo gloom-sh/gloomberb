@@ -1,4 +1,5 @@
 import type { DataTableColumn } from "../../../components";
+import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { formatCompact } from "../../../utils/format";
 import type { SortDirection } from "../../../utils/sort-values";
@@ -28,6 +29,7 @@ export type DetailMode =
 export type TradeColumnId =
   | "returnSinceTx"
   | "returnSinceFiling"
+  | "excessSinceFiling"
   | "filed"
   | "tx"
   | "lag"
@@ -45,6 +47,7 @@ export type TradeColumn = DataTableColumn & {
 export type MemberColumnId =
   | "party"
   | "medianReturn"
+  | "medianExcessSinceFiling"
   | "buyHitRate"
   | "member"
   | "district"
@@ -151,6 +154,7 @@ function compareTrade(
   switch (columnId) {
     case "returnSinceTx":
     case "returnSinceFiling":
+    case "excessSinceFiling":
       return compareOptionalNumber(left[columnId], right[columnId]);
     case "filed":
       return dateValue(left.filingDate) - dateValue(right.filingDate);
@@ -182,6 +186,7 @@ function compareMember(
     case "party":
       return compareText(left.party ?? "", right.party ?? "");
     case "medianReturn":
+    case "medianExcessSinceFiling":
     case "buyHitRate":
       return compareOptionalNumber(left[columnId], right[columnId]);
     case "member":
@@ -203,87 +208,102 @@ function compareMember(
   }
 }
 
+const VS_SPY_COLUMN: TradeColumn = { id: "excessSinceFiling", label: "VS SPY", width: 10, align: "right" };
+const TRADE_MEMBER_MIN_WIDTH = 14;
+/** Narrower than this cuts most member names, so other columns give way first. */
+const MEMBER_READABLE_WIDTH = 18;
+
+/**
+ * Short of room, the trades give way in this order. The return since the
+ * trade goes first: FILE RET% and VS SPY read over the same days, from the
+ * filing a follower could act on. Then the dates lose their year, the lag
+ * (it follows from the two dates), the owner and the trade date go, and VS
+ * SPY outlasts FILE RET%. The detail keeps every figure.
+ */
+const TRADE_DROP_ORDER = ["returnSinceTx", "lag", "owner", "tx", "returnSinceFiling"] as const;
+
+function tradeColumns(tickerView: boolean, dateWidth: number, memberWidth: number, assetWidth: number | null): TradeColumn[] {
+  return [
+    { id: "filed", label: "FILED", width: dateWidth, align: "left" },
+    { id: "tx", label: "TX", width: dateWidth, align: "left" },
+    { id: "lag", label: "LAG", width: 5, align: "right" },
+    { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
+    { id: "side", label: "SIDE", width: 5, align: "left" },
+    ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: 12, align: "left" as const, assetFallback: assetWidth == null }] : []),
+    ...(assetWidth != null ? [{ id: "asset" as const, label: "ASSET", width: assetWidth, align: "left" as const }] : []),
+    { id: "amount", label: "AMOUNT", width: 14, align: "right" },
+    { id: "owner", label: "OWNER", width: 8, align: "left" },
+    { id: "returnSinceTx", label: "TX RET%", width: 10, align: "right" },
+    { id: "returnSinceFiling", label: "FILE RET%", width: 10, align: "right" },
+    VS_SPY_COLUMN,
+  ];
+}
+
 export function buildTradeColumns(width: number, tickerView = false): TradeColumn[] {
-  const filedWidth = 10;
-  const txWidth = 10;
-  const lagWidth = 5;
-  const sideWidth = 5;
-  const tickerWidth = tickerView ? 0 : 12;
-  const amountWidth = 14;
-  const ownerWidth = 8;
-  const flexWidth = Math.max(
-    14,
-    width - filedWidth - txWidth - lagWidth - sideWidth - tickerWidth - amountWidth - ownerWidth - 36,
-  );
+  // Full dates while dropping TX RET% is enough, then short ones and the rest of the order.
+  const long = dropColumnsToFit(tradeColumns(tickerView, 10, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER.slice(0, 1));
+  const fitted = getTableWidth(long) <= width ? long : dropColumnsToFit(tradeColumns(tickerView, 7, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER);
+  const shown = new Set(fitted.map((column) => column.id));
+  const dateWidth = fitted[0]!.width;
+  const layout = (memberWidth: number, assetWidth: number | null) => tradeColumns(tickerView, dateWidth, memberWidth, assetWidth)
+    .filter((column) => shown.has(column.id) || column.id === "asset");
+  // What the other columns leave, as the table draws them, names the member and then the asset.
+  const flexWidth = Math.max(TRADE_MEMBER_MIN_WIDTH, MEMBER_READABLE_WIDTH + width - getTableWidth(fitted));
   // Member names rarely pass 22 cells; the rest names the asset, which is the
   // only identification for trades without a ticker (bonds, T-bills, funds).
   const memberWidth = Math.min(22, Math.max(18, flexWidth - 13));
   const assetWidth = flexWidth - memberWidth - 1;
-  const showAsset = assetWidth >= 12;
-  return [
-    { id: "filed", label: "FILED", width: filedWidth, align: "left" },
-    { id: "tx", label: "TX", width: txWidth, align: "left" },
-    { id: "lag", label: "LAG", width: lagWidth, align: "right" },
-    { id: "member", label: "MEMBER", width: showAsset ? memberWidth : flexWidth, align: "left" },
-    { id: "side", label: "SIDE", width: sideWidth, align: "left" },
-    ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const, assetFallback: !showAsset }] : []),
-    ...(showAsset ? [{ id: "asset" as const, label: "ASSET", width: assetWidth, align: "left" as const }] : []),
-    { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
-    { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
-    { id: "returnSinceTx", label: "TX RET%", width: 10, align: "right" },
-    { id: "returnSinceFiling", label: "FILE RET%", width: 10, align: "right" },
-  ];
+  return assetWidth >= 12 ? layout(memberWidth, assetWidth) : layout(flexWidth, null);
 }
+
+const MEMBER_TRADE_ASSET_MIN_WIDTH = 18;
+/** As on the trades; the member row above also carries their average lag. */
+const MEMBER_TRADE_DROP_ORDER = ["lag", "owner", "tx"] as const;
 
 export function buildMemberTradeColumns(width: number): TradeColumn[] {
-  const filedWidth = 7;
-  const txWidth = 7;
-  const sideWidth = 8;
-  const tickerWidth = 12;
-  const amountWidth = 14;
-  const ownerWidth = 8;
-  const lagWidth = 5;
-  const assetWidth = Math.max(
-    18,
-    width - filedWidth - txWidth - sideWidth - tickerWidth - amountWidth - ownerWidth - lagWidth - 9,
-  );
-  return [
-    { id: "filed", label: "FILED", width: filedWidth, align: "left" },
-    { id: "tx", label: "TX", width: txWidth, align: "left" },
-    { id: "side", label: "SIDE", width: sideWidth, align: "left" },
-    { id: "ticker", label: "TICKER", width: tickerWidth, align: "left" },
-    { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
+  const layout = (assetWidth: number): TradeColumn[] => [
+    { id: "filed", label: "FILED", width: 7, align: "left" },
+    { id: "tx", label: "TX", width: 7, align: "left" },
+    { id: "side", label: "SIDE", width: 8, align: "left" },
+    { id: "ticker", label: "TICKER", width: 12, align: "left" },
+    { id: "amount", label: "AMOUNT", width: 14, align: "right" },
     { id: "asset", label: "ASSET", width: assetWidth, align: "left" },
-    { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
-    { id: "lag", label: "LAG", width: lagWidth, align: "right" },
+    { id: "owner", label: "OWNER", width: 8, align: "left" },
+    { id: "lag", label: "LAG", width: 5, align: "right" },
+    VS_SPY_COLUMN,
   ];
+  const fitted = dropColumnsToFit(layout(MEMBER_TRADE_ASSET_MIN_WIDTH), width, MEMBER_TRADE_DROP_ORDER);
+  const shown = new Set(fitted.map((column) => column.id));
+  const assetWidth = Math.max(MEMBER_TRADE_ASSET_MIN_WIDTH, MEMBER_TRADE_ASSET_MIN_WIDTH + width - getTableWidth(fitted));
+  return layout(assetWidth).filter((column) => shown.has(column.id));
 }
 
+/**
+ * As on the trades, the median return since the trade gives way before the one
+ * against SPY; then the average lag, the last filing, the district and the
+ * buy hit rate, which the member's detail repeats.
+ */
+const MEMBER_DROP_ORDER = ["medianReturn", "lag", "last", "district", "buyHitRate"] as const;
+
 export function buildMemberColumns(width: number): MemberColumn[] {
-  const districtWidth = 6;
-  const tradesWidth = 7;
-  const buysWidth = 5;
-  const sellsWidth = 6;
-  const rangeWidth = 17;
-  const lastWidth = 7;
-  const lagWidth = 6;
-  const memberWidth = Math.max(
-    18,
-    width - districtWidth - tradesWidth - buysWidth - sellsWidth - rangeWidth - lastWidth - lagWidth - 47,
-  );
-  return [
+  const layout = (memberWidth: number): MemberColumn[] => [
     { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
-    { id: "district", label: "DIST", width: districtWidth, align: "left" },
+    { id: "district", label: "DIST", width: 6, align: "left" },
     { id: "party", label: "PARTY", width: 11, align: "left" },
-    { id: "trades", label: "TRADES", width: tradesWidth, align: "right" },
-    { id: "buys", label: "BUY", width: buysWidth, align: "right" },
-    { id: "sells", label: "SELL", width: sellsWidth, align: "right" },
-    { id: "range", label: "EST RANGE", width: rangeWidth, align: "right" },
-    { id: "last", label: "LAST", width: lastWidth, align: "left" },
-    { id: "lag", label: "AVG", width: lagWidth, align: "right" },
+    { id: "trades", label: "TRADES", width: 7, align: "right" },
+    { id: "buys", label: "BUY", width: 5, align: "right" },
+    { id: "sells", label: "SELL", width: 6, align: "right" },
+    { id: "range", label: "EST RANGE", width: 17, align: "right" },
+    { id: "last", label: "LAST", width: 7, align: "left" },
+    { id: "lag", label: "AVG", width: 6, align: "right" },
     { id: "medianReturn", label: "MED RET%", width: 9, align: "right" },
+    { id: "medianExcessSinceFiling", label: "MED VS SPY", width: 10, align: "right" },
     { id: "buyHitRate", label: "BUY HIT%", width: 9, align: "right" },
   ];
+  const fitted = dropColumnsToFit(layout(MEMBER_READABLE_WIDTH), width, MEMBER_DROP_ORDER);
+  const shown = new Set(fitted.map((column) => column.id));
+  const memberWidth = Math.max(MEMBER_READABLE_WIDTH, MEMBER_READABLE_WIDTH + width - getTableWidth(fitted));
+  return layout(memberWidth).filter((column) => shown.has(column.id));
 }
 
 export function sortedTrades(
@@ -394,6 +414,14 @@ export function mergeCongressPages(
   return { ...next, trades: [...byTradeId.values()], members };
 }
 
+/** Percent to one decimal; a figure that rounds to zero reads 0.0%, never -0.0%. */
 export function formatCongressReturn(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+  if (value == null || !Number.isFinite(value)) return "--";
+  const shown = roundCongressReturn(value);
+  return `${shown > 0 ? "+" : ""}${shown === 0 ? "0.0" : shown.toFixed(1)}%`;
+}
+
+/** The figure as shown, so its colour follows the digits: SPY at -0.04% is flat, not red. */
+export function roundCongressReturn(value: number): number {
+  return Math.round(value * 10) / 10 || 0;
 }

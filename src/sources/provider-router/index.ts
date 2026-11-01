@@ -9,6 +9,7 @@ import { createDefaultConfig } from "../../types/config";
 import type {
   CachedAssetArgs,
   CachedAssetMethod,
+  BatchedReadMethod,
   CachedFinancialsTarget,
   DataProvider,
   MarketDataRequestContext,
@@ -629,6 +630,18 @@ export class AssetDataRouter implements DataProvider {
    */
   primaryMarketSourceName(): string | null {
     return this.providersInPriorityOrder()[0]?.name ?? null;
+  }
+
+  /**
+   * Whether reads of `method` asked together go out as batch requests: only
+   * when every source the router could ask for them does, each broker that
+   * reads them and each provider. A caller asking many at once then never
+   * sends them one by one to a source that takes them one by one.
+   */
+  batchesReads(method: BatchedReadMethod): boolean {
+    if (this.getBrokerCandidatesForContext(undefined, false).some(({ broker }) => typeof broker[method] === "function")) return false;
+    const providers = this.providersInPriorityOrder().filter((provider) => typeof provider[method] === "function");
+    return providers.length > 0 && providers.every((provider) => provider.batchesReads?.(method) === true);
   }
 
   private providersInPriorityOrder(): DataProvider[] {

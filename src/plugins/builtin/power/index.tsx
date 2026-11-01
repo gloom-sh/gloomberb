@@ -2,7 +2,6 @@ import type { PaneTemplateInstanceConfig } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { powerBoardCache, powerDetailCache, powerHistoryCache } from "./client";
 import { powerHeadless } from "./headless";
-import { PowerPane } from "./pane";
 import { carbonHistoryCache, carbonPriceCache, powerPriceHistoryCache, powerPricesCache } from "./prices-client";
 import { powerPricesHeadless } from "./prices-headless";
 import { CARBON_SELECTION, CARBON_SERIES, DAY_AHEAD_SERIES, isCarbonQuery, POWER_PRICE_MARKETS, powerPriceMarket } from "./prices-model";
@@ -15,7 +14,7 @@ const CACHES = [powerBoardCache, powerHistoryCache, powerDetailCache, powerPrice
 export const powerModule: PluginModule = {
   series: [...DAY_AHEAD_SERIES, ...CARBON_SERIES, ...GAS_STORAGE_SERIES],
   // POWER sets the symbol param, EPWR the prices tab.
-  panes: [{ id: "power", name: "Power & Grid", icon: "P", component: PowerPane, defaultPosition: "right", defaultMode: "floating", identitySettings: ["tab", "symbol"],
+  panes: [{ id: "power", name: "Power & Grid", icon: "P", get component(): typeof import("./pane").PowerPane { const { PowerPane } = require("./pane"); return PowerPane; }, defaultPosition: "right", defaultMode: "floating", identitySettings: ["tab", "symbol"],
     defaultFloatingSize: { width: 132, height: 34 }, tableExport: true, headless: powerHeadless }],
   paneTemplates: [{ id: "power-pane", paneId: "power", label: "Power & Grid",
     description: "Pro: interconnection queues, historical MW and outcomes, datacenter loads, utility exposure and generation capacity, with primary evidence.",

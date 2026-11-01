@@ -46,7 +46,11 @@ const apple = [
   filing("SC 13G/A", 62, { cik: "320193", fileNumber: "005-33632" }),
 ];
 
-async function report({ all = false, filings = issuer, json = true }: { all?: boolean; filings?: SecFilingItem[]; json?: boolean } = {}) {
+async function report({ all = false, filings = issuer, json = true, content }: {
+  all?: boolean; filings?: SecFilingItem[]; json?: boolean;
+  /** A filing's own document, as fn SEC reads an insider form's. */
+  content?: (filing: SecFilingItem) => Promise<string | null>;
+} = {}) {
   let data: any;
   let text = "";
   const requested: number[] = [];
@@ -61,6 +65,7 @@ async function report({ all = false, filings = issuer, json = true }: { all?: bo
           ...createTestDataProvider({ getTickerFinancials: async () => ({ annualStatements: [{ date: "2025-12-31", totalRevenue: 1 }], quarterlyStatements: [], priceHistory: [] }) }),
           getNews: async () => [],
           getSecFilings: async (_symbol: string, count = 0) => { requested.push(count); return filings.slice(0, count); },
+          ...content ? { getSecFilingContent: content } : {},
         },
       }) as unknown as MarketContext,
       fail: (message) => { throw new Error(message); },
@@ -129,4 +134,35 @@ test("ticker --all, as the CLI reads it, keeps the supplements and the schedules
   expect(all.requested).toEqual([5]);
   expect(all.data.recentSecFilings.map((row: { form: string }) => row.form)).toEqual(["FWP", "424B2", "424B2", "FWP", "424B2"]);
   expect((await run(["JPM"])).requested).toEqual([200]);
+});
+
+test("ticker's recent filings say what each form is and who filed an insider form, never the document's file name", async () => {
+  const form4 = `<ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerName>Khan Salman Hassan</rptOwnerName></reportingOwnerId></reportingOwner>
+<nonDerivativeTable><nonDerivativeTransaction><securityTitle><value>Common Stock</value></securityTitle>
+<transactionDate><value>2026-10-17</value></transactionDate><transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+<transactionAmounts><transactionShares><value>16000</value></transactionShares><transactionPricePerShare><value>7.88</value></transactionPricePerShare>
+<transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode></transactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>`;
+  const mara = [
+    filing("4", 1, { cik: "1507605", primaryDocument: "xslF345X06/ownership.xml", primaryDocDescription: "4" }),
+    filing("144", 2, { cik: "1507605", primaryDocument: "xsl144X01/primary_doc.xml",
+      primaryDocumentUrl: "https://www.sec.gov/Archives/edgar/data/1507605/000195917326007414/xsl144X01/primary_doc.xml" }),
+    filing("10-Q", 3, { cik: "1507605", primaryDocument: "mara-20260930.htm" }),
+  ];
+  const read: string[] = [];
+  const content = async (target: SecFilingItem) => {
+    read.push(target.primaryDocument ?? "");
+    return target.form === "4" ? form4 : null;
+  };
+  const { text, data } = await report({ json: false, filings: mara, content });
+  const section = text.slice(text.indexOf("Recent SEC Filings"));
+  expect(section).not.toContain("Primary Document");
+  expect(section).not.toContain("ownership.xml");
+  expect(section).toContain("Insider Transaction\nKhan Salman Hassan: SELL 16k Common Stock @ $7.88");
+  // A 144 that could not be read still says what it is; a 10-Q is not read.
+  expect(section).toContain("Notice of proposed sale of securities");
+  expect(section).toContain("Quarterly Report");
+  expect(read).toEqual(["xslF345X06/ownership.xml", "primary_doc.xml"]);
+  expect(data).toBeUndefined();
+  const json = await report({ filings: mara, content });
+  expect(json.data.recentSecFilings[0].summary).toStartWith("Khan Salman Hassan: SELL 16k Common Stock");
 });

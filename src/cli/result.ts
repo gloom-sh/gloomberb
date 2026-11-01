@@ -93,6 +93,8 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   heading?: string;
   /** Text-mode line printed under the rows, such as where a listing stops. Not printed with no rows: say it in `empty`. */
   footnote?: string;
+  /** Text-mode line under each table row, indented and muted, cut to the width: a story's summary under its headline. */
+  rowNote?: (row: Row) => string | null | undefined;
   /** Text-mode block printed under the rows and footnote, for figures about a row that are not columns. */
   details?: (data: T) => string;
   /**
@@ -446,6 +448,7 @@ function formatTextCell<Row extends Record<string, unknown>>(
 function renderTextTable<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
+  rowNote?: (row: Row) => string | null | undefined,
 ): string {
   const resolvedColumns = textColumns(rows, columns);
   const cells = rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table")));
@@ -469,6 +472,7 @@ function renderTextTable<Row extends Record<string, unknown>>(
       stackRows: column.stackRows,
     })),
     cells.map((row) => shown.map(({ index }) => row[index]!)),
+    rowNote ? { below: rows.map((row) => { const note = rowNote(row); return note ? [note] : []; }), cutBelow: true } : {},
   );
 }
 
@@ -581,15 +585,16 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   if (renderOptions.text) {
     return renderOptions.text(result.data);
   }
-  const summary = renderOptions.summary?.(result.data) ?? "";
-  const withHeading = (text: string) => renderOptions.heading ? `${renderOptions.heading}\n${text}` : text;
+  // The heading's lines, the summary and the notes are prose: each wraps to a narrow --width, as the source line does.
+  const summary = wrapToTerminal(renderOptions.summary?.(result.data) ?? "");
+  const withHeading = (text: string) => renderOptions.heading ? `${wrapToTerminal(renderOptions.heading)}\n${text}` : text;
   if (rows.length === 0) {
-    return withHeading(summary || cliStyles.muted(renderOptions.empty ?? "No results."));
+    return withHeading(summary || cliStyles.muted(wrapToTerminal(renderOptions.empty ?? "No results.")));
   }
   const table = renderTextRows(rows as Row[], result.data, renderOptions);
   const notes = [window.note, renderOptions.footnote].filter((note): note is string => !!note);
   const details = renderOptions.details?.(result.data) ?? "";
-  const body = [table, ...notes.map((note) => cliStyles.muted(note)), ...details ? ["", details] : []].join("\n");
+  const body = [table, ...notes.map((note) => cliStyles.muted(wrapToTerminal(note))), ...details ? ["", details] : []].join("\n");
   return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 
@@ -607,7 +612,7 @@ function renderTextRows<T, Row extends Record<string, unknown>>(
   }
   return layout === "record"
     ? renderTextRecords(rows as Row[], columns)
-    : renderTextTable(rows as Row[], columns);
+    : renderTextTable(rows as Row[], columns, renderOptions.rowNote);
 }
 
 /** Settles once the result `printCliResult` last wrote has left the process: a pipe can hold it back. */
@@ -640,8 +645,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
+    // Each wraps to a narrow --width, as a note does.
     for (const warning of result.warnings ?? []) {
-      console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
+      console.error(wrapToTerminal(`${cliStyles.warning("warning:")} ${hinted(warning)}`));
     }
   }
   // CSV says what its rows do not in closing `# note:` lines; NDJSON has no place for one among its rows,

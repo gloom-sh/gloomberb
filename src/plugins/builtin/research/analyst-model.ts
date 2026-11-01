@@ -235,7 +235,7 @@ export function ratingTargetDelta(row: AnalystResearchData["ratings"][number]): 
   return row.currentPriceTarget - prior;
 }
 
-export type RatingColumnId = "date" | "firm" | "action" | "current" | "target" | "prior";
+export type RatingColumnId = "date" | "firm" | "action" | "current" | "target" | "prior" | "reason";
 export type RatingColumn = DataTableColumn & { id: RatingColumnId } & Partial<RatingTargetColumnSizing>;
 
 export interface RatingSortPreference {
@@ -255,6 +255,7 @@ const DEFAULT_RATING_SORT_DIRECTIONS: Record<RatingColumnId, SortDirection> = {
   current: "asc",
   target: "desc",
   prior: "asc",
+  reason: "asc",
 };
 
 const BASE_RATING_COLUMNS: RatingColumn[] = [
@@ -265,6 +266,36 @@ const BASE_RATING_COLUMNS: RatingColumn[] = [
   { id: "target", label: "TARGET", width: 13, align: "left" },
   { id: "prior", label: "PRIOR", width: 13, align: "left" },
 ];
+
+/** The reason coverage gives for an action: last, taking the room the pane has left. */
+const REASON_COLUMN: RatingColumn = { id: "reason", label: "REASON", width: 28, align: "left", flexGrow: 1 };
+
+/** The line coverage of the action quotes, or null when none gives one. */
+export function ratingReason(row: AnalystRatingRecord): AnalystRatingRecord["reason"] | null {
+  const reason = row.reason;
+  return reason?.text?.trim() && reason.url?.trim() ? reason : null;
+}
+
+/**
+ * The status bar room the selected action's article takes: its `source`
+ * link, the `o` hint that opens it and their separators. The consensus
+ * context gives way to it rather than cut it.
+ */
+export function ratingReasonFooterWidth(reason: AnalystRatingRecord["reason"] | null): number {
+  if (!reason) return 0;
+  return displayWidth(`source ${ratingReasonSource(reason)}`) + displayWidth(" · ") + displayWidth("[o]pen") + 2;
+}
+
+/** Who published the reason: the publisher's name, else the article's site. */
+export function ratingReasonSource(reason: NonNullable<AnalystRatingRecord["reason"]>): string {
+  const named = reason.source?.trim();
+  if (named) return named;
+  try {
+    return new URL(reason.url).hostname.replace(/^www\./, "");
+  } catch {
+    return "source";
+  }
+}
 
 export function buildRatingColumns(
   rows: readonly AnalystRatingRecord[],
@@ -288,9 +319,11 @@ export function buildRatingColumns(
     BASE_RATING_COLUMNS.find((column) => column.id === "target")?.width ?? 13,
   );
 
-  return BASE_RATING_COLUMNS.map((column) => {
+  const columns = BASE_RATING_COLUMNS.map((column) => {
     return column.id === "target" ? { ...column, ...targetSizing, width: targetWidth } : column;
   });
+  // A history with no reason anywhere keeps the table it always had.
+  return rows.some((row) => ratingReason(row)) ? [...columns, REASON_COLUMN] : columns;
 }
 
 function normalizedText(value: string | undefined): string | null {
@@ -316,6 +349,8 @@ function ratingSortValue(row: AnalystRatingRecord, columnId: RatingColumnId): st
       return ratingTargetSortValue(row);
     case "prior":
       return normalizedText(row.prior);
+    case "reason":
+      return normalizedText(ratingReason(row)?.text);
   }
 }
 

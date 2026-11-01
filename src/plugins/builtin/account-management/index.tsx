@@ -1,5 +1,4 @@
 import type { PluginModule } from "../plugin-module";
-import { AccountManagementPane } from "./pane";
 
 export const accountManagementModule: PluginModule = {
   panes: [{
@@ -7,8 +6,8 @@ export const accountManagementModule: PluginModule = {
     name: "ACM",
     icon: "A",
     personalData: "account",
-    component: AccountManagementPane,
-    reportFreshness: { status: "not-a-feed", basis: "account data" },
+    get component(): typeof import("./pane").AccountManagementPane { const { AccountManagementPane } = require("./pane"); return AccountManagementPane; },
+    reportFreshness: { status: "not-a-feed", basis: "account data", local: true },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 72, height: 36 },

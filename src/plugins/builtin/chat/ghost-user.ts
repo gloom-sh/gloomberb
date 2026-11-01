@@ -16,6 +16,14 @@ export function isManagedBot(user: Pick<ChatUserSummary, "accountType"> | null |
   return user?.accountType === "managed_llm";
 }
 
+/** Gloom Wire: the account that posts headlines, the day's calendar and pull requests into the topic channels. */
+const GLOOM_WIRE_USER_ID = "managed-llm-gloomwire";
+
+/** A Gloom Wire post: there to read, so unread only when it mentions you. */
+export function isGloomWire(user: Pick<ChatUserSummary, "id"> | null | undefined): boolean {
+  return user?.id === GLOOM_WIRE_USER_ID;
+}
+
 /**
  * A reply quotes its author by name only, so whether that author is a managed
  * assistant comes from the users the pane has seen. A quoted announcement is

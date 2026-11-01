@@ -8,12 +8,12 @@ import {
   DataTableView,
   EmptyState, FigureList, PaneStatusBody, Prose, QueryBar, READING_WIDTH, SectionHeading,
   usePaneFooter,
-  usePaneNoticeFooter,
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneStateValue } from "../../../state/app/context";
 import { colors, getChartIndicatorColor } from "../../../theme/colors";
@@ -44,13 +44,6 @@ import {
 } from "./format";
 
 export const EXECUTIVES_PANE_ID = "executives";
-
-function retainedDataNotice(subject: string, error: string, fetchedAt: number | null): string {
-  const retrieved = new Date(fetchedAt ?? Number.NaN);
-  const age = Number.isFinite(retrieved.getTime())
-    ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
-  return `${subject} refresh failed: ${error}. Retained data ${age}.`;
-}
 
 const PAY_PARTS: Array<{ key: keyof CloudExecutiveRowPayload; label: string }> =
   [
@@ -301,18 +294,10 @@ function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guar
   // The free preview: each executive's total pay; the breakdown and earlier years are Pro.
   const preview = statement?.access === "preview" || list.data?.data?.access === "preview";
   const loading = list.loading || detail.loading;
-  const listError = list.error ?? list.data?.refreshError;
-  const statementError = detail.error ?? detail.data?.refreshError;
-  usePaneNoticeFooter({
-    registrationId: `${EXECUTIVES_PANE_ID}:data-notices`,
-    notices: [
-      list.data?.data && listError
-        ? retainedDataNotice("Proxy list", listError, list.data.fetchedAt) : null,
-      detail.data?.data && statementError
-        ? retainedDataNotice(`${year} proxy`, statementError, detail.data.fetchedAt) : null,
-    ].filter((notice): notice is string => notice !== null),
-    focused,
-  });
+  // A copy saved earlier answering a failed refresh says when it was saved, in the footer every pane uses;
+  // a failed refresh with only what is on screen says why. Without anything shown, the body says it.
+  const listError = list.data?.data ? list.error ?? (list.data.savedAt == null ? list.data.refreshError : null) ?? null : null;
+  const statementError = detail.data?.data ? detail.error ?? (detail.data.savedAt == null ? detail.data.refreshError : null) ?? null : null;
   const refresh = useCallback(() => {
     void list.reload();
     if (year !== null) void detail.reload();
@@ -338,6 +323,9 @@ function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guar
     const info: PaneFooterSegment[] = [];
     if (loading)
       info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
+    if (listError) info.push({ id: "list-error", parts: [{ text: `Proxy list: ${listError}`, tone: "warning" }] });
+    if (statementError) info.push({ id: "statement-error", parts: [{ text: `${year} proxy: ${statementError}`, tone: "warning" }] });
+    info.push(...savedCopyFooterInfo([list.data?.data ? list.data.savedAt : null, statement ? detail.data?.savedAt : null]));
     if (statement) {
       info.push({
         id: "filed",
@@ -351,7 +339,7 @@ function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guar
     if (yearHint) hints.push(yearHint);
     if (preview) hints.push({ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade });
     return { info, hints };
-  }, [loading, statement, openFiling, yearHint, preview, openUpgrade]);
+  }, [loading, listError, statementError, year, list.data, detail.data, statement, openFiling, yearHint, preview, openUpgrade]);
 
   const figures = useMemo(
     () => (statement ? figuresOf(statement) : []),

@@ -3,7 +3,7 @@ import { canonicalTimeSeriesFieldId, isMarketFieldId } from "./field-catalog";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { ChartSeriesSpec, ChartSpec, SecuritySeriesSource } from "./types";
-import { activeStudyInputSeriesIds } from "./studies";
+import { activeStudyInputSeriesIds } from "./studies/resolve";
 import { valuationSeriesUsesLiveQuote } from "./fundamentals";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import type { InstrumentRef } from "../market-data/request-types";

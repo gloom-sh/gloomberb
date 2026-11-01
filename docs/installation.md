@@ -49,13 +49,25 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
 - **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloom doctor` names them.
-- **Versions:** Windows 11 on x64 is the tested setup. Windows 10, and ARM PCs running the x64 build through Windows' built-in emulation, are untested.
+- **Versions:** Windows 11 on x64 is the tested setup. On ARM PCs the x64 build runs through Windows' built-in emulation; CI checks that the desktop app opens and stays open on Windows 11 on Arm, and nothing more. Windows 10 is untested.
 
-For a terminal-only setup on x64, install Bun and use the package:
+For the terminal command alone, run this in PowerShell (no admin rights needed):
 
 ```powershell
-bun install -g @gloom-sh/terminal
+irm https://gloom.sh/install.ps1 | iex
 ```
+
+It downloads `gloomberb-windows-x64.exe.gz` from the latest release, checks its SHA-256 against the `.sha256` file the release publishes beside it (and installs nothing if that file cannot be read or does not match), installs it as `gloom.exe` in `%USERPROFILE%\.local\bin` (`GLOOM_INSTALL_DIR` picks another folder) and adds that folder to your user PATH; open a new terminal window afterwards. Running it again installs the latest release over it. On ARM PCs it installs the same x64 build. The script is [scripts/install.ps1](../scripts/install.ps1). Prefer to download it yourself? Unzip the `.gz` from the [release page](https://github.com/gloom-sh/gloomberb/releases/latest) with 7-Zip and put the `.exe` on your PATH.
+
+`curl -fsSL gloom.sh/install | bash` is for macOS and Linux: under Git Bash it stops and points to the PowerShell line. With Bun installed, `bun install -g @gloom-sh/terminal` works too.
+
+What Windows supports today:
+
+| | x64 | ARM (x64 emulation) |
+|---|---|---|
+| Desktop app (installer) | Tested on Windows 11 | Opens and stays open on Windows 11 (CI), otherwise untested |
+| Terminal command (`install.ps1`, Bun) | Tested on Windows 11 | Untested |
+| Terminal charts | Text in Windows Terminal (no Kitty graphics) | Same |
 
 ## Terminal Package
 
@@ -85,7 +97,7 @@ For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/
 
 ## What the install script does
 
-The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the digest GitHub lists for the release asset, aborts on a mismatch, and warns if no checksum is available. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
+The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the `.sha256` file the release publishes beside each asset, and installs nothing if that file cannot be read or does not match. Both come from the release's download links, not the GitHub API, so its rate limit does not get in the way. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
 
 On Apple Silicon Macs it installs the desktop app as `/Applications/Gloom.app`. A `Gloom.app` that belongs to another program stays, and the app goes in as `Gloomberb.app` instead. A `Gloomberb.app` from before the rename is removed once the `gloom` and `gloomberb` links into it point at `Gloom.app`, unless Homebrew installed it or one of those links is in a folder you cannot write. The script links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.18.4, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
 
@@ -112,5 +124,7 @@ gloom
 The variable moves the whole folder. A `config.json` carried along that still names the old `~/.gloomberb` as its `dataDir` is corrected to the new home on the next launch, so nothing is recreated in your home directory. Set it in your shell profile, or in the environment of whatever launches the desktop app, so every launch finds the same folder.
 
 On Linux, a new install with no `~/.gloomberb` and no `GLOOMBERB_HOME` follows the XDG Base Directory spec instead: `config.json` in `~/.config/gloomberb`, the database and installed plugins in `~/.local/share/gloomberb`, and the plugin cache in `~/.cache/gloomberb` (or wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` point). An existing `~/.gloomberb` keeps being used and is never moved, and once the XDG `config.json` exists it stays in use even if a `~/.gloomberb` appears later.
+
+On macOS and Linux the data folder and the folder holding `config.json` are open to your account alone (mode 700), and `config.json`, which holds broker credentials, the database and the logs are readable by you alone (mode 600). Each launch sets these modes again, so a profile made by an older version is tightened too.
 
 `gloom version` prints the data directory in use.

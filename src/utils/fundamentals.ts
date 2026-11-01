@@ -45,7 +45,10 @@ export function enterpriseValueCheck(
   // Not meaningful needs no figure of its own: a source EV below zero may come with no cap or currency.
   if (check.status === "not-meaningful") return withdrawn ? check : undefined;
   if (!check.currency) return undefined;
-  if (check.status === "withdrawn") return withdrawn && finiteNumber(check.computed) && finiteNumber(check.source) ? check : undefined;
+  // A withdrawn EV comes with the figure it was checked against, or with why no balance sheet checked it.
+  if (check.status === "withdrawn") {
+    return withdrawn && ((finiteNumber(check.computed) && finiteNumber(check.source)) || !!check.reason?.trim()) ? check : undefined;
+  }
   if (check.status === "computed") {
     return finiteNumber(check.computed) && fundamentals?.enterpriseValue === check.computed ? check : undefined;
   }
@@ -87,8 +90,9 @@ export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseV
 /**
  * The reconciliation line under a labelled, withdrawn or not meaningful EV: "EV 61.75B USD (provider) vs 63.75B
  * computed from market cap + total debt - cash (balance sheet 2026-06-30).", "EV N/M: cash and short-term investments
- * exceed market cap + total debt (balance sheet 2026-06-30)." For an EV withdrawn without a check, that the source
- * failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
+ * exceed market cap + total debt (balance sheet 2026-06-30)." A balance sheet in another currency names the rate it
+ * was converted at ("balance sheet 2026-06-30, EUR at 0.8614 GBP"). A withdrawn EV no balance sheet checked gives
+ * Gloom Cloud's reason; one withdrawn without a check, that the source failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
  * fundamentals the rows show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures
  * are theirs.
  */
@@ -97,14 +101,22 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
   if (notMeaningful) return `EV N/M: ${notMeaningful.charAt(0).toLowerCase()}${notMeaningful.slice(1)}.`;
   const check = enterpriseValueCheck(fundamentals);
   if (!check && enterpriseValueWithdrawn(fundamentals)) return "EV unavailable: the provider's figure failed validation.";
+  const reason = check?.reason?.trim().replace(/\.$/, "");
+  if (check?.status === "withdrawn" && !finiteNumber(check.computed) && reason) {
+    return `EV unavailable: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}.`;
+  }
   if (!check || !finiteNumber(check.computed) || !finiteNumber(check.source)
     || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
   const source = `${formatCompact(check.source)} ${check.currency}`;
   const computed = formatCompact(check.computed);
-  const basis = `market cap + total debt - cash${check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : ""}`;
+  const leases = finiteNumber(check.leases) && check.leases > 0 ? " + leases" : "";
+  const fx = check.fx && finiteNumber(check.fx.rate) ? `, ${check.fx.from} at ${check.fx.rate.toPrecision(4)} ${check.currency}` : "";
+  const sheet = check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate}${fx})` : "";
+  const basis = `market cap + total debt${leases} - cash${sheet}`;
   if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
-  return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}.`;
+  const twice = check.convertedTwice && check.convertedFrom ? `; it converts ${check.convertedFrom} to ${check.currency} twice` : "";
+  return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}${twice}.`;
 }
 
 /**

@@ -15,6 +15,7 @@ const RESEARCH_ALERT_KINDS = [
   "options_flow",
   "perps_threshold",
   "hiring_move",
+  "ipo",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -162,6 +163,8 @@ export function normalizeResearchRule(
           : ""
       if (!/^[A-Z0-9][A-Z0-9.:-]{0,31}$/.test(symbol)) return null
       result.symbol = symbol
+    } else if (kind === "ipo") {
+      // A company or keyword looked for on the IPO calendar: no listing yet, so no symbol.
     } else if (
       (kind !== "news_keyword" && kind !== "options_flow") ||
       input.symbol
@@ -243,6 +246,21 @@ export function normalizeResearchRule(
         const keyword =
           typeof input.keyword === "string"
             ? input.keyword.trim().replace(/\s+/g, " ").toLowerCase()
+            : ""
+        if (
+          keyword.length < 2 ||
+          keyword.length > 80 ||
+          /[\u0000-\u001f]/.test(keyword)
+        )
+          return null
+        result.keyword = keyword
+        break
+      }
+      case "ipo": {
+        // Kept as typed, for the lists; Gloom Cloud matches it in any case.
+        const keyword =
+          typeof input.keyword === "string"
+            ? input.keyword.trim().replace(/\s+/g, " ")
             : ""
         if (
           keyword.length < 2 ||

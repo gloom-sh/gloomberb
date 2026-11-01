@@ -10,6 +10,7 @@ import { createDefaultConfig } from "../../types/config";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createMovedSymbolsProvider, HFC_HOP, MOVED_SYMBOL_CHANGES as CHANGES } from "../../test-support/moved-symbols";
 import { captureConsole } from "../../test-support/console";
+import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { printCliError } from "../errors";
 import { marketDataCliCommands } from "./market";
@@ -31,15 +32,16 @@ async function runHistory(args: string[], dataProvider = source()) {
 
 async function runTicker(symbol: string, dataProvider = source()) {
   let data: unknown = null;
+  let warnings: string[] = [];
   const error = await ticker(symbol, {
     initMarketData: async () => ({
       config, dataDir: "/tmp/gloom-moved-symbols-fixture", dataProvider,
       store: { loadTicker: async () => null, loadAllTickers: async () => [] }, persistence: { close: () => {} },
     }) as unknown as MarketContext,
     fail: (message) => { throw new Error(message); },
-    printResult: (result) => { data = result.data; },
+    printResult: (result) => { data = result.data; warnings = result.warnings ?? []; },
   }).then(() => null, (failure: unknown) => failure);
-  return { error, data };
+  return { error, data, warnings };
 }
 
 /** What `--json` prints for a failure: the same printer the CLI ends every failed command with. */
@@ -129,6 +131,28 @@ test("a stopped line waits for a slow change lookup before serving, while a symb
 });
 
 /** Gloom Cloud's stored IV: a reading for META, none yet for anything else. */
+const GOGL_FUND = createTestQuote({ symbol: "GOGL", name: "Corgi GOOGL 2x Daily ETF", price: 15.19, listingExchangeName: "BATS", exchangeName: "BATS" });
+const GOGL_BAR = { date: new Date("2026-10-14"), open: 15, high: 15, low: 15, close: 15, volume: 0 };
+
+/** GOGL: Golden Ocean merged into CMB.Tech in 2025 and a fund lists there now; the change answers after the data, past the short grace. */
+const mergedAway = () => source((symbol) => Bun.sleep(300).then(() => symbol === "GOGL" ? {
+  symbol, moved: null, formerly: null, listedName: null, changes: [],
+  formerIssuer: { symbol, name: "Golden Ocean Group Ltd", until: "2025-08-20", successor: { symbol: "CMBT", name: "Cmb.Tech NV" } },
+} : null), {
+  getQuote: async () => GOGL_FUND,
+  getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: GOGL_FUND })),
+  getTickerFinancials: async () => createTestFinancials({ quote: GOGL_FUND }),
+  getPriceHistory: async () => [GOGL_BAR],
+  getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: [GOGL_BAR] }),
+});
+
+test("history, ticker, fn and fn G of a symbol whose company merged away say what became of it, as quote does", async () => {
+  const line = "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT";
+  expect((await runHistory(["GOGL"], mergedAway())).printed!.result.warnings).toContain(line);
+  expect((await runTicker("GOGL", mergedAway())).warnings).toContain(line);
+  for (const fn of ["GIP", "G"]) expect((await runFn([fn, "GOGL"], mergedAway())).printed!.result.warnings, fn).toContain(line);
+});
+
 function impliedVolatility(path: string) {
   const symbol = new URLSearchParams(path.split("?")[1]).get("symbol") ?? "";
   const symbols = new URLSearchParams(path.split("?")[1]).get("symbols")?.split(",") ?? [];

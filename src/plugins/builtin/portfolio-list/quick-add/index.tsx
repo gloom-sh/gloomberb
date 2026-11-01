@@ -12,7 +12,7 @@ import { usePluginAppActions } from "../../../runtime";
 import { isDialogOpen } from "../../../../ui/dialog-stack";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
-import { formatMarketPrice } from "../../../../market-data/market/format";
+import { formatMarketPrice, quoteFormatOptions } from "../../../../market-data/market/format";
 import { listingChoiceQuery, upsertTickerFromSearchResult } from "../../../../tickers/search";
 import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../../../../portfolio/mutations";
@@ -79,7 +79,7 @@ function QuickAddPreview({
   const assetCategory = validation.ticker?.metadata.assetCategory
     ?? (validation.resolved.kind === "provider" ? validation.resolved.result.type : undefined);
   const priceText = quote?.price != null
-    ? formatMarketPrice(quote.price, { assetCategory, maxWidth: 12 })
+    ? formatMarketPrice(quote.price, { ...quoteFormatOptions(quote, assetCategory), maxWidth: 12 })
     : "-";
   const changeValue = quote?.changePercent;
   const name = tickerNameFromValidation(validation);

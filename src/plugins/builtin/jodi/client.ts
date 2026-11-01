@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { JodiBoardPayload } from "../../../api-client/commodity-balances";
 import { unavailableOnServer } from "../shared/cloud-resource";
 import type { BalanceCommodity, Board } from "./model";
@@ -32,7 +33,9 @@ function readBoard(payload: JodiBoardPayload): Balances {
     || (payload.gas != null && !validBoard(payload.gas, "gas"))) {
     throw new Error("The server returned an invalid oil and gas balance board");
   }
-  if (payload.status === "unavailable" || payload.oil == null) throw new Error(JODI_NOT_AVAILABLE);
+  // The server's source did not answer this time, which may pass; a board with no oil has none yet.
+  if (payload.status === "unavailable") throw sourceDidNotAnswer(JODI_NOT_AVAILABLE);
+  if (payload.oil == null) throw new Error(JODI_NOT_AVAILABLE);
   if (!validBoard(payload.oil, "oil")) throw new Error("The server returned an invalid oil and gas balance board");
   return { oil: payload.oil, gas: payload.gas ?? null, stale: payload.stale === true, gaps: payload.gaps };
 }

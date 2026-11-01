@@ -10,7 +10,13 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { resolvePlanAccess } from "../../api-client/plan-access";
 import type { PortfolioSub } from "./onboarding-steps";
 import type { useOnboardingPositions } from "./wizard-positions";
-import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
+import {
+  applyFirstRunLayout,
+  buildFirstRunLayout,
+  onboardingDeskLayoutId,
+  planFirstRunWatchlist,
+  setupDeskPicks,
+} from "./first-run-workspace";
 import { buildDesk, getDesk, isDeskKey, isDeskStock, pickDeskCompany, type DeskKey } from "../../layout/desks";
 import { debugLog } from "../../utils/debug-log";
 import {
@@ -92,15 +98,18 @@ export function useOnboardingWorkspace({
   selectedBrokerId: string | null;
   setPortfolioSub: Dispatch<SetStateAction<PortfolioSub>>;
 }) {
-  const [chosenDesks, setChosenDesks] = useState<DeskKey[]>([]);
+  // Run again, it starts with the desks it made ticked.
+  const [chosenDesks, setChosenDesks] = useState<DeskKey[]>(() => setupDeskPicks(stateRef.current.config));
   const [deskCursor, setDeskCursor] = useState(0);
   const [buildingDesks, setBuildingDesks] = useState(false);
   const buildingDesksRef = useRef(false);
 
   /**
    * Seeds the watchlist and swaps Home for the first-run workspace built
-   * around `symbol`, with the picked desks as tabs right after it. The config
-   * comes back for the caller to persist with its own progress patch.
+   * around `symbol`, with the picked desks as tabs right after it. Run again,
+   * it replaces the layouts it made before instead of adding copies, and
+   * from Settings it leaves an existing watchlist alone. The config comes
+   * back for the caller to persist with its own progress patch.
    */
   const buildFirstRunWorkspace = useCallback(async (
     baseConfig: AppConfig,
@@ -109,12 +118,17 @@ export function useOnboardingWorkspace({
     desks: readonly DeskKey[],
   ): Promise<AppConfig> => {
     let config = baseConfig;
+    const rerun = getOnboardingProgress(baseConfig).rerun === true;
     let watchlistId = config.watchlists[0]?.id;
+    // A run from Settings leaves a watchlist the user has as it is.
+    const seedWatchlist = !rerun || !watchlistId;
     if (!watchlistId) {
       watchlistId = "watchlist";
       config = { ...config, watchlists: [{ id: watchlistId, name: "Watchlist" }] };
     }
-    const plan = planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId);
+    const plan = seedWatchlist
+      ? planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId)
+      : { create: [], update: [] };
     for (const metadata of plan.create) {
       try {
         const ticker = await pluginRegistry.tickerRepository.createTicker(metadata);
@@ -138,7 +152,7 @@ export function useOnboardingWorkspace({
       watchlistId,
       hasPane: (paneId) => pluginRegistry.panes?.has(paneId) ?? false,
     });
-    const workspace = applyFirstRunLayout(config, home);
+    const workspace = applyFirstRunLayout(config, home, [], { rerun });
     if (desks.length === 0) return workspace;
     const { tickers, financials } = stateRef.current;
     const held = [...tickers.values()]
@@ -150,13 +164,15 @@ export function useOnboardingWorkspace({
     const pro = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess;
     // A desk that fails to build is left out; it never holds up the first run.
     const deskTabs = await Promise.all(desks.map((key) => (
-      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).catch((error) => {
-        onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
-        return null;
-      })
+      buildDesk(getDesk(key), { catalog: pluginRegistry, config: workspace, company, pro }).then(
+        (tab) => (tab ? { ...tab, id: onboardingDeskLayoutId(key) } : null),
+        (error) => {
+          onboardingLog.error("Desk build failed", { desk: key, error: String(error) });
+          return null;
+        },
+      )
     )));
-    const tabs = deskTabs.filter((tab) => tab !== null);
-    return { ...workspace, layouts: [workspace.layouts[0]!, ...tabs, ...workspace.layouts.slice(1)] };
+    return applyFirstRunLayout(config, home, deskTabs.filter((tab) => tab !== null), { rerun });
   }, [dispatch, pluginRegistry, stateRef]);
 
   const commitWorkspaceProgress = useCallback(async (
@@ -187,7 +203,7 @@ export function useOnboardingWorkspace({
   }, [positions, saveProgressInBackground]);
 
   /**
-   * Leaves "What do you trade?": builds the workspace with the picked desks as
+   * Leaves "What do you trade most?": builds the workspace with the picked desks as
    * tabs (none when skipped, which is today's workspace) and moves on.
    */
   const finishDesks = useCallback((desks: readonly DeskKey[]) => {
@@ -270,7 +286,8 @@ export function useOnboardingCompletion({
     setPersistenceError(null);
     try {
       await progressSaveQueueRef.current.catch(() => {});
-      const desks = getOnboardingProgress(stateRef.current.config).desks?.filter(isDeskKey);
+      const { desks: picked, rerun } = getOnboardingProgress(stateRef.current.config);
+      const desks = picked?.filter(isDeskKey);
       const nextConfig: AppConfig = {
         ...stateRef.current.config,
         onboardingComplete: true,
@@ -282,7 +299,8 @@ export function useOnboardingCompletion({
         complete: true,
         progress: undefined,
       });
-      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, { desks });
+      // The funnel counts first runs; a run from Settings is not one.
+      if (!rerun) recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, { desks });
       await Promise.resolve(onComplete(nextConfig));
     } catch (error) {
       setPersistenceError(error instanceof Error ? error.message : String(error));

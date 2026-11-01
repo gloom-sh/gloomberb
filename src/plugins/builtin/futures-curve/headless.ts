@@ -7,6 +7,7 @@ import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadFuturesCurveAsOf } from "./client";
 import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
+import { knownGapMessage } from "../../../cli/known-gaps";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -120,7 +121,11 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const input = args.argument || DEFAULT_ROOT;
     const root = normalizeCurveRoot(input);
-    if (!root) throw new Error(unsupportedCurveRootMessage(input));
+    if (!root) {
+      // A subject no source carries (`fn CTM BDI`, the Baltic Dry Index) is said with its proxies, as search says it.
+      const gap = typeof input === "string" ? knownGapMessage(input) : null;
+      throw Object.assign(new Error(unsupportedCurveRootMessage(input)), gap ? { details: gap } : {});
+    }
     const date = curveAsOfDate(args.options.date, new Date(), "--date");
     // The archive keeps no spot history, so a past curve has no basis.
     const spotSymbol = date ? null : basisSpotSymbol(root);

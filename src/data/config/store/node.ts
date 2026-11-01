@@ -1,6 +1,6 @@
 import { logFailure } from "../../../utils/log-failure";
 import { existsSync, readdirSync, type Dirent } from "fs";
-import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { readFile, rename, rm } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { expandUserHome, getGloomberbDirs } from "../home";
 import type { AppConfig } from "../../../types/config";
@@ -8,6 +8,8 @@ import { createDefaultConfig } from "../../../types/config";
 import { debugLog } from "../../../utils/debug-log";
 import { findAbsorbedCheckout, isDirectoryOrLink, isPluginDirectory } from "../../../plugins/loader";
 import { EXTRACTED_PLUGINS } from "../../../plugins/extracted-plugins";
+import { makePrivateDir, writePrivateFile } from "../../../utils/private-files";
+import { tightenProfilePermissions } from "../../profile-permissions";
 import type { ConfigMigrationHost } from "./migrations";
 import {
   normalizeConfigForSave,
@@ -113,11 +115,12 @@ const saveQueues = new Map<string, Promise<void>>();
 let tempFileCounter = 0;
 
 async function writeConfigFile(configPath: string, contents: string): Promise<void> {
-  await mkdir(dirname(configPath), { recursive: true });
+  await makePrivateDir(dirname(configPath));
   // Unique per call: a clock tick is not, and two saves can land in one.
   const tempPath = `${configPath}.${process.pid}.${Date.now()}.${tempFileCounter++}.tmp`;
   try {
-    await writeFile(tempPath, contents, "utf-8");
+    // Readable by the user alone: config.json holds broker credentials.
+    await writePrivateFile(tempPath, contents);
     await rename(tempPath, configPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => { /* Intentional ignore: Remove a partial temporary file while preserving the write error rethrown below. */ });
@@ -149,11 +152,12 @@ export async function saveConfig(config: AppConfig): Promise<void> {
 
 export async function initDataDir(dataDir: string): Promise<AppConfig> {
   configLog.info(`Initializing data directory: ${dataDir}`);
-  await mkdir(dataDir, { recursive: true });
+  await makePrivateDir(dataDir);
   const { config, needsSave } = await loadConfigState(dataDir);
   if (needsSave) {
     await saveConfig(config);
   }
+  await tightenProfilePermissions(dataDir, [configFileFor(dataDir), getGloomberbDirs().configFile]);
   return config;
 }
 
@@ -166,7 +170,9 @@ export async function resetAllData(dataDir: string): Promise<void> {
 
 export async function exportConfig(config: AppConfig, destPath: string): Promise<void> {
   const { dataDir, ...rest } = config;
-  await writeFile(expandHomePath(destPath), JSON.stringify(rest, null, 2), "utf-8");
+  // The export carries broker credentials as config.json does: readable by the
+  // user alone, an existing file included, and never written through a link.
+  await writePrivateFile(expandHomePath(destPath), JSON.stringify(rest, null, 2));
 }
 
 export async function importConfig(dataDir: string, srcPath: string): Promise<AppConfig> {

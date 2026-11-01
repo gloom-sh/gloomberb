@@ -10,6 +10,7 @@ import {
   type QueryBarFilter,
   type QueryBarView,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { openFormModal } from "../../../components/form-modal";
 import { FILL_REST } from "../../../components/ui/fill";
@@ -305,7 +306,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     loading: resource.loading,
     error: resource.error ?? data?.refreshError ?? null,
     stale: !!data?.stale,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;
   // The desktop and the web only: the terminal's footer stays as it was.

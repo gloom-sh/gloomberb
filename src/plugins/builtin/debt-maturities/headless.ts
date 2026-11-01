@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtNewestAsOf, debtNotices, debtPercent, newerQuarter } from "./model";
+import { bucketShare, debtAmount, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -118,8 +118,9 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         },
       ],
       metadata: { ...data },
-      // The latest filing dates the report (a newer 10-Q's balance date); the history rows are past years, not stale data.
-      freshness: { asOf: debtNewestAsOf(data) },
+      // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
+      // not read as the schedule's; the history rows are past years, not stale data.
+      freshness: { asOf: debtNewestAsOf(data), asOfLabel: debtNewestForm(data) ?? undefined },
     };
   },
 };

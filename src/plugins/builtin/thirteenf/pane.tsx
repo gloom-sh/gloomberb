@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody, QueryBar, StatGrid, usePagedRows, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
+  EmptyState, PaneStatusBody, QueryBar, StatGrid, usePagedRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
   type DataTableRootKeyContext, type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -23,10 +23,10 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
-import { corporateSplitFactor, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors } from "./data";
+import { corporateSplitFactor, createFundPrefetcher, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
-import { PaneFooterScope } from "../../../components/layout/pane/footer";
+import { PaneFooterScope, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
 import {
@@ -129,6 +129,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     const notes = [...(pagesSettled ? browser.pages.map((page) => page.warning) : []), browser.moreError?.message];
     return [...new Set(notes.filter(Boolean))].join(" ") || null;
   }, [browser.moreError, browser.pages, pagesSettled, reportPaint]);
+  // A page a failed refresh answered from a saved copy says when it was saved, as every pane does.
+  const savedInfo = useMemo(() => savedCopyFooterInfo(pagesSettled ? browser.pages.map((page) => page.savedAt) : []),
+    [browser.pages, pagesSettled, reportPaint]);
   const [detailSeed, setDetailSeed] = useState<FundSeed | null>(() => (
     initialCik ? { cik: String(initialCik), name: normalizedQuery || String(initialCik) } : null
   ));
@@ -166,7 +169,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, { allowEditable: true });
 
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
-  const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort, reportPaint]);
+  // The rows' reports fill the rows in place after their page answers (from the network or a saved copy);
+  // a row the table drew before then is drawn again only as a new object.
+  const sortedRows = useMemo(() => sortBrowserRows(rows.map((row) => ({ ...row })), browserSort), [rows, browserSort, reportPaint]);
   const columns = useMemo(() => {
     if (browserMode !== "performance") return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];
@@ -191,18 +196,17 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     blurSearch();
     setDetailSeed({ cik: row.cik, name: row.name });
   }, [blurSearch]);
-  // Every request behind a fund detail is cached per path, so warming it
-  // while the cursor rests on the row makes Enter read from cache.
-  const prefetchDetail = useCallback((row: FundBrowserRow) => {
-    void loadFundDetail(row.cik, row.name).catch(() => {
-      // Intentional ignore: speculative prefetch is retried and failures are shown when the fund opens.
-    });
-  }, []);
+  // The fund's first requests are read ahead while the cursor rests on its
+  // row, one fund at a time, and stopped when the cursor moves on.
+  const prefetcher = useMemo(() => createFundPrefetcher(), []);
+  useEffect(() => () => prefetcher.cancel(), [prefetcher]);
+  const prefetchDetail = useCallback((row: FundBrowserRow) => prefetcher.prefetch(row.cik), [prefetcher]);
 
   const browserStatusInfo = useMemo<PaneFooterSegment[]>(() => [
         ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
         ...(warning ? [{ id: "warning", parts: [{ text: warning, tone: "warning" as const }] }] : []),
-  ], [loadingMore, warning]);
+        ...savedInfo,
+  ], [loadingMore, warning, savedInfo]);
   const searchHints = useMemo(() => [{ id: "search", key: "/", label: "search", onPress: focusSearch }], [focusSearch]);
   usePaneStatusFooter({
     registrationId: THIRTEENF_PANE_ID,
@@ -366,7 +370,11 @@ export function FundDetailView({
     abortRef.current = controller;
     setStatus("loading");
     setError(null);
-    void loadFundDetail(seed.cik, seed.name, controller.signal, { forceRefresh: refresh })
+    void loadFundDetail(seed.cik, seed.name, controller.signal, {
+      forceRefresh: refresh,
+      // A first load shows the fund as it fills in; a refresh keeps what is on screen until it answers whole.
+      ...(refresh ? {} : { onProgress: (partial: FundDetailData) => { if (abortRef.current === controller) setData(partial); } }),
+    })
       .then((nextData) => {
         if (abortRef.current !== controller) return;
         setData(nextData);
@@ -386,6 +394,8 @@ export function FundDetailView({
       .catch((loadError) => {
         if (abortRef.current !== controller) return;
         if (loadError instanceof Error && loadError.name === "AbortError") return;
+        // A first load that failed after its first rows shows the error, not a part of the filing as the fund.
+        setData((current) => current?.loading ? null : current);
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });
@@ -516,7 +526,10 @@ export function FundDetailView({
       ...(staleFiling ? { tone: "warning" as const } : {}) },
     data && hasComparable13FQuarter(data)
       ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
-      : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
+      // The quarter the changes will compare with, dim until both are in.
+      : data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })
+        ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport, tone: "muted" }
+        : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
     ...(data?.latestReport && data.latestReport.filings.length > 1
       ? [{ id: "combined", label: "Combined", value: `${data.latestReport.filings.length} filings` }]
       : []),
@@ -544,6 +557,9 @@ export function FundDetailView({
   const detailHints = useMemo<PaneHint[]>(() => hasHoldingFiling
     ? [{ id: "filing", key: "f", label: "iling", title: "Open Filing", onPress: openSelectedFilingInPane }]
     : [], [hasHoldingFiling, openSelectedFilingInPane]);
+  // An open filing and the overlap tab say when their own saved copies are from.
+  const detailSavedInfo = useMemo(() => savedCopyFooterInfo(openFiling || activeTab === "overlap" ? [] : [data?.savedAt]),
+    [activeTab, data?.savedAt, openFiling]);
   usePaneStatusLinkFooter({
     registrationId: "thirteenf-detail",
     focused,
@@ -551,6 +567,7 @@ export function FundDetailView({
     source: openFiling ? "SEC 13F" : null,
     loading: activeTab !== "overlap" && status === "loading",
     error: activeTab === "overlap" ? null : error,
+    info: detailSavedInfo,
     showOpenHint: true,
     hints: detailHints,
   });
@@ -583,14 +600,16 @@ export function FundDetailView({
         ]}
         meta={data?.name && data.name !== seed.name ? data.name : undefined}
       />
-      {activeTab === "overlap" && data ? <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
+      {activeTab === "overlap" && data ? data.loading?.positions || data.loading?.comparison ? (
+        <PaneStatusBody loading align="center" loadingLabel="Loading 13F filing..." />
+      ) : <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
         <DataTableStackView<FundTimelineRow, FundTimelineColumn>
           focused={focused}
           detailOpen={!!openFiling}
           onBack={closeOpenFiling}
           detailTitle={openFiling ? `${openFiling.periodOfReport} filing` : "13F filing"}
           detailContent={openFiling ? (
-            <FilingDetailView focused={focused} filing={openFiling} width={width} sourceWarnings={data?.warnings ?? []} />
+            <FilingDetailView focused={focused} filing={openFiling} width={width} sourceWarnings={data?.warnings ?? []} sourceSavedAt={data?.savedAt} />
           ) : (
             <Box flexGrow={1} />
           )}
@@ -659,11 +678,14 @@ function FilingDetailView({
   filing,
   width,
   sourceWarnings,
+  sourceSavedAt,
 }: {
   focused: boolean;
   filing: FundTimelineRow;
   width: number;
   sourceWarnings: string[];
+  /** When the fund's saved copy was saved, when a failed refresh left it on screen. */
+  sourceSavedAt?: number;
 }) {
   const { pinTicker } = usePluginTickerActions();
   const [sortPreference, setSortPreference] = usePluginPaneState<FundSortPreference<FilingPositionColumnId>>(
@@ -711,6 +733,9 @@ function FilingDetailView({
   );
 
   usePaneNoticeFooter({ registrationId: "thirteenf-filing-notices", notices: [...new Set([...sourceWarnings, ...warnings])], focused });
+  const savedInfo = useMemo(() => savedCopyFooterInfo([sourceSavedAt, ...(pagesSettled ? positions.pages.map((page) => page.savedAt) : [])]),
+    [pagesSettled, positions.pages, sourceSavedAt]);
+  usePaneFooter("thirteenf-filing-saved", () => ({ info: savedInfo }), [savedInfo]);
 
   // An untyped amendment may replace or add to the report, so only it is a caveat.
   const kind = amendmentKind(filing);

@@ -48,11 +48,13 @@ interface AuxiliaryLoaderOptions<T> {
 export function loadOptionsEntry(options: {
   dataProvider: DataProvider;
   forceRefresh?: boolean;
+  /** One of many expiries asked at once (`MarketDataRequestContext.batch`). */
+  batch?: boolean;
   request: OptionsRequest;
   store: QueryStore<OptionsChain>;
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<OptionsChain>> {
-  const { dataProvider, forceRefresh = false, request, store, runSingleFlight } = options;
+  const { dataProvider, forceRefresh = false, batch = false, request, store, runSingleFlight } = options;
   const key = buildOptionsKey(request);
   return loadAuxiliaryEntry({
     dataProvider,
@@ -72,7 +74,7 @@ export function loadOptionsEntry(options: {
         request.instrument.symbol,
         request.instrument.exchange ?? "",
         request.expirationDate,
-        { ...toMarketDataContext(request.instrument), cacheMode: forceRefresh ? "refresh" : "current" },
+        { ...toMarketDataContext(request.instrument), cacheMode: forceRefresh ? "refresh" : "current", ...(batch ? { batch: true } : {}) },
       );
       const attempts = [createAttempt(dataProvider.id, startedAt, data.expirationDates.length > 0 ? "success" : "empty", data.expirationDates.length === 0 ? "NO_DATA" : undefined)];
       return store.update(key, (current) => ({

@@ -20,6 +20,7 @@ import {
   recommendationMix,
   formatRatingLabel,
   formatRatingTarget,
+  ratingReason,
   recommendationTotal,
   sortRatingRows,
   type RatingColumnId,
@@ -41,6 +42,27 @@ const RATING_COLUMNS: HeadlessPaneColumn[] = [
     ).trim(),
   },
   { key: "prior", header: "Prior" },
+];
+
+type RatingRow = AnalystResearchData["ratings"][number];
+
+/**
+ * The reason coverage gave, on its own line under the action with its
+ * article; exports keep the line and the article's address as columns. Only
+ * a history with a reason somewhere has them.
+ */
+const REASON_COLUMNS: HeadlessPaneColumn[] = [
+  {
+    key: "reason",
+    header: "Reason",
+    underRow: true,
+    format: (_value, row) => ratingReason(row as unknown as RatingRow)?.text ?? "",
+    textFormat: (_value, row) => {
+      const reason = ratingReason(row as unknown as RatingRow);
+      return reason ? `${reason.text} · ${reason.url}` : "";
+    },
+  },
+  { key: "reasonUrl", header: "Reason URL", underRow: true, textFormat: () => "" },
 ];
 
 const SORT_COLUMNS: Record<string, RatingColumnId> = {
@@ -170,14 +192,19 @@ export function createAnalystResearchHeadless(
         direction: args.options.order === "asc" ? "asc" : "desc",
       })
         .slice(0, Number(args.options.limit))
-        .map((rating) => ({
-          ...rating,
-          target: rating.currentPriceTarget ?? rating.priorPriceTarget ?? null,
-          currency: currency ?? null,
-        }));
+        .map((rating) => {
+          const reason = ratingReason(rating);
+          return {
+            ...rating,
+            target: rating.currentPriceTarget ?? rating.priorPriceTarget ?? null,
+            currency: currency ?? null,
+            ...(reason ? { reasonUrl: reason.url } : {}),
+          };
+        });
+      const columns = ratings.some((rating) => ratingReason(rating)) ? [...RATING_COLUMNS, ...REASON_COLUMNS] : RATING_COLUMNS;
       const sections: HeadlessBundleSection[] = [
         { title: "Summary", entries: overviewEntries(data, quote) },
-        { title: "Recent analyst actions", columns: RATING_COLUMNS, rows: ratings },
+        { title: "Recent analyst actions", columns, rows: ratings },
       ];
       return {
         sections,

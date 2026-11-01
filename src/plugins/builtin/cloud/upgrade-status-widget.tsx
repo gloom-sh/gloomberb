@@ -3,24 +3,29 @@ import { apiClient } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { Button } from "../../../components/ui/button";
-import { useCommandBarShortcut } from "../../../ui";
+import { DelayedMark } from "../../../components/ui/delayed-mark";
+import { Box, useCommandBarShortcut, useUiCapabilities } from "../../../ui";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { resolvePlanAccess } from "../../../api-client/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES, resolvePlanAccess } from "../../../api-client/plan-access";
+import { useTrialOfferShowing } from "./trial-offer-status-widget";
 
 interface CloudUpgradeStatusWidgetProps {
   controller?: Pick<ChatController, "getSnapshot" | "subscribe">;
 }
 
 /**
- * Global entitlement status: the trial countdown while Pro is on loan, or the
- * delay free accounts get on cloud data. Signed-out users already have sign-in
- * affordances next to it, and paying subscribers have nothing to report.
+ * Global entitlement status: the trial countdown while Pro is on loan, or,
+ * signed out or on the free plan, the delayed mark the app's prices carry and
+ * the upgrade. While the trial offer line already pitches Pro, the mark stands
+ * alone. Pro accounts have nothing to report.
  */
 export function CloudUpgradeStatusWidget({ controller = chatController }: CloudUpgradeStatusWidgetProps) {
   useAppLanguage();
   const openUpgrade = useCloudUpgradeAction("status-widget");
   const openPlan = useCloudPlanAction();
+  const offerShowing = useTrialOfferShowing();
+  const { nativePaneChrome } = useUiCapabilities();
   // The status bar takes no keyboard focus; the chip names the command instead.
   const commandBarKey = useCommandBarShortcut();
   const [access, setAccess] = useState(() => resolvePlanAccess(apiClient.getCurrentUser()));
@@ -31,15 +36,34 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
     [controller],
   );
 
-  if (!access.signedIn || access.isPayingPro) return null;
+  if (access.isTrialActive) {
+    return (
+      <Button
+        label={tf("Pro trial {days}d", { days: access.trialDaysLeft })}
+        title={tf("Your plan ({key}, then {command})", { key: commandBarKey, command: "ACM" })}
+        variant="plain"
+        compact
+        stopPropagation
+        onPress={openPlan}
+      />
+    );
+  }
+  if (access.hasProAccess) return null;
 
-  const trial = access.isTrialActive;
-  const label = trial
-    ? tf("Pro trial {days}d", { days: access.trialDaysLeft })
-    : t("delayed data · upgrade");
-
-  const title = trial
-    ? tf("Your plan ({key}, then {command})", { key: commandBarKey, command: "ACM" })
-    : tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" });
-  return <Button label={label} title={title} variant="plain" compact stopPropagation onPress={trial ? openPlan : openUpgrade} />;
+  const mark = <DelayedMark minutes={CLOUD_QUOTE_DELAY_MINUTES} />;
+  return (
+    <Box flexDirection="row" alignItems="center" gap={1} paddingRight={offerShowing || !nativePaneChrome ? 1 : 0} data-gloom-role="delayed-status">
+      {mark}
+      {offerShowing ? null : (
+        <Button
+          label={t("delayed data · upgrade")}
+          title={tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" })}
+          variant="plain"
+          compact
+          stopPropagation
+          onPress={openUpgrade}
+        />
+      )}
+    </Box>
+  );
 }

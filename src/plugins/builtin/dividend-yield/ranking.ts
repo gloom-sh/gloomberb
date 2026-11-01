@@ -146,7 +146,7 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"),
     description: "Compound annual growth of trailing twelve-month cash per share over three years; n/a when either year holds fewer payments than the cadence pays." },
   { key: "lastExDate", header: "Last ex", format: day, shrink: false },
-  { key: "payDate", header: "Pay date", format: day, shrink: false, stackPriority: 2,
+  { key: "payDate", header: "Next pay", format: day, shrink: false, stackPriority: 2,
     description: "Pay date of the next declared distribution; past distributions carry ex-dates only." },
 ];
 

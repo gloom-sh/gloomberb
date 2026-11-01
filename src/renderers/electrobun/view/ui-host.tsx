@@ -25,9 +25,16 @@ export const webRendererHost: RendererHost = {
       void backendRequest("host.exit").catch(() => window.close());
     });
   },
-  startWindowDrag() {
-    // Windows moves the window itself, as it does from a native title bar.
+  startWindowDrag(press) {
+    // Windows moves the window itself, as it does from a native title bar, and
+    // a double-click there maximizes or restores it.
     if (detectPlatform() === "win32") {
+      if (press?.detail === 2) {
+        void backendRequest("host.windowControl", { action: "toggle-maximize" }).catch((error: unknown) => {
+          console.error("[desktop] could not maximize the window", error instanceof Error ? error.message : String(error));
+        });
+        return;
+      }
       void backendRequest("host.startWindowDrag").catch((error: unknown) => {
         console.error("[desktop] could not start moving the window", error instanceof Error ? error.message : String(error));
       });

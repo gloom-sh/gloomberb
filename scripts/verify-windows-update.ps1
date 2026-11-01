@@ -24,6 +24,8 @@ $ManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
 $Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
 $EvidenceDir = Join-Path $Root "artifacts\windows-update-verification"
 $WorkRoot = Join-Path $env:USERPROFILE ".cache\gloom-smoke\desktop-update\windows-$PID"
+# The app's data folder, seeded below: its freeze log and pending crash reports land there.
+$DataDir = Join-Path $WorkRoot "data"
 $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
 $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
 $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk"
@@ -181,6 +183,7 @@ function Get-MainPages {
 # in it focused that would take it as text; what the page says about the
 # update is kept for the evidence.
 function Send-RestartKey {
+  $Started = Get-Date
   foreach ($Page in Get-MainPages) {
     try {
       $Replies = Invoke-Cdp $Page.webSocketDebuggerUrl @(
@@ -191,7 +194,7 @@ function Send-RestartKey {
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyDown"; key = "u"; code = "KeyU"; text = "u"; unmodifiedText = "u"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } },
         @{ Method = "Input.dispatchKeyEvent"; Params = @{ type = "keyUp"; key = "u"; code = "KeyU"; windowsVirtualKeyCode = 85; nativeVirtualKeyCode = 85 } }
       )
-      Write-Host "Pressed U. The page says: $($Replies[0].result.result.value)"
+      Write-Host ("Pressed U in {0:N1} s. The page says: {1}" -f ((Get-Date) - $Started).TotalSeconds, $Replies[0].result.result.value)
     } catch {
       Write-Host "Could not press U: $($_.Exception.Message)"
     }
@@ -334,7 +337,8 @@ function Assert-OpensFromInstallerFolder {
       Write-Host "--- $($_.FullName)"
       Get-Content -LiteralPath $_.FullName -Tail 40
     }
-    throw "${Label}: the new build ($Build) should run from $InstallDir with nothing left in $Gone. It runs from $($State.runningFrom -join ', '); $InstallDir holds build $($State.installerFolder.build), and the Start menu shortcut opens $($State.startMenuShortcut)."
+    $Fate = if ($script:Launches.ContainsKey($Label)) { " $(Get-LaunchReport $Label)" } else { "" }
+    throw "${Label}: the new build ($Build) should run from $InstallDir with nothing left in $Gone. It runs from $($State.runningFrom -join ', '); $InstallDir holds build $($State.installerFolder.build), and the Start menu shortcut opens $($State.startMenuShortcut).$Fate"
   }
 }
 
@@ -415,8 +419,74 @@ function Assert-UserFilesKept {
   }
 }
 
+# Every launch a step makes, by the step's label, for a failure to say what became of it.
+$script:Launches = @{}
+
+# Opens $Program (a shortcut, or the launcher) as a user would, and keeps
+# its process: a failure then says whether the app quit, when and how,
+# where it could only say that nothing runs.
+function Start-Launch {
+  param([string]$Label, [string]$Program, [string]$WorkingDirectory)
+
+  $Options = @{ FilePath = $Program; PassThru = $true }
+  if ($WorkingDirectory) { $Options.WorkingDirectory = $WorkingDirectory }
+  $StartedAt = Get-Date
+  $Process = Start-Process @Options
+  # Asked for its handle now: a process object first asked after the process
+  # ended has no exit code or time.
+  if ($Process) { try { $null = $Process.Handle } catch { Write-Host "The $Label launch cannot be followed: $($_.Exception.Message)" } }
+  $script:Launches[$Label] = [ordered]@{ Process = $Process; StartedAt = $StartedAt }
+}
+
+# What became of the launch $Label: whether its launcher still runs, or when
+# it quit and with what code; what Windows recorded of a crash or hang of
+# the app since; and the app's own freeze log and pending crash reports.
+# Printed, with the first fact returned for the failure's message.
+function Get-LaunchReport {
+  param([string]$Label)
+
+  $Launch = $script:Launches[$Label]
+  if (-not $Launch) { return "Nothing was launched as $Label." }
+  $Process = $Launch.Process
+  # The report never throws: it would replace the failure it explains.
+  $Fate = try {
+    if (-not $Process) {
+      "The $Label launch gave no process to follow."
+    } elseif ($Process.HasExited) {
+      "Its launcher (pid $($Process.Id)) quit $([math]::Round(($Process.ExitTime - $Launch.StartedAt).TotalSeconds, 1)) s after it started, with exit code $($Process.ExitCode)."
+    } else {
+      "Its launcher (pid $($Process.Id)) still runs."
+    }
+  } catch {
+    "The $Label launch cannot say how it ended: $($_.Exception.Message)"
+  }
+  Write-Host "--- ${Label}: $Fate"
+  try {
+    Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = $Launch.StartedAt } -ErrorAction SilentlyContinue |
+      Where-Object { $_.ProviderName -in @("Application Error", "Application Hang", "Windows Error Reporting") -and $_.Message -match "bun|launcher" } |
+      Select-Object -First 5 |
+      ForEach-Object { Write-Host "--- $($_.TimeCreated.ToString('o')) $($_.ProviderName): $($_.Message)" }
+  } catch {
+    Write-Host "--- what Windows recorded cannot be read: $($_.Exception.Message)"
+  }
+  foreach ($File in @("stall-log.txt", "crash-reports.json")) {
+    $Path = Join-Path $DataDir $File
+    try {
+      if (Test-Path -LiteralPath $Path) {
+        Write-Host "--- $File"
+        Get-Content -LiteralPath $Path -Tail 40 | ForEach-Object { Write-Host "  $_" }
+      }
+    } catch {
+      Write-Host "--- $File cannot be read: $($_.Exception.Message)"
+    }
+  }
+  $Fate
+}
+
 function Start-UpdaterCopy {
-  Start-Process -FilePath (Join-Path $UpdaterApp "bin\launcher.exe") -WorkingDirectory (Join-Path $UpdaterApp "bin")
+  param([string]$Label)
+
+  Start-Launch $Label (Join-Path $UpdaterApp "bin\launcher.exe") (Join-Path $UpdaterApp "bin")
 }
 
 $Server = $null
@@ -435,7 +505,7 @@ try {
   if ($HadConfigHome) {
     throw "Refusing to overwrite the config in $ConfigHome."
   }
-  Write-SeededConfig (Join-Path $WorkRoot "data")
+  Write-SeededConfig $DataDir
 
   Install-App "install"
   Write-UserFiles
@@ -507,14 +577,27 @@ try {
     Write-Host "The page shows: $(Get-PageText)"
     throw "The app did not download the update into $Downloaded"
   }
-  $Restarted = $false
-  for ($Attempt = 0; $Attempt -lt 30 -and -not $Restarted; $Attempt += 1) {
+  # The restart is seen by the app processes that ran before U all ending: a
+  # press can still be waiting on the page while they quit and the updated
+  # app opens in the same folder. Its WebView helpers come and go on their
+  # own, so the quit starts when bun or the launcher ends.
+  $BeforeProcesses = @(Get-ProcessesUnder $InstallDir)
+  $Before = @($BeforeProcesses | ForEach-Object { $_.Id })
+  $BeforeMain = @($BeforeProcesses | Where-Object { $_.ProcessName -in @("bun", "launcher") } | ForEach-Object { $_.Id })
+  if ($BeforeMain.Count -eq 0) { throw "Neither bun nor the launcher runs from $InstallDir before U" }
+  $Quitting = $false
+  for ($Attempt = 0; $Attempt -lt 30 -and -not $Quitting; $Attempt += 1) {
+    $Pressed = Get-Date
     Send-RestartKey
-    $Restarted = Wait-Until 5 { (Get-ProcessesUnder $InstallDir).Count -eq 0 }
+    $Quitting = Wait-Until 5 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count }
   }
-  if (-not $Restarted) {
+  if (-not $Quitting) {
     throw "U did not restart the app into the downloaded update"
   }
+  if (-not (Wait-Until 60 { @(Get-Process -Id $Before -ErrorAction SilentlyContinue).Count -eq 0 })) {
+    throw "U started a restart, but the app still runs 60 s later: $((@(Get-Process -Id $Before -ErrorAction SilentlyContinue) | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
+  }
+  Write-Host ("The app quit {0:N1} s after the last U." -f ((Get-Date) - $Pressed).TotalSeconds)
   Assert-OpensFromInstallerFolder -Label "after-update" -Build $UpdateHash -Gone $UpdaterApp
 
   foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
@@ -538,14 +621,14 @@ try {
 
   # 2. Opened again from the Desktop shortcut, it is the new build, and it stays where it is.
   Stop-ProcessesUnder @($InstallDir)
-  Start-Process -FilePath $DesktopShortcut
+  Start-Launch "desktop-shortcut" $DesktopShortcut
   if (-not (Wait-Until 60 { (Get-ProcessesUnder $InstallDir).Count -gt 0 })) {
     throw "The Desktop shortcut did not open the app from $InstallDir"
   }
   Start-Sleep -Seconds 15
   $State = Save-InstallState "desktop-shortcut"
   if ((Get-ProcessesUnder $InstallDir).Count -eq 0 -or (Get-BuildHash $InstallDir) -ne $UpdateHash -or (Test-Path $UpdaterApp)) {
-    throw "Opened from the Desktop shortcut, the app should keep running the new build from $InstallDir; it runs from $($State.runningFrom -join ', ')"
+    throw "Opened from the Desktop shortcut, the app should keep running the new build from $InstallDir; it runs from $($State.runningFrom -join ', '). $(Get-LaunchReport 'desktop-shortcut')"
   }
 
   # 3. Opened from the installer's folder beside a copy an earlier update
@@ -563,17 +646,17 @@ try {
   New-Item -Path $UpdaterUninstallKey -Force | Out-Null
   New-ItemProperty -Path $UpdaterUninstallKey -Name "InstallLocation" -Value $UpdaterApp -PropertyType String -Force | Out-Null
   New-ItemProperty -Path $UpdaterUninstallKey -Name "UninstallString" -Value "cmd.exe /c rmdir /s /q `"$UpdaterApp`"" -PropertyType String -Force | Out-Null
-  Start-Process -FilePath $StartMenuShortcut
+  Start-Launch "updater-copy-removed" $StartMenuShortcut
   $Removed = Wait-Until 120 {
     -not (Test-Path $UpdaterApp) -and -not (Test-Path $UpdaterUninstallKey) -and
       ((Get-ShortcutTarget $UpdaterShortcut) -eq (Join-Path $InstallDir "bin\launcher.exe"))
   }
   $State = Save-InstallState "updater-copy-removed"
   if (-not $Removed) {
-    throw "Opened from $InstallDir, the app should remove the copy in $UpdaterApp ($(Test-Path $UpdaterApp)), its uninstall entry ($(Test-Path $UpdaterUninstallKey)) and point $UpdaterShortcut at its own folder (it opens $(Get-ShortcutTarget $UpdaterShortcut))"
+    throw "Opened from $InstallDir, the app should remove the copy in $UpdaterApp ($(Test-Path $UpdaterApp)), its uninstall entry ($(Test-Path $UpdaterUninstallKey)) and point $UpdaterShortcut at its own folder (it opens $(Get-ShortcutTarget $UpdaterShortcut)). $(Get-LaunchReport 'updater-copy-removed')"
   }
   if ((Get-ProcessesUnder $InstallDir).Count -eq 0) {
-    throw "The app stopped running from $InstallDir while it removed the copy in $UpdaterApp"
+    throw "The app stopped running from $InstallDir while it removed the copy in $UpdaterApp. $(Get-LaunchReport 'updater-copy-removed')"
   }
   Remove-Item -Force $UpdaterShortcut
 
@@ -583,7 +666,7 @@ try {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OtherApp) | Out-Null
   Copy-Item -Recurse -Path $UpdateApp -Destination $OtherApp
   Set-BuildHash $OtherApp $OtherIdentifierHash
-  Start-Process -FilePath (Join-Path $OtherApp "bin\launcher.exe") -WorkingDirectory (Join-Path $OtherApp "bin")
+  Start-Launch "other-identifier" (Join-Path $OtherApp "bin\launcher.exe") (Join-Path $OtherApp "bin")
   Assert-OpensFromInstallerFolder -Label "other-identifier" -Build $OtherIdentifierHash -Gone $OtherApp
   Assert-UserFilesKept "other-identifier"
 
@@ -625,13 +708,13 @@ try {
     Set-Content -LiteralPath $BusyScript -Value "setTimeout(() => {}, 600000);"
     $Busy = Start-Process -FilePath (Join-Path $InstallDir "bin\bun.exe") -ArgumentList "`"$BusyScript`"" -WindowStyle Hidden -PassThru
     if (-not (Wait-Until 30 { (Get-ProcessesUnder $InstallDir).Count -gt 0 })) { throw "bun did not start from $InstallDir" }
-    Start-UpdaterCopy
+    Start-UpdaterCopy "busy"
     $Said = Wait-Until 90 { (Get-MoveLog).Contains(" busy: ") }
     Start-Sleep -Seconds 10
     $State = Save-InstallState "busy"
     Assert-MoveLog "busy" " busy: "
     if (-not $Said -or (Get-ProcessesUnder $UpdaterApp).Count -eq 0 -or (Get-BuildHash $InstallDir) -ne $InstalledHash) {
-      throw "With bun running from $InstallDir, the app should keep running from $UpdaterApp and leave $InstallDir as it was. It runs from $($State.runningFrom -join ', '), and $InstallDir holds build $($State.installerFolder.build)."
+      throw "With bun running from $InstallDir, the app should keep running from $UpdaterApp and leave $InstallDir as it was. It runs from $($State.runningFrom -join ', '), and $InstallDir holds build $($State.installerFolder.build). $(Get-LaunchReport 'busy')"
     }
     Stop-Process -Id $Busy.Id -Force -ErrorAction SilentlyContinue
     Stop-ProcessesUnder @($UpdaterApp, $InstallDir)
@@ -645,7 +728,7 @@ try {
     Set-Content -LiteralPath $LockedPath -Value "locked"
     $Lock = [IO.File]::Open($LockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
     try {
-      Start-UpdaterCopy
+      Start-UpdaterCopy "copy-failed"
       $Reopened = Wait-Until 180 {
         (Get-MoveLog).Contains("opened $UpdaterApp\bin\launcher.exe") -and ((Get-ProcessesUnder $UpdaterApp).Count -gt 0)
       }
@@ -655,7 +738,7 @@ try {
       $Log = Get-MoveLog
       $Tries = ([regex]::Matches($Log, " started ")).Count
       if (-not $Reopened -or (Get-ProcessesUnder $UpdaterApp).Count -eq 0 -or $Tries -ne 1) {
-        throw "After the copy failed, the app should run again from $UpdaterApp without trying again; it runs from $($State.runningFrom -join ', '), and the log shows $Tries tries: $Log"
+        throw "After the copy failed, the app should run again from $UpdaterApp without trying again; it runs from $($State.runningFrom -join ', '), and the log shows $Tries tries: $Log $(Get-LaunchReport 'copy-failed')"
       }
       if ((Get-BuildHash $InstallDir) -ne $InstalledHash -or -not (Test-Path -LiteralPath (Join-Path $InstallDir "bin\launcher.exe")) -or
         (Test-Path -LiteralPath (Join-Path $InstallDir "bin\bin")) -or (Get-MoveLeftovers).Count -gt 0) {
@@ -675,7 +758,7 @@ try {
     $CutShort = Join-Path $InstallDir ".gloom-previous-20260101000000-cutshort"
     New-Item -ItemType Directory -Path $CutShort | Out-Null
     Move-Item -LiteralPath (Join-Path $InstallDir "bin") -Destination (Join-Path $CutShort "bin")
-    Start-UpdaterCopy
+    Start-UpdaterCopy "other-drive"
     Assert-OpensFromInstallerFolder -Label "other-drive" -Build $UpdateHash -Gone $UpdaterApp
     Assert-MoveLog "other-drive" "put back $InstallDir\bin"
     Assert-MoveLog "other-drive" "replaced $InstallDir\bin"

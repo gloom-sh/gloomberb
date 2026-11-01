@@ -1623,8 +1623,9 @@ describe("resolveChartSpecData", () => {
     expect(revenue.points[0]?.date.toISOString().slice(0, 10)).toBe("2026-02-15");
     expect(revenue.axis).toBe("right");
     expect(result.series.find((entry) => entry.id === "cpi")?.panelId).toBe("macro");
-    expect(result.warnings[0]).toContain("FRED refresh failed (network unavailable)");
-    expect(result.warnings[0]).toContain("cached data fetched 2026-03-15");
+    // The saved copy a failed refresh left answering is dated in the chart's footer, not noted on the plot.
+    expect(result.savedAt).toBe(Date.parse("2026-03-15T00:00:00Z"));
+    expect(result.warnings.some((warning) => warning.includes("refresh failed"))).toBe(false);
     expect(result.warnings.some((warning) => warning.includes("FRED vintage dates"))).toBe(true);
     expect(result.viewport).toEqual({
       start: new Date("2025-03-31T00:00:00.000Z"),

@@ -33,6 +33,7 @@ const chokepointTemplate: PaneTemplateDef = {
   keywords: ["chokepoint", "chokepoints", "transits", "suez", "panama", "hormuz", "malacca", "shipping", "strait", "canal"],
   shortcut: { prefix: "CHOKE", argPlaceholder: "chokepoint", argKind: "text", argOptional: true },
   canCreate: () => true,
+  catalogSettings: {},
   createInstance: (_context, options) => createChokepointInstance(cloudGeoRequest, options?.arg),
 };
 

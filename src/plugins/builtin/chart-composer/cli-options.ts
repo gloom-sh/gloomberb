@@ -11,6 +11,7 @@ import {
 } from "../../../time-series/spec";
 import type { ChartSeriesSpec, ChartSpec, SeriesPeriod } from "../../../time-series/types";
 import { yearToDateBaseDay } from "../../../market-data/market/year-to-date";
+import { readPriceWindow } from "../../../utils/price-window";
 
 const PRICE_CAPABILITIES = new Set(["price-chart", "intraday-price-chart", "price-comparison"]);
 
@@ -33,6 +34,13 @@ export function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: st
   const venues = [...new Set(spec.series.flatMap((entry) => entry.source.kind === "security" ? [entry.source.instrument.exchange || undefined] : []))];
   const starts = (venues.length ? venues : [undefined]).flatMap((venue) => yearToDateBaseDay(today, venue, now) ?? []);
   return { start: starts.sort()[0] ?? `${Number(today.slice(0, 4)) - 1}-12-31`, end: today };
+}
+
+/** The shortest range whose history reaches back to `from`: 5Y for a window from 2022, ALL for one from 2019. */
+function rangeCovering(from: string, now = Date.now()): TimeRange {
+  const days = (now - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+  const covering: Array<[TimeRange, number]> = [["1M", 31], ["3M", 92], ["6M", 183], ["1Y", 366], ["5Y", 5 * 366]];
+  return covering.find(([, span]) => days <= span)?.[0] ?? "ALL";
 }
 
 function chartResolution(options: HeadlessPaneOptionValues): ChartResolution | null {
@@ -75,6 +83,14 @@ export function applyChartComposerCapabilityOptions(
         ...(resolution ? { resolution } : {}),
       },
     };
+  }
+
+  // --from and --to: those dates, each leg rebased at its first close in them, as YTD is from the prior year's last.
+  const window = capabilityId === "price-comparison"
+    ? readPriceWindow(typeof options.from === "string" ? options.from : undefined, typeof options.to === "string" ? options.to : undefined)
+    : null;
+  if (window) {
+    next = { ...next, viewport: { ...next.viewport, range: rangeCovering(window.from), dateWindow: { start: window.from, end: window.to } } };
   }
 
   if (capabilityId === "price-chart" && options.extendedHours === true) {

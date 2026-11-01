@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -14,7 +15,9 @@ import { TickerResearchPane } from "../ticker-detail/pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { attachThirteenFApiPersistence, resetThirteenFApiPersistence } from "./api";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { fundListCache, fundMembersCache } from "../members/client";
@@ -26,6 +29,7 @@ let latestState: AppState | null = null;
 
 afterEach(() => {
   latestState = null;
+  resetThirteenFApiPersistence();
   fundListCache.reset();
   fundMembersCache.reset();
   setHttpFetchTransport(null);
@@ -68,6 +72,15 @@ function installAlpha13FTransport(urls: string[] = [], override?: (path: string,
   setHttpFetchTransport(async (url) => {
     urls.push(String(url));
     const parsed = new URL(String(url));
+    if (!parsed.pathname.endsWith("/holdings")) return respond(parsed);
+    // Gloom Cloud sends a filing whole: the rows `/form` serves a page at a time.
+    const page = new URL(parsed);
+    page.pathname = page.pathname.replace(/\/holdings$/, "/form");
+    const response = respond(page);
+    return response.ok ? json({ rows: await response.json(), complete: true }) : response;
+  });
+
+  function respond(parsed: URL): Response {
     const path = parsed.pathname;
     const answer = override?.(path, parsed);
     if (answer) return answer;
@@ -136,7 +149,7 @@ function installAlpha13FTransport(urls: string[] = [], override?: (path: string,
       ]);
     }
     return json([]);
-  });
+  }
 }
 
 describe("ThirteenFPane", () => {
@@ -169,6 +182,48 @@ describe("ThirteenFPane", () => {
     expect(
       latestState?.paneState[PANE_ID]?.pluginState?.thirteenf?.selectedId,
     ).toBeUndefined();
+  });
+
+  test("a refresh that fails shows the funds' saved copy, its filing columns filled, and says when it was saved", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    let offline = false;
+    setHttpFetchTransport(async (url) => {
+      if (offline) throw outage();
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/funds")) return json([{ cik: "1067983", name: "BERKSHIRE HATHAWAY INC" }]);
+      // The filings answer after the rows are drawn, as they do from the network.
+      if (path.endsWith("/forms")) {
+        await Bun.sleep(30);
+        return json([{ accession_number: "0001067983-26-000001", cik: "1067983", company_name: "BERKSHIRE HATHAWAY INC",
+          period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 299_250_000_000, table_entry_total: 89 }]);
+      }
+      return json([]);
+    });
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-thirteenf-pane-test", {
+      instanceId: PANE_ID, paneId: "thirteenf-funds", settings: { query: "Berkshire Hathaway" },
+    }));
+    state.focusedPaneId = PANE_ID;
+    await act(async () => {
+      await tui.render(
+        <TestPaneFrame state={state} dispatch={() => {}} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()} width={100} height={20}>
+          {(body) => <ThirteenFPane paneId={PANE_ID} paneType="thirteenf-funds" focused {...body} />}
+        </TestPaneFrame>,
+        { width: 100, height: 20 },
+      );
+    });
+    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
+
+    offline = true;
+    await emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("saved copy from");
+    const saved = await tui.waitForFrameToContain("2026-06-30");
+    expect(saved).toContain("$299.25B");
+    expect(saved).not.toMatch(/refresh failed|Retained data|Unable to connect/);
+
+    offline = false;
+    await emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToExclude("saved copy");
+    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
   });
 
   test("moves from the first fund row to search with Up", async () => {

@@ -2,6 +2,7 @@ import type { QuoteBatchResult } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { bareListingNote } from "../tickers/listing-fate";
 import { notATickerSymbol } from "../sources/provider-errors";
+import { listingSuffixCandidate } from "../sources/listing-symbols";
 import { looksLikeCurrencyPair } from "../utils/currency-pair";
 import { canonicalExchange } from "../utils/exchanges";
 import type { CliCommandDef } from "../types/plugin";
@@ -21,6 +22,8 @@ import {
   notTradedMessage,
   oneWordCompanyName,
   quoteBareListing,
+  serviceNamedCompany,
+  type ListingArg,
   requireCliListing,
   resolveCliListing,
   tradingBoardNote,
@@ -64,7 +67,9 @@ export interface QuoteAnswer {
 /**
  * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
  * is not listed on says so. A bare symbol the data service read on its home
- * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
+ * listing abroad names that venue (SXR8 -> XETRA). One no source quotes that
+ * the service marks as another listing's company name is that company
+ * (`serviceNamedCompany`: "siemens" is SIE:XETRA); else it is
  * quoted on its listings (`quoteBareListing`), else names them, or asks for an
  * exchange when several companies list it (2222); a bare index root (VIX) also
  * names its index (^VIX), and a futures board code a security keeps (GC) its
@@ -98,6 +103,13 @@ export async function answerQuote(
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
+  // HCI.L is HCI on LSE written with a vendor's suffix: one that does not trade there says so as HCI:LSE does.
+  const suffixed = await notTradedOnSuffixVenue(listing, market);
+  if (suffixed) return { result, listing, failure: { message: suffixed, oneLine: suffixed }, notes: [] };
+  // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
+  const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
+  const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
+  if (meant) return meant;
   const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
   if (other?.kind === "quoted") {
     return {
@@ -130,6 +142,22 @@ export async function answerQuote(
 }
 
 /**
+ * "HCI does not trade on LSE. HCI trades on: NYSE, IEX, JSE." for a symbol
+ * written with a venue's suffix (HCI.L) that no source quotes, when its base
+ * symbol trades elsewhere and not on the venue the suffix names: the answer
+ * `HCI:LSE` gets. Only for London's `.L` and suffixes of two letters or more
+ * (`.IS`, `.JO`): another one-letter suffix is as likely a US share class
+ * (MKC.V, BRK.B) and keeps its own answer. Null otherwise.
+ */
+async function notTradedOnSuffixVenue(listing: CliListing, market: MarketContext): Promise<string | null> {
+  if (listing.exchange) return null;
+  const suffix = listing.symbol.slice(listing.symbol.lastIndexOf(".") + 1);
+  if (!listing.symbol.includes(".") || (suffix.length < 2 && suffix.toUpperCase() !== "L")) return null;
+  const venue = listingSuffixCandidate(listing.symbol);
+  return venue ? notTradedMessage(venue, market) : null;
+}
+
+/**
  * A company's name typed as one word (`Apple`) that the source says is not a
  * ticker, answered as the listing search names for it with the line saying so
  * ("Read "Apple" as AAPL:NASDAQ (Apple Inc.)."), as a name of several words
@@ -155,17 +183,32 @@ async function answerCompanyName(
   const named = await oneWordCompanyName(listing.typed, market);
   // A real ticker a source failed to quote is not a company's name, even when the company carries the word.
   if (!named || (unsettled && named.symbol.toUpperCase() === listing.symbol.toUpperCase())) return null;
-  // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
+  const answer = await answerNamedListing(named, market, request, refresh, datesChangeBasis);
+  if (answer) return answer;
+  if (!unsettled) return null;
+  const sentence = await notATickerWords(listing.typed, market);
+  return { result: { ...result, error: new Error(sentence) }, listing, notes: [] };
+}
+
+/**
+ * The row of the listing a company's name was read as (`named`), saying so;
+ * null when the app cannot read its venue or it has no quote.
+ */
+async function answerNamedListing(
+  named: ListingArg,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+  datesChangeBasis: boolean,
+): Promise<QuoteAnswer | null> {
+  // A listing on a venue the app cannot read is no answer: the word keeps its own.
   const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
     if (error instanceof ListingArgError) return null;
     throw error;
   });
   const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {} } : null;
   const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
-  if (found && quoted?.quote) return answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis });
-  if (!unsettled) return null;
-  const sentence = await notATickerWords(listing.typed, market);
-  return { result: { ...result, error: new Error(sentence) }, listing, notes: [] };
+  return found && quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */

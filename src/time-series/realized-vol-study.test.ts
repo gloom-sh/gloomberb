@@ -9,7 +9,7 @@ import { extractPriceSeries } from "./market";
 import { normalizeChartSpec, validateChartSpec } from "./spec";
 import { resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { maxStudyWarmupPoints, resolveStudies } from "./studies";
+import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import type { ChartStudySpec, ResolvedSeries } from "./types";
 
 function history(count = 90): PricePoint[] {

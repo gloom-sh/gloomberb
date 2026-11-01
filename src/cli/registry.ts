@@ -6,7 +6,7 @@ import type {
   GloomPlugin,
 } from "../types/plugin";
 import type { LoadedExternalPlugin } from "../plugins/loader";
-import { getPluginCatalog } from "../plugins/catalog";
+import { getBuiltinCliCommands } from "../plugins/catalog-cli";
 import { initCliServices, initConfigData, initMarketData } from "./context";
 import { closeAndFail, fail } from "./errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
@@ -38,11 +38,14 @@ export interface CliCommandRegistry {
   config: AppConfig | null;
   plugins: GloomPlugin[];
   externalPlugins: LoadedExternalPlugin[];
+  /** Loads installed contributions when dispatch or application services need them. */
+  ensureExternalPlugins?: () => Promise<void>;
 }
 
 interface BuildCliCommandRegistryOptions {
   coreCommands: CliCommandDef[];
   externalPlugins?: LoadedExternalPlugin[];
+  loadExternalPlugins?: () => Promise<LoadedExternalPlugin[]>;
   config?: AppConfig | null;
 }
 
@@ -72,11 +75,11 @@ export function normalizeCliDispatchResult(result: void | CliDispatchResult): Cl
 export function buildCliCommandRegistry({
   coreCommands,
   externalPlugins = [],
+  loadExternalPlugins,
   config = null,
 }: BuildCliCommandRegistryOptions): CliCommandRegistry {
   const allCommands: RegisteredCliCommand[] = [];
   const allTokens = new Map<string, RegisteredCliCommand>();
-  const catalog = getPluginCatalog(externalPlugins);
   const disabledPlugins = new Set(config?.disabledPlugins ?? []);
 
   const registerCommand = (
@@ -110,8 +113,10 @@ export function buildCliCommandRegistry({
     registerCommand(command, "core", "core", true);
   }
 
-  const loadablePlugins: GloomPlugin[] = [];
-  for (const entry of catalog) {
+  for (const { pluginId, commands } of getBuiltinCliCommands()) {
+    for (const command of commands) registerCommand(command, pluginId, "plugin", true);
+  }
+  for (const entry of externalPlugins) {
     if (entry.error) {
       registryLog.warn(`Skipping external plugin "${entry.plugin.id}" for CLI registration.`, {
         path: entry.path,
@@ -119,9 +124,8 @@ export function buildCliCommandRegistry({
       });
       continue;
     }
-    loadablePlugins.push(entry.plugin);
     for (const command of entry.plugin.cliCommands ?? []) {
-      registerCommand(command, entry.plugin.id, "plugin", entry.source === "builtin");
+      registerCommand(command, entry.plugin.id, "plugin", false);
     }
   }
 
@@ -137,30 +141,54 @@ export function buildCliCommandRegistry({
     }
   }
 
-  return {
+  let plugins: GloomPlugin[] | undefined;
+  let loading: Promise<void> | undefined;
+  const registry: CliCommandRegistry = {
     commands,
     lookup,
     config,
-    plugins: loadablePlugins.filter((plugin) => !disabledPlugins.has(plugin.id)),
+    get plugins() {
+      const { getPluginCatalog } = require("../plugins/catalog") as typeof import("../plugins/catalog");
+      return plugins ??= getPluginCatalog(registry.externalPlugins)
+        .filter((entry) => !entry.error && !disabledPlugins.has(entry.plugin.id))
+        .map((entry) => entry.plugin);
+    },
     externalPlugins,
+    ...(loadExternalPlugins ? { ensureExternalPlugins: () => loading ??= (async () => {
+      const loaded = await loadExternalPlugins();
+      const expanded = buildCliCommandRegistry({ coreCommands, externalPlugins: loaded, config });
+      registry.commands = expanded.commands;
+      registry.lookup = expanded.lookup;
+      registry.externalPlugins = loaded;
+      // A command can retain ctx.plugins before opening market data (search does).
+      // Keep that reference current without materializing panes for command-only work.
+      if (plugins) plugins.splice(0, plugins.length, ...expanded.plugins);
+    })() } : {}),
   };
+  return registry;
 }
 
 export function createCliCommandContext(
   ownerId: string,
-  registryOrPlugins: Pick<CliCommandRegistry, "plugins" | "externalPlugins"> | GloomPlugin[],
+  registryOrPlugins: Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> | GloomPlugin[],
   cliOptions: CliGlobalOptions = DEFAULT_CLI_OPTIONS,
   args: readonly string[] = [],
 ): CliCommandContext {
-  const registry = Array.isArray(registryOrPlugins)
+  const registry: Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> = Array.isArray(registryOrPlugins)
     ? { plugins: registryOrPlugins, externalPlugins: [] }
     : registryOrPlugins;
   return {
     initConfigData,
-    initMarketData: () => initMarketData({ plugins: registry.plugins }),
-    initServices: () => initCliServices({ externalPlugins: registry.externalPlugins }),
+    initMarketData: async () => {
+      await registry.ensureExternalPlugins?.();
+      return initMarketData({ plugins: registry.plugins });
+    },
+    initServices: async () => {
+      await registry.ensureExternalPlugins?.();
+      return initCliServices({ externalPlugins: registry.externalPlugins });
+    },
     cliOptions,
-    plugins: registry.plugins,
+    get plugins() { return registry.plugins; },
     fail,
     closeAndFail,
     output: {
