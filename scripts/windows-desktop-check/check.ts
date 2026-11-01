@@ -1722,37 +1722,51 @@ class Run {
       };
     });
 
-    await this.step("dock-swap", "Drag a docked pane onto another to swap them", async (shots) => {
+    // Dropped on another docked pane's title bar, a pane stacks there as a tab,
+    // shown. Builds before tabs showed a drop grid over the pane instead, whose
+    // center cell swapped the two.
+    await this.step("dock-drop", "Drag a docked pane onto another's title bar to take its place", async (shots) => {
       await this.reset(main, this.baseRect);
       const before = await layoutOf(main.page);
       const source = before.panes.find((pane) => pane.id === "portfolio-list:main");
       const target = before.panes.find((pane) => pane.id === "ticker-research:spy");
       if (!source || !target) return { status: "fail", detail: "the list or research pane is missing" };
       const point = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(source.id)})`);
-      if (!point) return { status: "fail", detail: "no header on the list pane" };
-      await win.drag(this.toScreen(main, point), this.centerOf(main, target.rect), {
+      const onto = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(target.id)})`);
+      if (!point || !onto) return { status: "fail", detail: "no header on the list or research pane" };
+      let way = "its title bar";
+      await win.drag(this.toScreen(main, point), this.toScreen(main, onto), {
         steps: 20,
         whileHeld: async () => {
-          // The grid sits where the pane has room for it, not always at its middle.
+          // An older build's grid shows over the pane's body, where it has room
+          // for it, not always at its middle.
+          await sleep(300);
+          win.moveMouse(this.centerOf(main, target.rect));
+          await sleep(400);
           const grid = await evaluate<Array<CssRect & { center: boolean }>>(main.page.cdp, "window.__winCheck.dropGrid()");
           const center = grid.find((cell) => cell.center);
           if (center) {
+            way = "the drop grid's center";
             win.moveMouse(this.centerOf(main, center));
-            await sleep(400);
+          } else {
+            win.moveMouse(this.toScreen(main, onto));
           }
-          const shot = this.shots.take("dock-swap-held", win.clientRect(main.hwnd));
+          await sleep(600);
+          const shot = this.shots.take("dock-drop-held", win.clientRect(main.hwnd));
           if (shot) shots.push(shot);
         },
       });
       await sleep(800);
       const after = await layoutOf(main.page);
-      const shot = this.shots.take("dock-swap-after", win.clientRect(main.hwnd));
+      const shot = this.shots.take("dock-drop-after", win.clientRect(main.hwnd));
       if (shot) shots.push(shot);
       const movedSource = after.panes.find((pane) => pane.id === source.id);
-      const swapped = !!movedSource && near(movedSource.rect.x, target.rect.x, 4) && near(movedSource.rect.y, target.rect.y, 4);
+      const movedTarget = after.panes.find((pane) => pane.id === target.id);
+      const placed = !!movedSource && !movedSource.floating && near(movedSource.rect.x, target.rect.x, 4) && near(movedSource.rect.y, target.rect.y, 4);
+      const where = (pane: PaneLayout | undefined) => pane ? `${Math.round(pane.rect.x)},${Math.round(pane.rect.y)}${pane.floating ? " (floating)" : ""}${pane.rect.width ? "" : " (hidden)"}` : "not shown";
       return {
-        status: swapped ? "pass" : "fail",
-        detail: `the list was at ${Math.round(source.rect.x)},${Math.round(source.rect.y)}, research at ${Math.round(target.rect.x)},${Math.round(target.rect.y)}; after the drop the list is at ${movedSource ? `${Math.round(movedSource.rect.x)},${Math.round(movedSource.rect.y)}${movedSource.floating ? " (floating)" : ""}` : "nowhere"}`,
+        status: placed ? "pass" : "fail",
+        detail: `the list was at ${Math.round(source.rect.x)},${Math.round(source.rect.y)}, research at ${Math.round(target.rect.x)},${Math.round(target.rect.y)}; dropped on ${way}, the list is at ${where(movedSource)} and research ${where(movedTarget)}`,
       };
     });
 
