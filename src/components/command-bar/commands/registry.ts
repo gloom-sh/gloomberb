@@ -189,6 +189,14 @@ export const commands: Command[] = [
     argPlaceholder: "move|resize",
     category: "Config",
   },
+  // Listed only in the desktop app's full windows.
+  {
+    id: "new-window",
+    prefix: "",
+    label: "New Window",
+    description: "Open another app window with its own layout tabs, for another screen",
+    category: "Config",
+  },
   // The keyboard's way to the title bar buttons the desktop draws for itself
   // on Windows; the command bar lists these only on that host.
   {

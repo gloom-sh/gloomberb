@@ -45,8 +45,19 @@ import {
   prefetchExternalPluginBundles,
   takeExternalPluginBundles,
 } from "../external-plugins";
-import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
+import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../window/focus";
 import { measureNativeWindowCalls } from "../window/native-timing";
+import { createAppWindow } from "../window/create";
+import { desktopBootFramePath, desktopBootFramePreload, readDesktopBootFrame } from "../window/boot-frame";
+import { MAIN_WINDOW_MIN_SIZE, defaultMainWindowFrame } from "../window/frame";
+import { ElectrobunWindowHost } from "../window/electrobun-window-host";
+import { quitWindowsEventLoopOnItsThread } from "../window/windows-quit";
+import { readRememberedDesktopWindow, rememberedDesktopWindowPath } from "../window/remembered-frame";
+import { DesktopWindowController } from "../../../desktop/window-controller";
+import { createExtraWindowId, MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
+import type { OpenWindowSpec } from "../../../desktop/window-host";
+import type { DesktopWindowInfo } from "../../../../types/desktop-window";
+import { desktopScreenSetupStore } from "./screen-setup-file";
 import { handleDesktopBackendRequest } from "./backend-requests";
 import { detectDesktopInstallKind, removeUpdateAsides } from "./update";
 import { removeLegacyMacApp } from "./app-name";
@@ -107,11 +118,23 @@ export class DesktopBackend {
   config: AppConfig | null = null;
   services: AppServices | null = null;
   workspace: DesktopWorkspace | null = null;
-  mainWindow: BrowserWindow | null = null;
+  /** Every window and screen goes through these: the shell's host, and the full windows' placement on the screens. */
+  windowHost: ElectrobunWindowHost | null = null;
+  windowController: DesktopWindowController | null = null;
 
   readonly rpcs = createDesktopRpcRegistry<DesktopRpc>();
   readonly stateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({
     forEachReadyWindowRpc: this.rpcs.forEachReadyWindowRpc,
+    // A full window draws its own tabs; a popped-out pane's window draws the main window's.
+    viewKey: (rpc) => {
+      const key = this.rpcs.getRpcWindowKey(rpc) ?? MAIN_WINDOW_ID;
+      return paneIdFromDetachedRpcKey(key) ? MAIN_WINDOW_ID : key;
+    },
+    project: (viewKey, shared) => this.workspace?.getWindowSnapshot(viewKey) ?? shared,
+    delivered: (rpc, snapshot) => {
+      const key = this.rpcs.getRpcWindowKey(rpc);
+      if (key && typeof snapshot.stateSeq === "number") this.workspace?.noteDelivered(key, snapshot.stateSeq, snapshot);
+    },
   });
   readonly capabilityBridge = new DesktopCapabilityBridge<DesktopRpc>({
     getRegistry: () => this.requireServices().pluginRegistry.capabilities,
@@ -131,6 +154,202 @@ export class DesktopBackend {
   private remoteControlServer: RemoteControlServer | null = null;
   private readonly pendingDeepLinks: string[] = [];
   private readonly contextMenuRequestRpcs = new Map<string, DesktopRpc>();
+  /** Extra windows open once the main window has drawn, like popped-out panes. */
+  private extraWindowsAllowed = false;
+  private lastWindowList = "";
+  private quitting = false;
+
+  /**
+   * Makes the window host, opens the main window where it was left on these
+   * screens, and starts watching them. Extra windows open once the main
+   * window has its data.
+   */
+  startWindows(): void {
+    if (this.windowHost) return;
+    const host = new ElectrobunWindowHost({ create: (spec, hooks) => this.createNativeWindow(spec, hooks.onFrameChange) });
+    this.windowHost = host;
+    const legacy = readRememberedDesktopWindow(rememberedDesktopWindowPath());
+    this.windowController = new DesktopWindowController({
+      host,
+      store: desktopScreenSetupStore(),
+      minSize: MAIN_WINDOW_MIN_SIZE,
+      defaultMainFrame: defaultMainWindowFrame(),
+      // Windows saved every window as full screen in builds whose frameless
+      // window it took for full screen; it has no way into full screen here.
+      legacyMainPlacement: legacy ? { ...legacy, fullscreen: legacy.fullscreen && process.platform !== "win32" } : null,
+      onWindowClosed: (windowId) => this.handleExtraWindowClosed(windowId),
+      onMainWindowClosed: () => this.quit(),
+    });
+    host.onWindowEvent((event) => {
+      this.detachedWindows.handleWindowEvent(event);
+      if (event.type === "visibility") this.rpcs.getWindowRpc(event.id)?.send["desktop.windowVisibility"]({ visible: event.visible });
+    });
+    this.windowController.openWindow(MAIN_WINDOW_ID);
+    this.windowController.focus(MAIN_WINDOW_ID);
+  }
+
+  /** The native window behind a full window or a popped-out pane, with its own RPC channel. */
+  private createNativeWindow(spec: OpenWindowSpec, onFrameChange: () => void): BrowserWindow {
+    const rpc = this.createWindowRpc(spec.id);
+    const main = spec.id === MAIN_WINDOW_ID;
+    const window = createAppWindow({
+      title: spec.title,
+      frame: spec.frame,
+      rpc,
+      minSize: spec.minSize,
+      onFrameChange,
+      // A full window's page draws a frame before its script has loaded: the
+      // main window the layout it last drew (dom/boot-frame.ts), another the
+      // bare shell. A popped-out pane's draws none.
+      ...(spec.kind === "app"
+        ? { preload: desktopBootFramePreload(main ? readDesktopBootFrame(desktopBootFramePath()) : null) }
+        : {}),
+    });
+    if (main) quitWindowsEventLoopOnItsThread(window);
+    return window;
+  }
+
+  /** Brings a window forward by its RPC key: a full window's or a popped-out pane's. False when there is none. */
+  focusWindow(windowKey: string | undefined): boolean {
+    const host = this.windowHost;
+    if (!windowKey || !host?.hasWindow(windowKey)) return false;
+    if (this.windowController?.isOpen(windowKey)) this.windowController.focus(windowKey);
+    else host.focusWindow(windowKey);
+    return true;
+  }
+
+  /** The Electrobun window for an RPC key, for the calls only this shell makes. */
+  nativeWindow(windowKey: string | undefined): BrowserWindow | null {
+    return windowKey ? this.windowHost?.browserWindow(windowKey) ?? null : null;
+  }
+
+  /** The main window has its data: popped-out panes and extra windows open shortly after. */
+  openWindowsAfterMainWindow(): void {
+    this.detachedWindows.openAfterMainWindow(() => {
+      this.extraWindowsAllowed = true;
+      this.reconcileWindows();
+    });
+  }
+
+  /** Opens and closes windows to match the workspace: popped-out panes, and full windows. */
+  reconcileWindows(): void {
+    this.detachedWindows.reconcile();
+    const controller = this.windowController;
+    const workspace = this.workspace;
+    if (!controller || !workspace) return;
+    const wanted = workspace.windowIds();
+    if (this.extraWindowsAllowed) {
+      for (const windowId of wanted) {
+        if (windowId !== MAIN_WINDOW_ID && !controller.isOpen(windowId)) controller.openWindow(windowId);
+      }
+    }
+    for (const windowId of controller.openWindowIds()) {
+      if (windowId === MAIN_WINDOW_ID || wanted.includes(windowId)) continue;
+      controller.closeWindow(windowId, { forget: true });
+      this.releaseWindow(windowId);
+    }
+    controller.rememberWindows(workspace.extraWindows());
+    this.sendWindowList();
+  }
+
+  /** Every full window, labelled in the order they opened. */
+  windowInfos(): DesktopWindowInfo[] {
+    const workspace = this.workspace;
+    if (!workspace) return [];
+    return workspace.windowIds().map((id, index) => {
+      const tabs = workspace.windowTabNames(id);
+      return {
+        id,
+        number: index + 1,
+        activeLayoutName: tabs?.active ?? "",
+        tabCount: tabs?.count ?? 0,
+      };
+    });
+  }
+
+  /** Tells every full window which windows there are, when that changed. */
+  private sendWindowList(): void {
+    const windows = this.windowInfos();
+    const key = JSON.stringify(windows);
+    if (key === this.lastWindowList) return;
+    this.lastWindowList = key;
+    for (const { id } of windows) {
+      if (!this.rpcs.isWindowRpcReady(id)) continue;
+      this.rpcs.getWindowRpc(id)?.send["desktop.windows"]({ windows });
+    }
+  }
+
+  /** A full window's id for a request, or null for a popped-out pane's window. */
+  fullWindowKey(rpc: DesktopRpc): string | null {
+    const key = this.rpcs.getRpcWindowKey(rpc);
+    if (!key || paneIdFromDetachedRpcKey(key)) return null;
+    return key;
+  }
+
+  /** Opens a new full window, on `layoutId` or an empty tab. Null when that tab cannot leave its window. */
+  async openExtraWindow(layoutId?: string): Promise<string | null> {
+    const workspace = this.requireWorkspace();
+    const windowId = createExtraWindowId();
+    const snapshot = workspace.openWindow(windowId, layoutId);
+    if (!snapshot) return null;
+    this.extraWindowsAllowed = true;
+    await this.commitDesktopSnapshot(snapshot);
+    this.windowController?.focus(windowId);
+    return windowId;
+  }
+
+  /**
+   * Shows a pane wherever it is: brings its window forward, on its tab, and
+   * has that window focus it. False when no window holds it.
+   */
+  async focusPaneAnywhere(paneId: string): Promise<boolean> {
+    const workspace = this.requireWorkspace();
+    const config = this.config;
+    if (config && config.layout.detached.some((entry) => entry.instanceId === paneId)) {
+      return this.detachedWindows.focusDetachedPane(paneId);
+    }
+    const located = workspace.locatePane(paneId);
+    if (!located) return false;
+    const before = workspace.getWindowSnapshot(located.windowId);
+    const shown = before?.config.layouts[before.config.activeLayoutIndex]?.id;
+    if (shown !== located.layoutId) {
+      await this.commitDesktopSnapshot(workspace.activateLayout(located.windowId, located.layoutId), { persistConfig: false });
+    }
+    this.windowController?.focus(located.windowId);
+    this.rpcs.getWindowRpc(located.windowId)?.send["desktop.focusPane"]({ paneId });
+    return true;
+  }
+
+  private handleExtraWindowClosed(windowId: string): void {
+    this.releaseWindow(windowId);
+    const workspace = this.workspace;
+    if (!workspace || !workspace.windowIds().includes(windowId)) return;
+    void this.commitDesktopSnapshot(workspace.closeWindow(windowId));
+  }
+
+  /** What a closed full window held: its streams, its channel. */
+  private releaseWindow(windowId: string): void {
+    this.disposeWindowResources(windowId);
+    this.rpcs.unregisterWindowRpc(windowId);
+    this.workspace?.forgetWindow(windowId);
+  }
+
+  /**
+   * Closes every window without forgetting the extra ones, which open again
+   * at the next launch or session.
+   */
+  closeAllWindows(options: { main?: boolean } = {}): void {
+    this.detachedWindows.closeAll();
+    const controller = this.windowController;
+    if (!controller) return;
+    controller.flush();
+    for (const windowId of controller.openWindowIds()) {
+      if (windowId === MAIN_WINDOW_ID) continue;
+      controller.closeWindow(windowId);
+      this.releaseWindow(windowId);
+    }
+    if (options.main) controller.closeWindow(MAIN_WINDOW_ID);
+  }
 
   requireConfig(): AppConfig {
     if (!this.config) throw new Error("Backend config has not been initialized.");
@@ -207,8 +426,8 @@ export class DesktopBackend {
       getConfig: () => this.requireConfig(),
       getServices: () => this.requireServices(),
     });
-    this.workspace = createDesktopWorkspace(config, this.getSessionSnapshot());
-    this.detachedWindows.reconcile();
+    this.workspace = createDesktopWorkspace(config, this.getSessionSnapshot(), this.windowController?.screenSetup.windows);
+    this.reconcileWindows();
     return { config, services };
   }
 
@@ -236,9 +455,10 @@ export class DesktopBackend {
       await saveConfig(nextConfig);
     }
     if (options.reconcileWindows !== false) {
-      this.detachedWindows.reconcile();
+      this.reconcileWindows();
     }
     this.stateBroadcaster.sendDesktopState(this.requireWorkspace().getSnapshot());
+    this.sendWindowList();
     return this.requireWorkspace().getSnapshot();
   }
 
@@ -291,7 +511,7 @@ export class DesktopBackend {
       if (this.pendingDeepLinks.length > MAX_PENDING_DEEP_LINKS) this.pendingDeepLinks.shift();
       return;
     }
-    this.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
+    this.focusWindow(MAIN_WINDOW_RPC_KEY);
     rpc.send["desktop.deepLink"]({ url: rawUrl });
   }
 
@@ -313,13 +533,29 @@ export class DesktopBackend {
     });
   }
 
+  /** The full window the person used last, ready for messages; the main window otherwise. */
+  private focusedFullWindow(): { key: string; rpc: DesktopRpc } | null {
+    const focused = this.windowController?.focusedWindowId ?? MAIN_WINDOW_ID;
+    for (const key of [focused, MAIN_WINDOW_RPC_KEY]) {
+      const rpc = this.rpcs.getWindowRpc(key);
+      if (rpc && this.rpcs.isWindowRpcReady(key)) return { key, rpc };
+    }
+    return null;
+  }
+
   runApplicationMenuCommand(command: ElectrobunApplicationMenuCommand): void {
     if (command.type === "open-devtools") {
-      this.mainWindow?.webview.openDevTools();
+      this.nativeWindow(this.focusedFullWindow()?.key ?? MAIN_WINDOW_ID)?.webview.openDevTools();
       return;
     }
-    const rpc = this.readyMainWindowRpc();
+    if (command.type === "new-window") {
+      if (this.workspace) void this.openExtraWindow().catch((error: unknown) => {
+        console.error("[desktop] could not open a window", summarizeError(error));
+      });
+      return;
+    }
     if (command.type === "quit") {
+      const rpc = this.readyMainWindowRpc();
       if (!rpc) {
         this.quit();
         return;
@@ -330,21 +566,22 @@ export class DesktopBackend {
       setTimeout(() => this.quit(), QUIT_FALLBACK_MS);
       return;
     }
-    if (!rpc) return;
-    // The bar and every form open in the main window; with a detached window
-    // key, the keys would go there instead.
+    // Menu commands go to the full window in front, or the one used last.
+    const target = this.focusedFullWindow();
+    if (!target) return;
+    // The bar and every form open in that window; with a popped-out pane's
+    // window in front, the keys would go there instead.
     if (command.type === "open-command-bar" || command.type === "open-builtin-workflow" || command.type === "open-plugin-workflow") {
-      this.detachedWindows.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
+      this.windowController?.focus(target.key);
     }
-    rpc.send["application-menu.select"]({ command });
+    target.rpc.send["application-menu.select"]({ command });
   }
 
-  private quit(): void {
-    this.detachedWindows.closeAll();
+  quit(): void {
+    if (this.quitting) return;
+    this.quitting = true;
+    this.closeAllWindows({ main: true });
     this.teardownServices();
-    const window = this.mainWindow;
-    this.mainWindow = null;
-    window?.close();
     Utils.quit();
   }
 
@@ -543,6 +780,11 @@ export class DesktopBackend {
       case "desktop.dockDetachedPane":
       case "desktop.closeDetachedPane":
       case "desktop.focusDetachedPane":
+      case "desktop.openWindow":
+      case "desktop.moveLayoutToWindow":
+      case "desktop.movePaneToWindow":
+      case "desktop.focusWindow":
+      case "desktop.focusPane":
         return handleDesktopWorkspaceRequest(this, rpc, request);
       case "pluginState.setMany":
       case "pluginState.delete":

@@ -1,6 +1,11 @@
 import type { AppSessionSnapshot } from "../../../core/state/session-persistence";
 import type { PaneRuntimeState } from "../../../core/state/app/state";
-import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState } from "../../../types/desktop-window";
+import type {
+  DesktopDockPreviewState,
+  DesktopSharedStateSnapshot,
+  DesktopThemePreviewState,
+  DesktopWindowInfo,
+} from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig, UpdateChannel } from "../../../types/config";
 import type { CachedResourceRecord, ResourceCacheKey } from "../../../data/resource-store";
@@ -29,6 +34,10 @@ export interface ElectrobunBackendInit {
   hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
+  /** A full window's id: `main`, or an extra window's. Absent for a popped-out pane's window. */
+  windowId?: string;
+  /** Every full window, for moving a tab or pane between them. */
+  windows?: DesktopWindowInfo[];
   /** What the launch's plugin seed could not install, for the main window to say once. */
   pluginSeedNotice?: { body: string; type: "error" | "info" };
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
@@ -180,7 +189,8 @@ interface DesktopBackendRequestMap {
   "capability.cancel": { request: { invocationId: string }; response: null };
   "capability.subscribe": { request: DesktopCapabilitySubscribeRequest; response: null };
   "capability.unsubscribe": { request: { subscriptionId: string }; response: null };
-  "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot }; response: null };
+  /** A full window's whole state. `baseSeq` names the last state it took from here; null, its own last sync. */
+  "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot; baseSeq?: number | null }; response: null };
   "desktop.setThemePreview": { request: { preview: DesktopThemePreviewState }; response: null };
   "desktop.replaceDetachedPaneState": {
     request: { paneId: string; paneState: PaneRuntimeState };
@@ -193,6 +203,13 @@ interface DesktopBackendRequestMap {
   };
   "desktop.closeDetachedPane": { request: { paneId: string }; response: null };
   "desktop.focusDetachedPane": { request: { paneId: string }; response: null };
+  "desktop.openWindow": { request: null; response: null };
+  /** `windowId` null moves it to a new window. False when it cannot go. */
+  "desktop.moveLayoutToWindow": { request: { layoutId: string; windowId: string | null }; response: boolean };
+  "desktop.movePaneToWindow": { request: { paneId: string; windowId: string | null }; response: boolean };
+  "desktop.focusWindow": { request: { windowId: string }; response: null };
+  /** Brings forward the full window that shows a pane, on its tab, with the pane focused. False when no window has it. */
+  "desktop.focusPane": { request: { paneId: string }; response: boolean };
   "pluginState.setMany": { request: { entries: DesktopPluginStateSetEntry[] }; response: null };
   "pluginState.delete": { request: { pluginId: string; key: string }; response: null };
   "plugins.listExternal": { request: null; response: DesktopExternalPluginBundle[] };
@@ -328,6 +345,19 @@ export interface DesktopDeepLinkMessage {
   url: string;
 }
 
+interface DesktopWindowsMessage {
+  windows: DesktopWindowInfo[];
+}
+
+interface DesktopFocusPaneMessage {
+  paneId: string;
+}
+
+/** The window was minimized or brought back; a page cannot always tell by itself. */
+interface DesktopWindowVisibilityMessage {
+  visible: boolean;
+}
+
 /** Plugin folders the Bun process updated in the background, for the main window to bring into its session. */
 interface PluginsUpdatedMessage {
   directories: string[];
@@ -365,6 +395,9 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.dockPreview": DesktopDockPreviewMessage;
       "desktop.themePreview": DesktopThemePreviewMessage;
       "desktop.deepLink": DesktopDeepLinkMessage;
+      "desktop.windows": DesktopWindowsMessage;
+      "desktop.focusPane": DesktopFocusPaneMessage;
+      "desktop.windowVisibility": DesktopWindowVisibilityMessage;
       "plugins.updated": PluginsUpdatedMessage;
       "update.progress": UpdateProgressMessage;
       "capability.event": CapabilityEventMessage;

@@ -35,7 +35,7 @@ import type { AppNotificationRequest, CliLaunchRequest, GloomPlugin } from "./ty
 import type { DataProvider } from "./types/data-provider";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "./types/desktop-window";
 import type { DesktopApplicationMenuBridge } from "./types/desktop-menu";
-import type { LayoutBounds } from "./layout/pane-manager";
+import { isPaneInLayout, type LayoutBounds } from "./layout/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
@@ -191,6 +191,10 @@ function AppInner({
   const dialog = useDialog();
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
+  // The main desktop window does the app-wide work (account sync, update
+  // checks, launch notices, background alerts); a popped-out pane's window
+  // and every other full window leave it to it.
+  const appWideWorkElsewhere = isDetachedWindow || desktopWindowBridge?.primary === false;
   // Not while setup is already showing.
   const runSetupAgain = useRunSetupAgain(onboardingActive ? undefined : onRunSetupAgain);
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
@@ -245,11 +249,21 @@ function AppInner({
   }, [pluginRegistry]);
 
   useEffect(() => {
-    if (desktopWindowBridge?.kind !== "main" || !desktopWindowBridge.subscribeDockPreview) return;
+    // Popped-out panes dock into the main window only.
+    if (desktopWindowBridge?.kind !== "main" || appWideWorkElsewhere || !desktopWindowBridge.subscribeDockPreview) return;
     return desktopWindowBridge.subscribeDockPreview((preview) => {
       setDesktopDockPreview(preview);
     });
-  }, [desktopWindowBridge]);
+  }, [appWideWorkElsewhere, desktopWindowBridge]);
+
+  // Another window asked this one to show one of its panes: a link followed, a pane found.
+  useEffect(() => {
+    const windows = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.windows : undefined;
+    if (!windows) return;
+    return windows.subscribeFocusRequests((paneId) => {
+      if (isPaneInLayout(stateRef.current.config.layout, paneId)) pluginRegistry.focusPane(paneId);
+    });
+  }, [desktopWindowBridge, pluginRegistry, stateRef]);
 
   useEffect(() => {
     const disposers = createCoreSyncContributors().map((contributor) => (
@@ -286,7 +300,7 @@ function AppInner({
   const { restartToApplyUpdate, runUpdateCheck, runUpdateCommand, startUpdate } = useAppUpdateRuntime({
     enabled: updatesEnabled,
     dispatch,
-    isDetachedWindow,
+    isDetachedWindow: appWideWorkElsewhere,
     pluginRegistry,
     stateRef,
     updateAvailable: state.updateAvailable,
@@ -326,7 +340,7 @@ function AppInner({
     externalPlugins,
     focusedTickerSymbol,
     getState: getRemoteState,
-    isDetachedWindow,
+    isDetachedWindow: appWideWorkElsewhere,
     marketData,
     pluginRegistry,
     pluginsReady,
@@ -360,7 +374,7 @@ function AppInner({
     // Keep a first-run workspace stable while the local guide is active. Once
     // onboarding finishes, the normal pull-before-push sync starts immediately.
     initialized: state.initialized
-      && desktopWindowBridge?.kind !== "detached"
+      && !appWideWorkElsewhere
       && !onboardingActive
       && !signInGateActive,
   });
@@ -388,11 +402,11 @@ function AppInner({
 
   // Wire up app-level notifications.
   pluginRegistry.bindHost({ notify: appNotifier.notify });
-  // Missed alerts live in this device's state store. A detached window keeps
-  // its own in memory rather than overwrite the main window's.
+  // Missed alerts live in this device's state store. Any other desktop window
+  // keeps its own in memory rather than overwrite the main window's.
   useEffect(() => (
-    isDetachedWindow ? undefined : attachNotificationLog(pluginRegistry.persistence.pluginState)
-  ), [isDetachedWindow, pluginRegistry]);
+    appWideWorkElsewhere ? undefined : attachNotificationLog(pluginRegistry.persistence.pluginState)
+  ), [appWideWorkElsewhere, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on
@@ -607,8 +621,10 @@ export function App({
   }, [requireSignIn]);
   const signInGateActive = requireSignIn && !signedIn;
   const shareHandoff = isPaneShareHandoff();
+  // Setup runs in the main window only.
   const [showOnboarding, setShowOnboarding] = useState(() => (
     desktopWindowBridge?.kind !== "detached"
+    && desktopWindowBridge?.primary !== false
     && !shareHandoff
     && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
   ));
@@ -650,7 +666,9 @@ export function App({
     <RemoteUiRegistryProvider>
       <AppProvider
         config={config}
-        sessionStore={desktopWindowBridge?.kind === "detached" ? undefined : services.persistence.sessions}
+        sessionStore={desktopWindowBridge?.kind === "detached" || desktopWindowBridge?.primary === false
+          ? undefined
+          : services.persistence.sessions}
         sessionSnapshot={sessionSnapshot}
         desktopBridge={desktopWindowBridge}
         desktopSnapshot={desktopSnapshot}

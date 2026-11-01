@@ -78,6 +78,11 @@ export interface AppState {
   focusedPaneId: string | null;
   previousFocusedPaneId: string | null;
   paneState: Record<string, PaneRuntimeState>;
+  /**
+   * The tickers of panes in another desktop window that panes here follow,
+   * by pane id. Set by the desktop process; absent everywhere else.
+   */
+  linkedTickers?: Record<string, string>;
   recentTickers: string[];
   commandBarOpen: boolean;
   commandBarQuery: string;

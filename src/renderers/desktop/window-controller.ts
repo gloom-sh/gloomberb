@@ -1,0 +1,357 @@
+import {
+  arrangementKey,
+  cascadeFrame,
+  displayForFrame,
+  displayKey,
+  fitFrameToDisplays,
+  isFrameReachable,
+  isUsableRect,
+  moveFrameToDisplay,
+  sameRect,
+  usableDisplays,
+  type DesktopDisplay,
+  type Rect,
+} from "./geometry";
+import {
+  MAIN_WINDOW_ID,
+  forgetWindow,
+  hasArrangement,
+  placementFor,
+  rememberPlacement,
+  withExtraWindows,
+  type ExtraWindowRecord,
+  type ScreenSetup,
+  type WindowPlacement,
+} from "./screen-setup";
+import type { DesktopWindowHost, NativeWindowEvent, WindowSize } from "./window-host";
+
+export interface ScreenSetupStore {
+  load(): ScreenSetup;
+  save(setup: ScreenSetup): void;
+}
+
+export interface DesktopWindowControllerOptions {
+  host: DesktopWindowHost;
+  store: ScreenSetupStore;
+  minSize: WindowSize;
+  /** Where the main window opens when nothing was saved for these screens. */
+  defaultMainFrame: Rect;
+  /** The main window as an older build saved it, used once when the setup has nothing for it yet. */
+  legacyMainPlacement?: WindowPlacement | null;
+  title?: (windowId: string) => string;
+  /** The person closed an extra window; its tabs go back to the main window. */
+  onWindowClosed?: (windowId: string) => void;
+  onMainWindowClosed?: () => void;
+  onWindowFocused?: (windowId: string) => void;
+  onWindowVisibility?: (windowId: string, visible: boolean) => void;
+  /** Another shell's pane windows share the host; their events are theirs. */
+  onOtherWindowEvent?: (event: NativeWindowEvent) => void;
+  now?: () => number;
+  saveDelayMs?: number;
+  setTimer?: (callback: () => void, ms: number) => unknown;
+  clearTimer?: (handle: unknown) => void;
+}
+
+/**
+ * The full app windows on screen: where each opens, keeping where each sits
+ * for the monitor arrangement in use, and putting them back when the screens
+ * change. Unplugging a display folds its windows onto the displays that
+ * remain, keeping their place on the screen in proportion; plugging it back
+ * restores the setup saved for that arrangement. A window that ends up where
+ * it cannot be reached is pulled back onto a display.
+ */
+export class DesktopWindowController {
+  private setup: ScreenSetup;
+  private displays: DesktopDisplay[];
+  private arrangement: string;
+  private readonly open = new Set<string>();
+  /** Each window's last frame while neither maximized nor full screen, which is what a restore returns to. */
+  private readonly windowedFrames = new Map<string, Rect>();
+  private readonly saveTimers = new Map<string, unknown>();
+  private focused: string = MAIN_WINDOW_ID;
+  private readonly disposers: Array<() => void> = [];
+  private readonly now: () => number;
+  private readonly saveDelayMs: number;
+  private readonly setTimer: (callback: () => void, ms: number) => unknown;
+  private readonly clearTimer: (handle: unknown) => void;
+  /** Windows this side is moving, whose frame events are its own and not the person's. */
+  private applying = 0;
+
+  constructor(private readonly options: DesktopWindowControllerOptions) {
+    this.setup = options.store.load();
+    this.displays = usableDisplays(options.host.listDisplays());
+    this.arrangement = arrangementKey(this.displays);
+    this.now = options.now ?? Date.now;
+    this.saveDelayMs = options.saveDelayMs ?? 300;
+    this.setTimer = options.setTimer ?? ((callback, ms) => setTimeout(callback, ms));
+    this.clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+    this.disposers.push(
+      options.host.onDisplaysChanged((displays) => this.handleDisplays(displays)),
+      options.host.onWindowEvent((event) => this.handleWindowEvent(event)),
+    );
+  }
+
+  get screenSetup(): ScreenSetup {
+    return this.setup;
+  }
+
+  get currentArrangement(): string {
+    return this.arrangement;
+  }
+
+  get focusedWindowId(): string {
+    return this.focused;
+  }
+
+  isOpen(windowId: string): boolean {
+    return this.open.has(windowId);
+  }
+
+  openWindowIds(): string[] {
+    return [...this.open];
+  }
+
+  /** The extra windows the workspace has now, kept for the next launch. */
+  rememberWindows(records: readonly ExtraWindowRecord[]): void {
+    this.commit(withExtraWindows(this.setup, records));
+  }
+
+  /** Where a window opens: what was saved for these screens, else a place of its own. */
+  placementFor(windowId: string): WindowPlacement {
+    const saved = placementFor(this.setup, this.arrangement, windowId)
+      ?? (windowId === MAIN_WINDOW_ID ? this.options.legacyMainPlacement ?? null : null);
+    if (saved) return { ...saved, frame: this.reachable(saved.frame) };
+    if (windowId === MAIN_WINDOW_ID) {
+      return { frame: this.reachable(this.options.defaultMainFrame), maximized: false, fullscreen: false };
+    }
+    return { frame: this.freshFrame(), maximized: false, fullscreen: false };
+  }
+
+  openWindow(windowId: string): void {
+    if (this.open.has(windowId)) {
+      this.focus(windowId);
+      return;
+    }
+    const placement = this.placementFor(windowId);
+    this.open.add(windowId);
+    this.windowedFrames.set(windowId, placement.frame);
+    this.options.host.openWindow({
+      id: windowId,
+      kind: "app",
+      title: this.options.title?.(windowId) ?? "Gloom",
+      frame: placement.frame,
+      minSize: this.options.minSize,
+    });
+    this.applyModes(windowId, placement);
+  }
+
+  /** Closes a window from this side: its placements stay unless `forget`, for a window closed for good. */
+  closeWindow(windowId: string, options: { forget?: boolean } = {}): void {
+    this.cancelSave(windowId);
+    if (this.open.delete(windowId)) this.options.host.closeWindow(windowId);
+    this.windowedFrames.delete(windowId);
+    if (options.forget) this.commit(forgetWindow(this.setup, windowId));
+  }
+
+  focus(windowId: string): void {
+    if (!this.open.has(windowId)) return;
+    this.focused = windowId;
+    this.options.host.focusWindow(windowId);
+  }
+
+  /** Writes every window's placement now, for a quit. */
+  flush(): void {
+    for (const windowId of [...this.saveTimers.keys()]) {
+      this.cancelSave(windowId);
+      this.remember(windowId);
+    }
+  }
+
+  dispose(): void {
+    for (const windowId of [...this.saveTimers.keys()]) this.cancelSave(windowId);
+    for (const dispose of this.disposers.splice(0)) dispose();
+  }
+
+  /** A display with no window on it, for a new window; else the focused window's display. */
+  private freshFrame(): Rect {
+    const mainFrame = this.liveFrame(MAIN_WINDOW_ID) ?? this.options.defaultMainFrame;
+    const occupied = new Set(
+      [...this.open]
+        .map((id) => this.liveFrame(id))
+        .flatMap((frame) => {
+          const display = frame ? displayForFrame(frame, this.displays) : null;
+          return display ? [displayKey(display)] : [];
+        }),
+    );
+    const empty = this.displays.find((display) => !occupied.has(displayKey(display)));
+    if (empty) return moveFrameToDisplay(mainFrame, displayForFrame(mainFrame, this.displays), empty);
+    const anchor = this.liveFrame(this.focused) ?? mainFrame;
+    const display = displayForFrame(anchor, this.displays) ?? this.displays[0];
+    return display ? cascadeFrame(anchor, display) : anchor;
+  }
+
+  private reachable(frame: Rect): Rect {
+    if (!this.options.host.canPlaceWindows || this.displays.length === 0) return frame;
+    return isFrameReachable(frame, this.displays) ? frame : fitFrameToDisplays(frame, this.displays);
+  }
+
+  private liveFrame(windowId: string): Rect | null {
+    const state = this.open.has(windowId) ? this.options.host.getWindowState(windowId) : null;
+    if (!state) return this.windowedFrames.get(windowId) ?? null;
+    if (state.minimized || state.maximized || state.fullscreen) return this.windowedFrames.get(windowId) ?? state.frame;
+    return isUsableRect(state.frame) ? state.frame : this.windowedFrames.get(windowId) ?? null;
+  }
+
+  private applyModes(windowId: string, placement: WindowPlacement): void {
+    const { host } = this.options;
+    if (placement.fullscreen && host.canFullscreen) host.setFullscreen(windowId, true);
+    else if (placement.maximized) host.setMaximized(windowId, true);
+  }
+
+  private commit(next: ScreenSetup): void {
+    if (next === this.setup) return;
+    this.setup = next;
+    this.options.store.save(next);
+  }
+
+  private cancelSave(windowId: string): void {
+    const timer = this.saveTimers.get(windowId);
+    if (timer === undefined) return;
+    this.clearTimer(timer);
+    this.saveTimers.delete(windowId);
+  }
+
+  private scheduleSave(windowId: string): void {
+    this.cancelSave(windowId);
+    this.saveTimers.set(windowId, this.setTimer(() => {
+      this.saveTimers.delete(windowId);
+      // The system moves windows off a display it lost before anything says
+      // the display is gone; those moves belong to the new arrangement and
+      // must not overwrite where the windows sat on the old one.
+      const displays = this.options.host.listDisplays();
+      if (arrangementKey(displays) !== this.arrangement) {
+        this.handleDisplays(displays);
+        return;
+      }
+      this.remember(windowId);
+    }, this.saveDelayMs));
+  }
+
+  /** Records where a window is now under the arrangement in use. Nothing while it is minimized. */
+  private remember(windowId: string): void {
+    const state = this.open.has(windowId) ? this.options.host.getWindowState(windowId) : null;
+    if (!state || state.minimized || !isUsableRect(state.frame)) return;
+    if (!state.maximized && !state.fullscreen) this.windowedFrames.set(windowId, state.frame);
+    const frame = this.windowedFrames.get(windowId) ?? state.frame;
+    const display = displayForFrame(state.frame, this.displays);
+    this.commit(rememberPlacement(this.setup, this.arrangement, windowId, {
+      frame,
+      maximized: state.maximized && !state.fullscreen,
+      fullscreen: state.fullscreen,
+      ...(display ? { display: displayKey(display) } : {}),
+    }, this.now()));
+  }
+
+  private handleWindowEvent(event: NativeWindowEvent): void {
+    if (!this.open.has(event.id)) {
+      this.options.onOtherWindowEvent?.(event);
+      return;
+    }
+    switch (event.type) {
+      case "frame":
+        if (this.applying === 0) this.scheduleSave(event.id);
+        return;
+      case "focus":
+        this.focused = event.id;
+        this.options.onWindowFocused?.(event.id);
+        return;
+      case "visibility":
+        this.options.onWindowVisibility?.(event.id, event.visible);
+        return;
+      case "close":
+        this.cancelSave(event.id);
+        this.remember(event.id);
+        this.open.delete(event.id);
+        this.windowedFrames.delete(event.id);
+        if (event.id === MAIN_WINDOW_ID) {
+          this.options.onMainWindowClosed?.();
+          return;
+        }
+        this.commit(forgetWindow(this.setup, event.id));
+        this.options.onWindowClosed?.(event.id);
+        return;
+    }
+  }
+
+  /**
+   * The screens changed. A setup saved for the new arrangement is put back
+   * as it was; otherwise each window whose display is gone moves onto one
+   * that remains, the main window's display first, at the same place in
+   * proportion and in the same mode. Windows still on a display stay.
+   */
+  handleDisplays(nextDisplays: readonly DesktopDisplay[]): void {
+    const displays = usableDisplays(nextDisplays);
+    const key = arrangementKey(displays);
+    if (key === this.arrangement || displays.length === 0) return;
+    const previousDisplays = this.displays;
+    this.displays = displays;
+    this.arrangement = key;
+    const restoring = hasArrangement(this.setup, key);
+    const { host } = this.options;
+    const restored = new Set<string>();
+    this.applying += 1;
+    try {
+      // The main window first: the others fold onto the display it ends up on.
+      const order = [...this.open].sort((a, b) => Number(b === MAIN_WINDOW_ID) - Number(a === MAIN_WINDOW_ID));
+      for (const windowId of order) {
+        this.cancelSave(windowId);
+        const saved = restoring ? placementFor(this.setup, key, windowId) : null;
+        if (saved) {
+          this.place(windowId, { ...saved, frame: this.reachable(saved.frame) });
+          restored.add(windowId);
+          continue;
+        }
+        const state = host.getWindowState(windowId);
+        if (!state) continue;
+        // Where the window sat before the change: the system may already have moved it.
+        const windowed = this.windowedFrames.get(windowId) ?? state.frame;
+        const from = displayForFrame(windowed, previousDisplays);
+        const stillThere = !!from && displays.some((display) => displayKey(display) === displayKey(from));
+        if (stillThere && isFrameReachable(windowed, displays)) {
+          if (!sameRect(state.frame, windowed) && !state.maximized && !state.fullscreen && host.canPlaceWindows) {
+            host.setFrame(windowId, windowed);
+          }
+          continue;
+        }
+        const mainFrame = windowId === MAIN_WINDOW_ID ? null : this.liveFrame(MAIN_WINDOW_ID);
+        const to = (mainFrame ? displayForFrame(mainFrame, displays) : null) ?? displays[0]!;
+        this.place(windowId, {
+          frame: moveFrameToDisplay(windowed, from, to),
+          maximized: state.maximized,
+          fullscreen: state.fullscreen,
+        });
+      }
+    } finally {
+      this.applying -= 1;
+    }
+    // The new arrangement starts from where the windows are now; a restored one already has its entry.
+    for (const windowId of this.open) {
+      if (!restored.has(windowId)) this.remember(windowId);
+    }
+  }
+
+  private place(windowId: string, placement: WindowPlacement): void {
+    const { host } = this.options;
+    const state = host.getWindowState(windowId);
+    this.windowedFrames.set(windowId, placement.frame);
+    if (!host.canPlaceWindows) {
+      if (state && (state.maximized !== placement.maximized)) host.setMaximized(windowId, placement.maximized);
+      return;
+    }
+    // A maximized or full screen window takes a frame only once it is back to normal.
+    if (state?.fullscreen && host.canFullscreen) host.setFullscreen(windowId, false);
+    if (state?.maximized) host.setMaximized(windowId, false);
+    if (!state || !sameRect(state.frame, placement.frame)) host.setFrame(windowId, placement.frame);
+    this.applyModes(windowId, placement);
+  }
+}

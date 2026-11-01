@@ -232,7 +232,8 @@ export function resolveTickerForPane(state: AppState, paneId: string, seen = new
   if (seen.has(paneId)) return null;
   seen.add(paneId);
   const instance = findPaneInstance(state.config.layout, paneId);
-  if (!instance) return null;
+  // A pane in another desktop window: the ticker that window shows in it.
+  if (!instance) return state.linkedTickers?.[paneId] ?? null;
   const cursorSymbol = getPaneState(state, paneId).cursorSymbol;
   if (typeof cursorSymbol === "string" && cursorSymbol.trim()) return cursorSymbol;
   return resolveTickerFromBinding(state, instance.binding, seen);
@@ -562,18 +563,26 @@ export function focusPaneState(state: AppState, paneId: string): AppState {
   };
 }
 
+/** Panes in another desktop window that panes here follow: their links are not orphaned. */
+export function linkedSourceIds(state: Pick<AppState, "linkedTickers">): ReadonlySet<string> | undefined {
+  return state.linkedTickers ? new Set(Object.keys(state.linkedTickers)) : undefined;
+}
+
 export function withFocusedPane(
   state: AppState,
   config: AppConfig,
   options: {
     paneState?: Record<string, PaneRuntimeState>;
     focusedPaneId?: string | null;
+    /** Follow sources in another window; `state`'s own by default. */
+    externalSourceIds?: ReadonlySet<string>;
   } = {},
 ): AppState {
   const normalizedLayout = normalizePaneLayout(config.layout, {
     // Keep a follower alive on its last symbol when its source pane is gone.
     resolveOrphanSymbol: (instanceId) => resolveTickerForPane(state, instanceId),
     pinOrphan: pinFollowingPane,
+    externalSourceIds: options.externalSourceIds ?? linkedSourceIds(state),
   });
   const nextConfig = normalizedLayout === config.layout
     ? config
@@ -603,11 +612,17 @@ export function withFocusedPane(
 }
 
 export function hydrateDesktopSnapshot(state: AppState, snapshot: DesktopSharedStateSnapshot): AppState {
-  return withFocusedPane({
+  const linkedTickers = snapshot.linkedTickers && Object.keys(snapshot.linkedTickers).length > 0
+    ? snapshot.linkedTickers
+    : undefined;
+  const next = withFocusedPane({
     ...state,
     paneState: snapshot.paneState,
     brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
-  }, snapshot.config);
+    // A follower whose source in another window just closed stays on the ticker it last had there.
+    linkedTickers: linkedTickers || state.linkedTickers ? { ...state.linkedTickers, ...linkedTickers } : undefined,
+  }, snapshot.config, { externalSourceIds: linkedSourceIds({ linkedTickers }) ?? new Set() });
+  return next.linkedTickers === linkedTickers ? next : { ...next, linkedTickers };
 }

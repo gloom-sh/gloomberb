@@ -11,6 +11,7 @@ import {
 } from "../../../state/app/context";
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import { commands } from "../commands/registry";
+import { getDesktopWindows } from "../../../state/desktop-windows";
 import type { ThemePickerHandle } from "../theme-picker";
 import type { ListScreenState } from "../list/model";
 
@@ -97,6 +98,7 @@ export function useCommandBarEnvironment() {
     () => commands.filter((command) => {
       if (command.id === "cycle-chart-renderer") return !nativePaneChrome;
       if (command.id === "minimize-window" || command.id === "maximize-window") return drawsWindowControls;
+      if (command.id === "new-window") return getDesktopWindows() !== null;
       return true;
     }),
     [drawsWindowControls, nativePaneChrome],

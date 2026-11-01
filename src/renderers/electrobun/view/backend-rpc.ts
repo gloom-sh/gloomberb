@@ -85,6 +85,17 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
       "desktop.themePreview": (message) => {
         emit("desktop.themePreview", { preview: decodeRpcValue<DesktopThemePreviewMessage["preview"]>(message.preview) });
       },
+      "desktop.windows": (message) => {
+        if (!Array.isArray(message?.windows)) return;
+        emit("desktop.windows", { windows: message.windows });
+      },
+      "desktop.focusPane": (message) => {
+        if (typeof message?.paneId !== "string" || !message.paneId) return;
+        emit("desktop.focusPane", { paneId: message.paneId });
+      },
+      "desktop.windowVisibility": (message) => {
+        emit("desktop.windowVisibility", { visible: message?.visible !== false });
+      },
       "update.progress": (message) => {
         emit("update.progress", { progress: decodeRpcValue(message.progress) });
       },

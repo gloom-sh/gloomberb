@@ -48,6 +48,8 @@ import { teamStore } from "../../team/store";
 import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } from "./status-bar-groups";
 import { requestFeedbackDialog } from "../feedback-dialog";
 import { openFormModal } from "../form-modal";
+import { getDesktopWindows, layoutMoveTargets } from "../../state/desktop-windows";
+import { fireAndForget } from "../../utils/fire-and-forget";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
 import {
   STATUS_WIDGET_COLUMNS,
@@ -349,6 +351,24 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
         enabled: layouts.length > 1,
         onSelect: () => requestDeleteLayout(index),
       },
+    );
+    // The desktop app's other windows, where the tab can go.
+    const windows = getDesktopWindows();
+    const layoutId = layout.id;
+    if (windows && layoutId) {
+      const moves = layoutMoveTargets(windows, layouts.length);
+      if (moves.length > 0) items.push(contextMenuDivider("layout:window-divider"));
+      for (const move of moves) {
+        items.push({
+          id: `layout:move-to-window:${move.key}`,
+          label: move.label,
+          onSelect: () => {
+            fireAndForget(windows.moveLayout(layoutId, move.target), "desktop.moveLayoutToWindow");
+          },
+        });
+      }
+    }
+    items.push(
       contextMenuDivider("layout:actions-divider"),
       {
         id: "layout:gallery",
