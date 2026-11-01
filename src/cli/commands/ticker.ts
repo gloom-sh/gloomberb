@@ -82,8 +82,8 @@ import {
   coinListingNotes, failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
-import { movedAwayChange } from "../../tickers/ticker-changes";
-import { listingChangeLine, loadNoQuoteLastTraded, noLongerListedNote } from "../../tickers/listing-fate";
+import { isUsSymbolVenue, movedAwayChange } from "../../tickers/ticker-changes";
+import { listingChangeLine, loadNoQuoteLastTraded, noQuoteLastTradeNote, otherListingProfile, otherListingProfileNote } from "../../tickers/listing-fate";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -1556,27 +1556,14 @@ function depositaryPairJson(financials: TickerFinancials) {
   return { depositaryPair: { ...pair, side: receipt ? "receipt" : "home", text: depositaryPairText(pair, receipt) } };
 }
 
-const QUOTE_UNAVAILABLE = "Quote unavailable.";
-
-/** Asks for the quote the report lacks once more, for the reason the data service gave when it had none. */
-/**
- * A symbol whose listing stopped trading can be served the profile of
- * another listing that took the symbol (STPP: a UCITS fund, after the iPath
- * steepener ended): the line that names it, when the profile names anyone
- * but the listing itself. Null when it is the listing's own, or there is none.
- */
-export function otherListingProfileNote(symbol: string, financials: Pick<TickerFinancials, "profile" | "quote">): string | null {
-  const named = financials.profile?.name?.trim();
-  const own = financials.quote?.name?.trim();
-  if (!named || (own && own.toLowerCase() === named.toLowerCase())) return null;
-  return `The profile served under ${symbol} is another listing's (${named}), not shown.`;
-}
-
 /** The research a stopped listing shows when what came under its symbol is another listing's: its quote data alone. */
 function withoutResearch(financials: TickerFinancials): TickerFinancials {
   return { ...financials, profile: undefined, fundamentals: undefined, annualStatements: [], quarterlyStatements: [] };
 }
 
+const QUOTE_UNAVAILABLE = "Quote unavailable.";
+
+/** Asks for the quote the report lacks once more, for the reason the data service gave when it had none. */
 async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"], symbol: string, exchange: string): Promise<string> {
   try {
     await dataProvider.getQuote(symbol, exchange);
@@ -1721,8 +1708,14 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     // A listing with no quote and no bar in over a month stopped trading: the line under its name says when.
     const lastTraded = quote ? null : await loadNoQuoteLastTraded({ symbol: requestSymbol, exchange }, dataProvider);
-    const quoteNote = lastTraded ? [`${noLongerListedNote(requestSymbol, lastTraded)}.`, otherListingProfileNote(requestSymbol, resolvedFinancials)]
-      .filter(Boolean).join("\n")
+    // The profile under its symbol is another listing's only on evidence: another issuer's name, or one abroad.
+    const otherProfile = lastTraded ? otherListingProfile(resolvedFinancials.profile, {
+      usLine: isUsSymbolVenue(exchange),
+      issuerNames: [tickerFile?.metadata.name, researchFate.change?.issuer, researchFate.formerIssuer?.name],
+    }) : null;
+    const quoteNote = lastTraded
+      ? [`${noQuoteLastTradeNote(requestSymbol, lastTraded)}.`, otherProfile ? otherListingProfileNote(requestSymbol, otherProfile) : null]
+        .filter(Boolean).join("\n")
       : quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
     const successor = listingChangeLine(researchFate);
@@ -1736,8 +1729,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const memberships = await membershipsLoad;
     // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports. A listing that
     // stopped trading shows none of the profile and figures another listing under its symbol was served with.
-    const shownFinancials = await atReportTtmRate(lastTraded && otherListingProfileNote(requestSymbol, resolvedFinancials)
-      ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
+    const shownFinancials = await atReportTtmRate(otherProfile ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);

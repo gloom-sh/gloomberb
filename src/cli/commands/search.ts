@@ -21,7 +21,7 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
-import { listingChangeLine, loadListingFate, loadNoQuoteEnding, noLongerListedNote, type NoQuoteEnding } from "../../tickers/listing-fate";
+import { listingChangeLine, loadListingFate, loadNoQuoteEnding, noLongerListedNote, noQuoteLastTradeNote, type NoQuoteEnding } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable, failWithError, isCliFailure, unreachableError } from "../errors";
@@ -186,14 +186,16 @@ async function searchFate(
   const fate = await loadListingFate({ symbol }, dataProvider, { quote, changes });
   const unlisted = !candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol);
   // No quote at all (a retired ETN): a listed row the service marks ended says when, and one search no longer lists is
-  // listed with its last day and close, from its US line's last bars.
+  // listed with its last day and close, from its US line's last bars, when the service's record says it ended. Bars
+  // alone that stopped over a month ago say only that it has not traded since.
   if (!quote) {
     const ended = candidates.find((candidate) => candidate.symbol.toUpperCase() === symbol && candidate.result?.delisting)?.result?.delisting;
     if (ended) return { stopped: null, notes: [`${noLongerListedNote(symbol, ended.lastTradeDate)}.`] };
     const ending = unlisted ? await noQuoteEnding : null;
+    if (ending && !ending.recorded) return { stopped: null, notes: [`${noQuoteLastTradeNote(symbol, ending)}.`] };
     if (ending) {
-      const note = noLongerListedNote(symbol, ending.lastTraded);
-      return { stopped: { symbol, name: fate.change?.issuer || null, lastTraded: ending.lastTraded,
+      const note = noLongerListedNote(symbol, ending.date);
+      return { stopped: { symbol, name: fate.change?.issuer || null, lastTraded: ending.date,
         lastPrice: ending.lastClose == null ? "—" : formatMarketPriceWithCurrency(ending.lastClose, "USD", withCurrencyMinorDigits({}, "USD")), note }, notes: [] };
     }
   }

@@ -12,7 +12,10 @@ import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
-import { loadNoQuoteLastTraded, noLongerListedNote } from "../../../tickers/listing-fate";
+import { loadNoQuoteLastTraded, noQuoteLastTradeNote, otherListingProfile } from "../../../tickers/listing-fate";
+import { isUsSymbolVenue } from "../../../tickers/ticker-changes";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import type { EventStatus } from "./event-model";
 
 interface EventHeadlessData {
   actions: CorporateActionsData | null;
@@ -23,6 +26,9 @@ interface EventHeadlessData {
   estimatesError?: string | null;
   financialsError?: string | null;
 }
+
+/** The rows drawn from the research served under a symbol (its reports and estimates), not from its own corporate actions. */
+const RESEARCH_EVENTS: ReadonlySet<EventStatus> = new Set(["Earnings", "Q Est", "FY Est", "TTM"]);
 
 export interface EventsHeadlessDependencies {
   load(
@@ -66,13 +72,17 @@ export function createEventsHeadless(
       const errors = [notice?.failed ? notice.text : null,
         data.financialsError ? `Financial statements unavailable: ${data.financialsError}` : null,
       ].filter((error): error is string => !!error);
-      // A symbol with no quote whose listing stopped trading (STPP) can be served another listing's events under it:
-      // those dated after its last trade are not its own.
-      const lastTraded = data.financials?.quote ? null : await loadNoQuoteLastTraded({ symbol }, ctx.marketData);
+      // A symbol with no quote whose listing stopped trading says when it last traded. The issuer's own events after
+      // that stay (a cash-out, a liquidating distribution); only where the research served under the symbol is shown
+      // to be another listing's (STPP: a fund abroad's profile) are the reports and estimates after it dropped.
+      const lastTrade = data.financials?.quote ? null : await loadNoQuoteLastTraded({ symbol }, ctx.marketData);
+      const other = lastTrade ? otherListingProfile(data.financials?.profile, { usLine: isUsSymbolVenue(parsePublicTickerKey(symbol).exchange) }) : null;
       const rows = buildEventRows(data.actions, data.estimates, data.financials, data.currency);
-      const own = lastTraded ? rows.filter((row) => row.date.slice(0, 10) <= lastTraded) : rows;
-      const ended = lastTraded ? `${noLongerListedNote(symbol, lastTraded)}.${own.length < rows.length
-        ? ` ${rows.length - own.length} later ${rows.length - own.length === 1 ? "event is" : "events are"} another listing's under the symbol, not shown.` : ""}` : null;
+      const own = lastTrade && other
+        ? rows.filter((row) => !RESEARCH_EVENTS.has(row.status) || row.date.slice(0, 10) <= lastTrade.date) : rows;
+      const hidden = rows.length - own.length;
+      const ended = lastTrade ? `${noQuoteLastTradeNote(symbol, lastTrade)}.${hidden > 0
+        ? ` ${hidden} later ${hidden === 1 ? "report is" : "reports are"} another listing's (${other}), not shown.` : ""}` : null;
       return {
         rows: own.map((row) => ({ ...row })),
         ...(ended ? { notes: [ended] } : {}),
