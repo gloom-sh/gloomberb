@@ -26,7 +26,7 @@ import { heavyLayout, multiWindowLayout, type SpikeLayout } from "./layouts";
  * Writes results.json and summary.md under --out.
  */
 
-type Scenario = "default" | "heavy" | "multi" | "window";
+type Scenario = "default" | "heavy" | "multi" | "window" | "kernel";
 
 const args = process.argv.slice(2);
 function option(name: string): string | undefined {
@@ -60,6 +60,9 @@ const log = (...parts: unknown[]) => console.error(`[spike ${new Date().toISOStr
 // ---------------------------------------------------------------------------
 // Probe
 
+const probeSockets = new Set<{ send(data: string): void }>();
+const benchReplies: Array<{ bench?: unknown; benchError?: string; window: string }> = [];
+
 interface FrameState { window: string; at: number; panes: number; frame: number; loading: boolean; url: string }
 
 function probeSource(port: number): string {
@@ -77,6 +80,32 @@ function probeSource(port: number): string {
     } catch { setTimeout(connect, 250); }
   };
   connect();
+  // The harness's commands: "bench" redraws every chart at two widths while
+  // keeping each panel raster, then runs the raster kernel benchmark on them.
+  const onCommand = async (event) => {
+    let command = null;
+    try { command = JSON.parse(event.data); } catch { return; }
+    if (!command || command.cmd !== "bench") return;
+    const reply = (body) => { queue.push(JSON.stringify({ window: token, ...body })); flush(); };
+    try {
+      const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+      globalThis.__gloomRasterCapture = [];
+      document.body.style.width = "calc(100% - 7px)";
+      await wait(1500);
+      document.body.style.width = "";
+      await wait(1500);
+      const json = globalThis.__gloomRasterCaptureJson();
+      globalThis.__gloomRasterCapture = undefined;
+      const bench = await globalThis.__gloomRasterBench({ iterations: command.iterations || 15, json, runtime: navigator.userAgent });
+      reply({ bench: { ...bench, tsSamples: undefined, wasmSamples: undefined }, panelsJsonBytes: json.length });
+    } catch (error) {
+      reply({ benchError: String(error && error.stack || error) });
+    }
+  };
+  const attach = () => { if (socket) socket.onmessage = onCommand; else setTimeout(attach, 100); };
+  attach();
+  const reattach = setInterval(() => { if (socket && socket.onmessage !== onCommand) socket.onmessage = onCommand; }, 250);
+  setTimeout(() => clearInterval(reattach), 180000);
   const tick = () => {
     const panes = document.querySelectorAll("[data-gloom-pane-id]").length;
     const kind = document.querySelector("[data-gloom-boot-frame]")?.getAttribute("data-gloom-boot-frame");
@@ -123,9 +152,15 @@ const server = Bun.serve({
     return new Response("", { status: 404 });
   },
   websocket: {
+    open(ws) { probeSockets.add(ws as unknown as { send(data: string): void }); },
+    close(ws) { probeSockets.delete(ws as unknown as { send(data: string): void }); },
     message(_ws, raw) {
       try {
-        const message = JSON.parse(String(raw)) as { window: string; state: string; at: number; url: string };
+        const message = JSON.parse(String(raw)) as { window: string; state: string; at: number; url: string; bench?: unknown; benchError?: string };
+        if (message.bench || message.benchError) {
+          benchReplies.push(message);
+          return;
+        }
         const [panes, frame, loading] = message.state.split(",").map(Number);
         states.push({ window: message.window, at: message.at, panes: panes!, frame: frame!, loading: loading === 1, url: message.url });
       } catch { /* not a probe message */ }
@@ -388,6 +423,30 @@ async function runScenario(scenario: Scenario, home: string, run: number, settle
   }
 }
 
+/** The raster kernel benchmark in the desktop window, on the panels the heavy layout drew there. */
+const kernelResults: unknown[] = [];
+
+async function runKernelBench(home: string): Promise<void> {
+  log("launch kernel benchmark");
+  const launched = await launch(home, "kernel-1");
+  try {
+    await waitReady(launched, 4000, 120_000);
+    await sleep(8000);
+    benchReplies.length = 0;
+    for (const socket of probeSockets) socket.send(JSON.stringify({ cmd: "bench", iterations: 15 }));
+    const deadline = Date.now() + 300_000;
+    while (Date.now() < deadline && benchReplies.length === 0) await sleep(250);
+    const reply = benchReplies[0] ?? { benchError: "no reply from the window" };
+    kernelResults.push(reply);
+    log(`kernel: ${JSON.stringify(reply).slice(0, 600)}`);
+  } catch (error) {
+    kernelResults.push({ benchError: error instanceof Error ? error.message : String(error) });
+  } finally {
+    await killApp(launched.pid, launched.before);
+    await sleep(1500);
+  }
+}
+
 interface WindowResult { probe?: unknown; reopen?: unknown; error?: string }
 const windowResult: WindowResult = {};
 
@@ -471,6 +530,17 @@ function summarize(): string {
   if (multi.length) lines.push("", `Three windows: ${multi.map((record) => `${record.windows} windows, all ready ${record.allWindowsReadyMs} ms`).join("; ")}`);
   const failed = records.filter((record) => record.error);
   if (failed.length) lines.push("", "Failures:", ...failed.map((record) => `- ${record.scenario} ${record.run}: ${record.error}`));
+  for (const entry of kernelResults as Array<{ bench?: Record<string, number | string>; benchError?: string }>) {
+    if (entry.benchError) lines.push("", `Raster kernel benchmark failed: ${entry.benchError.slice(0, 400)}`);
+    else if (entry.bench) {
+      const bench = entry.bench;
+      const ms = (value: unknown) => typeof value === "number" ? value.toFixed(2) : "-";
+      lines.push("", "Raster kernel in this window (one pass over the panels the heavy layout drew):", "",
+        "| panels | Mpixels | TS ms | WASM ms | record ms | replay ms | speedup | mismatched panels |", "|---|---|---|---|---|---|---|---|",
+        `| ${bench.panels} | ${(Number(bench.pixels) / 1e6).toFixed(2)} | ${ms(bench.tsMs)} | ${ms(bench.wasmMs)} | ${ms(bench.recordMs)} | ${ms(bench.replayMs)} | ${typeof bench.speedup === "number" ? bench.speedup.toFixed(2) : "-"}x | ${bench.mismatchedPanels} |`,
+        "", `Engine: ${String(bench.runtime).slice(0, 200)}`);
+    }
+  }
   lines.push("", `App folder: ${(folderBytes(appRoot!) / 1e6).toFixed(1)} MB (${appRoot})`);
   if (notes.length) lines.push("", ...notes.map((note) => `- ${note}`));
   return lines.join("\n");
@@ -498,6 +568,10 @@ async function main(): Promise<void> {
       const home = await profile("multi", seed, multiWindowLayout(base, frames));
       for (let run = 1; run <= 2; run += 1) await runScenario("multi", home, run, 10_000, 2500);
     }
+    if (!skip.has("kernel")) {
+      const home = await profile("kernel", seed, heavyLayout());
+      await runKernelBench(home);
+    }
     if (!skip.has("window") && windowProbe) {
       const home = await profile("window", seed);
       await runWindowProbe(home);
@@ -514,6 +588,7 @@ async function main(): Promise<void> {
     appRootBytes: folderBytes(appRoot!),
     records,
     window: windowResult,
+    kernel: kernelResults,
     at: new Date().toISOString(),
     commit: process.env.GITHUB_SHA ?? null,
     run: process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : null,

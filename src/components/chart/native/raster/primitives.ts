@@ -8,6 +8,26 @@ export interface RgbaColor {
   a: number;
 }
 
+/**
+ * Prototype: while a recorder is set, drawing into its `target` buffer adds
+ * an op to its list instead of touching pixels, for the WebAssembly kernel
+ * (kernels/chart-raster) to replay. Drawing into any other buffer is unchanged.
+ */
+export interface RasterRecorder {
+  target: Uint8Array;
+  ops: number[];
+}
+
+let recorder: RasterRecorder | null = null;
+
+export function setRasterRecorder(next: RasterRecorder | null): void {
+  recorder = next;
+}
+
+export function rasterRecorderFor(data: Uint8Array): RasterRecorder | null {
+  return recorder !== null && recorder.target === data ? recorder : null;
+}
+
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const range = edge1 - edge0;
   if (range === 0) return value < edge0 ? 0 : 1;
@@ -29,6 +49,11 @@ export function blendPixel(
   color: RgbaColor,
   opacity = 1,
 ) {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(5, x, y, color.r, color.g, color.b, color.a, opacity);
+    return;
+  }
   if (x < 0 || y < 0 || x >= width || y >= height) return;
 
   const alpha = clamp((color.a / 255) * opacity, 0, 1);
@@ -74,6 +99,11 @@ export function drawLine(
   color: RgbaColor,
   thickness: number,
 ) {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(3, x0, y0, x1, y1, color.r, color.g, color.b, color.a, thickness);
+    return;
+  }
   const half = thickness / 2;
   const reach = half + LINE_FEATHER;
   const colorAlpha = clamp(color.a / 255, 0, 1);
@@ -121,6 +151,11 @@ export function drawLine(
  * per-pixel blend path costs most of a chart raster on its own.
  */
 export function fillOpaque(data: Uint8Array, color: RgbaColor) {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(1, color.r, color.g, color.b);
+    return;
+  }
   if (data.length < 4) return;
   data[0] = color.r;
   data[1] = color.g;
@@ -145,6 +180,11 @@ export function fillRect(
   color: RgbaColor,
   opacity = 1,
 ) {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(2, left, top, right, bottom, color.r, color.g, color.b, color.a, opacity);
+    return;
+  }
   const alpha = clamp((color.a / 255) * opacity, 0, 1);
   if (alpha <= 0) return;
   const startX = Math.max(Math.floor(left), 0);
@@ -164,6 +204,11 @@ export function drawCircle(
   radius: number,
   color: RgbaColor,
 ) {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(4, centerX, centerY, radius, color.r, color.g, color.b, color.a);
+    return;
+  }
   const minX = Math.floor(centerX - radius - 1);
   const maxX = Math.ceil(centerX + radius + 1);
   const minY = Math.floor(centerY - radius - 1);

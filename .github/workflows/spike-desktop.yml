@@ -1,16 +1,19 @@
-name: Spike desktop shell
+name: Spike chart raster kernel
 
-# Prototype measurements only: builds the desktop app on each platform from
-# this branch, unsigned, and measures startup, memory, window behaviour and
-# size with scripts/spike/desktop-measure.ts. Publishes nothing.
+# Prototype measurements only. Profiles the heavy layout in the web build
+# (scripts/spike/profile-heavy.ts), builds the chart raster kernel
+# (kernels/chart-raster) to WebAssembly, and benchmarks it against the
+# TypeScript raster on the same panels in Chrome, in Bun and in the desktop
+# window on each platform (scripts/spike/desktop-measure.ts, heavy layout and
+# kernel scenarios). Publishes nothing.
 on:
   push:
     branches:
-      - "spike/desktop-shell"
+      - "spike/wasm-kernel"
   workflow_dispatch:
 
 concurrency:
-  group: spike-desktop-${{ github.ref }}
+  group: spike-kernel-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,6 +26,62 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
+  web-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rebuild the kernel and compare with the committed module
+        continue-on-error: true
+        run: |
+          rustc --version
+          cp src/components/chart/composite/raster-kernel.generated.ts "$RUNNER_TEMP/committed.ts"
+          bun scripts/spike/build-wasm.ts
+          if diff -q "$RUNNER_TEMP/committed.ts" src/components/chart/composite/raster-kernel.generated.ts; then
+            echo "Kernel rebuilt byte for byte with $(rustc --version)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Kernel rebuilt with $(rustc --version) differs from the committed module; the committed one is measured" | tee -a "$GITHUB_STEP_SUMMARY"
+            cp "$RUNNER_TEMP/committed.ts" src/components/chart/composite/raster-kernel.generated.ts
+          fi
+
+      - name: Kernel tests (Rust)
+        working-directory: kernels/chart-raster
+        run: cargo test --release
+
+      - name: Build the web app with names and source maps
+        run: bun run scripts/build-web.ts --keep-names --sourcemap
+
+      - name: Profile the heavy layout and benchmark the kernel in Chrome
+        run: bun scripts/spike/profile-heavy.ts --out spike-profile
+
+      - name: Benchmark the kernel in Bun on the same panels
+        run: bun scripts/spike/bench-raster.ts --panels spike-profile/panels.json --out spike-profile
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            sed -n '1,/^### load/p' spike-profile/profile.md | head -n -1
+            sed -n '/^## Raster kernel in place/,$p' spike-profile/profile.md
+            echo
+            echo "## Raster kernel benchmark in Bun"
+            echo
+            echo '```json'
+            bun -e 'const r = await Bun.file("spike-profile/bench-bun.json").json(); delete r.tsSamples; delete r.wasmSamples; console.log(JSON.stringify(r, null, 2))'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-web-profile
+          path: spike-profile
+
   macos:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -58,7 +117,7 @@ jobs:
       - name: Measure
         run: |
           app="$RUNNER_TEMP/app/Gloom.app"
-          bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label macos-arm64 \
+          bun scripts/spike/desktop-measure.ts --skip default --skip multi --skip window --shell "$SPIKE_SHELL" --platform-label macos-arm64 \
             --launch "$app/Contents/MacOS/launcher" \
             --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
             --app-root "$app" --out spike-results --window-probe scripts/spike/mac-window-probe.sh
@@ -113,7 +172,7 @@ jobs:
         shell: pwsh
         run: |
           $Folder = "${{ steps.install.outputs.folder }}"
-          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-x64 `
+          bun scripts/spike/desktop-measure.ts --skip default --skip multi --skip window --shell $env:SPIKE_SHELL --platform-label windows-x64 `
             --launch "$Folder\bin\launcher.exe" `
             --view-html "$Folder\Resources\app\views\mainview\index.html" `
             --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
@@ -148,7 +207,7 @@ jobs:
         shell: pwsh
         run: |
           $Folder = "${{ steps.install.outputs.folder }}"
-          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-arm64 `
+          bun scripts/spike/desktop-measure.ts --skip default --skip multi --skip window --shell $env:SPIKE_SHELL --platform-label windows-arm64 `
             --launch "$Folder\bin\launcher.exe" `
             --view-html "$Folder\Resources\app\views\mainview\index.html" `
             --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
@@ -207,7 +266,7 @@ jobs:
           DISPLAY=:99 openbox &
           sleep 1
           folder="${{ steps.install.outputs.folder }}"
-          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label linux-x64 \
+          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --skip default --skip multi --skip window --shell "$SPIKE_SHELL" --platform-label linux-x64 \
             --launch "$folder/bin/launcher" \
             --view-html "$folder/Resources/app/views/mainview/index.html" \
             --app-root "$folder" --out spike-results --window-probe scripts/spike/linux-window-probe.sh

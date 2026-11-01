@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import type { StaticChartBitmapSize } from "./bitmap";
 import { renderCompositePanelBitmap } from "./rasterizer";
+import { rasterKernelRequested, renderCompositePanelBitmapWasm } from "./raster-wasm";
+// Prototype: registers the kernel benchmark for the measurement harnesses.
+import "./raster-bench";
 import type { CompositeChartColors, CompositePanelScene } from "./types";
 
 // A short resize-only delay coalesces geometry churn without delaying
@@ -31,18 +34,43 @@ function scheduleResize(render: () => void): () => void {
   };
 }
 
+/**
+ * Prototype measurement hooks: with `globalThis.__gloomRasterStats` set,
+ * every panel raster adds its time and size there; with
+ * `globalThis.__gloomRasterCapture` an array, every panel and its options
+ * are kept there (the kernel benchmark's inputs).
+ */
+interface RasterStats { kernel: string; calls: number; ms: number; pixels: number; fallbacks: number }
+
 function renderPanelBitmap(
   panel: CompositePanelScene,
   bitmapSize: StaticChartBitmapSize,
   colors: CompositeChartColors,
   snapGridToRows = false,
 ): NativeChartBitmap {
-  return renderCompositePanelBitmap(panel, {
+  const options = {
     pixelWidth: bitmapSize.pixelWidth,
     pixelHeight: bitmapSize.pixelHeight,
     colors,
     snapGridToRows,
-  });
+  };
+  const hooks = globalThis as { __gloomRasterStats?: RasterStats; __gloomRasterCapture?: unknown[] };
+  hooks.__gloomRasterCapture?.push({ panel, options });
+  const stats = hooks.__gloomRasterStats;
+  const started = stats ? performance.now() : 0;
+  let bitmap: NativeChartBitmap | null = null;
+  const wasm = rasterKernelRequested();
+  if (wasm) bitmap = renderCompositePanelBitmapWasm(panel, options);
+  const fellBack = wasm && !bitmap;
+  if (!bitmap) bitmap = renderCompositePanelBitmap(panel, options);
+  if (stats) {
+    stats.kernel = wasm ? "wasm" : "ts";
+    stats.calls += 1;
+    stats.ms += performance.now() - started;
+    stats.pixels += bitmap.width * bitmap.height;
+    if (fellBack) stats.fallbacks += 1;
+  }
+  return bitmap;
 }
 
 export function useCompositePanelBitmap({

@@ -20,6 +20,8 @@ const args = process.argv.slice(2);
 const root = process.cwd();
 const outdir = resolve(takeOption(args, "--out") ?? join(root, "dist", "web"));
 const keepNames = args.includes("--keep-names");
+/** Spike: source maps for the page, so a CPU profile maps back to source files. */
+const sourcemap = args.includes("--sourcemap") ? "external" : "none";
 const extraPluginDirs = args.flatMap((arg, index) => (arg === "--plugin" && args[index + 1] ? [resolve(args[index + 1]!)] : []));
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
@@ -64,7 +66,7 @@ async function buildPage(
   const { script, stylesheet } = await buildViewBundle({
     entrypoint,
     outdir: join(outdir, "assets", name),
-    sourcemap: "none",
+    sourcemap,
     keepNames,
     define: { __GLOOMBERB_API_URL__: "location.origin", ...extraDefines },
     failureMessage: `Failed to build the ${name} web page`,

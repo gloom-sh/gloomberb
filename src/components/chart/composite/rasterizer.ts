@@ -7,6 +7,8 @@ import {
   fillOpaque,
   fillRect,
   parseHex,
+  rasterRecorderFor,
+  setRasterRecorder,
   type RgbaColor,
 } from "../native/raster/primitives";
 import {
@@ -36,6 +38,11 @@ interface RenderCompositePanelBitmapOptions {
   /** Terminal cells hold one axis label per row: centre each gridline on the
    * row its label snaps to. */
   snapGridToRows?: boolean;
+  /**
+   * Prototype: record the drawing as ops here (see primitives.ts) instead of
+   * drawing it; the returned bitmap's pixels are then empty.
+   */
+  recordOps?: number[];
 }
 
 /** Dash geometry of the last price level, in bitmap pixels. */
@@ -89,6 +96,14 @@ function fillAreaGradient(
   step: boolean,
   color: RgbaColor,
 ): void {
+  const recording = rasterRecorderFor(data);
+  if (recording) {
+    recording.ops.push(6, points.length, baseline, step ? 1 : 0, color.r, color.g, color.b, color.a);
+    for (let index = 0; index < points.length; index += 1) {
+      recording.ops.push(points[index]!.x, points[index]!.y, series.points[index]?.breakBefore ? 1 : 0);
+    }
+    return;
+  }
   // Per column, the line's furthest point from the baseline, on either side.
   const above = new Float64Array(width).fill(Number.NaN);
   const below = new Float64Array(width).fill(Number.NaN);
@@ -538,7 +553,28 @@ export function renderCompositePanelBitmap(
 ): NativeChartBitmap {
   const width = Math.max(1, Math.floor(options.pixelWidth));
   const height = Math.max(1, Math.floor(options.pixelHeight));
+  if (options.recordOps) {
+    const target = new Uint8Array(0);
+    setRasterRecorder({ target, ops: options.recordOps });
+    try {
+      paintCompositePanel(target, width, height, panel, options);
+    } finally {
+      setRasterRecorder(null);
+    }
+    return { width, height, pixels: target };
+  }
   const data = new Uint8Array(width * height * 4);
+  paintCompositePanel(data, width, height, panel, options);
+  return { width, height, pixels: data };
+}
+
+function paintCompositePanel(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  panel: CompositePanelScene,
+  options: RenderCompositePanelBitmapOptions,
+): void {
   const background = parseHex(options.colors.background);
   const grid = parseHex(options.colors.grid);
   const negative = parseHex(options.colors.negative);
@@ -640,6 +676,4 @@ export function renderCompositePanelBitmap(
   if (panel.lastPrice) {
     drawDashedLevel(data, width, height, panel.lastPrice.yRatio, parseHex(panel.lastPrice.color));
   }
-
-  return { width, height, pixels: data };
 }
