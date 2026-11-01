@@ -72,7 +72,9 @@ export function retargetTickerPane(
   const binding: PaneBinding = {
     kind: "fixed",
     symbol,
-    ...(instrument !== undefined ? { instrument } : {}),
+    // Only a broker contract is kept, as `pinFollowingPane` keeps it: a public pick's `null` would
+    // stop `T AAPL` finding this pane again, since reuse tells null and unspecified contracts apart.
+    ...(instrument ? { instrument } : {}),
     ...(listing ? { listing } : {}),
   };
   const research = target.paneId === TICKER_RESEARCH_PANE_ID;

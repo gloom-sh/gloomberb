@@ -152,7 +152,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
         detail: "Open security details for a ticker",
         category: "Search",
         kind: "command",
-        action: () => options.openModeRoute("ticker-search", ""),
+        action: () => options.openModeRoute("ticker-search", "", SECURITY_DESCRIPTION_SEARCH),
       };
     }
     return {

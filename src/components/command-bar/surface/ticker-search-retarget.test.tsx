@@ -4,6 +4,8 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import type { AppContextStoreValue } from "../../../state/app/context";
 import { createPaneInstance, type LayoutConfig } from "../../../types/config";
 import type { PinTickerOptions } from "../../../types/plugin";
+import { offerTickerListings } from "../../../app/pane-runtime/ticker-open-target";
+import { AmbiguousTickerError } from "../../../tickers/search";
 import { CommandBarHarness } from "./test-harness";
 
 const tui = createOpenTuiTestHarness();
@@ -19,7 +21,11 @@ const optionsDesk: LayoutConfig = {
   detached: [],
 };
 
-async function renderTickerSearch(fromDes = false) {
+/** How the search opens: the backtick, DES typed in the bar, or an open that named several listings. */
+type SearchFrom = "backtick" | "des" | "listings";
+
+async function renderTickerSearch(from: SearchFrom = "backtick") {
+  const fromDes = from === "des";
   const opened: Array<{ symbol: string; options?: PinTickerOptions }> = [];
   const storeRef: { current: AppContextStoreValue | null } = { current: null };
   await tui.render(<CommandBarHarness
@@ -30,7 +36,8 @@ async function renderTickerSearch(fromDes = false) {
       ...state,
       config: { ...state.config, layout: optionsDesk },
       focusedPaneId: "opx",
-      ...(fromDes ? {} : { commandBarLaunchRequest: { kind: "ticker-search" as const, query: "", sequence: 1 } }),
+      ...(from === "backtick" ? { commandBarLaunchRequest: { kind: "ticker-search" as const, query: "", sequence: 1 } } : {}),
+      ...(from === "listings" ? { commandBarOpen: false } : {}),
     })}
     configurePluginRegistry={(registry) => {
       const panes = registry.panes as Map<string, unknown>;
@@ -44,6 +51,9 @@ async function renderTickerSearch(fromDes = false) {
   if (fromDes) {
     // Tab takes a typed DES into DES's own ticker search.
     await tui.emitKeypress({ name: "tab" });
+    await tui.waitForFrameToContain("Security Description");
+  } else if (from === "listings") {
+    await act(async () => { offerTickerListings(new AmbiguousTickerError("AAPL", ["AAPL", "AAPL:XMEX"]), "AAPL", storeRef.current!.dispatch); });
     await tui.waitForFrameToContain("Security Description");
   } else {
     await act(async () => { await tui.setup().mockInput.typeText("AAPL"); });
@@ -76,7 +86,16 @@ test("Shift+Enter in ticker search opens a new pane and leaves the focused one a
 });
 
 test("DES's search still opens Ticker Research from a single-ticker pane", async () => {
-  const { opened, layout } = await renderTickerSearch(true);
+  const { opened, layout } = await renderTickerSearch("des");
+  expect(tui.frame()).not.toContain("Change ticker");
+  await tui.emitKeypress({ name: "return", sequence: "\r" });
+  await tui.waitForFrameToContain("bar:closed");
+  expect(opened.map((entry) => entry.symbol)).toEqual(["AAPL"]);
+  expect(layout()).toEqual(optionsDesk);
+});
+
+test("the listings of an open that named several open the pick, not the focused pane's group", async () => {
+  const { opened, layout } = await renderTickerSearch("listings");
   expect(tui.frame()).not.toContain("Change ticker");
   await tui.emitKeypress({ name: "return", sequence: "\r" });
   await tui.waitForFrameToContain("bar:closed");

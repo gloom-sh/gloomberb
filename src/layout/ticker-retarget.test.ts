@@ -6,6 +6,7 @@ import {
   type PaneInstanceConfig,
 } from "../types/config";
 import type { PaneDef } from "../types/plugin";
+import { findFixedTickerPaneForSymbol } from "./ticker-navigation";
 import { resolveTickerRetargetPane, retargetTickerPane } from "./ticker-retarget";
 
 const component = () => null;
@@ -116,6 +117,22 @@ describe("retargetTickerPane", () => {
     expect(retarget("des").pane).toMatchObject({ title: "AAPL", binding: { kind: "fixed", symbol: "AAPL" } });
     // A title the user wrote stays.
     expect(retarget("named").pane.title).toBe("My hedges");
+  });
+
+  test("a public pick leaves no contract on the pane, so opening the ticker again finds it", () => {
+    const layout = layoutOf(
+      pane("des", TICKER_RESEARCH_PANE_ID, fixed("SPY")),
+      pane("omon", "options", { title: "OMON SPY", ...fixed("SPY") }),
+    );
+    for (const target of layout.instances) {
+      // A search row's public listing comes as `instrument: null`.
+      const next = retargetTickerPane(layout, target, "AAPL", { instrument: null, previous: "SPY" });
+      expect(next.instances.find((instance) => instance.instanceId === target.instanceId)?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
+      expect(findFixedTickerPaneForSymbol(next, target.paneId, "AAPL")?.instanceId).toBe(target.instanceId);
+    }
+    const contract = { brokerId: "ibkr", conId: 265598, symbol: "AAPL", secType: "STK", exchange: "SMART" };
+    const routed = retargetTickerPane(layout, layout.instances[1]!, "AAPL", { instrument: contract, previous: "SPY" });
+    expect(routed.instances[1]?.binding).toEqual({ kind: "fixed", symbol: "AAPL", instrument: contract });
   });
 
   test("a pane that keeps its ticker in its settings moves it through retargetTicker", () => {

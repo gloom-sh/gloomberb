@@ -741,7 +741,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, nativeRenderer, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTicker, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, nativeRenderer, togglePaneFullscreen, openPaneDocs, openPaneSettings, openPaneTickerSearch, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
 
