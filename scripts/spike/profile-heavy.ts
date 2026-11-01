@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import { join, resolve } from "path";
-import { launchBrowser, sleep, evaluate } from "../pane-chrome/browser";
+import { Cdp, launchBrowser, sleep, evaluate } from "../pane-chrome/browser";
 import { readFileSync, existsSync } from "fs";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 import { createReplay, serveWebApp, settle } from "../pane-chrome/web-app";
@@ -8,6 +8,7 @@ import { heavyLayout } from "./layouts";
 
 /**
  *   bun scripts/spike/profile-heavy.ts [--dist dist/web] [--replay <dir>] [--offline] [--out <dir>]
+ *   bun scripts/spike/profile-heavy.ts --desktop <app exe> --cdp-port 9333 [--dist <view dir>] [--out <dir>]
  *
  * Loads the heavy layout (scripts/spike/layouts.ts) in the web build in
  * headless Chrome and records a CPU profile of the page's main thread in
@@ -17,6 +18,12 @@ import { heavyLayout } from "./layouts";
  * self time, by phase and overall, and the same time grouped by area of the
  * source. Build the web app with `--keep-names --sourcemap` first so the
  * tables name functions and source files.
+ *
+ * With `--desktop`, the same phases run in the desktop app's own window: the
+ * app starts on a throwaway profile holding the heavy layout, with Chromium's
+ * DevTools port open (a Windows CEF build made with SPIKE_CDP_PORT), and a
+ * reload stands in for the second load. `--dist` then names the view folder
+ * the source maps are read from.
  *
  * The page gets its layout through localStorage only: the sweep's fixed clock
  * replaces Date with a JS subclass, which would bill every `new Date()` to
@@ -29,6 +36,8 @@ const dist = resolve(option("--dist") ?? "dist/web");
 const replayDir = resolve(option("--replay") ?? join(process.env.HOME ?? ".", ".cache", "gloom-smoke", "spike-profile", "replay"));
 const outDir = resolve(option("--out") ?? "spike-profile");
 const offline = args.includes("--offline");
+const desktopExe = option("--desktop");
+const cdpPort = Number(option("--cdp-port") ?? 9333);
 const width = 1920;
 const height = 1080;
 
@@ -37,8 +46,11 @@ interface Profile { nodes: ProfileNode[]; startTime: number; endTime: number; sa
 
 const maps = new Map<string, TraceMap | null>();
 function sourceOf(url: string, line: number, column: number): string | null {
-  if (!url.includes("/assets/") || line < 0 || column < 0) return null;
-  const path = join(dist, new URL(url).pathname);
+  if (line < 0 || column < 0) return null;
+  // The web build serves /assets/...; the desktop view loads views://mainview/...
+  const pathname = new URL(url).pathname;
+  if (!desktopExe && !url.includes("/assets/")) return null;
+  const path = desktopExe ? join(dist, pathname.split("/").pop() ?? "") : join(dist, pathname);
   if (!maps.has(path)) maps.set(path, existsSync(`${path}.map`) ? new TraceMap(readFileSync(`${path}.map`, "utf8")) : null);
   const map = maps.get(path);
   if (!map) return null;
@@ -155,20 +167,82 @@ async function loadLayout(cdp: Awaited<ReturnType<typeof launchBrowser>>["cdp"],
 }
 
 await mkdir(outDir, { recursive: true });
-const replay = createReplay(replayDir, { offline });
-const app = serveWebApp(dist, replay);
-const browser = await launchBrowser("spike-profile", width, height);
-const { cdp } = browser;
+
+type Session = { cdp: Cdp; label: string; load(): Promise<void>; close(): Promise<void> };
+
+async function webSession(): Promise<Session> {
+  const replay = createReplay(replayDir, { offline });
+  const app = serveWebApp(dist, replay);
+  const browser = await launchBrowser("spike-profile", width, height);
+  const version = await browser.cdp.send<{ product: string }>("Browser.getVersion").catch(() => ({ product: "Chrome" }));
+  return {
+    cdp: browser.cdp,
+    label: `web build, headless ${version.product}`,
+    load: () => loadLayout(browser.cdp, app.url, heavyLayout()),
+    async close() { await browser.close(); app.stop(); },
+  };
+}
+
+async function desktopSession(exe: string): Promise<Session> {
+  const home = join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".cache", "gloom-smoke", "spike-profile-desktop");
+  const { rm } = await import("fs/promises");
+  await rm(home, { recursive: true, force: true });
+  await mkdir(home, { recursive: true });
+  const { createDefaultConfig } = await import("../../src/types/config");
+  const layout = heavyLayout();
+  const config = { ...createDefaultConfig(home), dataDir: home, onboardingComplete: true, telemetry: { crashReports: false, usage: false }, layout, layouts: [{ name: "Heavy", layout, paneState: {} }], activeLayoutIndex: 0 };
+  await writeFile(join(home, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  const child = Bun.spawn([exe], {
+    cwd: resolve(exe, ".."),
+    env: { ...process.env, GLOOMBERB_HOME: home, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
+    stdout: Bun.file(join(outDir, "desktop.out.txt")),
+    stderr: Bun.file(join(outDir, "desktop.err.txt")),
+  });
+  let pageUrl = "";
+  for (let attempt = 0; attempt < 600 && !pageUrl; attempt += 1) {
+    const targets = await fetch(`http://127.0.0.1:${cdpPort}/json/list`).then((response) => response.json() as Promise<Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>>).catch(() => []);
+    pageUrl = targets.find((target) => target.type === "page" && target.url.includes("mainview"))?.webSocketDebuggerUrl ?? "";
+    if (!pageUrl) await sleep(100);
+  }
+  if (!pageUrl) {
+    child.kill();
+    throw new Error(`No desktop page on DevTools port ${cdpPort}`);
+  }
+  const cdp = await Cdp.connect(pageUrl);
+  await cdp.send("Page.enable");
+  await cdp.send("Runtime.enable");
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  const version = await cdp.send<{ product: string }>("Browser.getVersion").catch(() => ({ product: "CEF" }));
+  return {
+    cdp,
+    label: `desktop window, ${version.product}`,
+    async load() {
+      const loaded = cdp.once("Page.loadEventFired", 60_000);
+      await cdp.send("Page.reload", { ignoreCache: false });
+      await loaded;
+    },
+    async close() {
+      cdp.close();
+      const { spawnSync } = await import("child_process");
+      if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
+      else child.kill();
+      await Promise.race([child.exited, sleep(5000)]);
+    },
+  };
+}
+
+const session = desktopExe ? await desktopSession(desktopExe) : await webSession();
+const { cdp } = session;
 try {
   await cdp.send("Profiler.enable");
-  // A first load fills the replay and the HTTP cache, so the profiled one reads from them.
-  await loadLayout(cdp, app.url, heavyLayout());
+  // A first load fills the caches (the replay and the HTTP cache on the web), so the profiled one reads from them.
+  if (!desktopExe) await session.load();
   await settle(cdp, "body", 1500, 30_000);
   await sleep(2000);
 
   const phases = [];
   phases.push(await record(cdp, "load", async () => {
-    await loadLayout(cdp, app.url, heavyLayout());
+    await session.load();
     await settle(cdp, "body", 1500, 30_000);
   }));
   const panes = await evaluate<number>(cdp, `document.querySelectorAll("[data-gloom-pane-id]").length`);
@@ -228,15 +302,14 @@ try {
   await evaluate(cdp, `globalThis.__gloomRasterFrozen = globalThis.__gloomRasterCaptureJson(); globalThis.__gloomRasterCapture = undefined; true`, 120_000);
   const captured = await evaluate<string>(cdp, `globalThis.__gloomRasterFrozen`, 120_000);
   await writeFile(join(outDir, "panels.json"), captured);
-  const version = await cdp.send<{ product: string }>("Browser.getVersion").catch(() => ({ product: "chrome" }));
-  const bench = await evaluate<Record<string, unknown>>(cdp, `globalThis.__gloomRasterBench({ iterations: 25, json: globalThis.__gloomRasterFrozen, runtime: ${JSON.stringify(`${version.product} (web build page)`)} })`, 600_000);
+  const bench = await evaluate<Record<string, unknown>>(cdp, `globalThis.__gloomRasterBench({ iterations: 25, json: globalThis.__gloomRasterFrozen, runtime: ${JSON.stringify(session.label)} })`, 600_000);
   await writeFile(join(outDir, "bench-chrome.json"), JSON.stringify(bench, null, 2));
 
   const all = new Map<string, number>();
   const areas = new Map<string, number>();
   const inclusive = new Map<string, number>();
   let wall = 0;
-  const sections = [`# Heavy layout CPU profile (web build, headless Chrome ${width}x${height})`, "", `${panes} panes, ${canvases} canvases.`, ""];
+  const sections = [`# Heavy layout CPU profile (${session.label}, ${width}x${height})`, "", `${panes} panes, ${canvases} canvases.`, ""];
   for (const phase of phases) {
     const totals = selfTimes(phase.profile);
     for (const [key, ms] of totals) all.set(key, (all.get(key) ?? 0) + ms);
@@ -255,7 +328,6 @@ try {
   console.log(kernelTable);
   console.log(report);
 } finally {
-  await browser.close();
-  app.stop();
+  await session.close();
 }
 process.exit(0);

@@ -28,6 +28,8 @@ const WINDOWS_BUN_VERSION = "1.4.4";
 
 /** Prototype builds on CI: no signing identity, nothing notarized. */
 const UNSIGNED = Boolean(process.env.SPIKE_UNSIGNED);
+/** Prototype profiling builds on CI: Chromium's DevTools port open on this port. */
+const SPIKE_CDP_PORT = process.env.SPIKE_CDP_PORT;
 
 const config: ElectrobunConfig = {
   app: {
@@ -74,7 +76,9 @@ const config: ElectrobunConfig = {
       bundleCEF: true,
       defaultRenderer: "cef",
       icon: "src/assets/gloomberb-logo-windows.ico",
-      ...(RELEASE_BUILD ? { chromiumFlags: WINDOWS_RELEASE_CHROMIUM_FLAGS } : {}),
+      ...(SPIKE_CDP_PORT
+        ? { chromiumFlags: { "remote-debugging-port": SPIKE_CDP_PORT, "remote-allow-origins": "*" } }
+        : RELEASE_BUILD ? { chromiumFlags: WINDOWS_RELEASE_CHROMIUM_FLAGS } : {}),
     },
   },
   scripts: {

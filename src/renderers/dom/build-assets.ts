@@ -129,6 +129,8 @@ export async function writeElectrobunViewPage(options: PageOptions): Promise<str
     failureMessage: options.failureMessage,
     missingEntryMessage: options.missingEntryMessage,
     sourcemap: "external",
+    // Prototype profiling builds keep function names for the CPU profile.
+    keepNames: process.env.SPIKE_KEEP_NAMES === "1",
     define: {
       // The webview has no `process`, so the cloud endpoint override the terminal
       // already reads from the environment is baked in at build time.

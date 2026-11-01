@@ -133,7 +133,11 @@ jobs:
 
   windows-x64:
     runs-on: windows-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
+    env:
+      # The desktop window's Chromium answers DevTools here, for the profile.
+      SPIKE_CDP_PORT: "9333"
+      SPIKE_KEEP_NAMES: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -177,12 +181,22 @@ jobs:
             --view-html "$Folder\Resources\app\views\mainview\index.html" `
             --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
 
+      - name: Profile the heavy layout in the desktop window
+        if: always()
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.install.outputs.folder }}"
+          bun scripts/spike/profile-heavy.ts --desktop "$Folder\bin\launcher.exe" --cdp-port 9333 `
+            --dist "$Folder\Resources\app\views\mainview" --out spike-desktop-profile
+          Get-Content spike-desktop-profile/profile.md -TotalCount 120 | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: spike-windows-x64
           path: |
             spike-results
+            spike-desktop-profile
             sizes.md
 
   windows-arm64:
