@@ -5,6 +5,7 @@ import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
+import { Divider } from "../../ui/display";
 import { ICON_GLYPHS, Icon, IconButton } from "../../ui/icon";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
@@ -271,6 +272,24 @@ export function PaneHeader({
   if (nativePaneChrome) {
     // Focused, the rule is the accent; otherwise the one hairline.
     const ruleColor = visuallyFocused ? colors.borderFocused : "var(--gloom-hairline)";
+    // Title-bar tabs, the pane's own and a stack's alike: the strip hangs over
+    // the header's rules so the active tab's box opens into the pane.
+    const headerTabStripStyle = {
+      alignSelf: "stretch",
+      marginTop: -topInset,
+      marginBottom: -1,
+      // Undoes the negative top margin for what is centred in the strip:
+      // the overflow chevron, and the tab labels (styles.css).
+      "--pane-tab-top-inset": `${topInset}px`,
+      // The active tab's box opens into the pane over the bottom rule
+      // (styles.css), drawn in the rule's colour so the two are one line.
+      "--pane-tab-border": ruleColor,
+      // Until the strip has measured the surface under the tab (top-surface.ts).
+      "--pane-tab-active-bg": bodyBackground ?? colors.bg,
+      // The active tab reads as active whenever the pane is focused, even
+      // while a detail or field inside the pane owns the keyboard.
+      "--pane-tab-active-fg": visuallyFocused ? colors.textBright : colors.text,
+    } as const;
     // No width of its own: it stretches across its pane, so it follows a
     // frame a resize sizes outside React.
     return (
@@ -309,23 +328,30 @@ export function PaneHeader({
             <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
           </Box>
         )}
-        {/* Full header height, so trimming the title to its capitals never lets
-            this clip cut descenders. */}
-        <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
-          {stack && stackTabItems ? (
-            <Box data-gloom-role="pane-stack-tabs" minWidth={0} flexShrink={1} style={{ alignSelf: "stretch" }}>
-              <Tabs
-                tabs={stackTabItems}
-                activeValue={stack.active}
-                onSelect={stack.onSelect}
-                variant="bare"
-                dense
-                focused={visuallyFocused}
-                keyboardNavigation={false}
-                paneMenu={false}
-              />
-            </Box>
-          ) : (
+        {stack && stackTabItems ? (
+          // The panes stacked here, in place of the title: the same title-bar
+          // tabs as a pane's own strip. A press on one moves that pane
+          // (beginPaneDrag), so the strip lets it through to the header.
+          <Box
+            data-gloom-role="pane-stack-tabs"
+            flexShrink={1}
+            minWidth={0}
+            style={{ ...headerTabStripStyle, ...(tabs ? { maxWidth: "40%" } : {}) }}
+          >
+            <Tabs
+              tabs={stackTabItems}
+              activeValue={stack.active}
+              onSelect={stack.onSelect}
+              variant="header"
+              focused={visuallyFocused}
+              keyboardNavigation={false}
+              paneMenu={false}
+            />
+          </Box>
+        ) : (
+          /* Full header height, so trimming the title to its capitals never lets
+             this clip cut descenders. */
+          <Box data-gloom-role="pane-header-chrome" minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
             <Text
               fg={textColor}
               selectable={false}
@@ -341,8 +367,15 @@ export function PaneHeader({
             >
               {title}
             </Text>
-          )}
-        </Box>
+          </Box>
+        )}
+        {stack && tabs && (
+          // Two strips, two roles: the panes stacked here, then the views of
+          // the one shown. The rule keeps them from reading as one strip.
+          <Box flexDirection="row" flexShrink={0} style={{ alignSelf: "stretch", marginLeft: "var(--gloom-space-sm)", paddingBlock: "var(--gloom-space-xs)" }}>
+            <Divider orientation="vertical" />
+          </Box>
+        )}
         {tabs && (
           <Box
             data-gloom-role="pane-header-tabs"
@@ -352,23 +385,7 @@ export function PaneHeader({
               // Tabs select on click; the header must not start a pane drag.
               event.stopPropagation?.();
             }}
-            style={{
-              alignSelf: "stretch",
-              marginTop: -topInset,
-              marginBottom: -1,
-              marginLeft: "var(--gloom-space-sm)",
-              // Undoes the negative top margin for what is centred in the strip:
-              // the overflow chevron, and the tab labels (styles.css).
-              "--pane-tab-top-inset": `${topInset}px`,
-              // The active tab's box opens into the pane over the bottom rule
-              // (styles.css), drawn in the rule's colour so the two are one line.
-              "--pane-tab-border": ruleColor,
-              // Until the strip has measured the surface under the tab (top-surface.ts).
-              "--pane-tab-active-bg": bodyBackground ?? colors.bg,
-              // The active tab reads as active whenever the pane is focused, even
-              // while a detail or field inside the pane owns the keyboard.
-              "--pane-tab-active-fg": visuallyFocused ? colors.textBright : colors.text,
-            }}
+            style={{ ...headerTabStripStyle, marginLeft: "var(--gloom-space-sm)" }}
           >
             <Tabs
               tabs={tabs.tabs}

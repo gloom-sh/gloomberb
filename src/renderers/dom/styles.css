@@ -1318,6 +1318,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    overflow clip without changing the layout size. */
 [data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+[data-gloom-role="pane-stack-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-label,
 .gloom-qb-value,
 .gloom-qb-text,
@@ -1328,6 +1329,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 [data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+[data-gloom-role="pane-stack-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-title,
 .gloom-qb-meta {
   padding-block: var(--gloom-space-xs);
