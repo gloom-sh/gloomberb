@@ -23,6 +23,7 @@ import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
+import { formatInsiderName } from "../insider/display";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -63,7 +64,7 @@ import {
   secIssuerLabel,
   secReportedAcceptance,
 } from "./model";
-import { rowSummary, rowSummaryTarget } from "./row-summaries";
+import { ownerNames, rowSummary, rowSummaryTarget } from "./row-summaries";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { createSecFilingSearchProvider, resetSecFilingFocusRequests, useSecFilingFocusRequest } from "./command-bar-search";
 
@@ -150,7 +151,7 @@ function buildForm4Detail(content: string | null, filing: SecFilingItem): string
   if (!tx) return buildDetailBody(filing);
 
   const lines: string[] = [];
-  lines.push(`Insider: ${tx.reportedName}`);
+  lines.push(`Insider: ${formatInsiderName(tx.reportedName)}`);
   if (tx.title) lines.push(`Title: ${tx.title}`);
   for (const [index, transaction] of transactions.entries()) {
     if (transactions.length > 1) lines.push("", `Transaction ${index + 1}`);
@@ -172,6 +173,8 @@ function toFeedItems(
   documentsError: string | null,
   contentErrors: Map<string, string>,
 ): FeedDataTableItem[] {
+  // A Form 144 names its seller freely; the insider forms read beside it say which way round.
+  const knownOwners = filings.flatMap((filing) => ownerNames(filing.form, contentCache.get(filing.accessionNumber)));
   return filings.map((filing) => {
     const displayTitle = getFilingDisplayTitle(filing);
     const acceptedAt = secReportedAcceptance(filing);
@@ -186,7 +189,7 @@ function toFeedItems(
     // An insider form read once says who traded and how, a fund's 24F-2NT its
     // year's flows; the row says it too.
     const summaryTarget = rowSummaryTarget(filing);
-    const readSummary = summaryTarget ? rowSummary(filing.form, contentCache.get(summaryTarget.accessionNumber)) : null;
+    const readSummary = summaryTarget ? rowSummary(filing.form, contentCache.get(summaryTarget.accessionNumber), knownOwners) : null;
     const form4Detail = isOwnership && hasFetchedContent
       ? buildForm4Detail(fetchedContent ?? null, filing)
       : null;

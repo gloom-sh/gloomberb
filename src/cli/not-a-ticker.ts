@@ -1,11 +1,12 @@
 import { notATickerSymbol } from "../sources/provider-errors";
 import { boardCoinFor } from "./board-coins";
+import { currencyNameHint } from "./currency-name-hint";
 import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
 import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
-// One that already names what to try (a search, a FRED series, a yield, the pair search offered) is left alone.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloom (?:search|fred|quote) | Did you mean )/g;
+// One that already names what to try (a search, a FRED series, a yield, a currency's rate, the pair search offered) is left alone.
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloom (?:search|fred|quote|fx) | Did you mean )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -53,7 +54,8 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);
-      return `${sentence} ${tenor ? treasuryYieldHint(tenor) : searchHint(typed)}`;
+      // A currency's name (`yen`) is its rate and its pair, not a ticker search could find.
+      return `${sentence} ${tenor ? treasuryYieldHint(tenor) : currencyNameHint(typed) ?? searchHint(typed)}`;
     })
     : named;
 }

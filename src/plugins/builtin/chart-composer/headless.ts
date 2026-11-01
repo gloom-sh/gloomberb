@@ -37,7 +37,7 @@ import { futuresSessionOpenMinute } from "../../../market-data/market/trading-se
 import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data/market/freshness";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
-import { cleanFloat32Price } from "../../../cli/history-rows";
+import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, DAILY_CLOSES, REPORTED_DATA } from "../shared/report-freshness";
@@ -533,6 +533,43 @@ function tradedBars(series: HeadlessSeries): HeadlessSeries {
   };
 }
 
+/** The significant digits an exported bar price keeps however few decimals its series needs, as `formatSignificant` shows a small value. */
+const PRICE_SIGNIFICANT_FLOOR = 4;
+
+/**
+ * A chart's bars at the series' own precision: each price the decimal the
+ * feed's float stands for (113.045, not 113.044998), then all of them to the
+ * decimals nine in ten need (historyPriceDecimals), so a bar from a finer
+ * source reads as the rest do: USDJPY=X's 154.19901 among three-decimal bars
+ * is 154.199. A price those decimals would leave with fewer than four
+ * significant digits keeps four, so a reverse-split penny stock adjusted up to
+ * 50,000 still writes its 0.00421875 as 0.004219, never 0. A `value` that is
+ * no close (a transform) keeps its digits.
+ */
+function barsAtSeriesPrecision(series: HeadlessSeries): HeadlessSeries {
+  if (!series.points.some((point) => point.close != null)) return series;
+  const valueIsClose = series.points.every((point) => point.value == null || point.value === point.close);
+  const clean = (price: number | null | undefined) => price == null || !Number.isFinite(price) ? price : cleanFloat32Price(price);
+  const decimals = historyPriceDecimals(series.points.map((point) => ({
+    open: clean(point.open) ?? null, high: clean(point.high) ?? null, low: clean(point.low) ?? null, close: clean(point.close) ?? null,
+  })));
+  const round = (price: number | null | undefined) => {
+    const cleaned = clean(price);
+    if (cleaned == null || !Number.isFinite(cleaned) || cleaned === 0) return cleaned;
+    const floorDecimals = PRICE_SIGNIFICANT_FLOOR - 1 - Math.floor(Math.log10(Math.abs(cleaned)));
+    return floorDecimals > decimals ? Number(cleaned.toPrecision(PRICE_SIGNIFICANT_FLOOR)) : Number(cleaned.toFixed(decimals));
+  };
+  return {
+    ...series,
+    points: series.points.map((point) => {
+      const bar = { ...point };
+      for (const field of ["open", "high", "low", "close"] as const) if (point[field] !== undefined) bar[field] = round(point[field]);
+      if (point.value != null && valueIsClose) bar.value = bar.close;
+      return bar;
+    }),
+  };
+}
+
 /** What a chart series was asked as: a listing as typed (`USDZAR=X`, `SAN:EPA`), a FRED series by its ID. */
 function askedSymbol(source: ChartSeriesSource): string {
   switch (source.kind) {
@@ -830,6 +867,8 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         const interval = servedInterval(series as HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "barSize" | "nativeFrequency">);
         return { ...series, ...(symbol ? { symbol } : {}), ...(interval ? { interval } : {}) };
       });
+      // GIP keeps each intraday print as traded (a sub-penny 86.3775); a chart's bars read at the series' precision.
+      if (template !== "graph-intraday-price-pane") model.series = model.series.map(barsAtSeriesPrecision);
       if (template === "graph-intraday-price-pane") {
         model.series = model.series.map(tradedBars);
         const regular = regularSessionNotice(intradayHistories.map((window) => ({ ...window, exchange: listingExchange(window.symbol, window.exchange) })));

@@ -46,16 +46,23 @@ function nameWord(word: string): string {
   return word.split(/([-'\u2019])/).map((part) => /^[-'\u2019]$/.test(part) ? part : capitalizeWord(part)).join("");
 }
 
-function formatPersonName(name: string): string {
-  const words = name.replace(/,/g, " ").split(/\s+/).filter(Boolean);
+/** A person's words split from the suffixes that follow the name ("JR", "III"). */
+function splitPersonName(name: string): { words: string[]; suffixes: string[] } {
+  const parts = name.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   const suffixes: string[] = [];
-  const rest: string[] = [];
-  words.forEach((word, index) => {
+  const words: string[] = [];
+  parts.forEach((word, index) => {
     const suffix = index > 0 ? PERSON_SUFFIXES[word.replace(/\./g, "").toUpperCase()] : undefined;
     if (suffix) suffixes.push(suffix);
-    else rest.push(word);
+    else words.push(word);
   });
-  if (rest.length < 2) return [...rest.map(nameWord), ...suffixes].join(" ");
+  return { words, suffixes };
+}
+
+/** `filing` reads "LAST FIRST MIDDLE", as an SEC filing conforms an owner; `natural` is already first-name-first. */
+function formatPersonName(name: string, order: "filing" | "natural" = "filing"): string {
+  const { words: rest, suffixes } = splitPersonName(name);
+  if (order === "natural" || rest.length < 2) return [...rest.map(nameWord), ...suffixes].join(" ");
   // SEC filings conform the reporting owner to "LAST FIRST MIDDLE".
   let surnameLength = 1;
   while (surnameLength < rest.length - 1 && SURNAME_PARTICLES.has(rest[surnameLength - 1]!.toLocaleLowerCase())) surnameLength += 1;
@@ -75,6 +82,38 @@ function formatPersonName(name: string): string {
 export function formatInsiderName(name: string): string {
   return name.split(";").map((part) => part.trim()).filter(Boolean)
     .map((part) => isEntityName(part) ? part : formatPersonName(part))
+    .join("; ");
+}
+
+/** A name's words without initials, suffixes or case, in a fixed order: two spellings of one person share it. */
+function nameKey(name: string): string {
+  return splitPersonName(name).words
+    .map((word) => word.replace(/[.,]+$/, "").toLocaleLowerCase())
+    .filter((word) => word.length > 1)
+    .sort()
+    .join(" ");
+}
+
+/**
+ * A name typed freely on a form, such as the seller on a Form 144, which is
+ * as often "KEVAN PAREKH" as it is "COOK TIMOTHY D". A person already known
+ * from an insider form (`knownNames`, as those forms file them) is written as
+ * the Insider table writes them; a comma after the first word, or a trailing
+ * initial, marks filing order; any other name is taken as first-name-first
+ * and only has its case fixed.
+ */
+export function formatFreeformPersonName(name: string, knownNames: readonly string[] = []): string {
+  return name.split(";").map((part) => part.trim()).filter(Boolean)
+    .map((part) => {
+      if (isEntityName(part)) return part;
+      const key = nameKey(part);
+      const known = key ? knownNames.find((candidate) => nameKey(candidate) === key) : undefined;
+      if (known) return formatInsiderName(known);
+      const { words } = splitPersonName(part);
+      // "Cook, Timothy" and "COOK TIMOTHY D" put the surname first.
+      const surnameFirst = /^[^\s,]+,/.test(part) || (words.length > 1 && isInitial(words[words.length - 1]!));
+      return formatPersonName(part, surnameFirst ? "filing" : "natural");
+    })
     .join("; ");
 }
 

@@ -1,3 +1,5 @@
+import { WORD_CURRENCY_CODES } from "../../../utils/currency-names";
+
 /** The default board, in its default order. */
 export const MAJOR_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"] as const;
 
@@ -14,6 +16,19 @@ export const FX_CURRENCIES = [
   "MXN", "BRL", "CLP", "COP", "PEN", "ARS",
 ] as const;
 export type FxCurrency = typeof FX_CURRENCIES[number];
+
+/**
+ * The words a reader looks for the board by: the codes it carries (but those
+ * that are English words) and the names of its currencies, so `catalog yen`,
+ * `catalog chf` and `catalog "swiss franc"` find it. "cad" is a word too, yet
+ * in a market catalog it is the loonie far more often than not, so it still
+ * finds the board; only the fx line waits for CAD in capitals.
+ */
+export const FX_CURRENCY_KEYWORDS: readonly string[] = [
+  ...FX_CURRENCIES.filter((code) => code === "CAD" || !WORD_CURRENCY_CODES.has(code)).map((code) => code.toLowerCase()),
+  "dollar", "euro", "yen", "pound", "sterling", "franc", "swiss franc", "loonie", "aussie", "kiwi", "yuan", "renminbi",
+  "krona", "krone", "won", "rupee", "rupiah", "ringgit", "baht", "peso", "rand", "lira", "zloty", "forint", "koruna", "shekel",
+];
 
 /** The flag each currency wears on the desktop and web; the euro is the EU's, not one member's. */
 export const CURRENCY_FLAG_REGIONS: Record<FxCurrency, string> = {

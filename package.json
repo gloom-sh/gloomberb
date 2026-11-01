@@ -99,6 +99,7 @@
     "kit:page": "bun run scripts/pane-chrome/kit-page.ts",
     "audit:ui:compare": "bun run scripts/pane-chrome/ui-audit-compare.ts",
     "benchmark:pane-drag:compare": "bun run scripts/pane-chrome/frame-budget.ts",
+    "benchmark:pane-drag:smoothness": "bun run scripts/pane-chrome/drag-smoothness.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"
   },

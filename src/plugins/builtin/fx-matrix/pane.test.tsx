@@ -9,7 +9,7 @@ import { createIdleEntry, type QueryEntry } from "../../../market-data/result-ty
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
-import { fxMatrixModule } from "./index";
+import { fxHiddenColumnsSegment, fxMatrixModule } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
 import { renderedReportObservations } from "../../../cli/pane-functions/report-notices";
@@ -67,13 +67,13 @@ function installCoordinator(): void {
   } as unknown as MarketDataCoordinator);
 }
 
-function Harness() {
+function Harness({ width = 100 }: { width?: number }) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-fxc-pane-test"));
   const runtime = { getMarketData: () => ({}) } as unknown as PluginRuntimeAccess;
 
   return (
     <TestPaneProvider state={state} paneId="fx-matrix" runtime={runtime} pluginId="market-overview">
-      <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={100} height={14} />
+      <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={width} height={14} />
     </TestPaneProvider>
   );
 }
@@ -109,6 +109,24 @@ describe("FxMatrixPane", () => {
     // Its own diagonal is the only 1.0000 in the row.
     expect(jpyRow!.match(/1\.0000/g)).toHaveLength(1);
     expect(jpyRow).toContain("—");
+  });
+
+  test("a pane too narrow for every currency drops whole columns from the right and says how many", async () => {
+    // Before: the last column was cut at the edge, in a capture with no cue at all.
+    installCoordinator();
+    await tui.render(<Harness width={80} />, { width: 80, height: 14 });
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const lines = tui.frame().split("\n");
+    expect(lines[0]!.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD"]);
+    expect(tui.frame()).not.toContain("more");
+    // Every currency keeps its row: its rates against the hidden ones read along it.
+    expect(lines.slice(1).filter((line) => /^\s*(USD|EUR|GBP|JPY|CHF|CAD|AUD|NZD)\s/.test(line))).toHaveLength(8);
+    expect(fxHiddenColumnsSegment(["AUD", "NZD"])).toMatchObject({
+      capture: true, title: "AUD, NZD are not shown as columns: widen the pane", parts: [{ text: "2 columns hidden" }],
+    });
   });
 
   test("publishes what the rates it draws are, for a report to date them", async () => {

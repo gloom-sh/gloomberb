@@ -219,6 +219,43 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   expect(catalog).toContain("Taiwan dollar");
 });
 
+test("a currency's code or name finds FXC, its series and fx; safe haven lists FXC ahead of a function with one of its words", async () => {
+  // Before: `catalog yen` listed JGB yields only, `catalog jpy` one FRED series, and "safe haven" opened FDA Reports.
+  for (const query of ["yen", "jpy", "JPY", "Japanese yen"]) {
+    expect(commandPointer(query), query).toBe("The JPY rate: gloom fx JPY; its pair's history: gloom history USDJPY=X");
+  }
+  expect(commandPointer("swiss franc")).toBe("The CHF rate: gloom fx CHF; its pair's history: gloom history USDCHF=X");
+  expect(commandPointer("euro")).toBe("The EUR rate: gloom fx EUR; its pair's history: gloom history EURUSD=X");
+  // The dollar has no pair of its own; a code that is an English word counts only in capitals; a word several share is none.
+  for (const query of ["usd", "try", "cad", "rub", "peso", "yen carry trade"]) expect(commandPointer(query), query).toBeNull();
+  for (const code of ["TRY", "CAD", "RUB"]) expect(commandPointer(code), code).toContain(`gloom fx ${code}`);
+
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["yen", "jpy", "CHF", "franc", "swiss franc"]) {
+      expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("FXC");
+    }
+    // The euro is also the euro area's: FXC is among what it finds.
+    expect(filterPaneCatalogEntries(entries, "euro").map((entry) => entry.token)).toContain("FXC");
+    // The phrase outranks a function that has one of its words (FDA's drug safety).
+    const haven = filterPaneCatalogEntries(entries, "safe haven");
+    expect(haven[0]?.token).toBe("FXC");
+    const catalog = renderPaneCatalogReport(haven, parsePaneCatalogArgs(["safe", "haven"]), lookupGlossary("safe haven"), null,
+      findCatalogSeries(getLoadablePlugins(), "safe haven")).replace(/\x1b\[[0-9;]*m/g, "");
+    expect(catalog).toStartWith('Matches for "safe haven" (1 of 2)\nFunction');
+    expect(catalog).toContain("FUT:GC");
+  } finally {
+    registry.destroy();
+  }
+  // The yen's own series lead the JGB yields its tag finds, and the cut-off names catalog --all.
+  const yen = findCatalogSeries(getLoadablePlugins(), "yen");
+  expect(yen.slice(0, 2).map((match) => match.expression).sort()).toEqual(["FRED:DEXJPUS", "FUT:6J"]);
+  const report = renderPaneCatalogReport([], parsePaneCatalogArgs(["yen"]), lookupGlossary("yen"), null, yen).replace(/\x1b\[[0-9;]*m/g, "");
+  expect(report).toContain(`gloom catalog yen --all lists all ${yen.length}.`);
+});
+
 test("hashrate, hashprice, difficulty, mining and miner lead to the bitcoin network series and THEM crypto, ahead of DIST", async () => {
   const line = "Bitcoin network: gloom fn G hashrate, difficulty or hashprice; listed miners: gloom fn THEM crypto";
   for (const query of ["hashrate", "hash rate", "hashprice", "difficulty", "bitcoin difficulty", "mining", "miner", "bitcoin miners", "mining stocks"]) {

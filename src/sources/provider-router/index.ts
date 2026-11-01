@@ -33,6 +33,7 @@ import type { TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
 import { errorMessage } from "../../utils/errors";
+import { isPastPreCloseRefetch } from "../../utils/exchange-rate-snapshot";
 import { ProviderRouterBatchRoutes } from "./batches";
 import { createSignedInRealtimeCloudAccess, type RealtimeCloudAccess } from "./realtime-access";
 import { mapListingTargets, publicListingExchange } from "../listing-target";
@@ -362,7 +363,12 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getExchangeRate(fromCurrency: string, context?: Pick<MarketDataRequestContext, "cacheMode">): Promise<number> {
-    return (await this.getCachedQuery("getExchangeRate", [fromCurrency]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
+    const query = this.getCachedQuery("getExchangeRate", [fromCurrency]);
+    // A rate read before the FX week closed is no close: once the close is out, wait for it instead of showing
+    // the old rate while it is read again, which the caller would then hold as read now.
+    const cached = query.getSnapshot().result;
+    const background = this.revalidateInBackground && !(cached && isPastPreCloseRefetch(cached));
+    return (await query.load({ force: context?.cacheMode === "refresh", background })).value;
   }
 
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {

@@ -2,10 +2,26 @@ import { readIntradayBar, readStaleReason } from "../market-data/quotes/intraday
 import type { QuoteIntradayBar } from "../types/financials";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import { fixedUsdRate } from "./currency-units";
-import { fxFreshUntil } from "./fx-market-hours";
+import { fxFreshUntil, fxPreCloseRefetchAt } from "./fx-market-hours";
 
 export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
 const FX_FRESH_MS = 60 * 60_000;
+/** The longest a source's FX runs behind the market, and what a rate that states no delay is taken to: Gloom Cloud's 15 minutes. */
+const MAX_FX_DELAY_MINUTES = 15;
+
+/** When a rate read at `fetchedAt` is read again for its week's close (fxPreCloseRefetchAt); a rate with no stated delay may be up to 15 minutes behind. */
+function preCloseRefetchAt(fetchedAt: number | undefined, asOf: number | undefined, delayMinutes: number | undefined): number {
+  return fxPreCloseRefetchAt(fetchedAt, asOf, Math.min(delayMinutes ?? MAX_FX_DELAY_MINUTES, MAX_FX_DELAY_MINUTES) * 60_000);
+}
+
+/**
+ * Whether a cached rate is past the point it is read again for its FX week's
+ * close: shown while it is read again, it would stand in for a close it is
+ * not, so a caller that revalidates in the background waits for this one.
+ */
+export function isPastPreCloseRefetch(result: { fetchedAt: number; asOf?: number; delayMinutes?: number }, now = Date.now()): boolean {
+  return preCloseRefetchAt(result.fetchedAt, result.asOf, result.delayMinutes) <= now;
+}
 
 interface FxRateMetadata {
   fetchedAt?: number;
@@ -62,12 +78,14 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   if (expiresAt <= now) return fail();
   const delayMinutes = typeof data.delayMinutes === "number" && Number.isFinite(data.delayMinutes) && data.delayMinutes >= 0
     ? data.delayMinutes : undefined;
-  const delay = Math.min(delayMinutes ?? 0, 15) * 60_000;
+  const delay = Math.min(delayMinutes ?? 0, MAX_FX_DELAY_MINUTES) * 60_000;
   const intradayBar = readIntradayBar(data.intradayBar);
   const staleReason = readStaleReason(data.staleReason);
   const staleAt = Math.min(declaredStaleAt ?? Infinity,
     fetchedAt === undefined ? Infinity : fxFreshUntil(fetchedAt, FX_FRESH_MS),
     asOf === undefined ? Infinity : fxFreshUntil(asOf, FX_FRESH_MS + delay),
+    // A rate this app read before the week closed is read again once the close is out: when it read it, not the source.
+    preCloseRefetchAt(fallbackFetchedAt ?? fetchedAt, asOf, delayMinutes),
     data.stale === true ? now : Infinity);
   return {
     ...(fetchedAt !== undefined ? { fetchedAt } : {}),

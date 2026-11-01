@@ -3,8 +3,9 @@ import { apiClient } from "../../api-client";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
-import { buildPaneCatalogEntries, buildTemplateContext, findFunctionCode, limitationSentence } from "./catalog";
+import { buildPaneCatalogEntries, buildTemplateContext, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { parsePaneCatalogArgs } from "./options";
 
 test("limitations read as sentences, so one does not run into the next", () => {
   const limitations = ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"];
@@ -70,5 +71,28 @@ test("built-in catalog discovery stays offline while opening chat and chokepoint
     channels.mockRestore();
     geo.mockRestore();
     fetch.mockRestore();
+  }
+});
+
+test("a function's entry says Requires only for a sign-in or Pro, and names its other sources as Data", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const entry = (code: string) => renderPaneCatalogReport(entries, parsePaneCatalogArgs([code])).replace(/\x1b\[[0-9;]*m/g, "");
+    // These run signed out: their Gloom Cloud data is where it comes from, not something to sign in for.
+    for (const code of ["COT", "CBR", "BTMM", "HIVG"]) {
+      expect(entry(code), code).not.toContain("Requires");
+      expect(entry(code), code).toMatch(/\nData +\S/);
+    }
+    expect(entry("COT")).toContain("Data         Gloom Cloud CFTC history");
+    // A sign-in stays a requirement, beside the data it opens.
+    expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
   }
 });

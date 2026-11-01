@@ -290,7 +290,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const csv = await run("csv", { points: [...old, ...shekels] });
     expect(csv.result.warnings).toEqual(warnings);
     // Dated by the January bar's last session, not the day it opens.
-    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS per USD,1mo,Gloom Cloud,1993-01-29"]);
     const text = await run("text", { points: [...old, ...shekels] });
     expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
     // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
@@ -470,6 +470,51 @@ async function runList(args: string[], bars: (symbol: string) => Promise<PriceHi
 
 const dailyBar = (close: number) => [{ date: new Date("2026-10-16"), open: close, high: close, low: close, close, volume: 1000 }];
 const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+
+test("history --wide sets several pairs side by side: a row a date, a close column a symbol headed with its unit", async () => {
+  const bars: Record<string, Array<[string, number]>> = {
+    "USDJPY=X": [["2026-10-29", 157.68921], ["2026-10-30", 157.58847]],
+    "USDCHF=X": [["2026-10-29", 0.82431], ["2026-10-30", 0.82503]],
+    // A day one series has no bar for stays blank in its column.
+    "EURCHF=X": [["2026-10-30", 0.92074]],
+  };
+  const { csv, result } = await runList(["USDJPY=X", "USDCHF=X", "EURCHF=X", "--wide"], async (symbol) =>
+    bars[symbol]!.map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close })));
+  expect(csv).toEqual([
+    "Date,USDJPY=X close (JPY per USD),USDCHF=X close (CHF per USD),EURCHF=X close (CHF per EUR),symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-29,157.68921,0.82431,,,,1d,Gloom Cloud,2026-10-30",
+    "2026-10-30,157.58847,0.82503,0.92074,,,1d,Gloom Cloud,2026-10-30",
+  ]);
+  expect(result.failure).toBeUndefined();
+});
+
+test("a currency's name is its pair: history swiss franc and history yen name fx and the pair, and one word is a ticker first", async () => {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, name: "The RealReal, Inc.", listingExchangeName: "NASDAQ" });
+    },
+    getPriceHistoryWithMetadata: async (symbol) => {
+      if (symbol === "YEN") throw new Error("No history provider available for YEN");
+      return { resolution: "1d", points: dailyBar(11.96) };
+    },
+  });
+  const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider });
+  cli.context.fail = fail;
+  const failure = (args: string[]) => history.execute(args, cli.context).then(() => null, (error: unknown) => error);
+  // Before: SWISS read as a Copenhagen listing and FRANC as "Not a ticker".
+  expect(await failure(["swiss", "franc"])).toMatchObject({
+    message: "swiss franc is a currency (CHF), not a ticker.", details: "Its rate: gloom fx CHF\nIts pair: gloom history USDCHF=X",
+  });
+  expect(asked).toEqual([]);
+  expect(await failure(["yen"])).toMatchObject({
+    message: "yen is a currency (JPY), not a ticker.", details: "Its rate: gloom fx JPY\nIts pair: gloom history USDJPY=X",
+  });
+  // REAL is The RealReal before it is the Brazilian real.
+  await history.execute(["real"], cli.context);
+  expect(cli.printed.at(-1)!.result.data).toHaveLength(1);
+});
 
 test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
   const { result, csv } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);

@@ -57,7 +57,7 @@ test("an FX export names the pair and the currency the rate is in, which is the 
   await fx.execute(["ZAR"], run.context);
   expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
     "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
+    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
   ]);
 });
 
@@ -117,17 +117,21 @@ test("a pair reads BASE/QUOTE as quote per base and crosses two non-USD codes th
 
 test("a pair ends with the source line a quote does, dated and held back as its rates are", async () => {
   const hour = 3_600_000;
-  // Saturday: the FX week is shut, so the pair's last print before the close reads as Friday's close.
+  // Saturday: the FX week is shut, so the pair's print in the week's last minute reads as Friday's close.
   setSystemTime(new Date("2026-10-10T18:45:00Z"));
-  const asOf = Date.parse("2026-10-09T20:39:15Z");
+  const asOf = Date.parse("2026-10-09T20:59:00Z");
   const weekend = harness("USD", { SAR: { rate: 0.2663, asOf, staleAt: Date.now() + hour, delayMinutes: 15 } });
   await fx.execute(["USD/SAR"], weekend.context);
   const line = "Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed";
   // The line says the time and the state, so there is no separate "As of".
   expect(weekend.output("text")[0]).toBe(`1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\n${line}`);
   expect(JSON.parse(weekend.output("json")[0]!).metadata.freshness).toMatchObject({
-    source: "Gloom Cloud", asOf: "2026-10-09T20:39:15.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
+    source: "Gloom Cloud", asOf: "2026-10-09T20:59:00.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
   });
+  // A rate from earlier in the day is no close: the line gives its own time (20:39Z, not the 20:59Z close).
+  const early = harness("USD", { EUR: { rate: 1.1168193, asOf: Date.parse("2026-10-09T20:39:00Z"), staleAt: Date.now() + hour, delayMinutes: 15 } });
+  await fx.execute(["EUR/USD"], early.context);
+  expect(early.output("text")[0]).toEndWith("Source: Gloom Cloud · Fri 9 Oct 2026 20:39 UTC · 15 min delayed · markets closed");
   // A quiet Saturday print is no close: the line dates it.
   const tick = harness("USD", { SAR: { rate: 0.2663, asOf: Date.parse("2026-10-10T03:09:15Z"), staleAt: Date.now() + hour, delayMinutes: 15 } });
   await fx.execute(["USD/SAR"], tick.context);

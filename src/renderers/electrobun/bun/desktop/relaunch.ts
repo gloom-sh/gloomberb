@@ -145,6 +145,14 @@ try {
 }
 
 /**
+ * How long a restart waits for its script, with the error screen saying the
+ * restart was asked. Windows PowerShell started by the Task Scheduler can take
+ * over 20 s to run its first line: 23 s on an idle Windows on Arm machine,
+ * over a minute on a busy one, where a task runs below normal priority.
+ */
+const RESTART_SCRIPT_START_TIMEOUT_MS = 120_000;
+
+/**
  * Electrobun puts the Windows app in a job that ends every process it starts
  * when it exits, so the script runs from a scheduled task, which outlives it.
  * Resolves once the script has started: the app may quit then.
@@ -164,7 +172,7 @@ async function scheduleWindowsRelaunch(context: RelaunchContext): Promise<void> 
     taskName: `GloomRestart-${context.pid}`,
     home: context.home,
   }));
-  const answer = await runScriptAfterExit(script, log, cancel, `GloomRestart-${context.pid}`);
+  const answer = await runScriptAfterExit(script, log, cancel, `GloomRestart-${context.pid}`, RESTART_SCRIPT_START_TIMEOUT_MS);
   if (answer.kind !== "started") throw new Error(`the restart script did not start: ${answer.reason}`);
 }
 
