@@ -592,7 +592,8 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |
-| `TBO` | TheBuildout infrastructure intelligence |
+| `TBO` | TheBuildout infrastructure intelligence: a board of AI buildout themes sized by market cap and colored by their companies' median 1Y return, each theme's companies, sites and intel |
+| `TBOC <ticker>` | One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site and the signals that name it. Linked to `TBO`, it follows the company under the cursor |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
 | `MAP` | World map with trading venues, country names and layers (`MAP venues` for venues alone) |
@@ -768,7 +769,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
 | `PS` | Open focused pane settings |
 | `LAY` | Open the layout browser to switch, publish, or add layouts |
-| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading |
+| `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading. `DESK buildout` opens TheBuildout's theme board with a company's flow, its facilities on the map and its signals; `DESK buildout-map` gives the map the room |
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Tidy all windows |

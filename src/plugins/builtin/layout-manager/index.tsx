@@ -10,6 +10,7 @@ import {
   deskFunctions,
   DESKS,
   isDeskStock,
+  MORE_DESKS,
   pickDeskCompany,
   type Desk,
 } from "../../../layout/desks";
@@ -59,10 +60,11 @@ function getFocusedPane(layout: LayoutConfig, focusedPaneId: string | null) {
 }
 
 /** Desks whose key, name or one of whose functions matches what follows DESK. */
-function matchDesks(query: string): Desk[] {
+function matchDesks(query: string): Desk<string>[] {
   const needle = query.trim().toLowerCase();
-  if (!needle) return [...DESKS];
-  return DESKS.filter((desk) => (
+  const desks: Desk<string>[] = [...DESKS, ...MORE_DESKS];
+  if (!needle) return desks;
+  return desks.filter((desk) => (
     desk.key.startsWith(needle)
     || desk.label.toLowerCase().includes(needle)
     || desk.name.toLowerCase().includes(needle)
@@ -74,7 +76,7 @@ function matchDesks(query: string): Desk[] {
  * Opens the desk as a new tab after the others. Its company is the focused
  * pane's stock, else the most recent stock the user looked at.
  */
-async function addDesk(ctx: GloomPluginContext, desk: Desk): Promise<void> {
+async function addDesk(ctx: GloomPluginContext, desk: Desk<string>): Promise<void> {
   const registry = getSharedRegistry();
   if (!registry || !dispatchRef || !getStateRef) return;
   const config = ctx.getConfig();
@@ -127,7 +129,7 @@ export const layoutManagerModule: PluginModule = {
       label: "Add a Desk",
       description: "Add a ready-made desk for one kind of trading as a new layout tab",
       keywords: ["desk", "desks", "workspace", "starter", "equities", "stocks", "options", "volatility", "futures",
-        "commodities", "rates", "credit", "fx", "macro", "active trading", "day trading"],
+        "commodities", "rates", "credit", "fx", "macro", "active trading", "day trading", "buildout", "ai buildout", "data centers"],
       category: "config",
       shortcut: "DESK",
       shortcutArg: { placeholder: "desk", kind: "text", parse: (arg) => ({ query: arg.trim() }) },

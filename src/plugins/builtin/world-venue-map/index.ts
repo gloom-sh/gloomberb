@@ -9,6 +9,7 @@ import { CHOKEPOINT_SERIES, createGeoChartSeriesCapability } from "./geo-series"
 import { mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
+import { mapFollowsTicker } from "./scope";
 
 const chartComposerHeadless = chartHeadless("chart-composer-pane");
 
@@ -47,6 +48,8 @@ export const worldVenueMapModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 124, height: 36 },
+      // Linked to a list, a map with the app's own layers (facilities) shows the selected company's.
+      tickerFollower: mapFollowsTicker,
       // The layer picker comes from the server's catalog; without one the pane keeps its old settings.
       settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers) ?? { fields: [] },
     },
@@ -56,8 +59,8 @@ export const worldVenueMapModule: PluginModule = {
       id: "world-venue-map-pane",
       paneId: WORLD_VENUE_MAP_PANE_ID,
       label: "World Map",
-      description: "A world map with trading venues and their hours; ships, ports, energy and airports as layers.",
-      keywords: ["world", "map", "globe", "countries", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "ship", "vessels", "vessel", "shipping", "ais", "ports", "port", "chokepoints", "pipelines", "airports", "energy", "layers"],
+      description: "A world map with trading venues and their hours; ships, ports, energy, airports and AI buildout facilities as layers.",
+      keywords: ["world", "map", "globe", "countries", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "ship", "vessels", "vessel", "shipping", "ais", "ports", "port", "chokepoints", "pipelines", "airports", "energy", "facilities", "data centers", "fabs", "layers"],
       shortcut: {
         prefix: "MAP",
         argPlaceholder: "layers",

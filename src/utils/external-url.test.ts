@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { safeExternalUrl } from "./external-url";
+import { safeExternalUrl, systemOpenCommand } from "./external-url";
 
 describe("safeExternalUrl", () => {
   test("accepts the web schemes and returns the normalised URL", () => {
@@ -28,5 +28,33 @@ describe("safeExternalUrl", () => {
     expect(safeExternalUrl("   ")).toBeNull();
     expect(safeExternalUrl("not-a-url")).toBeNull();
     expect(safeExternalUrl("//example.com")).toBeNull();
+  });
+});
+
+describe("systemOpenCommand", () => {
+  test("opens a link with the platform's opener, the link as one last argument", () => {
+    expect(systemOpenCommand("https://example.com/a?b=1", "darwin")).toEqual(["open", "https://example.com/a?b=1"]);
+    expect(systemOpenCommand("https://example.com/a?b=1", "linux")).toEqual(["xdg-open", "https://example.com/a?b=1"]);
+    expect(systemOpenCommand("https://example.com/a?b=1", "win32")).toEqual([
+      "rundll32.exe",
+      "url.dll,FileProtocolHandler",
+      "https://example.com/a?b=1",
+    ]);
+  });
+
+  test("Windows keeps `&`, `|`, `^` and `%` in the link out of a command line", () => {
+    const link = "https://x.example/?a&calc|b^c%25d%PATH%";
+    const command = systemOpenCommand(link, "win32")!;
+    expect(command).toHaveLength(3);
+    expect(command[0]).toBe("rundll32.exe");
+    expect(command[2]).toBe(safeExternalUrl(link)!);
+  });
+
+  test("hands over nothing but http(s) links", () => {
+    for (const platform of ["darwin", "linux", "win32"] as const) {
+      expect(systemOpenCommand("file:///C:/Windows/System32/calc.exe", platform)).toBeNull();
+      expect(systemOpenCommand("calc.exe", platform)).toBeNull();
+      expect(systemOpenCommand("--help", platform)).toBeNull();
+    }
   });
 });

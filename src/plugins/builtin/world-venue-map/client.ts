@@ -10,11 +10,20 @@ import {
   type GeoLayersPayload,
   type GeoRequest,
 } from "../../../api-client/geo";
+import { withLocalGeoLayers } from "./local-layers";
 
 export const ENTITY_PAGE_SIZE = 100;
 
 /** Requests under /cloud/geo/ through the shared client, resolved late so tests can stub it. */
-export const cloudGeoRequest: GeoRequest = (path, init) => apiClient.geo(path, init);
+const serverGeoRequest: GeoRequest = (path, init) => apiClient.geo(path, init);
+
+/** The server's layers and the app's own (`local-layers.ts`). */
+export const cloudGeoRequest: GeoRequest = withLocalGeoLayers(serverGeoRequest);
+
+/** The same, with the app's own layers narrowed to what a linked pane selects. */
+export function scopedGeoRequest(scope: string | null): GeoRequest {
+  return scope ? withLocalGeoLayers(serverGeoRequest, scope) : cloudGeoRequest;
+}
 
 export async function loadWorldVenues(): Promise<CloudWorldVenueMapPayload> {
   const response = await apiClient.getCloudWorldVenues();

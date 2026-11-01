@@ -43,7 +43,7 @@ import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
 import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
-import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
+import { gloomberbCloudPlugin } from "./builtin/cloud";
 import { changelogModule } from "./builtin/changelog";
 import { roadmapModule } from "./builtin/roadmap";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -298,7 +298,7 @@ const browserEarningsPlugin = composeBuiltinPlugin({
  * browser-safe public API are absent rather than registered behind stubs.
  */
 export const browserBuiltinPlugins: readonly GloomPlugin[] = [
-  browserGloomberbCloudPlugin,
+  gloomberbCloudPlugin,
   browserPortfolioPlugin,
   browserTickerCorePlugin,
   browserOptionsVolatilityPlugin,
