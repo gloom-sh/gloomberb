@@ -29,13 +29,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # macOS and Windows x64 were measured at cfcc1cb35; this run re-probes
+        # the Arm window with the Start menu closed and Linux with a session bus.
         include:
-          - os: macos-latest
-            label: macos-arm64
-            bundles: app,dmg
-          - os: windows-latest
-            label: windows-x64
-            bundles: nsis
           - os: windows-11-arm
             label: windows-arm64
             bundles: nsis
@@ -56,7 +52,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb openbox xdotool wmctrl x11-utils x11-xserver-utils
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb openbox xdotool wmctrl x11-utils x11-xserver-utils dbus
 
       - name: Larger screen
         if: runner.os == 'Windows'
@@ -165,13 +161,13 @@ jobs:
           DISPLAY=:99 xrandr --listmonitors || true
           DISPLAY=:99 openbox &
           sleep 1
-          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label ${{ matrix.label }} \
+          # A desktop session has a session bus; the runner does not. Without
+          # one, the shell spent 25 s (the D-Bus timeout) before starting the
+          # backend, so this run gives the app a session bus as a desktop would.
+          command -v dbus-run-session
+          DISPLAY=:99 dbus-run-session -- bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label ${{ matrix.label }} \
             --launch "$RUNNER_TEMP/deb/usr/bin/Gloom" --probe-env \
             --app-root "$RUNNER_TEMP/deb" --out spike-results --window-probe scripts/spike/linux-window-probe.sh
-          # WebKitGTK without its DMA-BUF renderer and the accessibility bus, as a check on Xvfb's first-paint delay.
-          DISPLAY=:99 WEBKIT_DISABLE_DMABUF_RENDERER=1 NO_AT_BRIDGE=1 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL-no-dmabuf" --platform-label ${{ matrix.label }} \
-            --launch "$RUNNER_TEMP/deb/usr/bin/Gloom" --probe-env --runs 3 --skip multi --skip window \
-            --app-root "$RUNNER_TEMP/deb" --out spike-results-no-dmabuf
 
       - uses: actions/upload-artifact@v4
         if: always()
