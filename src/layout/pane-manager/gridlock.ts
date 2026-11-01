@@ -1,4 +1,5 @@
-import { buildDockStack, type DockLayoutNode, type FloatingPaneEntry, type LayoutConfig } from "../../types/config";
+import type { DockLayoutNode, FloatingPaneEntry, LayoutConfig } from "../../types/config";
+import { buildDockStack } from "./dock-stack";
 import type { AppNotificationRequest } from "../../types/plugin";
 import {
   boundsForRects,

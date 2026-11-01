@@ -1,11 +1,5 @@
-import {
-  buildDockStack,
-  isDockStack,
-  type DockLayoutNode,
-  type DockSplitNode,
-  type LayoutConfig,
-  type PaneInstanceConfig,
-} from "../../types/config";
+import type { DockLayoutNode, DockSplitNode, LayoutConfig, PaneInstanceConfig } from "../../types/config";
+import { buildDockStack, isDockStack } from "./dock-stack";
 import { collectDockLeafRefs, dockStackShown, getDockedInstanceIds, getNodeAtPath, replaceNodeAtPath } from "./dock-tree";
 
 /**

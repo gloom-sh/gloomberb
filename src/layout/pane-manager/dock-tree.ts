@@ -1,10 +1,5 @@
-import {
-  buildDockStack,
-  isDockStack,
-  type DockLayoutNode,
-  type DockSplitNode,
-  type LayoutConfig,
-} from "../../types/config";
+import type { DockLayoutNode, DockSplitNode, LayoutConfig } from "../../types/config";
+import { buildDockStack, isDockStack } from "./dock-stack";
 
 const MIN_PANE_WIDTH = 20;
 const MIN_DOCKED_HEIGHT = 5;

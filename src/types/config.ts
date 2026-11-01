@@ -1,6 +1,7 @@
 import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
+import { buildDockStack } from "../layout/pane-manager/dock-stack";
 
 export const CURRENT_CONFIG_VERSION = 28;
 
@@ -115,23 +116,12 @@ export interface DockSplitNode {
   ratio: number;
   first: DockLayoutNode;
   second: DockLayoutNode;
-  /** Set on every split of a stack of tabs (`DockStackNode`). */
-  tabs?: DockTabs;
+  /**
+   * Set on every split of a stack of tabs, with the pane it shows: the panes
+   * under it share one spot (see layout/pane-manager/dock-stack.ts).
+   */
+  tabs?: { active: string };
 }
-
-/** What makes a split a stack of tabs: the pane it shows. */
-export interface DockTabs {
-  active: string;
-}
-
-/**
- * Panes stacked as tabs in one spot of the dock, one shown at a time: the
- * panes of the subtree, first to last, as a chain of splits that each carry
- * `tabs`. A build from before tabs reads the chain as a plain split and shows
- * the panes side by side instead of losing them, and a split that loses one
- * side is still a stack.
- */
-export type DockStackNode = DockSplitNode & { tabs: DockTabs };
 
 export type DockLayoutNode = DockPaneNode | DockSplitNode;
 
@@ -629,33 +619,6 @@ function clampDockRatio(ratio: number | undefined): number {
 
 function isDockAxis(value: unknown): value is DockSplitNode["axis"] {
   return value === "horizontal" || value === "vertical";
-}
-
-export function isDockStack(node: DockLayoutNode | null | undefined): node is DockStackNode {
-  return node?.kind === "split" && !!node.tabs;
-}
-
-/**
- * The stack of `instanceIds` showing `active` (the first when it is not one
- * of them), in its stored form; one pane is a plain pane, none is nothing.
- */
-export function buildDockStack(instanceIds: readonly string[], active?: string | null): DockLayoutNode | null {
-  const ids = [...new Set(instanceIds)];
-  if (ids.length === 0) return null;
-  const shown = active && ids.includes(active) ? active : ids[0]!;
-  const chain = (index: number): DockLayoutNode => {
-    if (index === ids.length - 1) return { kind: "pane", instanceId: ids[index]! };
-    return {
-      kind: "split",
-      axis: "horizontal",
-      // Even widths where a build from before tabs shows them side by side.
-      ratio: clampDockRatio(1 / (ids.length - index)),
-      first: { kind: "pane", instanceId: ids[index]! },
-      second: chain(index + 1),
-      tabs: { active: shown },
-    };
-  };
-  return chain(0);
 }
 
 function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
