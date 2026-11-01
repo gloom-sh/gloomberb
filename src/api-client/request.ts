@@ -61,8 +61,8 @@ const SERVICE_PROBE_PATH = "/health";
  * soon after the outage began and then twice as long after each check up to
  * the cap, so the app hears it is back without waiting for a pane to ask.
  */
-export const RECOVERY_PROBE_FIRST_MS = 2_000;
-export const RECOVERY_PROBE_MAX_MS = 15_000;
+const RECOVERY_PROBE_FIRST_MS = 2_000;
+const RECOVERY_PROBE_MAX_MS = 15_000;
 // Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
 const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
