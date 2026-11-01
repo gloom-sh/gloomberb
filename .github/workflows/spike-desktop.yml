@@ -1,12 +1,13 @@
 name: Spike desktop shell
 
-# Prototype measurements only: builds the desktop app on each platform from
-# this branch, unsigned, and measures startup, memory, window behaviour and
-# size with scripts/spike/desktop-measure.ts. Publishes nothing.
+# Prototype measurements only: builds the desktop app in a Tauri shell with
+# the Bun backend as a sidecar on each platform, unsigned, and measures
+# startup, memory, window behaviour and size with
+# scripts/spike/desktop-measure.ts. Publishes nothing.
 on:
   push:
     branches:
-      - "spike/desktop-shell"
+      - "spike/desktop-shell-tauri"
   workflow_dispatch:
 
 concurrency:
@@ -17,186 +18,137 @@ permissions:
   contents: read
 
 env:
-  SPIKE_SHELL: electrobun-1.18.1
-  SPIKE_UNSIGNED: "1"
+  SPIKE_SHELL: tauri-2
   GLOOMBERB_NO_TELEMETRY: "1"
   DO_NOT_TRACK: "1"
+  # A throwaway key: the updater artifacts are built to be measured, never served.
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: spike
 
 jobs:
-  macos:
-    runs-on: macos-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
-
-      - name: Build the desktop app (stable, unsigned)
-        run: bun run desktop:release
-
-      - name: Install it as an update or Homebrew would
-        run: |
-          set -euo pipefail
-          ls -l artifacts
-          command -v zstd || brew install zstd
-          mkdir -p "$RUNNER_TEMP/app"
-          zstd -d -o "$RUNNER_TEMP/app.tar" artifacts/stable-macos-arm64-Gloom.app.tar.zst
-          tar -xf "$RUNNER_TEMP/app.tar" -C "$RUNNER_TEMP/app"
-          ls "$RUNNER_TEMP/app"
-          {
-            echo "## Sizes"
-            echo
-            echo "| file | bytes |"
-            echo "|---|---|"
-            for file in artifacts/*; do echo "| $(basename "$file") | $(stat -f %z "$file") |"; done
-            echo "| installed Gloom.app | $(du -sk "$RUNNER_TEMP/app/Gloom.app" | cut -f1)000 (du KB x1000) |"
-          } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
-
-      - name: Can System Events drive windows here
-        continue-on-error: true
-        run: osascript -e 'tell application "System Events" to get name of every process whose background only is false'
-
-      - name: Measure
-        run: |
-          app="$RUNNER_TEMP/app/Gloom.app"
-          bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label macos-arm64 \
-            --launch "$app/Contents/MacOS/launcher" \
-            --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
-            --app-root "$app" --out spike-results --window-probe scripts/spike/mac-window-probe.sh
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: spike-macos-arm64
-          path: |
-            spike-results
-            sizes.md
-            artifacts/*.json
-
-  windows-x64:
-    runs-on: windows-latest
+  build-measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macos-arm64
+            bundles: app,dmg
+          - os: windows-latest
+            label: windows-x64
+            bundles: nsis
+          - os: windows-11-arm
+            label: windows-arm64
+            bundles: nsis
+          - os: ubuntu-24.04
+            label: linux-x64
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
-
-      - name: Build the desktop package
-        shell: pwsh
-        run: ./scripts/build-windows-desktop-package.ps1
-
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-
-      - name: Build the installer
-        shell: pwsh
-        run: ./scripts/build-windows-installer.ps1
-
-      - uses: actions/upload-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: spike-windows-installer
-          path: artifacts/stable-win-x64-GloomSetup.exe
-          retention-days: 5
+          workspaces: desktop-tauri/src-tauri -> target
+
+      - name: System libraries, a display and a window manager
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb openbox xdotool wmctrl x11-utils x11-xserver-utils
 
       - name: Larger screen
+        if: runner.os == 'Windows'
         continue-on-error: true
         shell: pwsh
         run: |
           try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution: $($_.Exception.Message)" }
-          Add-Type -AssemblyName System.Windows.Forms
-          [System.Windows.Forms.Screen]::AllScreens | Format-List
 
-      - name: Install
-        id: install
-        shell: pwsh
-        run: ./scripts/spike/win-install.ps1 -Installer artifacts/stable-win-x64-GloomSetup.exe
+      - name: Build the view, the backend and the sidecar
+        run: bun scripts/spike/build-tauri.ts
 
-      - name: Measure
-        shell: pwsh
+      - name: Updater signing key (throwaway)
+        shell: bash
         run: |
-          $Folder = "${{ steps.install.outputs.folder }}"
-          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-x64 `
-            --launch "$Folder\bin\launcher.exe" `
-            --view-html "$Folder\Resources\app\views\mainview\index.html" `
-            --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
+          bunx @tauri-apps/cli@2 signer generate --ci -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" -w "$RUNNER_TEMP/updater.key"
+          echo "TAURI_SIGNING_PRIVATE_KEY<<EOF" >> "$GITHUB_ENV"
+          cat "$RUNNER_TEMP/updater.key" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: spike-windows-x64
-          path: |
-            spike-results
-            sizes.md
+      - name: Build the Tauri app
+        working-directory: desktop-tauri/src-tauri
+        shell: bash
+        run: bunx @tauri-apps/cli@2 build --bundles ${{ matrix.bundles }}
 
-  windows-arm64:
-    needs: windows-x64
-    runs-on: windows-11-arm
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: spike-windows-installer
-          path: installer
-
-      - name: Install
-        id: install
-        shell: pwsh
-        run: ./scripts/spike/win-install.ps1 -Installer installer/stable-win-x64-GloomSetup.exe
-
-      - name: Measure
-        shell: pwsh
+      - name: Sizes
+        shell: bash
         run: |
-          $Folder = "${{ steps.install.outputs.folder }}"
-          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label windows-arm64 `
-            --launch "$Folder\bin\launcher.exe" `
-            --view-html "$Folder\Resources\app\views\mainview\index.html" `
-            --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: spike-windows-arm64
-          path: |
-            spike-results
-            sizes.md
-
-  linux-x64:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
-
-      - name: System libraries, a display and a window manager
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 xvfb openbox xdotool wmctrl x11-utils zstd
-
-      - name: Build the desktop app (stable)
-        run: bun node_modules/electrobun/bin/electrobun.cjs build --env=stable
-
-      - name: Install it
-        id: install
-        run: |
-          set -euo pipefail
-          ls -l artifacts
-          mkdir -p "$RUNNER_TEMP/app"
-          archive="$(ls artifacts/*.tar.zst | head -1)"
-          zstd -d -o "$RUNNER_TEMP/app.tar" "$archive"
-          tar -xf "$RUNNER_TEMP/app.tar" -C "$RUNNER_TEMP/app"
-          folder="$(dirname "$(dirname "$(find "$RUNNER_TEMP/app" -path '*/bin/launcher' | head -1)")")"
-          echo "folder=$folder" >> "$GITHUB_OUTPUT"
           {
-            echo "## Sizes"
+            echo "## Sizes (${{ matrix.label }})"
             echo
             echo "| file | bytes |"
             echo "|---|---|"
-            for file in artifacts/*; do echo "| $(basename "$file") | $(stat -c %s "$file") |"; done
-            echo "| installed folder | $(du -sb "$folder" | cut -f1) |"
+            find desktop-tauri/src-tauri/target/release/bundle -maxdepth 2 -type f | while read -r file; do
+              echo "| ${file#desktop-tauri/src-tauri/target/release/bundle/} | $(wc -c < "$file" | tr -d ' ') |"
+            done
+            exe="desktop-tauri/src-tauri/target/release/Gloom"
+            [ -f "$exe.exe" ] && exe="$exe.exe"
+            echo "| shell binary $(basename "$exe") | $(wc -c < "$exe" | tr -d ' ') |"
+            echo "| backend/index.js | $(wc -c < desktop-tauri/backend/index.js | tr -d ' ') |"
+            echo "| sidecar bun | $(wc -c < "$(ls desktop-tauri/src-tauri/binaries/bun-* | head -1)" | tr -d ' ') |"
           } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
 
-      - name: Measure
+      - name: Install (macOS)
+        if: runner.os == 'macOS'
+        id: mac
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          cp -R desktop-tauri/src-tauri/target/release/bundle/macos/Gloom.app "$RUNNER_TEMP/app/"
+          echo "| installed Gloom.app | $(du -sk "$RUNNER_TEMP/app/Gloom.app" | cut -f1)000 (du KB x1000) |" | tee -a "$GITHUB_STEP_SUMMARY" >> sizes.md
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        id: install
+        shell: pwsh
+        run: |
+          $Installer = (Get-ChildItem desktop-tauri/src-tauri/target/release/bundle/nsis -Filter "*-setup.exe" | Select-Object -First 1).FullName
+          Copy-Item sizes.md sizes-build.md
+          ./scripts/spike/win-install.ps1 -Installer $Installer -Arguments "/S"
+          Get-Content sizes-build.md | Add-Content sizes.md
+
+      - name: Install (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p "$RUNNER_TEMP/deb"
+          dpkg-deb -x "$(ls desktop-tauri/src-tauri/target/release/bundle/deb/*.deb | head -1)" "$RUNNER_TEMP/deb"
+          find "$RUNNER_TEMP/deb" -maxdepth 4 | head -30
+          echo "| installed .deb tree | $(du -sb "$RUNNER_TEMP/deb" | cut -f1) |" | tee -a "$GITHUB_STEP_SUMMARY" >> sizes.md
+
+      - name: Can System Events drive windows here
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: osascript -e 'tell application "System Events" to get name of every process whose background only is false'
+
+      - name: Measure (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app="$RUNNER_TEMP/app/Gloom.app"
+          bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label ${{ matrix.label }} \
+            --launch "$app/Contents/MacOS/Gloom" --probe-env \
+            --app-root "$app" --out spike-results --window-probe scripts/spike/mac-window-probe.sh
+
+      - name: Measure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.install.outputs.folder }}"
+          bun scripts/spike/desktop-measure.ts --shell $env:SPIKE_SHELL --platform-label ${{ matrix.label }} `
+            --launch "$Folder\Gloom.exe" --probe-env `
+            --app-root $Folder --out spike-results --window-probe scripts/spike/win-window-probe.ps1
+
+      - name: Measure (Linux)
+        if: runner.os == 'Linux'
         run: |
           # Two 1920x1080 monitors side by side on one screen (RandR 1.5 monitors).
           Xvfb :99 -screen 0 3840x1080x24 -nolisten tcp &
@@ -206,16 +158,14 @@ jobs:
           DISPLAY=:99 xrandr --listmonitors || true
           DISPLAY=:99 openbox &
           sleep 1
-          folder="${{ steps.install.outputs.folder }}"
-          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label linux-x64 \
-            --launch "$folder/bin/launcher" \
-            --view-html "$folder/Resources/app/views/mainview/index.html" \
-            --app-root "$folder" --out spike-results --window-probe scripts/spike/linux-window-probe.sh
+          DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label ${{ matrix.label }} \
+            --launch "$RUNNER_TEMP/deb/usr/bin/Gloom" --probe-env \
+            --app-root "$RUNNER_TEMP/deb" --out spike-results --window-probe scripts/spike/linux-window-probe.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: spike-linux-x64
+          name: spike-${{ matrix.label }}
           path: |
             spike-results
             sizes.md

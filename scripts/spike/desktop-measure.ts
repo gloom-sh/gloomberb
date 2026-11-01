@@ -43,8 +43,10 @@ const shell = option("--shell") ?? "unknown";
 const launchPath = option("--launch");
 const viewHtml = option("--view-html");
 const appRoot = option("--app-root");
-if (!launchPath || !viewHtml || !appRoot) {
-  throw new Error("Usage: desktop-measure.ts --shell <name> --launch <exe> --view-html <index.html> --app-root <dir>");
+/** The probe goes in through GLOOM_PROBE_SCRIPT (the Tauri shell embeds its page, so there is no file to edit). */
+const probeEnv = args.includes("--probe-env");
+if (!launchPath || (!viewHtml && !probeEnv) || !appRoot) {
+  throw new Error("Usage: desktop-measure.ts --shell <name> --launch <exe> (--view-html <index.html> | --probe-env) --app-root <dir>");
 }
 const launchArgs = options("--launch-arg");
 const runs = Number(option("--runs") ?? 6);
@@ -103,7 +105,11 @@ function withoutProbe(page: string): string {
   return page.slice(0, start) + page.slice(end + PROBE_MARK.length);
 }
 
+let probeScript = "";
+
 async function injectProbe(port: number): Promise<void> {
+  probeScript = probeSource(port);
+  if (probeEnv) return;
   const page = withoutProbe(await readFile(viewHtml!, "utf8"));
   const tag = `${PROBE_MARK}<script>${probeSource(port)}</script>${PROBE_MARK}`;
   const next = page.includes("<head>") ? page.replace("<head>", `<head>${tag}`) : `${tag}${page}`;
@@ -111,6 +117,7 @@ async function injectProbe(port: number): Promise<void> {
 }
 
 async function removeProbe(): Promise<void> {
+  if (probeEnv) return;
   if (existsSync(viewHtml!)) await writeFile(viewHtml!, withoutProbe(await readFile(viewHtml!, "utf8")));
 }
 
@@ -288,6 +295,7 @@ async function launch(home: string, label: string): Promise<Launch> {
       GLOOMBERB_NO_TELEMETRY: "1",
       DO_NOT_TRACK: "1",
       ELECTROBUN_CONSOLE: "1",
+      ...(probeEnv ? { GLOOM_PROBE_SCRIPT: probeScript } : {}),
     },
     stdout: Bun.file(join(logDir, `${label}.out.txt`)),
     stderr: Bun.file(join(logDir, `${label}.err.txt`)),

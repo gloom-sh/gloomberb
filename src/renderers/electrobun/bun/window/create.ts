@@ -97,7 +97,9 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     titleBarStyle: desktopTitleBarStyle(),
     navigationRules: JSON.stringify(["views://*"]),
     sandbox: false,
-  }));
+    // Read by the Tauri shell prototype, which sets a native minimum size.
+    minSize,
+  } as ConstructorParameters<typeof BrowserWindow>[0]));
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
   if (process.platform === "win32") {

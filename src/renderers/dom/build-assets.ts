@@ -104,6 +104,7 @@ export async function buildViewBundle({
     plugins: [
       lazyChunkPlugin(outdir, outdir, chunks),
       ...(aliasRules.length > 0 ? [electrobunViewAliasPlugin(aliasRules)] : []),
+      ...(process.env.GLOOM_DESKTOP_SHELL === "tauri" ? [tauriViewPlugin()] : []),
     ],
   });
 
@@ -258,6 +259,16 @@ async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, 
     }
     pending = [...nested.entries()];
   }
+}
+
+/** Prototype: the desktop view in a Tauri window talks RPC through its own stand-in. */
+function tauriViewPlugin() {
+  return {
+    name: "tauri-view",
+    setup(build: { onResolve(options: { filter: RegExp }, callback: (args: { path: string }) => unknown): void }) {
+      build.onResolve({ filter: /^electrobun\/view$/ }, () => ({ path: join(import.meta.dir, "..", "tauri", "electroview.ts") }));
+    },
+  };
 }
 
 function electrobunViewAliasPlugin(aliasRules: AliasRule[]) {
