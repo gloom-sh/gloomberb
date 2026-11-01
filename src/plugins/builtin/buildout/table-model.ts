@@ -10,9 +10,10 @@ import type {
 } from "./model/types";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { SortDirection } from "../../../utils/sort-values";
-import { metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
+import { LIST_TIER_ORDER, metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
 
 export const tabs: Array<{ label: string; value: BuildoutTabId }> = [
+  { label: "Themes", value: "themes" },
   { label: "Companies", value: "companies" },
   { label: "Sites", value: "sites" },
   { label: "Intel", value: "intel" },
@@ -45,6 +46,17 @@ const companyColumns: BuildoutColumn[] = [
   { id: "return1y", label: "1Y Rtn", width: 8, align: "right" },
   { id: "employees", label: "Employees", width: 9, align: "right" },
 ];
+
+/** A theme's companies under its board: what each does in the theme, then the figures. */
+const themeCompanyColumns: BuildoutColumn[] = [
+  { id: "company", label: "Company", width: 26, align: "left", flexGrow: 2 },
+  { id: "listRole", label: "Role", width: 15, align: "left" },
+  { id: "listTier", label: "Tier", width: 9, align: "left" },
+  { id: "marketCap", label: "Mkt Cap", width: 10, align: "right" },
+  { id: "revenueGrowth", label: "Growth", width: 9, align: "right" },
+  { id: "return1y", label: "1Y", width: 8, align: "right" },
+];
+const THEME_COMPANY_DROP_ORDER: readonly BuildoutColumnId[] = ["listTier", "revenueGrowth", "listRole"];
 
 const siteColumns: BuildoutColumn[] = [
   { id: "site", label: "Site Name", width: 28, align: "left", flexGrow: 2 },
@@ -160,11 +172,16 @@ export function activeRows(
   selectedList: BuildoutList | null,
 ): BuildoutRow[] {
   if (state.status !== "ready") return [];
+  if (activeTab === "themes") {
+    return selectedList && state.companies.listSlug === selectedList.slug
+      ? state.companies.items.map((item) => ({ kind: "company", item }))
+      : [];
+  }
   if (activeTab === "companies") {
     if (!selectedList) {
       return state.lists.map((item) => ({ kind: "list", item }));
     }
-    return state.companies.items.map((item) => ({ kind: "company", item }));
+    return state.companies.listSlug === selectedList.slug ? state.companies.items.map((item) => ({ kind: "company", item })) : [];
   }
   if (activeTab === "sites") {
     return state.sites.items.map((item) => ({ kind: "site", item }));
@@ -190,6 +207,9 @@ export function columnsForTab(
   canFavorite: boolean,
   width: number,
 ): BuildoutColumn[] {
+  if (activeTab === "themes") {
+    return dropColumnsToFit(canFavorite ? [favoriteColumn, ...themeCompanyColumns] : themeCompanyColumns, width - 1, THEME_COMPANY_DROP_ORDER);
+  }
   if (activeTab === "companies") {
     const columns = selectedList
       ? canFavorite ? [favoriteColumn, ...companyColumns] : companyColumns
@@ -286,6 +306,10 @@ function sortValue(row: BuildoutRow, columnId: BuildoutColumnId): SortComparable
         return numberSort(company.return1y);
       case "employees":
         return numberSort(company.employeeCount);
+      case "listRole":
+        return stringSort(company.listRole);
+      case "listTier":
+        return numberSort(company.listTier && LIST_TIER_ORDER.includes(company.listTier) ? LIST_TIER_ORDER.indexOf(company.listTier) : null);
       default:
         return stringSort(rowTitle(row));
     }

@@ -3,7 +3,7 @@ import { Box, Text } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
-import { safeExternalUrl } from "../../utils/external-url";
+import { safeExternalUrl, systemOpenCommand } from "../../utils/external-url";
 import { linkContextMenuItems, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { usePaneMenuItems } from "../layout/pane/footer/registration";
@@ -20,11 +20,8 @@ export function openUrl(rawUrl: string) {
 
   if (typeof Bun !== "undefined" && typeof Bun.spawn === "function") {
     const platform = typeof process !== "undefined" ? process.platform : "linux";
-    const command = platform === "darwin"
-      ? ["open", url]
-      : platform === "win32"
-        ? ["cmd", "/c", "start", "", url]
-        : ["xdg-open", url];
+    const command = systemOpenCommand(url, platform);
+    if (!command) return;
     // Spawning throws when the opener is not installed (no xdg-open on
     // minimal Linux and WSL); a link that does nothing beats a crash.
     try {

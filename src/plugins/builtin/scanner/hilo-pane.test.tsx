@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { apiClient, type ScannerFeedEvent, type ScannerHiloPayload } from "../../../api-client";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -28,6 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   apiClient.subscribeScanner = originalSubscribe;
   pushPayload = null;
 });
@@ -97,4 +98,20 @@ test("counts keep a gap from the window label, and the top row names the sides",
   expect(narrow).not.toContain("LOWS");
   expect(narrow).not.toContain("HIGHS");
   expect(narrow).toMatch(/17 {2,}5 min {2,}42/);
+});
+
+test("a closed weekend names the closed market in both tables, an open market with no rows the price filter", async () => {
+  const empty = { ...PAYLOAD, highs: [], lows: [], windows: { m5: { highs: 0, lows: 0 }, m1: { highs: 0, lows: 0 }, s30: { highs: 0, lows: 0 } } };
+  setSystemTime(new Date("2026-10-31T16:00:00Z"));
+  await renderPane(100);
+  await deliver({ ...empty, status: "closed" });
+  let frame = tui.frame();
+  expect(frame.match(/Markets closed until Mon\./g)).toHaveLength(2);
+  expect(frame.match(/New highs and lows resume at the open\./g)).toHaveLength(2);
+  expect(frame).not.toContain("price filter");
+
+  await deliver({ ...empty, status: "live" });
+  frame = tui.frame();
+  expect(frame.match(/Nothing above the price filter yet\./g)).toHaveLength(2);
+  expect(frame).not.toContain("closed");
 });

@@ -11,12 +11,12 @@ import { TapeClientContext } from "./use-tape";
 
 const tui = createOpenTuiTestHarness();
 
-async function render(tab: "trades" | "quotes", width = 100): Promise<string> {
+async function render(tab: "trades" | "quotes", width = 100, { tradePrice = 343.4551, sessionLow = 340.46 } = {}): Promise<string> {
   const data = tapeFixture();
   // A mid-point print in the window sets the trades' decimals to four; the NBBO's bid and ask stay at cents.
-  data.trades[0]!.price = 343.4551;
+  data.trades[0]!.price = tradePrice;
   data.quotes = [{ ...data.quotes[0]!, bid: 342.62, ask: 342.86 }];
-  data.session = { date: "2026-09-22", high: 347.82, low: 340.46, asOf: data.asOf };
+  data.session = { date: "2026-09-22", high: 347.82, low: sessionLow, asOf: data.asOf };
   const state = createInitialState(createTestPaneConfig("/tmp/gloom-time-sales-test", { instanceId: "qr", paneId: "time-sales", settings: { tab } }));
   state.focusedPaneId = "qr";
   state.paneState.qr = { cursorSymbol: "AAPL" };
@@ -39,6 +39,14 @@ test("the session range reads at the decimals of the tab's own prices", async ()
   const trades = await render("trades");
   expect(trades).toContain("343.4551");
   expect(trades).toContain("340.4600 to 347.8200");
+});
+
+test("a sub-penny session extreme does not turn a tape of cent prints into four decimals", async () => {
+  const trades = await render("trades", 100, { tradePrice: 343.45, sessionLow: 340.4599 });
+  expect(trades).toContain("343.45");
+  expect(trades).not.toContain("343.4500");
+  expect(trades).toContain("340.46 to 347.82");
+  expect(trades).not.toContain("340.4599");
 });
 
 test("a narrow NBBO pane gives up both venues, then the lots, before the spread is cut", async () => {
