@@ -20,12 +20,20 @@ import {
   latestPlacementFor,
   placementFor,
   rememberPlacement,
+  restoreWindow,
   withExtraWindows,
   type ExtraWindowRecord,
   type ScreenSetup,
   type WindowPlacement,
 } from "./screen-setup";
 import type { DesktopWindowHost, NativeWindowEvent, WindowSize } from "./window-host";
+
+/**
+ * A quit this soon after extra windows closed keeps them for the next launch:
+ * closing every window at once (the Windows taskbar, logging out) closes
+ * them one by one, maybe the main window, and so the quit, last.
+ */
+const QUIT_GRACE_MS = 1_000;
 
 export interface ScreenSetupStore {
   load(): ScreenSetup;
@@ -41,7 +49,10 @@ export interface DesktopWindowControllerOptions {
   /** The main window as an older build saved it, used once when the setup has nothing for it yet. */
   legacyMainPlacement?: WindowPlacement | null;
   title?: (windowId: string) => string;
-  /** The person closed an extra window; its tabs go back to the main window. */
+  /**
+   * The person closed an extra window; its tabs go back to the main window.
+   * A quit that follows within `QUIT_GRACE_MS` keeps it for the next launch.
+   */
   onWindowClosed?: (windowId: string) => void;
   onMainWindowClosed?: () => void;
   onWindowFocused?: (windowId: string) => void;
@@ -72,6 +83,8 @@ export class DesktopWindowController {
   private readonly windowedFrames = new Map<string, Rect>();
   private readonly saveTimers = new Map<string, unknown>();
   private focused: string = MAIN_WINDOW_ID;
+  /** Extra windows the person closed, with the setup from just before, for a quit right after. */
+  private recentlyClosed: Array<{ windowId: string; at: number; before: ScreenSetup }> = [];
   private readonly disposers: Array<() => void> = [];
   private readonly now: () => number;
   private readonly saveDelayMs: number;
@@ -155,9 +168,14 @@ export class DesktopWindowController {
     this.applyModes(windowId, placement);
   }
 
-  /** Closes a window from this side: its placements stay unless `forget`, for a window closed for good. */
+  /**
+   * Closes a window from this side: its placements stay unless `forget`, for
+   * a window closed for good. Where it was last moved is saved first.
+   */
   closeWindow(windowId: string, options: { forget?: boolean } = {}): void {
+    const moved = this.saveTimers.has(windowId);
     this.cancelSave(windowId);
+    if (moved && !options.forget) this.remember(windowId);
     if (this.open.delete(windowId)) this.options.host.closeWindow(windowId);
     this.windowedFrames.delete(windowId);
     if (options.forget) this.commit(forgetWindow(this.setup, windowId));
@@ -169,12 +187,20 @@ export class DesktopWindowController {
     this.options.host.focusWindow(windowId);
   }
 
-  /** Writes every window's placement now, for a quit. */
+  /**
+   * Writes every open window's placement now, for a quit: a window that was
+   * never moved has saved nothing yet, and opens where it is next time too.
+   * Extra windows closed just before come back with it (`QUIT_GRACE_MS`).
+   */
   flush(): void {
-    for (const windowId of [...this.saveTimers.keys()]) {
-      this.cancelSave(windowId);
-      this.remember(windowId);
+    for (const windowId of [...this.saveTimers.keys()]) this.cancelSave(windowId);
+    for (const windowId of this.open) this.remember(windowId);
+    const since = this.now() - QUIT_GRACE_MS;
+    let setup = this.setup;
+    for (const closed of this.recentlyClosed.splice(0)) {
+      if (closed.at >= since) setup = restoreWindow(setup, closed.before, closed.windowId);
     }
+    this.commit(setup);
   }
 
   dispose(): void {
@@ -204,10 +230,21 @@ export class DesktopWindowController {
    * A frame on a connected screen. Where the system places windows itself
    * (Wayland), only the size is this side's, and it still fits a screen.
    */
+  /**
+   * A frame a window can open at: at least the minimum size, as the window
+   * cannot be made smaller, and on a connected screen. On a screen smaller
+   * than the minimum it keeps its top left corner there.
+   */
   private onScreen(frame: Rect): Rect {
-    if (this.displays.length === 0) return frame;
-    const fitted = clampFrameToScreens(frame, this.displays);
-    return this.options.host.canPlaceWindows ? fitted : { ...frame, width: fitted.width, height: fitted.height };
+    const sized = this.atLeastMinimum(frame);
+    if (this.displays.length === 0) return sized;
+    const fitted = this.atLeastMinimum(clampFrameToScreens(sized, this.displays));
+    return this.options.host.canPlaceWindows ? fitted : { ...sized, width: fitted.width, height: fitted.height };
+  }
+
+  private atLeastMinimum(frame: Rect): Rect {
+    const { width, height } = this.options.minSize;
+    return { ...frame, width: Math.max(frame.width, width), height: Math.max(frame.height, height) };
   }
 
   /** The display the windows fold onto when theirs is gone: the main window's, else the primary one. */
@@ -298,6 +335,7 @@ export class DesktopWindowController {
         this.options.onWindowVisibility?.(event.id, event.visible);
         return;
       case "close":
+        // Read now: the host still answers for the window while its close is reported.
         this.cancelSave(event.id);
         this.remember(event.id);
         this.open.delete(event.id);
@@ -306,6 +344,10 @@ export class DesktopWindowController {
           this.options.onMainWindowClosed?.();
           return;
         }
+        this.recentlyClosed = [
+          ...this.recentlyClosed.filter((closed) => closed.at >= this.now() - QUIT_GRACE_MS),
+          { windowId: event.id, at: this.now(), before: this.setup },
+        ];
         this.commit(forgetWindow(this.setup, event.id));
         this.options.onWindowClosed?.(event.id);
         return;

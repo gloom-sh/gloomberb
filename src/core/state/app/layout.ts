@@ -232,8 +232,8 @@ export function resolveTickerForPane(state: AppState, paneId: string, seen = new
   if (seen.has(paneId)) return null;
   seen.add(paneId);
   const instance = findPaneInstance(state.config.layout, paneId);
-  // A pane in another desktop window: the ticker that window shows in it.
-  if (!instance) return state.linkedTickers?.[paneId] ?? null;
+  // A pane in another desktop window: the ticker that window shows in it ("" while it shows none).
+  if (!instance) return state.linkedTickers?.[paneId] || null;
   const cursorSymbol = getPaneState(state, paneId).cursorSymbol;
   if (typeof cursorSymbol === "string" && cursorSymbol.trim()) return cursorSymbol;
   return resolveTickerFromBinding(state, instance.binding, seen);

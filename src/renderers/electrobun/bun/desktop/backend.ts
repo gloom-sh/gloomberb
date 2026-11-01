@@ -1,4 +1,4 @@
-import { ApplicationMenu, BrowserView, Utils, type BrowserWindow } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, BrowserView, Screen, Utils, type BrowserWindow } from "electrobun/bun";
 import { homedir } from "os";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
 import { syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../core/state/app/state";
@@ -57,7 +57,7 @@ import { DesktopWindowController } from "../../../desktop/window-controller";
 import { SequentialWindowHost } from "../../../desktop/sequential-window-host";
 import { createExtraWindowId, MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
 import type { OpenWindowSpec } from "../../../desktop/window-host";
-import type { DesktopWindowInfo } from "../../../../types/desktop-window";
+import type { DesktopWindowInfo, OtherWindowTab } from "../../../../types/desktop-window";
 import { desktopScreenSetupStore } from "./screen-setup-file";
 import { handleDesktopBackendRequest } from "./backend-requests";
 import { detectDesktopInstallKind, removeUpdateAsides } from "./update";
@@ -137,10 +137,16 @@ export class DesktopBackend {
       const key = this.rpcs.getRpcWindowKey(rpc) ?? MAIN_WINDOW_ID;
       return paneIdFromDetachedRpcKey(key) ? MAIN_WINDOW_ID : key;
     },
-    project: (viewKey, shared) => this.workspace?.getWindowSnapshot(viewKey) ?? shared,
+    // With one window its view is the shared state: nothing to project or keep.
+    project: (viewKey, shared) => {
+      const workspace = this.workspace;
+      return workspace && workspace.windowIds().length > 1 ? workspace.peekWindowSnapshot(viewKey) ?? shared : shared;
+    },
     delivered: (rpc, snapshot) => {
+      const workspace = this.workspace;
       const key = this.rpcs.getRpcWindowKey(rpc);
-      if (key && typeof snapshot.stateSeq === "number") this.workspace?.noteDelivered(key, snapshot.stateSeq, snapshot);
+      if (!workspace || !key || typeof snapshot.stateSeq !== "number" || workspace.windowIds().length <= 1) return;
+      workspace.noteDelivered(key, snapshot.stateSeq, snapshot);
     },
   });
   readonly capabilityBridge = new DesktopCapabilityBridge<DesktopRpc>({
@@ -164,6 +170,8 @@ export class DesktopBackend {
   /** Extra windows open once the main window has drawn, like popped-out panes. */
   private extraWindowsAllowed = false;
   private lastWindowList = "";
+  /** What the main window was last told the other windows' tabs are. */
+  private lastOtherWindowTabs = "[]";
   private quitting = false;
 
   /**
@@ -173,7 +181,10 @@ export class DesktopBackend {
    */
   startWindows(): void {
     if (this.windowHost) return;
-    const shell = new ElectrobunWindowHost({ create: (spec, hooks) => this.createNativeWindow(spec, hooks.onFrameChange) });
+    const shell = new ElectrobunWindowHost({
+      create: (spec, hooks) => this.createNativeWindow(spec, hooks.onFrameChange),
+      readDisplays: () => Screen.getAllDisplays(),
+    });
     const host = new SequentialWindowHost(shell, {
       canReopen: (spec) => spec.id !== MAIN_WINDOW_ID,
       onNeverDrew: (id) => console.error("[desktop] a window never drew", { kind: paneIdFromDetachedRpcKey(id) ? "pane" : "app" }),
@@ -194,7 +205,16 @@ export class DesktopBackend {
     });
     host.onWindowEvent((event) => {
       this.detachedWindows.handleWindowEvent(event);
-      if (event.type === "visibility") this.rpcs.getWindowRpc(event.id)?.send["desktop.windowVisibility"]({ visible: event.visible });
+      // A page that has not started yet draws as shown; it is told once it hides again.
+      if (event.type !== "visibility" || !this.rpcs.isWindowRpcReady(event.id)) return;
+      this.rpcs.getWindowRpc(event.id)?.send["desktop.windowVisibility"]({ visible: event.visible });
+    });
+    // A quit from outside the app (the Dock, logging out) does not come
+    // through `quit`: where the windows are is written here. Registered
+    // before the main window opens, so it runs before the shell's own
+    // handlers wait for the windows to go.
+    Electrobun.events.on("before-quit", () => {
+      if (!this.quitting) this.windowController?.flush();
     });
     this.windowController.openWindow(MAIN_WINDOW_ID);
     this.windowController.focus(MAIN_WINDOW_ID);
@@ -281,6 +301,7 @@ export class DesktopBackend {
 
   /** Tells every full window which windows there are, when that changed. */
   private sendWindowList(): void {
+    this.sendOtherWindowTabs();
     const windows = this.windowInfos();
     const key = JSON.stringify(windows);
     if (key === this.lastWindowList) return;
@@ -291,6 +312,26 @@ export class DesktopBackend {
     }
   }
 
+  /** The tabs the other windows hold, for the main window's init; later changes come as messages. */
+  otherWindowTabsForInit(): OtherWindowTab[] {
+    const tabs = this.workspace?.otherWindowTabs() ?? [];
+    this.lastOtherWindowTabs = JSON.stringify(tabs);
+    return tabs;
+  }
+
+  /** Tells the main window when the tabs the other windows hold changed: its cloud sync pushes every window's tabs. */
+  private sendOtherWindowTabs(): void {
+    const workspace = this.workspace;
+    if (!workspace || !this.rpcs.isWindowRpcReady(MAIN_WINDOW_ID)) return;
+    const tabs = workspace.otherWindowTabs();
+    // One window: none, as the main window already knows.
+    if (tabs.length === 0 && this.lastOtherWindowTabs === "[]") return;
+    const key = JSON.stringify(tabs);
+    if (key === this.lastOtherWindowTabs) return;
+    this.lastOtherWindowTabs = key;
+    this.rpcs.getWindowRpc(MAIN_WINDOW_ID)?.send["desktop.otherWindowTabs"]({ tabs: encodeRpcValue(tabs) });
+  }
+
   /** A full window's id for a request, or null for a popped-out pane's window. */
   fullWindowKey(rpc: DesktopRpc): string | null {
     const key = this.rpcs.getRpcWindowKey(rpc);
@@ -299,10 +340,10 @@ export class DesktopBackend {
   }
 
   /** Opens a new full window, on `layoutId` or an empty tab. Null when that tab cannot leave its window. */
-  async openExtraWindow(layoutId?: string): Promise<string | null> {
+  async openExtraWindow(holding?: { layoutId?: string; paneId?: string }): Promise<string | null> {
     const workspace = this.requireWorkspace();
     const windowId = createExtraWindowId();
-    const snapshot = workspace.openWindow(windowId, layoutId);
+    const snapshot = workspace.openWindow(windowId, holding);
     if (!snapshot) return null;
     this.extraWindowsAllowed = true;
     await this.commitDesktopSnapshot(snapshot);
@@ -334,6 +375,8 @@ export class DesktopBackend {
 
   private handleExtraWindowClosed(windowId: string): void {
     this.releaseWindow(windowId);
+    // Closed by the quit itself: it opens again with its tabs at the next launch.
+    if (this.quitting) return;
     const workspace = this.workspace;
     if (!workspace || !workspace.windowIds().includes(windowId)) return;
     void this.commitDesktopSnapshot(workspace.closeWindow(windowId));
@@ -347,10 +390,11 @@ export class DesktopBackend {
   }
 
   /**
-   * Closes every window without forgetting the extra ones, which open again
-   * at the next launch or session.
+   * Closes every window but the main one, without forgetting the extra
+   * ones, which open again at the next launch or session. Where each window
+   * is, the main one included, is written first.
    */
-  closeAllWindows(options: { main?: boolean } = {}): void {
+  closeAllWindows(): void {
     this.detachedWindows.closeAll();
     const controller = this.windowController;
     if (!controller) return;
@@ -360,7 +404,6 @@ export class DesktopBackend {
       controller.closeWindow(windowId);
       this.releaseWindow(windowId);
     }
-    if (options.main) controller.closeWindow(MAIN_WINDOW_ID);
   }
 
   requireConfig(): AppConfig {
@@ -592,8 +635,12 @@ export class DesktopBackend {
   quit(): void {
     if (this.quitting) return;
     this.quitting = true;
-    this.closeAllWindows({ main: true });
+    // The order a quit had with one window: the other windows close, the
+    // services stop while the main window can still hear from them, and
+    // the main window goes last.
+    this.closeAllWindows();
     this.teardownServices();
+    this.windowController?.closeWindow(MAIN_WINDOW_ID);
     Utils.quit();
   }
 

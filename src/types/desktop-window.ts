@@ -1,5 +1,5 @@
 import type { PaneRuntimeState } from "../core/state/app/state";
-import type { AppConfig } from "./config";
+import type { AppConfig, SavedLayout } from "./config";
 
 export interface DesktopSharedStateSnapshot {
   config: AppConfig;
@@ -34,6 +34,15 @@ export interface DesktopWindowInfo {
   tabCount: number;
 }
 
+/**
+ * A tab another full window holds, at its place among all the tabs. The main
+ * window's cloud sync pushes and pulls every window's tabs, not only its own.
+ */
+export interface OtherWindowTab {
+  at: number;
+  tab: SavedLayout;
+}
+
 /** Where a tab or pane goes: one of the open windows, or a new one. */
 export type DesktopWindowTarget = { windowId: string } | { newWindow: true };
 
@@ -57,6 +66,12 @@ export interface DesktopWindowsBridge {
   focusPane(paneId: string): Promise<boolean>;
   /** Asked by another window to focus one of this window's panes. */
   subscribeFocusRequests(listener: (paneId: string) => void): () => void;
+  /**
+   * The tabs the other windows hold, for cloud sync; the same array until
+   * they change, which `subscribe` reports. Only the main window is sent
+   * them, and only while there is more than one window.
+   */
+  otherWindowTabs(): readonly OtherWindowTab[];
 }
 
 export interface DesktopDockPreviewState {

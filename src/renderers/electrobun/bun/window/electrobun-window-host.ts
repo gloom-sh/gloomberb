@@ -1,4 +1,4 @@
-import { Screen, type BrowserWindow } from "electrobun/bun";
+import type { BrowserWindow, Screen } from "electrobun/bun";
 import { arrangementKey, type DesktopDisplay, type Rect } from "../../../desktop/geometry";
 import type {
   DesktopWindowHost,
@@ -11,9 +11,22 @@ import type { FocusableElectrobunWindow } from "./focus";
 
 /**
  * Electrobun 1.18 has no event for displays coming and going, nor for a window
- * being minimized: both are read on a timer this long.
+ * being minimized: both are read on a timer, this often while there is more
+ * than one window...
  */
-const POLL_MS = 1_500;
+const POLL_MS = 3_000;
+/**
+ * ...and this often with one, which reads the displays only: its page's own
+ * visibility says when it is hidden, as it did before there were more windows.
+ */
+const QUIET_POLL_MS = 10_000;
+/**
+ * A window's own events read whether it is minimized at once, so one coming
+ * back redraws without waiting for the timer: a focus, a move or a resize
+ * (a restore on Windows). A blur reads it again this long after, once the
+ * minimize animation has run.
+ */
+const AFTER_BLUR_MS = 600;
 
 export interface ElectrobunWindowHostOptions {
   /**
@@ -23,7 +36,10 @@ export interface ElectrobunWindowHostOptions {
   create(spec: OpenWindowSpec, hooks: { onFrameChange: () => void }): BrowserWindow;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
+  /** The displays as Electrobun lists them: `Screen.getAllDisplays`. */
+  readDisplays: () => ElectrobunDisplay[];
   pollMs?: number;
+  quietPollMs?: number;
 }
 
 type ElectrobunDisplay = ReturnType<typeof Screen.getAllDisplays>[number];
@@ -37,7 +53,7 @@ function toRect(value: Partial<Rect> | undefined, fallback: Rect): Rect {
   };
 }
 
-function readElectrobunDisplays(read: () => ElectrobunDisplay[] = Screen.getAllDisplays): DesktopDisplay[] {
+function readElectrobunDisplays(read: () => ElectrobunDisplay[]): DesktopDisplay[] {
   try {
     return read().map((display) => {
       const bounds = toRect(display.bounds, { x: 0, y: 0, width: 0, height: 0 });
@@ -65,6 +81,15 @@ function canPlaceWindowsOn(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): b
   return !wayland || env.GDK_BACKEND === "x11";
 }
 
+/** A native yes or no; false when the window cannot answer. */
+function read(call: () => boolean): boolean {
+  try {
+    return call() === true;
+  } catch {
+    return false;
+  }
+}
+
 /** The desktop window host on Electrobun 1.18: windows, their frames and events, and the displays. */
 export class ElectrobunWindowHost implements DesktopWindowHost {
   readonly canPlaceWindows: boolean;
@@ -72,9 +97,13 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
   readonly canFullscreen: boolean;
   private readonly windows = new Map<string, BrowserWindow>();
   private readonly minimized = new Map<string, boolean>();
+  /** Each window's maximized and full screen state as last read: a closed window cannot be asked. */
+  private readonly modes = new Map<string, { maximized: boolean; fullscreen: boolean }>();
+  /** A window closed from outside, as last known, while its close is being reported. */
+  private readonly closing = new Map<string, NativeWindowState>();
   private readonly displayListeners = new Set<(displays: DesktopDisplay[]) => void>();
   private readonly windowListeners = new Set<(event: NativeWindowEvent) => void>();
-  private poll: ReturnType<typeof setInterval> | null = null;
+  private poll: ReturnType<typeof setTimeout> | null = null;
   private lastArrangement: string;
 
   constructor(private readonly options: ElectrobunWindowHostOptions) {
@@ -90,32 +119,58 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
   }
 
   listDisplays(): DesktopDisplay[] {
-    return readElectrobunDisplays();
+    return readElectrobunDisplays(this.options.readDisplays);
   }
 
   openWindow(spec: OpenWindowSpec): void {
     if (this.windows.has(spec.id)) return;
-    const window = this.options.create(spec, { onFrameChange: () => this.emit({ type: "frame", id: spec.id }) });
+    const window = this.options.create(spec, {
+      onFrameChange: () => {
+        this.checkMinimized(spec.id);
+        this.readModes(spec.id);
+        this.emit({ type: "frame", id: spec.id });
+      },
+    });
     this.windows.set(spec.id, window);
     this.minimized.set(spec.id, false);
     const on = (window as { on?: (name: string, handler: (event: unknown) => void) => void }).on;
-    on?.call(window, "focus", () => this.emit({ type: "focus", id: spec.id }));
+    on?.call(window, "focus", () => {
+      this.checkMinimized(spec.id);
+      this.emit({ type: "focus", id: spec.id });
+    });
+    on?.call(window, "blur", () => {
+      this.checkMinimized(spec.id);
+      setTimeout(() => this.checkMinimized(spec.id), AFTER_BLUR_MS);
+    });
     on?.call(window, "close", () => {
       // Only the person's closes are reported: `closeWindow` forgets the window first.
       if (this.windows.get(spec.id) !== window) return;
-      this.windows.delete(spec.id);
-      this.minimized.delete(spec.id);
-      this.emit({ type: "close", id: spec.id });
+      // The native window is gone: what is known of it answers while its close is reported.
+      const frame = getWindowFrame(window);
+      const modes = this.modes.get(spec.id) ?? { maximized: false, fullscreen: false };
+      if (frame) this.closing.set(spec.id, { frame, ...modes, minimized: this.minimized.get(spec.id) === true });
+      this.forget(spec.id);
+      try {
+        this.emit({ type: "close", id: spec.id });
+      } finally {
+        this.closing.delete(spec.id);
+      }
     });
-    this.startPolling();
+    // A second window reads sooner than the timer one window left.
+    this.schedulePoll(true);
   }
 
   closeWindow(id: string): void {
     const window = this.windows.get(id);
     if (!window) return;
+    this.forget(id);
+    window.close();
+  }
+
+  private forget(id: string): void {
     this.windows.delete(id);
     this.minimized.delete(id);
-    window.close();
+    this.modes.delete(id);
   }
 
   hasWindow(id: string): boolean {
@@ -124,22 +179,19 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
 
   getWindowState(id: string): NativeWindowState | null {
     const window = this.windows.get(id);
-    const frame = getWindowFrame(window ?? null);
-    if (!window || !frame) return null;
-    const read = (call: () => boolean) => {
-      try {
-        return call() === true;
-      } catch {
-        return false;
-      }
-    };
+    if (!window) return this.closing.get(id) ?? null;
+    const frame = getWindowFrame(window);
+    if (!frame) return null;
+    return { frame, ...this.readModes(id), minimized: read(() => window.isMinimized()) };
+  }
+
+  private readModes(id: string): { maximized: boolean; fullscreen: boolean } {
+    const window = this.windows.get(id);
+    if (!window) return { maximized: false, fullscreen: false };
     const fullscreen = this.canFullscreen && read(() => window.isFullScreen());
-    return {
-      frame,
-      fullscreen,
-      maximized: !fullscreen && read(() => window.isMaximized()),
-      minimized: read(() => window.isMinimized()),
-    };
+    const modes = { maximized: !fullscreen && read(() => window.isMaximized()), fullscreen };
+    this.modes.set(id, modes);
+    return modes;
   }
 
   setFrame(id: string, frame: Rect): void {
@@ -188,7 +240,7 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
 
   onDisplaysChanged(listener: (displays: DesktopDisplay[]) => void): () => void {
     this.displayListeners.add(listener);
-    this.startPolling();
+    this.schedulePoll(false);
     return () => {
       this.displayListeners.delete(listener);
     };
@@ -202,7 +254,7 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
   }
 
   dispose(): void {
-    if (this.poll) clearInterval(this.poll);
+    if (this.poll) clearTimeout(this.poll);
     this.poll = null;
   }
 
@@ -210,9 +262,19 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
     for (const listener of [...this.windowListeners]) listener(event);
   }
 
-  private startPolling(): void {
-    if (this.poll) return;
-    this.poll = setInterval(() => this.check(), this.options.pollMs ?? POLL_MS);
+  private pollInterval(): number {
+    return this.windows.size > 1 ? this.options.pollMs ?? POLL_MS : this.options.quietPollMs ?? QUIET_POLL_MS;
+  }
+
+  /** Sets the next read; `sooner` moves one already set closer when there are now more windows. */
+  private schedulePoll(sooner: boolean): void {
+    if (this.poll && !sooner) return;
+    if (this.poll) clearTimeout(this.poll);
+    this.poll = setTimeout(() => {
+      this.poll = null;
+      this.check();
+      this.schedulePoll(false);
+    }, this.pollInterval());
     (this.poll as { unref?: () => void }).unref?.();
   }
 
@@ -223,16 +285,22 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
       this.lastArrangement = arrangement;
       for (const listener of [...this.displayListeners]) listener(displays);
     }
-    for (const [id, window] of this.windows) {
-      let minimized = false;
-      try {
-        minimized = window.isMinimized() === true;
-      } catch {
-        continue;
-      }
-      if (this.minimized.get(id) === minimized) continue;
-      this.minimized.set(id, minimized);
-      this.emit({ type: "visibility", id, visible: !minimized });
+    if (this.windows.size > 1) {
+      for (const id of this.windows.keys()) this.checkMinimized(id);
     }
+  }
+
+  private checkMinimized(id: string): void {
+    const window = this.windows.get(id);
+    if (!window) return;
+    let minimized: boolean;
+    try {
+      minimized = window.isMinimized() === true;
+    } catch {
+      return;
+    }
+    if (this.minimized.get(id) === minimized) return;
+    this.minimized.set(id, minimized);
+    this.emit({ type: "visibility", id, visible: !minimized });
   }
 }

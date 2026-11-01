@@ -17,18 +17,19 @@ function setup(host: DesktopWindowHost, saved: ScreenSetup = emptyScreenSetup())
   const store = { current: saved, saves: 0 };
   const timers: Array<() => void> = [];
   const closed: string[] = [];
+  const clock = { now: 1_000 };
   const controller = new DesktopWindowController({
     host,
     store: { load: () => store.current, save: (next) => { store.current = next; store.saves += 1; } },
     minSize: { width: 640, height: 400 },
     defaultMainFrame: { x: 64, y: 48, width: 1280, height: 800 },
     onWindowClosed: (id) => closed.push(id),
-    now: () => 1_000,
+    now: () => clock.now,
     setTimer: (callback) => { timers.push(callback); return timers.length; },
     clearTimer: () => {},
   });
   const runTimers = () => { for (const run of timers.splice(0)) run(); };
-  return { controller, store, runTimers, closed };
+  return { controller, store, runTimers, closed, clock };
 }
 
 const TWO_SCREENS = arrangementKey([LAPTOP, EXTERNAL]);
@@ -94,6 +95,29 @@ describe("desktop window controller", () => {
     expect(host.windows.get(MAIN_WINDOW_ID)!.frame).toEqual({ x: 612, y: 300, width: 900, height: 600 });
   });
 
+  test("a saved frame below the minimum size opens at it, a screen smaller than it keeping the corner on screen", () => {
+    const tiny = display("9", { x: 0, y: 0, width: 600, height: 380 }, true);
+    for (const [screen, expected] of [
+      [LAPTOP, { x: 1300, y: 700, width: 640, height: 400 }],
+      [tiny, { x: tiny.workArea.x, y: tiny.workArea.y, width: 640, height: 400 }],
+    ] as const) {
+      const host = new FakeHost([screen]);
+      const saved = parseScreenSetup({
+        version: 1,
+        windows: [],
+        arrangements: {
+          [arrangementKey([screen])]: { savedAt: 1, windows: { main: { frame: { x: 1300, y: 700, width: 300, height: 200 } } } },
+        },
+      });
+      setup(host, saved).controller.openWindow(MAIN_WINDOW_ID);
+      const frame = host.windows.get(MAIN_WINDOW_ID)!.frame;
+      expect(frame.width).toBe(expected.width);
+      expect(frame.height).toBe(expected.height);
+      if (screen === tiny) expect([frame.x, frame.y]).toEqual([expected.x, expected.y]);
+      else expect(isFrameVisible(frame, [screen])).toBe(true);
+    }
+  });
+
   test("three windows opening at once on screens the setup has not seen: one at a time, each on a screen", () => {
     const third = display("3", { x: 4072, y: 0, width: 1920, height: 1080 });
     const saved = parseScreenSetup({
@@ -145,6 +169,74 @@ describe("desktop window controller", () => {
     expect(isFrameVisible(shell.windows.get("window:right")!.frame, [LAPTOP])).toBe(true);
   });
 
+  test("a window never moved comes back where it opened after a quit", () => {
+    const host = new FakeHost([LAPTOP]);
+    const { controller, store } = setup(host);
+    controller.openWindow(MAIN_WINDOW_ID);
+    controller.focus(MAIN_WINDOW_ID);
+    controller.openWindow("window:a");
+    controller.focus("window:a");
+    controller.openWindow("window:b");
+    const opened = ["window:a", "window:b"].map((id) => host.windows.get(id)!.frame);
+    controller.flush();
+    for (const id of [MAIN_WINDOW_ID, "window:a", "window:b"]) controller.closeWindow(id);
+
+    // The next launch: window:b now opens before window:a would have cascaded it.
+    const next = new FakeHost([LAPTOP]);
+    const again = setup(next, store.current).controller;
+    for (const id of [MAIN_WINDOW_ID, "window:b", "window:a"]) again.openWindow(id);
+    expect(["window:a", "window:b"].map((id) => next.windows.get(id)!.frame)).toEqual(opened);
+  });
+
+  test("a window closed right after a move opens where it was moved, closed from either side", () => {
+    const host = new FakeHost([LAPTOP]);
+    const { controller, store } = setup(host);
+    controller.openWindow(MAIN_WINDOW_ID);
+    controller.openWindow("window:a");
+    const main = { x: 200, y: 120, width: 1000, height: 700 };
+    const other = { x: 300, y: 160, width: 900, height: 600 };
+    // Each closes before its save would have run.
+    host.move("window:a", other);
+    controller.closeWindow("window:a");
+    host.move(MAIN_WINDOW_ID, main, { maximized: true });
+    host.close(MAIN_WINDOW_ID);
+
+    const next = new FakeHost([LAPTOP]);
+    const again = setup(next, store.current).controller;
+    for (const id of [MAIN_WINDOW_ID, "window:a"]) again.openWindow(id);
+    expect(next.windows.get("window:a")!.frame).toEqual(other);
+    expect(next.windows.get(MAIN_WINDOW_ID)!.maximized).toBe(true);
+  });
+
+  test("windows closed one by one as the app quits come back at the next launch, one closed earlier does not", () => {
+    const host = new FakeHost([LAPTOP]);
+    const { controller, store, clock, closed } = setup(host);
+    for (const id of [MAIN_WINDOW_ID, "window:early", "window:a", "window:b"]) controller.openWindow(id);
+    controller.rememberWindows([
+      { id: "window:early", layoutIds: ["tab:early"] },
+      { id: "window:a", layoutIds: ["tab:a"] },
+      { id: "window:b", layoutIds: ["tab:b"] },
+    ]);
+    const frames = ["window:a", "window:b"].map((id) => host.windows.get(id)!.frame);
+    host.close("window:early");
+    // Closing every window at once: the extra ones go first, then the main window quits the app.
+    clock.now += 5_000;
+    host.close("window:a");
+    clock.now += 200;
+    host.close("window:b");
+    // Their tabs went back to the main window as each closed.
+    controller.rememberWindows([]);
+    clock.now += 200;
+    controller.flush();
+    expect(closed).toEqual(["window:early", "window:a", "window:b"]);
+    expect(store.current.windows.map((entry) => [entry.id, entry.layoutIds])).toEqual([["window:a", ["tab:a"]], ["window:b", ["tab:b"]]]);
+
+    const next = new FakeHost([LAPTOP]);
+    const again = setup(next, store.current).controller;
+    for (const id of [MAIN_WINDOW_ID, "window:b", "window:a"]) again.openWindow(id);
+    expect(["window:a", "window:b"].map((id) => next.windows.get(id)!.frame)).toEqual(frames);
+  });
+
   test("a window the person closes is forgotten and its tabs are handed back", () => {
     const host = new FakeHost([LAPTOP]);
     const { controller, store, runTimers, closed } = setup(host);
@@ -172,13 +264,37 @@ describe("screen setup file", () => {
         "nonsense",
       ],
       arrangements: {
-        one: { savedAt: 5, windows: { main: { frame: { x: 0, y: 0, width: 10, height: 10 }, maximized: true } } },
+        one: {
+          savedAt: 5,
+          windows: {
+            main: { frame: { x: 0, y: 0, width: 10, height: 10 }, maximized: true },
+            // No window of this id is listed: it cannot open again.
+            "window:gone": { frame: { x: 0, y: 0, width: 10, height: 10 } },
+          },
+        },
+        stray: { savedAt: 7, windows: { "window:gone": { frame: { x: 0, y: 0, width: 10, height: 10 } } } },
         broken: { savedAt: 6, windows: { main: { frame: { x: 0, y: 0, width: 0, height: 10 } } } },
       },
     });
     expect(parsed.windows).toEqual([{ id: "window:a", layoutIds: ["x", "y"], activeLayoutId: "y" }]);
     expect(Object.keys(parsed.arrangements)).toEqual(["one"]);
-    expect(parsed.arrangements.one!.windows.main).toEqual({ frame: { x: 0, y: 0, width: 10, height: 10 }, maximized: true, fullscreen: false });
+    expect(parsed.arrangements.one!.windows).toEqual({ main: { frame: { x: 0, y: 0, width: 10, height: 10 }, maximized: true, fullscreen: false } });
     expect(parseScreenSetup("garbage")).toEqual(emptyScreenSetup());
+  });
+
+  test("a window that could not open again, its tabs gone, loses its placements", () => {
+    const host = new FakeHost([LAPTOP]);
+    const first = setup(host);
+    first.controller.openWindow(MAIN_WINDOW_ID);
+    first.controller.openWindow("window:a");
+    first.controller.rememberWindows([{ id: "window:a", layoutIds: ["tab:a"] }]);
+    first.controller.flush();
+    expect(placementFor(first.store.current, ONE_SCREEN, "window:a")).not.toBeNull();
+
+    // The next launch: tab:a is gone, so the workspace has no such window.
+    const { controller, store } = setup(new FakeHost([LAPTOP]), first.store.current);
+    controller.rememberWindows([]);
+    expect(placementFor(store.current, ONE_SCREEN, "window:a")).toBeNull();
+    expect(placementFor(store.current, ONE_SCREEN, MAIN_WINDOW_ID)).not.toBeNull();
   });
 });

@@ -89,6 +89,10 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
         if (!Array.isArray(message?.windows)) return;
         emit("desktop.windows", { windows: message.windows });
       },
+      "desktop.otherWindowTabs": (message) => {
+        const tabs = decodeRpcValue<unknown>(message?.tabs);
+        if (Array.isArray(tabs)) emit("desktop.otherWindowTabs", { tabs });
+      },
       "desktop.focusPane": (message) => {
         if (typeof message?.paneId !== "string" || !message.paneId) return;
         emit("desktop.focusPane", { paneId: message.paneId });

@@ -1,7 +1,7 @@
 import type { AppSessionSnapshot } from "../../../../../core/state/session-persistence";
 import { clonePaneStateMap, type PaneRuntimeState } from "../../../../../core/state/app/state";
-import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig } from "../../../../../types/config";
-import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
+import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig, type SavedLayout } from "../../../../../types/config";
+import type { DesktopSharedStateSnapshot, OtherWindowTab } from "../../../../../types/desktop-window";
 import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../layout/pane-manager";
 import { MAIN_WINDOW_ID, type ExtraWindowRecord } from "../../../../desktop/screen-setup";
 import {
@@ -15,6 +15,7 @@ import {
   mergeWindowSnapshot,
   moveLayoutToWindow,
   movePaneToWindow,
+  otherWindowTabs,
   paneMoveBlock,
   projectWindow,
   replaceSharedConfig,
@@ -130,14 +131,24 @@ function rememberDetachedFrame(layout: LayoutConfig, paneId: string): LayoutConf
   };
 }
 
-/** How many states sent to a window are kept for its next sync to be merged against. */
-const SENT_HISTORY = 24;
+/**
+ * How many states sent to a window are kept for its next sync to be merged
+ * against: a window takes each state as it comes, so its sync names one of
+ * the last few (frame saves, the quickest series, are debounced). They are
+ * not copies: the workspace never changes a state in place, it builds a new one.
+ */
+const SENT_HISTORY = 8;
 
 export interface DesktopWorkspace {
   /** The shared state: every tab, with the main window's active layout, pane state and focus. What is saved. */
   getSnapshot(): DesktopSharedStateSnapshot;
   /** What a full window draws: its own tabs and state. A popped-out pane's window gets the main window's. */
   getWindowSnapshot(windowId: string): DesktopSharedStateSnapshot | null;
+  /**
+   * The same, not copied: it shares objects with the workspace, so it is
+   * only read, to compare, send or keep as a merge base, never changed.
+   */
+  peekWindowSnapshot(windowId: string): DesktopSharedStateSnapshot | null;
   /** The full windows, the main one first. */
   windowIds(): string[];
   extraWindows(): ExtraWindowRecord[];
@@ -146,7 +157,13 @@ export interface DesktopWorkspace {
   windowOfLayout(layoutId: string): string | null;
   /** Names of each full window's tabs, for menus that offer to move something there. */
   windowTabNames(windowId: string): { active: string; count: number } | null;
-  /** A state `windowId` was sent, under the number it carried; its next sync may be built on it. */
+  /**
+   * The tabs the windows besides the main one hold, at their places, for the
+   * main window's cloud sync; empty with one window. Read to tell the main
+   * window, and kept as what it was told.
+   */
+  otherWindowTabs(): OtherWindowTab[];
+  /** A state `windowId` was sent, under the number it carried; its next sync may be built on it. Only with more than one window. */
   noteDelivered(windowId: string, seq: number, snapshot: DesktopSharedStateSnapshot): void;
   /** A window started over (a load or reload): nothing sent to it before counts. */
   forgetWindow(windowId: string): void;
@@ -172,8 +189,12 @@ export interface DesktopWorkspace {
     edge?: "left" | "right" | "top" | "bottom",
   ): DesktopSharedStateSnapshot;
   closeDetachedPane(paneId: string): DesktopSharedStateSnapshot;
-  /** Opens a full window on `layoutId` (moved from where it is) or on a new empty tab. Null when that tab cannot move. */
-  openWindow(windowId: string, layoutId?: string): DesktopSharedStateSnapshot | null;
+  /**
+   * Opens a full window on `layoutId` (moved from where it is), or on a new
+   * tab, empty or holding `paneId` (moved from where it is). One change: null,
+   * and no window, when what it would hold cannot move.
+   */
+  openWindow(windowId: string, holding?: { layoutId?: string; paneId?: string }): DesktopSharedStateSnapshot | null;
   /** Closes a full window; its tabs go back to the main window. */
   closeWindow(windowId: string): DesktopSharedStateSnapshot;
   moveLayoutToWindow(layoutId: string, windowId: string): DesktopSharedStateSnapshot | null;
@@ -206,6 +227,12 @@ export function createDesktopWorkspace(
   const sent = new Map<string, Map<number, DesktopSharedStateSnapshot>>();
   /** What each window last sent: what its next sync is built on unless it took a newer state since. */
   const received = new Map<string, DesktopSharedStateSnapshot>();
+  /**
+   * The other windows' tabs as the main window was last told them. A config
+   * it saves after a cloud pull carries them; one counts as changed only
+   * where it differs from these, so an edit made since in its own window stays.
+   */
+  let otherTabsTold: SavedLayout[] = [];
 
   const mainView = () => state.views[MAIN_WINDOW_ID]!;
 
@@ -219,11 +246,15 @@ export function createDesktopWorkspace(
     layoutChanged,
   });
 
-  const getWindowSnapshot = (windowId: string): DesktopSharedStateSnapshot | null => {
+  const peekWindowSnapshot = (windowId: string): DesktopSharedStateSnapshot | null => {
     const shown = state.views[windowId] ? windowId : MAIN_WINDOW_ID;
     const projection = projectWindow(state, shown);
-    if (!projection) return null;
-    return cloneSnapshot({ ...projection, mainStateRevision: revisions.get(shown) ?? 0, layoutChanged });
+    return projection && { ...projection, mainStateRevision: revisions.get(shown) ?? 0, layoutChanged };
+  };
+
+  const getWindowSnapshot = (windowId: string): DesktopSharedStateSnapshot | null => {
+    const projection = peekWindowSnapshot(windowId);
+    return projection && cloneSnapshot(projection);
   };
 
   /** Takes a whole config the backend built from the shared state, keeping the main window's pane state. */
@@ -274,10 +305,16 @@ export function createDesktopWorkspace(
   return {
     getSnapshot,
     getWindowSnapshot,
+    peekWindowSnapshot,
     windowIds: () => [...state.windowIds],
     extraWindows: () => extraWindowRecords(state),
     locatePane: (paneId) => locatePane(state, paneId),
     windowOfLayout: (layoutId) => windowOfLayout(state, layoutId),
+    otherWindowTabs() {
+      const tabs = otherWindowTabs(state);
+      otherTabsTold = tabs.map(({ tab }) => tab);
+      return tabs;
+    },
     windowTabNames(windowId) {
       const view = state.views[windowId];
       if (!view) return null;
@@ -305,7 +342,11 @@ export function createDesktopWorkspace(
     replaceConfigFromWindow(windowId, nextConfig) {
       const view = state.views[windowId];
       if (!view) return getSnapshot();
-      const base = received.get(windowId) ?? null;
+      let base = received.get(windowId) ?? null;
+      if (windowId === MAIN_WINDOW_ID && otherTabsTold.length > 0) {
+        const own = base ?? projectWindow(state, MAIN_WINDOW_ID)!;
+        base = { ...own, config: { ...own.config, layouts: [...own.config.layouts, ...otherTabsTold] } };
+      }
       const detachedBefore = state.config.layout;
       state = mergeWindowSnapshot(state, windowId, base, {
         config: nextConfig,
@@ -375,10 +416,15 @@ export function createDesktopWorkspace(
         layout: nextLayout,
       }, { layoutChanged: true });
     },
-    openWindow(windowId, layoutId) {
+    openWindow(windowId, { layoutId, paneId } = {}) {
       if (layoutId && layoutMoveBlock(state, layoutId, MAIN_WINDOW_ID) === "missing") return null;
-      const next = addWindow(state, windowId, layoutId ? { layoutId } : {});
+      if (paneId && !locatePane(state, paneId)) return null;
+      let next = addWindow(state, windowId, layoutId ? { layoutId } : {});
       if (next === state || !next.views[windowId]) return null;
+      if (paneId) {
+        if (paneMoveBlock(next, paneId, windowId)) return null;
+        next = movePaneToWindow(next, paneId, windowId);
+      }
       state = next;
       layoutChanged = true;
       return getSnapshot();

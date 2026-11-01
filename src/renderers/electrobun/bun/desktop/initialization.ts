@@ -103,6 +103,7 @@ function buildInitializationPayload(
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
     ...(windowTarget.windowId ? { windowId: windowTarget.windowId, windows: backend.windowInfos() } : {}),
+    ...(mainWindow ? { otherWindowTabs: backend.otherWindowTabsForInit() } : {}),
     ...(pluginSeedNotice ? { pluginSeedNotice } : {}),
     telemetry: {
       installId: readOrCreateInstallId(config.dataDir),

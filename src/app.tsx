@@ -1,6 +1,6 @@
 import { Box, ContextMenuProvider, useNativeRenderer, useRendererHost, useUiHost } from "./ui";
 import { ToastViewport, useToastHost } from "./ui/toast";
-import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
 import {
   AppProvider,
   getFocusedTickerSymbol,
@@ -9,6 +9,7 @@ import {
   useAppStateRef,
   type AppState,
 } from "./state/app/context";
+import type { AppAction } from "./core/state/app/state";
 import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
@@ -54,6 +55,9 @@ import { useAppUpdateRuntime } from "./app/runtime/update";
 import { resolveUpdateChannel } from "./updater/channel";
 import { createCoreSyncContributors } from "./sync/core-contributors";
 import { useCloudSyncRuntime } from "./sync/react";
+import { changesOtherWindowTabs, withOtherWindowTabs, withoutOtherWindowTabs } from "./sync/other-window-tabs";
+import { getDesktopWindows } from "./state/desktop-windows";
+import type { OtherWindowTab } from "./types/desktop-window";
 import { RemoteControlHost, type RemoteControlAdapter } from "./remote/app-host";
 import { RemoteUiRegistryProvider } from "./remote/semantic-tree";
 import {
@@ -61,7 +65,7 @@ import {
   resolveCliLaunchConfig,
   resolveInitialAppConfig,
 } from "./app/app-bootstrap-state";
-import { scheduleConfigSave } from "./state/config-save-scheduler";
+import { saveConfigImmediately, scheduleConfigSave } from "./state/config-save-scheduler";
 import { LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS } from "./state/persist-scheduler";
 import { savedLayoutsDifferOnlyInMirror } from "./core/state/app/layout";
 import { measurePerf } from "./utils/perf-marks";
@@ -116,6 +120,10 @@ function ThemedAppRoot({ children }: { children: ReactNode }) {
     </Box>
   );
 }
+
+const noOtherWindowTabs = (): readonly OtherWindowTab[] => NO_OTHER_WINDOW_TABS;
+const NO_OTHER_WINDOW_TABS: readonly OtherWindowTab[] = [];
+const noSubscription = () => () => {};
 
 function AppInner({
   externalPlugins,
@@ -184,6 +192,27 @@ function AppInner({
     updateCheckInProgress,
     updateProgress,
   ]);
+  // Cloud sync in the desktop app's main window pushes and pulls every
+  // window's tabs, not only its own (sync/other-window-tabs.ts). The same
+  // state, getter and dispatch with one window and everywhere else.
+  const desktopWindows = getDesktopWindows();
+  const otherWindowTabs = useSyncExternalStore(
+    desktopWindows?.subscribe ?? noSubscription,
+    desktopWindows?.otherWindowTabs ?? noOtherWindowTabs,
+  );
+  const otherWindowTabsRef = useRef(otherWindowTabs);
+  otherWindowTabsRef.current = otherWindowTabs;
+  const syncState = useMemo(() => withOtherWindowTabs(state, otherWindowTabs), [state, otherWindowTabs]);
+  const getSyncState = useCallback(() => withOtherWindowTabs(stateRef.current, otherWindowTabsRef.current), [stateRef]);
+  const syncDispatch = useCallback<Dispatch<AppAction>>((action) => {
+    if (action.type !== "SET_CONFIG") {
+      dispatch(action);
+      return;
+    }
+    const others = otherWindowTabsRef.current;
+    if (changesOtherWindowTabs(action.config, others)) void saveConfigImmediately(action.config);
+    dispatch({ ...action, config: withoutOtherWindowTabs(action.config, others, stateRef.current.config) });
+  }, [dispatch, stateRef]);
   const appActive = useAppActive();
   const appVisible = useAppVisible();
   const appActiveRef = useRef(appActive);
@@ -365,9 +394,9 @@ function AppInner({
   });
 
   useCloudSyncRuntime({
-    state,
-    getState: getRemoteState,
-    dispatch,
+    state: syncState,
+    getState: getSyncState,
+    dispatch: syncDispatch,
     tickerRepository,
     pluginRegistry,
     appActive,

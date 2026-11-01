@@ -9,6 +9,7 @@ export class FakeHost implements DesktopWindowHost {
   readonly windows = new Map<string, NativeWindowState & { spec: OpenWindowSpec }>();
   /** Every window the shell was asked to open, in order, opened again ones included. */
   readonly opened: string[] = [];
+  private readonly closing = new Map<string, NativeWindowState & { spec: OpenWindowSpec }>();
   private displayListeners = new Set<(displays: DesktopDisplay[]) => void>();
   private windowListeners = new Set<(event: NativeWindowEvent) => void>();
 
@@ -24,7 +25,7 @@ export class FakeHost implements DesktopWindowHost {
   closeWindow(id: string) { this.windows.delete(id); }
   hasWindow(id: string) { return this.windows.has(id); }
   getWindowState(id: string) {
-    const window = this.windows.get(id);
+    const window = this.windows.get(id) ?? this.closing.get(id);
     return window ? { frame: window.frame, maximized: window.maximized, fullscreen: window.fullscreen, minimized: window.minimized } : null;
   }
   setFrame(id: string, frame: Rect) {
@@ -55,9 +56,13 @@ export class FakeHost implements DesktopWindowHost {
     Object.assign(this.windows.get(id)!, { frame, ...flags });
     for (const listener of this.windowListeners) listener({ type: "frame", id });
   }
+  /** Closed from outside: gone, though its last state answers while the close is reported. */
   close(id: string) {
+    const window = this.windows.get(id);
     this.windows.delete(id);
+    if (window) this.closing.set(id, window);
     for (const listener of this.windowListeners) listener({ type: "close", id });
+    this.closing.delete(id);
   }
   setDisplays(displays: DesktopDisplay[]) {
     this.displays = displays;

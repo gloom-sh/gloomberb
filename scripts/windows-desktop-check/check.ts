@@ -393,6 +393,18 @@ const PAGE_HELPER = String.raw`(() => {
       for (let x = h.right - 150; x > h.left + 20; x -= 6) if (bare(header, x, y)) return { x, y };
       return null;
     },
+    /** Bare points along the title bar, left to right, in its upper part and its middle: some stay uncovered by a window cascaded over this one. */
+    titleBarPoints() {
+      const header = q("[data-gloom-role=detached-pane-window] [data-gloom-role=pane-header]") || q("[data-gloom-role=app-header]");
+      if (!header) return [];
+      const h = header.getBoundingClientRect();
+      const points = [];
+      for (const share of [0.35, 0.5]) {
+        const y = h.top + h.height * share;
+        for (let x = h.left + 20; x < h.right - 150; x += 12) if (bare(header, x, y)) points.push({ x, y });
+      }
+      return points;
+    },
     /** What a press at this point lands on, for the report. */
     whatIsAt(x, y) {
       const hit = document.elementFromPoint(x, y);
@@ -709,6 +721,65 @@ async function waitForPaint(hwnd: number, timeoutMs = 20_000): Promise<{ drawn: 
   };
 }
 
+/**
+ * The New Window row of the open command bar, where a person clicks it: the
+ * innermost element that reads exactly that, so a label split for match
+ * highlighting still counts and "Move to New Window" does not.
+ */
+const NEW_WINDOW_ROW = String.raw`(() => {
+  const panel = document.querySelector("[data-gloom-role=command-bar-panel]");
+  if (!panel) return null;
+  const label = [...panel.querySelectorAll("*")].filter((el) => el.textContent.replace(/\s+/g, " ").trim() === "New Window").pop();
+  if (!label) return null;
+  const r = label.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+})()`;
+
+/** The color a page shows in its top-left corner while the check asks which window it is in. */
+const MARKER: [number, number, number] = [255, 0, 170];
+const SHOW_MARKER = String.raw`(() => {
+  const el = document.createElement("div");
+  el.id = "__winCheckMarker";
+  el.style.cssText = "position:fixed;left:0;top:0;width:14px;height:14px;background:rgb(255,0,170);z-index:2147483647;pointer-events:none";
+  document.body.appendChild(el);
+  return true;
+})()`;
+const HIDE_MARKER = `(() => { document.getElementById("__winCheckMarker")?.remove(); return true; })()`;
+
+/** How a window sticks out of its screen's work area, or null when all of it is on it. */
+function offScreen(hwnd: number): string | null {
+  if (win.isMinimized(hwnd)) return "is minimized";
+  const frame = win.visibleRect(hwnd);
+  const work = win.monitorOf(hwnd).work;
+  const past = { left: work.left - frame.left, top: work.top - frame.top, right: frame.right - work.right, bottom: frame.bottom - work.bottom };
+  const sides = Object.entries(past).filter(([, by]) => by > 1).map(([side, by]) => `${by} px past the ${side}`);
+  return sides.length ? `sticks out of the work area ${fmt(work)} at ${fmt(frame)}: ${sides.join(", ")}` : null;
+}
+
+/**
+ * Pairs each frame from before with the closest one after: how far each
+ * moved (its largest edge difference), and the frames left without a pair.
+ */
+function pairFrames(before: Rect[], after: Rect[]): { shifts: number[]; gone: Rect[]; added: Rect[] } {
+  const left = [...after];
+  const shifts: number[] = [];
+  const gone: Rect[] = [];
+  const shift = (a: Rect, b: Rect) => Math.max(...(["left", "top", "right", "bottom"] as const).map((side) => Math.abs(a[side] - b[side])));
+  for (const frame of before) {
+    let best = -1;
+    for (let index = 0; index < left.length; index += 1) {
+      if (best < 0 || shift(frame, left[index]!) < shift(frame, left[best]!)) best = index;
+    }
+    if (best < 0 || shift(frame, left[best]!) > 200) {
+      gone.push(frame);
+      continue;
+    }
+    shifts.push(shift(frame, left[best]!));
+    left.splice(best, 1);
+  }
+  return { shifts, gone, added: left };
+}
+
 // --- The run ---------------------------------------------------------------
 
 const RESIZE_CURSORS: Record<string, string> = {
@@ -729,6 +800,8 @@ class Run {
   launcher: ReturnType<typeof Bun.spawn> | null = null;
   main!: AppWindow;
   detached: AppWindow | null = null;
+  /** Full windows opened with New Window, in the order they opened. */
+  extras: AppWindow[] = [];
   knownWindows = new Set<number>();
   baseRect!: Rect;
   detachedRect!: Rect;
@@ -765,7 +838,8 @@ class Run {
     }
     // Its own result, not on the known list even where the step is.
     const barShots: string[] = [];
-    const opened = id === "command-bar-typing" ? null : await this.commandBarOpenedSince(started, id, barShots);
+    // These open it on purpose.
+    const opened = id === "command-bar-typing" || id === "new-windows" ? null : await this.commandBarOpenedSince(started, id, barShots);
     const gpuExit = await this.gpuProcessExited();
     const captionShots: string[] = [];
     const captions = this.captionsAfter(id, captionShots);
@@ -1995,6 +2069,243 @@ class Run {
     });
   }
 
+  // --- More windows ---
+
+  /**
+   * Clicks a bare spot of a window's title bar that no other window covers,
+   * as a person brings a window forward. The point clicked, or null when its
+   * title bar is covered all along.
+   */
+  async clickTitleBar(window: AppWindow): Promise<Point | null> {
+    const points = await evaluate<Array<{ x: number; y: number }>>(window.page.cdp, "window.__winCheck.titleBarPoints()", 3_000).catch(() => []);
+    const point = points.map((entry) => this.toScreen(window, entry)).find((entry) => {
+      const hit = win.hitTest(entry);
+      return hit.root === window.hwnd && !/left|right|top|bottom|border/.test(hit.code);
+    });
+    if (!point) return null;
+    await win.click(point);
+    await sleep(500);
+    return point;
+  }
+
+  /** Brings a window forward without input, to have another one behind it. */
+  async raise(window: AppWindow): Promise<void> {
+    if (win.isMinimized(window.hwnd)) win.showWindow(window.hwnd, "restore");
+    // An Alt tap lets this process hand the foreground to another window.
+    await win.pressKeys(win.VK.alt);
+    win.bringToFront(window.hwnd);
+    await sleep(400);
+  }
+
+  /** The window showing a page, among `hwnds`: the page shows a colored corner for a moment. */
+  async windowOfPage(page: Page, hwnds: number[]): Promise<number | null> {
+    if (!await evaluate<boolean>(page.cdp, SHOW_MARKER, 3_000).catch(() => false)) return null;
+    await sleep(500);
+    let found: number | null = null;
+    for (const hwnd of hwnds) {
+      if (!win.isWindow(hwnd) || win.isMinimized(hwnd)) continue;
+      const client = win.clientRect(hwnd);
+      try {
+        const bitmap = win.captureScreen({ left: client.left + 2, top: client.top + 2, right: client.left + 8, bottom: client.top + 8 });
+        if (colorDistance(pixel(bitmap, 2, 2), MARKER) <= 12) {
+          found = hwnd;
+          break;
+        }
+      } catch {
+        // Intentional ignore: a window that cannot be pictured is not the one.
+      }
+    }
+    await evaluate(page.cdp, HIDE_MARKER, 3_000).catch(() => null);
+    return found;
+  }
+
+  /**
+   * New Window from a window's command bar, as a person does it: the bar
+   * opened with a click, "new window" typed, its row clicked. The new window
+   * and its page, or why there is none; `missing` when this build has no
+   * New Window.
+   */
+  async openNewWindow(from: AppWindow, index: number, shots: string[]): Promise<{ window: AppWindow | null; detail: string; missing?: boolean }> {
+    if (!await this.clickTitleBar(from)) await this.raise(from);
+    const layout = await layoutOf(from.page);
+    if (!layout.prompt) return { window: null, detail: "no command prompt in the top bar" };
+    await win.click(this.centerOf(from, layout.prompt));
+    await sleep(500);
+    await win.typeText("new window");
+    await sleep(1_200);
+    const row = await evaluate<CssRect | null>(from.page.cdp, NEW_WINDOW_ROW, 3_000).catch(() => null);
+    const barShot = this.shots.take(`new-window-${index}-command-bar`, win.clientRect(from.hwnd));
+    if (barShot) shots.push(barShot);
+    if (!row) {
+      await win.pressKeys(win.VK.escape);
+      await sleep(300);
+      return { window: null, missing: true, detail: "the command bar lists no New Window" };
+    }
+    const windowsBefore = new Set(this.appWindows().map((info) => info.hwnd));
+    const pagesBefore = new Set((await devtoolsTargets()).map((target) => target.id));
+    await win.click(this.centerOf(from, row));
+    const clickedAt = Date.now();
+    let opened: win.WindowInfo | undefined;
+    while (!opened && Date.now() - clickedAt < 20_000) {
+      await sleep(400);
+      opened = this.appWindows().find((info) => !windowsBefore.has(info.hwnd));
+    }
+    if (!opened) {
+      const desktop = this.shots.desktop(`new-window-${index}-missing`);
+      if (desktop) shots.push(desktop);
+      return { window: null, detail: `no window opened within 20 s of clicking New Window; the page saw: ${describeInputs(await inputsSince(from.page, clickedAt), clickedAt)}` };
+    }
+    let page: Page | null = null;
+    while (!page && Date.now() - clickedAt < 40_000) {
+      const target = (await devtoolsTargets()).find((entry) => !pagesBefore.has(entry.id));
+      if (target) page = await connectPage(target).catch(() => null);
+      if (!page) await sleep(500);
+    }
+    if (!page) return { window: null, detail: `a window opened ${((Date.now() - clickedAt) / 1000).toFixed(1)} s after the click, but no page for it within 40 s` };
+    const window: AppWindow = { hwnd: opened.hwnd, title: opened.title, page, scale: await this.scaleOf(opened.hwnd, page) };
+    return { window, detail: `opened at ${fmt(win.visibleRect(opened.hwnd))}` };
+  }
+
+  /** What is wrong with a window: not painted with the app's top bar and status bar, or not all on screen. */
+  async windowProblems(window: AppWindow, name: string, label: string, shots: string[]): Promise<string[]> {
+    const problems: string[] = [];
+    const hwnd = window.hwnd;
+    const paint = await waitForPaint(hwnd, 30_000);
+    // The app opens a window again when its page has not reported in after 15 s.
+    if (!win.isWindow(hwnd)) return [`${name} closed while it was checked: the app opens a window again when it has not drawn in 15 s`];
+    if (!paint.drawn) problems.push(`${name} ${paint.said}`);
+    const layout = await layoutOf(window.page).catch(() => null);
+    if (!layout) problems.push(`${name}'s page does not answer`);
+    else if (!layout.header || !layout.status) problems.push(`${name} draws ${layout.header ? "no status bar" : "no top bar"}`);
+    const fills = await this.contentFills(window, label, shots).catch((error: unknown) => ({ ok: false, detail: error instanceof Error ? error.message : String(error) }));
+    if (!fills.ok) problems.push(`${name}: ${fills.detail}`);
+    const off = offScreen(hwnd);
+    if (off) problems.push(`${name} ${off}`);
+    return problems;
+  }
+
+  /**
+   * New Window twice, the second from the window the first opened: three
+   * full windows, each painted with the app, all of it on screen, and
+   * brought forward by a click on its title bar from behind another window.
+   */
+  async newWindows(): Promise<void> {
+    this.extras = [];
+    await this.step("new-windows", "New Window twice: three windows, each painted, on screen and focusable", async (shots) => {
+      await this.reset(this.main, this.baseRect);
+      const lines: string[] = [];
+      const problems: string[] = [];
+      for (const [index, from] of [[2, this.main], [3, null]] as const) {
+        const source = from ?? this.extras.at(-1) ?? this.main;
+        const opened = await this.openNewWindow(source, index, shots);
+        if (opened.missing) return { status: "skip", detail: `this build has no New Window: ${opened.detail}` };
+        if (!opened.window) {
+          problems.push(`window ${index}: ${opened.detail}`);
+          break;
+        }
+        this.extras.push(opened.window);
+        lines.push(`window ${index} from ${source === this.main ? "the main window" : `window ${index - 1}`}: ${opened.detail}`);
+      }
+      const windows: Array<[string, AppWindow]> = [["main window", this.main], ...this.extras.map((window, index): [string, AppWindow] => [`window ${index + 2}`, window])];
+      for (const [name, window] of windows) problems.push(...await this.windowProblems(window, name, name.replaceAll(" ", "-"), shots));
+      const desktop = this.shots.desktop("three-windows");
+      if (desktop) shots.push(desktop);
+      // Each brought forward from behind another by a click on its title bar.
+      for (const [name, window] of windows) {
+        if (!win.isWindow(window.hwnd)) continue;
+        const other = windows.find(([, entry]) => entry !== window && win.isWindow(entry.hwnd))?.[1];
+        if (other) await this.raise(other);
+        if (win.foregroundWindow() === window.hwnd) {
+          problems.push(`${name} stayed in front when another was brought forward`);
+          continue;
+        }
+        const point = await this.clickTitleBar(window);
+        if (!point) {
+          problems.push(`no spot of ${name}'s title bar is uncovered`);
+          continue;
+        }
+        const front = win.foregroundWindow() === window.hwnd;
+        const focused = await evaluate<boolean>(window.page.cdp, "document.hasFocus()", 3_000).catch(() => false);
+        if (!front || !focused) {
+          const inFront = win.topLevelWindows().find((info) => info.hwnd === win.foregroundWindow());
+          problems.push(`a click on ${name}'s title bar at ${point.x},${point.y} left ${front ? "it in front, its page without focus" : `"${inFront?.title ?? "nothing"}" in front`}`);
+        }
+      }
+      lines.push(`${windows.length} full windows, each brought forward by a click on its title bar`);
+      const ok = this.extras.length === 2 && problems.length === 0;
+      return { status: ok ? "pass" : "fail", detail: [...problems, ...lines].join("; ") };
+    });
+  }
+
+  /**
+   * Quits with the main window's Close button and opens the app again, twice:
+   * every window comes back painted, on screen and where it was, with no
+   * drift from one launch to the next.
+   */
+  async windowsComeBack(): Promise<void> {
+    await this.step("windows-come-back", "Quit and open again, twice: every window comes back where it was", async (shots) => {
+      if (this.extras.length < 2) return { status: "skip", detail: "New Window did not open three windows to bring back" };
+      // One moved by its title bar, so what comes back is where a person left it.
+      const moved = this.extras[1]!;
+      if (await this.clickTitleBar(moved)) {
+        const point = await evaluate<{ x: number; y: number } | null>(moved.page.cdp, "window.__winCheck.titleBarPoint()", 3_000).catch(() => null);
+        if (point) {
+          const from = this.toScreen(moved, point);
+          await win.drag(from, { x: from.x + 160, y: from.y + 70 }, { steps: 12 });
+        }
+      }
+      await sleep(1_500);
+      const first = this.appWindows().map((info) => win.visibleRect(info.hwnd));
+      let before = first;
+      const lines = [`${first.length} windows at ${first.map(fmt).join(", ")}`];
+      const problems: string[] = [];
+      for (let round = 1; round <= 2; round += 1) {
+        // Brought forward first: the windows cascaded over it cover its buttons.
+        if (!await this.clickTitleBar(this.main)) await this.raise(this.main);
+        if (!await this.clickControl(this.main, "close")) return { status: "fail", detail: `${lines.join("; ")}; quit ${round}: no Close button on the main window` };
+        const closing = Date.now();
+        while (this.appWindows().length && Date.now() - closing < 20_000) await sleep(300);
+        const left = this.appWindows().length;
+        this.pastErrors.push(...await this.pageErrors());
+        for (const window of [this.main, this.detached, ...this.extras]) window?.page.cdp.close();
+        this.extras = [];
+        const exited = await Promise.race([this.launcher!.exited.then(() => true), sleep(90_000).then(() => false)]);
+        if (!exited) Bun.spawnSync(["taskkill", "/PID", String(this.launcher!.pid), "/T", "/F"]);
+        if (left || !exited) problems.push(`quit ${round}: ${left ? `${left} window(s) still open 20 s after the main window's Close` : ""}${left && !exited ? ", " : ""}${exited ? "" : "the app still running 90 s later"}`);
+        const saved = await readFile(join(this.profile, "desktop-windows.json"), "utf8").catch(() => "");
+        this.launches += 1;
+        await this.launch(this.profile);
+        const deadline = Date.now() + 60_000;
+        while (this.appWindows().length < before.length && Date.now() < deadline) await sleep(500);
+        const windows = this.appWindows();
+        for (const [index, info] of windows.entries()) {
+          const paint = await waitForPaint(info.hwnd, 30_000);
+          if (!paint.drawn) problems.push(`launch ${round + 1}, window at ${fmt(win.visibleRect(info.hwnd))} ${paint.said}`);
+          const off = offScreen(info.hwnd);
+          if (off) problems.push(`launch ${round + 1}, window ${index + 1} ${off}`);
+        }
+        const after = windows.map((info) => win.visibleRect(info.hwnd));
+        const desktop = this.shots.desktop(`windows-come-back-${round}`);
+        if (desktop) shots.push(desktop);
+        for (const [against, frames] of [["the launch before", before], ["the first launch", first]] as const) {
+          if (round === 1 && against === "the first launch") continue;
+          const paired = pairFrames(frames, after);
+          const worst = Math.max(0, ...paired.shifts);
+          if (paired.gone.length) problems.push(`launch ${round + 1}: no window came back at ${paired.gone.map(fmt).join(", ")} (from ${against})`);
+          if (paired.added.length) problems.push(`launch ${round + 1}: a window at ${paired.added.map(fmt).join(", ")} that was not there in ${against}`);
+          if (worst > 2) problems.push(`launch ${round + 1}: a window ${worst} px from where it was in ${against} (${paired.shifts.join(", ")} px)`);
+        }
+        lines.push(`launch ${round + 1}: ${windows.length} windows at ${after.map(fmt).join(", ")}${saved ? `, from a ${saved.length} byte desktop-windows.json` : ", with no desktop-windows.json"}`);
+        // The main window by its page, for the next quit: every full window is titled Gloom.
+        const mainHwnd = await this.windowOfPage(this.main.page, windows.map((info) => info.hwnd));
+        if (mainHwnd) this.main.hwnd = mainHwnd;
+        else problems.push(`launch ${round + 1}: could not tell which window shows the main page`);
+        before = after;
+      }
+      return { status: problems.length ? "fail" : "pass", detail: [...problems, ...lines].join("; ") };
+    });
+  }
+
   async detachedSteps(): Promise<void> {
     const window = this.detached;
     if (!window?.hwnd) return;
@@ -2173,6 +2484,13 @@ async function run(): Promise<void> {
     await runner.remembersFrame();
     await runner.ensure(runner.main);
     await runner.restartsItself();
+    // Last, on a fresh app: the windows New Window opens come back with every
+    // later launch of its profile, where the steps above expect one window.
+    if (!runner.only || ["new-windows", "windows-come-back"].some((id) => id.includes(runner.only!))) {
+      await runner.start(null);
+      await runner.newWindows();
+      await runner.windowsComeBack();
+    }
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);
     console.error(fatal);

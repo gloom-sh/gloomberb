@@ -7,6 +7,7 @@ import type {
   DesktopWindowInfo,
   DesktopWindowsBridge,
   DesktopWindowTarget,
+  OtherWindowTab,
 } from "../../../../../types/desktop-window";
 import { backendRequest, getElectrobunBackendInitSnapshot, onBackendMessage } from "../../backend-rpc";
 import { createDetachedSnapshotFilter } from "./snapshot";
@@ -17,13 +18,29 @@ function targetWindowId(target: DesktopWindowTarget): string | null {
   return "windowId" in target ? target.windowId : null;
 }
 
-/** The full windows as the backend lists them, kept current by its `desktop.windows` messages. */
-function createDesktopWindowsBridge(windowId: string, initial: DesktopWindowInfo[]): DesktopWindowsBridge {
+/**
+ * The full windows as the backend lists them, and for the main window the
+ * tabs the others hold, kept current by its `desktop.windows` and
+ * `desktop.otherWindowTabs` messages.
+ */
+function createDesktopWindowsBridge(
+  windowId: string,
+  initial: DesktopWindowInfo[],
+  initialTabs: readonly OtherWindowTab[],
+): DesktopWindowsBridge {
   let windows = initial;
+  let otherTabs = initialTabs;
   const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const listener of listeners) listener();
+  };
   onBackendMessage("desktop.windows", (message) => {
     windows = message.windows;
-    for (const listener of listeners) listener();
+    changed();
+  });
+  onBackendMessage("desktop.otherWindowTabs", (message) => {
+    otherTabs = message.tabs as OtherWindowTab[];
+    changed();
   });
   return {
     windowId,
@@ -42,6 +59,7 @@ function createDesktopWindowsBridge(windowId: string, initial: DesktopWindowInfo
     },
     focusPane: (paneId) => backendRequest("desktop.focusPane", { paneId }),
     subscribeFocusRequests: (listener) => onBackendMessage("desktop.focusPane", (message) => listener(message.paneId)),
+    otherWindowTabs: () => otherTabs,
   };
 }
 
@@ -57,7 +75,7 @@ export function createDesktopWindowBridge(kind: "main" | "detached", paneId?: st
     kind,
     paneId,
     primary: windowId === MAIN_WINDOW_ID,
-    windows: windowId ? createDesktopWindowsBridge(windowId, init?.windows ?? []) : undefined,
+    windows: windowId ? createDesktopWindowsBridge(windowId, init?.windows ?? [], init?.otherWindowTabs ?? []) : undefined,
     syncMainState: kind === "main"
       ? async (snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null) => {
         await backendRequest("desktop.syncMainState", { snapshot, baseSeq });

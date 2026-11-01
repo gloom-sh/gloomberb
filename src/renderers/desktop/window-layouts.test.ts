@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig, findPaneInstance, type AppConfig } from "../../types/config";
+import { appReducer, createInitialState, resolveTickerForPane } from "../../core/state/app/state";
+import { insertAtRootEdge } from "../../layout/pane-manager";
+import { createDefaultConfig, findPaneInstance, type AppConfig, type LayoutConfig, type PaneInstanceConfig } from "../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../types/desktop-window";
 import { MAIN_WINDOW_ID } from "./screen-setup";
 import {
@@ -33,6 +35,11 @@ function start(records = [{ id: SECOND, layoutIds: ["tab:monitor"] }]): WindowLa
 
 function tabNames(snapshot: DesktopSharedStateSnapshot | null): string[] {
   return snapshot?.config.layouts.map((entry) => entry.name) ?? [];
+}
+
+/** A layout with one more pane, docked on the right. */
+function withPane(layout: LayoutConfig, instance: PaneInstanceConfig): LayoutConfig {
+  return insertAtRootEdge({ ...layout, instances: [...layout.instances, instance] }, instance.instanceId, "right");
 }
 
 /** What a window does to the projection it holds before sending it back. */
@@ -164,6 +171,32 @@ describe("window layouts", () => {
     expect(second.config.layouts).toHaveLength(1);
     expect(second.config.layout.instances).toEqual([]);
     expect(tabNames(projectWindow(state, MAIN_WINDOW_ID))).toEqual(["Home", "Monitor", "Macro"]);
+  });
+
+  test("a follower of a pane in another window stays linked when its window switches to its tab, its source showing a ticker or not", () => {
+    const config = baseConfig();
+    const monitor = config.layouts.findIndex((entry) => entry.id === "tab:monitor");
+    const macro = config.layouts.findIndex((entry) => entry.id === "tab:macro");
+    let sources = config.layouts[monitor]!.layout;
+    sources = withPane(sources, { instanceId: "source:aapl", paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" } });
+    // A list with nothing selected yet.
+    sources = withPane(sources, { instanceId: "source:none", paneId: "portfolio-list", params: { collectionId: "main" }, binding: { kind: "none" } });
+    let followers = config.layouts[macro]!.layout;
+    followers = withPane(followers, { instanceId: "follower:aapl", paneId: "ticker-detail", binding: { kind: "follow", sourceInstanceId: "source:aapl" } });
+    followers = withPane(followers, { instanceId: "follower:none", paneId: "ticker-detail", binding: { kind: "follow", sourceInstanceId: "source:none" } });
+    config.layouts[monitor] = { ...config.layouts[monitor]!, layout: sources };
+    config.layouts[macro] = { ...config.layouts[macro]!, layout: followers };
+    const state = createWindowLayouts(config, { paneState: {}, focusedPaneId: null, statusBarVisible: true }, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
+
+    // The main window shows Home; its Macro tab's followers are listed all the same.
+    const main = projectWindow(state, MAIN_WINDOW_ID)!;
+    expect(main.linkedTickers).toEqual({ "source:aapl": "AAPL", "source:none": "" });
+    let view = appReducer(createInitialState(main.config), { type: "HYDRATE_DESKTOP_SNAPSHOT", snapshot: main });
+    view = appReducer(view, { type: "SWITCH_LAYOUT", index: view.config.layouts.findIndex((entry) => entry.id === "tab:macro") });
+    expect(findPaneInstance(view.config.layout, "follower:aapl")?.binding).toEqual({ kind: "follow", sourceInstanceId: "source:aapl" });
+    expect(findPaneInstance(view.config.layout, "follower:none")?.binding).toEqual({ kind: "follow", sourceInstanceId: "source:none" });
+    expect(resolveTickerForPane(view, "follower:aapl")).toBe("AAPL");
+    expect(resolveTickerForPane(view, "follower:none")).toBeNull();
   });
 
   test("a pane moves with its state and links into the other window's active tab", () => {

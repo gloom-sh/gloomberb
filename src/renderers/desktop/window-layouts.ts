@@ -13,7 +13,7 @@ import {
   type LayoutConfig,
   type SavedLayout,
 } from "../../types/config";
-import type { DesktopSharedStateSnapshot } from "../../types/desktop-window";
+import type { DesktopSharedStateSnapshot, OtherWindowTab } from "../../types/desktop-window";
 import { MAIN_WINDOW_ID, type ExtraWindowRecord } from "./screen-setup";
 
 /**
@@ -231,23 +231,37 @@ function paneTicker(state: WindowLayouts, paneId: string, seen: Set<string>): st
 }
 
 /**
- * The tickers of panes in other windows that panes on a window's shown tab
- * follow, so a link survives a pane moving to another window. A source on
- * another tab of the same window is not one: links stay within a tab there.
+ * The tickers of panes in other windows that panes on any of a window's tabs
+ * follow, so a link survives a pane moving to another window and the window
+ * switching tabs. A source with no ticker yet is listed too, as "": its
+ * follower stays linked. A source on another tab of the same window is not
+ * one: links stay within a tab there.
  */
-function linkedTickersFor(state: WindowLayouts, windowId: string, layout: LayoutConfig): Record<string, string> {
-  const local = new Set(layout.instances.map((instance) => instance.instanceId));
+function linkedTickersFor(state: WindowLayouts, windowId: string, shownLayout: LayoutConfig): Record<string, string> {
+  const shownId = state.views[windowId]?.activeLayoutId;
   const tickers: Record<string, string> = {};
-  for (const instance of layout.instances) {
-    if (instance.binding?.kind !== "follow") continue;
-    const sourceId = instance.binding.sourceInstanceId;
-    if (local.has(sourceId) || sourceId in tickers) continue;
-    const located = locatePane(state, sourceId);
-    if (!located || located.windowId === windowId) continue;
-    const ticker = paneTicker(state, sourceId, new Set());
-    if (ticker) tickers[sourceId] = ticker;
+  for (const tab of windowTabs(state, windowId)) {
+    const layout = layoutId(tab) === shownId ? shownLayout : tab.layout;
+    const local = new Set(layout.instances.map((instance) => instance.instanceId));
+    for (const instance of layout.instances) {
+      if (instance.binding?.kind !== "follow") continue;
+      const sourceId = instance.binding.sourceInstanceId;
+      if (local.has(sourceId) || sourceId in tickers) continue;
+      const located = locatePane(state, sourceId);
+      if (!located || located.windowId === windowId) continue;
+      tickers[sourceId] = paneTicker(state, sourceId, new Set()) ?? "";
+    }
   }
   return tickers;
+}
+
+/**
+ * The tabs the other windows hold, at their places among all the tabs, for
+ * the main window's cloud sync: it pushes and pulls every window's tabs.
+ */
+export function otherWindowTabs(state: WindowLayouts): OtherWindowTab[] {
+  if (state.windowIds.length <= 1) return [];
+  return state.config.layouts.flatMap((tab, at) => (ownerOf(state, layoutId(tab)) === MAIN_WINDOW_ID ? [] : [{ at, tab }]));
 }
 
 /** The state a window is sent: its own tabs, its active tab as the layout, its own pane state and focus. */

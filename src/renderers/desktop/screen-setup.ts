@@ -103,7 +103,7 @@ export function parseScreenSetup(raw: unknown): ScreenSetup {
       windows: placements,
     };
   }
-  return { version: 1, windows, arrangements: pruneArrangements(arrangements) };
+  return withoutStrayPlacements({ version: 1, windows, arrangements: pruneArrangements(arrangements) });
 }
 
 function pruneArrangements(arrangements: Record<string, ArrangementSetup>): Record<string, ArrangementSetup> {
@@ -184,14 +184,57 @@ export function forgetWindow(setup: ScreenSetup, windowId: string): ScreenSetup 
   };
 }
 
-/** Replaces the extra windows' tab lists, as the workspace has them now. */
+/**
+ * Puts back a window `forgetWindow` took out: its tab list and its
+ * placements, as `before` had them. Placements saved since stay.
+ */
+export function restoreWindow(setup: ScreenSetup, before: ScreenSetup, windowId: string): ScreenSetup {
+  const record = before.windows.find((entry) => entry.id === windowId);
+  if (!record) return setup;
+  const arrangements = { ...setup.arrangements };
+  for (const [key, entry] of Object.entries(before.arrangements)) {
+    const placement = entry.windows[windowId];
+    if (!placement) continue;
+    const current = arrangements[key] ?? { ...entry, windows: {} };
+    if (current.windows[windowId]) continue;
+    arrangements[key] = { ...current, windows: { ...current.windows, [windowId]: placement } };
+  }
+  return {
+    ...setup,
+    windows: setup.windows.some((entry) => entry.id === windowId) ? setup.windows : [...setup.windows, record],
+    arrangements,
+  };
+}
+
+/**
+ * Only the placements of windows that can open: the main window and the
+ * extra windows listed. One whose tabs are gone was not restored, and its
+ * placements would stay for good.
+ */
+function withoutStrayPlacements(setup: ScreenSetup): ScreenSetup {
+  const kept = new Set([MAIN_WINDOW_ID, ...setup.windows.map((entry) => entry.id)]);
+  let changed = false;
+  const arrangements: Record<string, ArrangementSetup> = {};
+  for (const [key, entry] of Object.entries(setup.arrangements)) {
+    const windows = Object.fromEntries(Object.entries(entry.windows).filter(([windowId]) => kept.has(windowId)));
+    const count = Object.keys(windows).length;
+    if (count === Object.keys(entry.windows).length) arrangements[key] = entry;
+    else {
+      changed = true;
+      if (count > 0) arrangements[key] = { ...entry, windows };
+    }
+  }
+  return changed ? { ...setup, arrangements } : setup;
+}
+
+/** Replaces the extra windows' tab lists, as the workspace has them now; a window no longer listed loses its placements. */
 export function withExtraWindows(setup: ScreenSetup, windows: readonly ExtraWindowRecord[]): ScreenSetup {
   const next = windows.slice(0, MAX_EXTRA_WINDOWS).map((entry) => ({
     id: entry.id,
     layoutIds: [...entry.layoutIds],
     ...(entry.activeLayoutId ? { activeLayoutId: entry.activeLayoutId } : {}),
   }));
-  return JSON.stringify(next) === JSON.stringify(setup.windows) ? setup : { ...setup, windows: next };
+  return withoutStrayPlacements(JSON.stringify(next) === JSON.stringify(setup.windows) ? setup : { ...setup, windows: next });
 }
 
 let windowSeq = 0;

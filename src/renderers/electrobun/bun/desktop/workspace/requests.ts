@@ -79,7 +79,7 @@ export async function handleDesktopWorkspaceRequest(
     case "desktop.moveLayoutToWindow": {
       const { layoutId, windowId } = request.payload;
       if (typeof layoutId !== "string") throw new Error(`${request.method} requires layoutId.`);
-      if (windowId === null) return (await backend.openExtraWindow(layoutId)) !== null;
+      if (windowId === null) return (await backend.openExtraWindow({ layoutId })) !== null;
       const snapshot = workspace.moveLayoutToWindow(layoutId, windowId);
       if (!snapshot) return false;
       await backend.commitDesktopSnapshot(snapshot);
@@ -88,9 +88,9 @@ export async function handleDesktopWorkspaceRequest(
     }
     case "desktop.movePaneToWindow": {
       const paneId = requirePaneId(request.payload, request.method);
-      if (workspace.locatePane(paneId) === null) return false;
-      const target = request.payload.windowId ?? await backend.openExtraWindow();
-      if (!target) return false;
+      const target = request.payload.windowId;
+      // A new window opens holding the pane, or not at all.
+      if (target == null) return (await backend.openExtraWindow({ paneId })) !== null;
       const snapshot = workspace.movePaneToWindow(paneId, target);
       if (!snapshot) return false;
       await backend.commitDesktopSnapshot(snapshot);

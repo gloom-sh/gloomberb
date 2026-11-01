@@ -5,6 +5,7 @@ import type {
   DesktopSharedStateSnapshot,
   DesktopThemePreviewState,
   DesktopWindowInfo,
+  OtherWindowTab,
 } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig, UpdateChannel } from "../../../types/config";
@@ -38,6 +39,8 @@ export interface ElectrobunBackendInit {
   windowId?: string;
   /** Every full window, for moving a tab or pane between them. */
   windows?: DesktopWindowInfo[];
+  /** The main window's: the tabs the other windows hold, for cloud sync. */
+  otherWindowTabs?: OtherWindowTab[];
   /** What the launch's plugin seed could not install, for the main window to say once. */
   pluginSeedNotice?: { body: string; type: "error" | "info" };
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
@@ -355,6 +358,11 @@ interface DesktopWindowsMessage {
   windows: DesktopWindowInfo[];
 }
 
+interface DesktopOtherWindowTabsMessage {
+  /** `OtherWindowTab[]`, encoded as the shared state is. */
+  tabs: unknown;
+}
+
 interface DesktopFocusPaneMessage {
   paneId: string;
 }
@@ -402,6 +410,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.themePreview": DesktopThemePreviewMessage;
       "desktop.deepLink": DesktopDeepLinkMessage;
       "desktop.windows": DesktopWindowsMessage;
+      "desktop.otherWindowTabs": DesktopOtherWindowTabsMessage;
       "desktop.focusPane": DesktopFocusPaneMessage;
       "desktop.windowVisibility": DesktopWindowVisibilityMessage;
       "plugins.updated": PluginsUpdatedMessage;

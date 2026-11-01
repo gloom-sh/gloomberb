@@ -53,6 +53,11 @@ export interface DesktopWindowHost {
   openWindow(spec: OpenWindowSpec): void;
   closeWindow(id: string): void;
   hasWindow(id: string): boolean;
+  /**
+   * Where a window is and how it is shown. While its `close` event is being
+   * delivered, a window closed from outside still answers, with what was
+   * last known of it, so where it was last moved can be saved.
+   */
   getWindowState(id: string): NativeWindowState | null;
   setFrame(id: string, frame: Rect): void;
   setMaximized(id: string, maximized: boolean): void;
