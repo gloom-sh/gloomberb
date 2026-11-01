@@ -1,4 +1,5 @@
 import { errorMessage } from "../utils/errors";
+import { logFailure } from "../utils/log-failure";
 
 type ConnectionHealthKind = "asset-data" | "news" | "api" | "websocket" | "capability";
 export type ConnectionHealthStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
@@ -66,6 +67,7 @@ export const GLOOM_CLOUD_FRED_CONNECTION_ID = "gloom-cloud-fred";
 
 const MAX_RECENT_REQUESTS = 20;
 const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
+const logRecoveryListenerFailure = logFailure("core.connection-health", "A recovery listener failed");
 
 function socketStatus(state: ConnectionSocketState): ConnectionHealthStatus {
   if (state === "open") return "connected";
@@ -175,8 +177,22 @@ export class ConnectionHealthRegistry {
     if (!source || (source.unreachableSince === null) === reachable) return;
     this.sources.set(sourceId, { ...source, unreachableSince: reachable ? null : this.now() });
     this.emit();
-    if (!reachable) return;
-    for (const listener of [...this.recoveryListeners]) listener(sourceId);
+    if (reachable) this.emitRecovery(sourceId);
+  }
+
+  /**
+   * Tells recovery listeners the source answers again. They run inside the
+   * request that brought the answer: one that throws must fail neither that
+   * request nor the listeners after it.
+   */
+  private emitRecovery(sourceId: string): void {
+    for (const listener of [...this.recoveryListeners]) {
+      try {
+        listener(sourceId);
+      } catch (error) {
+        logRecoveryListenerFailure(error);
+      }
+    }
   }
 
   /** Since when the source's service gave no answer at all, or null while it answers (`reportReachability`). */
@@ -241,7 +257,7 @@ export class ConnectionHealthRegistry {
     for (const source of next) {
       if (source.unreachableSince != null) continue;
       if (previous.find((entry) => entry.id === source.id)?.unreachableSince == null) continue;
-      for (const listener of [...this.recoveryListeners]) listener(source.id);
+      this.emitRecovery(source.id);
     }
   }
 

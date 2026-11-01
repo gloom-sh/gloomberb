@@ -142,6 +142,22 @@ describe("ConnectionHealthRegistry", () => {
     expect(recovered).toEqual([GLOOM_CLOUD_HTTP_CONNECTION_ID]);
   });
 
+  // Recovery listeners run inside the request that got the answer: one that
+  // threw failed that request and kept the listeners after it from hearing.
+  test("a recovery listener that throws fails neither the report nor the listeners after it", () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const recovered: string[] = [];
+    health.subscribeRecovery(() => {
+      throw new Error("listener broke");
+    });
+    health.subscribeRecovery((sourceId) => recovered.push(sourceId));
+
+    health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    expect(() => health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true)).not.toThrow();
+    expect(recovered).toEqual([GLOOM_CLOUD_HTTP_CONNECTION_ID]);
+  });
+
   test("overlays external sources by canonical id without duplicate rows", () => {
     const renderer = new ConnectionHealthRegistry();
     renderer.registerSource({ id: "gloom-cloud-http", name: "Local HTTP", kind: "api" });
