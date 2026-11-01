@@ -2021,7 +2021,16 @@ class Run {
       await sleep(4_000);
       const desktop = this.shots.desktop("task-manager");
       if (desktop) shots.push(desktop);
+      // A slow machine can still be filling in names at first.
+      await sleep(10_000);
+      const later = this.shots.desktop("task-manager-later");
+      if (later) shots.push(later);
       Bun.spawnSync(["taskkill", "/IM", "Taskmgr.exe", "/F"]);
+      // What Windows gives Task Manager for each running program: its description.
+      const running = Bun.spawnSync([
+        "powershell", "-NoProfile", "-Command",
+        `Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith('${bin.replaceAll("'", "''")}\\', [StringComparison]::OrdinalIgnoreCase) } | Group-Object { $_.ProcessName + ' as ' + $_.Description } | ForEach-Object { '{0} x{1}' -f $_.Name, $_.Count }`,
+      ]).stdout.toString().trim().split(/\r?\n/).filter(Boolean);
       await sleep(500);
       const named = (program: (typeof programs)[number]) => program.description === "Gloom" && program.product === "Gloom" && program.company === "Gloom";
       const ours = programs.filter((program) => program.file === "launcher.exe" || program.file === "bun.exe" || program.file.startsWith("bun Helper"));
@@ -2029,7 +2038,7 @@ class Run {
       const describe = (program: (typeof programs)[number]) => `${program.file}: ${[program.description, program.product, program.company, program.version].map((value) => value || "none").join(", ")}`;
       return {
         status: ours.length >= 3 && unnamed.length === 0 ? "pass" : "fail",
-        detail: `${unnamed.length ? `${unnamed.length} of ${ours.length} without Gloom's name; ` : ""}${programs.map(describe).join("; ")}`,
+        detail: `${unnamed.length ? `${unnamed.length} of ${ours.length} without Gloom's name; ` : ""}${programs.map(describe).join("; ")}; running: ${running.join("; ") || "none"}`,
       };
     });
   }
