@@ -1,6 +1,6 @@
 # World map
 
-`MAP` is one map for anything with a place: trading venues, country names, and layers for ships, ports, energy and airports, each with a table of what it holds.
+`MAP` is one map for anything with a place: trading venues, country names, and layers for ships, ports, energy, airports and AI buildout facilities, each with a table of what it holds.
 
 | Type | Opens |
 |---|---|
@@ -14,6 +14,8 @@
 ## Layers
 
 Pick layers in the pane settings, grouped as ships, air, energy, ports and infrastructure, each with its cadence and status. Up to four layers show at once, two of them live. A layer added to Gloom Cloud appears in the picker without an app update. A plain `MAP` follows Gloom Cloud's default layers until you change its layers or venues; from then on it keeps what you chose.
+
+**Facilities** are TheBuildout's located data centers, fabs, power plants and the plants around them (`MAP facilities`). A map with facilities on can be linked to `TBO` or any list: it then shows the selected company's sites, owned or not, and the bar above the table switches to every site owned by a company in the selected theme. The map frames the sites each time the company or theme changes. What a free account sees of a theme follows TheBuildout's own free and Pro split.
 
 The map's table lists one layer; the bar above it switches layers and `/` searches. `Enter` opens an entity: its figures, linked tickers, chart series and, for a ship, its recent track. `d` opens the linked company's description, `g` charts the entity's series.
 

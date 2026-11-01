@@ -1,6 +1,6 @@
 import type { DataTableColumn } from "../../../../components";
 
-export type BuildoutTabId = "companies" | "sites" | "intel";
+export type BuildoutTabId = "themes" | "companies" | "sites" | "intel";
 export type BuildoutAccess = "free" | "pro";
 
 export type RawObject = Record<string, unknown>;
@@ -40,6 +40,8 @@ export type BuildoutList = {
   avgSectorGrowth?: string | null;
   avgReturn1y?: string | null;
   avgMargin?: string | null;
+  /** Companies the theme ranks as its leaders. */
+  leaders?: number | null;
 };
 
 export type BuildoutCompany = {
@@ -135,6 +137,10 @@ export type BuildoutCompany = {
   logoUrl?: string | null;
   researchReport?: string | null;
   listReason?: string | null;
+  /** Its part in the open theme: core vendor, integrator... */
+  listRole?: string | null;
+  /** How much it matters to the open theme: leader, major, notable, watchlist. */
+  listTier?: string | null;
   intelligence?: Array<{
     publishedAt?: string | null;
     headline?: string | null;
@@ -267,7 +273,8 @@ export type BuildoutLoadState =
     access: BuildoutAccess;
     token: string | null;
     lists: BuildoutList[];
-    companies: BuildoutPagedState<BuildoutCompany> & { blurredCompanyCount: number };
+    /** The companies of one list: `listSlug`, or none yet. */
+    companies: BuildoutPagedState<BuildoutCompany> & { blurredCompanyCount: number; listSlug: string | null };
     sites: BuildoutPagedState<BuildoutSite>;
     intel: BuildoutPagedState<BuildoutUpdate>;
     loadedAt: number;
@@ -299,6 +306,8 @@ export type BuildoutColumnId =
   | "dividendYield"
   | "return1y"
   | "employees"
+  | "listRole"
+  | "listTier"
   | "site"
   | "type"
   | "owner"

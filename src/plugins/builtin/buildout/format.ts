@@ -127,6 +127,15 @@ export function criticalityColor(value: string | null | undefined) {
   }
 }
 
+/** A theme's tiers, most important first. */
+export const LIST_TIER_ORDER: readonly string[] = ["leader", "major", "notable", "watchlist"];
+
+/** `core_vendor` reads "Core vendor". */
+export function listWord(value: string | null | undefined): string | null {
+  const words = value?.trim().replace(/[_-]+/g, " ").toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : null;
+}
+
 export function tickerSymbol(value: string | null | undefined): string | null {
   const symbol = value?.trim();
   return symbol ? symbol.toUpperCase() : null;

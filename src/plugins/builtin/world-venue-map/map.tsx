@@ -43,6 +43,8 @@ export interface WorldMapFocus {
   longitude: number;
   latitude: number;
   zoom?: number;
+  /** Exactly at `zoom`, out as well as in: a frame around a set of places. */
+  exact?: boolean;
 }
 
 interface WorldVenueMapProps {
@@ -690,8 +692,8 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     if (!focus || !sized || appliedFocusRef.current === focus.key) return;
     appliedFocusRef.current = focus.key;
     setViewport((current) => {
-      const zoom = Math.max(current.zoom, focus.zoom ?? 1);
-      if (zoom <= 1) return current;
+      const zoom = focus.exact ? Math.max(1, focus.zoom ?? 1) : Math.max(current.zoom, focus.zoom ?? 1);
+      if (zoom <= 1 && !focus.exact) return current;
       return clampWorldMapViewport({ zoom, centerLongitude: focus.longitude, centerLatitude: focus.latitude }, props.width, plotHeight, 1, maxZoom);
     });
   }, [focusKey, sized]);

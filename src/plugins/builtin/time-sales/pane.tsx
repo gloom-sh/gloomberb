@@ -100,8 +100,10 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   }, [data]);
   const tradeDecision = useRef<TapeDigits | null>(null);
   const quoteDecision = useRef<TapeDigits | null>(null);
+  // Decimals come from the prints alone: a session extreme can sit a fraction of a cent off a tick (NVDA's 200.9199 low)
+  // and must not turn every trade into four decimals. The session range reads at the prints' decimals instead.
   const tradeDigits = useMemo(() => (tradeDecision.current = stickyTapePriceDigits(tradeDecision.current, symbol,
-    [...(data?.trades.map((trade) => trade.price) ?? []), data?.session.low ?? null, data?.session.high ?? null]))?.digits ?? 2, [data, symbol]);
+    data?.trades.map((trade) => trade.price) ?? []))?.digits ?? 2, [data, symbol]);
   const quoteDigits = useMemo(() => (quoteDecision.current = stickyTapePriceDigits(quoteDecision.current, symbol,
     data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []))?.digits ?? 2, [data, symbol]);
   // The session range stands beside the tab's own prices, so it reads at their decimals: the quote tab's bid and ask, not the trades'.

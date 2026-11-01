@@ -142,6 +142,7 @@ export const MAP_PRESET_OPTIONS = [
   { value: "ports", label: "Ports" },
   { value: "energy", label: "Pipelines, fields and terminals" },
   { value: "air", label: "Airports and flights" },
+  { value: "facilities", label: "AI buildout facilities" },
 ] as const;
 
 function shortDate(iso: string): string | null {
@@ -327,6 +328,22 @@ export function geoViewForViewport(
 export function entityOpenZoom(layer: Pick<GeoLayerInfo, "geometry" | "minZoom">): number {
   const base = layer.geometry === "point" ? 16 : 4;
   return layer.minZoom === undefined ? base : Math.max(base, 2 ** layer.minZoom);
+}
+
+/** Below this span a frame is a region, not a street: one facility shows its surroundings. */
+const FRAME_MIN_SPAN_DEGREES = 6;
+const FRAME_MAX_ZOOM = 8;
+
+/** The centre and zoom that frame a set of places (a linked company's facilities); null without one. */
+export function framePlaces(places: readonly { lon: number; lat: number }[]): { longitude: number; latitude: number; zoom: number } | null {
+  const located = places.filter((place) => Number.isFinite(place.lon) && Number.isFinite(place.lat));
+  if (!located.length) return null;
+  const lons = located.map((place) => place.lon);
+  const lats = located.map((place) => place.lat);
+  const west = Math.min(...lons), east = Math.max(...lons), south = Math.min(...lats), north = Math.max(...lats);
+  // The map is about twice as wide as tall, so latitude counts double; a margin keeps edge markers inside.
+  const span = Math.max(east - west, (north - south) * 2, FRAME_MIN_SPAN_DEGREES) * 1.5;
+  return { longitude: (west + east) / 2, latitude: (south + north) / 2, zoom: Math.min(FRAME_MAX_ZOOM, Math.max(1, 360 / span)) };
 }
 
 /**
