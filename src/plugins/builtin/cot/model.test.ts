@@ -207,6 +207,10 @@ test("commodity names open their market as FUT finds them, before a six-letter w
   expect(cotContractCode("pork bellies")).toBeNull();
   expect(cotUnknownMarketMessage("pork bellies")).toContain("CC cocoa, KC coffee, SB sugar");
   expect(cotUnknownMarketMessage("pork bellies")).toContain("HG copper");
+  // A currency's ISO code opens its CME future, as its name does (`fn COT JPY` said "Unknown market"), and the hint names one.
+  expect(["JPY", "jpy", "yen", "CHF", "EUR", "GBP", "CAD", "AUD", "MXN"].map(cotContractCode))
+    .toEqual(["097741", "097741", "097741", "092741", "099741", "096742", "090741", "232741", "095741"]);
+  expect(cotUnknownMarketMessage("XYZ")).toContain("ZN 10-year note, JPY yen, or a CFTC market code");
   const template = cotModule.paneTemplates![0]!;
   expect(await template.createInstance!({ activeTicker: null } as never, { arg: "cocoa" } as never)).toMatchObject({ title: "COT CC", params: { code: "073732" } });
 });

@@ -22,6 +22,21 @@ function futuresSeriesUnit(contract: FuturesContract): string {
   return "USD";
 }
 
+/**
+ * Words a contract is looked for by that its name does not hold: a currency
+ * future by its currency's code and name (`yen`, `JPY` for 6J), and the safe
+ * havens, gold, the yen and the franc.
+ */
+const CONTRACT_TAGS: Readonly<Record<string, readonly string[]>> = {
+  GC: ["safe haven"],
+  "6E": ["EUR", "euro"],
+  "6J": ["JPY", "yen", "safe haven"],
+  "6B": ["GBP", "pound", "sterling"],
+  "6A": ["AUD", "aussie"],
+  "6C": ["CAD", "loonie"],
+  "6S": ["CHF", "franc", "swiss franc", "safe haven"],
+};
+
 /** Each continuous front-month contract on the futures board, as `FUT:ES`. */
 const FRONT_MONTH_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((contract) => ({
   id: `fut:${contract.code}`,
@@ -29,7 +44,7 @@ const FRONT_MONTH_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((c
   unit: futuresSeriesUnit(contract),
   frequency: "daily",
   group: "Futures",
-  tags: [contract.code, FUTURES_SECTOR_LABELS[contract.sector], "futures", "front month"],
+  tags: [contract.code, FUTURES_SECTOR_LABELS[contract.sector], "futures", "front month", ...CONTRACT_TAGS[contract.code] ?? []],
   expression: `FUT:${contract.code}`,
 }));
 

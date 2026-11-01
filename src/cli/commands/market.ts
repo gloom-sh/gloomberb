@@ -251,11 +251,13 @@ import {
   meantQuestion,
   movedSymbolLine,
   ListingArgError,
+  isNoProviderError,
   requireCliListing,
   resolveCliListing,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
+import { currencyNameMiss, currencyNameStop } from "../currency-name-hint";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
@@ -1015,6 +1017,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   const listed = file != null || args.includes("-");
   const entries = normalizeSymbols(args);
   if (entries.length === 0 && !listed) ctx.fail(usage);
+  // A currency's name in words (`quote japanese yen`) is its pair, not a symbol a word.
+  const currency = exchange || listed ? null : currencyNameStop(args, commandName);
+  if (currency) ctx.fail(currency.message, currency.details);
   // One quoted argument with spaces is a company's name, a pasted line of tickers, or a phrase to search for.
   const phrase = exchange || listed ? null : quotedPhrase(args);
 
@@ -1618,13 +1623,21 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
+  // `history swiss franc` is the franc's pair, not SWISS (a Copenhagen listing) and FRANC.
+  const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
+  if (currency) ctx.fail(currency.message, currency.details);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
     return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
   }
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, requestedExchange, market, ctx);
-    const history = await loadListingHistory(listing, market, ctx, ask, { lookups: true });
+    const history = await loadListingHistory(listing, market, ctx, ask, { lookups: true }).catch((error: unknown) => {
+      // A word no source serves that names a currency (`history yen`) says which pair to ask for.
+      const currency = !requestedExchange && isNoProviderError(error) ? currencyNameMiss(raw, "history") : null;
+      if (currency) ctx.fail(currency.message, currency.details);
+      throw error;
+    });
     const { identity, unit, data, interval, intraday, volume, freshness, notes } = history;
     const price = historyPrice(history.decimals);
     // A bar without volume in a history that reports it prints as missing.

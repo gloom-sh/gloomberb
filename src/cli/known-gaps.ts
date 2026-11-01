@@ -5,6 +5,9 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
+import { namedCurrencyPair } from "./currency-name-hint";
+import { dollarPairListing } from "../utils/currency-pair";
+import { currencyCodeTyped } from "../utils/currency-names";
 
 /**
  * What a listing is to a sub-minute ask: a US listing, which has a tape; one
@@ -347,9 +350,21 @@ const COMMAND_POINTERS: ReadonlyArray<{
   },
 ];
 
-/** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */
+/** The command for a query that names a setting ("light theme"), a portfolio report ("drip") or a currency ("yen"), else null. */
 export function commandPointer(query: string): string | null {
-  return findCommandPointer(query)?.line ?? null;
+  return findCommandPointer(query)?.line ?? currencyPointer(query);
+}
+
+/**
+ * `fx` for a query that is one currency, by its code (`jpy`, `CHF`) or its
+ * name (`yen`, `swiss franc`): its rate and its pair. A code that is also an
+ * English word counts only in capitals (`TRY`, not "try"). Null for the
+ * dollar, which has no pair of its own, and for anything else.
+ */
+function currencyPointer(query: string): string | null {
+  const code = currencyCodeTyped(query) ?? namedCurrencyPair(query)?.code;
+  if (!code || code === "USD") return null;
+  return `The ${code} rate: gloom fx ${code}; its pair's history: gloom history ${dollarPairListing(code)}`;
 }
 
 /**

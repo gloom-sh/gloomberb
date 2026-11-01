@@ -488,6 +488,34 @@ test("history --wide sets several pairs side by side: a row a date, a close colu
   expect(result.failure).toBeUndefined();
 });
 
+test("a currency's name is its pair: history swiss franc and history yen name fx and the pair, and one word is a ticker first", async () => {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, name: "The RealReal, Inc.", listingExchangeName: "NASDAQ" });
+    },
+    getPriceHistoryWithMetadata: async (symbol) => {
+      if (symbol === "YEN") throw new Error("No history provider available for YEN");
+      return { resolution: "1d", points: dailyBar(11.96) };
+    },
+  });
+  const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider });
+  cli.context.fail = fail;
+  const failure = (args: string[]) => history.execute(args, cli.context).then(() => null, (error: unknown) => error);
+  // Before: SWISS read as a Copenhagen listing and FRANC as "Not a ticker".
+  expect(await failure(["swiss", "franc"])).toMatchObject({
+    message: "swiss franc is a currency (CHF), not a ticker.", details: "Its rate: gloom fx CHF\nIts pair: gloom history USDCHF=X",
+  });
+  expect(asked).toEqual([]);
+  expect(await failure(["yen"])).toMatchObject({
+    message: "yen is a currency (JPY), not a ticker.", details: "Its rate: gloom fx JPY\nIts pair: gloom history USDJPY=X",
+  });
+  // REAL is The RealReal before it is the Brazilian real.
+  await history.execute(["real"], cli.context);
+  expect(cli.printed.at(-1)!.result.data).toHaveLength(1);
+});
+
 test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
   const { result, csv } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);
   expect(process.exitCode).toBe(1);

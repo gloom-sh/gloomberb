@@ -139,6 +139,14 @@ export type CotScope = typeof COT_SCOPES[number]["value"];
 export function cotScope(value: unknown): CotScope { return value === "all" ? "all" : "major"; }
 
 const rootAlias = (input: string) => ROOTS[input === "VIX" ? "VX" : input]?.code ?? null;
+/** The CME currency futures by their currency's ISO code, as a reader of FX types them: JPY is 6J, the yen. */
+const CURRENCY_FUTURES: Readonly<Record<string, string>> = {
+  EUR: "6E=F", JPY: "6J=F", GBP: "6B=F", CAD: "6C=F", AUD: "6A=F", CHF: "6S=F", MXN: "6M=F",
+};
+const currencyFuture = (input: string) => {
+  const symbol = CURRENCY_FUTURES[input];
+  return symbol ? Object.entries(PRICE_OVERLAYS).find(([, row]) => row.priceSymbol === symbol)?.[0] ?? null : null;
+};
 const marketCode = (input: string) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null;
 /**
  * The FUT board row a typed argument names, by code, symbol or commodity name
@@ -154,7 +162,8 @@ function typedMarket(value: string): { board: FuturesContract } | { root: string
 /**
  * A CFTC code, root or commodity name typed as an argument or stored in a
  * pane: every alias, crypto included, every FUT board root the CFTC reports,
- * and the names FUT finds them by (cocoa, coffee, sugar, gold, crude). A typed
+ * the names FUT finds them by (cocoa, coffee, sugar, gold, crude), and a
+ * currency's ISO code for its CME future (JPY, CHF, EUR). A typed
  * root is always the future, so ZM here is soybean meal, never Zoom. A CFTC
  * code is tried after the names, as one could be spelled with six letters
  * (COFFEE, COPPER).
@@ -162,7 +171,7 @@ function typedMarket(value: string): { board: FuturesContract } | { root: string
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
-  const alias = rootAlias(input);
+  const alias = rootAlias(input) ?? currencyFuture(input);
   if (alias) return alias;
   const market = typedMarket(value);
   if (market && "root" in market) return ROOTS[market.root]!.code;
@@ -199,7 +208,7 @@ export function cotProxyNote(proxy: { subject: string; root: string }): string {
 /** The markets the unknown-market hint names, by the code and the word a newcomer knows them by. */
 const SUGGESTED_MARKETS: ReadonlyArray<readonly [string, string]> = [
   ["ES", "S&P 500"], ["CL", "crude oil"], ["NG", "natural gas"], ["GC", "gold"], ["HG", "copper"],
-  ["ZC", "corn"], ["CC", "cocoa"], ["KC", "coffee"], ["SB", "sugar"], ["ZN", "10-year note"],
+  ["ZC", "corn"], ["CC", "cocoa"], ["KC", "coffee"], ["SB", "sugar"], ["ZN", "10-year note"], ["JPY", "yen"],
 ];
 /**
  * What a market `cotContractCode` does not know is told: a FUT board row the
