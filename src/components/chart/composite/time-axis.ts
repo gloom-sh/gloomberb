@@ -492,6 +492,17 @@ function addCandidate(
   if (!duplicate) candidates.push(candidate);
 }
 
+/**
+ * Blank cells a regular tick keeps from the start and end labels: half the
+ * room between two ticks, from 3 to 5 cells. Those two are the longest labels
+ * on the axis (a date with its year), and a tick closer than that reads as a
+ * part of one ("Oct  Oct 29 2026") instead of a mark of its own.
+ */
+function endpointLabelGap(interval: CompositeTimeAxisInterval, span: number, axisWidth: number): number {
+  const tickRoom = (axisWidth * interval.approximateMs) / span;
+  return clamp(Math.round(tickRoom / 2), 3, 5);
+}
+
 function layoutTimeAxis({
   startTime,
   endTime,
@@ -641,6 +652,9 @@ function layoutTimeAxis({
   const minimumGap = interval.unit === "month" || interval.unit === "year" ? 2 : 1;
   let previousTimestamp = firstTimestamp;
   let previousEnd = startLabel.length - 1;
+  const endpointGap = endpointLabelGap(interval, span, axisWidth);
+  // The first tick follows the start label, the rest follow a tick.
+  let previousGap = endpointGap;
   for (const candidate of candidates.filter((entry) => !entry.boundary)) {
     const label = formatInteriorLabel(candidate.timestamp, previousTimestamp, interval, clock);
     // A year boundary inside the final year would repeat the right endpoint's year.
@@ -648,8 +662,8 @@ function layoutTimeAxis({
     const center = candidate.ratio * Math.max(axisWidth - 1, 0);
     const start = resolveLabelStart(center, label, axisWidth);
     const end = start + label.length - 1;
-    if (start <= previousEnd + minimumGap) continue;
-    if (end >= endStart - minimumGap) continue;
+    if (start <= previousEnd + previousGap) continue;
+    if (end >= endStart - endpointGap) continue;
     writeLabel(axis, start, label);
     placed.push({
       timestamp: candidate.timestamp,
@@ -660,6 +674,7 @@ function layoutTimeAxis({
     });
     previousTimestamp = candidate.timestamp;
     previousEnd = end;
+    previousGap = minimumGap;
   }
 
   writeLabel(axis, endStart, endLabel);

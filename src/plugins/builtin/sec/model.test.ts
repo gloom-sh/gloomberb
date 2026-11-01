@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { COMPANY_FORM_GROUPS, filingTone, filterFilingsByGroup, FUND_FORM_GROUPS, getFilingColumnText } from "./model";
-import { rowSummary, rowSummaryTarget } from "./row-summaries";
+import { ownerNames, rowSummary, rowSummaryTarget } from "./row-summaries";
 
 const filing = (form: string, extra: Partial<SecFilingItem> = {}): SecFilingItem => ({
   accessionNumber: `0000320193-26-${form}`,
@@ -80,4 +80,30 @@ test("a 144 and a 24F-2NT are read from their XML under their own key, never the
   const form4 = filing("4");
   expect(rowSummaryTarget(form4)).toBe(form4);
   expect(rowSummaryTarget(filing("10-K"))).toBeNull();
+});
+
+const ownerXml = (name: string, body = "") => `<ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerName>${name}</rptOwnerName></reportingOwnerId></reportingOwner>${body}</ownershipDocument>`;
+const SALE = `<nonDerivativeTable><nonDerivativeTransaction><securityTitle><value>Common Stock</value></securityTitle>
+<transactionDate><value>2026-10-27</value></transactionDate><transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+<transactionAmounts><transactionShares><value>2400</value></transactionShares><transactionPricePerShare><value>343.36</value></transactionPricePerShare>
+<transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode></transactionAmounts></nonDerivativeTransaction></nonDerivativeTable>`;
+const noticeOf = (name: string) => `<edgarSubmission><issuerInfo><nameOfPersonForWhoseAccountTheSecuritiesAreToBeSold>${name}</nameOfPersonForWhoseAccountTheSecuritiesAreToBeSold></issuerInfo></edgarSubmission>`;
+
+test("an insider form's row names its filer as the Insider table does, whichever way the filer wrote it", () => {
+  // Forms 3 and 4 file the owner as "LAST FIRST MIDDLE".
+  expect(rowSummary("4", ownerXml("Newstead Jennifer", SALE))?.title).toStartWith("Jennifer Newstead: SELL");
+  expect(rowSummary("3", ownerXml("COOK TIMOTHY D"))?.title).toBe("Timothy D. Cook: initial holdings");
+  // A Form 144's seller is typed freely: first-name-first, or in filing order behind a trailing initial.
+  expect(rowSummary("144", noticeOf("KEVAN PAREKH"))?.title).toStartWith("Kevan Parekh: proposed sale");
+  expect(rowSummary("144", noticeOf("COOK TIMOTHY D"))?.title).toStartWith("Timothy D. Cook: proposed sale");
+  expect(rowSummary("144", noticeOf("Cook, Timothy"))?.title).toStartWith("Timothy Cook: proposed sale");
+  expect(rowSummary("144", noticeOf("John Ternus"))?.title).toStartWith("John Ternus: proposed sale");
+  // Two capitalised words read either way round; the owner of an insider form beside it settles which.
+  const known = ownerNames("4", ownerXml("O'BRIEN DEIRDRE", SALE));
+  expect(known).toEqual(["O'BRIEN DEIRDRE"]);
+  expect(rowSummary("144", noticeOf("O'BRIEN DEIRDRE"))?.title).toStartWith("O'Brien Deirdre: proposed sale");
+  expect(rowSummary("144", noticeOf("O'BRIEN DEIRDRE"), known)?.title).toStartWith("Deirdre O'Brien: proposed sale");
+  // A fund or company keeps the name it filed; a 144 is no source of owners.
+  expect(rowSummary("144", noticeOf("THE VANGUARD GROUP, INC."))?.title).toStartWith("THE VANGUARD GROUP, INC.: proposed sale");
+  expect(ownerNames("144", ownerXml("COOK TIMOTHY D"))).toEqual([]);
 });
