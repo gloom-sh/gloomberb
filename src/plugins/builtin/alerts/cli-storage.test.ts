@@ -67,6 +67,19 @@ test("CLI list exposes the read failure in text and JSON while healthy event rul
   }
 });
 
+test("alerts remove deletes as delete does, and without an ID names the form to type", async () => {
+  const { config, dataDir, provider } = await fixture("[]");
+  await alertsCliCommand.execute(["add", "AAPL", "above", "200"], createTestCliContext({ config, dataProvider: provider }).context);
+  const saved = await loadConfig(dataDir);
+  const [price] = JSON.parse(saved.pluginConfig.alerts!.alerts as string);
+  const remove = createTestCliContext({ config: saved, dataProvider: provider });
+  // Before: the bare usage, list|add|delete|rearm, whatever followed.
+  await expect(alertsCliCommand.execute(["remove"], remove.context)).rejects.toThrow("Usage: gloom alerts delete <id>");
+  await alertsCliCommand.execute(["remove", price.id], remove.context);
+  expect(remove.printed[0]!.result.data).toMatchObject({ changed: true, id: price.id });
+  expect((await loadConfig(dataDir)).pluginConfig.alerts!.alerts).toBe("[]");
+});
+
 test("corrupt metric storage leaves price additions and deletions usable and is kept byte for byte", async () => {
   const { config, dataDir, provider } = await fixture("[]");
   const broken = "[{broken";

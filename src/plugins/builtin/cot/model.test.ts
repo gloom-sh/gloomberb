@@ -5,7 +5,7 @@ import { fetchCotBoard, loadCotDetail, loadCotPriceUnit, validateCotContract } f
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import {
   COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotContractUnitText, cotFrontPriceUnit, cotLegendValue,
-  cotNetPoints, cotPriceMapping, cotProxyFor, cotProxyNote, cotScope, cotUnknownMarketMessage,
+  cotNetPoints, cotPriceMapping, cotProxyFor, cotProxyNote, cotReleaseTime, cotScope, cotUnknownMarketMessage,
 } from "./model";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { cotModule } from "./index";
@@ -239,6 +239,20 @@ test("a market's report lists its weeks newest first, the newest n with --limit 
     expect(weeks!.title, flags.join(" ")).toBe("Weekly positions  ·  newest 2 of 3");
     expect(weeks!.rows.map((row) => row.reportDate), flags.join(" ")).toEqual(["2026-09-15", "2026-09-08"]);
   }
+});
+
+test("a report's publication time is the CFTC's release, 3:30 p.m. Eastern on its Friday or the day a holiday moved it to", async () => {
+  // Eastern daylight time, then standard time, then two releases a federal holiday put off to the Monday.
+  expect(["2026-10-27", "2026-11-03", "2026-11-10", "2025-12-30"].map(cotReleaseTime)).toEqual([
+    "2026-10-30T19:30:00.000Z", "2026-11-06T20:30:00.000Z", "2026-11-16T20:30:00.000Z", "2026-01-05T20:30:00.000Z",
+  ]);
+  // A release outside the published schedule, or a date that is no Tuesday, is not guessed.
+  expect(["2026-12-29", "2025-06-03", "2026-10-28", null].map(cotReleaseTime)).toEqual([null, null, null, null]);
+  // The export's footer gives it, where it said "Publication time: not published".
+  const load = (asOf: string) => cotHeadless.load({ argument: "CL", symbols: [], options: {} } as never,
+    { apiClient: { getCloudCotContract: async () => ({ ...payload(), asOf }) } } as never);
+  expect(await load("2026-10-27")).toMatchObject({ freshness: { publishedAt: "2026-10-30T19:30:00.000Z" } });
+  expect(await load("2026-12-29")).not.toHaveProperty("freshness");
 });
 
 test("--report tff and --positions combined read the TFF board and contracts with options, and refuse a reply for the other scope", async () => {

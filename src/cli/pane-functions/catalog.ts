@@ -647,6 +647,9 @@ export function limitationSentence(text: string): string {
   return !trimmed || /[.!?]["')\]]*$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
+/** A data requirement that is an account: a sign-in (free or verified) or Gloom Pro, as `catalog` names under Requires. */
+const ACCOUNT_REQUIREMENT = /\bsign-in\b|\baccount\b|\bPro\b/;
+
 /**
  * Names as lines of at most `width`, each name whole and the names apart by
  * semicolons, since a name may hold a comma (Furnishings, Fixtures & Appliances).
@@ -688,7 +691,12 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   const mnemonics = new Set([entry.token, ...entry.aliases].map((value) => value.toLowerCase()));
   const keywords = capability.aliases.filter((keyword) => !mnemonics.has(keyword.toLowerCase()));
   if (keywords.length > 0) stats.push(["Keywords", keywords.join(", ")]);
-  if (capability.dataRequirements.length > 0) stats.push(["Requires", capability.dataRequirements.join(", ")]);
+  // "Requires" is what a reader must have, a sign-in or Pro; the rest says where the data comes from, which a
+  // signed-out run reads too (COT's CFTC history, CBR's rates).
+  const required = capability.dataRequirements.filter((requirement) => ACCOUNT_REQUIREMENT.test(requirement));
+  const sources = capability.dataRequirements.filter((requirement) => !ACCOUNT_REQUIREMENT.test(requirement));
+  if (required.length > 0) stats.push(["Requires", required.join(", ")]);
+  if (sources.length > 0) stats.push(["Data", sources.join(", ")]);
   if (capability.limitations.length > 0) stats.push(["Limitations", capability.limitations.map(limitationSentence).join(" ")]);
   lines.push(renderStats(stats));
 

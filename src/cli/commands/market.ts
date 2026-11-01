@@ -3737,7 +3737,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "Amounts",
         lines: [
-          "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1,234 or 1.234 EUR are thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
+          "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1.234 EUR is thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. A comma before exactly three digits (fx 1,234 EUR) could be either, so fx asks which: type 1234 or 1.2340. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
         ],
       }, {
         title: "A past day",

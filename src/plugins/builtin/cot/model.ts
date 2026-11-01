@@ -6,6 +6,7 @@ import { formatMarketPriceWithCurrency, formatPriceObservation } from "../../../
 import { futuresPricePer } from "../../../market-data/futures-contract";
 import { unitCurrencyToken } from "../../../time-series/price-units";
 import { cleanFloat32Price } from "../../../cli/history-rows";
+import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import {
   bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByCode, futuresContractByName, type FuturesContract,
@@ -239,6 +240,37 @@ export function cotContractCodeForTicker(ticker: unknown): string | null {
   const board = futuresBoardContractForTicker(ticker);
   return rootAlias(input) ?? (board ? boardMarketCode(board) : null) ?? marketCode(input);
 }
+/**
+ * The CFTC's published release schedule (cftc.gov, Commitments of Traders,
+ * Release Schedule, read 2026-11-01): 3:30 p.m. Eastern on the Friday after
+ * the Tuesday the positions are as of, or the day a federal holiday moved that
+ * Friday's release to. Years it has not published, and 2027 with its move to
+ * two releases a week, are left out rather than guessed.
+ */
+const COT_SCHEDULED_YEARS: ReadonlySet<number> = new Set([2026]);
+const COT_DELAYED_RELEASES: Readonly<Record<string, string>> = {
+  "2026-01-02": "2026-01-05", "2026-06-19": "2026-06-22", "2026-07-03": "2026-07-06",
+  "2026-11-13": "2026-11-16", "2026-11-27": "2026-11-30", "2026-12-25": "2026-12-28",
+};
+const DAY_MS = 86_400_000;
+/**
+ * When the CFTC released the report of positions as of `reportDate`, an ISO
+ * instant, by its schedule (`COT_SCHEDULED_YEARS`). Null for a date that is
+ * no Tuesday or a release outside the schedule, which an export then says was
+ * not published.
+ */
+export function cotReleaseTime(reportDate: string | null | undefined): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(reportDate ?? "");
+  if (!match) return null;
+  const tuesday = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (new Date(tuesday).getUTCDay() !== 2) return null;
+  const friday = new Date(tuesday + 3 * DAY_MS).toISOString().slice(0, 10);
+  const day = COT_DELAYED_RELEASES[friday] ?? friday;
+  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+  if (!COT_SCHEDULED_YEARS.has(year)) return null;
+  return new Date(zonedWallClockToUtcMs("America/New_York", year, month, date, 15, 30, 0)).toISOString();
+}
+
 /** The futures root a CFTC code belongs to, for titles readers recognize: a verified alias, else its FUT board root. */
 export function cotRoot(code: string): string | null {
   return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0]
