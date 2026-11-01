@@ -967,6 +967,50 @@ function Assert-ExecutableDetails {
   }
 }
 
+function Assert-UpdaterToolsWork {
+  param([string]$BundleDir)
+
+  # rcedit and resedit rewrite the updater's two tools too: each must still do
+  # its job, as an update runs them, on files this check makes.
+  $ToolCheckDir = Join-Path ([IO.Path]::GetTempPath()) "gloom-updater-tools-$PID"
+  New-Item -ItemType Directory -Force -Path $ToolCheckDir | Out-Null
+  try {
+    $OldFile = Join-Path $ToolCheckDir "old.bin"
+    $NewFile = Join-Path $ToolCheckDir "new.bin"
+    [IO.File]::WriteAllText($OldFile, ("Gloom update check, line one`n" * 4000))
+    [IO.File]::WriteAllText($NewFile, ("Gloom update check, line one`n" * 2000) + ("line two`n" * 2000))
+    $BundledZstd = Join-Path $BundleDir "bin\zig-zstd.exe"
+    if (Test-Path -LiteralPath $BundledZstd) {
+      & $BundledZstd compress -i $NewFile -o "$NewFile.zst"
+      if ($LASTEXITCODE -ne 0) { throw "The bundled zig-zstd.exe could not compress a file (exit $LASTEXITCODE)" }
+      & $BundledZstd decompress -i "$NewFile.zst" -o "$NewFile.out"
+      if ($LASTEXITCODE -ne 0) { throw "The bundled zig-zstd.exe could not decompress a file (exit $LASTEXITCODE)" }
+      if ((Get-FileHash -LiteralPath $NewFile).Hash -ne (Get-FileHash -LiteralPath "$NewFile.out").Hash) {
+        throw "The bundled zig-zstd.exe gave back a different file"
+      }
+      Write-Host "zig-zstd.exe compressed and decompressed a file"
+    }
+    $BundledBspatch = Join-Path $BundleDir "bin\bspatch.exe"
+    $Bsdiff = Join-Path $Root "node_modules\electrobun\dist-win-x64\bsdiff.exe"
+    if ((Test-Path -LiteralPath $BundledBspatch) -and (Test-Path -LiteralPath $Bsdiff)) {
+      # As Electrobun makes an update's patch and the app applies it.
+      $PatchFile = Join-Path $ToolCheckDir "update.patch"
+      & $Bsdiff $OldFile $NewFile $PatchFile --use-zstd
+      if ($LASTEXITCODE -ne 0) { throw "bsdiff could not make a patch (exit $LASTEXITCODE)" }
+      & $BundledBspatch $OldFile "$OldFile.patched" $PatchFile
+      if ($LASTEXITCODE -ne 0) { throw "The bundled bspatch.exe could not apply a patch (exit $LASTEXITCODE)" }
+      if ((Get-FileHash -LiteralPath $NewFile).Hash -ne (Get-FileHash -LiteralPath "$OldFile.patched").Hash) {
+        throw "The bundled bspatch.exe made a different file from the patch"
+      }
+      Write-Host "bspatch.exe applied a patch"
+    } elseif (Test-Path -LiteralPath $BundledBspatch) {
+      throw "No bsdiff.exe at $Bsdiff to make a patch for the bundled bspatch.exe"
+    }
+  } finally {
+    Remove-Item -LiteralPath $ToolCheckDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Assert-IcoFile {
   param(
     [string]$Path,
@@ -1721,45 +1765,7 @@ foreach ($Executable in $AppExecutables) {
   Assert-ExecutableDetails $Executable.FullName
 }
 
-# rcedit and resedit rewrite the updater's two tools too: each must still do
-# its job, as an update runs them, on files this check makes.
-$ToolCheckDir = Join-Path ([IO.Path]::GetTempPath()) "gloom-updater-tools-$PID"
-New-Item -ItemType Directory -Force -Path $ToolCheckDir | Out-Null
-try {
-  $OldFile = Join-Path $ToolCheckDir "old.bin"
-  $NewFile = Join-Path $ToolCheckDir "new.bin"
-  [IO.File]::WriteAllText($OldFile, ("Gloom update check, line one`n" * 4000))
-  [IO.File]::WriteAllText($NewFile, ("Gloom update check, line one`n" * 2000) + ("line two`n" * 2000))
-  $BundledZstd = Join-Path $BundleDir "bin\zig-zstd.exe"
-  if (Test-Path -LiteralPath $BundledZstd) {
-    & $BundledZstd compress -i $NewFile -o "$NewFile.zst"
-    if ($LASTEXITCODE -ne 0) { throw "The bundled zig-zstd.exe could not compress a file (exit $LASTEXITCODE)" }
-    & $BundledZstd decompress -i "$NewFile.zst" -o "$NewFile.out"
-    if ($LASTEXITCODE -ne 0) { throw "The bundled zig-zstd.exe could not decompress a file (exit $LASTEXITCODE)" }
-    if ((Get-FileHash -LiteralPath $NewFile).Hash -ne (Get-FileHash -LiteralPath "$NewFile.out").Hash) {
-      throw "The bundled zig-zstd.exe gave back a different file"
-    }
-    Write-Host "zig-zstd.exe compressed and decompressed a file"
-  }
-  $BundledBspatch = Join-Path $BundleDir "bin\bspatch.exe"
-  $Bsdiff = Join-Path $Root "node_modules\electrobun\dist-win-x64\bsdiff.exe"
-  if ((Test-Path -LiteralPath $BundledBspatch) -and (Test-Path -LiteralPath $Bsdiff)) {
-    # As Electrobun makes an update's patch and the app applies it.
-    $PatchFile = Join-Path $ToolCheckDir "update.patch"
-    & $Bsdiff $OldFile $NewFile $PatchFile --use-zstd
-    if ($LASTEXITCODE -ne 0) { throw "bsdiff could not make a patch (exit $LASTEXITCODE)" }
-    & $BundledBspatch $OldFile "$OldFile.patched" $PatchFile
-    if ($LASTEXITCODE -ne 0) { throw "The bundled bspatch.exe could not apply a patch (exit $LASTEXITCODE)" }
-    if ((Get-FileHash -LiteralPath $NewFile).Hash -ne (Get-FileHash -LiteralPath "$OldFile.patched").Hash) {
-      throw "The bundled bspatch.exe made a different file from the patch"
-    }
-    Write-Host "bspatch.exe applied a patch"
-  } elseif (Test-Path -LiteralPath $BundledBspatch) {
-    throw "No bsdiff.exe at $Bsdiff to make a patch for the bundled bspatch.exe"
-  }
-} finally {
-  Remove-Item -LiteralPath $ToolCheckDir -Recurse -Force -ErrorAction SilentlyContinue
-}
+Assert-UpdaterToolsWork $BundleDir
 Export-AssociatedIcon `
   -ExecutablePath $InstallerPath `
   -OutputPath (Join-Path $GuiArtifactDir "windows-icon-installer.png") `
