@@ -5,12 +5,13 @@ import type {
   DesktopBackendRequestResponse,
   DesktopHostRequest,
   DesktopWindowControlAction,
+  DesktopWindowResizeEdge,
 } from "../../shared/protocol";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-menu/normalize";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
-import { startSystemWindowMove } from "../window/windows-native";
+import { startSystemWindowMove, startSystemWindowResize } from "../window/windows-native";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
 import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
@@ -55,6 +56,14 @@ function isWindowFullscreen(backend: DesktopBackend, windowKey: string | undefin
   }
 }
 
+function isWindowMaximized(backend: DesktopBackend, windowKey: string | undefined): boolean {
+  try {
+    return windowForRpcKey(backend, windowKey)?.isMaximized?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 function controlWindow(
   backend: DesktopBackend,
   windowKey: string | undefined,
@@ -80,6 +89,11 @@ function exitDesktopApp(backend: DesktopBackend): void {
     return;
   }
   Utils.quit();
+}
+
+function normalizeWindowResizeEdge(edge: unknown): DesktopWindowResizeEdge {
+  if (edge === "top" || edge === "top-left" || edge === "top-right") return edge;
+  throw new Error("host.startWindowResize requires a top edge or corner.");
 }
 
 function normalizeWindowControlAction(action: unknown): DesktopWindowControlAction {
@@ -112,10 +126,20 @@ export async function handleDesktopHostRequest(
     }
     case "host.windowFullscreen":
       return isWindowFullscreen(backend, backend.rpcs.getRpcWindowKey(rpc));
+    case "host.windowMaximized":
+      return isWindowMaximized(backend, backend.rpcs.getRpcWindowKey(rpc));
     case "host.startWindowDrag": {
       const targetWindow = windowForRpcKey(backend, backend.rpcs.getRpcWindowKey(rpc));
       if (!targetWindow?.ptr || !startSystemWindowMove(targetWindow.ptr)) {
         throw new Error("This window cannot be moved by the system.");
+      }
+      return null;
+    }
+    case "host.startWindowResize": {
+      const edge = normalizeWindowResizeEdge(request.payload.edge);
+      const targetWindow = windowForRpcKey(backend, backend.rpcs.getRpcWindowKey(rpc));
+      if (!targetWindow?.ptr || !startSystemWindowResize(targetWindow.ptr, edge)) {
+        throw new Error("This window cannot be resized by the system.");
       }
       return null;
     }
