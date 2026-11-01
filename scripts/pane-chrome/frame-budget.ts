@@ -52,6 +52,23 @@ const MIN_FRAME_DELTA_MS = 0.4;
 const MAX_COMMIT_RATIO = 1.5;
 const MIN_COMMIT_DELTA = 10;
 /**
+ * A pane move, docked or floating, draws at the display's rate whatever the
+ * base does: its 95th percentile frame interval stays under one and a half
+ * 60 Hz slots, and it misses at most a few slots in the whole drag. A move
+ * costs about 1 ms of main thread a frame on the runner, which draws it at 60
+ * frames a second.
+ */
+const MAX_MOVE_P95_FRAME_MS = 1.5 * (1_000 / 60);
+const MAX_MOVE_MISSED_FRAMES = 6;
+/**
+ * A moving pane keeps to the pointer: frames where it stood still while the
+ * pointer moved, or moved more than 2 px differently from it, may grow by
+ * this much over the base. Magnets that held an edge on every line a window
+ * crossed did that on a sixth of a docked pane's frames.
+ */
+const MAX_OFF_POINTER_RATIO = 1.5;
+const MIN_OFF_POINTER_DELTA = 4;
+/**
  * A resized frame, and what it holds, stays this close to the pointer (px,
  * 95th percentile), three cells: one that waits for React to catch up is up
  * to 100 ms of pointer travel behind (a chart drawn on the cell grid was 90
@@ -75,7 +92,8 @@ window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
   onCommitFiberRoot() { window.__commits += 1; },
 };
 window.__pointerX = 0;
-document.addEventListener("pointermove", (event) => { window.__pointerX = event.clientX; }, true);
+window.__pointerY = 0;
+document.addEventListener("pointermove", (event) => { window.__pointerX = event.clientX; window.__pointerY = event.clientY; }, true);
 `;
 
 interface DragSample {
@@ -102,6 +120,10 @@ interface DragSample {
   releaseJumpPx?: number;
   /** Resizes: how far the content's edge moved when the pointer let go, px. */
   contentReleaseJumpPx?: number;
+  /** Moves: frames where the pane stood still while the pointer moved 2 px or more. */
+  stuckFrames?: number;
+  /** Moves: frames where the pane moved more than 2 px differently from the pointer (held, or jumping). */
+  offPointerFrames?: number;
   /** Charts: how far CSS scaled the canvas's bitmap from 1:1 during the drag, %, 95th percentile. */
   bitmapStretchPct?: number;
   /** Charts: the same once the pane is at rest after the release, %: 0 is drawn sharp. */
@@ -125,6 +147,8 @@ interface Scenario {
   track?: { frame: string; content: string; anchor?: string };
   /** Charts: the canvas whose bitmap scale (its CSS width against its pixels) says whether it is drawn 1:1. */
   canvas?: string;
+  /** Moves: the element that moves with the pointer, which should keep to it frame by frame. */
+  follower?: string;
   /** A page expression that holds once the scenario's content has loaded, for panes that load data. */
   ready?: string;
   /** Puts the page in the state the drag starts from, once it is ready. */
@@ -204,6 +228,8 @@ const SCENARIOS: Scenario[] = [
     name: "docked pane drag",
     fixture: "perf",
     grab: (cdp) => evaluate(cdp, partCenter(`${pane("table:5")} [data-gloom-role=pane-grip]`)),
+    // The outline of where it would float.
+    follower: "[data-gloom-role=drag-outline]",
     // Over the other docked panes and their drop grids, and back.
     path: (start, t) => ({ x: start.x - Math.sin(t * Math.PI) * 420, y: start.y + Math.sin(t * Math.PI * 2) * 220 }),
   },
@@ -211,6 +237,7 @@ const SCENARIOS: Scenario[] = [
     name: "floating pane drag",
     fixture: "perf",
     grab: (cdp) => evaluate(cdp, partCenter(`${pane("table:float")} [data-gloom-role=pane-title]`)),
+    follower: pane("table:float"),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 360, y: start.y + (1 - Math.cos(t * Math.PI * 2)) * 140 }),
   },
   {
@@ -350,7 +377,9 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     window.__frameTimes = [];
     window.__lag = [];
     window.__stretch = [];
+    window.__follow = [];
     window.__commits = 0;
+    const follower = ${JSON.stringify(scenario.follower ?? null)};
     const stretch = ${scenario.canvas ? `() => ${stretchOf(scenario.canvas)}` : "null"};
     const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
     const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
@@ -359,6 +388,13 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     const tick = (now) => {
       window.__frameTimes.push(now - last);
       last = now;
+      if (follower) {
+        const point = [window.__pointerX, window.__pointerY];
+        setTimeout(() => {
+          const box = document.querySelector(follower)?.getBoundingClientRect();
+          if (box && window.__recording) window.__follow.push([point[0], point[1], box.x, box.y]);
+        }, 0);
+      }
       if (track) {
         const pointer = window.__pointerX;
         setTimeout(() => {
@@ -384,7 +420,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   }
   const after = await metrics(cdp);
   const elapsed = performance.now() - began;
-  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) }; })()");
+  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[]; follow: Array<[number, number, number, number]> }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1), follow: window.__follow.slice(1) }; })()");
   // The pointer comes to rest where the drag ends, and lets go there.
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
@@ -418,7 +454,22 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
       bitmapStretchPct: percentile(recorded.stretch, 0.95),
       restStretchPct: restStretch,
     } : {}),
+    ...(scenario.follower ? followStats(recorded.follow) : {}),
   };
+}
+
+/** How a moving pane kept to the pointer, frame by frame: where the pointer was when the frame began against where the pane was drawn. */
+function followStats(samples: Array<[number, number, number, number]>): { stuckFrames: number; offPointerFrames: number } {
+  let stuck = 0;
+  let off = 0;
+  for (let index = 1; index < samples.length; index += 1) {
+    const [px, py, x, y] = samples[index]!;
+    const [ppx, ppy, prevX, prevY] = samples[index - 1]!;
+    const pointer = Math.hypot(px - ppx, py - ppy);
+    if (pointer >= 2 && Math.hypot(x - prevX, y - prevY) < 0.5) stuck += 1;
+    if (Math.hypot((x - prevX) - (px - ppx), (y - prevY) - (py - ppy)) > 2) off += 1;
+  }
+  return { stuckFrames: stuck, offPointerFrames: off };
 }
 
 async function runSide(page: FixturePage, label: string, scenarios: Scenario[]): Promise<Record<string, DragSample>> {
@@ -497,7 +548,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   ];
   const problems: string[] = [];
   const notes: string[] = [];
-  for (const { name, track, canvas } of scenarios) {
+  for (const { name, track, canvas, follower } of scenarios) {
     const pick = (side: "base" | "head", key: keyof DragSample) => median(samples[side].map((sample) => sample[name]![key] ?? 0));
     const row = (label: string, key: keyof DragSample, unit = "") => {
       lines.push(`| ${name}: ${label} | ${round(pick("base", key))}${unit} | ${round(pick("head", key))}${unit} |`);
@@ -515,6 +566,26 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
       row("content behind the pointer", "contentLagPx", " px");
       row("frame jump on release", "releaseJumpPx", " px");
       row("content jump on release", "contentReleaseJumpPx", " px");
+    }
+    if (follower) {
+      row("frames the pane stood still while the pointer moved", "stuckFrames");
+      row("frames the pane moved off the pointer's motion", "offPointerFrames");
+      for (const [what, key] of [["stood still while the pointer moved", "stuckFrames"], ["moved off the pointer's motion", "offPointerFrames"]] as const) {
+        const value = { base: pick("base", key), head: pick("head", key) };
+        if (value.head > value.base * MAX_OFF_POINTER_RATIO && value.head - value.base >= MIN_OFF_POINTER_DELTA) {
+          problems.push(`${name}: the pane ${what} on ${value.head} frames, against ${value.base} on main (limit: +${Math.round((MAX_OFF_POINTER_RATIO - 1) * 100)}% and +${MIN_OFF_POINTER_DELTA}).`);
+        }
+      }
+      // Only where the base draws at the display's rate: a host that paints a
+      // few frames a second (a Mac whose display sleeps) can judge neither.
+      if (pick("base", "p95FrameMs") > MAX_MOVE_P95_FRAME_MS || pick("base", "missedFrames") > MAX_MOVE_MISSED_FRAMES) {
+        notes.push(`${name}: main does not draw at 60 frames a second on this host, so the frame rate is not judged.`);
+      } else {
+        const p95 = pick("head", "p95FrameMs");
+        if (p95 > MAX_MOVE_P95_FRAME_MS) problems.push(`${name}: the 95th percentile frame took ${round(p95, 1)} ms (limit: ${round(MAX_MOVE_P95_FRAME_MS, 1)} ms).`);
+        const missed = pick("head", "missedFrames");
+        if (missed > MAX_MOVE_MISSED_FRAMES) problems.push(`${name}: the drag missed ${missed} frames (limit: ${MAX_MOVE_MISSED_FRAMES}).`);
+      }
     }
     if (canvas) {
       row("chart bitmap scaled by CSS (p95)", "bitmapStretchPct", "%");

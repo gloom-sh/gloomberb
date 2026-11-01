@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { magnetDistancesFor, NO_LATCH, snapMovedRect, snapResizedRect, type MagnetLatch } from "./magnets";
+import {
+  MAGNET_REST_MS,
+  magnetDistancesFor,
+  NO_LATCH,
+  pointerTravelling,
+  snapMovedRect,
+  snapResizedRect,
+  trackPointer,
+  type MagnetLatch,
+  type PointerSample,
+} from "./magnets";
 
 const AREA = { x: 0, y: 0, width: 200, height: 50 };
 // The desktop's 8px catch and 12px release over 8 by 18 px cells.
@@ -52,6 +62,25 @@ describe("magnets", () => {
     // Pulling the right edge onto the area's would leave it under the minimum width: it stays.
     const narrow = { x: 0.6, y: 12, width: 15, height: 12 };
     expect(snapResizedRect(narrow, { x: 1, y: 0 }, { width: 15, height: 6 }, [], { ...AREA, width: 15.5 }, DESKTOP, NO_LATCH).rect.width).toBe(15);
+  });
+
+  test("a moving pane's magnets wait while the pointer travels, and catch once it slows down or rests", () => {
+    const track: PointerSample[] = [];
+    // The first move of a drag leaves the spot the pane sits flush in.
+    trackPointer(track, { t: 0, x: 10, y: 5 });
+    expect(pointerTravelling(track, 0, DESKTOP)).toBe(true);
+    // Two cells (16px) a frame: 1,000 px/s.
+    for (let frame = 1; frame <= 5; frame += 1) trackPointer(track, { t: frame * 16, x: 10 + frame * 2, y: 5 });
+    expect(pointerTravelling(track, 80, DESKTOP)).toBe(true);
+    // Slowing to a quarter cell (2px) a frame, 125 px/s, as it nears where it goes.
+    for (let frame = 6; frame <= 12; frame += 1) trackPointer(track, { t: frame * 16, x: 20 + (frame - 5) * 0.25, y: 5 });
+    expect(pointerTravelling(track, 192, DESKTOP)).toBe(false);
+    // Off again, then still: the check after a rest finds it placed.
+    trackPointer(track, { t: 208, x: 26, y: 5 });
+    expect(pointerTravelling(track, 208, DESKTOP)).toBe(true);
+    expect(pointerTravelling(track, 208 + MAGNET_REST_MS, DESKTOP)).toBe(false);
+    // It keeps only the few frames the speed reads.
+    expect(track.length).toBeLessThan(12);
   });
 
   test("the terminal catches at the next cell", () => {

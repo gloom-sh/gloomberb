@@ -37,6 +37,56 @@ const MAGNET_RELEASE_PX = 12;
 const TERMINAL_MAGNETS: MagnetDistances = { catchX: 1, catchY: 1, releaseX: 2, releaseY: 2 };
 
 /**
+ * Desktop: a moving pane's magnets act while the pointer slows down or rests
+ * near a line; faster than this, in catch distances a second (300 px/s), the
+ * pane follows the pointer exactly. Holding an edge on every line a window
+ * crossed on its way stopped it for 20 px at each one and then jumped it,
+ * which read as a drag that lags and stutters.
+ */
+const MAGNET_TRAVEL_SPEED = 300 / MAGNET_CATCH_PX;
+/** How far back the pointer's speed is read, ms: a few frames. */
+const SPEED_WINDOW_MS = 64;
+/** How long the pointer rests before the magnets catch where it stopped, ms. */
+export const MAGNET_REST_MS = 80;
+
+/** Where the pointer was during a move, in cells, and when (ms). */
+export interface PointerSample {
+  t: number;
+  x: number;
+  y: number;
+}
+
+/** Adds where the pointer is now, keeping only what the speed reads. */
+export function trackPointer(track: PointerSample[], sample: PointerSample): void {
+  track.push(sample);
+  const oldest = sample.t - SPEED_WINDOW_MS * 2;
+  while (track.length > 2 && track[1]!.t <= oldest) track.shift();
+}
+
+/**
+ * Whether the pointer is on its way somewhere rather than placing the pane:
+ * how far it went over the last few frames, in catch distances a second,
+ * against the travel speed. A move with nothing before it (the first of a
+ * drag) is travel, so a pane leaves its spot without catching the lines it
+ * sits on.
+ */
+export function pointerTravelling(track: readonly PointerSample[], now: number, distances: MagnetDistances): boolean {
+  const latest = track[track.length - 1];
+  if (!latest) return false;
+  const since = now - SPEED_WINDOW_MS;
+  let from = track[0]!;
+  for (const sample of track) {
+    if (sample.t > since) break;
+    from = sample;
+  }
+  const span = Math.min(SPEED_WINDOW_MS, now - from.t);
+  if (from === latest) return track.length === 1 && span <= 0;
+  if (span <= 0) return true;
+  const catches = Math.hypot((latest.x - from.x) / distances.catchX, (latest.y - from.y) / distances.catchY);
+  return (catches / span) * 1000 > MAGNET_TRAVEL_SPEED;
+}
+
+/**
  * The magnets in cells: the desktop's px over its cell size (`cell`), or the
  * terminal's whole cells, also for a cell size not measured yet (zero), which
  * would otherwise catch at any distance.
