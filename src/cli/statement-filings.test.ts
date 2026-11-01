@@ -4,6 +4,7 @@ import { offeringNote } from "../utils/cash-runway";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
+import { blockExternalNetwork } from "../test-support/network-guard";
 import { buildTickerReport, ticker } from "./commands/ticker";
 import {
   cloudStatementReportSources,
@@ -15,6 +16,8 @@ import {
   type StatementReportSources,
 } from "./statement-filings";
 import type { MarketContext } from "./types";
+
+blockExternalNetwork();
 
 const filing = (form: string, filed: string, accessionNumber: string, extra: Partial<PeriodicFiling> = {}): PeriodicFiling =>
   ({ form, filed, accessionNumber, items: [], ...extra });
@@ -130,9 +133,11 @@ const JPM: TickerFinancials = {
 async function tickerReport(financials: TickerFinancials, sources: StatementReportSources) {
   let data: any;
   await ticker("JPM", {
+    // An equity reads its IPO from Gloom Cloud otherwise.
+    listingIpo: async () => null,
     initMarketData: async () => ({
       config, dataDir: "/tmp/gloom-statement-filings-unused", statementSources: sources,
-      store: { loadTicker: async () => null }, persistence: { close: () => {} },
+      store: { loadTicker: async () => null, loadAllTickers: async () => [] }, persistence: { close: () => {} },
       dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
     }) as unknown as MarketContext,
     fail: (message) => { throw new Error(message); },
