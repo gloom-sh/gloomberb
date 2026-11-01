@@ -11,7 +11,8 @@ import type { CheckResult, CheckRun } from "./results";
  *   bun scripts/windows-desktop-check/report.ts <folder> [--known <known-failures.json>]
  *
  * With --known, a failure the file does not list fails the command: the file
- * names the checks a build is known to fail, each with why.
+ * names the checks a build is known to fail, each with why, as `<check>`,
+ * `<check>@<scale>` or `<check>@<machine>`.
  */
 
 const args = process.argv.slice(2);
@@ -46,7 +47,9 @@ if (!runs.length) {
 }
 
 const known: Record<string, string> = knownPath ? (JSON.parse(await readFile(knownPath, "utf8")) as { checks: Record<string, string> }).checks : {};
-const isKnown = (run: CheckRun, id: string) => id in known || `${id}@${run.scale}` in known;
+// A run's label ends with its machine (`head-arm64`): an entry `<check>@arm64` covers that machine only.
+const machineOf = (run: CheckRun) => run.label.split("-").at(-1) ?? "";
+const isKnown = (run: CheckRun, id: string) => id in known || `${id}@${run.scale}` in known || `${id}@${machineOf(run)}` in known;
 
 const ids: Array<{ id: string; title: string }> = [];
 for (const run of runs) {
@@ -81,8 +84,8 @@ for (const run of runs) {
 }
 if (knownPath) {
   for (const id of Object.keys(known)) {
-    const [check, scale] = id.split("@");
-    const relevant = runs.filter((run) => !scale || String(run.scale) === scale);
+    const [check, where] = id.split("@");
+    const relevant = runs.filter((run) => !where || String(run.scale) === where || machineOf(run) === where);
     const results = relevant.map((run) => run.results.find((entry) => entry.id === check)).filter(Boolean) as CheckResult[];
     if (results.length && results.every((result) => result.status === "pass")) nowPassing.push(id);
   }

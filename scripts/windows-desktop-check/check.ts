@@ -1323,15 +1323,20 @@ class Run {
         if (desktop) shots.push(desktop);
         return { status: "fail" as const, detail: `${when}: ${caption}` };
       };
+      // A slow machine can take a few seconds more to act on a key.
+      const settles = async (maximized: boolean) => {
+        for (const until = Date.now() + 3_000; win.isMaximized(window.hwnd) !== maximized && Date.now() < until;) await sleep(250);
+        return win.isMaximized(window.hwnd) === maximized;
+      };
       let cycles = 0;
       for (let round = 1; round <= MAXIMIZE_ROUNDS; round += 1) {
         for (const { way, maximize, restore } of ways) {
           await maximize();
-          if (!win.isMaximized(window.hwnd)) return { status: "fail", detail: `round ${round}: ${way} did not maximize it, after ${cycles} cycles` };
+          if (!await settles(true)) return { status: "fail", detail: `round ${round}: ${way} did not maximize it, after ${cycles} cycles` };
           const maximized = this.nativeCaption(window);
           if (maximized) return caught(`round ${round}, maximized with ${way}, after ${cycles} cycles`, maximized);
           await restore();
-          if (win.isMaximized(window.hwnd)) return { status: "fail", detail: `round ${round}: ${way} did not restore it, after ${cycles} cycles` };
+          if (!await settles(false)) return { status: "fail", detail: `round ${round}: ${way} did not restore it, after ${cycles} cycles` };
           const restored = this.nativeCaption(window);
           if (restored) return caught(`round ${round}, restored with ${way}, after ${cycles} cycles`, restored);
           cycles += 1;

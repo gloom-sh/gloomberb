@@ -1,6 +1,7 @@
 {
   "checks": {
     "main-resize-top": "the page covers the frame's top edge, so a drag there moves the window",
-    "program-details": "the launcher and the Chromium helpers carry no version details, so Windows names them by their file"
+    "program-details": "the launcher and the Chromium helpers carry no version details, so Windows names them by their file",
+    "restart-itself@arm64": "on the Arm runner's image, Windows PowerShell started outside the job's own processes takes about 23 s to run its first line, longer than the 20 s the app waits for its restart script, so the app stays open"
   }
 }
