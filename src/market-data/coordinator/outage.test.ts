@@ -1,8 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, jest } from "bun:test";
 import { useRegularMarketSession } from "../../test-support/market-session";
 import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
-import { buildChartKey, buildSnapshotKey } from "../selectors";
+import { buildChartKey, buildQuoteKey, buildSnapshotKey } from "../selectors";
 import { createBaselineChartRequest } from "./chart";
 import { MarketDataCoordinator } from "./index";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -10,6 +10,10 @@ import type { Quote } from "../../types/financials";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
 
 useRegularMarketSession();
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 const settle = async () => {
   for (let index = 0; index < 20; index += 1) await Promise.resolve();
@@ -63,6 +67,76 @@ describe("MarketDataCoordinator after an outage", () => {
     // Moving back to a ticker that failed in the outage loads it at once.
     expect((await coordinator.loadSnapshot(left)).phase).toBe("ready");
     stopWatching();
+  });
+
+  // Each recovery asked again for every failed quote with its own request,
+  // and every chart at once; a link that kept dropping did so at each flip.
+  it("asks again for quotes in one batch and the rest a few at a time, once per window", async () => {
+    jest.useFakeTimers();
+    let online = false;
+    const asked: string[] = [];
+    let historiesOut = 0;
+    let mostHistoriesOut = 0;
+    const provider = createTestDataProvider({
+      getQuote: async (symbol) => {
+        asked.push(`quote ${symbol}`);
+        if (!online) throw new DataServiceUnreachableError(new Error("Unable to connect"));
+        return quote(447, Date.now());
+      },
+      getQuotesBatch: async (targets) => {
+        asked.push(`quotes ${targets.map((target) => target.symbol).join(",")}`);
+        return targets.map((target) => ({ target, quote: { ...quote(447, Date.now()), symbol: target.symbol } }));
+      },
+      getPriceHistory: async (symbol) => {
+        asked.push(`history ${symbol}`);
+        if (!online) throw new DataServiceUnreachableError(new Error("Unable to connect"));
+        historiesOut += 1;
+        mostHistoriesOut = Math.max(mostHistoriesOut, historiesOut);
+        await Promise.resolve();
+        historiesOut -= 1;
+        return [{ date: new Date("2026-09-11"), close: 440 }, { date: new Date("2026-09-14"), close: 447 }];
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const symbols = ["AMGN", "AMD", "AAPL", "MSFT", "NVDA", "TSLA", "META", "GOOG"];
+    const instruments = symbols.map((symbol) => ({ symbol, exchange: "NASDAQ" }));
+    const charts = instruments.map((instrument) => createBaselineChartRequest(instrument));
+    const later = { symbol: "INTC", exchange: "NASDAQ" };
+    const stopWatching = coordinator.subscribeKeys([
+      buildQuoteKey(later),
+      ...instruments.map((instrument) => buildQuoteKey(instrument)),
+      ...charts.map((chart) => buildChartKey(chart)),
+    ], () => {});
+    try {
+      await Promise.all(instruments.map((instrument) => coordinator.loadQuote(instrument)));
+      await Promise.all(charts.map((chart) => coordinator.loadChart(chart)));
+      expect(instruments.every((instrument) => coordinator.getQuoteEntry(instrument).phase === "error")).toBe(true);
+
+      online = true;
+      asked.length = 0;
+      coordinator.reloadAfterOutage();
+      await settle();
+      expect(asked.filter((line) => line.startsWith("quote"))).toEqual([`quotes ${symbols.join(",")}`]);
+      expect(asked.filter((line) => line.startsWith("history"))).toHaveLength(charts.length);
+      expect(mostHistoriesOut).toBeLessThanOrEqual(4);
+      expect(instruments.every((instrument) => coordinator.getQuoteEntry(instrument).phase === "ready")).toBe(true);
+
+      // The link drops and comes back at once: what it failed is asked again at the end of the window, not now.
+      online = false;
+      expect((await coordinator.loadQuote(later)).phase).toBe("error");
+      online = true;
+      asked.length = 0;
+      coordinator.reloadAfterOutage();
+      coordinator.reloadAfterOutage();
+      await settle();
+      expect(asked).toEqual([]);
+      jest.advanceTimersByTime(10_000);
+      await settle();
+      expect(asked).toEqual(["quotes INTC"]);
+    } finally {
+      stopWatching();
+      coordinator.destroy();
+    }
   });
 });
 

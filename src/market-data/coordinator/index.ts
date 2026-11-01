@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { createConcurrencyLimiter } from "../../utils/concurrency";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/history-result";
@@ -119,6 +120,27 @@ const RETAINED_ENTRIES_PER_STORE = 64;
  * asked again after an outage.
  */
 const REMEMBERED_RELOADS_PRUNE_AT = 512;
+const outageReloadFailed = logFailure("market-data.coordinator.index", "Loading again after an outage failed");
+/**
+ * The least time between two sweeps of what an outage failed
+ * (`reloadAfterOutage`): a link that keeps dropping and coming back is asked
+ * again once in this window, at its end, not at every flip.
+ */
+const OUTAGE_RELOAD_MIN_INTERVAL_MS = 10_000;
+/**
+ * How many loads a sweep after an outage runs at once, beside the one batch
+ * for quotes and the one for snapshots: a layout of charts and tables must
+ * not send its whole backlog in the same instant.
+ */
+const OUTAGE_RELOAD_CONCURRENCY = 4;
+
+/** How a key a load wrote is asked again after an outage (`reloadAfterOutage`). */
+interface RememberedReload {
+  entry: () => QueryEntry<unknown>;
+  reload: () => Promise<unknown>;
+  /** A quote or snapshot, asked again with the others of its kind in one batch request. */
+  batch?: { kind: "quote" | "snapshot"; instrument: InstrumentRef };
+}
 
 // A store hands out a fresh idle entry for every key it has never seen, so
 // two idle reads of the same key must count as the same entry.
@@ -145,8 +167,15 @@ export class MarketDataCoordinator {
    * asked again for the panes still showing it once the data service answers
    * (`reloadAfterOutage`).
    */
-  private readonly reloads = new Map<string, { entry: () => QueryEntry<unknown>; reload: () => Promise<unknown> }>();
+  private readonly reloads = new Map<string, RememberedReload>();
   private reloadsPruneAt = REMEMBERED_RELOADS_PRUNE_AT;
+  /** When the last sweep after an outage ran, and the one waiting out OUTAGE_RELOAD_MIN_INTERVAL_MS. */
+  private lastOutageSweepAt = Number.NEGATIVE_INFINITY;
+  private outageSweepTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Loads in flight at a sweep that then failed, asked again together. */
+  private outageRetries: RememberedReload[] = [];
+  private outageRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly outageReloadGate = createConcurrencyLimiter(OUTAGE_RELOAD_CONCURRENCY);
   /** When the data service last answered again after an outage: a failure before it no longer holds a load back. */
   private failuresBefore = 0;
   /**
@@ -425,8 +454,8 @@ export class MarketDataCoordinator {
   }
 
   /** Remembers how to ask again for `key` (`reloadAfterOutage`). */
-  private rememberReload<T>(key: string, store: QueryStore<T>, reload: () => Promise<unknown>): void {
-    this.reloads.set(key, { entry: () => store.get(key), reload });
+  private rememberReload<T>(key: string, store: QueryStore<T>, reload: () => Promise<unknown>, batch?: RememberedReload["batch"]): void {
+    this.reloads.set(key, { entry: () => store.get(key), reload, batch });
     if (this.reloads.size <= this.reloadsPruneAt) return;
     for (const remembered of this.reloads.keys()) {
       if (!this.events.hasKeyListeners(remembered)) this.reloads.delete(remembered);
@@ -437,26 +466,87 @@ export class MarketDataCoordinator {
   /**
    * The data service answers again after an outage. A failure from before now
    * no longer holds a load back, and what a pane still shows that failed is
-   * asked again, as is what waits on a request sent into the outage, should
-   * that request fail. Keys no pane watches are left until something asks.
+   * asked again (`sweepAfterOutage`), at most once per
+   * OUTAGE_RELOAD_MIN_INTERVAL_MS: a recovery inside that window is swept at
+   * its end.
    */
   reloadAfterOutage(): void {
     if (this.destroyed) return;
     this.failuresBefore = Date.now();
-    const failed = logFailure("market-data.coordinator.index", "Loading again after an outage failed");
-    for (const [key, { entry, reload }] of [...this.reloads]) {
+    if (this.outageSweepTimer) return;
+    const waitMs = this.lastOutageSweepAt + OUTAGE_RELOAD_MIN_INTERVAL_MS - Date.now();
+    if (waitMs <= 0) {
+      this.sweepAfterOutage();
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.outageSweepTimer = null;
+      this.sweepAfterOutage();
+    }, waitMs);
+    (timer as { unref?: () => void }).unref?.();
+    this.outageSweepTimer = timer;
+  }
+
+  /**
+   * Asks again for what a pane still shows that failed, and for what waits on
+   * a request sent into the outage, should that request fail. Keys no pane
+   * watches are left until something asks.
+   */
+  private sweepAfterOutage(): void {
+    if (this.destroyed) return;
+    this.lastOutageSweepAt = Date.now();
+    const failed: RememberedReload[] = [];
+    for (const [key, remembered] of [...this.reloads]) {
       if (!this.events.hasKeyListeners(key)) {
         this.reloads.delete(key);
         continue;
       }
-      const current = entry();
+      const current = remembered.entry();
       if (current.phase === "loading" || current.phase === "refreshing") {
         // Joins the request in flight; a failure it ends in was the outage's.
-        void reload().then(() => (hasFailedLoad(entry()) ? reload() : undefined)).catch(failed);
+        void remembered.reload().then(() => {
+          if (hasFailedLoad(remembered.entry())) this.retryAfterOutage(remembered);
+        }).catch(outageReloadFailed);
       } else if (hasFailedLoad(current)) {
-        void reload().catch(failed);
+        failed.push(remembered);
       }
     }
+    void this.reloadTogether(failed);
+  }
+
+  /** A load in flight at a sweep failed: asked again with the others that fail with it (one deadline, one dropped connection). */
+  private retryAfterOutage(remembered: RememberedReload): void {
+    if (this.destroyed) return;
+    this.outageRetries.push(remembered);
+    if (this.outageRetryTimer) return;
+    this.outageRetryTimer = setTimeout(() => {
+      this.outageRetryTimer = null;
+      const retries = this.outageRetries;
+      this.outageRetries = [];
+      void this.reloadTogether(retries);
+    }, 0);
+  }
+
+  /**
+   * Asks again for keys an outage failed: the quotes in one batch request,
+   * the snapshots in another, and the rest OUTAGE_RELOAD_CONCURRENCY at a
+   * time, rather than one request per symbol all at once.
+   */
+  private async reloadTogether(remembered: readonly RememberedReload[]): Promise<void> {
+    const quotes: InstrumentRef[] = [];
+    const snapshots: InstrumentRef[] = [];
+    const rest: Array<() => Promise<unknown>> = [];
+    for (const { batch, reload } of remembered) {
+      if (batch?.kind === "quote") quotes.push(batch.instrument);
+      else if (batch?.kind === "snapshot") snapshots.push(batch.instrument);
+      else rest.push(reload);
+    }
+    const runs: Array<() => Promise<unknown>> = [...rest];
+    if (quotes.length > 0) runs.unshift(() => this.loadQuotesBatch(quotes));
+    if (snapshots.length > 0) runs.unshift(() => this.loadSnapshotsBatch(snapshots));
+    await Promise.all(runs.map((run) => this.outageReloadGate(async () => {
+      if (!this.destroyed) await run();
+    }).catch(outageReloadFailed)));
   }
 
   private runSingleFlight<T>(key: string, task: () => Promise<T>): Promise<T> {
@@ -475,7 +565,7 @@ export class MarketDataCoordinator {
     instrument: InstrumentRef,
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<TickerFinancials>> {
-    this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument));
+    this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument), { kind: "snapshot", instrument });
     return loadFinancialsSnapshotEntry({
       dataProvider: this.dataProvider,
       instrument,
@@ -491,7 +581,7 @@ export class MarketDataCoordinator {
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<TickerFinancials>[]> {
     for (const instrument of instruments) {
-      this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument));
+      this.rememberReload(buildSnapshotKey(instrument), this.snapshotStore, () => this.loadSnapshot(instrument), { kind: "snapshot", instrument });
     }
     return loadFinancialsSnapshotBatch({
       dataProvider: this.dataProvider,
@@ -507,7 +597,7 @@ export class MarketDataCoordinator {
     instrument: InstrumentRef,
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<Quote>> {
-    this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument));
+    this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument), { kind: "quote", instrument });
     return loadQuoteEntry({
       dataProvider: this.dataProvider,
       instrument,
@@ -523,7 +613,7 @@ export class MarketDataCoordinator {
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<Quote>[]> {
     for (const instrument of instruments) {
-      this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument));
+      this.rememberReload(buildQuoteKey(instrument), this.quoteStore, () => this.loadQuote(instrument), { kind: "quote", instrument });
     }
     return loadQuoteBatchEntries({
       dataProvider: this.dataProvider,
@@ -765,6 +855,11 @@ export class MarketDataCoordinator {
     this.cachedQueries.clear();
     this.streamQuoteBaselines.clear();
     this.reloads.clear();
+    if (this.outageSweepTimer) clearTimeout(this.outageSweepTimer);
+    if (this.outageRetryTimer) clearTimeout(this.outageRetryTimer);
+    this.outageSweepTimer = null;
+    this.outageRetryTimer = null;
+    this.outageRetries = [];
     for (const timer of this.fxLegTimers.values()) clearTimeout(timer);
     this.fxLegTimers.clear();
   }
