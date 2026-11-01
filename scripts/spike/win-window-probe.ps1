@@ -257,9 +257,14 @@ $Result.style = [ordered]@{
   popup = (($Style -band 0x80000000) -ne 0)
 }
 
-# A known windowed frame to start from.
+# A known windowed frame to start from, inside the work area on a small screen too.
 $Work = [W]::Work($Main)
-Place $Main ($Work.Left + 100) ($Work.Top + 80) 1000 680
+$Scale = [Math]::Min(1.0, [Math]::Min(($Work.Right - $Work.Left - 260) / 1300.0, ($Work.Bottom - $Work.Top - 180) / 860.0))
+function Scaled($Value) { [int][Math]::Round($Value * $Scale) }
+$PW = Scaled 1000
+$PH = Scaled 680
+$Result.probeScale = $Scale
+Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
 $Start = [W]::Visible($Main)
 $Result.startFrame = Rect-Object $Start
 $Result.startFit = Content-Fit $Main
@@ -300,7 +305,7 @@ $Result.edgeHitTest = $Hits
 # Real drags on the edges.
 $Drags = [ordered]@{}
 function Try-Drag($Name, $FromX, $FromY, $DX, $DY) {
-  Place $Main ($Work.Left + 100) ($Work.Top + 80) 1000 680
+  Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
   $Before = [W]::Visible($Main)
   Drag $FromX $FromY ($FromX + $DX) ($FromY + $DY)
   $After = [W]::Visible($Main)
@@ -326,7 +331,7 @@ Shot "02-after-drags"
 # Programmatic resizes: how long until the webview covers the client area.
 $Fits = @()
 foreach ($Size in @(@(1100, 760), @(900, 600), @(1200, 820), @(820, 560), @(1000, 680), @(1300, 860))) {
-  [void][W]::SetWindowPos($Main, [IntPtr]::Zero, ($Work.Left + 100), ($Work.Top + 80), $Size[0], $Size[1], 0x0014)
+  [void][W]::SetWindowPos($Main, [IntPtr]::Zero, ($Work.Left + 100), ($Work.Top + 80), (Scaled $Size[0]), (Scaled $Size[1]), 0x0014)
   $Fits += (Wait-Fit $Main)
 }
 $Result.resizeContentFitMs = $Fits
@@ -344,7 +349,7 @@ $Result.minimumSize = [ordered]@{
 }
 
 # Maximize with ShowWindow, then with Win+Up.
-Place $Main ($Work.Left + 100) ($Work.Top + 80) 1000 680
+Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
 [void][W]::ShowWindow($Main, 3)
 Start-Sleep -Milliseconds 800
 $Max = [W]::Visible($Main)
@@ -360,7 +365,7 @@ Start-Sleep -Milliseconds 600
 $Restored = [W]::Visible($Main)
 $Result.restoreAfterMaximize = Rect-Object $Restored
 
-Place $Main ($Work.Left + 100) ($Work.Top + 80) 1000 680
+Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
 [W]::Key(0x5B, $false); [W]::Key(0x26, $false); [W]::Key(0x26, $true); [W]::Key(0x5B, $true)
 Start-Sleep -Milliseconds 900
 $KeyMax = [W]::Visible($Main)
@@ -375,7 +380,7 @@ Start-Sleep -Milliseconds 500
 
 # Snap with Win+Left / Win+Right. Escape closes Snap Assist's picker.
 function Snap($Name, $Vk, $ExpectLeft) {
-  Place $Main ($Work.Left + 100) ($Work.Top + 80) 1000 680
+  Place $Main ($Work.Left + 100) ($Work.Top + 80) $PW $PH
   [W]::Key(0x5B, $false); [W]::Key($Vk, $false); [W]::Key($Vk, $true); [W]::Key(0x5B, $true)
   Start-Sleep -Milliseconds 1000
   $R = [W]::Visible($Main)
@@ -406,7 +411,7 @@ Start-Sleep -Milliseconds 800
 $Result.minimizeRestore = [ordered]@{ minimized = $Iconic; restoredVisible = [W]::IsWindowVisible($Main); fitMs = (Wait-Fit $Main) }
 
 # Leave a known frame, close the window, and time the processes out.
-Place $Main ($Work.Left + 140) ($Work.Top + 90) 1040 700
+Place $Main ($Work.Left + 140) ($Work.Top + 90) (Scaled 1040) (Scaled 700)
 Start-Sleep -Milliseconds 1200
 $Result.closedAtFrame = Rect-Object ([W]::Visible($Main))
 $Watch = [System.Diagnostics.Stopwatch]::StartNew()

@@ -63,10 +63,10 @@ shot 01-start
 drag() { # name fromX fromY dx dy
   place
   read -r bx by bw bh <<<"$(geometry "$main")"
-  xdotool mousemove "$2" "$3"; sleep 0.15
-  xdotool mousedown 1; sleep 0.1
-  for i in $(seq 1 12); do xdotool mousemove "$(( $2 + $4 * i / 12 ))" "$(( $3 + $5 * i / 12 ))"; sleep 0.03; done
-  sleep 0.1; xdotool mouseup 1; sleep 0.6
+  xdotool mousemove -- "$2" "$3" 2>/dev/null; sleep 0.15
+  xdotool mousedown 1 2>/dev/null; sleep 0.1
+  for i in $(seq 1 12); do xdotool mousemove -- "$(( $2 + $4 * i / 12 ))" "$(( $3 + $5 * i / 12 ))" 2>/dev/null; sleep 0.03; done
+  sleep 0.1; xdotool mouseup 1 2>/dev/null; sleep 0.6
   read -r ax ay aw ah <<<"$(geometry "$main")"
   echo "\"$1\":{\"widthChange\":$(( aw - bw )),\"heightChange\":$(( ah - bh )),\"moved\":[$(( ax - bx )),$(( ay - by ))]}"
 }
