@@ -397,6 +397,65 @@ function futuresContractSizeLabel(
   return !metrics.unknownContractSize && multiplier > 1 ? { size: formatMarketQuantity(multiplier) } : null;
 }
 
+interface RowPositionMetrics {
+  quoteCurrency: string;
+  quote: Quote | undefined;
+  /** In the position's own currency. */
+  position: PortfolioPositionMetrics;
+  /** Converted into the pane's currency (`ctx.baseCurrency`). */
+  base: PortfolioPositionMetrics;
+}
+
+/** Each shared context's row figures, by record. */
+const sharedRowMetrics = new WeakMap<ColumnContext, WeakMap<TickerRecord, RowPositionMetrics>>();
+const rowMetricsByOwner = new WeakMap<object, WeakMap<TickerRecord, RowPositionMetrics>>();
+
+/**
+ * Lets the cells and sort keys read with `ctx` work out each row's position
+ * figures once per quote, rather than twice a cell: a pane's rows recompute
+ * every visible cell when a quote ticks. Contexts given the same `owner` share
+ * the figures, so they must agree on the tab, currency and rates. Only for
+ * records that are replaced when they change, never edited in place.
+ */
+export function sharePositionMetrics<T extends ColumnContext>(ctx: T, owner: object = ctx): T {
+  let rows = rowMetricsByOwner.get(owner);
+  if (!rows) {
+    rows = new WeakMap();
+    rowMetricsByOwner.set(owner, rows);
+  }
+  sharedRowMetrics.set(ctx, rows);
+  return ctx;
+}
+
+function computeRowPositionMetrics(ticker: TickerRecord, ctx: ColumnContext, quoteCurrency: string, quote: Quote | undefined): RowPositionMetrics {
+  const { baseCurrency, exchangeRates } = ctx;
+  return {
+    quoteCurrency,
+    quote,
+    position: getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote),
+    base: getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
+      currency: baseCurrency,
+      convert: (value, currency) => convertCurrency(value, currency, baseCurrency, exchangeRates),
+    }, quote),
+  };
+}
+
+/** A row's position figures, in its own currency and in the pane's (sharePositionMetrics). */
+function rowPositionMetrics(
+  ticker: TickerRecord,
+  ctx: ColumnContext,
+  quoteCurrency: string,
+  quote: Quote | undefined,
+): RowPositionMetrics {
+  const rows = sharedRowMetrics.get(ctx);
+  if (!rows) return computeRowPositionMetrics(ticker, ctx, quoteCurrency, quote);
+  const cached = rows.get(ticker);
+  if (cached && cached.quote === quote && cached.quoteCurrency === quoteCurrency) return cached;
+  const entry = computeRowPositionMetrics(ticker, ctx, quoteCurrency, quote);
+  rows.set(ticker, entry);
+  return entry;
+}
+
 export function getColumnValue(
   col: ColumnConfig,
   ticker: TickerRecord,
@@ -408,7 +467,7 @@ export function getColumnValue(
   const fundamentals = financials?.fundamentals;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
-  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
+  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, quote);
   const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
   // The latest print, which the quote columns read, and the price the position is valued at.
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
@@ -416,10 +475,6 @@ export function getColumnValue(
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
-  const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
-    currency: ctx.baseCurrency,
-    convert: (value, currency) => convertCurrency(value, currency, ctx.baseCurrency, ctx.exchangeRates),
-  }, quote);
 
   const toBaseQuote = (value: number) =>
     convertCurrency(value, quoteCurrency, ctx.baseCurrency, ctx.exchangeRates);
@@ -685,17 +740,13 @@ export function getSortValue(
   const fundamentals = financials?.fundamentals;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
-  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
+  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, quote);
   const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
-  const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
-    currency: ctx.baseCurrency,
-    convert: (value, currency) => convertCurrency(value, currency, ctx.baseCurrency, ctx.exchangeRates),
-  }, quote);
 
   const toBaseQuote = (value: number) =>
     convertCurrency(value, quoteCurrency, ctx.baseCurrency, ctx.exchangeRates);

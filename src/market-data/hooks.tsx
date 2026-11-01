@@ -219,6 +219,8 @@ interface PatchedMapSlot<K, V> {
 interface PatchedMapState<K, V> {
   signature: string;
   coordinator: SharedCoordinator | null;
+  /** The subscribed keys' summed version when the slots were last read. */
+  aggregateVersion: number;
   slots: Array<PatchedMapSlot<K, V>>;
   versions: number[];
   backing: Map<K, V>;
@@ -255,11 +257,15 @@ function usePatchedMap<K, V>(
       versions.push(slotVersion(slot, versionOf, aggregateVersion));
     }
     const view = new RetainedMapView(backing);
-    state = { signature, coordinator, slots, versions, backing, view };
+    state = { signature, coordinator, slots, versions, backing, view, aggregateVersion };
     stateRef.current = state;
     return view;
   }
 
+  // Key versions only grow, so an unchanged sum means no slot moved: a render
+  // for any other reason skips reading every slot's versions.
+  if (aggregateVersion === state.aggregateVersion) return state.view;
+  state.aggregateVersion = aggregateVersion;
   let changed = false;
   for (let index = 0; index < state.slots.length; index += 1) {
     const slot = state.slots[index]!;
@@ -291,7 +297,9 @@ export function useTickerFinancialsMap(
 ): Map<string, TickerFinancials> {
   const coordinator = getSharedMarketDataCoordinator();
   const optionsKey = options.portfolioId ?? "";
-  const tickerKey = buildTickerFinancialsMapKey(tickers, options);
+  // Per list, not per render: a quote tick re-renders the pane but leaves its
+  // rows (immutable records, replaced when they change) and portfolio alone.
+  const tickerKey = useMemo(() => buildTickerFinancialsMapKey(tickers, options), [optionsKey, tickers]);
   const subscriptionKeys = useMemo(() => buildTickerFinancialsKeys(tickers, options), [optionsKey, tickerKey]);
   const keysVersion = useCoordinatorKeysVersion(subscriptionKeys);
 

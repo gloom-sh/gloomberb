@@ -54,6 +54,21 @@ export interface DataFrameRequest {
   phase?: DataFramePhase;
   /** Driver time before which the task must not run; background keys use it to wait out their interval. */
   notBefore?: number;
+  /**
+   * Lets the task wait to share a frame with other work: it runs in the first
+   * frame at or after `notBefore`, but only sets a frame off itself at this
+   * driver time. A frame that runs nothing else does not hold the next one
+   * back or count toward load pacing, so a quote arriving just after it is not
+   * kept waiting.
+   */
+  rideUntil?: number;
+}
+
+interface QueuedTask {
+  notBefore: number;
+  /** When the task sets a frame off by itself. */
+  wakeAt: number;
+  rides: boolean;
 }
 
 function monotonicNow(): number {
@@ -186,7 +201,7 @@ export function createManualFrameDriver(minIntervalMs: number): {
 }
 
 export class DataFrameScheduler {
-  private readonly queues: Record<DataFramePhase, Map<DataFrameTask, number>> = {
+  private readonly queues: Record<DataFramePhase, Map<DataFrameTask, QueuedTask>> = {
     apply: new Map(),
     notify: new Map(),
   };
@@ -230,10 +245,18 @@ export class DataFrameScheduler {
   }
 
   /** Queues a task for the next frame. A task queued twice runs once. */
-  request(task: DataFrameTask, { phase = "apply", notBefore = Number.NEGATIVE_INFINITY }: DataFrameRequest = {}): void {
+  request(task: DataFrameTask, { phase = "apply", notBefore = Number.NEGATIVE_INFINITY, rideUntil }: DataFrameRequest = {}): void {
     const queue = this.queues[phase];
     const existing = queue.get(task);
-    queue.set(task, existing === undefined ? notBefore : Math.min(existing, notBefore));
+    const rides = rideUntil !== undefined;
+    const wakeAt = rides ? Math.max(notBefore, rideUntil) : notBefore;
+    if (existing === undefined) {
+      queue.set(task, { notBefore, wakeAt, rides });
+    } else {
+      existing.notBefore = Math.min(existing.notBefore, notBefore);
+      existing.wakeAt = Math.min(existing.wakeAt, wakeAt);
+      existing.rides &&= rides;
+    }
     if (!this.running) this.reschedule();
   }
 
@@ -252,7 +275,7 @@ export class DataFrameScheduler {
   private reschedule(): void {
     let earliest = Number.POSITIVE_INFINITY;
     for (const queue of Object.values(this.queues)) {
-      for (const notBefore of queue.values()) earliest = Math.min(earliest, notBefore);
+      for (const queued of queue.values()) earliest = Math.min(earliest, queued.wakeAt);
     }
     if (earliest === Number.POSITIVE_INFINITY) {
       this.cancel();
@@ -269,10 +292,13 @@ export class DataFrameScheduler {
     }, at - this.driver.now());
   }
 
-  private takeDue(phase: DataFramePhase, now: number): DataFrameTask[] {
+  /** The tasks due by `now`; `ridersOnly` stays true while every one of them was riding (rideUntil). */
+  private takeDue(phase: DataFramePhase, now: number, frame: { ridersOnly: boolean }): DataFrameTask[] {
     const due: DataFrameTask[] = [];
-    for (const [task, notBefore] of this.queues[phase]) {
-      if (notBefore <= now) due.push(task);
+    for (const [task, queued] of this.queues[phase]) {
+      if (queued.notBefore > now) continue;
+      due.push(task);
+      if (!queued.rides) frame.ridersOnly = false;
     }
     for (const task of due) this.queues[phase].delete(task);
     return due;
@@ -283,21 +309,25 @@ export class DataFrameScheduler {
     this.running = true;
     const driver = this.driver;
     const now = driver.now();
+    const previousFrameAt = this.lastFrameAt;
     this.lastFrameAt = now;
+    const frame = { ridersOnly: true };
     let notified = false;
     try {
       // Applying a batch may queue another applier (a flush feeding a
       // derived store); those still belong to this frame.
       for (let pass = 0; pass < MAX_APPLY_PASSES; pass += 1) {
-        const due = this.takeDue("apply", now);
+        const due = this.takeDue("apply", now, frame);
         if (due.length === 0) break;
         runTasks(due);
       }
       // Listeners that write data while being notified are heard next frame.
-      const listeners = this.takeDue("notify", now);
-      notified = listeners.length > 0;
+      const listeners = this.takeDue("notify", now, frame);
+      notified = listeners.length > 0 && !frame.ridersOnly;
       runTasks(listeners);
     } finally {
+      // Nothing but riders ran: the next frame is spaced from the last one that carried data.
+      if (frame.ridersOnly) this.lastFrameAt = previousFrameAt;
       this.running = false;
       // Only a frame that told readers something sets off renders worth timing.
       if (notified && driver.afterFrame) {

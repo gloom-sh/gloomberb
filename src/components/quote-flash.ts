@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { TickerFinancials } from "../types/financials";
 import { getActiveQuoteDisplay } from "../market-data/market/status";
+import { useDataFrameWake } from "../market-data/frame-wake";
 
 export type QuoteFlashDirection = "up" | "down" | "flat";
 
@@ -99,47 +100,50 @@ function sameFlashes(left: Map<string, QuoteFlashDirection>, right: Map<string, 
 
 const EMPTY_FLASHES = new Map<string, QuoteFlashDirection>();
 
+function sameDeps(left: readonly unknown[] | null, right: readonly unknown[]): boolean {
+  return !!left && left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+}
+
+/**
+ * The flashes to show. New prices are observed while rendering, so a price and
+ * its flash reach the screen in the same commit, and a flash ends in the first
+ * market data frame after it is due, with whatever quotes that frame brings:
+ * neither costs a commit (in the terminal, a full redraw) of its own.
+ */
 function useFlashTracker(
   collect: (tracker: QuoteFlashTracker, now: number) => void,
   enabled: boolean,
   deps: readonly unknown[],
 ): Map<string, QuoteFlashDirection> {
-  const [flashes, setFlashes] = useState<Map<string, QuoteFlashDirection>>(EMPTY_FLASHES);
   const trackerRef = useRef<QuoteFlashTracker | null>(null);
   trackerRef.current ??= new QuoteFlashTracker();
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tracker = trackerRef.current;
+  const observedRef = useRef<readonly unknown[] | null>(null);
+  const shownRef = useRef<Map<string, QuoteFlashDirection>>(EMPTY_FLASHES);
+  const clock = useDataFrameWake();
 
-  const publish = () => {
-    const tracker = trackerRef.current!;
-    const now = Date.now();
-    tracker.prune(now);
-    const next = tracker.active(now);
-    setFlashes((current) => (sameFlashes(current, next) ? current : next.size === 0 ? EMPTY_FLASHES : next));
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-    const nextAt = tracker.nextChangeAt(now);
-    if (nextAt != null) {
-      timeoutRef.current = setTimeout(publish, Math.max(0, nextAt - Date.now()));
-    }
-  };
-
-  useEffect(() => {
-    const tracker = trackerRef.current!;
-    const now = Date.now();
+  const now = clock.now();
+  // Once per set of inputs: a render for any other reason (or a repeated one) observes nothing.
+  if (!sameDeps(observedRef.current, deps)) {
+    observedRef.current = deps;
     collect(tracker, now);
-    if (!enabled) {
-      tracker.clear();
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-      setFlashes(EMPTY_FLASHES);
-      return;
-    }
-    publish();
-  }, [enabled, ...deps]);
+  }
+  let flashes = EMPTY_FLASHES;
+  if (!enabled) {
+    tracker.clear();
+  } else {
+    tracker.prune(now);
+    const active = tracker.active(now);
+    flashes = sameFlashes(shownRef.current, active) ? shownRef.current : active.size === 0 ? EMPTY_FLASHES : active;
+  }
+  shownRef.current = flashes;
+  const endsAt = enabled ? tracker.nextChangeAt(now) : null;
 
-  useEffect(() => () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-  }, []);
+  // Booked after every render that still shows a flash.
+  useEffect(() => {
+    if (endsAt != null) clock.wakeAt(endsAt);
+    else clock.cancel();
+  });
 
   return flashes;
 }

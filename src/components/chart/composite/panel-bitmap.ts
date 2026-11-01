@@ -77,12 +77,31 @@ export function useCompositePanelBitmap({
   const desktopRenderedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
   const desktopCancelRenderRef = useRef<(() => void) | null>(null);
   const desktopActiveRef = useRef(false);
+  /** What the current desktop bitmap was drawn from. */
+  const desktopDrawnRef = useRef<{
+    panel: CompositePanelScene;
+    pixelWidth: number;
+    pixelHeight: number;
+    colors: CompositeChartColors;
+  } | null>(null);
   const pixelWidth = bitmapSize?.pixelWidth ?? null;
   const pixelHeight = bitmapSize?.pixelHeight ?? null;
 
   desktopRenderInputRef.current = isDesktopWeb && pixelWidth !== null && pixelHeight !== null
     ? { panel, pixelWidth, pixelHeight, colors }
     : null;
+
+  // New data at the size and palette already drawn (a live quote moving the
+  // last bar) is drawn in this render. Drawn in the layout effect, its state
+  // update would render the panel a second time, a commit per tick; the paint
+  // is the same either way, since the effect also draws before it.
+  const drawn = desktopDrawnRef.current;
+  if (isDesktopWeb && desktopActiveRef.current && desktopBitmapRef.current && drawn && drawn.panel !== panel
+    && drawn.pixelWidth === pixelWidth && drawn.pixelHeight === pixelHeight && drawn.colors === colors
+    && desktopCancelRenderRef.current === null && !desktopUnpaintedRef.current && !revealed) {
+    desktopBitmapRef.current = renderPanelBitmap(panel, { pixelWidth, pixelHeight }, colors);
+    desktopDrawnRef.current = { panel, pixelWidth, pixelHeight, colors };
+  }
 
   // The cursor is drawn as a separate overlay, so the plot raster stays cached
   // (and resident in the terminal) while the crosshair moves.
@@ -114,6 +133,7 @@ export function useCompositePanelBitmap({
       };
       desktopRenderedColorsRef.current = input.colors;
       desktopBitmapRef.current = next;
+      desktopDrawnRef.current = input;
       setDesktopBitmap(next);
       // A chart that fills its box when it opens takes its measured size
       // before its first paint, by the end of the frame after next. Later
@@ -140,6 +160,7 @@ export function useCompositePanelBitmap({
       desktopRequestedSizeRef.current = null;
       desktopRenderedSizeRef.current = null;
       desktopBitmapRef.current = null;
+      desktopDrawnRef.current = null;
       setDesktopBitmap((current) => current === null ? current : null);
       return;
     }
@@ -158,7 +179,11 @@ export function useCompositePanelBitmap({
 
     if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors || desktopUnpaintedRef.current || revealed) {
       cancelRender();
-      render();
+      const current = desktopDrawnRef.current;
+      // The render drew this data already.
+      const drawnNow = !!desktopBitmapRef.current && current?.panel === panel && current.colors === colors
+        && current.pixelWidth === pixelWidth && current.pixelHeight === pixelHeight;
+      if (!drawnNow) render();
       return;
     }
 
@@ -176,5 +201,6 @@ export function useCompositePanelBitmap({
   }, []);
 
   if (!bitmapSize) return null;
-  return isDesktopWeb ? desktopBitmap : terminalBitmap;
+  // The state only renders the panel again; the ref also holds what this render drew.
+  return isDesktopWeb ? desktopBitmapRef.current ?? desktopBitmap : terminalBitmap;
 }
