@@ -32,15 +32,13 @@ import {
 import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
 import {
-  MAGNET_REST_MS,
+  createMagnetPace,
   NO_LATCH,
-  pointerTravelling,
   snapMovedRect,
   snapResizedRect,
-  trackPointer,
   type MagnetDistances,
   type MagnetLatch,
-  type PointerSample,
+  type MagnetPace,
 } from "./drag/magnets";
 import { paneHeaderRows } from "../pane/sizing";
 
@@ -54,11 +52,6 @@ interface PendingJoin {
 function dropPendingJoin(memo: { join: PendingJoin | null }) {
   if (memo.join?.timer) clearTimeout(memo.join.timer);
   memo.join = null;
-}
-
-function dropRestTimer(memo: { rest: ReturnType<typeof setTimeout> | null }) {
-  if (memo.rest) clearTimeout(memo.rest);
-  memo.rest = null;
 }
 
 /** A resize without edges is the bottom-right corner's (the terminal's only one). */
@@ -127,12 +120,11 @@ export function useShellActiveDrag({
     latch: MagnetLatch;
     magnetTargets: LayoutBounds[] | null;
     join: PendingJoin | null;
-    track: PointerSample[];
-    rest: ReturnType<typeof setTimeout> | null;
-  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null, track: [], rest: null });
+    pace: MagnetPace;
+  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null, pace: createMagnetPace() });
   useEffect(() => () => {
     dropPendingJoin(memoRef.current);
-    dropRestTimer(memoRef.current);
+    memoRef.current.pace.reset();
   }, []);
   // The handler as it is now, for the rest check to run again.
   const handleRef = useRef<(event: ShellMouseEvent) => void>(() => {});
@@ -159,10 +151,11 @@ export function useShellActiveDrag({
       memo.drop = null;
       memo.latch = NO_LATCH;
       memo.magnetTargets = null;
-      memo.track = [];
+      memo.pace.reset();
       dropPendingJoin(memo);
-      dropRestTimer(memo);
     }
+    // Any later event supersedes the rest check of an earlier move.
+    memo.pace.cancel();
     // Every other pane on screen, docked or floating, whose edges a floating
     // pane's edges stick to. Alt (Option) lets it go anywhere.
     const magnetTargets = (paneId: string) => {
@@ -178,30 +171,22 @@ export function useShellActiveDrag({
     const magnetArea = { x: 0, y: 0, width, height: contentHeight };
     // Desktop: while the pointer travels, a moving pane follows it exactly;
     // its magnets catch once it slows down near a line, or rests there (the
-    // rest check runs the last move again once the pointer has stopped).
+    // rest check runs the last move again once the pointer has stopped). What
+    // they hold to still follows every move, so it rests where it would have.
     const travelling = () => {
       if (!nativePaneChrome || drag.type !== "pane-drag") return false;
-      const now = performance.now();
-      const last = memo.track[memo.track.length - 1];
-      if (!last || last.x !== preciseX || last.y !== preciseShellY) trackPointer(memo.track, { t: now, x: preciseX, y: preciseShellY });
-      if (!pointerTravelling(memo.track, now, magnetDistances)) return false;
-      dropRestTimer(memo);
       // A release lands where the pane is drawn: no catch after it.
-      if (event.type !== "drag") return true;
-      memo.rest = setTimeout(() => {
-        memo.rest = null;
-        if (dragRef.current === drag) handleRef.current(event);
-      }, MAGNET_REST_MS);
-      return true;
+      const rest = event.type === "drag" ? () => { if (dragRef.current === drag) handleRef.current(event); } : undefined;
+      return memo.pace.travelling({ t: performance.now(), x: preciseX, y: preciseShellY }, magnetDistances, rest);
     };
     const snapMove = (paneId: string, rect: FloatingRect): FloatingRect => {
-      if (magnetsOff || travelling()) {
+      if (magnetsOff) {
         memo.latch = NO_LATCH;
         return rect;
       }
       const snapped = snapMovedRect(rect, magnetTargets(paneId), magnetArea, magnetDistances, memo.latch);
       memo.latch = snapped.latch;
-      return snapped.rect;
+      return travelling() ? rect : snapped.rect;
     };
     const snapResize = (paneId: string, rect: FloatingRect, edges: { x: -1 | 0 | 1; y: -1 | 0 | 1 }): FloatingRect => {
       if (magnetsOff) {
@@ -236,7 +221,6 @@ export function useShellActiveDrag({
     if (event.type === "drag-cancel") {
       // The window lost focus or the system took the pointer: put everything back.
       dropPendingJoin(memo);
-      dropRestTimer(memo);
       cancelActiveDrag();
       event.stopPropagation();
       event.preventDefault();
@@ -341,7 +325,6 @@ export function useShellActiveDrag({
 
     if (event.type === "up" || event.type === "drag-end") {
       dropPendingJoin(memo);
-      dropRestTimer(memo);
       if (drag.type === "divider") {
         if (live.get().divider) {
           const nextLayout = resizeSplitAtPath(baseLayout, drag.path, dividerRatioAt(preciseX, preciseShellY));

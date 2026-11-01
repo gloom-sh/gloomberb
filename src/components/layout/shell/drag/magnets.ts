@@ -50,17 +50,73 @@ const SPEED_WINDOW_MS = 64;
 export const MAGNET_REST_MS = 80;
 
 /** Where the pointer was during a move, in cells, and when (ms). */
-export interface PointerSample {
+interface PointerSample {
   t: number;
   x: number;
   y: number;
 }
 
 /** Adds where the pointer is now, keeping only what the speed reads. */
-export function trackPointer(track: PointerSample[], sample: PointerSample): void {
+function trackPointer(track: PointerSample[], sample: PointerSample): void {
   track.push(sample);
   const oldest = sample.t - SPEED_WINDOW_MS * 2;
   while (track.length > 2 && track[1]!.t <= oldest) track.shift();
+}
+
+/**
+ * Desktop: when a moving pane's magnets act, over one drag. `travelling`
+ * takes each move and says whether the pointer is on its way somewhere; while
+ * it is, the pane follows it exactly, and `rest` (the move run again) is set
+ * to run once the pointer has stopped for MAGNET_REST_MS, so the magnets
+ * catch where it stopped. Any later move drops that check, travelling or not:
+ * run after a slower move, it would put the pane back where the pointer was.
+ * The check runs at the start of a frame, after the moves that frame brings,
+ * so a page drawing fewer frames than 1 / MAGNET_REST_MS still sees a
+ * pointer that moves on every frame as travelling.
+ */
+export interface MagnetPace {
+  travelling(sample: PointerSample, distances: MagnetDistances, rest?: () => void): boolean;
+  /** Drops the rest check: another event of the drag came first. */
+  cancel(): void;
+  /** Forgets the pointer's path, for a new drag. */
+  reset(): void;
+}
+
+export function createMagnetPace(): MagnetPace {
+  let track: PointerSample[] = [];
+  let rest: ReturnType<typeof setTimeout> | null = null;
+  let frame: number | null = null;
+  const cancel = () => {
+    if (rest) clearTimeout(rest);
+    if (frame !== null) cancelAnimationFrame(frame);
+    rest = null;
+    frame = null;
+  };
+  return {
+    travelling(sample, distances, onRest) {
+      cancel();
+      const last = track[track.length - 1];
+      // The same place again (a rest check, a repeated event) is not a move.
+      if (!last || last.x !== sample.x || last.y !== sample.y) trackPointer(track, sample);
+      if (!pointerTravelling(track, sample.t, distances)) return false;
+      if (onRest) {
+        rest = setTimeout(() => {
+          rest = null;
+          if (typeof requestAnimationFrame !== "function") return onRest();
+          frame = requestAnimationFrame(() => {
+            frame = null;
+            onRest();
+          });
+        }, MAGNET_REST_MS);
+      }
+      return true;
+    },
+    cancel,
+    reset() {
+      cancel();
+      track = [];
+    },
+  };
 }
 
 /**
@@ -70,7 +126,7 @@ export function trackPointer(track: PointerSample[], sample: PointerSample): voi
  * drag) is travel, so a pane leaves its spot without catching the lines it
  * sits on.
  */
-export function pointerTravelling(track: readonly PointerSample[], now: number, distances: MagnetDistances): boolean {
+function pointerTravelling(track: readonly PointerSample[], now: number, distances: MagnetDistances): boolean {
   const latest = track[track.length - 1];
   if (!latest) return false;
   const since = now - SPEED_WINDOW_MS;
