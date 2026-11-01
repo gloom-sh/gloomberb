@@ -316,7 +316,8 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
             choices={watchlistTargetChoices(watchlists, getState().tickers)} footer={text.saveBody} />,
         }).then((id) => {
           if (!id) return;
-          if (id === NEW_WATCHLIST_CHOICE) nameNewWatchlist();
+          // The name prompt opens once the choice has closed and handed focus back, so its field takes the keys.
+          if (id === NEW_WATCHLIST_CHOICE) setTimeout(nameNewWatchlist, 0);
           else save({ id });
         }).catch(logFailure("shared.members-menu", "Open save members to watchlist choice failed"));
       } },
