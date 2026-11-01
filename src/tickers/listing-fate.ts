@@ -1,6 +1,6 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
-import type { Quote } from "../types/financials";
+import type { ListingDelisting, PricePoint, Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
 import {
   describeFormerIssuer,
@@ -75,6 +75,84 @@ export function noLongerTradingNote(label: string, quote: Quote, now = Date.now(
   return quote.delisting
     ? `${label}: ${delistingLabel(quote.delisting)} (last price ${price})`
     : `${label}: no longer trading since ${date} (last price ${price})`;
+}
+
+// A listing with no quote whose newest bar is this old stopped trading; a newer one is a quiet month.
+const NO_QUOTE_ENDED_AFTER_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * When a listing the service has no quote for last traded: the day its history
+ * says it no longer trades from (`delisting`), else its newest bar's when that
+ * is over 30 days old. Null for one that traded within the month, or has no bars.
+ */
+export function noQuoteLastTraded(
+  history: { points: readonly Pick<PricePoint, "date">[]; delisting?: ListingDelisting },
+  now = Date.now(),
+): string | null {
+  if (history.delisting) return history.delisting.lastTradeDate;
+  const newest = Math.max(...history.points.map((point) => new Date(point.date).getTime()).filter(Number.isFinite));
+  return Number.isFinite(newest) && now - newest > NO_QUOTE_ENDED_AFTER_MS ? new Date(newest).toISOString().slice(0, 10) : null;
+}
+
+/** "FLAT last traded 2020-06-03; no longer listed": what `quote`, `ticker`, `history` and `search` say of such a listing. */
+export function noLongerListedNote(symbol: string, lastTraded: string): string {
+  return `${symbol} last traded ${lastTraded}; no longer listed`;
+}
+
+/**
+ * The US venue to read a bare symbol's own US line on, where a source can
+ * otherwise answer it with a listing abroad: the one its listing metadata
+ * names, else NYSE. The US exchanges share one symbol, and the service reads
+ * any of them as the symbol's one US line (STPP's ended on BATS in 2020).
+ */
+export async function usVenueOf(
+  symbol: string,
+  dataProvider: Pick<DataProvider, "getQuoteMetadata">,
+): Promise<string> {
+  const venue = (await dataProvider.getQuoteMetadata?.(symbol, "")
+    .catch(logFailure("tickers-listing-fate", "Read a stopped listing's venue failed", null)))?.listingExchangeName;
+  return venue && isUsListingExchange(venue) ? venue : "NYSE";
+}
+
+/** When a listing with no quote last traded, and its last close then. */
+export interface NoQuoteEnding {
+  lastTraded: string;
+  lastClose: number | null;
+}
+
+/**
+ * `noQuoteLastTraded` for a listing a command has no quote for, from its
+ * latest month of daily bars (a listing that stopped answers its last ones),
+ * with its last close: a bare symbol's on the US venue its metadata names,
+ * whose bars a source can otherwise answer with a listing abroad's. Fails
+ * soft: a source that does not answer says nothing.
+ */
+export async function loadNoQuoteEnding(
+  listing: { symbol: string; exchange?: string | null },
+  dataProvider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryWithMetadata" | "getQuoteMetadata">,
+  now = Date.now(),
+): Promise<NoQuoteEnding | null> {
+  try {
+    const exchange = listing.exchange || await usVenueOf(listing.symbol, dataProvider);
+    const history = dataProvider.getPriceHistoryWithMetadata
+      ? await dataProvider.getPriceHistoryWithMetadata(listing.symbol, exchange, "1M")
+      : { points: await dataProvider.getPriceHistory(listing.symbol, exchange, "1M") };
+    const lastTraded = noQuoteLastTraded(history, now);
+    const close = history.points.at(-1)?.close;
+    return lastTraded ? { lastTraded, lastClose: typeof close === "number" && Number.isFinite(close) ? close : null } : null;
+  } catch (error) {
+    logFailure("tickers-listing-fate", "Could not read a listing's last bars")(error);
+    return null;
+  }
+}
+
+/** `loadNoQuoteEnding`'s day alone: what `quote`, `ticker` and `history` say of a listing with no quote. */
+export async function loadNoQuoteLastTraded(
+  listing: { symbol: string; exchange?: string | null },
+  dataProvider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryWithMetadata" | "getQuoteMetadata">,
+  now = Date.now(),
+): Promise<string | null> {
+  return (await loadNoQuoteEnding(listing, dataProvider, now))?.lastTraded ?? null;
 }
 
 /**

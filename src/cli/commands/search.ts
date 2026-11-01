@@ -21,8 +21,8 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
-import { listingChangeLine, loadListingFate } from "../../tickers/listing-fate";
-import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { listingChangeLine, loadListingFate, loadNoQuoteEnding, noLongerListedNote, type NoQuoteEnding } from "../../tickers/listing-fate";
+import { formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable, failWithError, isCliFailure, unreachableError } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
@@ -180,9 +180,23 @@ async function searchFate(
   quote: Quote | null,
   dataProvider: DataProvider,
   changes: TickerChangeLookup,
+  /** The symbol's last bars when it has no quote (loadNoQuoteEnding), read beside the search. */
+  noQuoteEnding: Promise<NoQuoteEnding | null> = Promise.resolve(null),
 ): Promise<SearchFate> {
   const fate = await loadListingFate({ symbol }, dataProvider, { quote, changes });
   const unlisted = !candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol);
+  // No quote at all (a retired ETN): a listed row the service marks ended says when, and one search no longer lists is
+  // listed with its last day and close, from its US line's last bars.
+  if (!quote) {
+    const ended = candidates.find((candidate) => candidate.symbol.toUpperCase() === symbol && candidate.result?.delisting)?.result?.delisting;
+    if (ended) return { stopped: null, notes: [`${noLongerListedNote(symbol, ended.lastTradeDate)}.`] };
+    const ending = unlisted ? await noQuoteEnding : null;
+    if (ending) {
+      const note = noLongerListedNote(symbol, ending.lastTraded);
+      return { stopped: { symbol, name: fate.change?.issuer || null, lastTraded: ending.lastTraded,
+        lastPrice: ending.lastClose == null ? "—" : formatMarketPriceWithCurrency(ending.lastClose, "USD", withCurrencyMinorDigits({}, "USD")), note }, notes: [] };
+    }
+  }
   const stopped = unlisted && quote && fate.endedOn && fate.note
     ? {
       symbol,
@@ -667,13 +681,15 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     const savedExchange = tickers.find((ticker) => ticker.metadata.ticker.toUpperCase() === symbol)?.metadata.exchange ?? "";
     const quote = bare ? loadSearchedQuote(symbol, savedExchange, dataProvider) : null;
     const changes = bare ? startTickerChangeLookup(dataProvider, symbol) : null;
+    // With no quote, its US line's last bars, to list a retired symbol (STPP) with its last day.
+    const ending = quote?.then((quoted) => quoted ? null : loadNoQuoteEnding({ symbol }, dataProvider));
     const candidates = await searchCandidatesForCli({
       query: index?.symbol ?? trimmedQuery,
       tickers,
       dataProvider,
       ...quote ? { quote } : {},
     }).catch((error: unknown) => failTickerLookup(error, trimmedQuery, !dependencies.printResult));
-    const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes) : NO_SEARCH_FATE;
+    const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes, ending) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
     const bank = searchedCentralBank(trimmedQuery);

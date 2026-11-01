@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createTestQuote } from "../test-support/data-provider";
 import { MOVED_SYMBOL_CHANGES as CHANGES, MOVED_SYMBOL_QUOTES as QUOTES } from "../test-support/moved-symbols";
 import type { TickerChanges } from "../types/ticker-changes";
-import { describeListingFate, listingFateGate, listingFateNotes } from "./listing-fate";
+import { describeListingFate, listingFateGate, listingFateNotes, loadNoQuoteLastTraded, noLongerListedNote, noQuoteLastTraded } from "./listing-fate";
 
 test("what became of a symbol is one line from quote's sources: a listing that stopped, a company that left, bars from its old symbol", () => {
   const now = Date.parse("2026-10-12T06:00:00Z");
@@ -65,4 +65,32 @@ test("a pane serves a symbol at once unless its quote shows the line ended, and 
   expect(gate("META", undefined, CHANGES.META)).toBe("serve");
   // A moved company whose old symbol now lists something else that trades serves that.
   expect(gate("HFC", createTestQuote({ symbol: "HFC", name: "Hightower Fund", lastUpdated: now, lastTradeTime: now }), CHANGES.HFC)).toBe("serve");
+});
+
+test("a listing with no quote stopped trading when its history says so or its newest bar is over a month old; its own US line is read", async () => {
+  const now = Date.parse("2026-11-01T21:00:00Z");
+  const bar = (date: string) => ({ date: new Date(`${date}T00:00:00Z`), open: 1, high: 1, low: 1, close: 1 });
+  // The history's own last day wins over its bars.
+  expect(noQuoteLastTraded({ points: [bar("2020-06-02")], delisting: { status: "inactive", lastTradeDate: "2020-06-03", historyStart: "2016-01-04" } }, now)).toBe("2020-06-03");
+  expect(noQuoteLastTraded({ points: [bar("2026-09-28")] }, now)).toBe("2026-09-28");
+  // A quiet month, or nothing at all, is no ending.
+  expect(noQuoteLastTraded({ points: [bar("2026-10-05")] }, now)).toBeNull();
+  expect(noQuoteLastTraded({ points: [] }, now)).toBeNull();
+  expect(noLongerListedNote("FLAT", "2020-06-03")).toBe("FLAT last traded 2020-06-03; no longer listed");
+
+  // STPP: the bare symbol's bars are a fund abroad's; its US line on any US venue ended in 2020.
+  const asked: string[] = [];
+  const provider = {
+    getQuoteMetadata: async () => null,
+    getPriceHistory: async () => [],
+    getPriceHistoryWithMetadata: async (symbol: string, exchange: string) => {
+      asked.push(`${symbol}:${exchange}`);
+      return exchange ? { points: [bar("2020-07-16")], resolution: null, delisting: { status: "inactive" as const, lastTradeDate: "2020-07-16", historyStart: "2016-01-04" } }
+        : { points: [bar("2026-09-28")], resolution: null };
+    },
+  };
+  expect(await loadNoQuoteLastTraded({ symbol: "STPP", exchange: "" }, provider, now)).toBe("2020-07-16");
+  expect(asked).toEqual(["STPP:NYSE"]);
+  // A failed read says nothing.
+  expect(await loadNoQuoteLastTraded({ symbol: "STPP" }, { ...provider, getPriceHistoryWithMetadata: async () => { throw new Error("down"); } }, now)).toBeNull();
 });

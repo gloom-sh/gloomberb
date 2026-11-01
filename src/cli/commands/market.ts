@@ -258,7 +258,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { currencyNameMiss, currencyNameStop } from "../currency-name-hint";
-import { bareListingNote, listingFateNotes, noLongerTradingNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing } from "../../tickers/listing-fate";
+import { bareListingNote, listingFateNotes, loadNoQuoteLastTraded, noLongerListedNote, noLongerTradingNote, noQuoteLastTraded, SUCCESSOR_CHANGE_WAIT_MS, tradingListing, usVenueOf } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
@@ -1083,6 +1083,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }));
     const tickerChanges = symbolChanges.map(({ change }) => change);
     const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
+    // A symbol with no quote whose bars stopped over a month ago (FLAT, a retired ETN) says when it last traded, in place
+    // of why no quote came. Each costs a history read, so a long list says only why.
+    const lastTraded = await Promise.all(answers.map(({ result, listing }) => !result.quote && !isNetworkFailure(result.error)
+      && answers.length <= MAX_CHOICE_LOOKUPS ? loadNoQuoteLastTraded(listing.request, market.dataProvider, now) : null));
+    const endedNotes = answers.map(({ listing }, index) => lastTraded[index] ? `${noLongerListedNote(listing.symbol, lastTraded[index]!)}.` : null);
+    if (symbols.length === 1 && endedNotes[0]) ctx.fail(endedNotes[0], quoteChangeLine(tickerChanges[0], formerIssuers[0]) || undefined);
     const failed = answers[0]?.failure;
     if (symbols.length === 1 && failed) {
       ctx.fail(failed.message, [quoteChangeLine(tickerChanges[0], formerIssuers[0]), failed.details].filter(Boolean).join("\n") || undefined);
@@ -1123,6 +1129,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...yieldIndexFields(result),
       ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
       ...formerIssuers[index] ? { formerIssuer: formerIssuers[index] } : {},
+      ...lastTraded[index] ? { lastTraded: lastTraded[index] } : {},
     }));
     const notes = [
       ...list?.notes ?? [],
@@ -1150,8 +1157,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const pair = listingDepositaryPair({ quote: row.quote });
         return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
       }),
+      ...endedNotes.flatMap((note) => note ?? []),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
-      ...ctx.cliOptions.format !== "json" ? quoteNotes(data) : [],
+      ...ctx.cliOptions.format !== "json" ? quoteNotes(data.filter((_row, index) => !endedNotes[index])) : [],
     ];
     const columns = commandName === "compare" ? compareColumns() : quoteColumns();
     const basisNotes = changeBasisNotes(data, now);
@@ -1428,7 +1436,7 @@ async function loadListingHistory(
   const quoted = quoteAnswer.then((answer) => answer.quote);
   const fate = lookups ? listingFateLoader(listing, market, quoted, { successor: true }) : null;
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
-  const [loaded, quote] = await Promise.all([
+  const [answered, quote] = await Promise.all([
     loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
       .catch((error) => failHistory(error, listing.key, ctx)),
     quoted,
@@ -1436,6 +1444,9 @@ async function loadListingHistory(
   // A bare symbol several companies list is never served from the one the data service picked, in a range or a window:
   // it asks for an exchange as `quote` does, and in a list that is the symbol's row alone.
   await failUnchosenListing(listing, market, ctx, request, (await quoteAnswer).error);
+  const loaded = quote || window ? answered : await stoppedUsListingHistory(listing, market, loadRange, context, answered);
+  // With no quote and no bar in over a month, the listing stopped trading: said first, with its last day.
+  const lastTraded = quote || window ? null : noQuoteLastTraded(loaded);
   const { resolution } = loaded;
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
   // A window that ended before today has no session in progress.
@@ -1500,6 +1511,7 @@ async function loadListingHistory(
   const coverage = window ? historyCoverageNotice(loaded.coverageStart, Date.parse(`${window.from}T00:00:00Z`), loaded.coverageNote)
     : range === "YTD" ? null : historyCoverageWarning(range, loaded);
   const notes = [
+    ...lastTraded ? [`${noLongerListedNote(listing.symbol, lastTraded)}.`] : [],
     // A window the source has no bar in (a typo, a weekend, a listing that had not started) is said, not an empty table alone.
     ...data.length === 0 ? [emptyHistoryNote(listing.key, ask)] : [],
     // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
@@ -1519,6 +1531,28 @@ async function loadListingHistory(
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
+}
+
+/**
+ * A bare symbol with no quote whose US listing stopped trading is that
+ * listing's history: a source can answer the bare symbol with a listing
+ * abroad that took it (STPP's bars from 2026 are a UCITS fund's, the iPath
+ * steepener's ended in 2020). The bars as answered otherwise.
+ */
+async function stoppedUsListingHistory(
+  listing: CliListing,
+  market: MarketContext,
+  range: TimeRange,
+  context: { cacheMode: "refresh" | "default" },
+  answered: PriceHistoryResult,
+): Promise<PriceHistoryResult> {
+  if (listing.request.exchange || answered.delisting || !market.dataProvider.getPriceHistoryWithMetadata) return answered;
+  const venue = await usVenueOf(listing.request.symbol, market.dataProvider);
+  const own = await market.dataProvider.getPriceHistoryWithMetadata(listing.request.symbol, venue, range, context)
+    .catch(logFailure("cli.commands-market", "Read a stopped US listing's history failed", null));
+  const ended = own ? noQuoteLastTraded(own) : null;
+  const newest = answered.points.at(-1)?.date;
+  return own && ended && own.points.length > 0 && (!newest || new Date(newest).toISOString().slice(0, 10) > ended) ? own : answered;
 }
 
 /**
