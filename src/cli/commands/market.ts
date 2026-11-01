@@ -155,7 +155,7 @@ import {
   quotedPriceDivisor,
   historyVolume,
   historyVolumeBasis,
-  historyVolumeText,
+  historyVolumeNote,
   type HistoryRow,
   type HistoryUnit,
   type HistoryVolume,
@@ -1461,11 +1461,13 @@ async function loadListingHistory(
   const delayedTail = quote?.dataSource === "delayed" && !quote.delisting && (dayToDate || (intraday && sessionTrading));
   // The source that served the bars, a broker or another source when Gloom Cloud could not.
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
+  // A coin's volume unit, or what an index's volume counts (a day's total, an intraday count).
+  const volumeNote = historyVolumeNote(volume, interval, historyVolumeBasis(data));
   // A window that closed before today is the history asked for: no later bar makes it stale.
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
     ...source,
     status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
-    ...(volume ? { note: historyVolumeText(volume, interval, historyVolumeBasis(data)) } : {}),
+    ...(volumeNote ? { note: volumeNote } : {}),
   }) : rowsFreshness(data, {
     ...source,
     ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
@@ -1477,7 +1479,7 @@ async function loadListingHistory(
     ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
     ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     ...(delayedTail ? { status: "delayed" as const, delayMinutes: CLOUD_QUOTE_DELAY_MINUTES } : {}),
-    ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval, historyVolumeBasis(data)) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
+    ...(volumeNote || dayToDate ? { note: [volumeNote, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
   // The rows are drawn from the bars served, which say whether they are the saved copy.
   }), loaded);
   const gaps = historyGapNote(data, traded);
