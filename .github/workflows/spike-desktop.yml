@@ -163,6 +163,10 @@ jobs:
           DISPLAY=:99 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL" --platform-label ${{ matrix.label }} \
             --launch "$RUNNER_TEMP/deb/usr/bin/Gloom" --probe-env \
             --app-root "$RUNNER_TEMP/deb" --out spike-results --window-probe scripts/spike/linux-window-probe.sh
+          # WebKitGTK without its DMA-BUF renderer and the accessibility bus, as a check on Xvfb's first-paint delay.
+          DISPLAY=:99 WEBKIT_DISABLE_DMABUF_RENDERER=1 NO_AT_BRIDGE=1 bun scripts/spike/desktop-measure.ts --shell "$SPIKE_SHELL-no-dmabuf" --platform-label ${{ matrix.label }} \
+            --launch "$RUNNER_TEMP/deb/usr/bin/Gloom" --probe-env --runs 3 --skip multi --skip window \
+            --app-root "$RUNNER_TEMP/deb" --out spike-results-no-dmabuf
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -170,4 +174,5 @@ jobs:
           name: spike-${{ matrix.label }}
           path: |
             spike-results
+            spike-results-no-dmabuf
             sizes.md

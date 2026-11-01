@@ -12,7 +12,8 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use tauri::webview::PageLoadEvent;
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, RunEvent, WebviewUrl, WebviewWindow,
@@ -20,6 +21,14 @@ use tauri::{
 };
 
 const COMMAND_PREFIX: &str = "\u{1}GLOOM ";
+
+static STARTED: OnceLock<Instant> = OnceLock::new();
+
+/// Startup timeline on stderr: milliseconds since the shell started.
+fn mark(what: &str) {
+    let started = STARTED.get_or_init(Instant::now);
+    eprintln!("[shell +{}ms] {what}", started.elapsed().as_millis());
+}
 
 struct Sidecar {
     stdin: Mutex<Option<ChildStdin>>,
@@ -116,7 +125,10 @@ fn create_window(app: &AppHandle, command: &Value) -> tauri::Result<()> {
         .position(number(frame, "x", 64.0), number(frame, "y", 48.0))
         .on_page_load(move |_window, payload| {
             if payload.event() == PageLoadEvent::Finished {
+                mark(&format!("page loaded w{id}"));
                 emit(&event_app, json!({ "event": "dom-ready", "id": id }));
+            } else {
+                mark(&format!("page load started w{id}"));
             }
         });
     if let Some(min) = command.get("minSize").filter(|v| v.is_object()) {
@@ -135,6 +147,7 @@ fn create_window(app: &AppHandle, command: &Value) -> tauri::Result<()> {
         builder = builder.decorations(false).shadow(true);
     }
     let window = builder.build()?;
+    mark(&format!("window built w{id}"));
 
     let event_app = app.clone();
     let event_window = window.clone();
@@ -235,6 +248,7 @@ fn spawn_sidecar(app: &AppHandle) -> std::io::Result<()> {
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn()?;
+    mark("sidecar spawned");
     let stdin = child.stdin.take();
     let stdout = child.stdout.take().expect("piped stdout");
     app.manage(Sidecar {
@@ -249,6 +263,9 @@ fn spawn_sidecar(app: &AppHandle) -> std::io::Result<()> {
         for line in reader.lines() {
             let Ok(line) = line else { break };
             if let Some(body) = line.strip_prefix(COMMAND_PREFIX) {
+                if body.contains("\"window.create\"") {
+                    mark("window.create from the backend");
+                }
                 match serde_json::from_str::<Value>(body) {
                     Ok(command) => {
                         let app = reader_app.clone();
@@ -267,6 +284,7 @@ fn spawn_sidecar(app: &AppHandle) -> std::io::Result<()> {
 }
 
 fn main() {
+    mark("shell start");
     let app = tauri::Builder::default()
         .setup(|app| {
             spawn_sidecar(app.handle())?;

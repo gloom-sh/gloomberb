@@ -17,6 +17,12 @@ import { defineElectrobunRPC } from "../../../node_modules/electrobun/dist/api/s
 
 const COMMAND_PREFIX = "\u0001GLOOM ";
 
+/** Startup timeline on stderr, from the sidecar process's start. */
+function mark(what: string): void {
+  console.error(`[backend +${Math.round(performance.now())}ms] ${what}`);
+}
+mark("shim loaded");
+
 type Frame = { x: number; y: number; width: number; height: number };
 type Display = { id: number; bounds: Frame; workArea: Frame; scaleFactor: number; isPrimary: boolean };
 type Listener = (event: { data: Record<string, unknown> }) => void;
@@ -40,6 +46,7 @@ const hello = new Promise<void>((resolve) => { helloResolve = resolve; });
 function onShellEvent(message: ShellEvent): void {
   if (message.displays) displays = message.displays;
   if (message.event === "hello") {
+    mark("hello from the shell");
     helloResolve?.();
     return;
   }
@@ -94,6 +101,7 @@ const rpcServer = Bun.serve({
     maxPayloadLength: 256 * 1024 * 1024,
     open(ws) {
       const id = (ws.data as { id: number }).id;
+      mark(`page w${id} connected`);
       sockets.set(id, ws as unknown as Socket);
       for (const message of queued.get(id) ?? []) ws.send(message);
       queued.delete(id);
@@ -205,6 +213,7 @@ export class BrowserWindow extends Emitter {
     this.rpc = options.rpc;
     this.webview = new WebviewHandle(this);
     windows.set(this.id, this);
+    mark(`window w${this.id} created by the backend`);
     this.rpc?.setTransport(transportFor(this.id));
     send({
       cmd: "window.create",
