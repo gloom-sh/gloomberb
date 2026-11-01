@@ -167,9 +167,14 @@ export function useCompositeChartKeyboard({
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
   const [keyboardPlacement, setKeyboardPlacement] = useState<KeyboardToolPlacement | null>(null);
   // Whether the user moved into the chart from the pane's tab strip; see `inside`.
-  const [entered, setEntered] = useState(false);
+  const [entered, setEnteredState] = useState(false);
+  // Follows every change as it is made, not the next render: a step out (Esc,
+  // Up, focus leaving) and a wheel step in one batch must still enter again.
   const enteredRef = useRef(entered);
-  enteredRef.current = entered;
+  const setEntered = useCallback((next: boolean) => {
+    enteredRef.current = next;
+    setEnteredState(next);
+  }, []);
   const keyboardId = `composite-chart:${useId()}`;
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
   useEffect(() => {
@@ -188,19 +193,16 @@ export function useCompositeChartKeyboard({
     setKeyboardPlacement(null);
     if (tool === null) setSelectedDrawingId(null);
     if (tool !== "level") setSelectedLevelId(null);
-  }, []);
+  }, [setEntered]);
   const cancelKeyboardPlacement = useCallback(() => setKeyboardPlacement(null), []);
   // A press, drag or wheel on the chart moves into it, as Down or Enter do.
   // Once inside, a wheel step sets nothing: setting the same state right
   // after the chart rendered still costs React a render of the chart that
   // bails out, and a pan or zoom renders it on every step.
   const activateFromPointer = useCallback(() => {
-    if (!enteredRef.current) {
-      enteredRef.current = true;
-      setEntered(true);
-    }
+    if (!enteredRef.current) setEntered(true);
     onActivate?.();
-  }, [onActivate]);
+  }, [onActivate, setEntered]);
   const levelHost = useMemo(
     () => scene && levels ? levelPanel(scene, levels.seriesId) : null,
     [levels, scene],
@@ -237,12 +239,12 @@ export function useCompositeChartKeyboard({
   useEffect(() => {
     if (wasFocusedRef.current && !focused) setEntered(false);
     wasFocusedRef.current = focused;
-  }, [focused]);
+  }, [focused, setEntered]);
   // A time or a price is picked with the arrows and Enter.
   const picking = !!timePick || !!pricePick;
   useEffect(() => {
     if (picking) setEntered(true);
-  }, [picking]);
+  }, [picking, setEntered]);
   useEffect(() => {
     if (!toolsActive) setKeyboardPlacement(null);
   }, [toolsActive]);
