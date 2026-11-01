@@ -62,8 +62,9 @@ test("a compact Treasury overview keeps its chart's 32nds visible beside the quo
     { width: 74, height: 30 },
   );
   const frame = await tui.waitForFrameToContain("104-15½");
-  // Padded chart bounds need decimal 32nds, which exceed the old eight-cell gutter.
-  const axisLabels = frame.split("\n").filter((line) => /10[345]-\d{2}\.\d{2}\s*$/.test(line));
-  expect(axisLabels.length).toBeGreaterThanOrEqual(2);
+  // The axis ticks on half 32nds whatever the padded bounds, and the gutter still fits a cursor's decimal 32nds.
+  const lines = frame.split("\n");
+  expect(lines.filter((line) => /10[345]-\d{2}[¼½¾]?\s*$/.test(line)).length).toBeGreaterThanOrEqual(2);
+  expect(lines.some((line) => /10[345]-\d{2}\.\d{2}\s*$/.test(line))).toBe(false);
   expect(frame).not.toContain("$104");
 });

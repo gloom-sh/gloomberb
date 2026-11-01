@@ -192,10 +192,22 @@ export function thinSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "cont
 }
 
 /**
+ * The grid a Treasury root's chart axis ticks on, in points: its own fraction
+ * of a 32nd, no finer than a quarter (ZT and ZF quarter 32nds, ZN half, ZB and
+ * UB whole 32nds), so a tick reads 104-25½, never 104-25.60. Undefined for a
+ * root quoted in decimals, whose axis steps 1, 2, 5.
+ */
+export function curveAxisGrid(root: string): number | undefined {
+  const tick = RATE_TICKS[root];
+  return tick == null ? undefined : Math.max(tick, 1 / 128);
+}
+
+/**
  * Axis gridlines sit on round values, so they need no tick precision: one
  * decimal count across the gutter, as many as the plotted range asks for and
  * enough to keep every tick within a percent of that range. A span of hundreds
- * of index points reads 7800, a VIX strip 18.5, a Treasury 1/64 grid 112.25.
+ * of index points reads 7800, a VIX strip 18.5. A Treasury axis reads in 32nds,
+ * its ticks on the root's grid (`curveAxisGrid`).
  */
 export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root: string): string {
   if (RATE_TICKS[root] != null) return formatThirtySeconds(value);

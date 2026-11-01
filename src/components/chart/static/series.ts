@@ -25,6 +25,8 @@ export interface StaticSeriesOptions {
   calendarSpaced?: boolean;
   /** Columns below zero in this colour. */
   negativeColor?: string;
+  /** The grid its axis ticks fall on (`ResolvedSeries.tickGrid`). */
+  tickGrid?: number;
 }
 
 export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOptions): ResolvedSeries {
@@ -43,6 +45,7 @@ export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOpt
     interpolation: "none",
     ...(options.calendarSpaced ? {} : { timeBasis: INDEX_SPACED_TIME_BASIS }),
     ...(options.negativeColor ? { negativeColor: options.negativeColor } : {}),
+    ...(options.tickGrid ? { tickGrid: options.tickGrid } : {}),
     points,
   };
 }
