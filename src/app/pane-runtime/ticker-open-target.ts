@@ -5,6 +5,7 @@ import type { TickerRecord } from "../../types/ticker";
 import type { TickerOpenTarget } from "../../tickers/open-target";
 import { AmbiguousTickerError } from "../../tickers/search";
 import { isDialogOpen } from "../../ui/dialog-stack";
+import { SECURITY_DESCRIPTION_SEARCH } from "../../core/state/app/command-bar-launch";
 
 /**
  * A resolved open joins the app's tickers: the store takes the record when it
@@ -24,8 +25,17 @@ export function publishTickerOpenTarget(target: TickerOpenTarget, { tickers, dis
   }
 }
 
-/** An open whose symbol names several listings offers them in ticker search, unless a dialog would sit over the bar. */
+/**
+ * An open whose symbol names several listings offers them in ticker search, unless a dialog would
+ * sit over the bar. The pick opens the listing, as the open would have, rather than changing the
+ * focused pane's ticker.
+ */
 export function offerTickerListings(error: unknown, rawSymbol: string, dispatch: Dispatch<AppAction>): void {
   if (!(error instanceof AmbiguousTickerError) || isDialogOpen()) return;
-  dispatch({ type: "SET_COMMAND_BAR", open: true, query: rawSymbol, launch: { kind: "ticker-search", query: rawSymbol } });
+  dispatch({
+    type: "SET_COMMAND_BAR",
+    open: true,
+    query: rawSymbol,
+    launch: { kind: "ticker-search", query: rawSymbol, payload: SECURITY_DESCRIPTION_SEARCH },
+  });
 }

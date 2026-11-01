@@ -24,6 +24,19 @@ import type { PaneHeaderQuickSetting } from "../../pane/header";
 import { hasPaneFooterContent, PaneFooterKeys, PaneFooterProvider } from "../../pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "../../pane/sizing";
 import { captureStampFooter, usePaneCaptureStamp } from "../../pane/capture-stamp";
+import type { CombinedPaneFooter } from "../../pane/footer";
+import { useActionShortcut } from "../../../../ui";
+
+/**
+ * The terminal's route to ticker search for a single-ticker pane, which the desktop takes from
+ * the ticker in its title: the search's key ends the pane's footer, the first hint to go under
+ * More when the footer is narrow. The key is the app's and bound already, so the hint only says
+ * it (the pane menu has it as Change Ticker...); a click on it searches.
+ */
+function withChangeTickerHint(footer: CombinedPaneFooter, ticker: string | null, key: string, onPress: () => void): CombinedPaneFooter {
+  if (!ticker || !key) return footer;
+  return { ...footer, hints: [...footer.hints, { id: "change-ticker", key, label: " ticker", title: "Change Ticker", onPress, yieldsKey: true }] };
+}
 
 type ShellMouseHandler = (event: any) => void;
 
@@ -40,6 +53,8 @@ interface ShellPaneLayersProps {
   /** Saved insertion order, independent of which floating window is in front. */
   floatingOrder: readonly { instanceId: string }[];
   getPaneTitle: (pane: ResolvedPane) => string;
+  /** The ticker a single-ticker pane shows, which ticker search changes from it; null for any other pane. */
+  getPaneTicker: (pane: ResolvedPane) => string | null;
   getPaneQuickSettings: (paneId: string) => PaneHeaderQuickSetting[];
   handleFloatingClose: (paneId: string) => void;
   handleFloatingCloseMouseDown: (paneId: string, event: any) => void;
@@ -51,6 +66,8 @@ interface ShellPaneLayersProps {
   handlePaneHelp: (paneId: string) => void;
   /** Ask Gloom about the pane; null while nothing takes the question (its plugin is off). */
   handlePaneAsk: ((paneId: string) => void) | null;
+  /** Ticker search for the pane: the ticker in its title, or its footer key in the terminal. */
+  handlePaneTicker: (paneId: string) => void;
   hoveredPaneId: string | null;
   live: LiveDragStore;
   menuPaneId: string | null;
@@ -89,6 +106,8 @@ interface PaneLayerActions {
   help: (paneId: string) => void;
   /** The button beside the `?`: Ask Gloom about the pane. */
   ask: (paneId: string) => void;
+  /** Ticker search for the pane: the ticker in its title, or its footer key in the terminal. */
+  ticker: (paneId: string) => void;
   closeMouseDown: (paneId: string, event: any) => void;
   /** Also the failure card's Close: keep it stable, the pane body is memoized on it. */
   close: (paneId: string) => void;
@@ -100,6 +119,10 @@ interface PaneLayerProps {
   pane: ResolvedPane;
   rect: LayoutBounds;
   title: string;
+  /** See `getPaneTicker`. */
+  ticker: string | null;
+  /** Ticker search's key as the terminal says it; empty when it has none. */
+  tickerSearchKey: string;
   focused: boolean;
   windowModeSelected: boolean;
   showActions: boolean;
@@ -180,6 +203,8 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
   pane,
   rect: layoutRect,
   title,
+  ticker,
+  tickerSearchKey,
   focused,
   windowModeSelected,
   showActions,
@@ -226,7 +251,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     >
       <PaneFooterProvider>
         {(registeredFooter) => {
-          const footer = captureStampFooter(registeredFooter, captureStamp);
+          const footer = captureStampFooter(withChangeTickerHint(registeredFooter, nativePaneChrome ? null : ticker, tickerSearchKey, () => actions.ticker(paneId)), captureStamp);
           const showFooter = hasPaneFooterContent(footer);
           const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
           const bodyFrame = resolvePaneBodyFrame({
@@ -240,6 +265,8 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
             <PaneWrapper
               paneId={paneId}
               title={title}
+              titleTicker={nativePaneChrome ? ticker : null}
+              onTitleTickerPress={() => actions.ticker(paneId)}
               focused={focused}
               width={rect.width}
               height={rect.height}
@@ -289,6 +316,8 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   pane,
   rect,
   title,
+  ticker,
+  tickerSearchKey,
   focused,
   windowModeSelected,
   showActions,
@@ -316,7 +345,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   return (
     <PaneFooterProvider>
       {(registeredFooter) => {
-        const footer = captureStampFooter(registeredFooter, captureStamp);
+        const footer = captureStampFooter(withChangeTickerHint(registeredFooter, nativePaneChrome ? null : ticker, tickerSearchKey, () => actions.ticker(paneId)), captureStamp);
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const bodyFrame = resolvePaneBodyFrame({
@@ -330,6 +359,8 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
           <FloatingPaneWrapper
             paneId={paneId}
             title={title}
+            titleTicker={nativePaneChrome ? ticker : null}
+            onTitleTickerPress={() => actions.ticker(paneId)}
             x={rect.x}
             y={rect.y}
             width={rect.width}
@@ -628,6 +659,7 @@ export function ShellPaneLayers({
   focusedPaneId,
   floatingOrder,
   getPaneTitle,
+  getPaneTicker,
   getPaneQuickSettings,
   handleFloatingClose,
   handleFloatingCloseMouseDown,
@@ -638,6 +670,7 @@ export function ShellPaneLayers({
   handlePaneAction,
   handlePaneHelp,
   handlePaneAsk,
+  handlePaneTicker,
   hoveredPaneId,
   live,
   menuPaneId,
@@ -679,6 +712,7 @@ export function ShellPaneLayers({
   const floatingDragActive = useLiveDrag(live, nativePaneChrome ? selectNoDrag : selectFloatingDragActive);
   const occludedPaneIds = nativePaneChrome || floatingDragActive ? EMPTY_OCCLUSION : coveredPaneIds;
   const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  const tickerSearchKey = useActionShortcut("ticker-search");
 
   const handlersRef = useRef({
     handleFloatingClose,
@@ -690,6 +724,7 @@ export function ShellPaneLayers({
     handlePaneAction,
     handlePaneHelp,
     handlePaneAsk,
+    handlePaneTicker,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -706,6 +741,7 @@ export function ShellPaneLayers({
     handlePaneAction,
     handlePaneHelp,
     handlePaneAsk,
+    handlePaneTicker,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -724,6 +760,7 @@ export function ShellPaneLayers({
     menu: (paneId, rect, event) => handlersRef.current.handlePaneAction(paneId, rect, event),
     help: (paneId) => handlersRef.current.handlePaneHelp(paneId),
     ask: (paneId) => handlersRef.current.handlePaneAsk?.(paneId),
+    ticker: (paneId) => handlersRef.current.handlePaneTicker(paneId),
     closeMouseDown: (paneId, event) => handlersRef.current.handleFloatingCloseMouseDown(paneId, event),
     close: (paneId) => handlersRef.current.handleFloatingClose(paneId),
     restoreFullscreen: (event) => handlersRef.current.handleRestoreFullscreen(event),
@@ -753,6 +790,8 @@ export function ShellPaneLayers({
       pane,
       rect,
       title: getPaneTitle(pane),
+      ticker: getPaneTicker(pane),
+      tickerSearchKey,
       focused,
       windowModeSelected: windowModePaneId === paneId,
       showActions: focused || hoveredPaneId === paneId || menuPaneId === paneId,

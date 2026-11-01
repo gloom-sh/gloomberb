@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Command } from "../../commands/registry";
+import { commands, type Command } from "../../commands/registry";
+import { SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
 import { buildImmediateRootSelection } from "./selection";
 
 const languageCommand: Command = {
@@ -13,17 +14,20 @@ const languageCommand: Command = {
 };
 
 describe("root command selection", () => {
-  function selectLanguage(query: string, onRun: (arg: string) => void) {
+  function selectLanguage(query: string, onRun: (arg: string) => void, options: {
+    availableCommands?: Command[];
+    openModeRoute?: (screen: string, query?: string, payload?: Record<string, unknown>) => void;
+  } = {}) {
     return buildImmediateRootSelection({
       query,
       activeTickerSymbol: null,
-      availableCommands: [languageCommand],
+      availableCommands: options.availableCommands ?? [languageCommand],
       createPaneTemplateItem: () => { throw new Error("Unexpected pane template"); },
       createPluginCommandItem: () => { throw new Error("Unexpected plugin command"); },
       executeCollectionCommand: () => {},
       getAvailablePaneShortcutTemplates: () => [],
       getAvailablePluginCommands: () => [],
-      openModeRoute: () => {},
+      openModeRoute: options.openModeRoute ?? (() => {}),
       openPaneTemplateWorkflow: () => {},
       pluginCommandResultItems: () => [],
       runDirectCommand: (_command, arg) => onRun(arg),
@@ -41,6 +45,16 @@ describe("root command selection", () => {
     expect(selection?.right).toBe("ja");
     selection?.action();
     expect(receivedArgs).toEqual(["ja"]);
+  });
+
+  test("DES with no ticker opens DES's own search, whose pick opens DES rather than changing the focused pane", () => {
+    const opened: unknown[] = [];
+    const selection = selectLanguage("DES", () => {}, {
+      availableCommands: commands.filter((command) => command.id === "security-description"),
+      openModeRoute: (...args) => { opened.push(args); },
+    });
+    selection?.action();
+    expect(opened).toEqual([["ticker-search", "", SECURITY_DESCRIPTION_SEARCH]]);
   });
 
   test("keeps bare LANG available for cycling", () => {

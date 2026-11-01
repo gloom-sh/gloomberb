@@ -9,6 +9,7 @@ import { createAppRemoteController } from "./controller";
 import type { CapturePane, PaneScreenshotRequest } from "./pane-screenshot";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
+import { SECURITY_DESCRIPTION_SEARCH } from "../core/state/app/command-bar-launch";
 
 /** What custom views can read here: MOST (a list, no argument) and QQ (tickers, no flags). */
 function createViewSources() {
@@ -330,10 +331,11 @@ describe("createAppRemoteController", () => {
     });
 
     expect(response.ok).toBe(true);
+    // DES's search: a remote pick opens the ticker rather than changing the focused pane's.
     expect(actions).toContainEqual({
       type: "SET_COMMAND_BAR",
       open: true,
-      launch: { kind: "ticker-search", query: "google" },
+      launch: { kind: "ticker-search", query: "google", payload: SECURITY_DESCRIPTION_SEARCH },
     });
     expect(getState().commandBarOpen).toBe(true);
     expect(getState().commandBarLaunchRequest).toMatchObject({

@@ -37,7 +37,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | Key | Action |
 |-----|--------|
 | `Ctrl+P` | Open command mode |
-| `` ` `` | Open ticker search |
+| `` ` `` | Change the focused pane's ticker (ticker search) |
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
@@ -81,6 +81,15 @@ The focused pane's footer shows its actions with their keys, such as `[a]dd`. Th
 - Dialogs: `Enter` confirms, `Esc` closes (on the desktop `Tab` moves between controls).
 - Forms: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends from the last, `Cmd/Ctrl+S` sends from any field, `y` or `n` answers a confirm.
 - Pane settings: the arrows move between settings, `Left` / `Right` change a choice in place, `Enter` opens a field's editor.
+
+### Changing a pane's ticker
+
+`` ` `` opens ticker search for the focused pane. On the desktop and the web, a click on the ticker in a pane's title (`OMON SPY ⌄`) opens the same search; in the terminal the focused pane's footer shows the key (`` [`] ticker ``) and its menu has **Change Ticker...**. Enter on a result changes what the pane shows, and `Shift+Enter` (or **New pane** above the results) opens the ticker in a new pane instead.
+
+- A pane on its own ticker (`OMON SPY`) changes, and every pane linked to it moves with it.
+- A linked pane changes the pane it follows, so the group moves together: on the Options desk, changing `OPX` changes `OMON`, and `OPX`, `OVDV` and `HIVG` follow it. On the Equities desk, `DES`, `G` and `FA` change together.
+- A group linked to a watchlist, portfolio or scanner leaves the list and stays on the new ticker. The search never edits the list; **Link to** in the pane menu puts the group back on it.
+- A pane that shows no ticker (a list, a news feed, a market board, a chart of several tickers) opens the ticker in a Ticker Research pane, as `DES` does.
 
 ### Linking a pane to a list
 
