@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
 
@@ -101,6 +102,49 @@ export interface StaticXAxisMarker {
   label: string;
   color: string;
 }
+
+/** A time label at its place on the axis, which holds still while the cursor moves past. */
+const PositionedTimeLabel = memo(function PositionedTimeLabel({ label, color, left, right, transform }: {
+  label: string;
+  color: string | undefined;
+  left: number | string | undefined;
+  right: number | string | undefined;
+  transform: number | string | undefined;
+}) {
+  return (
+    <Text
+      fg={color}
+      selectable={false}
+      // The label against the right edge, which a floating pane's resize grip may cover.
+      data-gloom-edge={right !== undefined ? "end" : undefined}
+      style={{
+        position: "absolute",
+        top: 0,
+        whiteSpace: "pre",
+        pointerEvents: "none",
+        ...(left !== undefined ? { left } : {}),
+        ...(right !== undefined ? { right } : {}),
+        ...(transform !== undefined ? { transform } : {}),
+      }}
+    >
+      {label}
+    </Text>
+  );
+});
+
+/** A stretch of the axis text in the terminal, which renders only when its text does. */
+const TimeLabelSegment = memo(function TimeLabelSegment({ width, text, color, end }: {
+  width: number;
+  text: string;
+  color: string | undefined;
+  end: boolean;
+}) {
+  return (
+    <Box width={width} overflow="hidden" data-gloom-edge={end ? "end-segment" : undefined}>
+      <Text fg={color}>{text}</Text>
+    </Box>
+  );
+});
 
 export function StaticXAxisLabels({
   labels,
@@ -235,38 +279,27 @@ export function StaticXAxisLabels({
     >
       {visiblePositionedLabels.length > 0 && (isDesktop || visibleLabels.length === 0) ? (
         <Box position="absolute" left={0} top={0} width={width} height={1} style={isDesktop ? { width: "100%" } : undefined}>
-          {positionedPlacements.map(({ entry, index, edgeStyle }) => {
-            return (
-              <Text
-                key={`${entry.label}:${entry.ratio}:${index}`}
-                fg={color}
-                selectable={false}
-                // The label against the right edge, which a floating pane's resize grip may cover.
-                data-gloom-edge={"right" in edgeStyle ? "end" : undefined}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  whiteSpace: "pre",
-                  pointerEvents: "none",
-                  ...edgeStyle,
-                }}
-              >
-                {entry.label}
-              </Text>
-            );
-          })}
+          {positionedPlacements.map(({ entry, index, edgeStyle }) => (
+            <PositionedTimeLabel
+              key={`${entry.label}:${entry.ratio}:${index}`}
+              label={entry.label}
+              color={color}
+              left={edgeStyle.left}
+              right={edgeStyle.right}
+              transform={edgeStyle.transform}
+            />
+          ))}
         </Box>
       ) : (
         <Box width={width} height={1} flexDirection="row">
           {visibleLabels.map((label, index) => (
-            <Box
+            <TimeLabelSegment
               key={`${label}:${index}`}
-              width={segmentWidths[index]}
-              overflow="hidden"
-              data-gloom-edge={index === visibleLabels.length - 1 && visibleLabels.length > 1 ? "end-segment" : undefined}
-            >
-              <Text fg={color}>{flowText[index]}</Text>
-            </Box>
+              width={segmentWidths[index]!}
+              text={flowText[index]!}
+              color={color}
+              end={index === visibleLabels.length - 1 && visibleLabels.length > 1}
+            />
           ))}
         </Box>
       )}

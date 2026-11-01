@@ -191,10 +191,22 @@ function ticksFitRows(domain: CompositeAxisDomain, values: number[]): boolean {
   return true;
 }
 
+// Every label on an axis reads its ticks again (see `compactAxisNumber`).
+const tickValues = new WeakMap<CompositeAxisDomain, readonly number[]>();
+
 /** Round values inside a linear domain, so every gridline carries a readable
  * value. A log axis, or a short terminal panel no round step fits, keeps its
  * top, middle and bottom values. */
-function axisTickValues(domain: CompositeAxisDomain): number[] {
+function axisTickValues(domain: CompositeAxisDomain): readonly number[] {
+  let values = tickValues.get(domain);
+  if (!values) {
+    values = computeAxisTickValues(domain);
+    tickValues.set(domain, values);
+  }
+  return values;
+}
+
+function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
   const span = domain.max - domain.min;
   if (domain.scale === "log" || !Number.isFinite(span) || span <= 0) return edgeTickValues(domain);
   const maxTicks = Math.max(2, domain.maxTicks ?? DEFAULT_AXIS_MAX_TICKS);
@@ -397,6 +409,12 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   return formatCompositeAxisValue(value, domain);
 }
 
+/**
+ * An axis label for a value. It must read only the value and the axis: the
+ * ticks and gutter widths it labels are kept per formatter and axis (see
+ * `axisResultCache`), so one that reads anything else (a currency, a setting)
+ * is a new function whenever that changes.
+ */
 export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
 
 type LabeledTick = { value: number; label: string };
@@ -409,7 +427,7 @@ function repeatsLabel(ticks: LabeledTick[]): boolean {
  * (2k 2k 1.9k). The axis then climbs the 1-2-5 ladder until its labels
  * differ, and failing that keeps its top and bottom, or the top alone. */
 function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisValueFormatter): LabeledTick[] {
-  const label = (values: number[]) => values.map((value) => ({ value, label: format(value, domain) }));
+  const label = (values: readonly number[]) => values.map((value) => ({ value, label: format(value, domain) }));
   const ticks = label(axisTickValues(domain));
   if (ticks.length < 2 || !repeatsLabel(ticks)) return ticks;
   if (domain.scale !== "log") {
@@ -429,15 +447,96 @@ function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisVal
   return top.label !== bottom.label ? [top, bottom] : [top];
 }
 
+/** Whether two records hold equal values under every key either has; a key set to undefined reads as absent. */
+function sameFields(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+  same: (left: unknown, right: unknown) => boolean,
+): boolean {
+  for (const key of Object.keys(left)) {
+    if (!same(left[key], right[key])) return false;
+  }
+  for (const key of Object.keys(right)) {
+    if (!Object.hasOwn(left, key) && !same(undefined, right[key])) return false;
+  }
+  return true;
+}
+
+function sameAxisDomainValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) return false;
+  return sameFields(left as Record<string, unknown>, right as Record<string, unknown>, Object.is);
+}
+
+/**
+ * Whether two axes read the same: every field either has equal, its lists
+ * and records one level down. A chart builds its axes again on every tick,
+ * and they come out the same until the price leaves the range.
+ */
+export function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
+  if (left === right) return true;
+  return sameFields(
+    left as unknown as Record<string, unknown>,
+    right as unknown as Record<string, unknown>,
+    sameAxisDomainValue,
+  );
+}
+
+export type CompositeAxisTick = { ratio: number; value: number; label: string };
+
+/**
+ * The last results worked out for an axis under each formatter, kept for the
+ * next scene's equal axes. They hold while the formatter reads only the value
+ * and the axis (see `CompositeAxisValueFormatter`). Each hit labels the axis's
+ * top once more and works the result out again when that label changed, so a
+ * formatter that reads something else and kept its identity cannot keep
+ * stale labels past a change that moves its top label.
+ */
+export function axisResultCache<Value>(size = 8): (
+  domain: CompositeAxisDomain,
+  format: CompositeAxisValueFormatter,
+  key: string,
+  compute: () => Value,
+) => Value {
+  type Entry = { domain: CompositeAxisDomain; key: string; probe: string; value: Value };
+  const byFormat = new WeakMap<CompositeAxisValueFormatter, Entry[]>();
+  return (domain, format, key, compute) => {
+    let entries = byFormat.get(format);
+    if (!entries) {
+      entries = [];
+      byFormat.set(format, entries);
+    }
+    const probe = format(domain.max, domain);
+    const index = entries.findIndex((entry) => entry.key === key && sameCompositeAxisDomain(entry.domain, domain));
+    if (index >= 0) {
+      const [entry] = entries.splice(index, 1);
+      if (entry!.probe === probe) {
+        entries.unshift(entry!);
+        return entry!.value;
+      }
+    }
+    const value = compute();
+    entries.unshift({ domain, key, probe, value });
+    if (entries.length > size) entries.length = size;
+    return value;
+  };
+}
+
+const cachedAxisTicks = axisResultCache<readonly CompositeAxisTick[]>();
+
 export function compositeAxisTicks(
   domain: CompositeAxisDomain,
   format: CompositeAxisValueFormatter = formatCompositeAxisValue,
-): Array<{ ratio: number; value: number; label: string }> {
-  return distinctAxisTicks(domain, format).map(({ value, label }) => ({
+): readonly CompositeAxisTick[] {
+  return cachedAxisTicks(domain, format, "", () => distinctAxisTicks(domain, format).map(({ value, label }) => ({
     ratio: axisTickRatio(domain, value),
     value,
     label,
-  }));
+  })));
 }
 
 /** Gridlines follow the ticks of the panel's labeled axis, left first. The

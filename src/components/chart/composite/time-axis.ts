@@ -349,13 +349,21 @@ function lowerBoundSample(samples: readonly CompositeTimeAxisSample[], timestamp
 }
 
 function normalizeMarketSamples(scene: CompositeChartScene): CompositeTimeAxisSample[] {
-  const samples = scene.dates.flatMap((date, index) => {
+  const samples: CompositeTimeAxisSample[] = [];
+  // A scene's dates come in time order, their ratios rising with them.
+  let ordered = true;
+  scene.dates.forEach((date, index) => {
     const timestamp = date.getTime();
     const ratio = scene.dateRatios[index];
-    return validTimestamp(timestamp) && typeof ratio === "number" && Number.isFinite(ratio)
-      ? [{ timestamp, ratio: clamp(ratio, 0, 1) }]
-      : [];
-  }).sort((left, right) => left.timestamp - right.timestamp || left.ratio - right.ratio);
+    if (!validTimestamp(timestamp) || typeof ratio !== "number" || !Number.isFinite(ratio)) return;
+    const sample = { timestamp, ratio: clamp(ratio, 0, 1) };
+    const previous = samples[samples.length - 1];
+    if (previous && (previous.timestamp > timestamp || (previous.timestamp === timestamp && previous.ratio > sample.ratio))) {
+      ordered = false;
+    }
+    samples.push(sample);
+  });
+  if (!ordered) samples.sort((left, right) => left.timestamp - right.timestamp || left.ratio - right.ratio);
 
   return samples.filter((sample, index) => (
     index === 0

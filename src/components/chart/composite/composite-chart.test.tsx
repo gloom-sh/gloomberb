@@ -31,6 +31,7 @@ import { AppContext, createInitialState, PaneInstanceProvider } from "../../../s
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { PaneFocusedProvider } from "../../../state/app/activity";
+import { PaneFooterProvider, usePaneTabStripKeys } from "../../layout/pane/footer/registration";
 import { createTestResolvedSeries, createTestSeriesPoint as point } from "../../../test-support/time-series";
 import {
   buildCompositeNavigationFrame,
@@ -107,7 +108,7 @@ function pointerEvent(
     ctrl?: boolean;
     shift?: boolean;
     alt?: boolean;
-    scroll?: { direction: "up" | "down" | "left" | "right"; delta: number };
+    scroll?: { direction: "up" | "down" | "left" | "right"; delta: number; deltaX?: number; deltaY?: number };
   } = {},
 ) {
   const node = capturedSurfaceNode!;
@@ -149,6 +150,23 @@ function keyEvent(name: string, shift = false): KeyEventLike {
       propagationStopped = true;
     },
   };
+}
+
+/** The day the crosshair's label on the time axis reads, in a chart's rows of the frame. */
+function cursorDay(rows?: [number, number]): string | null {
+  const lines = tui.frame().split("\n");
+  return (rows ? lines.slice(rows[0], rows[1]) : lines).join("\n").match(/2025-01-0\d/)?.[0] ?? null;
+}
+
+/** Moves the pointer across the plot until the crosshair is on `day`. */
+async function hoverDay(day: string): Promise<void> {
+  const width = capturedSurfaceNode!.width as number;
+  for (let x = 0; x < width; x += 1) {
+    await act(async () => capturedSurfaceProps!.onMouseMove(pointerEvent(x, 3)));
+    await act(async () => tui.setup().renderOnce());
+    if (cursorDay() === day) return;
+  }
+  throw new Error(`no column of the plot is on ${day}`);
 }
 
 afterEach(() => {
@@ -919,6 +937,222 @@ describe("CompositeChart", () => {
     expect(cursorChanges).toEqual(["2025-01-01T00:00:00.000Z"]);
   });
 
+  // A pointer move renders what draws the crosshair: the legend's values,
+  // the cursor's labels on the axes and the crosshair over the plot. The
+  // chart and the plot's raster and handlers hold still under it.
+  test("a pointer move redraws the crosshair and its readouts, not the chart under them", async () => {
+    await tui.render(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          series={[series("price", "main", "left", "USD", [100, 103, 101])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    const atRest = capturedSurfaceProps!;
+    const legend = () => tui.frame().split("\n")[0]!;
+    const cursorDay = () => tui.frame().match(/2025-01-0\d/)?.[0] ?? null;
+    expect(legend()).toContain("101");
+    expect(cursorDay()).toBeNull();
+
+    await act(async () => atRest.onMouseMove(pointerEvent(1, 3)));
+    await act(async () => tui.setup().renderOnce());
+    const moved = capturedSurfaceProps!;
+    expect(legend()).toContain("100");
+    expect(cursorDay()).toBe("2025-01-01");
+    expect(moved).not.toBe(atRest);
+    expect(moved.bitmaps).toBe(atRest.bitmaps);
+    expect(moved.onMouseMove).toBe(atRest.onMouseMove);
+    expect(moved.onMouseDown).toBe(atRest.onMouseDown);
+    expect(moved.onMouseScroll).toBe(atRest.onMouseScroll);
+
+    await act(async () => moved.onMouseOut());
+    await act(async () => tui.setup().renderOnce());
+    expect(legend()).toContain("101");
+    expect(cursorDay()).toBeNull();
+  });
+
+  // A live tick builds the chart's scene again under a crosshair the pointer
+  // holds: the crosshair stays on its bar and reads the bar as the tick left it.
+  test("a tick under the pointer's crosshair keeps it on its bar, reading the bar as the tick left it", async () => {
+    let tick: (values: number[]) => void = () => {};
+    const panels = [{ id: "main" }];
+    function LiveChart() {
+      const [values, setValues] = useState([100, 101, 102]);
+      tick = setValues;
+      return <CompositeChart width={60} height={12} series={[series("price", "main", "left", "USD", values)]} panels={panels} />;
+    }
+    await tui.render(<CaptureChartSurfaceProvider><LiveChart /></CaptureChartSurfaceProvider>, { width: 62, height: 14 });
+    await act(async () => tui.setup().renderOnce());
+    const legend = () => tui.frame().split("\n")[0]!;
+    const tickTo = async (values: number[]) => {
+      await act(async () => tick(values));
+      await act(async () => tui.setup().renderOnce());
+    };
+
+    await hoverDay("2025-01-02");
+    expect(legend()).toContain("101");
+    await tickTo([100, 101, 150]);
+    expect(cursorDay()).toBe("2025-01-02");
+    expect(legend()).toContain("101");
+    expect(legend()).not.toContain("150");
+
+    await hoverDay("2025-01-03");
+    await tickTo([100, 101, 160]);
+    expect(cursorDay()).toBe("2025-01-03");
+    expect(legend()).toContain("160");
+    // The next bar opens; the crosshair stays where the pointer put it.
+    await tickTo([100, 101, 160, 170]);
+    expect(cursorDay()).toBe("2025-01-03");
+    expect(legend()).toContain("160");
+    expect(legend()).not.toContain("170");
+  });
+
+  // The arrows read the crosshair as the pointer moves it, which renders only
+  // what draws the crosshair, not the chart that holds the keys.
+  test("the arrows step on from the bar the pointer left the crosshair on", async () => {
+    const cursorChanges: Array<string | null> = [];
+    await tui.render(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            series={[series("price", "main", "left", "USD", [100, 103, 101, 104])]}
+            panels={[{ id: "main" }]}
+            onCursorDateChange={(date) => cursorChanges.push(date?.toISOString().slice(0, 10) ?? null)}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    await hoverDay("2025-01-02");
+    await act(async () => chartShortcut?.(keyEvent("left")));
+    await act(async () => tui.setup().renderOnce());
+    expect(cursorChanges.at(-1)).toBe("2025-01-01");
+    expect(cursorDay()).toBe("2025-01-01");
+    await act(async () => {
+      chartShortcut?.(keyEvent("right"));
+      chartShortcut?.(keyEvent("right"));
+    });
+    expect(cursorChanges.at(-1)).toBe("2025-01-03");
+  });
+
+  test("a chart lets go of the cursor it follows when it unmounts", async () => {
+    const listeners = new Set<() => void>();
+    let shared: number | null = null;
+    const link = {
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      time: () => shared,
+      held: () => false,
+      publish() {},
+      clear() {
+        shared = null;
+      },
+    };
+    await tui.render(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart width={60} height={12} series={[series("price", "main", "left", "USD", [100, 103, 101])]} panels={[{ id: "main" }]} cursorLink={link} />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    expect(listeners.size).toBeGreaterThan(0);
+    shared = Date.parse("2025-01-02T12:00:00.000Z");
+    await act(async () => {
+      for (const listener of [...listeners]) listener();
+    });
+    await act(async () => tui.setup().renderOnce());
+    expect(cursorDay()).toBe("2025-01-02");
+    await act(async () => capturedSurfaceProps!.onMouseMove(pointerEvent(1, 3)));
+
+    await tui.destroy();
+    expect(listeners.size).toBe(0);
+  });
+
+  // Under a tab strip a press, drag or wheel moves into the chart. Once
+  // inside, a wheel step leaves that alone, so it costs the chart no render
+  // of its own; one that lands in the same batch as a step out moves in again.
+  test("a wheel step moves into a chart under a tab strip once, and again in the batch that stepped out of it", async () => {
+    let held = false;
+    function Strip() {
+      held = usePaneTabStripKeys(true, true).held;
+      return null;
+    }
+    let chartRenders = 0;
+    const countingHost: InputHost = {
+      useShortcut(handler) {
+        chartRenders += 1;
+        chartShortcut = handler;
+      },
+      useViewport: () => ({ width: 80, height: 24 }),
+    };
+    await tui.render(
+      <PaneFooterProvider>
+        {() => (
+          <InputHostProvider host={countingHost}>
+            <CaptureChartSurfaceProvider>
+              <Box flexDirection="column">
+                <Strip />
+                <CompositeChart
+                  width={60}
+                  height={12}
+                  focused
+                  interactive
+                  series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+                  panels={[{ id: "main" }]}
+                  viewport={{ start: new Date("2025-01-04T00:00:00.000Z"), end: new Date("2025-01-08T00:00:00.000Z") }}
+                />
+              </Box>
+            </CaptureChartSurfaceProvider>
+          </InputHostProvider>
+        )}
+      </PaneFooterProvider>,
+      { width: 62, height: 14 },
+    );
+    const wheel = (direction: "left" | "right") => capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+      scroll: { direction, delta: 1 },
+    }));
+    const settle = () => act(async () => tui.setup().renderOnce());
+    await settle();
+    expect(held).toBe(false);
+    await act(async () => wheel("left"));
+    await settle();
+    expect(held).toBe(true);
+
+    // Inside, a step that moves nothing renders nothing, right after a pan
+    // too: the browser's steps pan on the next frame, after each such step.
+    for (const direction of ["left", "right", "left"] as const) {
+      await act(async () => wheel(direction));
+      const before = chartRenders;
+      await act(async () => capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        scroll: { direction: "up", delta: 0, deltaX: 0, deltaY: 0 },
+      })));
+      expect(chartRenders).toBe(before);
+    }
+
+    await act(async () => {
+      chartShortcut?.(keyEvent("up"));
+      wheel("right");
+    });
+    await settle();
+    expect(held).toBe(true);
+    await act(async () => chartShortcut?.(keyEvent("up")));
+    await settle();
+    expect(held).toBe(false);
+  });
+
   // Charts in one layout tab share one cursor: the last one moved holds it,
   // and a chart that held it before does not get its own back later.
   test("linked charts show one cursor, taken by the last chart moved and cleared from any of them", async () => {
@@ -984,6 +1218,77 @@ describe("CompositeChart", () => {
     expect(cursors()).toEqual({ a: "2025-01-03", b: "2025-01-03" });
     await press("b", "escape");
     expect(cursors()).toEqual({ a: null, b: null });
+  });
+
+  // A chart following another chart's cursor builds its scene again on each
+  // of its own ticks: the cursor stays on the bar it landed on, read anew.
+  test("a tick on a chart following another chart's cursor keeps the cursor on its bar and reads the bar as the tick left it", async () => {
+    const shortcuts: Record<string, (event: KeyEventLike) => void> = {};
+    const hostFor = (id: string): InputHost => ({
+      useShortcut(handler) { shortcuts[id] = handler; },
+      useBeforeShortcut() {},
+      useViewport: () => ({ width: 80, height: 24 }),
+    });
+    const hosts = { a: hostFor("a"), b: hostFor("b") };
+    const panels = [{ id: "main" }];
+    const leading = [series("price", "main", "left", "USD", [100, 103, 101])];
+    let tick: (values: number[]) => void = () => {};
+    function LinkedChart({ id, focused, chartSeries }: { id: "a" | "b"; focused: boolean; chartSeries: ResolvedSeries[] }) {
+      const link = useTabCursorLink(id);
+      return (
+        <InputHostProvider host={hosts[id]}>
+          <CompositeChart width={60} height={12} focused={focused} series={chartSeries} panels={panels} cursorLink={link} />
+        </InputHostProvider>
+      );
+    }
+    function Tab() {
+      const [values, setValues] = useState([200, 201, 202]);
+      tick = setValues;
+      const following = useMemo(() => [series("price", "main", "left", "USD", values)], [values]);
+      return (
+        <Box flexDirection="column">
+          <LinkedChart id="a" focused chartSeries={leading} />
+          <LinkedChart id="b" focused={false} chartSeries={following} />
+        </Box>
+      );
+    }
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-linked-tick")))}>
+        <Tab />
+      </AppContext>,
+      { width: 62, height: 24 },
+    );
+    const settle = () => act(async () => tui.setup().renderOnce());
+    const press = async (key: string) => {
+      await act(async () => shortcuts.a?.(keyEvent(key)));
+      await settle();
+    };
+    const tickTo = async (values: number[]) => {
+      await act(async () => tick(values));
+      await settle();
+    };
+    const following = () => ({ day: cursorDay([12, 24]), legend: tui.frame().split("\n")[12]! });
+    await settle();
+
+    await press("left");
+    await press("left");
+    expect(following().day).toBe("2025-01-02");
+    expect(following().legend).toContain("201");
+    await tickTo([200, 201, 250]);
+    expect(following().day).toBe("2025-01-02");
+    expect(following().legend).toContain("201");
+    expect(following().legend).not.toContain("250");
+
+    await press("right");
+    expect(following().day).toBe("2025-01-03");
+    await tickTo([200, 201, 260]);
+    expect(following().day).toBe("2025-01-03");
+    expect(following().legend).toContain("260");
+    // Its next bar opens; the cursor stays on the leading chart's day.
+    await tickTo([200, 201, 260, 270]);
+    expect(following().day).toBe("2025-01-03");
+    expect(following().legend).toContain("260");
+    expect(cursorDay([0, 12])).toBe("2025-01-03");
   });
 
   // A pinned cursor holds every chart in the tab at one moment: no pointer

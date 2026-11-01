@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import {
   Box,
   ChartSurface,
@@ -83,6 +83,7 @@ import {
 } from "./panel-gestures";
 import { resolvePanelCrosshair, axisLabelRows, cursorAxisLabel, resolveSeriesCursorYRatio, resolveSeriesAxisTags } from "./panel-labels";
 import type { KeyboardToolDrag } from "./use-composite-chart-keyboard";
+import { createValueStore, useCursorScene, useValueStore, type CompositeCursorSource, type ValueStore } from "./cursor-source";
 
 const webFrame = globalThis as typeof globalThis & {
   requestAnimationFrame?: (callback: () => void) => number;
@@ -98,7 +99,9 @@ function pointerRow(event: ChartMouseEvent): number {
 
 interface CompositePanelSurfaceProps {
   panel: CompositePanelScene;
+  /** The chart's scene, without its cursor: the crosshair comes from `cursor`. */
   scene: CompositeChartScene;
+  cursor: CompositeCursorSource;
   plotWidth: number;
   leftAxisWidth: number;
   rightAxisWidth: number;
@@ -178,6 +181,7 @@ const PANEL_DIVIDER_STYLE = {
 export function CompositePanelSurface({
   panel,
   scene,
+  cursor,
   plotWidth,
   leftAxisWidth,
   rightAxisWidth,
@@ -222,22 +226,16 @@ export function CompositePanelSurface({
   const { cellHeightPx = 18, cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
-  const [cursorYRatio, setCursorYRatio] = useState<number | null>(null);
+  // The pointer's height over the plot, 0 at the top and 1 at the bottom. It
+  // moves with the pointer without rendering the panel: only what draws the
+  // crosshair reads it.
+  const [pointerY] = useState(() => createValueStore<number | null>(null));
   const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
   // A pointer drag owns the plot while it lasts; otherwise a tool placed from
   // the keyboard draws and reads out exactly like one.
   const keyboardDrag = toolDrag ? null : keyboardToolDrag;
   const activeDrag = toolDrag ?? keyboardDrag?.drag ?? null;
-  // A keyboard placement's end sits at the level the user put it, so it
-  // draws a level line where otherwise only the pointer would.
-  const heldCursorYRatio = keyboardDrag ? keyboardDrag.drag.endYRatio : sharedCursor ? null : cursorYRatio;
-  const seriesCursorYRatio = useMemo(
-    () => resolveSeriesCursorYRatio(panel, scene),
-    [panel, scene],
-  );
-  const activeCursorYRatio = scene.cursorXRatio === null
-    ? null
-    : heldCursorYRatio ?? seriesCursorYRatio;
+  const cursorView = { panel, cursor, pointerY, keyboardDrag, sharedCursor };
   // The last press on bare plot, for a double press where the host does not count clicks.
   const lastPlotPressRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const dragRef = useRef<
@@ -265,16 +263,6 @@ export function CompositePanelSurface({
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
   const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb, revealed: plotSize.revealed === true });
-  // The chart under the pointer draws both lines: the level line follows the
-  // pointer, and its value sits on the axes, beside each series' own tag on
-  // the desktop and the web. A keyboard or shared cursor knows its column
-  // only, so a chart following another chart's cursor draws the time line
-  // alone. A tool placed from the keyboard is the exception: its end is a level.
-  const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
-  const crosshair = useMemo(
-    () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, colors.crosshair),
-    [bitmap, colors.crosshair, panel, pointerCursorYRatio, scene],
-  );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {
     if (!activeDrag) return null;
@@ -356,13 +344,16 @@ export function CompositePanelSurface({
     () => levels && levelDomain ? projectLevels(levels.items, levelDomain, levelDraft) : NO_LEVELS,
     [levelDomain, levelDraft, levels],
   );
-  // Over a line a plain drag moves, and while one moves, the pointer says it goes up and down.
-  const levelGrab = useMemo(() => {
+  // Over a line a plain drag moves, and while one moves, the pointer says it
+  // goes up and down. Where the pointer is, the plot reads (see `PanelPlotSurface`).
+  const levelGrab = useMemo<LevelGrab>(() => {
     if (levelDraft) return true;
-    if (!levels?.onEdit || cursorYRatio === null || onPickTime || onPickPrice || (armedTool && armedTool !== "level")) return false;
-    const hit = hitTestLevel(projectedLevels, cursorYRatio, levelGrabRatio(panel.height));
-    return !!hit?.editable && !!hit.draggable;
-  }, [armedTool, cursorYRatio, levelDraft, levels?.onEdit, onPickPrice, onPickTime, panel.height, projectedLevels]);
+    if (!levels?.onEdit || onPickTime || onPickPrice || (armedTool && armedTool !== "level")) return false;
+    return (cursorYRatio) => {
+      const hit = hitTestLevel(projectedLevels, cursorYRatio, levelGrabRatio(panel.height));
+      return !!hit?.editable && !!hit.draggable;
+    };
+  }, [armedTool, levelDraft, levels?.onEdit, onPickPrice, onPickTime, panel.height, projectedLevels]);
   // Drawings project through the time scale alone: the crosshair moving,
   // here or on a linked chart, must not repaint the plot, which the terminal's
   // kitty surface would upload whole again.
@@ -432,16 +423,6 @@ export function CompositePanelSurface({
     selectedLevelId,
     toolReadout?.direction,
   ]);
-  const textLines = useMemo(
-    () => isDesktopWeb || !showTextFallback
-      ? []
-      : writeLevelText(
-        renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
-        projectedLevels,
-        selectedLevelId,
-      ),
-    [isDesktopWeb, panel, plotWidth, pointerCursorYRatio, projectedLevels, scene.cursorXRatio, selectedLevelId, showTextFallback],
-  );
   const leftAxisLabels = useMemo(
     () => axisLabelRows(
       renderCompositeAxisText(panel.axes.left, panel.height, leftAxisWidth, "left", formatAxisValue),
@@ -462,17 +443,6 @@ export function CompositePanelSurface({
     () => compositeAxisTickLabels(panel.axes.right, rightAxisWidth, formatAxisValue),
     [formatAxisValue, panel, rightAxisWidth],
   );
-  const cursorRow = activeCursorYRatio === null
-    ? null
-    : Math.round(activeCursorYRatio * Math.max(panel.height - 1, 0));
-  const cursorPixelY = activeCursorYRatio === null
-    ? null
-    : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0);
-  // The pointer's value on the axes follows the level line it belongs to.
-  const axisCursorYRatio = isDesktopWeb ? pointerCursorYRatio : activeCursorYRatio;
-  const leftCursorLabel = cursorAxisLabel(panel, "left", axisCursorYRatio, formatAxisValue);
-  const rightCursorLabel = cursorAxisLabel(panel, "right", axisCursorYRatio, formatAxisValue);
-  const seriesAxisTags = useMemo(() => isDesktopWeb ? resolveSeriesAxisTags(panel, scene, formatAxisValue) : [], [formatAxisValue, isDesktopWeb, panel, scene]);
   const measureReadout = useMemo(() => {
     if (!activeDrag || !toolReadout?.summary) return null;
     const text = toolReadout.summary;
@@ -614,15 +584,15 @@ export function CompositePanelSurface({
     const nextYRatio = panel.height <= 1
       ? 0.5
       : Math.max(0, Math.min(1, pointer.cellY / (panel.height - 1)));
-    setCursorYRatio((current) => current === nextYRatio ? current : nextYRatio);
+    pointerY.set(nextYRatio);
     onCursorDateChange(nextDate);
     consumeChartMouseEvent(event);
     return true;
-  }, [onCursorDateChange, panel.height, plotPointer, scene]);
+  }, [onCursorDateChange, panel.height, plotPointer, pointerY, scene]);
   const clearCursor = useCallback(() => {
-    setCursorYRatio(null);
+    pointerY.set(null);
     onCursorDateChange(null);
-  }, [onCursorDateChange]);
+  }, [onCursorDateChange, pointerY]);
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
     onPointerPress();
@@ -1196,21 +1166,19 @@ export function CompositePanelSurface({
       ) : null}
       {leftAxisWidth > 0 ? (
         <>
-          <PriceAxisLabels
+          <PanelValueAxis
+            view={cursorView}
+            formatAxisValue={formatAxisValue}
             axisLabels={leftAxisLabels}
             axisTicks={leftAxisTicks}
             axisWidth={leftAxisWidth}
             axisSectionWidth={leftAxisWidth}
             side="left"
             height={panel.height}
-            cursorRow={cursorRow}
-            cursorPixelY={cursorPixelY}
-            cursorLabel={leftCursorLabel}
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
             extraMarkers={leftAxisMarkers}
-            seriesTags={isDesktopWeb ? seriesAxisTags.filter((tag) => tag.side === "left") : undefined}
             measuredPixelHeight={plotSize.height * cellHeightPx}
             gestures={leftAxisGestures}
             footButton={manualSide === "left"}
@@ -1218,16 +1186,24 @@ export function CompositePanelSurface({
           <Box width={axisGap} />
         </>
       ) : null}
-      <ChartSurface
-        ref={plotRef}
+      <PanelPlotSurface
+        view={cursorView}
+        plotRef={plotRef}
+        bitmap={bitmap}
+        crosshairColor={colors.crosshair}
+        textColor={colors.text}
+        textFallback={!isDesktopWeb && showTextFallback}
+        plotWidth={plotWidth}
+        projectedLevels={projectedLevels}
+        selectedLevelId={selectedLevelId}
+        levelGrab={levelGrab}
         // Its measured box on the desktop, where pointer bounds read it; CSS lays it out.
         width={plotSize.width}
         height={plotSize.height}
         // Desktop: the width the axes leave, and the row's height.
-        style={isDesktopWeb ? levelGrab ? DESKTOP_PLOT_LEVEL_STYLE : onPickPrice ? DESKTOP_PLOT_PICK_STYLE : DESKTOP_PLOT_STYLE : undefined}
+        style={isDesktopWeb ? onPickPrice ? DESKTOP_PLOT_PICK_STYLE : DESKTOP_PLOT_STYLE : undefined}
         flexDirection="column"
         bitmaps={bitmapLayers}
-        crosshair={crosshair}
         vectors={vectors}
         onMouseMove={interactive ? handleMouseMove : undefined}
         onMouseDown={interactive ? navigable ? pressPlot : pressCursor : undefined}
@@ -1236,54 +1212,55 @@ export function CompositePanelSurface({
         onMouseDragEnd={interactive && navigable ? releasePlot : undefined}
         onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? levelGrab ? "ns-resize" : toolDrag || !navigable || onPickTime || onPickPrice ? "crosshair" : "grab" : undefined}
+        cursor={interactive ? toolDrag || !navigable || onPickTime || onPickPrice ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role={COMPOSITE_PANEL_ROLE}
         data-gloom-remote-kind={remoteKind}
         data-gloom-label={panel.label ?? panel.id}
         data-gloom-value-scale={manuallyScaled ? "manual" : undefined}
-      >
-        {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}
-      </ChartSurface>
-      {(isDesktopWeb
-        ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
-        : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1))
-      ).map((entry) => {
-        const { level, yRatio } = entry;
-        const axisWidth = levelDomain?.side === "left" ? leftAxisWidth : rightAxisWidth;
-        const axisMarkers = levelDomain?.side === "left" ? leftAxisMarkers : rightAxisMarkers;
-        const cursorCovers = activeCursorYRatio !== null && Math.abs(activeCursorYRatio - yRatio) * panel.height < 1;
-        const axisVisible = !cursorCovers && (level.axisLabel?.length ?? 0) <= axisWidth && !!axisMarkers?.some((marker) => marker.id === level.id);
-        const label = levelLabelText(level, axisVisible);
-        const labelStyle = isDesktopWeb ? {
-          ...levelLabelStyle(entry, colors.background), left: "auto", right: (rightAxisWidth + (rightAxisWidth ? axisGap : 0) + 1) * cellWidthPx,
-          maxWidth: Math.max(1, plotWidth - 2) * cellWidthPx,
-        } : undefined;
-        const labelWidth = Math.min(plotWidth - 2, label.length + 2);
-        return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + plotWidth - labelWidth - 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
-          width={labelWidth} flexDirection="row" justifyContent="flex-end" backgroundColor={colors.background} zIndex={20}
-          style={labelStyle} data-gloom-role="chart-level-label">
-          <Text fg={labelStyle?.color ?? level.color} wrapMode="none" style={isDesktopWeb ? { lineHeight: 1 } : undefined}>{label}</Text>
-        </Box>;
-      })}
+      />
+      {projectedLevels.length > 0 ? (
+        // A level's label leaves its value to the axis, unless the cursor's covers it there.
+        <PanelLevelLabels view={cursorView}>
+          {(activeCursorYRatio) => (isDesktopWeb
+            ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
+            : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1))
+          ).map((entry) => {
+            const { level, yRatio } = entry;
+            const axisWidth = levelDomain?.side === "left" ? leftAxisWidth : rightAxisWidth;
+            const axisMarkers = levelDomain?.side === "left" ? leftAxisMarkers : rightAxisMarkers;
+            const cursorCovers = activeCursorYRatio !== null && Math.abs(activeCursorYRatio - yRatio) * panel.height < 1;
+            const axisVisible = !cursorCovers && (level.axisLabel?.length ?? 0) <= axisWidth && !!axisMarkers?.some((marker) => marker.id === level.id);
+            const label = levelLabelText(level, axisVisible);
+            const labelStyle = isDesktopWeb ? {
+              ...levelLabelStyle(entry, colors.background), left: "auto", right: (rightAxisWidth + (rightAxisWidth ? axisGap : 0) + 1) * cellWidthPx,
+              maxWidth: Math.max(1, plotWidth - 2) * cellWidthPx,
+            } : undefined;
+            const labelWidth = Math.min(plotWidth - 2, label.length + 2);
+            return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + plotWidth - labelWidth - 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
+              width={labelWidth} flexDirection="row" justifyContent="flex-end" backgroundColor={colors.background} zIndex={20}
+              style={labelStyle} data-gloom-role="chart-level-label">
+              <Text fg={labelStyle?.color ?? level.color} wrapMode="none" style={isDesktopWeb ? { lineHeight: 1 } : undefined}>{label}</Text>
+            </Box>;
+          })}
+        </PanelLevelLabels>
+      ) : null}
       {rightAxisWidth > 0 ? (
         <>
           <Box width={axisGap} />
-          <PriceAxisLabels
+          <PanelValueAxis
+            view={cursorView}
+            formatAxisValue={formatAxisValue}
             axisLabels={rightAxisLabels}
             axisTicks={rightAxisTicks}
             axisWidth={rightAxisWidth}
             axisSectionWidth={rightAxisWidth}
             side="right"
             height={panel.height}
-            cursorRow={cursorRow}
-            cursorPixelY={cursorPixelY}
-            cursorLabel={rightCursorLabel}
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
             extraMarkers={rightAxisMarkers}
-            seriesTags={isDesktopWeb ? seriesAxisTags.filter((tag) => tag.side === "right") : undefined}
             measuredPixelHeight={plotSize.height * cellHeightPx}
             gestures={rightAxisGestures}
             footButton={manualSide === "right"}
@@ -1325,4 +1302,136 @@ export function CompositePanelSurface({
       ) : null}
     </Box>
   );
+}
+
+/** Over a level a drag moves: always while one moves, never, or at the pointer's height. */
+type LevelGrab = boolean | ((cursorYRatio: number) => boolean);
+
+/** What a panel's crosshair is read from: everything else in the panel holds still while it moves. */
+interface PanelCursorView {
+  panel: CompositePanelScene;
+  cursor: CompositeCursorSource;
+  pointerY: ValueStore<number | null>;
+  keyboardDrag: KeyboardToolDrag | null;
+  sharedCursor: boolean;
+}
+
+/** The crosshair over a panel, read by the parts that draw it, so a pointer move renders only them. */
+function usePanelCursor({ panel, cursor, pointerY, keyboardDrag, sharedCursor }: PanelCursorView) {
+  const scene = useCursorScene(cursor);
+  const cursorYRatio = useValueStore(pointerY);
+  // A keyboard placement's end sits at the level the user put it, so it
+  // draws a level line where otherwise only the pointer would.
+  const heldCursorYRatio = keyboardDrag ? keyboardDrag.drag.endYRatio : sharedCursor ? null : cursorYRatio;
+  const seriesCursorYRatio = useMemo(
+    () => resolveSeriesCursorYRatio(panel, scene),
+    [panel, scene],
+  );
+  return {
+    scene,
+    cursorYRatio,
+    activeCursorYRatio: scene.cursorXRatio === null ? null : heldCursorYRatio ?? seriesCursorYRatio,
+    // The chart under the pointer draws both lines: the level line follows the
+    // pointer, and its value sits on the axes, beside each series' own tag on
+    // the desktop and the web. A keyboard or shared cursor knows its column
+    // only, so a chart following another chart's cursor draws the time line
+    // alone. A tool placed from the keyboard is the exception: its end is a level.
+    pointerCursorYRatio: scene.cursorXRatio === null ? null : heldCursorYRatio,
+  };
+}
+
+/** The plot, with the crosshair over it and, in a terminal without graphics, the text that draws both. */
+function PanelPlotSurface({
+  view,
+  plotRef,
+  bitmap,
+  crosshairColor,
+  textColor,
+  textFallback,
+  plotWidth,
+  projectedLevels,
+  selectedLevelId,
+  levelGrab,
+  ...surface
+}: Omit<ComponentProps<typeof ChartSurface>, "ref" | "crosshair" | "children"> & {
+  view: PanelCursorView;
+  plotRef: RefObject<BoxRenderable | null>;
+  bitmap: ReturnType<typeof useCompositePanelBitmap>;
+  crosshairColor: string;
+  textColor: string;
+  textFallback: boolean;
+  plotWidth: number;
+  projectedLevels: readonly ProjectedLevel[];
+  selectedLevelId: string | null;
+  levelGrab: LevelGrab;
+}) {
+  const { panel } = view;
+  const { scene, cursorYRatio, pointerCursorYRatio } = usePanelCursor(view);
+  const crosshair = useMemo(
+    () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, crosshairColor),
+    [bitmap, crosshairColor, panel, pointerCursorYRatio, scene],
+  );
+  const textLines = useMemo(
+    () => textFallback
+      ? writeLevelText(
+        renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
+        projectedLevels,
+        selectedLevelId,
+      )
+      : [],
+    [panel, plotWidth, pointerCursorYRatio, projectedLevels, scene.cursorXRatio, selectedLevelId, textFallback],
+  );
+  const grab = typeof levelGrab === "function" ? cursorYRatio !== null && levelGrab(cursorYRatio) : levelGrab;
+  return (
+    <ChartSurface
+      ref={plotRef}
+      {...surface}
+      style={grab && surface.style ? DESKTOP_PLOT_LEVEL_STYLE : surface.style}
+      cursor={grab && surface.cursor ? "ns-resize" : surface.cursor}
+      crosshair={crosshair}
+    >
+      {textLines.map((line, index) => <Text key={index} fg={textColor}>{line}</Text>)}
+    </ChartSurface>
+  );
+}
+
+/** A value axis, with the cursor's value on it and, on the desktop, each series' value at the cursor. */
+function PanelValueAxis({
+  view,
+  formatAxisValue,
+  side,
+  ...axis
+}: Omit<ComponentProps<typeof PriceAxisLabels>, "cursorRow" | "cursorPixelY" | "cursorLabel" | "seriesTags" | "side"> & {
+  view: PanelCursorView;
+  formatAxisValue?: CompositeAxisValueFormatter;
+  side: CompositeAxisSide;
+}) {
+  const { panel } = view;
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
+  const { cellHeightPx = 18 } = useUiCapabilities();
+  const { scene, activeCursorYRatio, pointerCursorYRatio } = usePanelCursor(view);
+  // The pointer's value on the axes follows the level line it belongs to.
+  const axisCursorYRatio = isDesktopWeb ? pointerCursorYRatio : activeCursorYRatio;
+  const seriesTags = useMemo(
+    () => isDesktopWeb ? resolveSeriesAxisTags(panel, scene, formatAxisValue).filter((tag) => tag.side === side) : undefined,
+    [formatAxisValue, isDesktopWeb, panel, scene, side],
+  );
+  return (
+    <PriceAxisLabels
+      {...axis}
+      side={side}
+      cursorRow={activeCursorYRatio === null ? null : Math.round(activeCursorYRatio * Math.max(panel.height - 1, 0))}
+      cursorPixelY={activeCursorYRatio === null ? null : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0)}
+      cursorLabel={cursorAxisLabel(panel, side, axisCursorYRatio, formatAxisValue)}
+      seriesTags={seriesTags}
+    />
+  );
+}
+
+/** A panel's level labels, which step aside where the cursor's label covers theirs on the axis. */
+function PanelLevelLabels({ view, children }: {
+  view: PanelCursorView;
+  children: (activeCursorYRatio: number | null) => ReactNode;
+}) {
+  return <>{children(usePanelCursor(view).activeCursorYRatio)}</>;
 }

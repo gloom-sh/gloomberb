@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
@@ -14,7 +14,7 @@ import {
 } from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { DIRECTION_MARKER, seriesColorsDirection, seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
-import { DisclosureMarker } from "../../ui/disclosure-marker";
+import { DisclosureMarker as KitDisclosureMarker } from "../../ui/disclosure-marker";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
@@ -126,8 +126,12 @@ const DIRECTION_TRIANGLES = {
   down: "polygon(0 0, 100% 0, 50% 100%)",
 } as const;
 
+// The legend renders with the crosshair, its values the series' at the
+// cursor; its markers and chevron hold still, so they render only when they change.
+const DisclosureMarker = memo(KitDisclosureMarker);
+
 /** The legend's marker for a series on the desktop: its line as the plot strokes it, its up and down colors, or a dot. */
-function CompositeSeriesSwatch({ series, cue, downColor = null, filled = true }: {
+const CompositeSeriesSwatch = memo(function CompositeSeriesSwatch({ series, cue, downColor = null, filled = true }: {
   series: ResolvedSeries;
   cue: SeriesLineCue | null;
   /** The down color, for a series keyed by direction: an up triangle in its color, then a down one in this. */
@@ -177,7 +181,7 @@ function CompositeSeriesSwatch({ series, cue, downColor = null, filled = true }:
       data-gloom-role="composite-chart-legend-marker"
     />
   );
-}
+});
 
 export function CompositeLegend({
   scene,

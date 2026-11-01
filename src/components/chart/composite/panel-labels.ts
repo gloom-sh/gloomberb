@@ -1,6 +1,12 @@
 import type { ChartSurfaceProps } from "../../../ui";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { compositeAxisTicks, formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
+import {
+  axisResultCache,
+  compositeAxisTicks,
+  formatCompositeAxisValue,
+  formatCompositeCursorValue,
+  type CompositeAxisValueFormatter,
+} from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import type { CompositeAxisDomain, CompositeChartScene, CompositePanelScene } from "./types";
 
@@ -110,6 +116,19 @@ export function compositeAxisLabelWidth(
   includeCursor: boolean,
 ): number {
   if (!domain) return 0;
+  // With no formatter of its own the cursor reads in cursor precision, so
+  // the default formatter is not the same as no formatter.
+  const key = `${includeCursor ? "cursor" : ""}:${format ? "" : "default"}`;
+  return cachedLabelWidths(domain, format ?? formatCompositeAxisValue, key, () => axisLabelWidth(domain, format, includeCursor));
+}
+
+const cachedLabelWidths = axisResultCache<number>();
+
+function axisLabelWidth(
+  domain: CompositeAxisDomain,
+  format: CompositeAxisValueFormatter | undefined,
+  includeCursor: boolean,
+): number {
   const ticks = compositeAxisTicks(domain, format);
   const labels = ticks.map((tick) => tick.label);
   if (includeCursor) {
