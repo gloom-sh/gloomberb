@@ -1,7 +1,7 @@
 import { SHELL_DRAG_Z, type DockDividerLayout, type FloatingRect, type LayoutBounds } from "../../../../layout/pane-manager";
 import type { NativeOccluder, NativePaneLayer } from "../../../chart/native/surface/manager";
 import { DEFAULT_HEADER_HEIGHT } from "../chrome";
-import type { DragPreview, HoverOverlay } from "../drag";
+import type { DragPreview } from "../drag";
 import { MENU_Z_INDEX } from "../menu";
 import type { WindowEditDockMovePreview } from "../../window-edit/presentation";
 
@@ -45,7 +45,6 @@ function outlineOccluders(id: string, rect: LayoutBounds, zIndex: number): Nativ
 }
 
 export function buildNativeTransientOccluders({
-  activeHoverOverlay,
   activePaneDrag,
   commandBarNativeOccluder,
   dragFloatingRect,
@@ -54,7 +53,6 @@ export function buildNativeTransientOccluders({
   nativeWindowModePanelRect,
   windowModeDockMovePreview,
 }: {
-  activeHoverOverlay: HoverOverlay | null;
   activePaneDrag: { paneId: string; mode: "docked" | "floating" } | null;
   commandBarNativeOccluder: LayoutBounds | null;
   dragFloatingRect: FloatingPreviewRect | null;
@@ -64,16 +62,6 @@ export function buildNativeTransientOccluders({
   windowModeDockMovePreview: WindowEditDockMovePreview | null;
 }): NativeTransientOccluder[] {
   const occluders: NativeTransientOccluder[] = [];
-
-  if (activeHoverOverlay) {
-    for (const cell of activeHoverOverlay.cells) {
-      occluders.push({
-        id: `drag-hover:${activeHoverOverlay.targetId}:${cell.position}`,
-        rect: cell.rect,
-        zIndex: cell.position === "center" ? SHELL_DRAG_Z.centerCell : SHELL_DRAG_Z.cell,
-      });
-    }
-  }
 
   if (activePaneDrag
     && activePaneDrag.mode === "docked"

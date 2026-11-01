@@ -34,7 +34,6 @@ function floatingLayout(zIndexes: [number, number]): LayoutConfig {
 /** The cells of CRYP's chart band that keep the image, with its pane menu open and a dock preview showing. */
 function crypChartFragments(layout: LayoutConfig): CellRect[] {
   const transient = buildNativeTransientOccluders({
-    activeHoverOverlay: null,
     activePaneDrag: null,
     commandBarNativeOccluder: null,
     dragFloatingRect: null,

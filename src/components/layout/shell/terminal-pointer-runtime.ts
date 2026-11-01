@@ -18,6 +18,8 @@ import type {
   VisibleFloatingPane,
 } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
+import { paneHeaderTitleStart, stackTabSpans } from "../pane/header";
+import { displayWidth } from "../../../utils/format";
 
 interface UseShellTerminalPointerRuntimeOptions {
   appHeaderHeight: number;
@@ -39,6 +41,7 @@ interface UseShellTerminalPointerRuntimeOptions {
   ) => void;
   /** The header's `?`: the pane's entry in DOCS. */
   openPaneDocs: (paneId: string) => void;
+  getPaneTitle: (pane: ResolvedPane) => string;
   paneMap: Map<string, ResolvedPane>;
   selectWindowModePane: (paneId: string) => void;
   setHoveredMenuItemId: Dispatch<SetStateAction<string | null>>;
@@ -61,6 +64,21 @@ function getVisibleFloatingRect(
     : visibleRect;
 }
 
+/** The tab of a stack whose title is `x` cells into its header's title. */
+function stackTabAt(
+  stack: readonly string[],
+  x: number,
+  paneMap: Map<string, ResolvedPane>,
+  getPaneTitle: (pane: ResolvedPane) => string,
+): string | null {
+  const titles = stack.map((id) => {
+    const pane = paneMap.get(id);
+    return pane ? getPaneTitle(pane) : id;
+  });
+  const index = stackTabSpans(titles).findIndex((span) => x >= span.start && x < span.start + displayWidth(span.text));
+  return index >= 0 ? stack[index]! : null;
+}
+
 function sortedFloatingPanes(visibleFloatingPanes: VisibleFloatingPane[]): VisibleFloatingPane[] {
   return [...visibleFloatingPanes].sort((a, b) => (b.pane.floating?.zIndex ?? 50) - (a.pane.floating?.zIndex ?? 50));
 }
@@ -80,6 +98,7 @@ export function useShellTerminalPointerRuntime({
   menuState,
   openPaneMenu,
   openPaneDocs,
+  getPaneTitle,
   paneMap,
   selectWindowModePane,
   setHoveredMenuItemId,
@@ -331,9 +350,12 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
+          // A press on one of a stack's tabs moves that pane; a click on it shows it.
+          const tabId = leaf.stack ? stackTabAt(leaf.stack, relativeX - paneHeaderTitleStart(isFocused), paneMap, getPaneTitle) : null;
+          if (tabId && tabId !== leaf.instanceId) focusPane(tabId);
           startDrag({
             type: "pane-drag",
-            paneId: leaf.instanceId,
+            paneId: tabId ?? leaf.instanceId,
             mode: "docked",
             startX: preciseX,
             startY: preciseShellY,
@@ -358,6 +380,7 @@ export function useShellTerminalPointerRuntime({
     dockLeafLayouts,
     focusPane,
     focusedPaneId,
+    getPaneTitle,
     handleActiveDrag,
     handleFloatingClose,
     live,

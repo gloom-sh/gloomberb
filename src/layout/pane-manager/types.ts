@@ -14,7 +14,10 @@ export type LeafDropPosition =
 
 export type DropTarget =
   | { kind: "frame"; edge: "left" | "right" | "top" | "bottom" }
-  | { kind: "leaf"; targetId: string; position: LeafDropPosition };
+  /** Beside the spot `targetId` is in; "center" stacks onto it like `tab`. */
+  | { kind: "leaf"; targetId: string; position: LeafDropPosition }
+  /** A tab of the spot `targetId` is in, shown. */
+  | { kind: "tab"; targetId: string };
 
 export type FloatingResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 

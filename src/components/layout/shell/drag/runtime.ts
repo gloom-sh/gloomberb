@@ -89,8 +89,6 @@ export interface ShellDragRuntimeState {
   hasActiveDrag: () => boolean;
   /** Positions that follow the pointer, outside React state. */
   live: LiveDragStore;
-  /** The tiled pane whose drop grid is under the pointer. */
-  setHoverTarget: (targetId: string | null) => void;
   startDrag: (drag: DragMode) => void;
   /** `dock`: on the desktop, the panes and dividers under the split, where the pointer has them. */
   updateDividerPreview: (next: DividerPreviewState | null, dock?: LiveDockGeometry | null) => void;
@@ -106,6 +104,7 @@ function sameDragPreview(a: DragPreview | null, b: DragPreview | null): boolean 
     const [x, y] = [a.target, b.target];
     if (x.kind === "frame" && y.kind === "frame") return x.edge === y.edge;
     if (x.kind === "leaf" && y.kind === "leaf") return x.targetId === y.targetId && x.position === y.position;
+    if (x.kind === "tab" && y.kind === "tab") return x.targetId === y.targetId;
   }
   return false;
 }
@@ -151,10 +150,6 @@ export function useShellDragRuntimeState({
       live.set({ floating });
     }
   }, [catchUp, contentHeight, live, nativePaneChrome, width]);
-
-  const setHoverTarget = useCallback((targetId: string | null) => {
-    live.set({ hoverTargetId: targetId });
-  }, [live]);
 
   const updateDividerPreview = useCallback((next: DividerPreviewState | null, dock: LiveDockGeometry | null = null) => {
     const current = live.get().divider;
@@ -205,7 +200,6 @@ export function useShellDragRuntimeState({
     endDrag,
     hasActiveDrag,
     live,
-    setHoverTarget,
     startDrag,
     updateDividerPreview,
     updateDockPreview,
@@ -236,6 +230,8 @@ interface UseShellPointerRuntimeOptions {
     event?: { preventDefault?: () => void; stopPropagation?: () => void },
   ) => void;
   openPaneDocs: (paneId: string) => void;
+  /** A pane's title as its header shows it: the terminal finds a stack's tabs by it. */
+  getPaneTitle: (pane: ResolvedPane) => string;
   paneMap: Map<string, ResolvedPane>;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
   precisePointer: boolean | undefined;
@@ -270,6 +266,7 @@ export function useShellPointerRuntime({
   nativePaneChrome,
   openPaneMenu,
   openPaneDocs,
+  getPaneTitle,
   paneMap,
   persistLayout,
   precisePointer,
@@ -320,6 +317,7 @@ export function useShellPointerRuntime({
     menuState,
     openPaneMenu,
     openPaneDocs,
+    getPaneTitle,
     paneMap,
     selectWindowModePane,
     setHoveredMenuItemId,

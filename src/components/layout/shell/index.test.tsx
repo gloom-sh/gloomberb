@@ -12,7 +12,7 @@ import {
   usePaneTicker,
 } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
-import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import { TICKER_RESEARCH_PANE_ID, buildDockStack, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
 import type { DesktopWindowBridge } from "../../../types/desktop-window";
 import type { PaneProps } from "../../../types/plugin";
 import { Text, Textarea } from "../../../ui";
@@ -720,6 +720,45 @@ describe("Shell", () => {
       await tui.setup().mockMouse.release(16, 6);
       await tui.setup().renderOnce();
     });
+  });
+
+  test("terminal: a stack's header names each tab, a click on one shows it and a drag takes it out", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-stack-test");
+    const layout: LayoutConfig = {
+      dockRoot: buildDockStack(["portfolio-list:main", "ticker-detail:main"], "portfolio-list:main"),
+      instances: [{ ...requireLayoutInstance(config, "portfolio-list:main") }, { ...requireLayoutInstance(config, "ticker-detail:main") }],
+      floating: [],
+      detached: [],
+    };
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "portfolio-list:main"), { width: 80, height: 18 });
+
+    // Ticker Research follows the portfolio, so it takes its name.
+    const header = tui.frame().split("\n")[0]!;
+    expect(header).toContain(":: Main Portfolio │ Main Portfolio─");
+    expect(tui.frame()).toContain("Portfolio Body");
+    const tab = header.indexOf(" │ ") + 3;
+
+    await act(async () => {
+      await tui.setup().mockMouse.click(tab + 2, 1);
+      await tui.setup().renderOnce();
+    });
+    expect(actions.filter((action) => action.type === "FOCUS_PANE").at(-1)).toEqual({ type: "FOCUS_PANE", paneId: "ticker-detail:main" });
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
+
+    // Out over the body, its edges clear of the pane's: it floats there.
+    await act(async () => {
+      await tui.setup().mockMouse.pressDown(tab + 2, 1);
+      await tui.setup().renderOnce();
+      for (const [x, y] of [[tab, 2], [36, 3], [40, 4]] as const) {
+        await tui.setup().mockMouse.moveTo(x, y);
+        await tui.setup().renderOnce();
+      }
+      await tui.setup().mockMouse.release(40, 4);
+      await tui.setup().renderOnce();
+    });
+    const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
+    expect(moved?.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
+    expect(moved?.floating.map((entry) => entry.instanceId)).toEqual(["ticker-detail:main"]);
   });
 
   test("keeps the focused textarea cursor visible when it is not covered", async () => {

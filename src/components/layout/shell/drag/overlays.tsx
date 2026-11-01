@@ -1,12 +1,10 @@
 import { useRef, type CSSProperties, type RefObject } from "react";
 import { Box, useUiCapabilities, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
-import { SHELL_DRAG_Z, type DockLeafLayout, type LayoutBounds } from "../../../../layout/pane-manager";
-import type { DragPreview, HoverOverlay } from "./index";
-import { useLiveBoxFrame, useLiveDrag, useLiveHoverOverlay, type LiveDragGeometry, type LiveDragStore } from "./live";
+import { SHELL_DRAG_Z, type LayoutBounds } from "../../../../layout/pane-manager";
+import type { DragPreview } from "./index";
+import { useLiveBoxFrame, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "./live";
 import { placeStyle } from "./slide";
-
-const CELL_POSITIONS = ["top", "left", "center", "right", "bottom"] as const;
 
 /** Desktop: how opaque a pane on the move is while it is over somewhere to land, so the preview under it shows. */
 export const ARMED_DRAG_OPACITY = 0.7;
@@ -21,15 +19,7 @@ const selectPaneDragActive = (geometry: LiveDragGeometry) => geometry.paneDrag !
 const selectOutlineWidth = (geometry: LiveDragGeometry) => selectDockedOutline(geometry)?.width ?? null;
 const selectOutlineHeight = (geometry: LiveDragGeometry) => selectDockedOutline(geometry)?.height ?? null;
 
-function isActiveCell(dockPreview: DragPreview | null, overlay: HoverOverlay, position: string): boolean {
-  return dockPreview?.kind === "dock"
-    && dockPreview.target.kind === "leaf"
-    && dockPreview.target.targetId === overlay.targetId
-    && dockPreview.target.position === position;
-}
-
 export function ShellDragOverlays(props: {
-  dockLeafLayouts: DockLeafLayout[];
   /** A pane from another window over this one's edge. */
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
@@ -59,41 +49,20 @@ function TerminalDockedDragOutline({ live }: { live: LiveDragStore }) {
 }
 
 /**
- * Terminal: the drop grid and where the release would land are outlines with
- * nothing filled in, so what they are over stays readable.
+ * Terminal: where the release would land is an outline with nothing filled
+ * in, so what it is over stays readable.
  */
 function TerminalDragOverlays({
-  dockLeafLayouts,
   externalDockPreview,
   live,
 }: {
-  dockLeafLayouts: DockLeafLayout[];
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
 }) {
-  const activeHoverOverlay = useLiveHoverOverlay(live, dockLeafLayouts);
   const dockPreview = useLiveDrag(live, selectDockPreview);
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
   return (
     <>
-      {activeHoverOverlay && activeHoverOverlay.cells.map((cell) => {
-        const active = isActiveCell(dockPreview, activeHoverOverlay, cell.position);
-        return (
-          <Box
-            key={`cell:${activeHoverOverlay.targetId}:${cell.position}`}
-            position="absolute"
-            left={cell.rect.x}
-            top={cell.rect.y}
-            width={cell.rect.width}
-            height={cell.rect.height}
-            border
-            borderStyle="single"
-            borderColor={active ? colors.borderFocused : colors.border}
-            zIndex={cell.position === "center" ? SHELL_DRAG_Z.centerCell : SHELL_DRAG_Z.cell}
-          />
-        );
-      })}
-
       {!effectiveDockPreview && <TerminalDockedDragOutline live={live} />}
 
       {effectiveDockPreview && (
@@ -124,7 +93,6 @@ function OverlayBox({
   zIndex,
   role,
   framed = false,
-  active,
   opacity = 1,
   boxRef,
   follows = false,
@@ -133,7 +101,6 @@ function OverlayBox({
   zIndex: number;
   role: string;
   framed?: boolean;
-  active?: boolean;
   opacity?: number;
   boxRef?: RefObject<BoxRenderable | null>;
   /** Its position follows the pointer outside React (`useLiveBoxFrame`). */
@@ -160,7 +127,6 @@ function OverlayBox({
       } : {})}
       zIndex={zIndex}
       data-gloom-role={role}
-      data-active={active === undefined ? undefined : active ? "true" : "false"}
       style={style}
     />
   );
@@ -202,35 +168,29 @@ export function DesktopDropPreview({
 }
 
 /**
- * Desktop overlays of a pane move: the outline a docked pane drags around, the
- * drop grid of the pane under the pointer and the dock or snap preview. They
- * render when the drop target changes, never on a move: the outline follows
- * the pointer by restyling itself.
+ * Desktop overlays of a pane move: the outline a docked pane drags around and
+ * the dock or snap preview. They render when the drop target changes, never
+ * on a move: the outline follows the pointer by restyling itself.
  */
 function DesktopDragOverlays({
-  dockLeafLayouts,
   externalDockPreview,
   live,
 }: {
-  dockLeafLayouts: DockLeafLayout[];
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
 }) {
   const dragging = useLiveDrag(live, selectPaneDragActive);
   if (!dragging && !externalDockPreview) return null;
-  return <DesktopDragOverlayLayers dockLeafLayouts={dockLeafLayouts} externalDockPreview={externalDockPreview} live={live} />;
+  return <DesktopDragOverlayLayers externalDockPreview={externalDockPreview} live={live} />;
 }
 
 function DesktopDragOverlayLayers({
-  dockLeafLayouts,
   externalDockPreview,
   live,
 }: {
-  dockLeafLayouts: DockLeafLayout[];
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
 }) {
-  const activeHoverOverlay = useLiveHoverOverlay(live, dockLeafLayouts);
   const dockPreview = useLiveDrag(live, selectDockPreview);
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
   const outlineWidth = useLiveDrag(live, selectOutlineWidth);
@@ -242,19 +202,6 @@ function DesktopDragOverlayLayers({
     : null;
   return (
     <>
-      {CELL_POSITIONS.map((position) => {
-        const cell = activeHoverOverlay?.cells.find((entry) => entry.position === position) ?? null;
-        const active = !!activeHoverOverlay && isActiveCell(dockPreview, activeHoverOverlay, position);
-        return (
-          <OverlayBox
-            key={position}
-            role="drop-cell"
-            rect={cell?.rect ?? null}
-            active={active}
-            zIndex={position === "center" ? SHELL_DRAG_Z.centerCell : SHELL_DRAG_Z.cell}
-          />
-        );
-      })}
       {/* The preview sits under what is moving, which turns see-through over it. */}
       <DesktopDropPreview rect={effectiveDockPreview?.rect ?? null} zIndex={SHELL_DRAG_Z.under} />
       <OverlayBox

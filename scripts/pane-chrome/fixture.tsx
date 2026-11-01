@@ -37,7 +37,8 @@
  * against, tab-sweep-fixture.tsx), `badge-ink` (the chips badge-ink.ts
  * measures, badge-ink-fixture.tsx), or `kit` (the kit page: every design-system family in every
  * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
- * `&font=` as everywhere).
+ * `&font=` as everywhere). `&titlebar=1` leaves the top bar's room above the
+ * shell, as the app does, for checks that drop on an exact spot.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -68,6 +69,7 @@ import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
 import { usePaneFooter } from "../../src/components/layout/pane/footer/registration";
 import { delayedFooterSegment } from "../../src/components/layout/pane/footer/model";
 import { Shell } from "../../src/components/layout/shell";
+import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../src/components/layout/titlebar-overlay";
 import { Header } from "../../src/components/layout/header";
 import { StatusBar } from "../../src/components/layout/status-bar";
 import type { NewsArticle } from "../../src/news/types";
@@ -1518,6 +1520,11 @@ createRoot(root).render(
           {scenario === "theme" && <Box data-theme-chrome="header"><Header /></Box>}
           <Shell pluginRegistry={paneRegistry} />
           <Box data-theme-chrome="status"><StatusBar /></Box>
+        </Box> : params.get("titlebar") === "1" ? <Box flexDirection="column" width="100%" height="100%">
+          {/* Where the app's top bar sits, which the shell lays itself out
+              below: the shell then reads the pointer where it draws. */}
+          <Box flexShrink={0} style={{ height: TITLEBAR_OVERLAY_HEIGHT_PX }} />
+          <Shell pluginRegistry={paneRegistry} />
         </Box> : <Shell pluginRegistry={paneRegistry} />}
       {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
       {scenario === "paint" && <PaneAdder />}

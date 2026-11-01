@@ -9,7 +9,6 @@ import {
   simulateDrop,
   type DockGeometryOptions,
   type DockLeafLayout,
-  type DropTarget,
   type FloatingRect,
   type LayoutBounds,
   type ResolvedPane,
@@ -17,21 +16,22 @@ import {
 import type { LayoutConfig } from "../../../types/config";
 import {
   finalizePaneDragRelease,
+  freePaneDragRect,
   isMeaningfulPaneDrag,
   makeSnapGuides,
   PANE_DRAG_THRESHOLD,
-  pointInRect,
   PRECISE_PANE_DRAG_THRESHOLD,
   resolveDividerPreviewRect,
   resolveFloatResizeRect,
-  resolveHoverOverlay,
   resolvePaneDragFloatingRect,
+  resolvePaneDropTarget,
   resolveSnapGuide,
   type DragPreview,
 } from "./drag";
 import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
 import { NO_LATCH, snapMovedRect, snapResizedRect, type MagnetDistances, type MagnetLatch } from "./drag/magnets";
+import { paneHeaderRows } from "../pane/sizing";
 
 /** A resize without edges is the bottom-right corner's (the terminal's only one). */
 const CORNER_EDGES = { x: 1, y: 1 } as const;
@@ -81,7 +81,6 @@ export function useShellActiveDrag({
     dragRef,
     endDrag,
     live,
-    setHoverTarget,
     updateDividerPreview,
     updateDockPreview,
     updateDragFloatingRect,
@@ -203,7 +202,6 @@ export function useShellActiveDrag({
       } else if (drag.type === "pane-drag") {
         if (!isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold)) {
           updateDockPreview(null);
-          setHoverTarget(null);
           if (drag.mode === "floating") {
             updateDragFloatingRect({ paneId: drag.paneId, rect: drag.origRect });
           }
@@ -215,22 +213,28 @@ export function useShellActiveDrag({
         const nextRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight));
         updateDragFloatingRect({ paneId: drag.paneId, rect: nextRect });
 
-        const hoveredOverlay = resolveHoverOverlay(hitX, hitShellY, dockLeafLayouts, drag.paneId);
-        setHoverTarget(hoveredOverlay?.targetId ?? null);
-        if (hoveredOverlay) {
-          const hoveredCell = hoveredOverlay.cells.find((cell) => pointInRect(cell.rect, hitX, hitShellY));
-          if (hoveredCell) {
-            const dropKey = `${hoveredOverlay.targetId}:${hoveredCell.position}`;
-            if (memo.dropKey !== dropKey) {
-              const target: DropTarget = { kind: "leaf", targetId: hoveredOverlay.targetId, position: hoveredCell.position };
-              const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
-              memo.dropKey = dropKey;
-              memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
-            }
-            updateDockPreview(memo.drop);
-          } else {
-            updateDockPreview(null);
+        // Over a title bar it would be a tab there; pushed against a docked
+        // pane's edge it would join the dock on that side.
+        const target = resolvePaneDropTarget({
+          x: hitX,
+          y: hitShellY,
+          rect: nextRect,
+          free: freePaneDragRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight),
+          leaves: dockLeafLayouts,
+          paneId: drag.paneId,
+          area: bounds,
+          flush: { x: magnetDistances.catchX, y: magnetDistances.catchY },
+          headerRows: paneHeaderRows(nativePaneChrome),
+          join: !magnetsOff,
+        });
+        if (target) {
+          const dropKey = target.kind === "tab" ? `tab:${target.targetId}` : target.kind === "leaf" ? `${target.targetId}:${target.position}` : target.edge;
+          if (memo.dropKey !== dropKey) {
+            const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
+            memo.dropKey = dropKey;
+            memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
           }
+          updateDockPreview(memo.drop);
         } else {
           const snapGuide = resolveSnapGuide(hitX, hitShellY, snapGuides);
           updateDockPreview(snapGuide ? { kind: "snap", position: snapGuide.position, rect: snapGuide.previewRect } : null);
@@ -261,8 +265,9 @@ export function useShellActiveDrag({
         const movedEnough = isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold);
         if (!movedEnough) {
           updateDockPreview(null);
-          setHoverTarget(null);
           updateDragFloatingRect(null);
+          // A click on a stack's tab shows that pane.
+          if (drag.mode === "docked") focusPane(drag.paneId);
         } else {
           const releaseRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight));
           const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview);
@@ -273,7 +278,6 @@ export function useShellActiveDrag({
           }
           focusPane(drag.paneId);
           updateDockPreview(null);
-          setHoverTarget(null);
           updateDragFloatingRect(null);
         }
       } else if (drag.type === "float-resize") {
@@ -285,7 +289,6 @@ export function useShellActiveDrag({
           persistLayout(nextLayout);
         }
         updateDragFloatingRect(null);
-        setHoverTarget(null);
       }
       endDrag();
       event.stopPropagation();
@@ -307,7 +310,6 @@ export function useShellActiveDrag({
     paneMap,
     persistLayout,
     precisePointer,
-    setHoverTarget,
     snapGuides,
     updateDividerPreview,
     updateDockPreview,

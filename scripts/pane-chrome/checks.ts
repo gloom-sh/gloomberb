@@ -85,6 +85,11 @@ window.__check = {
     return [...(this.pane(id)?.querySelectorAll('[role=tab]') ?? [])].find((tab) => tab.textContent.trim() === label) ?? null;
   },
   tabs(id) { return [...(this.pane(id)?.querySelectorAll('[role=tab]') ?? [])].map((tab) => tab.textContent.trim()); },
+  /** The tabs of the stack a pane shows in, null when it is alone in its spot. */
+  stackTabs(id) {
+    const strip = this.part(id, "pane-stack-tabs");
+    return strip && [...strip.querySelectorAll('[role=tab]')].map((tab) => ({ value: tab.getAttribute("data-tab-value"), selected: tab.getAttribute("aria-selected") === "true", rect: this.rect(tab) }));
+  },
   /** Where a press lands on a pane's header; null when that part is missing. */
   point(id, part) {
     if (part === "empty") return this.emptyBarPoint(id);
@@ -145,17 +150,19 @@ const near = (a: Rect | null, b: Rect | null, tolerance = 2) => !!a && !!b
 const round = (rect: Rect | null) => rect && Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, Math.round(value)]));
 
 /**
- * Drags `paneId` by `part` onto the middle of `targetId`, which swaps two
- * docked panes, and checks they really traded places.
+ * Drags `paneId` by `part` onto the title bar of `targetId`, which stacks it
+ * there as the shown tab, and checks the spot now holds both as tabs.
  */
-async function dockSwap(cdp: Cdp, paneId: string, part: string, targetId: string): Promise<void> {
+async function dockStack(cdp: Cdp, paneId: string, part: string, targetId: string): Promise<void> {
   const before = { pane: await rectOf(cdp, paneId), target: await rectOf(cdp, targetId) };
   if (!before.pane || !before.target) fail("pane missing", before);
-  await drag(cdp, await pointOf(cdp, paneId, part), [center(before.target)]);
-  const swapped = `(() => { const pane = __check.paneRect(${JSON.stringify(paneId)}); const target = __check.paneRect(${JSON.stringify(targetId)}); return pane && target && Math.abs(pane.x - ${before.target.x}) <= 2 && Math.abs(pane.y - ${before.target.y}) <= 2 && Math.abs(target.x - ${before.pane.x}) <= 2 && Math.abs(target.y - ${before.pane.y}) <= 2; })()`;
-  if (await waitFor(cdp, swapped)) return;
-  const after = { pane: await rectOf(cdp, paneId), target: await rectOf(cdp, targetId) };
-  fail(`dropping ${paneId} on ${targetId} did not swap them`, { before: { pane: round(before.pane), target: round(before.target) }, after: { pane: round(after.pane), target: round(after.target) } });
+  await drag(cdp, await pointOf(cdp, paneId, part), [await pointOf(cdp, targetId, "title")]);
+  const stacked = `(() => { const tabs = __check.stackTabs(${JSON.stringify(paneId)}); return !__check.pane(${JSON.stringify(targetId)}) && tabs?.length === 2 && tabs.at(-1).selected; })()`;
+  if (await waitFor(cdp, stacked)) return;
+  fail(`dropping ${paneId} on the title bar of ${targetId} did not stack them`, {
+    stack: await evaluate(cdp, `__check.stackTabs(${JSON.stringify(paneId)})`),
+    target: round(await rectOf(cdp, targetId)),
+  });
 }
 
 /** Drags a floating pane by `part` and checks it moved by the pointer's offset and still floats. */
@@ -773,21 +780,21 @@ const steps: Step[] = [
     name: `first paint has no blank or provisional chart and no blank overview frame (${theme})`, scenario: `paint&theme=${theme}`, run: checkFirstPaint,
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `docked pane: drag by the ${label} docks it elsewhere`,
-    scenario: "docked",
-    run: (cdp) => dockSwap(cdp, "plain:a", part, "plain:c"),
+    name: `docked pane: drag by the ${label} onto a title bar stacks it there`,
+    scenario: "docked&titlebar=1",
+    run: (cdp) => dockStack(cdp, "plain:a", part, "plain:c"),
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `tabbed pane: drag by the ${label} docks it elsewhere`,
-    scenario: "docked",
-    run: (cdp) => dockSwap(cdp, "tabs:a", part, "plain:c"),
+    name: `tabbed pane: drag by the ${label} onto a title bar stacks it there`,
+    scenario: "docked&titlebar=1",
+    run: (cdp) => dockStack(cdp, "tabs:a", part, "plain:c"),
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `error card pane: drag by the ${label} docks it elsewhere`,
-    scenario: "docked",
+    name: `error card pane: drag by the ${label} onto a title bar stacks it there`,
+    scenario: "docked&titlebar=1",
     async run(cdp) {
       if (!await waitFor(cdp, `__check.pane("broken:a")?.textContent.includes("stopped working")`)) fail("broken:a shows no failure card");
-      await dockSwap(cdp, "broken:a", part, "plain:b");
+      await dockStack(cdp, "broken:a", part, "plain:b");
     },
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
@@ -977,6 +984,38 @@ const steps: Step[] = [
       if (!near(before.pane, after.pane) || !near(before.target, after.target)) {
         fail("a tab drag moved a pane", { before: { pane: round(before.pane), target: round(before.target) }, after: { pane: round(after.pane), target: round(after.target) } });
       }
+    },
+  },
+  {
+    name: "stack: a click on a tab shows that pane, a drag takes it out of the stack",
+    scenario: "docked&titlebar=1",
+    async run(cdp) {
+      await dockStack(cdp, "plain:a", "title", "plain:c");
+      const tabOf = (id: string) => evaluate<Rect | null>(cdp, `__check.stackTabs("plain:a")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? __check.stackTabs("plain:c")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? null`);
+      await click(cdp, center(await tabOf("plain:c") ?? fail("no plain:c tab")));
+      if (!await waitFor(cdp, `!__check.pane("plain:a") && __check.stackTabs("plain:c")?.find((tab) => tab.selected)?.value === "plain:c"`)) {
+        fail("clicking the plain:c tab did not show it", await evaluate(cdp, `__check.stackTabs("plain:c")`));
+      }
+      // Out over the middle of another pane, clear of its edges: it floats there.
+      const away = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
+      await drag(cdp, center(await tabOf("plain:a") ?? fail("no plain:a tab")), [{ x: away.x + away.width / 2, y: away.y + away.height / 2 }]);
+      const out = `__check.pane("plain:a")?.getAttribute("data-floating") === "true" && !__check.stackTabs("plain:c") && __check.pane("plain:c")?.getAttribute("data-floating") === "false"`;
+      if (!await waitFor(cdp, out)) fail("dragging the plain:a tab out did not float it and leave plain:c alone", await evaluate(cdp, `({ a: __check.pane("plain:a")?.getAttribute("data-floating"), c: __check.stackTabs("plain:c") })`));
+    },
+  },
+  {
+    name: "floating pane: pushed flush against a docked pane's edge, it joins the dock there",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+      const target = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
+      const from = await pointOf(cdp, "plain:float", "title");
+      // The left edge a few px inside plain:b's, which the magnet pulls flush;
+      // the pointer stays over plain:b's body, clear of its title bar.
+      const to = { x: target.x + 3 + (from.x - pane.x), y: target.y + target.height / 2 };
+      await drag(cdp, from, [to]);
+      const joined = `(() => { const r = __check.paneRect("plain:float"); return r && __check.pane("plain:float").getAttribute("data-floating") === "false" && Math.abs(r.x - ${target.x}) <= 2; })()`;
+      if (!await waitFor(cdp, joined)) fail("pushing the window flush against plain:b's left edge did not dock it there", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")) });
     },
   },
   {

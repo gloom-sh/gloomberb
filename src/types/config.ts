@@ -42,7 +42,8 @@ export type PaneBinding =
 export interface DockedPlacementMemory {
   path?: Array<0 | 1>;
   anchorInstanceId?: string;
-  position?: "left" | "right" | "above" | "below";
+  /** "tab": a tab of the stack `anchorInstanceId` is in. */
+  position?: "left" | "right" | "above" | "below" | "tab";
 }
 
 export interface FloatingPlacementMemory {
@@ -114,7 +115,23 @@ export interface DockSplitNode {
   ratio: number;
   first: DockLayoutNode;
   second: DockLayoutNode;
+  /** Set on every split of a stack of tabs (`DockStackNode`). */
+  tabs?: DockTabs;
 }
+
+/** What makes a split a stack of tabs: the pane it shows. */
+export interface DockTabs {
+  active: string;
+}
+
+/**
+ * Panes stacked as tabs in one spot of the dock, one shown at a time: the
+ * panes of the subtree, first to last, as a chain of splits that each carry
+ * `tabs`. A build from before tabs reads the chain as a plain split and shows
+ * the panes side by side instead of losing them, and a split that loses one
+ * side is still a stack.
+ */
+export type DockStackNode = DockSplitNode & { tabs: DockTabs };
 
 export type DockLayoutNode = DockPaneNode | DockSplitNode;
 
@@ -614,6 +631,38 @@ function isDockAxis(value: unknown): value is DockSplitNode["axis"] {
   return value === "horizontal" || value === "vertical";
 }
 
+export function isDockStack(node: DockLayoutNode | null | undefined): node is DockStackNode {
+  return node?.kind === "split" && !!node.tabs;
+}
+
+/** The panes of a stack in tab order: every pane under it, first to last. */
+export function dockStackMembers(node: DockLayoutNode): string[] {
+  return getDockedPaneIdsFromNode(node);
+}
+
+/**
+ * The stack of `instanceIds` showing `active` (the first when it is not one
+ * of them), in its stored form; one pane is a plain pane, none is nothing.
+ */
+export function buildDockStack(instanceIds: readonly string[], active?: string | null): DockLayoutNode | null {
+  const ids = [...new Set(instanceIds)];
+  if (ids.length === 0) return null;
+  const shown = active && ids.includes(active) ? active : ids[0]!;
+  const chain = (index: number): DockLayoutNode => {
+    if (index === ids.length - 1) return { kind: "pane", instanceId: ids[index]! };
+    return {
+      kind: "split",
+      axis: "horizontal",
+      // Even widths where a build from before tabs shows them side by side.
+      ratio: clampDockRatio(1 / (ids.length - index)),
+      first: { kind: "pane", instanceId: ids[index]! },
+      second: chain(index + 1),
+      tabs: { active: shown },
+    };
+  };
+  return chain(0);
+}
+
 function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
   if (node.kind === "pane") {
     return { kind: "pane", instanceId: node.instanceId };
@@ -624,6 +673,7 @@ function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
     ratio: node.ratio,
     first: cloneDockNode(node.first),
     second: cloneDockNode(node.second),
+    ...(node.tabs ? { tabs: { active: node.tabs.active } } : {}),
   };
 }
 
@@ -645,6 +695,14 @@ function normalizeDockNode(
 
   if ((node as DockSplitNode).kind !== "split") return null;
   const split = node as DockSplitNode;
+  if (split.tabs) {
+    // Whatever is under a stack is its tabs, nested or not: a pane put back
+    // at a place inside it (its remembered spot) joins it.
+    const plain: DockSplitNode = { kind: "split", axis: split.axis, ratio: split.ratio, first: split.first, second: split.second };
+    const flat = normalizeDockNode(plain, validInstanceIds, seenPaneIds);
+    const active = typeof split.tabs.active === "string" ? split.tabs.active : null;
+    return flat ? buildDockStack(getDockedPaneIdsFromNode(flat), active) : null;
+  }
   const first = normalizeDockNode(split.first, validInstanceIds, seenPaneIds);
   const second = normalizeDockNode(split.second, validInstanceIds, seenPaneIds);
   if (!first && !second) return null;

@@ -272,9 +272,13 @@ function parseDockNode(
   ) {
     return { kind: "pane", instanceId: value.instanceId };
   }
+  // A stack of tabs is a split marked with the tab it shows.
+  const tabs = "tabs" in value && isRecord(value.tabs) && exactKeys(value.tabs, ["active"]) && boundedString(value.tabs.active, MAX_ID_LENGTH)
+    ? { active: value.tabs.active }
+    : null;
   if (
     value.kind === "split"
-    && exactKeys(value, ["kind", "axis", "ratio", "first", "second"])
+    && exactKeys(value, tabs ? ["kind", "axis", "ratio", "first", "second", "tabs"] : ["kind", "axis", "ratio", "first", "second"])
     && (value.axis === "horizontal" || value.axis === "vertical")
     && boundedNumber(value.ratio, 0, 1)
   ) {
@@ -287,6 +291,7 @@ function parseDockNode(
       ratio: value.ratio,
       first,
       second,
+      ...(tabs ? { tabs } : {}),
     };
   }
   return undefined;
@@ -461,6 +466,7 @@ function mapDockNode(node: DockLayoutNode | null, ids: ReadonlyMap<string, strin
     ...node,
     first: mapDockNode(node.first, ids)!,
     second: mapDockNode(node.second, ids)!,
+    ...(node.tabs ? { tabs: { active: ids.get(node.tabs.active) ?? node.tabs.active } } : {}),
   };
 }
 

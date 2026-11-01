@@ -796,6 +796,7 @@ export function Shell({
     nativePaneChrome,
     openPaneMenu,
     openPaneDocs,
+    getPaneTitle,
     paneMap,
     persistLayout,
     precisePointer,
@@ -878,7 +879,6 @@ export function Shell({
         dialogOpen={dialogOpen}
         dockDividerLayouts={screenDividerLayouts}
         dockedPanes={screenDockedPanes}
-        dockLeafLayouts={dockLeafLayouts}
         externalDockPreview={externalDockPreview}
         live={live}
         menuState={menuState}
@@ -893,6 +893,7 @@ export function Shell({
         dockDividerLayouts={dockDividerLayouts}
         dockLeafLayouts={dockLeafLayouts}
         focusedPaneId={focusedPaneId}
+        focusPane={focusPane}
         floatingOrder={activeLayout.floating}
         getPaneTitle={getPaneTitle}
         getPaneQuickSettings={getPaneQuickSettings}
@@ -949,7 +950,6 @@ export function Shell({
       />
 
       <ShellDragOverlays
-        dockLeafLayouts={dockLeafLayouts}
         externalDockPreview={externalDockPreview}
         live={live}
       />

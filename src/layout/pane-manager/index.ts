@@ -14,6 +14,7 @@ export {
   getDockLeafLayouts,
   getDockResizeTargets,
   getDockSplitGeometry,
+  showDockTab,
   type DockDividerLayout,
   type DockGeometryOptions,
   type DockLeafLayout,
@@ -50,6 +51,7 @@ export {
   insertAtRootEdge,
   resizeSplitAtPath,
   simulateDrop,
+  stackOnto,
   swapPanes,
 } from "./docking";
 

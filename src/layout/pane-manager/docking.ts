@@ -1,5 +1,5 @@
 import type { LayoutConfig, PaneInstanceConfig } from "../../types/config";
-import { findPaneInstance } from "../../types/config";
+import { buildDockStack, dockStackMembers, findPaneInstance } from "../../types/config";
 import {
   buildSplitAroundNode,
   clampRatio,
@@ -64,11 +64,28 @@ function insertRelativeToLeaf(layout: LayoutConfig, instanceId: string, targetId
   const base = detachPane(layout, instanceId);
   const targetLeaf = findDockLeaf(base, targetId);
   if (!targetLeaf || !base.dockRoot) return layout;
-  const targetNode = getNodeAtPath(base.dockRoot, targetLeaf.path);
+  // Beside a tab is beside its whole stack.
+  const spotPath = targetLeaf.stackPath ?? targetLeaf.path;
+  const targetNode = getNodeAtPath(base.dockRoot, spotPath);
   if (!targetNode) return layout;
   return finalizeLayout({
     ...base,
-    dockRoot: replaceNodeAtPath(base.dockRoot, targetLeaf.path, buildSplitAroundNode(targetNode, instanceId, position)),
+    dockRoot: replaceNodeAtPath(base.dockRoot, spotPath, buildSplitAroundNode(targetNode, instanceId, position)),
+  });
+}
+
+/** `instanceId` as the last tab of the spot `targetId` is in, shown: the spot becomes a stack if it was one pane. */
+export function stackOnto(layout: LayoutConfig, instanceId: string, targetId: string): LayoutConfig {
+  if (instanceId === targetId) return layout;
+  const base = detachPane(layout, instanceId);
+  const targetLeaf = findDockLeaf(base, targetId);
+  if (!targetLeaf || !base.dockRoot) return layout;
+  const spotPath = targetLeaf.stackPath ?? targetLeaf.path;
+  const spot = getNodeAtPath(base.dockRoot, spotPath);
+  if (!spot) return layout;
+  return finalizeLayout({
+    ...base,
+    dockRoot: replaceNodeAtPath(base.dockRoot, spotPath, buildDockStack([...dockStackMembers(spot), instanceId], instanceId)!),
   });
 }
 
@@ -92,6 +109,12 @@ export function dockPane(layout: LayoutConfig, instanceId: string, target?: Dock
 
   const instance = findPaneInstance(layout, instanceId);
   const dockedMemory = instance?.placementMemory?.docked;
+  if (dockedMemory?.position === "tab") {
+    // A tab goes back into its stack while a pane of it is still docked.
+    const anchor = dockedMemory.anchorInstanceId;
+    if (anchor && anchor !== instanceId && findDockLeaf(layout, anchor)) return stackOnto(layout, instanceId, anchor);
+    return insertAtRootEdge(layout, instanceId, "right");
+  }
   if (dockedMemory?.position && dockedMemory.path && dockedMemory.path.length > 0) {
     return insertRelativeToSubtreePath(layout, instanceId, dockedMemory.path.slice(0, -1), dockedMemory.position);
   }
@@ -108,10 +131,13 @@ export function applyDrop(layout: LayoutConfig, draggedId: string, dropTarget: D
   if (dropTarget.kind === "frame") {
     return insertAtRootEdge(layout, draggedId, dropTarget.edge);
   }
+  if (dropTarget.kind === "tab") {
+    return stackOnto(layout, draggedId, dropTarget.targetId);
+  }
 
   const normalized = normalizeDropPosition(dropTarget.position);
   if (normalized === "center") {
-    return swapPanes(layout, draggedId, dropTarget.targetId);
+    return stackOnto(layout, draggedId, dropTarget.targetId);
   }
   const direction = normalized === "top" ? "above" : normalized === "bottom" ? "below" : normalized;
   return insertRelativeToLeaf(layout, draggedId, dropTarget.targetId, direction);

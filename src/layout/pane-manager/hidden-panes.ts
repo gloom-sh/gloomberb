@@ -1,5 +1,13 @@
-import type { DockLayoutNode, DockSplitNode, LayoutConfig, PaneInstanceConfig } from "../../types/config";
-import { collectDockLeafRefs, getDockedInstanceIds, getNodeAtPath, replaceNodeAtPath } from "./dock-tree";
+import {
+  buildDockStack,
+  dockStackMembers,
+  isDockStack,
+  type DockLayoutNode,
+  type DockSplitNode,
+  type LayoutConfig,
+  type PaneInstanceConfig,
+} from "../../types/config";
+import { collectDockLeafRefs, dockStackShown, getDockedInstanceIds, getNodeAtPath, replaceNodeAtPath } from "./dock-tree";
 
 /**
  * A hidden part of the saved dock tree: the largest subtree with no pane on
@@ -14,6 +22,8 @@ interface HiddenDockBranch {
   /** The shown panes on the other side of that split. */
   besideIds: ReadonlySet<string>;
   depth: number;
+  /** Tabs of a stack: they go back into the stack of `besideIds`, its other tabs. */
+  tabs?: boolean;
 }
 
 function isAllHidden(node: DockLayoutNode, hidden: ReadonlySet<string>): boolean {
@@ -27,6 +37,24 @@ function collectHiddenBranches(
   out: HiddenDockBranch[],
 ): void {
   if (node.kind !== "split") return;
+  if (isDockStack(node)) {
+    // A stack is one spot: its hidden tabs go back into it, not beside it.
+    const members = dockStackMembers(node);
+    const shown = members.filter((instanceId) => !hidden.has(instanceId));
+    const tabs = members.filter((instanceId) => hidden.has(instanceId));
+    if (tabs.length > 0 && shown.length > 0) {
+      out.push({
+        node: buildDockStack(tabs)!,
+        axis: node.axis,
+        ratio: node.ratio,
+        side: 1,
+        besideIds: new Set(shown),
+        depth,
+        tabs: true,
+      });
+    }
+    return;
+  }
   const children = [node.first, node.second] as const;
   children.forEach((child, index) => {
     const side = index as 0 | 1;
@@ -70,6 +98,14 @@ function reattachBranch(
 ): DockLayoutNode {
   if (!root) return branch.node;
   const beside = collectDockLeafRefs(root).filter((leaf) => branch.besideIds.has(leaf.instanceId));
+  if (branch.tabs && beside[0]) {
+    const spotPath = beside[0].stackPath ?? beside[0].path;
+    const spot = getNodeAtPath(root, spotPath);
+    if (spot) {
+      const stack = buildDockStack([...dockStackMembers(spot), ...dockStackMembers(branch.node)], dockStackShown(spot));
+      return replaceNodeAtPath(root, spotPath, stack!);
+    }
+  }
   let path = beside.length > 0 ? commonPathPrefix(beside.map((leaf) => leaf.path)) : [];
   while (path.length > 0) {
     const parent = getNodeAtPath(root, path.slice(0, -1));

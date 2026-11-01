@@ -678,23 +678,14 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }
-/* Where a moving pane would land (a dock target, a screen-edge snap, window
-   mode's keyboard move): the exact rectangle, outlined in the accent over a
-   light tint of it, so the panes under it still show. The drop grid of the
-   pane under the pointer is outlines alone; the cell the release would take is
-   the preview's accent and tint. */
+/* Where a moving pane would land (a spot it would join or stack in, a
+   screen-edge snap, window mode's keyboard move): the exact rectangle,
+   outlined in the accent over a light tint of it, so the panes under it still
+   show. */
 [data-gloom-role="drop-preview"],
 [data-gloom-role="window-mode-drop-preview"] {
   border: 2px solid var(--gloom-accent);
   border-radius: var(--gloom-radius-md);
-  background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
-}
-[data-gloom-role="drop-cell"] {
-  border: 1px solid var(--gloom-border);
-  border-radius: var(--gloom-radius-sm);
-}
-[data-gloom-role="drop-cell"][data-active="true"] {
-  border-color: var(--gloom-accent);
   background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
 }
 /* The gap between the panes is the divider at rest; its line shows while it
