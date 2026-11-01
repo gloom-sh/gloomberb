@@ -5,16 +5,24 @@ import type { CloudQuotePayload, QuoteStreamTarget } from "./types";
 import { createTestSocketDeps, installTestWebSocket, type TestWebSocket } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
+/** Every socket a test opens: one left open past its test would reconnect into the next file's. */
+const opened: CloudApiSocket[] = [];
 let sockets: TestWebSocket[] = [];
 
+function track(socket: CloudApiSocket): CloudApiSocket {
+  opened.push(socket);
+  return socket;
+}
+
 afterEach(() => {
+  for (const socket of opened.splice(0)) socket.dispose();
   globalThis.WebSocket = originalWebSocket;
   resetServerClockForTests();
 });
 
 function createSocket() {
   sockets = installTestWebSocket(0);
-  const socket = new CloudApiSocket(createTestSocketDeps());
+  const socket = track(new CloudApiSocket(createTestSocketDeps()));
   const received: Array<{ target: QuoteStreamTarget; quote: CloudQuotePayload }> = [];
   socket.subscribeQuotes(
     [{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "MSFT", exchange: "NASDAQ" }],
@@ -67,7 +75,7 @@ test("measures how far the server clock runs ahead from ready and batch stamps",
 
 test("a perpetual listing reaches the server only once it offers perpetual markets", () => {
   sockets = installTestWebSocket(0);
-  const socket = new CloudApiSocket(createTestSocketDeps());
+  const socket = track(new CloudApiSocket(createTestSocketDeps()));
   socket.subscribeQuotes([{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "BTC", exchange: "HYPERLIQUID" }], () => {});
   const ws = sockets.at(-1)!;
   ws.open();
@@ -91,7 +99,7 @@ test("a perpetual listing reaches the server only once it offers perpetual marke
 
 test("the app streams one budget of perpetual listings across every pane, those on screen first", async () => {
   sockets = installTestWebSocket(0);
-  const socket = new CloudApiSocket(createTestSocketDeps());
+  const socket = track(new CloudApiSocket(createTestSocketDeps()));
   const coins = Array.from({ length: 70 }, (_, index) => `C${index}`);
   // A board's rows off screen, then a watchlist's rows on screen.
   socket.subscribeQuotes(coins.slice(0, 65).map((symbol) => ({ symbol, exchange: "HYPERLIQUID" })), () => {});
