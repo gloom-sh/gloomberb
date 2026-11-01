@@ -203,6 +203,13 @@ jobs:
         shell: pwsh
         run: ./scripts/windows-desktop-check/display.ps1 -Largest
 
+      # The Arm image opens on the privacy settings screen of a first sign-in,
+      # over every window, where it takes the check's input.
+      - name: Clear the desktop
+        if: matrix.machine == 'arm64'
+        shell: pwsh
+        run: ./scripts/windows-desktop-check/clear-desktop.ps1 -Log "windows-desktop-check\$env:LABEL-desktop.log"
+
       - name: Install
         shell: pwsh
         run: |
