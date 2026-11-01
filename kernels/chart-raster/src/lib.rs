@@ -69,9 +69,15 @@ fn js_round(x: f64) -> f64 {
 }
 
 /// A store into a Uint8Array of a value the caller rounded: NaN is 0, the rest wraps.
+/// Colour bytes are nearly always in range already: that path converts with
+/// one plain truncation, not a saturating one (which some WebAssembly
+/// compilers lower to a call).
 #[inline(always)]
 fn to_u8(x: f64) -> u8 {
-    if x.is_nan() || x.is_infinite() {
+    if x >= 0.0 && x <= 255.0 {
+        // SAFETY: in range and not NaN.
+        unsafe { x.to_int_unchecked::<u8>() }
+    } else if x.is_nan() || x.is_infinite() {
         0
     } else {
         (x as i64).rem_euclid(256) as u8
@@ -107,13 +113,19 @@ fn js_hypot(x: f64, y: f64) -> f64 {
 }
 
 /// Inclusive loop bounds from JavaScript numbers: none when either is NaN.
+/// Pixel loops never leave the bitmap, so bounds are clamped to a range that
+/// converts with plain truncations.
 #[inline(always)]
-fn bounds(from: f64, to: f64) -> Option<(i64, i64)> {
+fn bounds(from: f64, to: f64) -> Option<(i32, i32)> {
     if from.is_nan() || to.is_nan() {
-        None
-    } else {
-        Some((from as i64, to as i64))
+        return None;
     }
+    let clamp_i32 = |value: f64| -> i32 {
+        let limited = if value < -1.0e9 { -1.0e9 } else if value > 1.0e9 { 1.0e9 } else { value };
+        // SAFETY: limited to +-1e9 and not NaN.
+        unsafe { limited.to_int_unchecked::<i32>() }
+    };
+    Some((clamp_i32(from), clamp_i32(to)))
 }
 
 fn smoothstep(edge0: f64, edge1: f64, value: f64) -> f64 {
@@ -130,12 +142,14 @@ fn smoothstep(edge0: f64, edge1: f64, value: f64) -> f64 {
 
 #[inline(always)]
 fn blend_at(data: &mut [u8], index: usize, color: Rgba, alpha: f64) {
-    let dst_alpha = data[index + 3];
+    // One bounds check for the pixel's four bytes.
+    let pixel: &mut [u8; 4] = (&mut data[index..index + 4]).try_into().unwrap();
+    let dst_alpha = pixel[3];
     if dst_alpha == 255 {
         let keep = 1.0 - alpha;
-        data[index] = to_u8(js_round(color.r * alpha + data[index] as f64 * keep));
-        data[index + 1] = to_u8(js_round(color.g * alpha + data[index + 1] as f64 * keep));
-        data[index + 2] = to_u8(js_round(color.b * alpha + data[index + 2] as f64 * keep));
+        pixel[0] = to_u8(js_round(color.r * alpha + pixel[0] as f64 * keep));
+        pixel[1] = to_u8(js_round(color.g * alpha + pixel[1] as f64 * keep));
+        pixel[2] = to_u8(js_round(color.b * alpha + pixel[2] as f64 * keep));
         return;
     }
     let dst = dst_alpha as f64 / 255.0;
@@ -144,10 +158,10 @@ fn blend_at(data: &mut [u8], index: usize, color: Rgba, alpha: f64) {
         return;
     }
     let dst_factor = dst * (1.0 - alpha);
-    data[index] = to_u8(js_round((color.r * alpha + data[index] as f64 * dst_factor) / out_alpha));
-    data[index + 1] = to_u8(js_round((color.g * alpha + data[index + 1] as f64 * dst_factor) / out_alpha));
-    data[index + 2] = to_u8(js_round((color.b * alpha + data[index + 2] as f64 * dst_factor) / out_alpha));
-    data[index + 3] = to_u8(js_round(out_alpha * 255.0));
+    pixel[0] = to_u8(js_round((color.r * alpha + pixel[0] as f64 * dst_factor) / out_alpha));
+    pixel[1] = to_u8(js_round((color.g * alpha + pixel[1] as f64 * dst_factor) / out_alpha));
+    pixel[2] = to_u8(js_round((color.b * alpha + pixel[2] as f64 * dst_factor) / out_alpha));
+    pixel[3] = to_u8(js_round(out_alpha * 255.0));
 }
 
 fn blend_pixel(data: &mut [u8], width: f64, height: f64, x: f64, y: f64, color: Rgba, opacity: f64) {
