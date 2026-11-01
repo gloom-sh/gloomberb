@@ -2,7 +2,8 @@ import type { DepositaryPair, Quote, TickerFinancials } from "../../../../types/
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import { listingSuffixCandidate, listingSuffixVenue } from "../../../../sources/listing-symbols";
-import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
+import { heldCurrencyUnit } from "../../../../utils/currency-units";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
 import {
   compareDepositaryPair, dollarPairLabel, formatPairRate, isReceiptSide, listingDepositaryPair, pairPriceInput, pairTimeText,
@@ -108,20 +109,39 @@ function sessionText(input: PairPriceInput): string {
   return input.open ? "Open" : "Closed";
 }
 
+/**
+ * A leg's price written as the quote monitor writes the listing's: its
+ * instrument's own decimals (cents on a dollar price, $419.50 and never
+ * $419.5). The comparison reads a minor unit (GBp) in its currency, so the
+ * session prices the decimals come from are read in it too.
+ */
+function legPriceOptions(input: PairPriceInput, quote: Quote | null | undefined): MarketFormatOptions {
+  const divisor = quote?.currency ? heldCurrencyUnit(quote.currency).divisor : 1;
+  const inCurrency = (value: number | undefined) => value == null ? value : value / divisor;
+  return liveQuoteFormatOptions(
+    quote ? { ...quote, previousClose: inCurrency(quote.previousClose), regularClose: inCurrency(quote.regularClose), open: inCurrency(quote.open) } : null,
+    input.currency,
+  );
+}
+
 /** The inputs the figures come from, each with when it was set. */
-export function adrPairInputRows(comparison: DepositaryPairComparison, now = Date.now()): AdrPairInputRow[] {
+export function adrPairInputRows(
+  comparison: DepositaryPairComparison,
+  quotes: { receipt: Quote | null | undefined; home: Quote | null | undefined },
+  now = Date.now(),
+): AdrPairInputRow[] {
   const { home, receipt, spot, ratio } = comparison;
   const time = (value: number | null) => value == null ? "—" : pairTimeText(value, now).replace(/ UTC$/, "");
   const kind = spotRateKind(home.currency);
   return [
     {
       id: "home", listing: home.symbol, role: `Home, ${ratioCount(ratio)} per ADR`,
-      price: formatMarketPriceWithCurrency(home.price, home.currency, { currencyCode: true }),
+      price: formatMarketPriceWithCurrency(home.price, home.currency, { ...legPriceOptions(home, quotes.home), currencyCode: true }),
       asOf: time(home.observedAt), session: sessionText(home), opens: home.symbol,
     },
     {
       id: "receipt", listing: receipt.symbol, role: "ADR",
-      price: formatMarketPriceWithCurrency(receipt.price, receipt.currency), asOf: time(receipt.observedAt),
+      price: formatMarketPriceWithCurrency(receipt.price, receipt.currency, legPriceOptions(receipt, quotes.receipt)), asOf: time(receipt.observedAt),
       session: sessionText(receipt), opens: receipt.symbol,
     },
     ...spot ? [{

@@ -73,7 +73,7 @@ import {
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { getFormDescription } from "../../plugins/builtin/sec/model";
-import { rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
+import { ownerNames, rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
 import { isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
@@ -321,14 +321,18 @@ async function withFilingSummaries(
   dataProvider: { getSecFilingContent?(filing: SecFilingItem): Promise<string | null> },
 ): Promise<RecentFiling[]> {
   if (!dataProvider.getSecFilingContent) return [...filings];
-  return Promise.all(filings.map(async (filing) => {
+  const contents = await Promise.all(filings.map(async (filing) => {
     const target = rowSummaryTarget(filing);
-    if (!target) return filing;
-    const content = await Promise.resolve().then(() => dataProvider.getSecFilingContent!(target))
+    if (!target) return null;
+    return Promise.resolve().then(() => dataProvider.getSecFilingContent!(target))
       .catch(logFailure("cli.commands-ticker", "Read an insider filing failed", null));
-    const summary = rowSummary(filing.form, content)?.title;
-    return summary ? { ...filing, summary } : filing;
   }));
+  // A Form 144 names its seller freely; the insider forms read beside it say which way round.
+  const knownOwners = filings.flatMap((filing, index) => ownerNames(filing.form, contents[index]));
+  return filings.map((filing, index) => {
+    const summary = rowSummary(filing.form, contents[index], knownOwners)?.title;
+    return summary ? { ...filing, summary } : filing;
+  });
 }
 
 /** What the form is: the filing's own description, else the form's meaning ("Insider Transaction"); none beside an 8-K's items. */

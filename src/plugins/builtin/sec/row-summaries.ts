@@ -1,6 +1,7 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { decodeHtmlEntities } from "../../../utils/html-entities";
 import { formatCompact } from "../../../utils/format";
+import { formatFreeformPersonName, formatInsiderName } from "../insider/display";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { buildInsiderTransactionTitle } from "./filing-display";
 
@@ -36,9 +37,20 @@ export function rowSummaryTarget(filing: SecFilingItem): SecFilingItem | null {
   return { ...filing, accessionNumber: `${filing.accessionNumber}:${document}`, primaryDocument: document, primaryDocumentUrl: url, filingUrl: url };
 }
 
-function tagText(xml: string, tag: string): string {
-  const match = new RegExp(`<(?:[\\w.-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${tag}\\s*>`, "i").exec(xml);
-  return decodeHtmlEntities((match?.[1] ?? "").replace(/<[^>]*>/g, "").trim());
+function tagTexts(xml: string, tag: string): string[] {
+  const pattern = new RegExp(`<(?:[\\w.-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${tag}\\s*>`, "gi");
+  return [...xml.matchAll(pattern)].map((match) => decodeHtmlEntities((match[1] ?? "").replace(/<[^>]*>/g, "").trim()));
+}
+
+const tagText = (xml: string, tag: string): string => tagTexts(xml, tag)[0] ?? "";
+
+/**
+ * The reporting owners a Form 3, 4 or 5 names, spelled as filed ("COOK TIMOTHY D"):
+ * what a Form 144's free-text seller is recognised by, so one person reads alike on every row.
+ */
+export function ownerNames(form: string, content: string | null | undefined): string[] {
+  if (!content || !/^[345](?:\/A)?$/i.test(form.trim())) return [];
+  return tagTexts(content, "rptOwnerName").filter(Boolean);
 }
 
 const money = (value: number) => `$${formatCompact(value)}`;
@@ -47,9 +59,10 @@ const money = (value: number) => `$${formatCompact(value)}`;
  * A Form 144 is a notice that someone means to sell: who, how many shares
  * and what they were worth when it was filed.
  */
-function form144Summary(xml: string): RowSummary | null {
-  const name = tagText(xml, "nameOfPersonForWhoseAccountTheSecuritiesAreToBeSold");
-  if (!name) return null;
+function form144Summary(xml: string, knownOwners: readonly string[]): RowSummary | null {
+  const filedName = tagText(xml, "nameOfPersonForWhoseAccountTheSecuritiesAreToBeSold");
+  if (!filedName) return null;
+  const name = formatFreeformPersonName(filedName, knownOwners);
   const shares = Number(tagText(xml, "noOfUnitsSold"));
   const value = Number(tagText(xml, "aggregateMarketValue"));
   const amount = [
@@ -62,7 +75,7 @@ function form144Summary(xml: string): RowSummary | null {
 /** The reporting owner of a Form 3, which lists holdings and no transactions. */
 function initialOwnershipSummary(xml: string): RowSummary | null {
   const name = tagText(xml, "rptOwnerName");
-  return name ? { title: `${name}: initial holdings`, direction: null } : null;
+  return name ? { title: `${formatInsiderName(name)}: initial holdings`, direction: null } : null;
 }
 
 const signedMoney = (value: number) => `${value < 0 ? "-" : "+"}${money(Math.abs(value))}`;
@@ -86,20 +99,23 @@ function fundFlowSummary(xml: string): RowSummary | null {
 /**
  * The row text of a filing whose content has been read, or null when it was
  * not read or says nothing a row can use. An insider form with one
- * transaction says it in full; one with several lists their kinds.
+ * transaction says it in full; one with several lists their kinds. Names read
+ * as the Insider table writes them; `knownOwners` (`ownerNames` of the
+ * insider forms read beside this one) tells a Form 144's seller which way round
+ * their name is filed.
  */
-export function rowSummary(form: string, content: string | null | undefined): RowSummary | null {
+export function rowSummary(form: string, content: string | null | undefined, knownOwners: readonly string[] = []): RowSummary | null {
   if (!content) return null;
   if (FUND_FLOW_FORM.test(form.trim())) return fundFlowSummary(content);
   if (!isOwnershipForm(form)) return null;
   const base = form.trim().replace(/\/A$/i, "");
-  if (base === "144") return form144Summary(content);
+  if (base === "144") return form144Summary(content, knownOwners);
   const transactions = parseForm4Xml(content);
   const first = transactions[0];
   if (!first) return base === "3" ? initialOwnershipSummary(content) : null;
   const codes = new Set(transactions.map((transaction) => transaction.transactionType));
   const direction = codes.has("P") && !codes.has("S") ? "buy" : codes.has("S") && !codes.has("P") ? "sell" : null;
-  if (transactions.length === 1) return { title: `${first.reportedName}: ${buildInsiderTransactionTitle(first)}`, direction };
+  if (transactions.length === 1) return { title: `${formatInsiderName(first.reportedName)}: ${buildInsiderTransactionTitle(first)}`, direction };
   const kinds = [...new Set(transactions.map((transaction) => transactionTypeLabel(transaction.transactionType)))];
-  return { title: `${first.reportedName}: ${transactions.length} transactions, ${kinds.join(", ")}`, direction };
+  return { title: `${formatInsiderName(first.reportedName)}: ${transactions.length} transactions, ${kinds.join(", ")}`, direction };
 }
