@@ -18,7 +18,7 @@ import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
 import { HiloBars } from "./hilo-bars";
-import { filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
+import { filterHiloRows, formatHiloPrice, hiloEmptyState, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type Side = "lows" | "highs";
 
@@ -118,6 +118,15 @@ function HiloPane({ focused, width, height }: PaneProps) {
   );
 
   useScannerStatusFooter("hilo", feed, focused);
+  // Read when the feed moves, not each render: the clock only matters once a closed session's text is shown.
+  const status = feed.payload?.status;
+  const emptyStates = useMemo<Record<Side, { title: string; hint?: string }>>(() => {
+    const now = Date.now();
+    return {
+      lows: hiloEmptyState({ filtered: !!feed.payload?.lows.length, status, now }),
+      highs: hiloEmptyState({ filtered: !!feed.payload?.highs.length, status, now }),
+    };
+  }, [feed.payload?.lows.length, feed.payload?.highs.length, status]);
 
   const split = width >= SPLIT_MIN_WIDTH;
   // Zero counts before the first payload would read as a dead market, not a loading one.
@@ -168,7 +177,8 @@ function HiloPane({ focused, width, height }: PaneProps) {
       renderCell={RENDER_ROW[side]}
       selectedTextOverridesCellColor
       emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
-      emptyStateTitle="Nothing above the price filter yet."
+      emptyStateTitle={emptyStates[side].title}
+      emptyStateHint={emptyStates[side].hint}
     />
   );
 

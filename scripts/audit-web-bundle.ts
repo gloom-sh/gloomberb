@@ -42,7 +42,6 @@ const NODE_POLYFILL = /Z_BUF_ERROR|createDiffieHellman|pbkdf2Sync/;
  * once it renders.
  */
 const UNSUPPORTED_PROVIDER_HOSTS = [
-  "api.thebuildout.ai",
   "api.elections.kalshi.com",
   "forms13f.com",
 ].filter((host) => !isProxiedHost(host));

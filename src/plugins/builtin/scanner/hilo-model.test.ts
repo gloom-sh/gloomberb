@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHiloBarRows, hiloBarLayout, HILO_LABEL_WIDTH, HILO_SIDE_NAME_WIDTH } from "./hilo-model";
+import { buildHiloBarRows, hiloBarLayout, hiloEmptyState, HILO_LABEL_WIDTH, HILO_SIDE_NAME_WIDTH } from "./hilo-model";
 
 const windows = {
   s30: { highs: 42, lows: 11 },
@@ -42,5 +42,22 @@ describe("hilo bar labels", () => {
     expect(narrow.sideNameWidth).toBe(0);
     expect(2 + 2 * narrow.halfWidth + HILO_LABEL_WIDTH).toBeLessThanOrEqual(44);
     expect(narrow.barWidth).toBe(narrow.halfWidth - 4);
+  });
+});
+
+describe("hilo empty tables", () => {
+  const saturday = Date.parse("2026-10-31T16:00:00Z");
+  const price = { title: "Nothing above the price filter yet." };
+
+  test("a closed market says so and when the highs and lows resume, in the status line's words", () => {
+    expect(hiloEmptyState({ filtered: false, status: "closed", now: saturday })).toEqual({
+      title: "Markets closed until Mon.", hint: "New highs and lows resume at the open.",
+    });
+  });
+
+  test("the price filter is named when it hid rows, or when an open market has printed nothing yet", () => {
+    expect(hiloEmptyState({ filtered: true, status: "closed", now: saturday })).toEqual(price);
+    expect(hiloEmptyState({ filtered: false, status: "live", now: saturday })).toEqual(price);
+    expect(hiloEmptyState({ filtered: false, status: undefined, now: saturday })).toEqual(price);
   });
 });

@@ -11,7 +11,7 @@ export function activeBuildoutPage(
   selectedList: BuildoutList | null,
 ) {
   if (state.status !== "ready") return null;
-  if (activeTab === "companies") return selectedList ? state.companies : null;
+  if (activeTab === "companies" || activeTab === "themes") return selectedList ? state.companies : null;
   if (activeTab === "sites") return state.sites;
   return state.intel;
 }

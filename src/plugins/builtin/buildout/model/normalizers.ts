@@ -121,6 +121,9 @@ export function normalizeList(raw: RawObject): BuildoutList {
     avgSectorGrowth: stringField(raw, "avgSectorGrowth", "avg_sector_growth"),
     avgReturn1y: stringField(raw, "avgReturn1y", "avg_return_1y"),
     avgMargin: stringField(raw, "avgMargin", "avg_margin"),
+    leaders: raw.importanceCounts && typeof raw.importanceCounts === "object"
+      ? numberField(raw.importanceCounts as RawObject, "leader")
+      : null,
   };
 }
 
@@ -256,6 +259,8 @@ function readCompany(raw: RawObject): BuildoutCompany {
     logoUrl: stringField(raw, "logoUrl", "logo_url"),
     researchReport: stringField(raw, "researchReport", "research_report"),
     listReason: stringField(raw, "listReason", "list_reason"),
+    listRole: stringField(raw, "listCategoryRole", "list_category_role"),
+    listTier: stringField(raw, "listCategoryImportance", "list_category_importance"),
     intelligence: arrayField(raw, "intelligence").map((item) => ({
       publishedAt: stringField(item, "publishedAt", "published_at"),
       headline: stringField(item, "headline", "title"),
