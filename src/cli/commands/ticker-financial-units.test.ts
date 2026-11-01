@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportFundFacts, renderFundamentalsReport } from "./ticker";
+import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportFundFacts, otherListingProfileNote, renderFundamentalsReport } from "./ticker";
 import { createBaseConverter } from "../base-converter";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
@@ -589,4 +589,24 @@ test("a coin's volume says it is traded value in the quote currency; a stock's s
   };
   expect(await volumeLine("BTC-USD", "CCC")).toBe("Volume 75,244,118,016 USD");
   expect(await volumeLine("MARA", "NASDAQ")).toBe("Volume 75,244,118,016");
+});
+
+test("a fund shows no stock rows, whatever a provider sends; a stopped listing names the other listing a profile under its symbol is of", async () => {
+  const fund: TickerFinancials = {
+    quote: { ...quote, symbol: "SPY", instrumentType: "ETF" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    profile: { sector: "Basic Materials", industry: "Specialty Chemicals" },
+    fundamentals: { trailingPE: 20.74, revenue: 1_000_000, netIncome: 5, eps: 0.18, dividendYield: 0.012, dividendYieldBasis: "trailing" },
+  };
+  const text = await report(fund);
+  for (const row of ["P/E (TTM)", "Revenue (TTM)", "Net Income (TTM)", "EPS (TTM)", "Sector", "Industry"]) expect(text).not.toContain(row);
+  expect(text).toContain("Dividend Yield (trailing)");
+  // The same figures on a stock are its own.
+  expect(await report({ ...fund, quote: { ...fund.quote!, instrumentType: "EQUITY" } })).toContain("P/E (TTM) 20.74");
+
+  // STPP: no quote of its own, and the profile under its symbol is a UCITS fund's.
+  const named = { profile: { name: "State Street SPDR MSCI Europe Materials UCITS ETF" }, quote: undefined };
+  expect(otherListingProfileNote("STPP", named))
+    .toBe("The profile served under STPP is another listing's (State Street SPDR MSCI Europe Materials UCITS ETF), not shown.");
+  expect(otherListingProfileNote("TWTR", { profile: { name: "Twitter, Inc." }, quote: { ...quote, name: "Twitter, Inc." } })).toBeNull();
+  expect(otherListingProfileNote("FLAT", { profile: {}, quote: undefined })).toBeNull();
 });

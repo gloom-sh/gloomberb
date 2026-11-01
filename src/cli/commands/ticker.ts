@@ -83,7 +83,7 @@ import {
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
 import { movedAwayChange } from "../../tickers/ticker-changes";
-import { listingChangeLine } from "../../tickers/listing-fate";
+import { listingChangeLine, loadNoQuoteLastTraded, noLongerListedNote } from "../../tickers/listing-fate";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -824,6 +824,14 @@ function floatAndShortInterestMetrics(
   ];
 }
 
+/** Rows a company's earnings and accounts fill: a fund's report never shows them, whatever a provider sends for it. */
+const STOCK_ONLY_METRICS = new Set(["Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)",
+  "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)", "Operating Margin", "Profit Margin", "Revenue Growth", "Last Quarter Growth"]);
+
+function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
+  return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metric.label)) : metrics;
+}
+
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
   return metrics.filter((metric) => !metric.exportOnly).map((metric) => [metric.label, metric.text]);
 }
@@ -974,8 +982,9 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
-  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
-    undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true);
+  const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
+    fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true),
+  resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
       .filter((metric) => metric.text !== "—");
@@ -999,10 +1008,11 @@ export function renderFundamentalsReport(
   const symbol = quote?.symbol ?? financials.symbol;
   const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
   const lines = [`${cliStyles.accent(symbol)}${name}`];
+  const isFund = resolveTickerInstrumentKind(null, financials) === "fund";
   const profileParts = [
     financials.exchange ? exchangeLabel(financials.exchange) : undefined,
-    profile?.sector ? `Sector ${profile.sector}` : undefined,
-    profile?.industry ? `Industry ${profile.industry}` : undefined,
+    !isFund && profile?.sector ? `Sector ${profile.sector}` : undefined,
+    !isFund && profile?.industry ? `Industry ${profile.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (profileParts.length > 0) lines.push(cliStyles.muted(profileParts.join(METADATA_SEPARATOR)));
 
@@ -1205,10 +1215,12 @@ export async function buildTickerReport({
   const instrumentType = instrumentTypeLabel(quote?.instrumentType?.trim()
     || financials.quoteMetadata?.instrumentType?.trim()
     || tickerFile?.metadata.assetCategory, name, { detail: true });
+  // A fund has no sector or industry of its own, nor the earnings rows below.
+  const isFund = resolveTickerInstrumentKind(tickerFile, financials) === "fund";
   const metadataParts = [
     instrumentType ? `Type ${instrumentType}` : undefined,
-    (tickerFile?.metadata.sector || profile?.sector) ? `Sector ${tickerFile?.metadata.sector || profile?.sector}` : undefined,
-    (tickerFile?.metadata.industry || profile?.industry) ? `Industry ${tickerFile?.metadata.industry || profile?.industry}` : undefined,
+    !isFund && (tickerFile?.metadata.sector || profile?.sector) ? `Sector ${tickerFile?.metadata.sector || profile?.sector}` : undefined,
+    !isFund && (tickerFile?.metadata.industry || profile?.industry) ? `Industry ${tickerFile?.metadata.industry || profile?.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (metadataParts.length > 0) {
     lines.push(cliStyles.muted(metadataParts.join(METADATA_SEPARATOR)));
@@ -1316,8 +1328,8 @@ export async function buildTickerReport({
 
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials, listing),
-    { text: enterpriseValueText }, distributions, bondFund, codes);
+  const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)
@@ -1547,6 +1559,24 @@ function depositaryPairJson(financials: TickerFinancials) {
 const QUOTE_UNAVAILABLE = "Quote unavailable.";
 
 /** Asks for the quote the report lacks once more, for the reason the data service gave when it had none. */
+/**
+ * A symbol whose listing stopped trading can be served the profile of
+ * another listing that took the symbol (STPP: a UCITS fund, after the iPath
+ * steepener ended): the line that names it, when the profile names anyone
+ * but the listing itself. Null when it is the listing's own, or there is none.
+ */
+export function otherListingProfileNote(symbol: string, financials: Pick<TickerFinancials, "profile" | "quote">): string | null {
+  const named = financials.profile?.name?.trim();
+  const own = financials.quote?.name?.trim();
+  if (!named || (own && own.toLowerCase() === named.toLowerCase())) return null;
+  return `The profile served under ${symbol} is another listing's (${named}), not shown.`;
+}
+
+/** The research a stopped listing shows when what came under its symbol is another listing's: its quote data alone. */
+function withoutResearch(financials: TickerFinancials): TickerFinancials {
+  return { ...financials, profile: undefined, fundamentals: undefined, annualStatements: [], quarterlyStatements: [] };
+}
+
 async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"], symbol: string, exchange: string): Promise<string> {
   try {
     await dataProvider.getQuote(symbol, exchange);
@@ -1689,7 +1719,11 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
-    const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
+    // A listing with no quote and no bar in over a month stopped trading: the line under its name says when.
+    const lastTraded = quote ? null : await loadNoQuoteLastTraded({ symbol: requestSymbol, exchange }, dataProvider);
+    const quoteNote = lastTraded ? [`${noLongerListedNote(requestSymbol, lastTraded)}.`, otherListingProfileNote(requestSymbol, resolvedFinancials)]
+      .filter(Boolean).join("\n")
+      : quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
     const successor = listingChangeLine(researchFate);
     const choiceNotes = [
@@ -1700,8 +1734,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     ];
     const listingNote = choiceNotes.join("\n") || undefined;
     const memberships = await membershipsLoad;
-    // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports.
-    const shownFinancials = await atReportTtmRate(resolvedFinancials, toBase);
+    // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports. A listing that
+    // stopped trading shows none of the profile and figures another listing under its symbol was served with.
+    const shownFinancials = await atReportTtmRate(lastTraded && otherListingProfileNote(requestSymbol, resolvedFinancials)
+      ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);

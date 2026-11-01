@@ -643,6 +643,8 @@ export interface DeclaredCash {
 }
 
 export interface CompanyProfile {
+  /** Who the profile is of, as the source names it beside its facts: another listing's name where one took the symbol. */
+  name?: string;
   description?: string;
   /**
    * Who published the description and where, when it is quoted from a
