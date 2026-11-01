@@ -10,6 +10,7 @@ import {
   formatCompositePointDetails,
   formatCompositeSeriesValue,
   formatCompositeTimeAxisDate,
+  sameCompositeAxisDomain,
   type CompositeAxisValueFormatter,
 } from "./format";
 import { formatCompact } from "../../../utils/format";
@@ -391,6 +392,31 @@ describe("an axis built again", () => {
     expect(compositeAxisTicks({ ...axis(200), seriesIds: ["price"] })).toBe(ticks);
     expect(compositeAxisTicks(axis(260)).map((tick) => tick.value)).not.toEqual(ticks.map((tick) => tick.value));
     expect(compositeAxisTicks(axis(200), String).map((tick) => tick.label)).toEqual(ticks.map((tick) => String(tick.value)));
+  });
+
+  test("is the same axis only when every field either has is equal", () => {
+    const base = axis(200);
+    expect(sameCompositeAxisDomain(base, { ...base, tickRows: undefined })).toBe(true);
+    expect(sameCompositeAxisDomain({ ...base, tickRows: undefined }, { ...base, scaleKey: "close" })).toBe(false);
+    expect(sameCompositeAxisDomain({ ...base, scaleKey: "close" }, { ...base, tickRows: undefined })).toBe(false);
+    expect(sameCompositeAxisDomain(
+      { ...base, priceReferences: { USD: undefined as unknown as number } },
+      { ...base, priceReferences: { EUR: 1.08 } },
+    )).toBe(false);
+    expect(sameCompositeAxisDomain({ ...base, seriesIds: ["price"] }, { ...base, seriesIds: ["price", "volume"] })).toBe(false);
+  });
+
+  // A formatter is meant to read only the value and the axis. One that reads
+  // something else and keeps its identity is caught when its top label moves.
+  test("labels an axis again when its formatter reads differently for the same axis", () => {
+    let unit = "a";
+    const format = (value: number) => `${value}${unit}`;
+    const first = compositeAxisTicks(axis(203), format);
+    expect(compositeAxisTicks(axis(203), format)).toBe(first);
+    expect(compositeAxisLabelWidth(axis(203), format, false)).toBe(Math.max(...first.map((tick) => tick.label.length)));
+    unit = "bcd";
+    expect(compositeAxisTicks(axis(203), format).map((tick) => tick.label)).toEqual(first.map((tick) => `${tick.value}bcd`));
+    expect(compositeAxisLabelWidth(axis(203), format, false)).toBe(Math.max(...first.map((tick) => tick.label.length)) + 2);
   });
 
   test("sizes its gutter for the cursor's precision with no formatter, whichever was asked first", () => {

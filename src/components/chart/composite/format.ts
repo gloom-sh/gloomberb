@@ -409,6 +409,12 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   return formatCompositeAxisValue(value, domain);
 }
 
+/**
+ * An axis label for a value. It must read only the value and the axis: the
+ * ticks and gutter widths it labels are kept per formatter and axis (see
+ * `axisResultCache`), so one that reads anything else (a currency, a setting)
+ * is a new function whenever that changes.
+ */
 export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
 
 type LabeledTick = { value: number; label: string };
@@ -441,35 +447,54 @@ function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisVal
   return top.label !== bottom.label ? [top, bottom] : [top];
 }
 
+/** Whether two records hold equal values under every key either has; a key set to undefined reads as absent. */
+function sameFields(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+  same: (left: unknown, right: unknown) => boolean,
+): boolean {
+  for (const key of Object.keys(left)) {
+    if (!same(left[key], right[key])) return false;
+  }
+  for (const key of Object.keys(right)) {
+    if (!Object.hasOwn(left, key) && !same(undefined, right[key])) return false;
+  }
+  return true;
+}
+
 function sameAxisDomainValue(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {
     return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
   }
   if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
-  const leftKeys = Object.keys(left);
-  return leftKeys.length === Object.keys(right).length
-    && leftKeys.every((key) => Object.is((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
+  if (Array.isArray(left) || Array.isArray(right)) return false;
+  return sameFields(left as Record<string, unknown>, right as Record<string, unknown>, Object.is);
 }
 
 /**
- * Whether two axes read the same: every field equal, its lists and records
- * one level down. A chart builds its axes again on every tick, and they come
- * out the same until the price leaves the range.
+ * Whether two axes read the same: every field either has equal, its lists
+ * and records one level down. A chart builds its axes again on every tick,
+ * and they come out the same until the price leaves the range.
  */
-function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
+export function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
   if (left === right) return true;
-  const keys = Object.keys(left) as Array<keyof CompositeAxisDomain>;
-  return keys.length === Object.keys(right).length
-    && keys.every((key) => sameAxisDomainValue(left[key], right[key]));
+  return sameFields(
+    left as unknown as Record<string, unknown>,
+    right as unknown as Record<string, unknown>,
+    sameAxisDomainValue,
+  );
 }
 
 export type CompositeAxisTick = { ratio: number; value: number; label: string };
 
 /**
  * The last results worked out for an axis under each formatter, kept for the
- * next scene's equal axes. A formatter is a pure function of the value and
- * the axis: one that reads anything else is passed again when that changes.
+ * next scene's equal axes. They hold while the formatter reads only the value
+ * and the axis (see `CompositeAxisValueFormatter`). Each hit labels the axis's
+ * top once more and works the result out again when that label changed, so a
+ * formatter that reads something else and kept its identity cannot keep
+ * stale labels past a change that moves its top label.
  */
 export function axisResultCache<Value>(size = 8): (
   domain: CompositeAxisDomain,
@@ -477,21 +502,25 @@ export function axisResultCache<Value>(size = 8): (
   key: string,
   compute: () => Value,
 ) => Value {
-  const byFormat = new WeakMap<CompositeAxisValueFormatter, Array<{ domain: CompositeAxisDomain; key: string; value: Value }>>();
+  type Entry = { domain: CompositeAxisDomain; key: string; probe: string; value: Value };
+  const byFormat = new WeakMap<CompositeAxisValueFormatter, Entry[]>();
   return (domain, format, key, compute) => {
     let entries = byFormat.get(format);
     if (!entries) {
       entries = [];
       byFormat.set(format, entries);
     }
+    const probe = format(domain.max, domain);
     const index = entries.findIndex((entry) => entry.key === key && sameCompositeAxisDomain(entry.domain, domain));
     if (index >= 0) {
       const [entry] = entries.splice(index, 1);
-      entries.unshift(entry!);
-      return entry!.value;
+      if (entry!.probe === probe) {
+        entries.unshift(entry!);
+        return entry!.value;
+      }
     }
     const value = compute();
-    entries.unshift({ domain, key, value });
+    entries.unshift({ domain, key, probe, value });
     if (entries.length > size) entries.length = size;
     return value;
   };
