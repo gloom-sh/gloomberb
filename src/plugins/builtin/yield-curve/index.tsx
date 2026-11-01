@@ -20,7 +20,6 @@ import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { savedCopyFooterSegment, type PaneFooterSegment } from "../../../components/layout/pane/footer";
-import { formatPercentileRank } from "../../../utils/format";
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { CurveSeries } from "../../../components/chart/curve";
 import { yieldCurveHeadless } from "./headless";
@@ -29,7 +28,7 @@ import {
   type YieldTenorRow,
 } from "./chart";
 import {
-  compareDate, curveCutoff, curveIdOf, CURVE_OPTIONS, curveSpreadFigures, curveTenorMove, loadComparePoints,
+  compareDate, curveCutoff, curveIdOf, CURVE_OPTIONS, curveSpreadFigures, curveSpreadText, curveTenorMove, loadComparePoints,
   parseCompareInput, parseCurveArgument, type CurveId,
 } from "./curves";
 import { formatMoveRank, MOVE_HORIZONS } from "../shared/move-rank";
@@ -291,11 +290,9 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   // last year; an inverted one is the warning the curve's shape gives. Then the
   // selected tenor's 1D and 1W moves, ranked by size against its whole history.
   const figures = useMemo<StatItem[]>(() => [
-    ...curveSpreadFigures(current, lookbackCurves).map(({ id, value, change1d, percentile1y }): StatItem => ({
-      id, label: id, value: value == null ? "--" : formatYieldChange(value),
-      detail: [`${change1d == null ? "--" : formatYieldChange(change1d)} 1D`,
-        ...(percentile1y == null ? [] : [formatPercentileRank(percentile1y, "1Y")])].join(" · "),
-      tone: value != null && Math.round(value * 100) < 0 ? "warning" : undefined,
+    ...curveSpreadFigures(current, lookbackCurves).map((figure): StatItem => ({
+      id: figure.id, label: figure.id, ...curveSpreadText(figure),
+      tone: figure.value != null && Math.round(figure.value * 100) < 0 ? "warning" : undefined,
     })),
     ...(selectedId ? MOVE_HORIZONS : []).flatMap((horizon): StatItem[] => {
       const move = curveTenorMove(current, selectedId!, horizon);

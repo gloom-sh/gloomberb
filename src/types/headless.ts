@@ -512,6 +512,12 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;
   /**
+   * Sections the text report prints under the rows, drawn as a bundle's are:
+   * the figures a pane shows beside its table (a curve's spreads). JSON keeps
+   * them in `metadata`, and the exports leave them out.
+   */
+  textSections?: HeadlessBundleSection[];
+  /**
    * The row fields naming each row's own unit, symbol and observation date
    * (an ISO date or instant), for rows of several series dated apart: each
    * exported row names them in `currency_or_unit`, `symbol_or_series` and
