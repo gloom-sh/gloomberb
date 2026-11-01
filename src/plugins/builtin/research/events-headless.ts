@@ -12,6 +12,7 @@ import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
+import { loadNoQuoteLastTraded, noLongerListedNote } from "../../../tickers/listing-fate";
 
 interface EventHeadlessData {
   actions: CorporateActionsData | null;
@@ -65,9 +66,16 @@ export function createEventsHeadless(
       const errors = [notice?.failed ? notice.text : null,
         data.financialsError ? `Financial statements unavailable: ${data.financialsError}` : null,
       ].filter((error): error is string => !!error);
+      // A symbol with no quote whose listing stopped trading (STPP) can be served another listing's events under it:
+      // those dated after its last trade are not its own.
+      const lastTraded = data.financials?.quote ? null : await loadNoQuoteLastTraded({ symbol }, ctx.marketData);
+      const rows = buildEventRows(data.actions, data.estimates, data.financials, data.currency);
+      const own = lastTraded ? rows.filter((row) => row.date.slice(0, 10) <= lastTraded) : rows;
+      const ended = lastTraded ? `${noLongerListedNote(symbol, lastTraded)}.${own.length < rows.length
+        ? ` ${rows.length - own.length} later ${rows.length - own.length === 1 ? "event is" : "events are"} another listing's under the symbol, not shown.` : ""}` : null;
       return {
-        rows: buildEventRows(data.actions, data.estimates, data.financials, data.currency)
-          .map((row) => ({ ...row })),
+        rows: own.map((row) => ({ ...row })),
+        ...(ended ? { notes: [ended] } : {}),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
           coverageNote: CORPORATE_ACTION_COVERAGE, epsBasis: EPS_BASIS_NOTE,
