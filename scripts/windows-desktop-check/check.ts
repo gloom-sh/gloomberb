@@ -1493,7 +1493,9 @@ class Run {
         // Snap Assist offers the other windows for the other half; dismiss it.
         await win.pressKeys(win.VK.escape);
         await sleep(400);
-        const rect = win.visibleRect(window.hwnd);
+        // A slow machine can still be drawing the snap: give it a few seconds.
+        let rect = win.visibleRect(window.hwnd);
+        for (const until = Date.now() + 3_000; !want(rect) && Date.now() < until; rect = win.visibleRect(window.hwnd)) await sleep(250);
         const fills = await this.contentFills(window, `${name}-${label}`, shots);
         const good = want(rect) && fills.ok;
         ok &&= good;
