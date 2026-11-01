@@ -128,7 +128,7 @@ export function currenciesNamed(text: string): readonly NamedCurrency[] {
 }
 
 /** Codes that are also English words, read as a currency only when typed in capitals: "try" is a verb before it is the lira. */
-export const WORD_CURRENCY_CODES: ReadonlySet<string> = new Set(["TRY", "PEN", "COP", "MAD"]);
+export const WORD_CURRENCY_CODES: ReadonlySet<string> = new Set(["TRY", "PEN", "COP", "MAD", "RUB", "CAD"]);
 
 let namedCodes: ReadonlySet<string> | undefined;
 

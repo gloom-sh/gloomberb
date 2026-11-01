@@ -227,8 +227,8 @@ test("a currency's code or name finds FXC, its series and fx; safe haven lists F
   expect(commandPointer("swiss franc")).toBe("The CHF rate: gloom fx CHF; its pair's history: gloom history USDCHF=X");
   expect(commandPointer("euro")).toBe("The EUR rate: gloom fx EUR; its pair's history: gloom history EURUSD=X");
   // The dollar has no pair of its own; a code that is an English word counts only in capitals; a word several share is none.
-  for (const query of ["usd", "try", "peso", "yen carry trade"]) expect(commandPointer(query), query).toBeNull();
-  expect(commandPointer("TRY")).toContain("gloom fx TRY");
+  for (const query of ["usd", "try", "cad", "rub", "peso", "yen carry trade"]) expect(commandPointer(query), query).toBeNull();
+  for (const code of ["TRY", "CAD", "RUB"]) expect(commandPointer(code), code).toContain(`gloom fx ${code}`);
 
   const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
   const registry = await createPaneCatalog(context, getLoadablePlugins());

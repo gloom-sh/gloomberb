@@ -97,18 +97,35 @@ export function isFxWeekClosePrint(time: number, weekClose: number): boolean {
 }
 
 /**
- * When a rate fetched at `fetchedAt` before the FX week closed must be read
- * again: once the week's close is out (its close, `delayMs` later for a
- * delayed feed). A rate fetched at 20:39Z on a Friday is no close, yet the
- * hours the market is shut do not age it (fxFreshUntil), so until Sunday's
- * open it stood in for Friday's close. Infinity for a rate fetched after the
- * latest close, and for one that is that close (isFxWeekClosePrint).
+ * When a rate fetched at `fetchedAt` must be read again because it may stand
+ * in for a close it is not: once the close of its FX week is out (the
+ * week's close, `delayMs` later for a delayed feed). A rate fetched at 20:39Z
+ * on a Friday is no close, yet the hours the market is shut do not age it
+ * (fxFreshUntil), so until Sunday's open it stood in for Friday's close. The
+ * week is the one `fetchedAt` falls in, not the one it is now, so the time is
+ * the same whether it is asked on Friday or on Sunday. Infinity for a rate
+ * that is that close (isFxWeekClosePrint).
  */
-export function fxPreCloseRefetchAt(fetchedAt: number | undefined, observedAt: number | undefined, delayMs: number, now: number): number {
-  const close = latestFxWeekClose(now);
-  if (close == null || fetchedAt == null || !Number.isFinite(fetchedAt) || fetchedAt >= close + delayMs) return Infinity;
-  if (observedAt != null && isFxWeekClosePrint(observedAt, close)) return Infinity;
+export function fxPreCloseRefetchAt(fetchedAt: number | undefined, observedAt: number | undefined, delayMs: number): number {
+  if (fetchedAt == null || !Number.isFinite(fetchedAt)) return Infinity;
+  const close = fxWeekCloseOf(fetchedAt, delayMs);
+  if (close == null || (observedAt != null && isFxWeekClosePrint(observedAt, close))) return Infinity;
   return close + delayMs;
+}
+
+/**
+ * The close of the FX week a rate fetched at `time` belongs to: the latest
+ * one while its print may still be on its way (`delayMs`), else the next one.
+ * The next close is a week on, give or take the hour a clock change moves it.
+ */
+function fxWeekCloseOf(time: number, delayMs: number): number | null {
+  const latest = latestFxWeekClose(time);
+  if (latest != null && time < latest + delayMs) return latest;
+  for (const ahead of [7 * DAY_MS, 7 * DAY_MS + 2 * HOUR_MS]) {
+    const close = latestFxWeekClose(time + ahead);
+    if (close != null && close > time) return close;
+  }
+  return null;
 }
 
 /**

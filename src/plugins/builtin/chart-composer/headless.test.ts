@@ -109,17 +109,22 @@ test("fn G 42*HO=F - CL=F charts the heating-oil crack per barrel, in the units 
   }
 });
 
-test("fn G exports a pair's rate and a currency future as quote per base, at the series' precision", async () => {
+test("fn G exports a pair's rate and a currency future as quote per base, at the series' precision, a small price keeping its digits", async () => {
   resetFuturesPriceUnits();
   // USDJPY=X's weekly bars as served: float32 noise (113.044998) and a newer bar from a finer source (154.19901).
+  // PNNY is a penny stock whose reverse splits adjust its old bars to tens of thousands: two decimals for the
+  // series would write its 0.00421875 as 0.
   const weeks = ["2026-10-05", "2026-10-12", "2026-10-19"];
-  const closes: Record<string, number[]> = { "USDJPY=X": [113.044998, 154.054002, 154.19901], "6S=F": [1.0869, 1.077500033, 1.0841] };
+  const closes: Record<string, number[]> = {
+    "USDJPY=X": [113.044998, 154.054002, 154.19901], "6S=F": [1.0869, 1.077500033, 1.0841], PNNY: [50_000.5, 12_340.25, 0.00421875],
+  };
   const bars = (symbol: string) => weeks.map((day, index) => {
     const close = closes[symbol]![index]!;
     return { date: new Date(`${day}T00:00:00Z`), open: close, high: close, low: close, close };
   });
   const quote = (symbol: string) => ({ symbol, price: closes[symbol]!.at(-1)!, change: 0, changePercent: 0,
-    currency: symbol === "6S=F" ? "USD" : "JPY", instrumentType: symbol === "6S=F" ? "FUTURE" as const : "CURRENCY" as const,
+    currency: symbol === "USDJPY=X" ? "JPY" : "USD",
+    instrumentType: symbol === "6S=F" ? "FUTURE" as const : symbol === "PNNY" ? "EQUITY" as const : "CURRENCY" as const,
     lastUpdated: Date.parse("2026-10-23T20:00:00Z") });
   const marketData = createTestDataProvider({
     getTickerFinancials: async (symbol) => ({ quote: quote(symbol), annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
@@ -152,6 +157,8 @@ test("fn G exports a pair's rate and a currency future as quote per base, at the
     const franc = await csv("6S=F");
     expect(franc[1]).toContain(",1.0869,6S=F,USD per CHF,");
     expect(franc[2]).toContain(",1.0775,6S=F,USD per CHF,");
+    const penny = await csv("PNNY");
+    expect(penny.slice(1, 4).map((line) => line.split(",")[4])).toEqual(["50000.5", "12340.25", "0.004219"]);
   } finally {
     resetFuturesPriceUnits();
   }

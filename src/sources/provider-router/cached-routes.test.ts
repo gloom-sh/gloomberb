@@ -148,6 +148,31 @@ describe("shared cached market queries", () => {
       cache("2026-10-30T21:05:00.000Z", "2026-10-30T20:50:00.000Z", 1.1165);
       expect(await load()).toMatchObject({ value: 1.11601 });
       expect(calls).toBe(2);
+      // The app reads in the background, and its desktop window holds what getExchangeRate returns as read now: it waits
+      // for the close instead of returning the 20:39Z print while it reads again.
+      cache("2026-10-30T20:54:00.000Z", "2026-10-30T20:39:00.000Z", 1.1168193);
+      const app = new AssetDataRouter(provider, [], persistence.resources);
+      app.setBackgroundRevalidation(true);
+      expect(await app.getExchangeRate("EUR")).toBe(1.11601);
+      expect(calls).toBe(3);
+    } finally { persistence.close(); setSystemTime(); }
+  });
+
+  test("an app open across the FX week's close reads its pre-close rate again once the close is out", async () => {
+    setSystemTime(new Date("2026-10-30T20:54:00Z"));
+    const persistence = new AppPersistence(":memory:");
+    const snapshot = (rate: number, asOf: string) => ({ fromCurrency: "EUR", toCurrency: "USD" as const, rate, source: "gloom", asOf,
+      fetchedAt: new Date().toISOString(), stale: false, delayMinutes: 15 });
+    let served = snapshot(1.1168193, "2026-10-30T20:39:00.000Z");
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: async () => served.rate,
+      getExchangeRateSnapshot: async () => served });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    router.setBackgroundRevalidation(true);
+    try {
+      expect(await router.getExchangeRate("EUR")).toBe(1.1168193);
+      setSystemTime(new Date("2026-10-30T21:15:00Z"));
+      served = snapshot(1.11601, "2026-10-30T20:59:00.000Z");
+      expect(await router.getExchangeRate("EUR")).toBe(1.11601);
     } finally { persistence.close(); setSystemTime(); }
   });
 

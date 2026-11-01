@@ -533,12 +533,18 @@ function tradedBars(series: HeadlessSeries): HeadlessSeries {
   };
 }
 
+/** The significant digits an exported bar price keeps however few decimals its series needs, as `formatSignificant` shows a small value. */
+const PRICE_SIGNIFICANT_FLOOR = 4;
+
 /**
  * A chart's bars at the series' own precision: each price the decimal the
  * feed's float stands for (113.045, not 113.044998), then all of them to the
  * decimals nine in ten need (historyPriceDecimals), so a bar from a finer
  * source reads as the rest do: USDJPY=X's 154.19901 among three-decimal bars
- * is 154.199. A `value` that is no close (a transform) keeps its digits.
+ * is 154.199. A price those decimals would leave with fewer than four
+ * significant digits keeps four, so a reverse-split penny stock adjusted up to
+ * 50,000 still writes its 0.00421875 as 0.004219, never 0. A `value` that is
+ * no close (a transform) keeps its digits.
  */
 function barsAtSeriesPrecision(series: HeadlessSeries): HeadlessSeries {
   if (!series.points.some((point) => point.close != null)) return series;
@@ -549,7 +555,9 @@ function barsAtSeriesPrecision(series: HeadlessSeries): HeadlessSeries {
   })));
   const round = (price: number | null | undefined) => {
     const cleaned = clean(price);
-    return cleaned == null || !Number.isFinite(cleaned) ? cleaned : Number(cleaned.toFixed(decimals));
+    if (cleaned == null || !Number.isFinite(cleaned) || cleaned === 0) return cleaned;
+    const floorDecimals = PRICE_SIGNIFICANT_FLOOR - 1 - Math.floor(Math.log10(Math.abs(cleaned)));
+    return floorDecimals > decimals ? Number(cleaned.toPrecision(PRICE_SIGNIFICANT_FLOOR)) : Number(cleaned.toFixed(decimals));
   };
   return {
     ...series,

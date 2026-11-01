@@ -457,7 +457,7 @@ async function readListedSymbols(
 const QUOTE_CSV_SECTION = {
   title: "CSV",
   lines: [
-    "Last, Chg%, Prev Close and each extended print are plain numbers, the currency in Cur and currency_or_unit. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had.",
+    "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had.",
     "A row with no figure says why in its status column, never NaN; a symbol with no quote is also named on standard error.",
   ],
 };
@@ -3451,13 +3451,13 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "CSV",
         lines: [
-          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, Volume basis, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, Volume basis, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the unit currency_or_unit names: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X) or index points. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
           "A continuous future whose bars name their contracts (NG=F) adds Contract, Roll and Thin before status: the contract per bar, and true or false for the bar it rolled at and a bar that traded far below those around it.",
         ],
       }, {
         title: "Several symbols",
         lines: [
-          `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its currency and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
+          `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its unit and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
           "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. --tail 5 keeps each symbol's newest five bars.",
           "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],

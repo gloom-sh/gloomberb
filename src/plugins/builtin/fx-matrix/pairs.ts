@@ -20,10 +20,12 @@ export type FxCurrency = typeof FX_CURRENCIES[number];
 /**
  * The words a reader looks for the board by: the codes it carries (but those
  * that are English words) and the names of its currencies, so `catalog yen`,
- * `catalog chf` and `catalog "swiss franc"` find it.
+ * `catalog chf` and `catalog "swiss franc"` find it. "cad" is a word too, yet
+ * in a market catalog it is the loonie far more often than not, so it still
+ * finds the board; only the fx line waits for CAD in capitals.
  */
 export const FX_CURRENCY_KEYWORDS: readonly string[] = [
-  ...FX_CURRENCIES.filter((code) => !WORD_CURRENCY_CODES.has(code)).map((code) => code.toLowerCase()),
+  ...FX_CURRENCIES.filter((code) => code === "CAD" || !WORD_CURRENCY_CODES.has(code)).map((code) => code.toLowerCase()),
   "dollar", "euro", "yen", "pound", "sterling", "franc", "swiss franc", "loonie", "aussie", "kiwi", "yuan", "renminbi",
   "krona", "krone", "won", "rupee", "rupiah", "ringgit", "baht", "peso", "rand", "lira", "zloty", "forint", "koruna", "shekel",
 ];
