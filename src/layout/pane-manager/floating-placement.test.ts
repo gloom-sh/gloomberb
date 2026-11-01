@@ -91,3 +91,21 @@ test("a pane floated back to its remembered spot steps off a window already ther
   const floated = floatPane(withMemory, "side", W, H).floating.find((entry) => entry.instanceId === "side");
   expect(floated).toMatchObject({ x: 12, y: 6, width: 60, height: 20 });
 });
+
+test("in a window under 60 columns a new floating pane spans the width, beside a split or after another window", () => {
+  // A phone-width terminal, 45 by 40: 60% of it would be 27 columns, too narrow for GC's spread line.
+  const first = addPaneFloating(layout(), "curve", 45, 40);
+  expect(first.floating[0]).toMatchObject({ x: 0, width: 45, height: 24 });
+  // A free half beside the focused pane is not worth shrinking into at this width.
+  const split = layout([], {
+    kind: "split", axis: "horizontal", ratio: 0.5,
+    first: { kind: "pane", instanceId: "main" }, second: { kind: "pane", instanceId: "side" },
+  });
+  expect(placeFloatingRect(split, "new", { width: 27, height: 24 }, 45, 40, { focusedPaneId: "main" })).toMatchObject({ x: 0, width: 45 });
+  // A second window steps down instead of landing on the first.
+  const second = addPaneFloating(first, "chart", 45, 40).floating[1]!;
+  expect(second).toMatchObject({ x: 0, width: 45 });
+  expect(second.y).not.toBe(first.floating[0]!.y);
+  // At 60 columns and wider, 60% as before.
+  expect(addPaneFloating(layout(), "curve", 60, 40).floating[0]).toMatchObject({ width: 36 });
+});
