@@ -38,6 +38,7 @@ import {
   menuItemsForFallback,
 } from "./menu";
 import { tickerLinkMenuItems } from "./ticker-link-menu";
+import { resolveTickerRetargetPane } from "../../../layout/ticker-retarget";
 import {
   makeSnapGuides,
   resolveExternalDockPreview,
@@ -518,6 +519,20 @@ export function Shell({
     (pane: ResolvedPane): string => getPaneDisplayTitle(titleState, pane.instance, pane.def, pluginRegistry.panes),
     [pluginRegistry.panes, titleState],
   );
+  // The ticker a single-ticker pane shows, which ticker search changes from it: a control in its
+  // title on the desktop and the web, a key in its footer in the terminal, and in its menu.
+  const getPaneTicker = useCallback(
+    (pane: ResolvedPane): string | null => (
+      resolveTickerRetargetPane(config.layout, pane.instance.instanceId, pluginRegistry.panes)
+        ? resolveTickerForPane(titleState, pane.instance.instanceId)
+        : null
+    ),
+    [config.layout, pluginRegistry.panes, titleState],
+  );
+  const openPaneTickerSearch = useCallback((paneId: string) => {
+    focusPane(paneId);
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "ticker-search", query: "" } });
+  }, [dispatch, focusPane]);
   const { canAsk, askAboutPane, askAboutFocusedPane } = useShellPaneAsk({
     focusedPaneId,
     getPaneTitle,
@@ -653,13 +668,18 @@ export function Shell({
       desktopWindowBridge,
       nativePaneChrome && rendererHost.copyPngImage ? copyPaneScreenshot : undefined,
       () => sharePane(paneId),
-      tickerLinkMenuItems({
-        instance: pane.instance,
-        layout: visibleLayout,
-        panes: pluginRegistry.panes,
-        state: { ...titleState, tickers: stateRef.current.tickers },
-        persistLayout,
-      }),
+      [
+        ...(getPaneTicker(pane)
+          ? [{ id: "change-ticker", label: "Change Ticker...", accelerator: paneAccelerators.tickerSearch, onSelect: () => openPaneTickerSearch(paneId) }]
+          : []),
+        ...tickerLinkMenuItems({
+          instance: pane.instance,
+          layout: visibleLayout,
+          panes: pluginRegistry.panes,
+          state: { ...titleState, tickers: stateRef.current.tickers },
+          persistLayout,
+        }),
+      ],
       canExportPaneCsv(paneId) ? exportPaneCsv : undefined,
       paneAccelerators,
       (pluginRegistry.resolvePaneQuickSettings?.(paneId) ?? []).map((setting) => ({
@@ -721,7 +741,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, nativeRenderer, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTicker, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, nativeRenderer, togglePaneFullscreen, openPaneDocs, openPaneSettings, openPaneTickerSearch, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
 
@@ -896,6 +916,7 @@ export function Shell({
         focusPane={focusPane}
         floatingOrder={activeLayout.floating}
         getPaneTitle={getPaneTitle}
+        getPaneTicker={getPaneTicker}
         getPaneQuickSettings={getPaneQuickSettings}
         handleFloatingClose={handleFloatingClose}
         handleFloatingCloseMouseDown={handleFloatingCloseMouseDown}
@@ -910,6 +931,7 @@ export function Shell({
         handlePaneAction={handlePaneAction}
         handlePaneHelp={openPaneDocs}
         handlePaneAsk={canAsk ? askAboutPane : null}
+        handlePaneTicker={openPaneTickerSearch}
         hoveredPaneId={hoveredPaneId}
         live={live}
         menuPaneId={menuState?.paneId ?? null}

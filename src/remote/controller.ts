@@ -64,6 +64,7 @@ import {
 import { createRemoteResources } from "./resources";
 import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
 import { asRecord } from "../utils/guards";
+import { SECURITY_DESCRIPTION_SEARCH } from "../core/state/app/command-bar-launch";
 import { runAutomated } from "../telemetry/usage-counts";
 import {
   applyWatchlistChange,
@@ -277,7 +278,8 @@ export function createAppRemoteController({
       await afterMutation();
     }
     if (mode === "ticker") {
-      dispatch({ type: "SET_COMMAND_BAR", open: true, launch: { kind: "ticker-search", query } });
+      // DES's search: a remote pick opens the ticker, it does not change the focused pane's.
+      dispatch({ type: "SET_COMMAND_BAR", open: true, launch: { kind: "ticker-search", query, payload: SECURITY_DESCRIPTION_SEARCH } });
       await afterMutation();
       return mutationSummary(getState(), { commandBar: getResource("app://command-bar") });
     }

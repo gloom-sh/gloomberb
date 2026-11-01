@@ -31,6 +31,24 @@ import {
 } from "../core/connection-health";
 
 const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
+/** How long a connection may take to open before the attempt is dropped and tried again. */
+export const SOCKET_CONNECT_TIMEOUT_MS = 10_000;
+/**
+ * An open connection that has sent nothing for this long is asked whether it
+ * is still there: a `ping`, which the server answers with a `pong`.
+ */
+export const SOCKET_QUIET_PING_MS = 10_000;
+/**
+ * A connection that has not answered a ping in this long, nothing else come
+ * back meanwhile, is taken for dead (a half-open link: a laptop that slept, a
+ * network that changed under it). It is dropped and opened again; until then
+ * prices it streamed read as stale. Only an unanswered ping drops it: silence
+ * alone does not, since a check that runs late (a hidden tab's throttled
+ * timers, a wake from sleep) finds any connection silent.
+ */
+export const SOCKET_PING_ANSWER_MS = 10_000;
+/** How often an open connection's silence is checked; it never needs to be exact. */
+const SOCKET_SILENCE_CHECK_MS = 2_500;
 /**
  * Protocol features this client can read. A server lists the ones it offers
  * in "ready"; the client opts into the shared ones, so an older server never
@@ -96,6 +114,8 @@ type CloudApiSocketDelegate = {
   clearWebSocketTokenForFallback: () => boolean;
   markCurrentUserUnverified: () => void;
   updateCurrentUserFromSocket: (user: Partial<AuthUser>) => void;
+  /** The service answered on this connection (it opened, or sent a frame); see `CloudApiRequestTransport.noteServiceAnswered`. */
+  onServiceAnswered?: () => void;
 };
 
 type ChatSendMessage = (
@@ -122,6 +142,13 @@ export class CloudApiSocket {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs = 1000;
+  /** Gives up on a connection that has not opened in SOCKET_CONNECT_TIMEOUT_MS. */
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Checks the open connection's silence (SOCKET_QUIET_PING_MS, SOCKET_PING_ANSWER_MS). */
+  private silenceTimer: ReturnType<typeof setInterval> | null = null;
+  /** When the open connection last sent anything, and when the ping still unanswered went out. */
+  private lastFrameAt = 0;
+  private pingedAt: number | null = null;
 
   private readonly channelListeners = new Map<string, Set<ChannelListener>>();
   private readonly chatMentionCandidatesListeners = new Set<() => void>();
@@ -196,6 +223,7 @@ export class CloudApiSocket {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.stopWatching();
     const ws = this.ws;
     this.ws = null;
     if (ws) {
@@ -860,9 +888,16 @@ export class CloudApiSocket {
       return;
     }
     this.ws = ws;
+    // A link that swallows the handshake never says so: the attempt is dropped and tried again.
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null;
+      if (this.ws === ws) this.dropUnansweredSocket(ws, "Connecting timed out");
+    }, SOCKET_CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
+      this.watchSilence();
+      this.delegate.onServiceAnswered?.();
       cloudApiLog.info("websocket open");
       this.health.reportSocketState(
         GLOOM_CLOUD_SOCKET_CONNECTION_ID,
@@ -878,6 +913,9 @@ export class CloudApiSocket {
 
     ws.onmessage = (event) => {
       if (this.ws !== ws) return;
+      this.lastFrameAt = Date.now();
+      this.pingedAt = null;
+      this.delegate.onServiceAnswered?.();
       void this.handleSocketMessage(String(event.data));
     };
 
@@ -885,6 +923,7 @@ export class CloudApiSocket {
       const activeSocket = this.ws === ws;
       if (this.ws === ws) {
         this.ws = null;
+        this.stopWatching();
       this.emitTapeStatus({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" });
       }
       const closeEvent = event as CloseEvent | undefined;
@@ -925,6 +964,62 @@ export class CloudApiSocket {
       );
       // Reconnect is handled by onclose.
     };
+  }
+
+  /** From the open: the connection's silence is checked until it closes. */
+  private watchSilence(): void {
+    this.stopWatching();
+    this.lastFrameAt = Date.now();
+    this.pingedAt = null;
+    this.silenceTimer = setInterval(() => this.checkSilence(), SOCKET_SILENCE_CHECK_MS);
+  }
+
+  private stopWatching(): void {
+    if (this.connectTimer) clearTimeout(this.connectTimer);
+    if (this.silenceTimer) clearInterval(this.silenceTimer);
+    this.connectTimer = null;
+    this.silenceTimer = null;
+  }
+
+  /**
+   * A connection that went quiet is pinged; one that leaves the ping
+   * unanswered for SOCKET_PING_ANSWER_MS is half open, and is dropped and
+   * opened again. Anything it sends answers the ping.
+   */
+  private checkSilence(): void {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const now = Date.now();
+    if (this.pingedAt != null) {
+      if (now - this.pingedAt >= SOCKET_PING_ANSWER_MS) this.dropUnansweredSocket(ws, "No answer from the stream");
+      return;
+    }
+    if (now - this.lastFrameAt >= SOCKET_QUIET_PING_MS) {
+      this.pingedAt = now;
+      this.sendFrame({ type: "ping" });
+    }
+  }
+
+  /**
+   * Gives up on a connection that never opened or went silent: what it was
+   * carrying is reported as interrupted (the stream's health turns to error,
+   * which marks its prices stale), and a new one is opened with the backoff.
+   * Its close, if it ever comes, is for a socket no longer in use.
+   */
+  private dropUnansweredSocket(ws: WebSocket, reason: string): void {
+    if (this.ws !== ws) return;
+    this.ws = null;
+    this.stopWatching();
+    cloudApiLog.warn("websocket unanswered; reconnecting", { reason, quoteTargets: this.quoteTargets.size });
+    try {
+      ws.close();
+    } catch {
+      // Intentional ignore: a socket that cannot close is dropped all the same.
+    }
+    this.emitTapeStatus({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" });
+    this.emitConnection("closed");
+    this.health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "error", reason);
+    this.scheduleReconnect();
   }
 
   /**

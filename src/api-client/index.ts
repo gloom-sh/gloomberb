@@ -144,6 +144,7 @@ class GloomApiClient {
         ...user,
       }));
     },
+    onServiceAnswered: () => this.transport.noteServiceAnswered(),
   });
   private readonly chat: CloudChatApi = new CloudChatApi({
     request: (path, options) => this.request(path, options),
@@ -929,6 +930,7 @@ class GloomApiClient {
     this.sessionRequestGeneration += 1;
     this.sessionRequest = null;
     this.socket.dispose();
+    this.transport.dispose();
   }
 
   searchInstruments = this.data.searchInstruments.bind(this.data);

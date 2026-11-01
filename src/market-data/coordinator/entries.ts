@@ -34,12 +34,24 @@ export function hasFreshEntryData<T>(entry: QueryEntry<T>, ttlMs: number, now = 
 /**
  * The last request for this entry failed or came back empty a moment ago.
  * A symbol with no financials (an index, a crypto pair) fails every time;
- * without this, each pane, cursor move or warm-up asks again.
+ * without this, each pane, cursor move or warm-up asks again. One that
+ * finished by `since` does not count.
  */
-export function hasRecentFailedAttempt<T>(entry: QueryEntry<T>, retryAfterMs: number, now = Date.now()): boolean {
+export function hasRecentFailedAttempt<T>(entry: QueryEntry<T>, retryAfterMs: number, now = Date.now(), since = 0): boolean {
   const attempt = entry.attempts.at(-1);
   return !!attempt && attempt.status !== "success" && attempt.status !== "partial"
-    && now - attempt.finishedAt < retryAfterMs;
+    && attempt.finishedAt > since && now - attempt.finishedAt < retryAfterMs;
+}
+
+/**
+ * A load of this entry failed (its last request errored), rather than
+ * answering, empty or not: what an outage leaves behind, and what is asked
+ * again once the service answers.
+ */
+export function hasFailedLoad<T>(entry: QueryEntry<T>): boolean {
+  const status = entry.attempts.at(-1)?.status;
+  if (status === "fatal_error" || status === "retryable_error") return true;
+  return entry.phase === "error" && status !== "empty" && status !== "unsupported";
 }
 
 export function hasFreshReadyEntry<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {

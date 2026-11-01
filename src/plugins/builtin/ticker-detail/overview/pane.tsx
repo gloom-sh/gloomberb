@@ -15,12 +15,14 @@ import { OverviewTab } from "../overview-tab";
 import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
+import { useTickerSnapshotState } from "../../../../market-data/hooks";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
 
 export function OverviewResearchTab({ width, height, focused }: TickerResearchTabProps) {
-  const { ticker, financials } = usePaneTicker();
+  const { symbol, ticker, financials } = usePaneTicker();
+  const snapshot = useTickerSnapshotState(symbol, ticker);
   const dispatch = useAppDispatch();
   const paneId = useOptionalPaneInstanceId();
   const paneInstance = usePaneInstance();
@@ -48,6 +50,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
       dividend={dividend}
+      snapshot={snapshot}
       perpetuals={ticker ? (contentWidth: number) => {
         const instrumentType = financials?.quote?.instrumentType ?? ticker.metadata.assetCategory;
         // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.

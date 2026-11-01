@@ -107,7 +107,10 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
         return {
           kind: "mode",
           title: "Security Description",
-          subtitle: "Resolve a ticker, then open its Ticker Research pane.",
+          // DES opens a research pane; the backtick's search changes the focused pane's ticker.
+          subtitle: currentRoute.payload?.action
+            ? "Resolve a ticker, then open its Ticker Research pane."
+            : "Resolve a ticker for the focused pane, or open it in a new pane.",
           query: currentRoute.query,
           selectedIdx: currentRoute.selectedIdx,
           hoveredIdx: currentRoute.hoveredIdx,

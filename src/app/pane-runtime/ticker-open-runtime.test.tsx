@@ -11,6 +11,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { useAppTickerOpenRuntime } from "./ticker-open-runtime";
 import { researchEntryFromSearch } from "../../renderers/browser/research-entry";
 import { createTestTicker } from "../../test-support/ticker";
+import { SECURITY_DESCRIPTION_SEARCH } from "../../core/state/app/command-bar-launch";
 
 const tui = createOpenTuiTestHarness({ width: 20, height: 2 });
 
@@ -118,7 +119,7 @@ test.each(["ambiguous", "missing"])("%s ticker feedback waits for current naviga
   // Ordinary opening still presents the actionable failure or listing picker.
   await act(async () => { await runtime.openPinnedTicker("GLD"); });
   expect(actions).toEqual(mode === "ambiguous"
-    ? [{ type: "SET_COMMAND_BAR", open: true, query: "GLD", launch: { kind: "ticker-search", query: "GLD" } }]
+    ? [{ type: "SET_COMMAND_BAR", open: true, query: "GLD", launch: { kind: "ticker-search", query: "GLD", payload: SECURITY_DESCRIPTION_SEARCH } }]
     : []);
   expect(notifications).toHaveLength(1);
   expect(notifications[0]).toContain(mode === "ambiguous" ? "Multiple listings match GLD" : "Could not open GLD");

@@ -7,6 +7,8 @@ import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
 import { Divider } from "../../ui/display";
 import { ICON_GLYPHS, Icon, IconButton } from "../../ui/icon";
+import { Button } from "../../ui/button";
+import { t } from "../../../i18n";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
@@ -94,6 +96,12 @@ function TerminalStackTabs({ stack, width, activeFg, pad }: { stack: PaneHeaderS
 
 interface PaneHeaderProps {
   title: string;
+  /**
+   * Desktop and web: the ticker of a single-ticker pane, drawn where its title names it as a
+   * control that opens ticker search for the pane (`onTitleTickerPress`).
+   */
+  titleTicker?: string | null;
+  onTitleTickerPress?: () => void;
   width: number;
   focused: boolean;
   windowModeSelected?: boolean;
@@ -190,8 +198,61 @@ function TerminalPaneButton({
   );
 }
 
+/**
+ * Where `symbol` stands in a pane's title as a word of its own ("OMON SPY", "Chart: NVDA  \u29c9
+ * Linked to DES"), so the header can draw it as a control. Null when the title does not name it.
+ */
+export function findTitleTicker(title: string, symbol: string): { start: number; end: number } | null {
+  if (!symbol) return null;
+  for (let start = title.indexOf(symbol); start >= 0; start = title.indexOf(symbol, start + 1)) {
+    const end = start + symbol.length;
+    if ((start === 0 || /\s/.test(title[start - 1]!)) && (end === title.length || /[\s,]/.test(title[end]!))) {
+      return { start, end };
+    }
+  }
+  return null;
+}
+
+/**
+ * The ticker in a single-ticker pane's title: a ghost button in the title's own type, marked
+ * with the chevron a query bar's choices carry, that opens ticker search for the pane. It sits
+ * where the title's text put the ticker, so only the chevron and the hover fill tell it apart.
+ */
+function PaneTitleTicker({ symbol, color, onPress }: {
+  symbol: string;
+  color: string;
+  onPress: () => void;
+}) {
+  const searchShortcut = useActionShortcut("ticker-search");
+  const label = "Change ticker";
+  // A span in the title's line, so the title still ends in one ellipsis. The button's inset goes
+  // into the space before it, so the ticker's letters stay where the title's text put them.
+  return (
+    <Text
+      data-gloom-role="pane-title-ticker"
+      style={{ display: "inline-flex", verticalAlign: "top", marginLeft: "calc(-1 * var(--gloom-space-xs))" }}
+    >
+      <Button
+        label={label}
+        title={searchShortcut ? `${t(label)} (${searchShortcut})` : t(label)}
+        variant="plain"
+        compact
+        stopPropagation
+        onPress={onPress}
+      >
+        <Text fg={color} selectable={false} style={{ fontWeight: "var(--gloom-weight-bold)" }}>{symbol}</Text>
+        <Text style={{ display: "inline-flex", marginLeft: "var(--gloom-space-xs)" }}>
+          <Icon name="chevron-down" size={9} color={colors.textMuted} />
+        </Text>
+      </Button>
+    </Text>
+  );
+}
+
 export function PaneHeader({
   title,
+  titleTicker = null,
+  onTitleTickerPress,
   width,
   focused,
   windowModeSelected = false,
@@ -234,6 +295,7 @@ export function PaneHeader({
   const terminalQuickSettingsWidth = quickSettings.reduce((total, setting) => total + displayWidth(quickSettingText(setting)), 0)
     + displayWidth(lockText) + helpText.length;
   const textColor = paneTitleText(visuallyFocused, floating);
+  const tickerAt = titleTicker ? findTitleTicker(title, titleTicker) : null;
   const topInset = topRule ? 1 : 0;
   const handleTerminalHeaderMouseDown = useCallback((event: any) => {
     capturePointerDrag(nativeRenderer, terminalHeaderRef.current);
@@ -365,7 +427,17 @@ export function PaneHeader({
                 textOverflow: "ellipsis",
               }}
             >
-              {title}
+              {tickerAt && onTitleTickerPress ? (
+                <>
+                  {title.slice(0, tickerAt.start)}
+                  <PaneTitleTicker
+                    symbol={title.slice(tickerAt.start, tickerAt.end)}
+                    color={textColor}
+                    onPress={onTitleTickerPress}
+                  />
+                  {title.slice(tickerAt.end)}
+                </>
+              ) : title}
             </Text>
           </Box>
         )}

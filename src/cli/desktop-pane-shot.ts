@@ -30,6 +30,7 @@ import {
   type ShotApiSocketCall,
   type ShotApiSocketReply,
 } from "./desktop-pane-shot-routes";
+import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
 import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-api-policy";
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
@@ -472,7 +473,7 @@ async function proxyShotApiRequest(
   const basePath = baseUrl.pathname.replace(/\/+$/, "");
   let path = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
   let method = request.method.toUpperCase();
-  if (!isShotApiRequestAllowed(method, path)) return shotApiError("The pane screenshot does not send this request.", 403);
+  if (!isShotApiRequestAllowed(method, path)) return shotApiError(SHOT_REQUEST_REFUSED, 403);
   const headers = new Headers();
   for (const name of SHOT_API_REQUEST_HEADERS) {
     const value = request.headers.get(name);

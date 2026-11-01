@@ -74,6 +74,7 @@ export function useCommandBarActionRuntime({
   tickers,
 }: UseCommandBarActionRuntimeOptions) {
   const {
+    changePaneTicker,
     duplicatePane,
     focusTicker,
     persistLayoutChange,
@@ -90,6 +91,7 @@ export function useCommandBarActionRuntime({
     readTickerSearchCache,
     writeTickerSearchCache,
   } = useCommandBarTickerSearchActions({
+    changePaneTicker,
     closeAll,
     dispatch,
     focusTicker,

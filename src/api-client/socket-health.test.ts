@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
 import {
   ConnectionHealthRegistry,
   GLOOM_CLOUD_SOCKET_CONNECTION_ID,
   type ConnectionHealthStatus,
 } from "../core/connection-health";
-import { CloudApiSocket } from "./socket";
+import { CloudApiSocket, SOCKET_CONNECT_TIMEOUT_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket";
 import { createTestSocketDeps, TestWebSocket } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
@@ -154,6 +154,98 @@ describe("CloudApiSocket connection health", () => {
       sockets[0]!.open();
       expect(health.getSnapshot().sources[0]).toMatchObject({ status: "connected", socketState: "open" });
     } finally {
+      socket.dispose();
+    }
+  });
+});
+
+// A half-open link (a laptop that slept, a network that changed) left prices
+// frozen for over a minute: nothing noticed a connection that stopped
+// answering, or one that never finished opening.
+describe("CloudApiSocket on a link that stops answering", () => {
+  test("a connection that never opens is given up after ten seconds and tried again", () => {
+    jest.useFakeTimers();
+    const sockets = installStrictWebSocket();
+    const health = healthWithSocketSource();
+    const socket = new CloudApiSocket(createTestSocketDeps(), health);
+    try {
+      socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+      jest.advanceTimersByTime(SOCKET_CONNECT_TIMEOUT_MS - 1);
+      expect(sockets[0]!.closeCalls).toBe(0);
+      jest.advanceTimersByTime(1);
+      expect(sockets[0]!.closeCalls).toBe(1);
+      expect(health.getSnapshot().sources[0]).toMatchObject({ socketState: "error", currentDetail: "Connecting timed out" });
+      jest.advanceTimersByTime(1_500);
+      expect(sockets).toHaveLength(2);
+    } finally {
+      socket.dispose();
+    }
+  });
+
+  test("a quiet connection is pinged, kept while it answers, and dropped and opened again once it goes silent", () => {
+    jest.useFakeTimers();
+    const sockets = installStrictWebSocket();
+    const health = healthWithSocketSource();
+    const details: string[] = [];
+    health.subscribe(() => {
+      const source = health.getSnapshot().sources[0];
+      if (source?.socketState === "error") details.push(source.currentDetail ?? "");
+    });
+    let answered = 0;
+    const socket = new CloudApiSocket(createTestSocketDeps({ onServiceAnswered: () => { answered += 1; } }), health);
+    try {
+      socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+      const first = sockets[0]!;
+      first.open();
+      first.receive({ type: "ready", features: [] });
+      // Opening and every frame say the service answers.
+      expect(answered).toBe(2);
+
+      jest.advanceTimersByTime(SOCKET_QUIET_PING_MS + 2_500);
+      expect(first.sent).toContainEqual({ type: "ping" });
+      first.receive({ type: "pong" });
+      jest.advanceTimersByTime(SOCKET_QUIET_PING_MS);
+      expect(first.closeCalls).toBe(0);
+
+      // The next ping goes unanswered: the link is half open, and is dropped and opened again.
+      expect(first.sent.filter((frame) => (frame as { type?: string }).type === "ping")).toHaveLength(2);
+      jest.advanceTimersByTime(SOCKET_PING_ANSWER_MS + 2_500 + 1_500);
+      expect(first.closeCalls).toBe(1);
+      expect(details).toEqual(["No answer from the stream"]);
+      expect(sockets).toHaveLength(2);
+      sockets[1]!.open();
+      expect(sockets[1]!.sent).toContainEqual({ type: "market.subscribe", symbols: [{ symbol: "AAPL", exchange: "" }] });
+    } finally {
+      socket.dispose();
+    }
+  });
+
+  // A hidden tab runs its timers late, and a laptop wakes with a clock far
+  // ahead: the late check found a working connection silent and dropped it.
+  test("a check that runs late pings first, and keeps a connection that answers", () => {
+    jest.useFakeTimers();
+    const sockets = installStrictWebSocket();
+    const health = healthWithSocketSource();
+    const socket = new CloudApiSocket(createTestSocketDeps(), health);
+    const timerClock = Date.now.bind(Date);
+    const clockAhead = spyOn(Date, "now");
+    try {
+      socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+      const first = sockets[0]!;
+      first.open();
+      first.receive({ type: "ready", features: [] });
+
+      // The next check runs a minute after the last frame.
+      clockAhead.mockImplementation(() => timerClock() + 60_000);
+      jest.advanceTimersByTime(2_500);
+      expect(first.closeCalls).toBe(0);
+      expect(first.sent).toContainEqual({ type: "ping" });
+      first.receive({ type: "pong" });
+      jest.advanceTimersByTime(SOCKET_PING_ANSWER_MS);
+      expect(first.closeCalls).toBe(0);
+      expect(sockets).toHaveLength(1);
+    } finally {
+      clockAhead.mockRestore();
       socket.dispose();
     }
   });

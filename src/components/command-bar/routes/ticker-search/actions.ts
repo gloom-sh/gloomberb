@@ -16,7 +16,7 @@ import {
   type TickerSearchCandidate,
   type TickerSearchInstrumentClass,
 } from "../../../../tickers/search";
-import type { ResultItem } from "../../list/model";
+import type { ResultItem, TickerPick } from "../../list/model";
 import { delistingLabel, parseListingDelisting } from "../../../../market-data/quotes/delisting";
 import {
   buildTickerSearchCacheKey,
@@ -25,6 +25,8 @@ import {
 } from "./results";
 
 interface UseCommandBarTickerSearchActionsOptions {
+  /** Ticker search's Enter: the focused pane, or its linked group, takes the ticker. */
+  changePaneTicker?: (symbol: string, options?: PinTickerOptions) => void;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   dispatch: (action: any) => void;
   focusTicker: (symbol: string, options?: PinTickerOptions) => void;
@@ -34,6 +36,7 @@ interface UseCommandBarTickerSearchActionsOptions {
 }
 
 export function useCommandBarTickerSearchActions({
+  changePaneTicker,
   closeAll,
   dispatch,
   focusTicker,
@@ -55,13 +58,18 @@ export function useCommandBarTickerSearchActions({
     return ticker;
   }, [dispatch, pluginRegistry.events, tickerRepository]);
 
-  const openTickerResearch = useCallback((result: InstrumentSearchResult, options?: { forceNewPane?: boolean }) => {
+  const pickTicker = useCallback((symbol: string, selection: PinTickerOptions, how: TickerPick) => {
+    if (how === "pane" && changePaneTicker) changePaneTicker(symbol, selection);
+    else focusTicker(symbol, how === "new" ? { forceNewPane: true, ...selection } : selection);
+    closeAll({ revertThemePreview: false });
+  }, [changePaneTicker, closeAll, focusTicker]);
+
+  const openTickerResearch = useCallback((result: InstrumentSearchResult, how: TickerPick) => {
     (async () => {
       const ticker = await resolveSearchTicker(result);
-      focusTicker(ticker.metadata.ticker, { ...options, ...tickerSelectionFromSearchResult(result) });
-      closeAll({ revertThemePreview: false });
+      pickTicker(ticker.metadata.ticker, tickerSelectionFromSearchResult(result), how);
     })();
-  }, [closeAll, focusTicker, resolveSearchTicker]);
+  }, [pickTicker, resolveSearchTicker]);
 
   const mapTickerSearchCandidateToResultItem = useCallback((candidate: TickerSearchCandidate): ResultItem => {
     const detail = formatTickerSearchDetail(candidate);
@@ -80,6 +88,7 @@ export function useCommandBarTickerSearchActions({
     const lines = delisting ? [{ segments: [{ text: delistingLabel(delisting), emphasis: "muted" as const }] }] : undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
+      const pick = (how: TickerPick) => pickTicker(candidate.ticker!.metadata.ticker, tickerSelectionFromSearchResult(candidate.result), how);
       return {
         id: candidate.id,
         contractKey: candidate.contractKey,
@@ -95,14 +104,9 @@ export function useCommandBarTickerSearchActions({
         kind: "ticker",
         resolveTicker: async () => candidate.ticker!,
         prefetchInstrument: rowPrefetchInstrument(candidate, tickersRef.current),
-        secondaryAction: () => {
-          focusTicker(candidate.ticker!.metadata.ticker, { forceNewPane: true, ...tickerSelectionFromSearchResult(candidate.result) });
-          closeAll({ revertThemePreview: false });
-        },
-        action: () => {
-          focusTicker(candidate.ticker!.metadata.ticker, { ...tickerSelectionFromSearchResult(candidate.result) });
-          closeAll({ revertThemePreview: false });
-        },
+        pickTicker: pick,
+        secondaryAction: () => pick("new"),
+        action: () => pick("des"),
       };
     }
 
@@ -126,10 +130,11 @@ export function useCommandBarTickerSearchActions({
           : candidate.result!.exchange || candidate.result!.primaryExchange,
       )),
       prefetchInstrument: rowPrefetchInstrument(candidate, tickersRef.current),
-      secondaryAction: () => openTickerResearch(candidate.result!, { forceNewPane: true }),
-      action: () => openTickerResearch(candidate.result!),
+      pickTicker: (how) => openTickerResearch(candidate.result!, how),
+      secondaryAction: () => openTickerResearch(candidate.result!, "new"),
+      action: () => openTickerResearch(candidate.result!, "des"),
     };
-  }, [closeAll, focusTicker, openTickerResearch, resolveSearchTicker]);
+  }, [openTickerResearch, pickTicker, resolveSearchTicker]);
 
   const buildTickerSearchResultItems = useCallback((candidates: TickerSearchCandidate[], query: string): ResultItem[] => (
     candidates.length > 0

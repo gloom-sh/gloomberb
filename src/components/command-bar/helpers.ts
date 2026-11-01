@@ -15,6 +15,8 @@ export {
 export type RouteCommandId = "security-description" | "layout";
 export type CollectionCommandId = "add-watchlist" | "add-portfolio" | "remove-watchlist" | "remove-portfolio";
 
+export { SECURITY_DESCRIPTION_SEARCH } from "../../core/state/app/command-bar-launch";
+
 export function isRouteCommandId(commandId: string): commandId is RouteCommandId {
   return commandId === "security-description"
     || commandId === "layout";

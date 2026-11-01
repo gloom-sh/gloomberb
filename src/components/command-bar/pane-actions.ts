@@ -6,16 +6,17 @@ import {
   resolveFollowBindingInstance,
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
+  type PaneInstanceConfig,
 } from "../../types/config";
 import {
   addPaneFloating,
   addPaneToLayout,
 } from "../../layout/pane-manager";
+import { resolveTickerRetargetPane, retargetTickerPane } from "../../layout/ticker-retarget";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { PinTickerOptions } from "../../types/plugin";
-import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 import { instrumentFromTicker } from "../../market-data/request-types";
-import type { AppAction, AppState } from "../../state/app/context";
+import { resolveTickerForPane, type AppAction, type AppState } from "../../state/app/context";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 /** Points the portfolio pane the focus follows (or the main one) at a collection. */
@@ -46,24 +47,6 @@ export function useCommandBarPaneActions({
   pluginRegistry,
   stateRef,
 }: CommandBarPaneActionsOptions) {
-  const retargetTickerResearchPane = useCallback((paneId: string, symbol: string, options?: PinTickerOptions) => {
-    const currentState = stateRef.current;
-    const targetPane = findPaneInstance(currentState.config.layout, paneId);
-    if (!targetPane || targetPane.paneId !== TICKER_RESEARCH_PANE_ID) return;
-    const instrument = options?.instrument !== undefined ? options.instrument : instrumentFromTicker(currentState.tickers.get(symbol))?.instrument ?? undefined;
-
-    const nextLayout = {
-      ...currentState.config.layout,
-      instances: currentState.config.layout.instances.map((instance) => (
-        instance.instanceId === targetPane.instanceId
-          ? { ...instance, title: tickerInstrumentLabel(symbol, instrument), binding: { kind: "fixed" as const, symbol, ...(instrument !== undefined ? { instrument } : {}), ...(options?.listing ? { listing: options.listing } : {}) } }
-          : instance
-      )),
-    };
-    dispatch({ type: "UPDATE_LAYOUT", layout: nextLayout });
-    dispatch({ type: "FOCUS_PANE", paneId: targetPane.instanceId });
-  }, [dispatch, stateRef]);
-
   const openFixedTickerPane = useCallback((symbol: string, options?: PinTickerOptions) => {
     pluginRegistry.pinTicker(symbol, {
       floating: true,
@@ -74,29 +57,56 @@ export function useCommandBarPaneActions({
     });
   }, [pluginRegistry]);
 
+  const persistLayoutChange = useCallback((nextLayout: LayoutConfig) => {
+    pluginRegistry.updateLayout(nextLayout);
+  }, [pluginRegistry]);
+
+  /** Pins `target` on the ticker; the focus stays on the pane it was on. */
+  const retargetPane = useCallback((target: PaneInstanceConfig, symbol: string, options?: PinTickerOptions) => {
+    const currentState = stateRef.current;
+    // Opening a research pane is counted in pinTicker; retargeting one here is DES too.
+    if (target.paneId === TICKER_RESEARCH_PANE_ID) recordFunctionOpen({ shortcut: "DES", externalPluginId: null });
+    const instrument = options?.instrument !== undefined
+      ? options.instrument
+      : instrumentFromTicker(currentState.tickers.get(symbol))?.instrument ?? undefined;
+    persistLayoutChange(retargetTickerPane(currentState.config.layout, target, symbol, {
+      instrument,
+      listing: options?.listing,
+      previous: resolveTickerForPane(currentState, target.instanceId),
+      paneDef: pluginRegistry.panes.get(target.paneId),
+    }));
+    dispatch({ type: "FOCUS_PANE", paneId: currentState.focusedPaneId ?? target.instanceId });
+  }, [dispatch, persistLayoutChange, pluginRegistry.panes, stateRef]);
+
+  /**
+   * DES and the command bar's ticker rows: a focused Ticker Research pane changes to the ticker,
+   * and from any other pane a research pane opens on it.
+   */
   const focusTicker = useCallback((symbol: string, options?: PinTickerOptions) => {
     const currentState = stateRef.current;
     const focusedPane = currentState.focusedPaneId
       ? findPaneInstance(currentState.config.layout, currentState.focusedPaneId)
       : null;
-    if (options?.forceNewPane) {
-      openFixedTickerPane(symbol, options);
+    if (!options?.forceNewPane && focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
+      retargetPane(focusedPane, symbol, options);
       return;
     }
-
-    if (focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
-      // Opening a research pane is counted in pinTicker; retargeting one here is DES too.
-      recordFunctionOpen({ shortcut: "DES", externalPluginId: null });
-      retargetTickerResearchPane(focusedPane.instanceId, symbol, options);
-      return;
-    }
-
     openFixedTickerPane(symbol, options);
-  }, [openFixedTickerPane, retargetTickerResearchPane, stateRef]);
+  }, [openFixedTickerPane, retargetPane, stateRef]);
 
-  const persistLayoutChange = useCallback((nextLayout: LayoutConfig) => {
-    pluginRegistry.updateLayout(nextLayout);
-  }, [pluginRegistry]);
+  /**
+   * Ticker search's Enter (the backtick, or the ticker in a pane's header): the focused pane
+   * changes to the ticker when it shows one, with the panes linked to it (the rule is
+   * `resolveTickerRetargetPane`). From any other pane it does what DES does.
+   */
+  const changePaneTicker = useCallback((symbol: string, options?: PinTickerOptions) => {
+    const currentState = stateRef.current;
+    const target = options?.forceNewPane
+      ? null
+      : resolveTickerRetargetPane(currentState.config.layout, currentState.focusedPaneId, pluginRegistry.panes);
+    if (target) retargetPane(target, symbol, options);
+    else focusTicker(symbol, options);
+  }, [focusTicker, pluginRegistry.panes, retargetPane, stateRef]);
 
   const duplicatePane = useCallback((paneId: string) => {
     const currentState = stateRef.current;
@@ -121,6 +131,7 @@ export function useCommandBarPaneActions({
   }, [dispatch, persistLayoutChange, pluginRegistry, stateRef]);
 
   return {
+    changePaneTicker,
     duplicatePane,
     focusTicker,
     persistLayoutChange,

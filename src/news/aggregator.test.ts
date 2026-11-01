@@ -4,6 +4,7 @@ import { DEFAULT_GLOBAL_QUERY } from "./news-model";
 import { newsProvider, type NewsCapability } from "../capabilities";
 import type { MarketNewsItem } from "../types/news-source";
 import type { NewsPage } from "./types";
+import { ConnectionHealthRegistry, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
 
 function makeItem(overrides: Partial<MarketNewsItem> & { url: string }): MarketNewsItem {
   return {
@@ -103,6 +104,50 @@ describe("NewsService", () => {
     expect(state.phase).toBe("ready");
     expect(state.articles).toHaveLength(1);
     expect(state.error).toContain("unavailable");
+  });
+
+  // The news reader kept "News sources unavailable." after an outage until
+  // its next poll, two minutes on, while the rest of the app had come back.
+  it("reads a watched list that failed in an outage again once the data service answers", async () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const service = new NewsService({ connectionHealth: health });
+    let online = false;
+    let reads = 0;
+    service.register(newsProvider({
+      id: "cloud",
+      name: "cloud",
+      provider: {
+        fetchNews: async () => {
+          reads += 1;
+          if (!online) throw new Error("Gloom couldn't reach its data service");
+          return [makeItem({ url: "https://recovered.example.com/1" })];
+        },
+      },
+    }));
+    service.start();
+    const states: string[] = [];
+    const dispose = service.watchQuery({ feed: "latest" }, (state) => states.push(state.phase));
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(states.at(-1)).toBe("error");
+
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+      online = true;
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(reads).toBe(2);
+      expect(states.at(-1)).toBe("ready");
+
+      // A list that read fine is left to its poll.
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(reads).toBe(2);
+    } finally {
+      dispose();
+      service.stop();
+    }
   });
 
   it("watchQuery shows loading while the initial fetch is in flight", () => {

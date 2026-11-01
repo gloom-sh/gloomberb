@@ -121,6 +121,37 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
   return financials;
 }
 
+/** Where a ticker's snapshot load stands, for a pane with nothing of it to show yet. */
+export interface TickerSnapshotState {
+  /** Asked for, or about to be, with no answer yet. */
+  loading: boolean;
+  /** Why the last load came back with nothing, or null. */
+  error: string | null;
+  /** Asks again now, past a recent failure. */
+  retry: () => Promise<void>;
+}
+
+/** The snapshot load behind `useTickerFinancials`, as its entry stands. */
+export function useTickerSnapshotState(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): TickerSnapshotState {
+  const instrument = useTickerInstrument(symbol, ticker);
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
+  const keys = useMemo(() => (instrument ? [buildSnapshotKey(instrument)] : []), [instrumentKey]);
+  useCoordinatorKeysVersion(keys);
+  const coordinator = getSharedMarketDataCoordinator();
+  const entry = coordinator && instrument ? coordinator.getSnapshotEntry(instrument) : null;
+  const retry = useCallback(async () => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (coordinator && instrument) await coordinator.loadSnapshot(instrument, { forceRefresh: true });
+  }, [instrumentKey]);
+  const failed = !!entry && (entry.phase === "error" || entry.phase === "ready") && entry.error != null;
+  return {
+    // Idle is a load the hook is about to start.
+    loading: !!entry && (entry.phase === "idle" || entry.phase === "loading" || entry.phase === "refreshing"),
+    error: failed ? entry.error!.message : null,
+    retry,
+  };
+}
+
 function buildTickerFinancialsKeys(tickers: TickerRecord[], options: TickerInstrumentOptions = {}): string[] {
   const keys: string[] = [];
   for (const ticker of tickers) {

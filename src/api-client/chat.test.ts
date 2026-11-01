@@ -6,14 +6,22 @@ import { toRequestEnvelope, readRequestInit } from "../utils/http-proxy-response
 import { localUtcOffsetMinutes } from "../utils/local-utc-offset";
 
 const originalWebSocket = globalThis.WebSocket;
+/** Every socket a test opens: one left open past its test would reconnect into the next file's. */
+const opened: CloudApiSocket[] = [];
+
+function track(socket: CloudApiSocket): CloudApiSocket {
+  opened.push(socket);
+  return socket;
+}
 
 afterEach(() => {
+  for (const socket of opened.splice(0)) socket.dispose();
   globalThis.WebSocket = originalWebSocket;
 });
 
 function createChat(answer: (path: string) => unknown = () => []) {
   const sockets: TestWebSocket[] = installTestWebSocket(0);
-  const socket = new CloudApiSocket(createTestSocketDeps());
+  const socket = track(new CloudApiSocket(createTestSocketDeps()));
   const requests: Array<{ path: string; features: string | null }> = [];
   const chat = new CloudChatApi({
     request: async <T>(path: string, options?: RequestInit) => {

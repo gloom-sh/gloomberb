@@ -31,6 +31,7 @@ import { BuildoutDetail } from "../detail";
 import { BUILDOUT_COMPANY_PANE_ID } from "./id";
 import { metricNumber, moneyText, text, tickerSearchText, tickerSymbol } from "../format";
 import type { BuildoutColumn, BuildoutRow, BuildoutUpdate } from "../model/types";
+import { NOT_IN_SCREENSHOTS } from "../model";
 import { rowKey } from "../table-model";
 import { CompanyFlow, CompanyFlowList, FLOW_MIN_WIDTH } from "./flow";
 import {
@@ -210,7 +211,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   }
   if (!company) {
     if (missing) return frame(<EmptyState title={`${symbol} is not in TheBuildout.`} />);
-    if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={{ onRetry: () => void profile.load(true) }} />);
+    if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={String(profile.error) === NOT_IN_SCREENSHOTS ? undefined : { onRetry: () => void profile.load(true) }} />);
     return frame(<PaneStatusBody loading subject="TheBuildout" />);
   }
 

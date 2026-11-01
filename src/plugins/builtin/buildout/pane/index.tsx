@@ -34,6 +34,7 @@ import type {
 import {
   BUILDOUT_NAME,
   LOAD_MORE_THRESHOLD,
+  NOT_IN_SCREENSHOTS,
   buildoutApi,
 } from "../model";
 import { renderBuildoutCell } from "../cells";
@@ -447,7 +448,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       <Box flexDirection="column" width={width} height={height} overflow="hidden">
         {tabStrip && <Box height={1}>{tabStrip}</Box>}
         {state.status === "loading" ? <PaneStatusBody loading subject={BUILDOUT_NAME} />
-          : <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} retry={{ onRetry: refresh }} />}
+          : <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} retry={state.message === NOT_IN_SCREENSHOTS ? undefined : { onRetry: refresh }} />}
       </Box>
     );
   }

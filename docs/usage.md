@@ -37,7 +37,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | Key | Action |
 |-----|--------|
 | `Ctrl+P` | Open command mode |
-| `` ` `` | Open ticker search |
+| `` ` `` | Change the focused pane's ticker (ticker search) |
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
@@ -81,6 +81,15 @@ The focused pane's footer shows its actions with their keys, such as `[a]dd`. Th
 - Dialogs: `Enter` confirms, `Esc` closes (on the desktop `Tab` moves between controls).
 - Forms: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends from the last, `Cmd/Ctrl+S` sends from any field, `y` or `n` answers a confirm.
 - Pane settings: the arrows move between settings, `Left` / `Right` change a choice in place, `Enter` opens a field's editor.
+
+### Changing a pane's ticker
+
+`` ` `` opens ticker search for the focused pane. On the desktop and the web, a click on the ticker in a pane's title (`OMON SPY ⌄`) opens the same search; in the terminal the focused pane's footer shows the key (`` [`] ticker ``) and its menu has **Change Ticker...**. Enter on a result changes what the pane shows, and `Shift+Enter` (or **New pane** above the results) opens the ticker in a new pane instead.
+
+- A pane on its own ticker (`OMON SPY`) changes, and every pane linked to it moves with it.
+- A linked pane changes the pane it follows, so the group moves together: on the Options desk, changing `OPX` changes `OMON`, and `OPX`, `OVDV` and `HIVG` follow it. On the Equities desk, `DES`, `G` and `FA` change together.
+- A group linked to a watchlist, portfolio or scanner leaves the list and stays on the new ticker. The search never edits the list; **Link to** in the pane menu puts the group back on it.
+- A pane that shows no ticker (a list, a news feed, a market board, a chart of several tickers) opens the ticker in a Ticker Research pane, as `DES` does.
 
 ### Linking a pane to a list
 
@@ -1751,6 +1760,8 @@ The status is one of four:
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
 A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`), instead of listing the failed refresh as an error. A saved copy answers only a failure asking again may get past: no connection, a timeout, a rate limit, a server error, or an answer saying its source did not respond this time. A permanent reason, such as signing out, a plan that does not include the data, an unsupported symbol or series, or data Gloom Cloud does not serve yet (`not available yet`), and a reply that fails its checks are reported as errors even when a saved copy exists. A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. A history no source could load because one failed (a timeout, a rate limit) and none had it saved fails the same way with `No source could load history for BTC-USD just now` (`source_unavailable`, `retryable` `true`), for `--from` and `--to` as for `--range`, never as an empty history. A listing's quote, history or financials the data service failed to answer (a server error, or its own source not responding this time) is asked for once more; failing again, it says `Gloom's data service did not answer for YAR:OSL. Try again in a moment.` (`source_unavailable`, `retryable` `true`), never that no source covers the listing, and a table of several symbols names each one it could not fill. In the app, a pane showing such a copy (quotes, a fund's 13F filings, a list of earnings calls, the VIX board, a chart of a catalog series such as `CAP:volatility:vix-term-ratio`) says `saved copy from 15:31` first in its footer until a refresh answers, and a refusal clears it for its error or sign-in.
+
+While the data service gives no answer at all, the status bar says `Can't reach the data service` (`Offline` in a narrow terminal), and clicking it opens `CONN`. Offline, the app asks the service again every few seconds, backing off to 15 seconds. The note goes with the first answer, and what failed during the outage loads again by itself in the panes that show it: quotes, charts, Overview and the news lists. A pane with nothing loaded yet says `Loading overview...`, or `Overview unavailable.` with a retry, instead of standing empty. The quote stream is reopened when it fails to connect within 10 seconds, or when, quiet for 10 seconds, it leaves a ping unanswered for 10 more (a link left half open after sleep or a network change). Until it is back, the prices it was updating read as stale: `Stale quote` in the ticker's footer, and `as of` the last update under a perpetual's mark.
 
 **Venues polled apart.** A report over such venues dates each by its own newest observation and says how old its oldest price is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · funding = current estimate, pays 08:00 UTC`.
 

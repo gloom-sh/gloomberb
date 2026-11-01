@@ -9,6 +9,7 @@ import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig
 import type { AppNotificationRequest } from "../../types/plugin";
 import { subscribeFormModalRequests } from "../form-modal/request";
 import { StatusBar } from "./status-bar";
+import { ConnectionHealthRegistry, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../core/connection-health";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
 const tui = createOpenTuiTestHarness();
@@ -189,6 +190,46 @@ describe("StatusBar", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  // A dead link left every cell a dash with nothing saying the app was offline.
+  test("says the data service is unreachable while it is, opens Connections from it, and drops it once it answers", async () => {
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const shown: string[] = [];
+    setSharedRegistryForTests({
+      connectionHealth: health,
+      showPane: (paneId: string) => { shown.push(paneId); },
+      renderSlot: () => null,
+    } as any);
+    const config = createDefaultConfig("/tmp/gloomberb-status-bar-connection");
+    await tui.render(
+      <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
+        <StatusBar />
+      </AppContext>,
+      { width: 100, height: 1 },
+    );
+    await tui.setup().renderOnce();
+    expect(tui.frame()).not.toContain("Can't reach");
+
+    await act(async () => {
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+      await tui.setup().renderOnce();
+    });
+    const line = tui.frame().split("\n")[0] ?? "";
+    expect(line).toContain("Can't reach the data service");
+    expect(line).toContain("Feedback");
+    await act(async () => {
+      await tui.setup().mockMouse.click(line.indexOf("Can't reach") + 1, 0);
+      await tui.setup().renderOnce();
+    });
+    expect(shown).toEqual(["connections"]);
+
+    await act(async () => {
+      health.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).not.toContain("Can't reach");
   });
 
   /** Float three chat windows at `rect(index)`, then click Tidy Windows. */

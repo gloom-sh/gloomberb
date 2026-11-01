@@ -223,8 +223,9 @@ its fill in device pixels. Half a pixel is the line between centred and not.
 
 **App chrome** (the shell's, never a pane's): the header holds the command
 bar prompt, update notices and the market summary; the status bar at the
-bottom holds layout tabs, Tidy Windows, the version chip and the
-`status:widget` slot. A plugin puts a widget there only for app-wide state
+bottom holds layout tabs, Tidy Windows, the connection note (in the warning
+tone, only while the data service gives no answer at all), the version chip
+and the `status:widget` slot. A plugin puts a widget there only for app-wide state
 that matters outside its pane (unread count, account verification). Pane data
 never goes there.
 
@@ -233,7 +234,10 @@ never goes there.
 - Header: the title (pane def, template `createInstance`, or `usePaneTitle`
   for content-derived titles). The only place the pane names itself. Quick
   settings (`quickSettings`, `zap` icon) sit beside it; the `...` menu opens
-  settings, lock, share, close.
+  settings, lock, share, close. In a pane that shows one ticker (see
+  `tickerFollower`) the host draws the ticker in the title as a ghost button
+  with a chevron on the desktop and the web; it opens ticker search for the
+  pane (`layout/ticker-retarget.ts`). The terminal says the key in the footer.
 - Body: content only. Tabs, tables, details, forms, charts.
 - Header zone: the top of the body, in this order and nothing else: the
   `QueryBar` (search, filters, view), then a `StatGrid` of summary figures,
@@ -783,7 +787,7 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search, `q` quit (terminal),
+  pane or field, `h`/`l` tabs, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);

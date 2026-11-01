@@ -14,7 +14,7 @@ import { normalizeTickerInput } from "../../../../tickers/search";
 import { useRendererHost } from "../../../../ui";
 import type { ThemePickerHandle } from "../../theme-picker";
 import type { Command } from "../registry";
-import type { CollectionCommandId } from "../../helpers";
+import { SECURITY_DESCRIPTION_SEARCH, type CollectionCommandId } from "../../helpers";
 import {
   runDirectCommandAction,
 } from "./index";
@@ -93,7 +93,7 @@ export function useCommandBarDirectCommandRuntime({
         closeAll({ revertThemePreview: false });
         return;
       }
-      openModeRoute("ticker-search", "");
+      openModeRoute("ticker-search", "", SECURITY_DESCRIPTION_SEARCH);
       return;
     }
 
@@ -113,7 +113,7 @@ export function useCommandBarDirectCommandRuntime({
       closeAll({ revertThemePreview: false });
       return;
     }
-    openModeRoute("ticker-search", trimmed);
+    openModeRoute("ticker-search", trimmed, SECURITY_DESCRIPTION_SEARCH);
   }, [
     activeCollectionId,
     activeTickerSymbol,
