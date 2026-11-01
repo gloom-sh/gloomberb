@@ -433,10 +433,12 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
   const mub: TickerFinancials = { quote: { ...quote, symbol: "MUB", instrumentType: "ETF", exchangeName: "NYSEArca" },
     annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals: { dividendYield: 0.0327, dividendYieldBasis: "forward" } };
   const lines = [
-    "Distribution Yield (forward, not SEC yield)  3.27%",
-    "30-Day SEC Yield                             4.04% (as of 2026-10-15)",
-    "Yield to Worst                               4.16% (as of 2026-10-15)",
-    "Effective Duration                           7.13 yrs (as of 2026-10-15)",
+    "Distribution Yield (forward)  3.27% (not SEC yield; latest distribution annualized)",
+    "30-Day SEC Yield              4.04% (as of 2026-10-15)",
+    "Yield to Worst                4.16% (as of 2026-10-15)",
+    "Effective duration            7.13 yrs (as of 2026-10-15)",
+    // Sized for a curve trade: the regular session price times the duration, per basis point.
+    "DV01                          $0.0713 per share (from duration)",
   ];
   const fundamentals = plain(renderFundamentalsReport({ ...mub, symbol: "MUB", exchange: "NYSEArca", bondFund }, "fundamentals"));
   for (const line of lines) expect(fundamentals).toContain(line);

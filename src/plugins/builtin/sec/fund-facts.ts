@@ -7,7 +7,7 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
 import { formatCompact } from "../../../utils/format";
-import { bondClassText, bondFigures } from "../../../market-data/bond-funds";
+import { bondClassText, bondFigures, DV01_FROM_DURATION, durationDv01PerShare, formatDv01PerShare } from "../../../market-data/bond-funds";
 import { readFundFacts, validateFundFacts } from "../../../market-data/fund-facts";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
@@ -242,6 +242,8 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   for (const figure of facts.bond ? bondFigures(facts.bond) : []) {
     items.push(cell(figure.key, figure.label, figure.text, { detail: figure.date, marked: facts.stale }));
   }
+  const dv01 = fundDv01(facts);
+  if (dv01) items.push(cell("dv01", "DV01", formatDv01PerShare(dv01.value), { detail: DV01_FROM_DURATION, marked: facts.stale }));
   // A metal trust's metal in trust, in tonnes as the market quotes it and ounces as the trust counts it, then its day's change.
   const metal = facts.metalHoldings;
   if (metal) {
@@ -265,6 +267,18 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   }
   if (facts.index) items.push({ id: "index", label: BENCHMARK_LABEL, value: facts.index.value, wide: true });
   return items;
+}
+
+/**
+ * A bond fund's DV01 per share, derived from its duration at the closing
+ * price (NAV without one), with the price it was read at.
+ */
+function fundDv01(facts: FundFactsPayload): { value: number; price: string } | null {
+  const price = facts.closingPrice ?? facts.nav;
+  const value = durationDv01PerShare(price?.value, facts.bond);
+  if (value == null || !price) return null;
+  const date = price.asOf ? ` ${price.asOf}` : "";
+  return { value, price: facts.closingPrice ? `closing price${date}` : `NAV${date}` };
 }
 
 /** A DES figure: `warn` when it is older than it looks, which DES draws in the warning colour. */
@@ -373,6 +387,8 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
       add(keys[figure.key], figure.key === "secYield" ? "30-day SEC yield" : figure.label, figure.value,
         provenance(figure.text, figure.date, figure.source), figure.key === "duration" ? "years" : "%");
     }
+    const dv01 = fundDv01(facts);
+    if (dv01) add("dv01PerShare", "DV01", dv01.value, provenance(formatDv01PerShare(dv01.value), DV01_FROM_DURATION, dv01.price), "USD per bp");
   }
   if (facts.sponsor) add("sponsor", "Sponsor", facts.sponsor.value, facts.sponsor.value);
   if (facts.inception) add("inception", "Inception", facts.inception.value, facts.inception.value);

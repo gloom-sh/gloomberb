@@ -25,6 +25,7 @@ import {
   renderSection,
   renderStats,
   wrapText,
+  wrapToTerminal,
   type CliStatEntry,
 } from "../../utils/cli-output";
 import {
@@ -99,7 +100,7 @@ import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statemen
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
-import { bondFigures, NOT_SEC_YIELD } from "../../market-data/bond-funds";
+import { bondFigures, durationDv01PerShare, formatDv01PerShare, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { readFundFacts } from "../../market-data/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
@@ -646,7 +647,11 @@ function reportedDividendYield(
  * was last paid; a trailing one the twelve months it covers. A yield of no
  * stated basis is the figure alone.
  */
-function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: DividendDistributions | null): MetricFigure {
+function forwardYieldFigure(
+  fundamentals: TickerFinancials["fundamentals"],
+  distributions: DividendDistributions | null,
+  bond: FundBondFacts | null = null,
+): MetricFigure {
   const lapse = forwardYieldLapse(fundamentals, distributions);
   if (lapse) return { text: noCurrentDividend(lapse), value: null };
   const figure = percentFigure(reportedDividendYield(fundamentals, distributions), formatFractionPercentCell);
@@ -654,7 +659,9 @@ function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], dist
   const basis = fundamentals.dividendYieldBasis === "forward"
     ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
     : fundamentals.dividendYieldBasis === "trailing" ? TRAILING_DIVIDEND_BASIS : null;
-  return basis ? { ...figure, text: `${figure.text} (${basis})` } : figure;
+  // A bond fund's says first that it is not the SEC yield on the next line, which its label keeps short.
+  const said = [bond ? NOT_SEC_YIELD : null, basis].filter(Boolean).join("; ");
+  return said ? { ...figure, text: `${figure.text} (${said})` } : figure;
 }
 
 /**
@@ -673,13 +680,12 @@ export function exportedDividendFundamentals<T extends object & Pick<NonNullable
 }
 
 /**
- * `Dividend Yield (forward)`, or for a bond fund `Distribution Yield (forward,
- * not SEC yield)`: the cash it paid, annualized, which its SEC yield (the line
- * after it) is not.
+ * `Dividend Yield (forward)`, or for a bond fund `Distribution Yield
+ * (forward)`: the cash it paid, annualized, which its value says its SEC
+ * yield (the line after it) is not.
  */
 function dividendYieldLabel(basis: string | undefined, bond: FundBondFacts | null): string {
-  if (bond) return `Distribution Yield (${basis ? `${basis}, ` : ""}${NOT_SEC_YIELD})`;
-  return `Dividend Yield${basis ? ` (${basis})` : ""}`;
+  return `${bond ? "Distribution" : "Dividend"} Yield${basis ? ` (${basis})` : ""}`;
 }
 
 /** The labels a bond fund's sponsor figures print under, after its distribution yield. */
@@ -687,16 +693,21 @@ const BOND_METRIC_LABELS = { secYield: "30-Day SEC Yield", yieldToWorst: "Yield 
 
 /**
  * A bond fund's 30-day SEC yield, yield to worst and duration as its sponsor
- * publishes them, each dated: `4.04% (as of 2026-10-15)`.
+ * publishes them, each dated: `4.04% (as of 2026-10-15)`, then the DV01 per
+ * share its duration gives at the regular session price.
  */
-function bondFundMetrics(bond: FundBondFacts | null): FundamentalsMetric[] {
+function bondFundMetrics(bond: FundBondFacts | null, price: number | null): FundamentalsMetric[] {
   if (!bond) return [];
-  return bondFigures(bond).map((figure) => ({
-    label: figure.key === "duration" ? (bond.duration?.measure === "average" ? "Average Duration" : "Effective Duration") : BOND_METRIC_LABELS[figure.key],
-    text: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
-    value: figure.value,
-    unit: figure.key === "duration" ? "years" : "%",
-  }));
+  const dv01 = durationDv01PerShare(price, bond);
+  return [
+    ...bondFigures(bond).map((figure) => ({
+      label: figure.key === "duration" ? figure.label : BOND_METRIC_LABELS[figure.key],
+      text: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
+      value: figure.value,
+      unit: figure.key === "duration" ? "years" : "%",
+    })),
+    ...dv01 == null ? [] : [{ label: "DV01", text: `${formatDv01PerShare(dv01)} (from duration)`, value: dv01, unit: "USD per bp" }],
+  ];
 }
 
 /** Whether a metric is a yield line, which `valuation` keeps beside the multiples. */
@@ -757,9 +768,9 @@ function fundamentalsMetrics(
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
     {
       label: dividendYieldLabel(fundamentals?.dividendYieldBasis, bond),
-      ...forwardYieldFigure(fundamentals, distributions),
+      ...forwardYieldFigure(fundamentals, distributions, bond),
     },
-    ...bondFundMetrics(bond),
+    ...bondFundMetrics(bond, regularSessionValuationPrice(quote)),
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
     { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
@@ -1016,7 +1027,8 @@ export function renderFundamentalsReport(
     }
     appendDescription(lines, profile);
   }
-  return lines.join("\n");
+  // A line wider than the terminal (a heading's venue and state, a note) wraps at it, as the stat blocks do.
+  return lines.map(wrapToTerminal).join("\n");
 }
 
 /** What the Bank section reads from the rest of the report: the newest statement period, and the annual report form. */
@@ -1384,7 +1396,8 @@ export async function buildTickerReport({
 
   await appendTickerPositions(lines, tickerFile, quote, config, toBase, rates);
 
-  return lines.join("\n");
+  // A line wider than the terminal (a heading's venue and state, a note) wraps at it, as the stat blocks do.
+  return lines.map(wrapToTerminal).join("\n");
 }
 
 function buildTickerStructuredData({
