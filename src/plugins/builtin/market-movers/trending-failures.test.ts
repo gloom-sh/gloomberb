@@ -1,4 +1,5 @@
 import { afterEach, expect, jest, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
 import { reportCoverage, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -63,7 +64,7 @@ test("a cached trending membership fallback remains stale after every quote hydr
   const response = spyOn(apiClient, "getMarketTrending").mockResolvedValue({ status: "success", data: [{ symbol: "FIRST" }] });
   const provider = createTestDataProvider({ getQuote: async symbol => quote(symbol) });
   expect((await loadMarketMoverTab("trending", provider)).stale).toBe(false);
-  response.mockRejectedValue(new Error("Controlled membership failure"));
+  response.mockRejectedValue(outage("Controlled membership failure"));
   const cached = await loadMarketMoverTab("trending", provider, { forceRefresh: true });
   expect(cached).toMatchObject({ stale: true, quotes: [{ symbol: "FIRST", lastUpdated: observedAt }] });
   expect(cached.unavailableSymbols).toBeUndefined();

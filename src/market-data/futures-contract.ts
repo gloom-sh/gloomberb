@@ -391,9 +391,11 @@ export function validateFuturesContractTerms(data: FuturesContractTermsPayload):
 export async function loadFuturesContractTerms(
   symbol: string,
   client: Pick<typeof apiClient, "getCloudFuturesContract"> = apiClient,
+  /** `batch`: one of many asked at once (a futures board's rows), to go out in a batch request with them. */
+  options: { batch?: boolean } = {},
 ): Promise<FuturesContractTermsPayload> {
   // The terms are the contract's wherever it is listed: GC=F:CMX asks for GC=F.
-  return validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol));
+  return validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol, options));
 }
 
 /**

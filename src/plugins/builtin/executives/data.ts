@@ -3,7 +3,7 @@ import {
   type CloudProxyStatementListPayload,
   type CloudProxyStatementPayload,
 } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import type { PluginPersistence } from "../../../types/plugin";
 import { secListingKey } from "../../../utils/sec";
@@ -46,6 +46,8 @@ interface ProxyResult<T> {
   /** Null is an explicit 404, not a transient failure or access denial. */
   data: T | null;
   fetchedAt: number | null;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
 }
 type ActiveRequest<T> = { store: PluginPersistence | null; promise: Promise<ProxyResult<T>> };
@@ -105,11 +107,14 @@ function loadCached<T>(
       }
       throw error;
     }
+    // A saved copy answers only for a failure asking again may get past, not for a reply that fails validation.
+    if (!isTransientFailure(error)) throw error;
     const fallback = store?.getResource<T>(kind, key, { ...options, allowExpired: true });
     if (!fallback || tierOf(fallback.value) !== tier) throw error;
     return {
       data: fallback.value,
       fetchedAt: fallback.fetchedAt,
+      savedAt: fallback.fetchedAt,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
     };
   }).finally(() => { if (active.get(activeKey) === request) active.delete(activeKey); });

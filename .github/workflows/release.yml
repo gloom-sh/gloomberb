@@ -64,6 +64,18 @@ jobs:
             test -f "$legacy" || { echo "Missing $legacy for installs from before the rename." >&2; exit 1; }
           done
 
+      # install.sh and install.ps1 read each asset's SHA-256 from
+      # `<asset>.sha256` beside it, by its download URL (the API's digests are
+      # rate limited), and install nothing without it.
+      - name: Write checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for file in *.dmg *.exe *.gz *.json *.zip *.zst; do
+            sha256sum "$file" > "$file.sha256"
+          done
+
       - name: Upload assets to GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -74,6 +86,7 @@ jobs:
             dist/*.json
             dist/*.zip
             dist/*.zst
+            dist/*.sha256
 
       - uses: ./.github/actions/setup-bun
         with:

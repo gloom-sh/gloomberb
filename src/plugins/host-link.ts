@@ -225,6 +225,8 @@ export interface PeerLinkState {
   target: string | null;
   /** The link resolves to the sibling's folder. */
   linked: boolean;
+  /** Why reading through the link failed, when it did: it can be in place and still not lead anywhere. */
+  resolveError?: string;
   /** Links this process wrote at that path, and when it last did. */
   writes: number;
   lastWriteAt?: number;
@@ -272,11 +274,21 @@ export function describePeerLink(pluginDir: string, peer: string, pluginsDir: st
     link = stats.isSymbolicLink() ? (process.platform === "win32" ? "junction" : "symlink") : "file";
   }
   const isLinkType = link === "junction" || link === "symlink";
+  const linked = directory !== null && alreadyLinked(linkPath, join(pluginsDir, directory));
+  let resolveError: string | undefined;
+  if (isLinkType && !linked) {
+    try {
+      statSync(linkPath);
+    } catch (error) {
+      resolveError = errorCode(error);
+    }
+  }
   return {
     ...base,
     link,
     target: isLinkType ? describeTarget(linkPath, pluginsDir) : null,
-    linked: directory !== null && alreadyLinked(linkPath, join(pluginsDir, directory)),
+    linked,
+    ...(resolveError ? { resolveError } : {}),
   };
 }
 

@@ -25,7 +25,7 @@ function resolveInsets(props: Record<string, unknown>): CellInsets {
 }
 
 export const OpenTuiImageSurface = forwardRef<unknown, ImageSurfaceProps>(function OpenTuiImageSurface(
-  { children, src, alt: _alt, objectFit = "contain", ...props },
+  { children, src, alt: _alt, objectFit = "contain", fallbackWhileLoading: _fallbackWhileLoading, imageBackground: _imageBackground, ...props },
   forwardedRef,
 ) {
   const renderer = useNativeRenderer();

@@ -31,6 +31,7 @@ type PayloadBuilder = (...args: unknown[]) => Record<string, unknown>;
 const assetDataPayloads: Record<string, PayloadBuilder> = {
   canProvide: (ticker, exchange, context) => ({ ticker, exchange, context }),
   primaryMarketSourceName: () => ({}),
+  batchesReads: (method) => ({ method }),
   getCachedFinancialsForTargets: (targets, options) => ({ targets, options }),
   // An abort signal does not cross the bridge; the board stops waiting instead.
   getQuotesBatch: (targets, options) => {

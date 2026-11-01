@@ -4,6 +4,7 @@ import type { BacktestHistory } from "./client";
 import { runBacktest, type BacktestOptions, type BacktestResult } from "./engine";
 import { delistingLabel } from "../../../market-data/quotes/delisting";
 import type { BacktestBar, Rule } from "./rules";
+import { formingBarsState, isFormingBar } from "../shared/forming-bars";
 
 /** Which served sessions a run tests. */
 export interface BacktestWindowOptions {
@@ -62,17 +63,17 @@ export function backtestWindow(
   if (history.undatedSkipped > 0) {
     warnings.push(`${history.undatedSkipped} price ${history.undatedSkipped === 1 ? "point" : "points"} without a date ${history.undatedSkipped === 1 ? "was" : "were"} left out.`);
   }
-  const forming = inWindow.filter((bar) => bar.partial);
-  const bars = forming.length === 0 || options.includePartial ? inWindow : inWindow.filter((bar) => !bar.partial);
+  // A future's session that has not settled moves too: its close becomes the settlement.
+  const forming = inWindow.filter(isFormingBar);
+  const bars = forming.length === 0 || options.includePartial ? inWindow : inWindow.filter((bar) => !isFormingBar(bar));
   const through = bars.at(-1)?.date;
   if (forming.length > 0) {
-    const dates = listDates(forming.map((bar) => bar.date));
+    const dates = `${listDates(forming.map((bar) => bar.date))} ${formingBarsState(forming)}`;
     warnings.push(options.includePartial
-      ? `${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and kept: the last close is the latest price, so the results move until the session ends.`
-      : `${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and left out`
-        + `${through ? `: the test runs through ${through}, the last complete session` : ""}.`);
+      ? `${dates} and kept: the last close is ${forming.every((bar) => bar.partial) ? "the latest price" : "not final"}, so the results move until the session ends.`
+      : `${dates} and left out${through ? `: the test runs through ${through}, the last complete session` : ""}.`);
   }
-  const newestComplete = history.bars.findLast((bar) => !bar.partial)?.date;
+  const newestComplete = history.bars.findLast((bar) => !isFormingBar(bar))?.date;
   const delisting = history.delisting;
   if (delisting) {
     const listing = `${history.symbol ? `${parsePublicTickerKey(history.symbol).symbol}: ` : ""}${delistingLabel(delisting)}`;

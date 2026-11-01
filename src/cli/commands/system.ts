@@ -1,6 +1,6 @@
 import { join } from "path";
 import { logFailure } from "../../utils/log-failure";
-import { VERSION } from "../../version";
+import { versionCommand } from "./version";
 import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
@@ -9,7 +9,7 @@ import { readBaseCurrency } from "../../utils/base-currency";
 import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
 import type { BuiltinCliCommandDef } from "../command-options";
-import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
+import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
@@ -97,6 +97,21 @@ function describeTimezone(value: unknown): string {
   return typeof value === "string" && value ? value : "not set, times print in UTC alone";
 }
 
+/** What `config get telemetry.attention` prints while the setting is untouched. */
+const ATTENTION_DEFAULT = "default";
+
+/**
+ * Attention Counts as set, not as "on": unset is the default, which counts an
+ * account only once the app has shown it its notice, so it is not `true`.
+ */
+function attentionSetting(telemetry: TelemetryConfig | undefined): boolean | typeof ATTENTION_DEFAULT {
+  return telemetry?.attention ?? ATTENTION_DEFAULT;
+}
+
+function describeAttentionSetting(value: unknown): string {
+  return value === ATTENTION_DEFAULT ? "default: on once the app has shown its notice" : describeConfigValue(value);
+}
+
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "nothing";
@@ -174,32 +189,6 @@ function resourceCacheStats(
 }
 
 export function createSystemCliCommands(): CliCommandDef[] {
-  const versionCommand: CliCommandDef = {
-    name: "version",
-    aliases: ["--version", "-v"],
-    description: "Print the version, runtime, and data folder",
-    help: { group: CLI_COMMAND_GROUPS.app, usage: ["version"] },
-    execute: async (_args, ctx) => {
-      // Where the data lives, or will once a command or the app first runs:
-      // printing the version never creates the folder.
-      let dataDir: string | null = null;
-      try {
-        dataDir = await resolveCliDataDir();
-      } catch (error) {
-        logFailure("cli-system", "Resolve data directory failed")(error);
-        dataDir = null;
-      }
-      ctx.printResult({
-        data: [{
-          version: VERSION,
-          bun: typeof Bun === "undefined" ? null : Bun.version,
-          platform: process.platform,
-          arch: process.arch,
-          dataDir,
-        }],
-      }, { layout: "record" });
-    },
-  };
 
   const doctorCommand: CliCommandDef = {
     name: "doctor",
@@ -259,6 +248,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config set theme <id>",
         "config set telemetry.crashReports false",
         "config set telemetry.usage false",
+        "config set telemetry.attention false",
         "config set starPrompt.enabled false",
         "config set timezone <Region/City>|none",
         "config set updates.channel stable|nightly",
@@ -333,7 +323,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           valueFlashingEnabled: context.config.valueFlashingEnabled,
           "telemetry.crashReports": context.config.telemetry?.crashReports !== false,
           "telemetry.usage": context.config.telemetry?.usage !== false,
-          "telemetry.attention": context.config.telemetry?.attention === true,
+          "telemetry.attention": attentionSetting(context.config.telemetry),
           [STAR_PROMPT_CONFIG_KEY]: context.config.starPrompt?.enabled !== false,
           [TIMEZONE_CONFIG_KEY]: context.config.timezone ?? null,
           [UPDATE_CHANNEL_CONFIG_KEY]: context.config.updates?.channel ?? "stable",
@@ -348,6 +338,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ...(key === "theme" ? { format: (value: unknown) => describeThemeId(String(value)) } : {}),
               ...(key === TIMEZONE_CONFIG_KEY ? { format: describeTimezone } : {}),
               ...(key === "baseCurrency" ? { format: describeBaseCurrency } : {}),
+              ...(key === "telemetry.attention" ? { format: describeAttentionSetting } : {}),
             })),
           });
           return;
@@ -367,7 +358,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           ctx.printResult({ data: { key, value: safeConfig[key] } }, {
             text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value)
               : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value)
-                : key === "baseCurrency" ? describeBaseCurrency(data.value) : describeConfigValue(data.value),
+                : key === "baseCurrency" ? describeBaseCurrency(data.value)
+                  : key === "telemetry.attention" ? describeAttentionSetting(data.value) : describeConfigValue(data.value),
           });
           return;
         }

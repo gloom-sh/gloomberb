@@ -100,9 +100,11 @@ const DISPLAY_ORDER = ["symbol", "name", "price", "change", "conditions", "rvol"
 /**
  * Symbol, name, price and change, then one column per condition with the
  * figure it matched on, then context as the width allows: a column is added
- * only when it fits whole, the row's status first.
+ * only when it fits whole, the row's status first, and only when a row has
+ * one (after the close none does, and an empty column would take the room of
+ * the figures).
  */
-function liveScanColumns(width: number, conditions: readonly LiveScanCondition[]): DataTableColumn[] {
+export function liveScanColumns(width: number, conditions: readonly LiveScanCondition[], withStatus: boolean): DataTableColumn[] {
   const own = conditions.map((condition, index): DataTableColumn => {
     const label = conditionColumnLabel(condition);
     return { id: `c:${index}`, label, width: Math.max(8, label.length), align: "right" };
@@ -121,7 +123,7 @@ function liveScanColumns(width: number, conditions: readonly LiveScanCondition[]
   ));
   let columns = order([...base, ...own]);
   for (const column of OPTIONAL_COLUMNS) {
-    if (repeats.has(column.id)) continue;
+    if (repeats.has(column.id) || (column.id === "status" && !withStatus)) continue;
     const next = order([...columns, column]);
     if (getTableWidth(next) > width) break;
     columns = next;
@@ -349,7 +351,8 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
     [payload, track],
   );
   const matches = useMemo(() => sortMatches(payload?.matches ?? [], sort, noteOf), [noteOf, payload?.matches, sort]);
-  const columns = useMemo(() => liveScanColumns(width, scan.conditions), [scan.conditions, width]);
+  const withStatus = useMemo(() => matches.some((match) => noteOf(match) != null), [matches, noteOf]);
+  const columns = useMemo(() => liveScanColumns(width, scan.conditions, withStatus), [scan.conditions, width, withStatus]);
 
   const apply = (next: LiveScan) => {
     setStoredScan(next);

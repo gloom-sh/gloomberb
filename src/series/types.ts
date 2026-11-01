@@ -92,6 +92,11 @@ export interface SeriesLoadResult {
   points: readonly SeriesPoint[];
   /** A note the chart shows above the plot, such as "cached data is stale". */
   warning?: string;
+  /**
+   * When the copy the points came from was saved (ms), when its refresh failed
+   * and that copy answered: the chart's footer says "saved copy from …".
+   */
+  savedAt?: number;
   /** What a report of this series cites in place of Gloom Cloud. */
   attribution?: SeriesAttribution;
 }
@@ -123,6 +128,13 @@ interface SeriesDefinitionBase {
   group?: string;
   /** Extra words the catalog search matches, such as a ticker the series is often read against. */
   tags?: readonly string[];
+  /**
+   * Words `fn G` charts the series by where a ticker goes (`hashrate`), each
+   * in lower case: only when no listing answers to the word, the quote source
+   * says it is not a ticker, and no other series has the word. A series with
+   * an `input` takes none.
+   */
+  aliases?: readonly string[];
   /** One sentence for the catalog search and for `gloomberb` automation. */
   description?: string;
   /**

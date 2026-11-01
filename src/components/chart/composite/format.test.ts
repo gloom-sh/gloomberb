@@ -134,6 +134,21 @@ describe("composite chart point details", () => {
 });
 
 describe("composite chart unit formatting", () => {
+  test("Treasury axes and cursors keep the legend's 32nds, including fractional ticks and adjusted prices", () => {
+    for (const [value, expected] of [[104.484375, "104-15½"], [104.0078125, "104-00¼"], [104.49, "104-15.68"], [-0.375, "-0-12"]] as const) {
+      for (const span of [0.125, 20]) {
+        const domain = {
+          side: "right" as const, seriesIds: ["treasury"], min: value - span, max: value + span,
+          scale: "linear" as const, unit: "32nds", unitGroup: "price:32nds", priceAssetCategories: ["FUTURE"],
+          priceReferences: { FUTURE: value },
+        };
+        expect(formatChartLegendValue(value, domain.unit, domain.unitGroup, "FUTURE", value)).toBe(expected);
+        expect(formatCompositeAxisValue(value, domain)).toBe(expected);
+        expect(formatCompositeCursorValue(value, domain)).toBe(expected);
+      }
+    }
+  });
+
   test("keeps derived ratio dimensions visible instead of labeling them as multiples", () => {
     const derived: ResolvedSeries = {
       id: "ratio",

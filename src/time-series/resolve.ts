@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { servedFromSavedCopy } from "../data/saved-copies";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { delistingLabel } from "../market-data/quotes/delisting";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
@@ -42,7 +43,7 @@ import { FORWARD_PE_BASIS_NOTICE, REALIZED_NTM_PE_BASIS_NOTICE } from "./forward
 import { valuationPriceWarning } from "./valuation-price";
 import { VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
 import { chartPriceHistoryIntegrityNotices } from "./market";
-import { maxStudyWarmupPoints, resolveStudies } from "./studies";
+import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
 import { totalReturnSeries } from "./total-return";
 import {
@@ -54,6 +55,7 @@ import {
   totalReturnLevelsNotice,
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { coinLegsAtSessionClose } from "./coin-session-close";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { rememberSeedListingFacts } from "./parsed-history-cache";
 import {
@@ -827,7 +829,7 @@ async function resolveChartSpecPass(
           cache.capabilitySeriesByRequest.set(key, pending);
           cache.revision += 1;
         }
-        return baseCapabilitySeries(seriesSpec, await pending, index);
+        return asSavedCopy(baseCapabilitySeries(seriesSpec, await pending, index));
       }
       if (seriesSpec.source.kind === "economic") {
         const request: FredSeriesRequest = {
@@ -845,6 +847,8 @@ async function resolveChartSpecPass(
           priorityWarnings.push(`${result.label}: ${coverageNotice}`);
           coverageNotices.push(`${result.label}: ${coverageNotice}`);
         }
+        // A saved copy that answered for a failed refresh is dated in the footer, as every pane's is.
+        if (result && fred.source === "stale-fallback") return asSavedCopy({ ...result, savedAt: fred.fetchedAt });
         const freshnessWarning = staleFredWarning(fred);
         if (result && freshnessWarning) priorityWarnings.push(`${result.label}: ${freshnessWarning}`);
         return result;
@@ -1054,8 +1058,16 @@ async function resolveChartSpecPass(
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
-  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
-    { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) });
+  const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) };
+  let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow, comparisonOptions);
+  // A coin compared in daily closes with a listing that closes each day is measured at that close when its hourly bars reach.
+  const timed = sources.dataProvider && comparisonResolution === "1d"
+    ? await coinLegsAtSessionClose(priceComparison, rawSeries, sources.dataProvider, comparisonOptions.now) : null;
+  if (timed?.timing.atSessionClose.size) {
+    rawSeries.splice(0, rawSeries.length, ...timed.series);
+    priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
+      { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
+  }
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
@@ -1180,6 +1192,7 @@ async function resolveChartSpecPass(
     loading: false,
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],
+    ...savedCopyOf(rawSeries.filter((entry) => visibleSeriesIds.has(entry.id))),
     ...(coverageNotices.length ? { coverageNotices: [...new Set(coverageNotices)] } : {}),
     ...(returnBasisNotice ? { returnBasisNotice } : {}),
     ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
@@ -1187,4 +1200,19 @@ async function resolveChartSpecPass(
     resolution,
     ...(builtBarSize && rawSeries.some((entry) => entry.barSize === builtBarSize) ? { barSize: builtBarSize } : {}),
   };
+}
+
+/**
+ * A series drawn from a copy a failed refresh left answering (`savedAt`),
+ * marked as one, so a command charting it ends with "couldn't refresh; saved
+ * copy from …" as the app's footer says.
+ */
+function asSavedCopy(series: ResolvedSeries): ResolvedSeries {
+  return series.savedAt != null ? servedFromSavedCopy(series, series.savedAt) : series;
+}
+
+/** The oldest saved copy among `series` that answered for a failed refresh, which the chart's footer dates. */
+function savedCopyOf(series: readonly ResolvedSeries[]): { savedAt?: number } {
+  const saved = series.flatMap((entry) => entry.savedAt != null && Number.isFinite(entry.savedAt) ? [entry.savedAt] : []);
+  return saved.length ? { savedAt: Math.min(...saved) } : {};
 }

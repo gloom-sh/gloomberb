@@ -187,6 +187,8 @@ test("several symbols are one table ranked by trailing yield; a read without its
   expect(line("HALF")).toContain("no cash history");
   expect(line("NOSUM")).toMatch(/3\.10%.*no summary/);
   expect(line("GONE")).toContain("not read");
+  // The date column is the next distribution's pay date, beside the last ex-date that has passed.
+  expect(text.split("\n").find((entry) => entry.startsWith("Ticker"))).toMatch(/Last ex +Next pay/);
 
   // Every exported row names its ticker, the percent its figures are in and the time of the price its yields are over,
   // and the closing lines date the report by the newest of those prices.

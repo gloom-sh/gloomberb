@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { GasStorageBoard, GasStorageHistory, GasStorageRow, GasStorageSeasonal } from "../../../api-client/europe-energy";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -77,7 +78,7 @@ export async function fetchGasStorage(client: Pick<GasApi, "getCloudEuropeGas"> 
   } catch (error) {
     throw unavailableOnServer(error, GAS_STORAGE_NOT_AVAILABLE, [404, 503]);
   }
-  if (board.status === "unavailable") throw new Error(GAS_STORAGE_NOT_AVAILABLE);
+  if (board.status === "unavailable") throw sourceDidNotAnswer(GAS_STORAGE_NOT_AVAILABLE);
   return board;
 }
 

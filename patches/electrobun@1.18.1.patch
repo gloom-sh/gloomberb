@@ -495,7 +495,7 @@ index a7822d85c187c1edf361f2e65757057aad9da7b0..533d431c6cc2097951f421cb1fbe3142
  
  async function generateKeyFromBytes(rawKey: Uint8Array): Promise<CryptoKey> {
 diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
-index f0f6c2532ba2eb467ec1d452a25c835b6db72661..ae77cf58d32392ad4cc8e2103ac7ed27baae8bea 100644
+index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74d0fb578d 100644
 --- a/dist/api/bun/proc/native.ts
 +++ b/dist/api/bun/proc/native.ts
 @@ -829,6 +829,7 @@ const _ffiImpl = {
@@ -524,3 +524,110 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..ae77cf58d32392ad4cc8e2103ac7ed27
  			if (!hidden) {
  				native_.symbols.showWindow(windowPtr, activate);
  			}
+@@ -1915,6 +1920,14 @@ process.on("SIGTERM", () => {
+ //   }
+ // );
+ 
++// A JSCallback's cstring argument arrives as the pointer under Bun 1.3 and as
++// a string (null for NULL) under Bun 1.4, which Windows builds ship.
++function callbackString(value: unknown): string {
++	if (typeof value === "string") return value;
++	if (value === null || value === undefined) return "";
++	return new CString(value as Pointer).toString();
++}
++
+ const windowCloseCallback = new JSCallback(
+ 	(id) => {
+ 		const handler = electrobunEventEmitter.events.window.close;
+@@ -2036,7 +2049,7 @@ const windowKeyCallback = new JSCallback(
+ 
+ const getMimeType = new JSCallback(
+ 	(filePath) => {
+-		const _filePath = new CString(filePath).toString();
++		const _filePath = callbackString(filePath);
+ 		const mimeType = Bun.file(_filePath).type; // || "application/octet-stream";
+ 
+ 		// For this usecase we generally don't want the charset included in the mimetype
+@@ -2074,7 +2087,7 @@ const globalShortcutHandlers = new Map<string, () => void>();
+ if (native) {
+ 	const urlOpenCallback = new JSCallback(
+ 		(urlPtr) => {
+-			const url = new CString(urlPtr).toString();
++			const url = callbackString(urlPtr);
+ 			const handler = electrobunEventEmitter.events.app.openUrl;
+ 			const event = handler({ url });
+ 			electrobunEventEmitter.emitEvent(event);
+@@ -2111,7 +2124,7 @@ if (native) {
+ 
+ 	const globalShortcutCallback = new JSCallback(
+ 		(acceleratorPtr) => {
+-			const accelerator = new CString(acceleratorPtr).toString();
++			const accelerator = callbackString(acceleratorPtr);
+ 			const handler = globalShortcutHandlers.get(accelerator);
+ 			if (handler) handler();
+ 		},
+@@ -2505,8 +2518,8 @@ const webviewEventJSCallback = new JSCallback(
+ 
+ 		try {
+ 			// Convert cstring pointers to actual strings
+-			eventName = new CString(_eventName).toString();
+-			detail = new CString(_detail).toString();
++			eventName = callbackString(_eventName);
++			detail = callbackString(_detail);
+ 		} catch (err) {
+ 			console.error("[webviewEventJSCallback] Error converting strings:", err);
+ 			console.error("[webviewEventJSCallback] Raw values:", {
+@@ -2528,7 +2541,7 @@ const webviewEventJSCallback = new JSCallback(
+ const bunBridgePostmessageHandler = new JSCallback(
+ 	(id, msg) => {
+ 		try {
+-			const msgStr = new CString(msg);
++			const msgStr = callbackString(msg);
+ 
+ 			if (!msgStr.length) {
+ 				return;
+@@ -2564,7 +2577,7 @@ const bunBridgePostmessageHandler = new JSCallback(
+ const eventBridgeHandler = new JSCallback(
+ 	(_id: number, msg: number) => {
+ 		try {
+-			const message = new CString(msg as unknown as Pointer);
++			const message = callbackString(msg);
+ 			const rawMessage = message.toString().trim();
+ 			if (!rawMessage || (rawMessage[0] !== "{" && rawMessage[0] !== "[")) {
+ 				return;
+@@ -2593,7 +2606,7 @@ const eventBridgeHandler = new JSCallback(
+ const internalBridgeHandler = new JSCallback(
+ 	(_id: number, msg: number) => {
+ 		try {
+-			const batchMessage = new CString(msg as unknown as Pointer);
++			const batchMessage = callbackString(msg);
+ 			const jsonBatch = JSON.parse(batchMessage.toString());
+ 
+ 			if (jsonBatch.id === "webviewEvent") {
+@@ -2664,7 +2677,7 @@ const trayItemHandler = new JSCallback(
+ 	(id, action) => {
+ 		// Note: Some invisible character that doesn't appear in .length
+ 		// is causing issues
+-		const actionString = (new CString(action).toString() || "").trim();
++		const actionString = (callbackString(action) || "").trim();
+ 
+ 		// Use shared deserialization method
+ 		const { action: actualAction, data } = deserializeMenuAction(actionString);
+@@ -2688,7 +2701,7 @@ const trayItemHandler = new JSCallback(
+ 
+ const applicationMenuHandler = new JSCallback(
+ 	(id, action) => {
+-		const actionString = new CString(action).toString();
++		const actionString = callbackString(action);
+ 
+ 		// Use shared deserialization method
+ 		const { action: actualAction, data } = deserializeMenuAction(actionString);
+@@ -2711,7 +2724,7 @@ const applicationMenuHandler = new JSCallback(
+ 
+ const contextMenuHandler = new JSCallback(
+ 	(_id, action) => {
+-		const actionString = new CString(action).toString();
++		const actionString = callbackString(action);
+ 
+ 		// Use shared deserialization method
+ 		const { action: actualAction, data } = deserializeMenuAction(actionString);

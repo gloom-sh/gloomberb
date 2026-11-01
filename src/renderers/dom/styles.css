@@ -1441,6 +1441,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset -1px 0 0 var(--sg-hairline);
 }
 [data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+/* A whole-row cell too narrow for its value and detail on one line: the label
+   stays on the first line, the value and the detail run down beside it. */
+[data-gloom-role="stat-grid-cell"][data-wrapped="true"] { align-items: flex-start; }
+[data-gloom-role="stat-grid-cell"][data-wrapped="true"] [data-gloom-role="stat-grid-detail"] { flex: none; }
 /* Column grid text whose track can be narrower than it, and the grid itself: clipped
    without a scroll container where the engine has `overflow: clip`. A text box sets its
    own overflow inline, hence !important. The margin keeps the antialiased edge of a glyph
@@ -1497,6 +1501,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-icon-button:disabled, [data-gloom-role="pane-footer-icon"] { cursor: default; }
 .gloom-icon-button:not(:disabled):hover { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
 .gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
+/* A status's few characters after its icon (a delay's 15m): read without hovering, in the muted tone of the meta text around it. */
+.gloom-icon-button-text, [data-gloom-role="pane-footer-icon-text"] { margin-left: var(--gloom-space-xs); color: var(--gloom-text-muted); }
+.gloom-icon-button:not(:disabled):hover .gloom-icon-button-text { color: inherit; }
 .gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }
 [data-gloom-role="field-grid-value"] button,
 [data-gloom-role="field-grid-value"] button > span { justify-content: flex-end !important; text-align: right; padding-inline: 0 !important; }

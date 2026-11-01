@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import type { AppState } from "../../state/app/context";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
-import { findExactTickerSearchMatch, listingChoiceQuery } from "../../tickers/search";
-import { isKnownExchangeCode, parsePublicTickerKey } from "../../utils/exchanges";
+import { listingChoiceQuery } from "../../tickers/search";
+import { isKnownExchangeCode } from "../../utils/exchanges";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
 import type {
@@ -294,37 +294,21 @@ export function useCommandBarSelectionRuntime({
   const activateListSelection = useCallback((options?: { secondary?: boolean; item?: ResultItem }) => {
     const listState = visibleListStateRef.current;
     if (!listState) return;
-    // Enter submits the typed command until a row is deliberately chosen.
-    // Search ranks suggestions by relevance; its first namesake must not
-    // replace the listing the shared ticker resolver would open.
+    // Enter opens exactly the highlighted row. The typed command runs as typed
+    // only while no listing for it is highlighted: before its search answers
+    // (`DES HFC` then opens the listing `quote HFC` reads), or while the rows
+    // on screen are an earlier query's.
     const queryChanged = rootQueryRef.current !== rootQuery;
     const tickerArgument = rootShortcutIntent.kind !== "none" && rootShortcutIntent.argKind === "ticker"
       ? rootShortcutIntent.argText : null;
     const listingQuery = listingChoiceQuery(tickerArgument ?? rootQueryRef.current);
     const choosingVenue = listingQuery && !isKnownExchangeCode(listingQuery.suffix);
-    const submitTyped = !options?.item && !currentRoute
+    const highlighted = listState.results[listState.selectedIdx];
+    const listingHighlighted = !queryChanged && (highlighted?.kind === "ticker" || highlighted?.kind === "search");
+    const submitTyped = !options?.item && !currentRoute && !listingHighlighted
       && (queryChanged || (!rootSelectionNavigatedRef.current && !choosingVenue));
-    let typed = submitTyped && (queryChanged || tickerArgument !== null)
+    const typed = submitTyped && (queryChanged || tickerArgument !== null)
       ? resolveImmediateRootSelection(rootQueryRef.current) : null;
-    const first = listState.results[listState.selectedIdx];
-    if (typed && !queryChanged && rootShortcutIntent.kind !== "none" && rootShortcutIntent.argKind === "ticker"
-      && first && (first.kind === "ticker" || first.kind === "search")) {
-      const argument = rootShortcutIntent.argText;
-      // Company names and partial symbols still accept the suggested match.
-      // An exact symbol or named venue goes through listing resolution.
-      if (!parsePublicTickerKey(argument).exchange && !findExactTickerSearchMatch(
-        listState.results.filter((item) => item.kind === "ticker" || item.kind === "search"), argument,
-      )) typed = null;
-    }
-    // A plain symbol follows the same path once it is the default ticker row.
-    // Commands and company-name searches keep their own default actions.
-    const plainSymbol = submitTyped && !typed && first && (first.kind === "ticker" || first.kind === "search")
-      && findExactTickerSearchMatch([first], rootQueryRef.current);
-    if (plainSymbol && first) {
-      const symbol = rootQueryRef.current;
-      typed = { ...first, action: () => runSecurityDescriptionShortcut(symbol),
-        secondaryAction: () => runSecurityDescriptionShortcut(symbol, { forceNewPane: true }) };
-    }
     const selected = options?.item ?? typed ?? listState.results[listState.selectedIdx];
     if (!selected) {
       if (searchPending && !currentRoute && !options?.item && !rootSelectionNavigatedRef.current) {
@@ -399,8 +383,8 @@ export function useCommandBarSelectionRuntime({
       item: selected,
       query,
       rank: selected === typed ? 0 : Math.max(0, listState.results.indexOf(selected)),
-      // A plain symbol stays a ticker choice; a submitted command is the shortcut itself.
-      isShortcut: () => !plainSymbol && (selected === typed || resolveImmediateRootSelection(query)?.id === selected.id),
+      // A listing row stays a ticker choice; a submitted command is the shortcut itself.
+      isShortcut: () => !listingHighlighted && (selected === typed || resolveImmediateRootSelection(query)?.id === selected.id),
     }, run);
   }, [
     closeAll,
@@ -416,7 +400,6 @@ export function useCommandBarSelectionRuntime({
     rootSelectionNavigatedRef,
     rootShortcutIntent,
     runRootRow,
-    runSecurityDescriptionShortcut,
     searchPending,
     stateConfigLayout,
     stateRef,

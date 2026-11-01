@@ -25,9 +25,11 @@ import type { PluginModule } from "../plugin-module";
 import { FUTURES_SERIES } from "./series";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { quoteObservation } from "../shared/report-freshness";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import {
   boardErrorMessage,
   boardHeadlineQuote,
+  boardQuotes,
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
@@ -46,6 +48,7 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   FUTURES_RETURN_COLUMNS,
+  futuresNoMatchFailure,
   futuresRowId,
   type FuturesColumnId,
   type FuturesSortPreference,
@@ -255,15 +258,26 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     },
   } : null);
 
+  // `fn FUT natgas` with no contract to list fails with what to type instead, not the board's empty labels.
+  const noMatch = !!dataProvider && !!searchQuery.trim() && !rows.some((row) => row.type === "row");
+  useRemoteUiNode(noMatch ? {
+    role: "report-failure",
+    label: "No matching contracts",
+    getMetadata: () => futuresNoMatchFailure(searchQuery),
+  } : null);
+
   const status = quoteBoardStatus(listedQuotes);
   const errorMessage = boardErrorMessage(listedQuotes);
   // Every load came back empty: a board of dashes reads as broken, so the
   // body says so once and offers a retry. One quote is enough to keep rows.
   const noQuotes = !!dataProvider && listedQuotes.size > 0 && status.unavailable === listedQuotes.size;
+  // Signed out or free, the contracts' quotes are delayed ones.
+  const quoteDelay = useQuoteDelayFooter(boardQuotes(listedQuotes), "futures-delay");
   usePaneFooter(FUTURES_PANE_ID, () => {
     if (noQuotes) return { info: [], hints: [] };
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
     if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
+    if (quoteDelay) info.push(quoteDelay);
     return {
       info,
       hints: [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
@@ -272,6 +286,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     errorMessage,
     focusSearch,
     noQuotes,
+    quoteDelay,
     status.latestTs,
     status.loading,
     status.savedAt,

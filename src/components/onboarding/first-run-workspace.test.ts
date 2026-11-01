@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig } from "../../types/config";
+import { createDefaultConfig, type SavedLayout } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
 import {
   FIRST_RUN_PANE_IDS,
   applyFirstRunLayout,
   buildFirstRunLayout,
+  onboardingDeskLayoutId,
   planFirstRunWatchlist,
+  setupDeskPicks,
 } from "./first-run-workspace";
 
 function ticker(symbol: string, { held = false, watched = false } = {}): [string, TickerRecord] {
@@ -82,5 +84,61 @@ describe("first-run workspace", () => {
     expect(next.layouts.map((layout) => layout.name)).toEqual(["Home", "Monitor", "Macro"]);
     expect(next.layout).toBe(home.layout);
     expect(next.activeLayoutIndex).toBe(0);
+  });
+
+  test("running again replaces the layouts it made and leaves the user's alone", () => {
+    const config = createDefaultConfig("/tmp/first-run");
+    const home = (symbol: string) => buildFirstRunLayout({ symbol, portfolioId: "main", watchlistId: "watchlist", hasPane: () => true });
+    const desk = (key: "rates" | "fx" | "options", name: string) => ({ ...home("SPY"), name, id: onboardingDeskLayoutId(key) });
+    const first = applyFirstRunLayout(config, home("AAPL"), [desk("rates", "Rates"), desk("fx", "FX & Macro")]);
+    expect(first.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro"]);
+
+    // The user moves their own layout to the front and adds one of their own.
+    const mine: SavedLayout = { name: "Mine", layout: home("TSLA").layout };
+    const [onboardingHome, rates, fx, monitor, macro] = first.layouts;
+    const edited = { ...first, layouts: [monitor!, onboardingHome!, rates!, fx!, macro!, mine], activeLayoutIndex: 5 };
+
+    const again = applyFirstRunLayout(edited, home("MSFT"), [desk("rates", "Rates"), desk("fx", "FX & Macro")]);
+    expect(again.layouts).toHaveLength(edited.layouts.length);
+    expect(again.layouts.map((layout) => layout.name)).toEqual(["Monitor", "Home", "Rates", "FX & Macro", "Macro", "Mine"]);
+    expect(again.layouts[0]).toBe(monitor!);
+    expect(again.layouts.slice(4)).toEqual([macro!, mine]);
+    expect(again.activeLayoutIndex).toBe(1);
+    expect(again.layout.instances.find((instance) => instance.instanceId === FIRST_RUN_PANE_IDS.chart)?.binding)
+      .toEqual({ kind: "fixed", symbol: "MSFT" });
+
+    // Other picks replace the desks it made, and a skip removes them.
+    expect(applyFirstRunLayout(again, home("MSFT"), [desk("options", "Options")]).layouts.map((layout) => layout.name))
+      .toEqual(["Monitor", "Home", "Options", "Macro", "Mine"]);
+    expect(applyFirstRunLayout(again, home("MSFT")).layouts.map((layout) => layout.name))
+      .toEqual(["Monitor", "Home", "Macro", "Mine"]);
+  });
+
+  test("a run from Settings rebuilds what setup made before it tagged its layouts, and replaces nothing else", () => {
+    const home = (symbol: string) => buildFirstRunLayout({ symbol, portfolioId: "main", watchlistId: "watchlist", hasPane: () => true });
+    const desk = (key: "rates" | "fx" | "options", name: string) => ({ ...home("SPY"), name, id: onboardingDeskLayoutId(key) });
+    const untagged = (name: string): SavedLayout => ({ name, layout: home("TSLA").layout });
+    // Setup's Home and desks as older builds left them, then the user's own:
+    // a later Rates tab is theirs, since only the run right after Home is setup's.
+    const older = {
+      ...createDefaultConfig("/tmp/first-run"),
+      layouts: [untagged("Home"), untagged("Rates"), untagged("FX & Macro"), untagged("Monitor"), untagged("Rates")],
+    };
+    expect(setupDeskPicks(older)).toEqual(["rates", "fx"]);
+
+    const again = applyFirstRunLayout(older, home("MSFT"), [desk("rates", "Rates"), desk("fx", "FX & Macro")], { rerun: true });
+    expect(again.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Rates"]);
+    expect(again.layouts.map((layout) => layout.id)).toEqual([
+      "onboarding:home", onboardingDeskLayoutId("rates"), onboardingDeskLayoutId("fx"), undefined, undefined,
+    ]);
+    expect(again.layouts.slice(3)).toEqual(older.layouts.slice(3));
+    expect(setupDeskPicks(again)).toEqual(["rates", "fx"]);
+
+    // A first tab that is not Home is the user's: Home goes in ahead of it.
+    const renamed = { ...older, layouts: [untagged("Main"), ...older.layouts.slice(1)] };
+    expect(setupDeskPicks(renamed)).toEqual([]);
+    const kept = applyFirstRunLayout(renamed, home("MSFT"), [], { rerun: true });
+    expect(kept.layouts.map((layout) => layout.name)).toEqual(["Home", "Main", "Rates", "FX & Macro", "Monitor", "Rates"]);
+    expect(kept.layouts.slice(1)).toEqual(renamed.layouts);
   });
 });

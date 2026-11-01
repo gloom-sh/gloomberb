@@ -3,7 +3,6 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { graphCache } from "./graph-client";
 import { supplyChainCache } from "./client";
 import { supplyChainHeadless } from "./headless";
-import { SupplyChainPane } from "./pane";
 
 /** What another pane can open SPLC on: a Graph or Path view, its target and its query, as `graphOptions` reads them. */
 const OPENING_SETTINGS = ["tab", "to", "depth", "direction", "roles", "tiers"];
@@ -13,7 +12,7 @@ const openingSettings = (values: Record<string, string> = {}) =>
 export const supplyChainModule: PluginModule = {
   setup(ctx) { supplyChainCache.attach(ctx.persistence); graphCache.attach(ctx.persistence); },
   dispose() { supplyChainCache.reset(); graphCache.reset(); },
-  panes: [{ id: "supply-chain", name: "Supply Chain", icon: "S", component: SupplyChainPane,
+  panes: [{ id: "supply-chain", name: "Supply Chain", icon: "S", get component(): typeof import("./pane").SupplyChainPane { const { SupplyChainPane } = require("./pane"); return SupplyChainPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 30 },
     tickerFollower: true, instruments: ["equity"], tableExport: true, headless: supplyChainHeadless }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "supply-chain-pane", paneId: "supply-chain", label: "Supply Chain",

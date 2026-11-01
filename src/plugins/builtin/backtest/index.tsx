@@ -1,13 +1,12 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { backtestHeadless } from "./headless";
-import { BacktestPane } from "./pane";
 import { BACKTEST_PRESETS, LOOKBACK_OPTIONS } from "./presets";
 import { BACKTEST_FRESHNESS } from "./report";
 
 export const backtestModule: PluginModule = {
   panes: [{
-    id: "backtest", name: "Backtest", icon: "B", component: BacktestPane,
+    id: "backtest", name: "Backtest", icon: "B", get component(): typeof import("./pane").BacktestPane { const { BacktestPane } = require("./pane"); return BacktestPane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 120, height: 34 },
     tableExport: true,
     // A capture is dated as `fn BT` dates the run, by its last session, never by the ticker's live quote.

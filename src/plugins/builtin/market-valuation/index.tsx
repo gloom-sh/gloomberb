@@ -3,7 +3,6 @@ import { valuationCache } from "./cache";
 import { valuationSeriesDefinitions } from "./chart-series";
 import { INDICATORS, resolveIndicatorArg } from "./indicators";
 import { marketValuationHeadless } from "./headless";
-import { MarketValuationPane } from "./pane";
 import { buildValuationSettingsDef, VALUATION_DEFAULTS } from "./settings";
 
 
@@ -41,7 +40,7 @@ export const marketValuationModule: PluginModule = {
     id: MARKET_VALUATION_PANE_ID,
     name: "Market Valuation",
     icon: "V",
-    component: MarketValuationPane,
+    get component(): typeof import("./pane").MarketValuationPane { const { MarketValuationPane } = require("./pane"); return MarketValuationPane; },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 88, height: 34 },

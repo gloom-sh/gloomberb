@@ -21,6 +21,7 @@ import {
   type DataTableKeyEvent,
   type PaneHint,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useRowNotes } from "../../../components/ui/row-notes";
 import { colors } from "../../../theme/colors";
@@ -922,7 +923,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     info.push({ id: "restart", parts: [{ text: "restart to finish loading", tone: "warning" }] });
   }
   if (status === "ready" && fetchedAt && !stale && !busy) {
-    info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
+    info.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
   }
 
   const hints: PaneHint[] = [];

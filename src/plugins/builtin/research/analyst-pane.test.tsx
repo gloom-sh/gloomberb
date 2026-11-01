@@ -180,3 +180,33 @@ test("the selected action is the mean-target cursor, and a short pane keeps the 
   expect(lines[2]).toContain("FIRM");
   expect(lines.filter((line) => line.includes("Raises")).length).toBeGreaterThanOrEqual(4);
 });
+
+/**
+ * Coverage that says why a firm acted puts that line beside the action, and
+ * the selected action's article is the footer's link. Actions no coverage
+ * explains show nothing there.
+ */
+test("a reason sits beside its action and the selected one links its article", async () => {
+  const ratings: AnalystRatingRecord[] = [
+    { ...research.ratings[0]!, reason: { text: "on margin pressure", url: "https://www.investing.com/news/a-93CH-1", source: "Investing.com" } },
+    research.ratings[2]!,
+  ];
+  await renderHarness({ ...research, ratings }, 16);
+  const frame = tui.frame();
+  expect(frame).toContain("REASON");
+  // The line takes the room the pane has left: at 96 columns, the start of it.
+  const reasoned = frame.split("\n").find((line) => line.includes("Truist Securities"));
+  expect(reasoned).toMatch(/Buy\s+on margin/);
+  const plain = frame.split("\n").find((line) => line.includes("No Target"));
+  expect(plain).not.toMatch(/on margin|REASON/);
+  expect(frame).toMatch(/source Investing\.com/);
+  expect(frame).toContain("pen");
+
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { frames: 2 });
+  await act(async () => { await Bun.sleep(50); await tui.setup().renderOnce(); });
+  expect(tui.frame()).not.toContain("source Investing.com");
+
+  // No reason anywhere: no column for one.
+  await renderHarness(research, 16);
+  expect(tui.frame()).not.toContain("REASON");
+});

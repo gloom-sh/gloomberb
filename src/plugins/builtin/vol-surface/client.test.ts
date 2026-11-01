@@ -144,6 +144,24 @@ describe("surface loader", () => {
     expect(calls).toBe(4);
   });
 
+  // A source that batches expiries asked together (the cloud) gets all eighteen in one moment; any other gets four at a time.
+  test("a source that batches expiries is asked for every one at once, each marked as asked with the others", async () => {
+    const batched: (boolean | undefined)[] = [];
+    const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
+    const loading = loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100 }, {
+      now: () => now, loadYieldCurve: async () => curve, batchesExpiries: async () => true,
+      loadOptions: async (request, options) => {
+        if (!request.expirationDate) return ready(emptyChain());
+        batched.push(options?.batch);
+        return gate.promise;
+      },
+    });
+    await settle();
+    expect(batched).toEqual(Array(18).fill(true));
+    gate.resolve(ready(emptyChain()));
+    expect((await loading).loaded).toBe(18);
+  });
+
   test("rate failure preserves loaded slices and source failures instead of substituting a rate", async () => {
     const result = await loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100, spotAsOf: "2026-09-22T13:59:00Z" }, {
       now: () => now, loadYieldCurve: async () => { throw new Error("Treasury offline"); },

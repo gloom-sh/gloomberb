@@ -1,7 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { SwapCurvePayload, SwapTenor } from "../../../api-client/swap-curve";
-import { isPermanentClientError } from "../../../api-client/errors";
-import { createPluginCache, type PluginCacheResult } from "../../../data/plugin-cache";
+import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { validateSwapCurve } from "./swaps-model";
 import { loadCurveData, type CurveData, type CurveId } from "./curves";
@@ -52,12 +51,11 @@ export interface SavedCopyAnswer<T> {
 const curveKey = (curve: CurveId, requestedDate: string) => `${curve}:${requestedDate || "latest"}`;
 /**
  * A copy is the saved one by where it came from, whatever its failure said. A
- * refusal asking again will not change (access denied, an unknown curve) is
- * said rather than covered by the copy, as `loadCloudResource` does.
+ * refusal (access denied, an unknown curve) or a reply that fails validation
+ * is said rather than covered by the copy, as `loadCloudResource` does.
  */
 function answer<T>(result: PluginCacheResult<T>): SavedCopyAnswer<T> {
-  const saved = result.source === "stale-fallback";
-  if (saved && isPermanentClientError(result.error)) throw result.error;
+  const saved = savedCopyForTransientFailure(result).source === "stale-fallback";
   return { data: result.data, savedAt: saved ? result.fetchedAt : null };
 }
 

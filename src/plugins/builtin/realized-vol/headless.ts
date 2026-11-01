@@ -55,6 +55,8 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       const lastBar = model.asOf && Number.isFinite(model.asOf.getTime()) ? model.asOf.toISOString().slice(0, 10) : null;
       return {
         freshness: { asOf: lastBar },
+        // The session still trading is left out of every estimate, and said, as BT says it.
+        ...(model.formingNote ? { warnings: [`${model.formingNote}.`] } : {}),
         sections: [
           { title: "Volatility cone", columns: [
             { key: "window", header: "Bars" },

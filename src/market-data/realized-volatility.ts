@@ -3,6 +3,7 @@ import { barsPerYear } from "./bars-per-year";
 import {
   mergePriceHistoryIntegrity,
   pricePointIntegrity,
+  pricePointWicks,
   type PriceHistoryIntegrity,
 } from "../utils/price-history-integrity";
 
@@ -115,8 +116,9 @@ function observations(points: readonly PricePoint[]): Observation[] | null {
     time,
     close: positiveLog(point.close),
     open: positiveLog(point.open),
-    high: positiveLog(point.high),
-    low: positiveLog(point.low),
+    // A wick too far from the bar's body to have traded is missing, not a range.
+    high: positiveLog(pricePointWicks(point).high),
+    low: positiveLog(pricePointWicks(point).low),
     integrity: pricePointIntegrity(point),
   }));
 }

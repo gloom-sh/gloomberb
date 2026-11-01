@@ -39,6 +39,7 @@ import { getBrokerInstance } from "../utils/broker-instances";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
 import { mergeSuffixedListings, moveTargetWeights } from "../portfolio/suffixed-listings";
 import { positionContractMultiplier } from "../portfolio/position-metrics";
+import { reportTelemetryConfig } from "../telemetry/live-config";
 import {
   clearLeftoverBrokerHoldings,
   knownBrokerHoldings,
@@ -421,7 +422,34 @@ function collectCoreConfigPayload(config: AppConfig) {
     // Completion is monotonic in synced state. A device only advertises the
     // completed state, while resumable progress and incomplete state stay local.
     onboardingComplete: config.onboardingComplete === true ? true : undefined,
+    // Only whether Attention Counts is off: see mergedAttentionTelemetry.
+    attentionOff: config.telemetry?.attention === false,
   });
+}
+
+/**
+ * Attention Counts off belongs to the signed-in account, not to one device:
+ * an off made on another device turns it off here, and an explicit on made
+ * there afterwards turns it back on. The default never overrides either. An
+ * edit made here since the last sync wins, like any setting. No synced copy,
+ * or one from before `attentionOff` existed, reads as not off: a device's
+ * first sync takes an off already on the account, and keeps its own off
+ * instead of taking an on.
+ */
+function mergedAttentionTelemetry(
+  config: AppConfig,
+  baselineConfig: AppConfig,
+  payload: Record<string, unknown>,
+  lastSynced: Record<string, unknown> | null,
+): AppConfig["telemetry"] {
+  // A copy pushed by an older build says nothing either way.
+  if (typeof payload.attentionOff !== "boolean") return config.telemetry;
+  const localOff = config.telemetry?.attention === false;
+  if (payload.attentionOff === localOff) return config.telemetry;
+  const editedHere = localOff !== (baselineConfig.telemetry?.attention === false)
+    || localOff !== (lastSynced?.attentionOff === true);
+  if (editedHere) return config.telemetry;
+  return { ...config.telemetry, attention: !payload.attentionOff };
 }
 
 function positionValueBase(
@@ -957,6 +985,8 @@ function mergeConfigPayload(
   assign("valueFlashingEnabled");
   assign("recentTickers");
   assign("recentCommands");
+  const telemetry = mergedAttentionTelemetry(config, baselineConfig, payload, lastSynced);
+  if (telemetry !== config.telemetry) next.telemetry = telemetry;
   // Sync can complete onboarding on another device, but never reopen it.
   // Resumable progress remains local until this installation completes it.
   if (
@@ -1420,6 +1450,8 @@ export const coreConfigSyncContributor: SyncContributor = {
           activeLayoutIndex: nextConfig.activeLayoutIndex,
         });
       }
+      // An Attention Counts off from another device drops unsent counts before React commits.
+      if (nextConfig.telemetry !== getState().config.telemetry) reportTelemetryConfig(nextConfig.telemetry);
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       if (!removed) scheduleConfigSave(nextConfig);
     }

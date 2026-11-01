@@ -5,6 +5,7 @@ import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provi
 import {
   buildInlineFilingContentTargets,
   nextUncachedFilingContentTarget,
+  nextUncachedFilingContentTargets,
 } from "./filing-content";
 
 function filing(accessionNumber: string): SecFilingItem {
@@ -29,6 +30,9 @@ describe("SEC filing content cache", () => {
       targets,
       new Map([["selected", null]]),
     )?.accessionNumber).toBe("background");
+    // The ones read beside the head, in the same order, once each.
+    expect(nextUncachedFilingContentTargets([...targets, filing("third"), filing("fourth")], new Map([["background", "text"]]), 2)
+      .map((target) => target.accessionNumber)).toEqual(["selected", "third"]);
   });
 
   test("builds content targets only for readable inline exhibits", () => {

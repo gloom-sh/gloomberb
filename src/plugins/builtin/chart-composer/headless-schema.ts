@@ -3,6 +3,7 @@ import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-ga
 import { CHART_BAR_SIZE_PRESETS, parseChartBarSize } from "../../../time-series/resolution";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
+import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -50,6 +51,11 @@ export const paneSchemas = {
         aliases: ["resolution"],
         values: [{ value: "auto" }, ...BAR_SIZES],
         normalize: (value) => normalizeBarSize(value, true),
+      },
+      {
+        key: "exchange",
+        description: "Exchange for every ticker that names none: fn G BDI --exchange TSX is fn G BDI:TSX.",
+        type: "string",
       },
     ],
     discovery: {
@@ -138,6 +144,10 @@ export const paneSchemas = {
         ],
         defaultValue: "percent",
       },
+      // A window of dates, measured from the close before it as RETURN is: --from 2026-10-19 compares since the 16th's close.
+      { key: "from", type: "string", placeholder: "year|date", description: `${PRICE_WINDOW_FROM_HELP}; the returns are measured from the last close the tickers share before it, as RETURN measures`,
+        example: "--from 2019-12-31", replaces: ["rangePreset"] },
+      { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP },
       {
         key: "totalReturn",
         description: "Reinvest each cash distribution at its ex-date close, so the returns are total returns, not price returns.",

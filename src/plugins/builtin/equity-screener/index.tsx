@@ -1,6 +1,5 @@
 import type { PluginModule } from "../plugin-module";
 import { equityScreenerHeadless } from "./headless";
-import { EquityScreenerPane } from "./pane";
 
 export const equityScreenerModule: PluginModule = {
   panes: [
@@ -8,7 +7,7 @@ export const equityScreenerModule: PluginModule = {
       id: "equity-screener",
       name: "Equity Screener",
       icon: "S",
-      component: EquityScreenerPane,
+      get component(): typeof import("./pane").EquityScreenerPane { const { EquityScreenerPane } = require("./pane"); return EquityScreenerPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 108, height: 30 },

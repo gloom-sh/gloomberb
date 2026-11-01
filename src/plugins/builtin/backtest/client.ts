@@ -62,6 +62,7 @@ export function toBacktestBars(
       low: isFiniteNumber(point.low) && point.low > 0 ? point.low : null,
       close: point.close,
       ...(point.partial === true ? { partial: true as const } : {}),
+      ...(point.unsettled === true ? { unsettled: true as const } : {}),
     });
   }
   const bars = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));

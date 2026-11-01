@@ -1,5 +1,4 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
-import { OpenFdaPane } from "./pane";
 import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
 
 const createOpenFdaPaneInstance = (options?: PaneTemplateCreateOptions) => {
@@ -35,7 +34,7 @@ export const openFdaPlugin: GloomPlugin = {
       reportFreshness: { source: "US FDA", status: "not-a-feed", basis: "published reports" },
       name: "FDA Reports",
       icon: "F",
-      component: OpenFdaPane,
+      get component(): typeof import("./pane").OpenFdaPane { const { OpenFdaPane } = require("./pane"); return OpenFdaPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityGap, gpuEquityRows, gpuFamilies, gpuFamily, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuPreviewRows, gpuShortSource, gpuSource, gpuSparklineSeries } from "./model";
-import { gpuEvent, gpuRow } from "./test-fixture";
+import { equityFiveDayReturn, gpuAxisLabels, gpuBoardSections, gpuChangeWindows, gpuEquityGap, gpuEquityRows, gpuFamilies, gpuFamily, gpuHistorySeries, gpuHistoryChart, gpuHistoryViewport, gpuEventDate, gpuEventSections, gpuPricePeriods, gpuPriceLadder, gpuPreviewRows, gpuSettleRows, gpuShortSource, gpuSource, gpuSparklineSeries } from "./model";
+import { gpuEvent, gpuRow, gpuSettle } from "./test-fixture";
 
 describe("GPU observation charts", () => {
   test("step lines and markers use only the selected SKU's real observation dates, preserving archive provenance", () => {
@@ -193,6 +193,16 @@ describe("GPU board layout", () => {
       ["List price", ["neo", "aws"]], ["Provider-declared spot", ["aws-spot"]], ["Ask", ["vast-ask", "lambda-ask"]],
     ]);
     expect(gpuBoardSections(rows).map((section) => section.label)).toEqual(["H100 List price", "H100 Provider-declared spot", "H100 Ask", "B200 List price"]);
+  });
+
+  test("the settle leads with every form factor of the picked GPU, settled or not; across all GPUs only the settled ones", () => {
+    const settles = [gpuSettle({ gpuModel: "MI300X", formFactor: "OAM", status: "no-settle", pricePerGpuHr: null }),
+      gpuSettle({ gpuModel: "A100", memoryGb: 80 }), gpuSettle({ formFactor: "PCIe" }), gpuSettle(), gpuSettle({ gpuModel: "H200", memoryGb: null })];
+    const ids = (model: string) => gpuSettleRows(settles, model).map((row) => row.id);
+    expect(ids("H100")).toEqual(["settle:H100:SXM", "settle:H100:PCIe"]);
+    expect(ids("MI300X")).toEqual(["settle:MI300X:OAM"]);
+    expect(ids("")).toEqual(["settle:H100:SXM", "settle:H100:PCIe", "settle:H200:SXM", "settle:A100:SXM"]);
+    expect(gpuSettleRows(undefined)).toEqual([]);
   });
 
   test("change windows appear only once a figure exists, so a young history reads as new instead of columns of dashes", () => {

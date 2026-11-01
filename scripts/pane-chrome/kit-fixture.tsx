@@ -37,7 +37,8 @@ import { DetailReader } from "../../src/components/reader/detail-reader";
 import type { DocsBlock } from "../../src/docs/content";
 import { DocsBlocks, DocsReadingColumn } from "../../src/plugins/builtin/docs/blocks";
 import { PaneHeader } from "../../src/components/layout/pane/header";
-import { DELAYED_SEGMENT, delayedFooterSegment, PaneFooterBar } from "../../src/components/layout/pane/footer";
+import { DELAYED_SEGMENT, delayedFooterSegment, PaneFooterBar, savedCopyFooterSegment } from "../../src/components/layout/pane/footer";
+import { combinePaneFooterRegistrations } from "../../src/components/layout/pane/footer/model";
 import { PageStackView } from "../../src/components/ui/page-stack-view";
 import { UpgradeLabel } from "../../src/plugins/builtin/shared/locked-rows";
 import { useThemeColors } from "../../src/theme/theme-context";
@@ -429,6 +430,16 @@ function ChromeFamily() {
     menu: [],
     keys: [],
   };
+  // A pane answering from saved copies (a list, and the report it opens) registers each wherever it builds
+  // its footer; the footer draws one, the oldest, first.
+  const now = new Date(2026, 9, 28, 16, 0).getTime();
+  const savedCopy = combinePaneFooterRegistrations(new Map([
+    ["list", { info: [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] },
+      savedCopyFooterSegment("list-saved", new Date(2026, 9, 28, 14, 37).getTime(), now)] }],
+    ["report", { order: 1, info: [{ id: "as-of", parts: [{ text: "as of 2026-10-27", tone: "muted" as const }] },
+      savedCopyFooterSegment("report-saved", new Date(2026, 9, 28, 9, 12).getTime(), now)],
+    hints: [{ id: "o", key: "o", label: "pen filing" }] }],
+  ]));
   return (
     <>
       <Group title="Title bar">
@@ -443,6 +454,12 @@ function ChromeFamily() {
         <Box flexDirection="column" style={{ width: "100%", gap: "var(--gloom-space-sm)" }}>
           <PaneFooterBar footer={footer} focused width={Math.min(100, pageColumns())} />
           <PaneFooterBar footer={footer} focused={false} width={Math.min(100, pageColumns())} />
+        </Box>
+      </Group>
+      <Group title="Footer, saved copy">
+        <Box flexDirection="column" style={{ width: "100%", gap: "var(--gloom-space-sm)" }}>
+          <PaneFooterBar footer={savedCopy} focused width={Math.min(100, pageColumns())} />
+          <PaneFooterBar footer={savedCopy} focused width={Math.min(48, pageColumns())} />
         </Box>
       </Group>
       <Group title="Detail back row">

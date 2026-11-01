@@ -40,16 +40,17 @@ test("source fields, sorted rows and headless text preserve missing versus repor
   expect(text.split("\n").find(line => line.includes("ZERO"))).toContain("0.00%");
 });
 
+// A malformed reply is the error, not covered by the saved list, and stays one on the next read until a valid one.
 test("malformed refresh retains cache with failure until valid recovery; empty and other keys remain independent", async () => {
   const persistence = new MemoryPluginPersistence();
   attachMarketMoversPersistence(persistence);
   let answer: unknown = payload([raw("VALID")]);
   const api = { getMarketMovers: async () => ({ status: "success", data: answer } as any) };
-  const first = await fetchScreenerResult("day_gainers", 25, api, { cache: true });
+  await fetchScreenerResult("day_gainers", 25, api, { cache: true });
   const record = persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })!;
   answer = { finance: { result: null, error: { code: "Unavailable" } } };
-  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true, forceRefresh: true })).toEqual({ data: first.data, stale: true });
-  expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual({ data: first.data, stale: true });
+  await expect(fetchScreenerResult("day_gainers", 25, api, { cache: true, forceRefresh: true })).rejects.toThrow("Invalid market movers");
+  await expect(fetchScreenerResult("day_gainers", 25, api, { cache: true })).rejects.toThrow("Invalid market movers");
   expect(persistence.getResource("market-screener", "screener:day_gainers:count=25", { sourceKey: "gloom", schemaVersion: 3 })?.fetchedAt).toBe(record.fetchedAt);
   await expect(fetchScreenerResult("day_losers", 25, api, { cache: true })).rejects.toThrow("Invalid market movers");
   answer = payload([]);

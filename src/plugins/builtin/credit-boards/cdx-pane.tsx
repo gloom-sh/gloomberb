@@ -32,6 +32,7 @@ import {
   formatLevel,
   formatMove,
   partialDayText,
+  SETTLEMENT_TEXT,
   type CdxRow,
 } from "./model";
 
@@ -69,7 +70,7 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
   const through = day.partial && day.changeDate ? `to ${day.changeDate}` : undefined;
   const items: StatItem[] = [
     { id: "level", label: index.quote === "spread" ? "5Y spread" : "5Y price", value: formatLevel(index.quote, index.level),
-      detail: `${formatPercentileRank(year.percentile, "1Y")} · ${index.date ?? "--"}` },
+      detail: [formatPercentileRank(year.percentile, "1Y"), index.date ?? "--", ...(index.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
     ...(index.quote === "price" && index.spreadBp !== undefined ? [{ id: "spread", label: "Spread eq", value: formatLevel("spread", index.spreadBp ?? null),
       ...(index.recovery != null ? { detail: `${Math.round(index.recovery * 100)}% recovery` } : {}) }] : []),
     { id: "1d", label: "1D", value: formatMove(index.quote, day.change1D), ...(through ? { detail: through } : {}) },

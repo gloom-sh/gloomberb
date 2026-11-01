@@ -15,6 +15,7 @@ import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/ca
 import { abortable, withDeadline } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
 import {
+  amendmentKind,
   buildBrowserRows,
   filingGapFor,
   estimateFilingQuarterReturn,
@@ -33,6 +34,7 @@ import type {
   FundBrowserRow,
   FundDetailData,
   ThirteenFBrowserTab,
+  ThirteenFDetailLoading,
   ThirteenFFilingGap,
   ThirteenFFund,
   ThirteenFHoldingRecord,
@@ -106,6 +108,8 @@ export interface BrowserLoadResult {
   period?: string;
   quarter?: string;
   warning?: string;
+  /** A refresh failed and the oldest copy that answered instead was saved at this time (ms). */
+  savedAt?: number;
   hasMore?: boolean;
   nextOffset?: number;
   reportsLoaded?: Promise<void>;
@@ -118,9 +122,29 @@ export async function loadBrowserRows(
   options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { offset?: number; limit?: number } = {},
 ): Promise<BrowserLoadResult> {
   const warnings: string[] = [];
-  const result = await loadBrowserPage(tab, query, signal, { ...options, onWarning: warning => warnings.push(warning) });
+  const page: { result?: BrowserLoadResult; savedAt?: number } = {};
+  const onSavedCopy = (savedAt: number) => {
+    page.savedAt = Math.min(page.savedAt ?? savedAt, savedAt);
+    // The rows' reports answer after the page does, and their copies date it too.
+    if (page.result) page.result.savedAt = page.savedAt;
+    options.onSavedCopy?.(savedAt);
+  };
+  const result = await loadBrowserPage(tab, query, signal, { ...options, onSavedCopy, onWarning: warning => warnings.push(warning) });
+  page.result = result;
+  if (page.savedAt != null) result.savedAt = page.savedAt;
   if (warnings.length) result.warning = [...new Set([result.warning, ...warnings].filter(Boolean))].join(" ") || undefined;
   return result;
+}
+
+/** The oldest saved copy a load answered from (`savedAt`), each also passed on to `onSavedCopy`. */
+function savedCopies(onSavedCopy?: (savedAt: number) => void) {
+  const copies: { savedAt?: number; note: (savedAt: number) => void } = {
+    note: (savedAt) => {
+      copies.savedAt = Math.min(copies.savedAt ?? savedAt, savedAt);
+      onSavedCopy?.(savedAt);
+    },
+  };
+  return copies;
 }
 
 async function loadBrowserPage(
@@ -140,9 +164,12 @@ async function loadBrowserPage(
   const pageApiOptions = { ...apiOptions, offset };
 
   if (tab === "performance") {
-    const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
     const quarters = priorQuarters(quarter);
-    const history = await loadRankingHistory(quarters, signal, apiOptions);
+    // The prior quarters' rankings do not depend on this page, so they are read beside it.
+    const [topFunds, history] = await Promise.all([
+      listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions),
+      loadRankingHistory(quarters, signal, apiOptions),
+    ]);
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
     const rows = buildBrowserRows({ topFunds, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) }));
     const result: BrowserLoadResult = {
@@ -161,7 +188,10 @@ async function loadBrowserPage(
 
   if (tab === "latest") {
     const filings = await listThirteenFFilings(isoDateDaysAgo(21, now), to, latestLimit, signal, pageApiOptions);
-    const selected = dedupeLatestForms(filings);
+    // An original filing or a restatement is its period's whole report, and an
+    // amendment of unknown kind shows no totals either way: only one that adds
+    // NEW HOLDINGS needs the fund's earlier filing for its quarter's totals.
+    const selected = dedupeLatestForms(filings).filter((form) => amendmentKind(form) === "new-holdings");
     const rows = buildBrowserRows({ latestFilings: filings, source: "latest" });
     const result: BrowserLoadResult = {
       rows,
@@ -440,7 +470,8 @@ export async function loadFundPerformance(
   options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup } = {},
 ): Promise<FundPerformanceResult> {
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
+  const saved = savedCopies(options.onSavedCopy);
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: saved.note, onWarning: (warning: string) => warnings.push(warning) };
   const detail = await loadFundDetail(cik, fallbackName, signal, options);
   const period = detail.latestForm?.periodOfReport;
   const quarter = period ? periodToQuarter(period) : null;
@@ -482,7 +513,9 @@ export async function loadFundPerformance(
         : filed?.skipped.length ? `No share position held through the quarter to ${period} that could be priced across it.`
           : `No share position held through the quarter to ${period}.`;
   const warning = [...new Set([...(detail.warnings ?? []), ...warnings])].join(" ") || undefined;
+  const savedAt = Math.min(detail.savedAt ?? Infinity, saved.savedAt ?? Infinity);
   return {
+    ...(Number.isFinite(savedAt) ? { savedAt } : {}),
     rows: [row], ...(quarter ? { quarter } : {}), ...(period ? { period } : {}), hasMore: false, basis, ranking,
     ...(filed?.splits.length ? { splits: filed.splits } : {}),
     ...(filed?.skipped.length ? { skipped: filed.skipped } : {}),
@@ -491,16 +524,71 @@ export async function loadFundPerformance(
   };
 }
 
+/** Rows a fund's two newest reports may hold together for their holdings to be read ahead. */
+const PREFETCH_HOLDINGS_MAX = 2_000;
+
+/**
+ * Reads ahead what opening a fund asks first, while the cursor rests on its
+ * row: its filing list, which every other request waits on, and the holdings
+ * of its two newest reports when they hold PREFETCH_HOLDINGS_MAX rows or fewer
+ * together. A large filer's holdings wait for Enter. These are loadFundDetail's
+ * own requests, so opening the fund reads them from cache or joins them.
+ */
+export async function prefetchFundDetail(cik: string, signal: AbortSignal): Promise<void> {
+  const now = new Date();
+  const forms = await listThirteenFForms(cik, isoDateYearsAgo(4, now), isoDateToday(now), 100, signal);
+  const filings = buildPeriodReports(forms).slice(0, 2).flatMap((report) => report.filings);
+  const rows = filings.reduce((sum, form) => sum + (form.tableEntryTotal ?? Infinity), 0);
+  if (!filings.length || rows > PREFETCH_HOLDINGS_MAX) return;
+  await Promise.all(filings.map((form) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, { entries: form.tableEntryTotal })));
+}
+
+/**
+ * One fund read ahead at a time (prefetchFundDetail): resting on another row
+ * stops the last one's requests, and `cancel` stops it when the list goes.
+ */
+export function createFundPrefetcher(prefetch: (cik: string, signal: AbortSignal) => Promise<void> = prefetchFundDetail) {
+  let current: { cik: string; controller: AbortController } | null = null;
+  return {
+    prefetch(cik: string) {
+      if (current?.cik === cik) return;
+      current?.controller.abort();
+      const entry = { cik, controller: new AbortController() };
+      current = entry;
+      void prefetch(cik, entry.controller.signal).catch(() => {
+        // Intentional ignore: a fund read ahead that fails is read again, and the failure shown, when it opens.
+      }).finally(() => {
+        if (current === entry) current = null;
+      });
+    },
+    cancel() {
+      current?.controller.abort();
+      current = null;
+    },
+  };
+}
+
+/**
+ * A fund's latest report and the one before it, with their holdings. With
+ * `onProgress`, the fund as it fills in: the latest report's holdings as
+ * soon as they are read (a large filing's first rows before the rest), then
+ * the prior quarter they are compared with and EDGAR's filing list, each
+ * part still loading named in `loading`. The answer is the whole fund.
+ */
 export async function loadFundDetail(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
   /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
-  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { filingGap?: boolean } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & {
+    filingGap?: boolean;
+    onProgress?: (detail: FundDetailData) => void;
+  } = {},
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
-  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: options.onSavedCopy, onWarning: (warning: string) => warnings.push(warning) };
+  const saved = savedCopies(options.onSavedCopy);
+  const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: saved.note, onWarning: (warning: string) => warnings.push(warning) };
 
   const forms = await listThirteenFForms(
     cik,
@@ -515,46 +603,87 @@ export async function loadFundDetail(
   const previousReport = reports[1];
   const latestForm = latestReport?.filings.at(-1) ?? null;
   const previousForm = previousReport?.filings.at(-1) ?? null;
-  async function loadReport(report: ThirteenFPeriodReport | undefined): Promise<ThirteenFHoldingRecord[]> {
+  const checkGap = options.filingGap !== false;
+  const parts: Pick<FundDetailData, "latestHoldings" | "previousHoldings" | "filingGap"> & { loading: ThirteenFDetailLoading } = {
+    latestHoldings: [],
+    previousHoldings: [],
+    filingGap: null,
+    loading: { positions: true, ...(previousReport ? { comparison: true } : {}), ...(checkGap ? { filingGap: true } : {}) },
+  };
+  const detail = (): FundDetailData => {
+    const loading = Object.fromEntries(Object.entries(parts.loading).filter(([, value]) => value)) as ThirteenFDetailLoading;
+    return {
+      cik: normalizeCik(cik),
+      name: latestForm?.companyName || fallbackName,
+      forms,
+      latestForm,
+      previousForm,
+      latestHoldings: parts.latestHoldings,
+      previousHoldings: parts.previousHoldings,
+      latestReport,
+      previousReport,
+      warnings: [...warnings],
+      filingGap: parts.filingGap,
+      ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}),
+      ...(Object.keys(loading).length ? { loading } : {}),
+    };
+  };
+  let failed = false;
+  // The fund is shown once its latest holdings, or a large filing's first rows, are in.
+  const progress = () => {
+    if (!options.onProgress || failed || signal?.aborted || (parts.loading.positions && !parts.latestHoldings.length)) return;
+    options.onProgress(detail());
+  };
+  async function loadReport(report: ThirteenFPeriodReport | undefined, onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void): Promise<ThirteenFHoldingRecord[]> {
     if (!report) return [];
-    const holdings: ThirteenFHoldingRecord[] = [];
-    for (const form of report.filings) {
-      const rows = await listThirteenFFormHoldings(cik, form.accessionNumber, signal, apiOptions);
-      holdings.push(...rows);
+    // An amended period's filings are read at once: the original and each of its additions.
+    const filings = await Promise.all(report.filings.map((form, index) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, {
+      ...apiOptions,
+      entries: form.tableEntryTotal,
+      ...(index === 0 && onFirstRows ? { onFirstRows } : {}),
+    })));
+    report.filings.forEach((form, index) => {
+      const rows = filings[index]!;
       if (form.tableEntryTotal != null && rows.length !== form.tableEntryTotal) {
         report.complete = false;
         warnings.push(`${report.periodOfReport}: loaded ${rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
       }
-    }
+    });
     if (!report.complete && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {
       warnings.push(`${report.periodOfReport}: amendment type or original report unavailable; disclosed entries cannot be reconciled into a full report.`);
     }
-    return holdings;
+    return filings.flat();
   }
-  const [latestHoldings, previousHoldings, filingGap] = await Promise.all([
-    loadReport(latestReport),
+  await Promise.all([
+    loadReport(latestReport, options.onProgress ? (rows) => {
+      if (!parts.loading.positions) return;
+      parts.latestHoldings = rows;
+      progress();
+    } : undefined).then((rows) => {
+      parts.latestHoldings = rows;
+      parts.loading.positions = false;
+      progress();
+    }),
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
       if (previousReport) previousReport.complete = false;
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
+    }).then((rows) => {
+      parts.previousHoldings = rows;
+      parts.loading.comparison = false;
+      progress();
     }),
-    options.filingGap === false ? null
-      : loadFilingGap(cik, latestForm?.periodOfReport, signal, now, { forceRefresh: options.forceRefresh }),
-  ]);
-  return {
-    cik: normalizeCik(cik),
-    name: latestForm?.companyName || fallbackName,
-    forms,
-    latestForm,
-    previousForm,
-    latestHoldings,
-    previousHoldings,
-    latestReport,
-    previousReport,
-    warnings,
-    filingGap,
-  };
+    (checkGap ? loadFilingGap(cik, latestForm?.periodOfReport, signal, now, { forceRefresh: options.forceRefresh }) : Promise.resolve(null)).then((gap) => {
+      parts.filingGap = gap;
+      parts.loading.filingGap = false;
+      progress();
+    }),
+  ]).catch((error: unknown) => {
+    failed = true;
+    throw error;
+  });
+  return detail();
 }
 
 export async function loadFilingPositions(
@@ -562,12 +691,13 @@ export async function loadFilingPositions(
   accessionNumber: string,
   signal?: AbortSignal,
   options: { forceRefresh?: boolean; offset?: number; limit?: number } = {},
-): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean; warnings: string[] }> {
+): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean; warnings: string[]; savedAt?: number }> {
   const warnings: string[] = [];
+  const saved = savedCopies();
   const result = await listThirteenFFormHoldingsPage(cik, accessionNumber, signal, {
-    ...options, onWarning: warning => warnings.push(warning),
+    ...options, onSavedCopy: saved.note, onWarning: warning => warnings.push(warning),
   });
-  return { ...result, warnings };
+  return { ...result, warnings, ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}) };
 }
 
 /** `2026Q2` for a quarter end such as 2026-06-30. */

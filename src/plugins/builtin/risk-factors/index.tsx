@@ -21,7 +21,8 @@ const description =
  * filing list, which needs no account: `filings` lists them with a link to
  * each, where Item 1A is the risk factors as written, without RISK's grouping
  * or its changes since the year before. A foreign issuer files a 20-F instead
- * (ASML), whose Item 3.D holds them.
+ * (ASML), whose Item 3.D holds them. A company that files neither (IAG on
+ * LSE) has nothing in RISK either, and the note says so.
  */
 function riskFactorsLockNote(lock: PaneLock): Promise<string> {
   return proLockNote(lock, {
@@ -35,6 +36,7 @@ function riskFactorsLockNote(lock: PaneLock): Promise<string> {
       text: (ticker, company) => `gloom filings ${ticker} --form 20-F lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 3.D holds the risk factors as written.`,
       answers: (symbol, context) => filesForm(symbol, "20-F", context),
     }],
+    noneFor: (ticker) => `${ticker}'s company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.`,
   });
 }
 

@@ -11,6 +11,10 @@ import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane"
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PricePoint } from "../../../types/financials";
 import { DataServiceUnreachableError } from "../../../utils/network-failure";
+import { ApiRequestError } from "../../../api-client/errors";
+import { attachFredSeriesPersistence, resetFredSeriesPersistence } from "../../../sources/gloomberb-cloud/fred-series";
+import { outage } from "../../../test-support/outage";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { VolatilityPane } from "./pane";
 
 const DAY_MS = 86_400_000;
@@ -65,6 +69,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetFredSeriesPersistence();
   setSystemTime();
   setAppVisible(true);
   setSharedMarketDataCoordinator(null);
@@ -214,4 +219,29 @@ test("a failed live re-read of the index levels is a data warning until one succ
   await reread();
   expect(levelReads).toBe(2);
   expect(await warnings()).not.toContain("Gloom couldn't reach its data service");
+});
+
+// The FRED closes the board falls back on said "saved copy from" whatever their refresh failed with, after
+// the pane's own status. They now lead the footer, as every pane's saved copy does, and a refusal is the error.
+test("FRED closes a failed refresh left lead the footer with when they were saved; a refusal says its error instead", async () => {
+  attachFredSeriesPersistence(new MemoryPluginPersistence());
+  let failure: unknown = null;
+  spies.push(spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id: string) => {
+    if (failure) throw failure;
+    return { info: null, observations: [{ date: "2026-09-24", value: id === "VIXCLS" ? 15 : 18 }] };
+  }));
+  setSystemTime(new Date("2026-09-25T13:05:00Z"));
+  await renderPane(108, 32);
+  expect(footer()).not.toContain("saved copy");
+
+  setSystemTime(new Date("2026-09-26T13:05:00Z"));
+  failure = outage();
+  await renderPane(108, 32);
+  // The fixture's indices with no closes keep their warning, after the saved copy.
+  expect(footer()).toMatch(/^saved copy from Sep 25 \d\d:\d\d \S*\[!\] +close 2026-09-25 /);
+
+  // The closes on screen stay, called stale, and the refusal is among the warnings (client.test.ts).
+  failure = new ApiRequestError("Series not found", 404);
+  await renderPane(108, 32);
+  expect(footer()).toMatch(/^stale · close 2026-09-25 /);
 });

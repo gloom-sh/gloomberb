@@ -157,7 +157,7 @@ export function PublicAnalyticsGroup({
 
 /**
  * The desks chat shows beside your name, once What I Trade is on: pre-filled
- * from your answer to "What do you trade?", coarse words only.
+ * from your answer to "What do you trade most?", coarse words only.
  */
 export function DeskChoiceRow({
   desks,

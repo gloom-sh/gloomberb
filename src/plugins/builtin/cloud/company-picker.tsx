@@ -189,7 +189,7 @@ function LogoTile({ symbol, assetCategory, size }: { symbol: string; assetCatego
     return <Box alignItems="center" justifyContent="center" style={tile}>{letter}</Box>;
   }
   return (
-    <ImageSurface src={src} alt={symbol} objectFit="contain" alignItems="center" justifyContent="center" style={tile}>
+    <ImageSurface src={src} alt={symbol} objectFit="contain" fallbackWhileLoading alignItems="center" justifyContent="center" style={tile}>
       {letter}
     </ImageSurface>
   );

@@ -5,6 +5,7 @@ import {
   type RealizedVolatilityEstimator, type RollingRealizedVolatilityPoint, type VolatilityConeStatistics,
 } from "../shared/volatility";
 import type { SurfaceExpiry, SurfaceSnapshot } from "../vol-surface/model";
+import { formingBarsState, isFormingBar } from "../shared/forming-bars";
 
 export interface RealizedVolatilityModel {
   symbol: string;
@@ -30,6 +31,12 @@ export interface RealizedVolatilityModel {
    * history covers the lookback and every window.
    */
   historyNote: string | null;
+  /**
+   * The newest session left out while it is not final, as BT leaves it out:
+   * "2026-10-30 is still forming (partial) and left out: the estimates run
+   * through 2026-10-29, the last complete session". Null when every bar is final.
+   */
+  formingNote: string | null;
 }
 
 /** "the 180-bar window", "the 180- and 260-bar windows", "the 90-, 180- and 260-bar windows". */
@@ -77,8 +84,15 @@ export function projectRealizedVolatility(
     }
     dates.set(date.getTime(), { ...point, date });
   }
-  const history = [...dates.entries()].sort(([a], [b]) => a - b).map(([, point]) => point);
+  const served = [...dates.entries()].sort(([a], [b]) => a - b).map(([, point]) => point);
+  // A session still trading moves every estimate it is in until it ends: left out, as BT leaves it out, and said.
+  const forming = served.filter(isFormingBar);
+  const history = forming.length ? served.filter((point) => !isFormingBar(point)) : served;
   const asOf = history.at(-1)?.date ?? null;
+  const day = (date: Date) => date.toISOString().slice(0, 10);
+  const formingNote = forming.length === 0 ? null
+    : `${forming.map((point) => day(point.date)).join(", ")} ${formingBarsState(forming)} and left out`
+      + `${asOf ? `: the estimates run through ${day(asOf)}, the last complete session` : ""}`;
   const cutoff = asOf ? lookbackCutoff(asOf, lookbackYears) : 0;
   const cadenceIssue = realizedVolatilityCadenceIssue(history);
   if (cadenceIssue) warnings.push(cadenceIssue);
@@ -109,7 +123,7 @@ export function projectRealizedVolatility(
       : "the long windows' cone covers part of the lookback"}`;
   return { symbol: options.symbol.trim().toUpperCase(), estimator, lookbackYears, windows,
     history: visible, series: visibleSeries, cone, asOf, barsPerYear: barsPerYear(history.map((point) => point.date)),
-    warnings: [...new Set(warnings)], shortWindows, historyNote };
+    warnings: [...new Set(warnings)], shortWindows, historyNote, formingNote };
 }
 
 interface CurrentAtmIvReference {

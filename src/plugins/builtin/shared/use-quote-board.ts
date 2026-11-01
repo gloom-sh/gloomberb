@@ -520,6 +520,11 @@ export function quoteBoardStatus(quotes: BoardQuoteMap): QuoteBoardStatus {
   return { loading, stale, unavailable, latestTs, savedAt: oldestSavedCopyAt(Array.from(quotes.values(), (state) => state.quote)) };
 }
 
+/** The quotes a board shows, for the footer's delayed clock (`useQuoteDelayFooter`). */
+export function* boardQuotes(quotes: BoardQuoteMap): Generator<Quote | null> {
+  for (const state of quotes.values()) yield state.quote;
+}
+
 /** Board footer status: everything here changes as loads succeed or fail. */
 export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegment[] {
   const info: PaneFooterSegment[] = [];

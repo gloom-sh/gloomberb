@@ -169,11 +169,15 @@ describe("history integrity and rolling windows", () => {
     for (const estimator of ["close-to-close", "parkinson", "garman-klass", "rogers-satchell", "yang-zhang"] satisfies RealizedVolatilityEstimator[]) {
       expect(realizedVolatility(flat, 4, estimator)).toBe(0);
     }
-    const wideRange = flat.map((point) => ({ ...point, high: 1e300, low: 1e-300, close: 100, open: 100 }));
+    // The body spans the range: a wick too far from it to have traded is not a range (pricePointWicks).
+    const wideRange = flat.map((point) => ({ ...point, high: 1e300, low: 1e-300, open: 5e299, close: 2e-300 }));
     for (const estimator of ["parkinson", "garman-klass", "rogers-satchell", "yang-zhang"] as const) {
       expect(realizedVolatility(wideRange, 4, estimator)).toBeFinite();
       expect(realizedVolatility(wideRange, 4, estimator)).toBeGreaterThan(0);
     }
+    const badWick = flat.map((point) => ({ ...point, high: 1e300, low: 1e-300, close: 100, open: 100 }));
+    expect(realizedVolatility(badWick, 4, "parkinson")).toBeNull();
+    expect(realizedVolatility(badWick, 4, "close-to-close")).toBe(0);
   });
 
   test("computes each requested window without consuming duplicate sessions", () => {

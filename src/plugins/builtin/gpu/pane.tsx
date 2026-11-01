@@ -71,7 +71,7 @@ function GpuView({ width, height, focused }: PaneProps) {
     {strip}
     <PaneStatusBody loading={resource.loading && !data} error={!data && !notAvailable ? resource.error : null}
       empty={notAvailable} emptyTitle={GPU_NOT_AVAILABLE} subject="GPU rental prices">
-      {data ? tab === "board" ? <GpuBoard rows={rows} models={models} asOf={data.asOf} model={activeModel} setModel={setModel} selectedId={selectedId} emptyTitle={emptyTitle}
+      {data ? tab === "board" ? <GpuBoard rows={rows} settles={data.settles} models={models} asOf={data.asOf} model={activeModel} setModel={setModel} selectedId={selectedId} emptyTitle={emptyTitle}
         select={(row, open) => { setSelectedId(row.id); if (open) setTab("history"); }} {...body} />
         : tab === "history" ? <GpuHistory rows={rows} models={models} model={unknownModel ? "" : activeModel} setModel={setModel} selectedId={selectedId} onSelect={setSelectedId} reloadBoard={reloadBoard} {...body} />
           : tab === "changes" ? <GpuChanges models={models} model={unknownModel ? "" : activeModel} setModel={setModel} reloadBoard={reloadBoard} {...body} />

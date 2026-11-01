@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
@@ -59,7 +60,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
     stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">

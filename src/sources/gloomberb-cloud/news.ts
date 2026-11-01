@@ -28,13 +28,34 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+type CloudNewsTickerLink = CloudNewsPayload["tickerLinks"][number];
+
+const statesMarketCap = (link: CloudNewsTickerLink) => typeof link.marketCap === "number" && link.marketCap > 0;
+
+/**
+ * One link a company: a symbol a story tags on several venues (ASML on
+ * Euronext Amsterdam and on NASDAQ) keeps its home listing, the line Gloom
+ * Cloud states the company's market cap on, else the venue tagged first. The
+ * tag stays where the company was first tagged.
+ */
+function homeListingLinks(links: readonly CloudNewsTickerLink[]): CloudNewsTickerLink[] {
+  const companies = new Map<string, CloudNewsTickerLink>();
+  links.forEach((link, index) => {
+    const symbol = link.symbol?.trim().toUpperCase() || `#${index}`;
+    const kept = companies.get(symbol);
+    if (!kept || (!statesMarketCap(kept) && statesMarketCap(link))) companies.set(symbol, link);
+  });
+  return [...companies.values()];
+}
+
 function mapCloudNewsTickers(
   item: CloudNewsPayload,
   fallbackTicker?: string,
 ): string[] {
-  const tickers = collectNewsDisplayTickers(
-    item.tickerLinks.flatMap((link) => [link.symbol, link.canonicalTicker]),
-  );
+  // Each company's listing: its canonical key, or its symbol on its venue.
+  const tickers = collectNewsDisplayTickers(homeListingLinks(item.tickerLinks).map((link) => (
+    link.canonicalTicker || (link.symbol && link.exchange ? `${link.symbol}:${link.exchange}` : link.symbol)
+  )));
   const fallbackTickers = collectNewsDisplayTickers([fallbackTicker]);
   if (tickers.length === 0) tickers.push(...fallbackTickers);
   return tickers;

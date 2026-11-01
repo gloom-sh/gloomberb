@@ -47,3 +47,23 @@ test("the headline says what its move is from, beside it or on the line under it
     setSystemTime();
   }
 });
+
+test("a compact Treasury overview keeps its chart's 32nds visible beside the quote", async () => {
+  const quote = createTestQuote({ symbol: "ZN=F", name: "Treasury", instrumentType: "FUTURE", exchangeName: "CBT",
+    price: 104.484375, priceBasis: "thirty-seconds", change: -0.375, changePercent: -0.3576 });
+  const priceHistory = [103.3, 104.2, 105, 104.4].map((close, index) => ({
+    date: new Date(`2026-10-${20 + index}T00:00:00Z`), close, open: close, high: close, low: close, volume: 100,
+  }));
+  await tui.render(
+    <AppContext value={createStaticAppStore(createInitialState(config))}>
+      <OverviewTab ticker={createTestTicker("ZN=F", "Treasury", { exchange: "CBT", assetCategory: "FUTURE" })}
+        financials={createTestFinancials({ quote, priceHistory })} width={74} height={30} />
+    </AppContext>,
+    { width: 74, height: 30 },
+  );
+  const frame = await tui.waitForFrameToContain("104-15½");
+  // Padded chart bounds need decimal 32nds, which exceed the old eight-cell gutter.
+  const axisLabels = frame.split("\n").filter((line) => /10[345]-\d{2}\.\d{2}\s*$/.test(line));
+  expect(axisLabels.length).toBeGreaterThanOrEqual(2);
+  expect(frame).not.toContain("$104");
+});

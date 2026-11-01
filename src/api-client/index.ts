@@ -601,8 +601,6 @@ class GloomApiClient {
   async recordExperimentExposure(payload: {
     eventId: string; surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; experiment: string; variant?: string;
-    /** Where the experiment showed, by a content-free id like an upgrade placement. */
-    placement?: string;
   }, signal?: AbortSignal): Promise<import("./web-experiments").ExperimentAnswer> {
     return this.request("/activity/research", {
       method: "POST",
@@ -955,6 +953,7 @@ class GloomApiClient {
   getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
   getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
   getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
+  getCloudBitcoinNetwork = this.data.getCloudBitcoinNetwork.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
@@ -993,6 +992,8 @@ class GloomApiClient {
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
   getCloudFuturesCurveAsOf = this.data.getCloudFuturesCurveAsOf.bind(this.data);
   getCloudFuturesContract = this.data.getCloudFuturesContract.bind(this.data);
+  getCloudFuturesContracts = this.data.getCloudFuturesContracts.bind(this.data);
+  batchesReads = this.data.batchesReads.bind(this.data);
   getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
@@ -1025,6 +1026,8 @@ class GloomApiClient {
   analyzeCloudExposure = this.data.analyzeCloudExposure.bind(this.data);
   getCloudExposureScenarios = this.data.getCloudExposureScenarios.bind(this.data);
   getCloudSupplyGraph = this.data.getCloudSupplyGraph.bind(this.data);
+  getCloudSupplyChains = this.data.getCloudSupplyChains.bind(this.data);
+  getCloudSupplyGraphs = this.data.getCloudSupplyGraphs.bind(this.data);
   getCloudSupplyPaths = this.data.getCloudSupplyPaths.bind(this.data);
   getCloudSupplyChain = this.data.getCloudSupplyChain.bind(this.data);
   getCloudAwards = this.data.getCloudAwards.bind(this.data);

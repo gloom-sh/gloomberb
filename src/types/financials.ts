@@ -268,7 +268,8 @@ export interface TtmConversion {
 }
 
 /**
- * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
+ * How a served enterprise value ties to market cap + total debt (+ leases, `leases`) - cash from the latest balance sheet
+ * served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
  * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
@@ -284,15 +285,24 @@ export interface EnterpriseValueCheck {
   /** The market cap the EV is measured on; absent only on a not-meaningful source EV served without one. */
   marketCap?: number;
   totalDebt?: number;
+  /** The balance sheet's lease liabilities the bridge adds to total debt, as FA's net debt does (utils/lease-liabilities); absent when none were added. */
+  leases?: number;
   cash?: number;
   /** YYYY-MM-DD of the balance sheet the debt and cash come from. */
   balanceSheetDate?: string;
-  /** marketCap + totalDebt - cash. */
+  /** marketCap + totalDebt + leases - cash. */
   computed?: number;
   /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
   investmentsKept?: true;
-  /** Why the EV is not meaningful (`not-meaningful`). */
+  /** Why the EV is not meaningful (`not-meaningful`), or why a withdrawn EV no balance sheet checked is withdrawn. */
   reason?: string;
+  /** A balance sheet in another currency than the market cap: its currency and the rate at its date
+   * (`currency` per unit of `from`) that `totalDebt`, `leases` and `cash` were converted at. */
+  fx?: { from: string; rate: number };
+  /** The provider converted its EV from the statements' currency. */
+  convertedFrom?: string;
+  /** Withdrawn because the provider applied that conversion twice: its EV over `computed` is the conversion rate. */
+  convertedTwice?: true;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
@@ -481,6 +491,18 @@ interface AnalystRecommendationTrend {
   strongSell?: number;
 }
 
+/** Why a firm took an action, as public news coverage of it quotes the firm, word for word. */
+export interface AnalystRatingReason {
+  /** One line from the article, as it prints it. */
+  text: string;
+  /** The article. */
+  url: string;
+  /** Its publisher, when known. */
+  source?: string;
+  /** ISO time the article was published. */
+  publishedAt?: string;
+}
+
 export interface AnalystRatingRecord {
   date: string;
   firm: string;
@@ -489,6 +511,8 @@ export interface AnalystRatingRecord {
   prior?: string;
   currentPriceTarget?: number;
   priorPriceTarget?: number;
+  /** Absent when no coverage of the action gives a reason. */
+  reason?: AnalystRatingReason;
 }
 
 export interface AnalystEstimateRecord {
@@ -784,6 +808,11 @@ export interface FinancialStatement {
   date: string;
   /** Source of the fiscal period date; does not establish metric publication dates. */
   dateSource?: "sec" | "provider";
+  /**
+   * The accounting standard the issuer reports in, from the taxonomy of its latest annual report to the SEC (10-K,
+   * 20-F or 40-F): BABA's 20-F is US GAAP, NVO's IFRS. Absent for a company that files none with the SEC.
+   */
+  accountingStandard?: "us-gaap" | "ifrs";
   /** Original vendor period date when independent filing evidence changes it. */
   providerDate?: string;
   /** Filing evidence for the period identity only, not availability of every field. */
@@ -975,12 +1004,20 @@ export interface PricePoint {
    * or comparison with a day's count takes it.
    */
   venueVolume?: { venue: string; volume: number };
+  /**
+   * What the bar's volume counts, when the source says: `aggregate` for a
+   * total across venues (a coin's daily bar), `3 spot venues` for a sum over
+   * those (a coin's intraday bar).
+   */
+  volumeBasis?: string;
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
   unsettled?: boolean;
+  /** A continuous future's bar (NG=F): the contract it closes on (NGZ26). A change from the bar before is a roll. */
+  contract?: string;
 }
 
 export interface StatementHistoryAttempt {

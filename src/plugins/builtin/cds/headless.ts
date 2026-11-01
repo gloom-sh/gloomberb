@@ -21,7 +21,7 @@ import {
   type CoveredIssuers,
   type InstrumentSearch,
 } from "./client";
-import { formatContract } from "../credit-boards/model";
+import { formatContract, levelKinds } from "../credit-boards/model";
 import {
   DEFAULT_TRADE_SORT,
   ISSUER_LIST_SORTS,
@@ -122,6 +122,8 @@ function dailySection(history: CdsSpreadHistory, days: number, name: string): He
   const from = latest ? new Date(Date.parse(`${latest}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10) : "";
   // A name quoted upfront lists each day's points beside its spread.
   const upfront = history.quote === "upfront";
+  const shown = history.points.filter((point) => point.date > from).reverse();
+  const kinds = levelKinds(shown, (point) => point.kind);
   return {
     title: "Daily",
     columns: [
@@ -136,8 +138,9 @@ function dailySection(history: CdsSpreadHistory, days: number, name: string): He
       }] : []),
       { key: "prints", header: "Prints", align: "right" as const },
       { key: "maturity", header: "Contract", format: (value: unknown) => formatContract(typeof value === "string" ? value : null) },
+      ...kinds.columns,
     ],
-    rows: history.points.filter((point) => point.date > from).reverse()
+    rows: shown
       .map((point) => ({
         day: point.date,
         spreadBp: point.spreadBp,
@@ -145,6 +148,7 @@ function dailySection(history: CdsSpreadHistory, days: number, name: string): He
         unit: upfront ? "pts" : "bp",
         prints: point.prints,
         maturity: point.maturity,
+        ...kinds.row(point),
       })),
     empty: "No daily 5Y levels.",
     symbol: name,
@@ -212,11 +216,14 @@ function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
       : { lowBp: summary.range.low, highBp: summary.range.high, since: summary.range.since },
     formatted: `${formatSpreadRange(unit, summary.range)} since ${summary.range.since}`,
   } : null;
+  // A level that is the day's settlement price says so beside its date; one from trades says nothing.
+  const kind = summary.settlement ? [{ key: "kind", label: "Level", value: "settlement" }] : [];
   if (unit === "pts") {
     return [
       { key: "upfrontPts", label: "5Y upfront", value: summary.level, formatted: formatPoints(summary.level), unit: "pts" },
       { key: "couponBp", label: "Coupon", value: summary.couponBp, formatted: formatBp(summary.couponBp) },
       { key: "date", label: "Date", value: summary.date },
+      ...kind,
       { key: "change1wPts", label: "1W change", value: summary.change1w, formatted: formatPointsMove(summary.change1w), unit: "pts" },
       { key: "change1mPts", label: "1M change", value: summary.change1m, formatted: formatPointsMove(summary.change1m), unit: "pts" },
       ...(range ? [range] : []),
@@ -225,6 +232,7 @@ function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
   return [
     { key: "spreadBp", label: "5Y spread", value: summary.level, formatted: formatBp(summary.level) },
     { key: "date", label: "Date", value: summary.date },
+    ...kind,
     { key: "change1wBp", label: "1W change", value: summary.change1w, formatted: formatSpreadMove(summary.change1w) },
     { key: "change1mBp", label: "1M change", value: summary.change1m, formatted: formatSpreadMove(summary.change1m) },
     ...(range ? [range] : []),

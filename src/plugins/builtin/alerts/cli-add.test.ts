@@ -21,6 +21,7 @@ import { resumeStateKey } from "../../registry/plugin-state";
 import { createAlert } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
+import { createResearchAlert } from "./research-builder";
 
 const dataDirs: string[] = [];
 
@@ -68,10 +69,11 @@ function cloud() {
   });
 }
 
-async function addAlert(args: string[]) {
+async function addAlert(args: string[], pluginState?: Record<string, unknown>) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-add-"));
   dataDirs.push(dataDir);
   const config = createDefaultConfig(dataDir);
+  if (pluginState) config.pluginConfig = { ...config.pluginConfig, [ALERTS_PLUGIN_ID]: pluginState };
   await saveConfig(config);
   const cli = createTestCliContext({ config, dataProvider: cloud() });
   let error: string | null = null;
@@ -174,6 +176,19 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
   expect(events[0]).toMatchObject({ kind: "iv_level", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "AAPL", exchange: "US", metric: "atm", direction: "above", threshold: 35 });
   expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
+});
+
+test("an IPO alert from the shell is the rule the dialog saves, in its own list, which Gloom Cloud reads", async () => {
+  // A list from a newer version, synced here: a save keeps it, as released versions keep ipoAlerts.
+  const future = JSON.stringify([{ id: "f1", kind: "gamma_wall", target: "rule", value: "{}", createdAt: 1, status: "active" }]);
+  const { events, error, printed, pluginState } = await addAlert(["ipo", "Space", "Exploration"], { futureAlerts: future });
+  expect(error).toBeNull();
+  // Released versions read eventAlerts whole, so a kind they do not know goes in a list of its own.
+  expect(pluginState).toEqual({ futureAlerts: future, ipoAlerts: expect.any(String) });
+  expect(events[0]).toMatchObject({ kind: "ipo", target: "rule", status: "active" });
+  expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, keyword: "Space Exploration" });
+  expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it for a signed-in account with Cloud sync and sends it to your phone)");
+  expect(createResearchAlert("ipo", { "ipo:keyword": " Space  Exploration " }).value).toBe(events[0]!.value);
 });
 
 test("the far-target refusal is exactly past ten times either way, and writes prices as typed, never in exponent form", () => {
@@ -483,6 +498,7 @@ test("alerts add takes every kind Add Event Alert offers, by the words a desk ty
   expect(rule("congress")).toMatchObject({ event: "congress-watched" });
   expect(parseAlertAddArgs(["congress", "Nancy Pelosi"], undefined)).toMatchObject({ event: "congress-member", values: { value: "Nancy Pelosi" } });
   expect(rule("13f 1067983")).toMatchObject({ event: "thirteenf-fund", values: { value: "1067983" } });
+  expect(rule("ipo Stripe")).toEqual({ kind: "rule", event: "ipo", symbol: null, listing: "any", values: { keyword: "Stripe" } });
   // A form mistyped names its own words; a symbol that spells a form word is still a price alert.
   expect(() => rule("XLE 52-week")).toThrow("Name the side: gloom alerts add XLE 52-week high");
   expect(() => rule("NVDA unusual volume 50x")).toThrow("1.1 to 20");
@@ -491,9 +507,12 @@ test("alerts add takes every kind Add Event Alert offers, by the words a desk ty
   expect(() => rule("13f berkshire")).toThrow("numeric SEC CIK");
   expect(() => parseAlertAddArgs(["XLE", "52-week", "high"], "2")).toThrow("--days is for earnings");
   expect(rule("PERPS above 10")).toMatchObject({ kind: "price", symbol: "PERPS" });
+  // The IPO ETF is still a price alert, and an IPO alert needs its company or keyword.
+  expect(rule("IPO above 40")).toMatchObject({ kind: "price", symbol: "IPO" });
+  expect(() => rule("ipo")).toThrow("Name the company or a keyword: gloom alerts add ipo Stripe.");
   // `help alerts` lists every form, and an unknown phrase is refused with their names.
   const help = alertsCliCommand.help!.usage!.join("\n");
-  for (const form of ["52-week <high|low>", "unusual volume", "filing [8-K", "insider [buy|sell]", "short interest", "analyst [upgrade|downgrade]", "hiring", "perps <market>", "<symbol> catalyst", "catalyst [type", "congress", "13f <fund CIK>"]) {
+  for (const form of ["52-week <high|low>", "unusual volume", "filing [8-K", "insider [buy|sell]", "short interest", "analyst [upgrade|downgrade]", "hiring", "perps <market>", "<symbol> catalyst", "catalyst [type", "congress", "13f <fund CIK>", "ipo <company or keyword>"]) {
     expect(help).toContain(form);
   }
 });

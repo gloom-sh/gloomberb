@@ -31,9 +31,12 @@ import type { TickerFinancials, PricePoint, Quote } from "../../../types/financi
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
-import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
+import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data/market/freshness";
+import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
+import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
@@ -46,7 +49,8 @@ import { loadFundFacts } from "../sec/fund-facts";
 import { comparedFundTickers, loadDailyObjectives, mayDrawDailyObjective, withLeverageOverlay } from "./leverage-overlay";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
-import { LATEST_INTRADAY_TEXT } from "../../../market-data/market/period-return";
+import { LATEST_INTRADAY_TEXT, periodDayText } from "../../../market-data/market/period-return";
+import { CLOSING_PRINT_PENDING_TEXT, newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../time-series/official-close";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -368,10 +372,19 @@ function chartFreshness(
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
+  const closedDay = closedPriceBarDay(series);
+  // A window that ended before today (`--to 2026-10-23`) is the history asked for, which no later close makes stale:
+  // `daily closes through Fri 23 Oct`.
+  const windowEnd = spec.viewport.dateWindow?.end;
+  if (windowEnd && /^\d{4}-\d{2}-\d{2}$/.test(windowEnd) && windowEnd < new Date().toISOString().slice(0, 10)) {
+    const through = closedDay ?? series.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString().slice(0, 10)).sort().at(-1);
+    const basis = coarsest === "1d" ? "daily closes" : coarsest === "1wk" ? "weekly closes" : coarsest === "1mo" ? "monthly closes" : "intraday bars";
+    return { status: "not-a-feed", basis: through ? `${basis} through ${periodDayText(through, new Date().getUTCFullYear())}` : basis,
+      ...(through && closedDay ? { asOf: through } : {}), oldest: null };
+  }
   const forming = formingPriceBar(series);
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
   if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
-  const closedDay = closedPriceBarDay(series);
   // A comparison whose newest point is a session still trading is not a day's closes.
   const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT } : {};
   // Daily bars are dated by the time of the newest point: a closed session's day, or when a session still trading was last quoted.
@@ -600,30 +613,34 @@ export function argumentWithListing(argument: string, symbol: string, key: strin
 }
 
 /**
- * A FRED series id typed where a ticker goes (`fn G DFII10`), as the chart of
- * FRED:DFII10: the catalog lists it, no listing answers to it, and the quote
- * source says it is not a ticker. A real ticker of the same letters, read as
- * a listing or quoted, still charts as the ticker; null then, and for any
- * other series.
+ * A catalog series typed where a ticker goes, as its chart: a FRED series id
+ * (`fn G DFII10` is FRED:DFII10), or a word a series lists as an alias
+ * (`fn G hashrate` is CAP:bitcoin:hashrate), when the catalog lists it, no
+ * listing answers to it, and the quote source says it is not a ticker. A
+ * real ticker of the same letters, read as a listing or quoted, still charts
+ * as the ticker; null then, and for any other symbol.
  */
-export async function bareFredSeries(
+export async function bareCatalogSeries(
   series: ChartSeriesSpec,
   readListing: () => Promise<unknown>,
-  context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName">,
+  context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName" | "catalogSeriesNamed">,
 ): Promise<ChartSeriesSpec | null> {
   const { source } = series;
   if (source.kind !== "security" || source.instrument.exchange || source.instrument.instrument || source.fieldId !== CHART_FIELD_IDS.price) return null;
   const id = source.instrument.symbol.trim().toUpperCase();
   const expression = `FRED:${id}`;
-  const label = /^[A-Z0-9]+$/.test(id)
+  const fredLabel = /^[A-Z0-9]+$/.test(id)
     ? context.catalogSeriesName?.(expression) ?? getSharedRegistry()?.series?.findByExpression(expression)?.definition.name
     : undefined;
+  const named = fredLabel ? undefined : context.catalogSeriesNamed?.(id);
+  const parsed = named ? parseSeriesExpression(named.expression) : null;
+  const label = fredLabel ?? (parsed ? named?.name : undefined);
   if (!label || await readListing()) return null;
   const failure = await Promise.resolve().then(() => context.marketData.getQuote(id, ""))
     .then((quote) => quote ? null : `Not a ticker: ${id}.`, (error: unknown) => error instanceof Error ? error.message : String(error));
   if (!failure || !notATickerSymbol(failure)) return null;
-  const fred = buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
-  return { ...fred, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
+  const spec = parsed ? buildSeriesSpec({ ...parsed, label }, 0) : buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
+  return { ...spec, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
 }
 
 /**
@@ -646,14 +663,28 @@ async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext
   });
 }
 
+/**
+ * `--exchange TSX`: every ticker series that names no venue, on that one, as
+ * `BDI:TSX` would be. A code the app does not know fails before any request.
+ */
+function onExchange(spec: ChartSpec, exchange: string): ChartSpec {
+  const code = exchange.trim().toUpperCase();
+  if (!isKnownExchangeCode(code)) throw new Error(`Unknown exchange "${exchange.trim()}". Write a venue code such as TSX, LSE or XETRA, or name it in the series: BDI:TSX.`);
+  return { ...spec, series: spec.series.map((series) => series.source.kind !== "security" || series.source.instrument.exchange || series.source.instrument.instrument
+    ? series
+    : { ...series, source: { ...series.source, instrument: { ...series.source.instrument, exchange: canonicalExchange(code) } } }) };
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
     shape: "series",
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
-      const saved = parseChartSpec(context.settings?.chartSpec);
-      if (!saved) throw new Error("The chart specification is invalid.");
+      const closingPrintsPending: string[] = [];
+      const stored = parseChartSpec(context.settings?.chartSpec);
+      if (!stored) throw new Error("The chart specification is invalid.");
+      const saved = typeof args.options.exchange === "string" ? onExchange(stored, args.options.exchange) : stored;
       // A leveraged or inverse fund compared with anything draws its daily objective beside it.
       const parsed = template === "comparison-chart-pane" && mayDrawDailyObjective(saved)
         ? withLeverageOverlay(saved, await loadDailyObjectives(
@@ -680,9 +711,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         series: await Promise.all(parsed.series.map(async (series) => {
           if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
           const { symbol } = series.source.instrument;
-          // A FRED id no ticker answers to (DFII10) is its FRED series; an intraday chart has none.
-          const fred = template === "graph-intraday-price-pane" ? null : await bareFredSeries(series, () => readListing(symbol), context);
-          if (fred) return fred;
+          // A FRED id (DFII10) or a series alias (hashrate) no ticker answers to is that series; an intraday chart has none.
+          const catalog = template === "graph-intraday-price-pane" ? null : await bareCatalogSeries(series, () => readListing(symbol), context);
+          if (catalog) return catalog;
           if (!reads.has(symbol)) reads.set(symbol, readSeriesListing(symbol));
           const instrument = await reads.get(symbol)!;
           return instrument ? { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } } : series;
@@ -709,6 +740,37 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ...await loadIntradayWindow({ provider: context.marketData, symbol: target.symbol, exchange: target.exchange ?? "", request, context: { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument } }),
         })));
         context.signal.throwIfAborted();
+        // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
+        // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
+        await Promise.all(histories.map(async (history) => {
+          // A future settles rather than closing on an auction print, and a coin or a currency pair has no session
+          // to close: their bars stay as traded, and no quote is read for them.
+          if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null
+            || isRoundTheClockCoin(history.symbol, history.exchange) || isCurrencyPairListing(history.symbol, history.exchange)) return;
+          const now = Date.now();
+          const known = history.exchange || history.quote?.listingExchangeName || history.quote?.exchangeName || undefined;
+          if (known && isAlwaysOpenExchange(known)) return;
+          // While the session trades, no session of the chart has closed since its bars were read.
+          if (history.quote?.marketState === "REGULAR" || (known && isRegularSessionTime(known, now) === true)) return;
+          if (known && !newestClosedSession(history.points, { venue: known, now })) return;
+          // A captured shot's source can have no quotes: its bars are drawn as captured.
+          const quote = history.quote ?? (typeof context.marketData.getQuote === "function"
+            ? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
+              { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
+              .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null))
+            : null);
+          const venue = known || quote?.listingExchangeName || quote?.exchangeName || undefined;
+          const newest = newestClosedSession(history.points, { venue, now });
+          const decided = newest ? newestSessionClose(quote, { ...newest, venue }) : null;
+          if (!newest || !decided) return;
+          if ("pending" in decided) {
+            closingPrintsPending.push(history.symbol);
+            return;
+          }
+          const closes = new Map([[newest.date, decided.close]]);
+          history.points = withOfficialCloses(history.points, closes, { venue, now });
+          history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now });
+        }));
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);
         const ends = histories.flatMap(({ end }) => end ? [end.getTime()] : []);
@@ -725,9 +787,11 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }, context.marketData) };
       }
       const model = await loadChartPaneModel(spec, context);
-      // A bare coin ticker charted as another listing (ETH, the Grayscale fund) says where the coin is, as `quote` does.
-      const coinNotes = (await Promise.all(listings.values())).flatMap((read) => read?.coinNote ?? []);
-      if (coinNotes.length) model.warnings = [...model.warnings ?? [], ...coinNotes];
+      // What became of the company that had a bare symbol (GOGL), and a bare coin ticker charted as another listing
+      // (ETH, the Grayscale fund), are said as `quote` says them.
+      const readListings = await Promise.all(listings.values());
+      const listingNotes = [...readListings.flatMap((read) => read?.successorNote ?? []), ...readListings.flatMap((read) => read?.coinNote ?? [])];
+      if (listingNotes.length) model.warnings = [...model.warnings ?? [], ...listingNotes];
       if (template === "graph-intraday-price-pane" && !intradayHistories.length && model.chart.viewport) {
         const { start, end } = model.chart.viewport;
         for (const { target, data } of [
@@ -782,6 +846,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         model.metadata = { ...model.metadata, resolution: dropped.drop };
       }
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, chartQuoteTimes(model));
+      if (closingPrintsPending.length) {
+        model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };
+      }
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

@@ -21,6 +21,9 @@
 // EGX closes on Egypt's public holidays, often moved to the Thursday of their
 // week (Armed Forces Day, Tuesday 6 Oct 2026, to Thursday 8 Oct, by the
 // exchange's statement of 5 Oct). Its week is Sunday to Thursday.
+// JSE closes on South Africa's public holidays, a Sunday one moving to the Monday (Women's Day, 9 Aug 2026):
+//   JSE Market Notice 380/25, JSE Markets Calendar 2026 (clientportal.jse.co.za), and the
+//   local government election day, Wed 4 Nov 2026, declared a public holiday on 15 Sep 2026 (gov.za).
 const KRX_CLOSURES: Record<number, readonly string[]> = {
   2026: [
     "01-01", "02-16", "02-17", "02-18", "03-02", "05-01", "05-05", "05-25", "06-03",
@@ -78,6 +81,9 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
   ASX: {
     2026: ["01-01", "01-26", "04-03", "04-06", "06-08", "12-25", "12-28"],
     2027: ["01-01", "01-26", "03-26", "03-29", "06-14", "12-27", "12-28"],
+  },
+  JSE: {
+    2026: ["01-01", "04-03", "04-06", "04-27", "05-01", "06-16", "08-10", "09-24", "11-04", "12-16", "12-25"],
   },
   EGX: {
     2026: [

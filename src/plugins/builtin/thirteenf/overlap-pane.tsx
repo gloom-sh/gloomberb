@@ -10,6 +10,7 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cachedFunds, cachedMembers, loadFunds, loadMembers } from "../members/client";
 import { coveredFund } from "../members/model";
@@ -115,7 +116,10 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const period = peer ? overlapPeriod(data, peer) : null;
   const mismatch = peer && !period;
   const listError = etf ? etfFile.error : error ?? paged.error?.message ?? paged.moreError?.message ?? null;
-  usePaneStatusFooter({ registrationId: "13f-overlap", loading: loading || loadingMore || paged.loading || (!!etf && etfFile.loading), error: listError, hints: open ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", title: mineOnly ? "All Tickers" : "Mine Only", onPress: () => setMineOnly(value => !value) }] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }] });
+  // Either side answered from a copy a failed refresh left says when it was saved.
+  const etfSavedAt = etf ? etfFile.data?.savedAt : null;
+  const savedInfo = useMemo(() => savedCopyFooterInfo([data.savedAt, peer?.savedAt, etfSavedAt]), [data.savedAt, peer?.savedAt, etfSavedAt]);
+  usePaneStatusFooter({ registrationId: "13f-overlap", loading: loading || loadingMore || paged.loading || (!!etf && etfFile.loading), error: listError, info: savedInfo, hints: open ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", title: mineOnly ? "All Tickers" : "Mine Only", onPress: () => setMineOnly(value => !value) }] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }] });
   usePaneNoticeFooter({ registrationId: "13f-overlap-notice", focused, notices: [
     ...(peer?.warnings ?? []),
     ...(mismatch ? ["No reporting quarter is loaded for both funds; overlap is unavailable."] : []),

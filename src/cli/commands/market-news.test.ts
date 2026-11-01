@@ -7,6 +7,7 @@ import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
 import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
+import { setCliWidthOverride } from "../../utils/cli-output";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
 
@@ -54,7 +55,7 @@ function unknownSymbol() {
   return { ...cli, calls };
 }
 
-test("several words, quoted or not, search story text in the service's order without looking up a listing", async () => {
+test("several words, quoted or not, search story text without looking up a listing, and print the matches newest first", async () => {
   const requests = serveSearch(STORIES);
   const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
   await news.execute(["european gas"], cli.context);
@@ -62,18 +63,64 @@ test("several words, quoted or not, search story text in the service's order wit
 
   expect(requests.map((url) => [url.pathname, url.searchParams.get("query"), url.searchParams.get("limit")]))
     .toEqual([["/news/search", "european gas", "20"], ["/news/search", "european gas", "20"]]);
-  // Headline hits lead the service's answer, so an older one stays above a newer summary hit.
-  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["older", "newer"]);
+  // The service answers headline hits first (an older one above a newer summary hit); the list reads newest first, as help says.
+  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["newer", "older"]);
   expect(cli.printed[0]!.result.metadata).toMatchObject({ ticker: null, search: "european gas" });
   const text = render(cli.printed[0]!);
   expect(text.split("\n")[0]).toBe('Stories matching "european gas"');
   expect(text).toContain("Goldman warns TTF could hit 105 euros");
 });
 
+/**
+ * `news ALL` on 30 Oct 2026 listed "September 2026 Monthly Release" with nothing under it: the $220M of
+ * catastrophe losses were only in the JSON summary, and no row carried an id the story pane would open.
+ */
+test("each story prints its short id and its summary on one indented line cut to the width; exports keep both whole", async () => {
+  const id = "7a2e8fda-0c4b-4c1e-9d55-2f4e8a6b1c3d";
+  const summary = "Allstate estimated September catastrophe losses at $220 million,\n\nbringing third-quarter losses to $1.65 billion.";
+  serveSearch([{ ...story(id, "September 2026 Monthly Release", "2026-10-15T11:52:00.000Z"), summary }]);
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
+  await news.execute(["catastrophe losses"], cli.context);
+  setCliWidthOverride(72);
+  try {
+    const lines = render(cli.printed[0]!).split("\n");
+    const row = lines.findIndex((line) => line.includes("September 2026 Monthly Release"));
+    expect(lines[row]).toContain("7a2e8fda");
+    expect(lines[row]).not.toContain(id);
+    expect(lines[row + 1]).toBe("  Allstate estimated September catastrophe losses at $220 million, brin…");
+  } finally {
+    setCliWidthOverride(null);
+  }
+  const csv = serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv", color: false }, cli.printed[0]!.options);
+  expect(csv).toContain(id);
+  expect((cli.printed[0]!.result.data as Array<{ summary: string }>)[0]!.summary).toBe(summary);
+});
+
+test("a search's undated stories go last, and stories of the same time keep the service's order", async () => {
+  const at = "2026-10-15T13:10:00.000Z";
+  serveSearch([
+    story("undated-a", "Hashrate climbs as miners add machines", ""),
+    story("tie-first", "Hashrate record at Foundry", at),
+    story("older", "Hashrate falls after the halving", "2026-09-23T12:30:00.000Z"),
+    story("tie-second", "Hashrate record at AntPool", at),
+    story("undated-b", "Hashrate futures listed", ""),
+    story("newest", "Hashrate index hits a high", "2026-10-15T13:11:00.000Z"),
+  ]);
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
+  await news.execute(["bitcoin hashrate"], cli.context);
+  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id))
+    .toEqual(["newest", "tie-first", "tie-second", "older", "undated-a", "undated-b"]);
+});
+
 test("a search no story has every word of lists the closest stories, and says so under its heading", async () => {
-  const requests = serveSearch([story("two", "SpaceX lockup expiration puts buyers to the test", "2026-10-09T15:45:00.000Z")], "closest");
+  const requests = serveSearch([
+    story("two", "SpaceX lockup expiration puts buyers to the test", "2026-10-09T15:45:00.000Z"),
+    story("one", "IPO calendar for the week", "2026-10-20T09:00:00.000Z"),
+  ], "closest");
   const cli = createTestCliContext({ dataProvider: { getNews: async () => { throw new Error("no ticker lookup"); } } });
   await news.execute(["IPO lockup expiry"], cli.context);
+  // The closest stories stay most words first, as the heading says, not by date.
+  expect((cli.printed[0]!.result.data as Array<{ id: string }>).map((article) => article.id)).toEqual(["two", "one"]);
 
   expect(requests[0]!.searchParams.get("closest")).toBe("1");
   expect(cli.printed[0]!.result.metadata).toMatchObject({ search: "IPO lockup expiry", match: "closest" });
@@ -310,4 +357,20 @@ test("a word that is also its company's name hints at the text search only when 
   expect(wordMeansMore([filed([]), filed(["NEM"]), filed(["GOLD"])], "GOLD")).toBe(true);
   expect(wordMeansMore([filed(["META"]), filed(["META", "GOOGL"]), filed([])], "META")).toBe(false);
   expect(wordMeansMore([filed([]), filed([])], "GOLD")).toBe(false);
+});
+
+test("a story's tags keep the venue of a listing outside the US, so PIK on the JSE never opens Kidpik, and tag a company once", () => {
+  const link = (symbol: string, exchange: string, marketCap?: number) => ({ symbol, exchange, canonicalTicker: `${symbol}:${exchange}`,
+    relationType: "direct", displayTier: "primary" as const, confidence: 1, relevanceScore: 1, ...marketCap ? { marketCap } : {} });
+  const tags = (...tickerLinks: ReturnType<typeof link>[]) =>
+    mapCloudNewsArticle({ ...story("pnp", "Pick n Pay narrows its loss as Boxer grows", "2026-10-26T05:19:00.000Z"), tickerLinks }).tickers;
+  expect(tags(link("PIK", "XJSE"), link("BOX", "XJSE"), link("KO", "XNYS"), link("MZDAY", "OTC"), link("BTC", "CRYPTO")))
+    .toEqual(["PIK:JSE", "BOX:JSE", "KO", "MZDAY", "BTC"]);
+  // Every over-the-counter venue is a US one, bare.
+  expect(tags(link("NSRGY", "OTCM"), link("RHHBY", "OTCQX"), link("TCEHY", "PINX"), link("GMGI", "EXPM"))).toEqual(["NSRGY", "RHHBY", "TCEHY", "GMGI"]);
+  // ASML on Euronext Amsterdam and on NASDAQ is one company: its home line, the one its market cap is stated on, wherever it was tagged.
+  expect(tags(link("ASML", "XNAS"), link("SKHY", "XNAS"), link("ASML", "XAMS", 614_099_124_224))).toEqual(["ASML:AMS", "SKHY"]);
+  expect(tags(link("ASML", "XAMS", 614_099_124_224), link("ASML", "XNAS"))).toEqual(["ASML:AMS"]);
+  // With no market cap on either, the venue tagged first.
+  expect(tags(link("SHOP", "XTSE"), link("SHOP", "XNYS"))).toEqual(["SHOP:TSX"]);
 });

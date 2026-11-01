@@ -375,6 +375,17 @@ export interface ImageSurfaceProps extends BoxProps {
   src?: string;
   alt?: string;
   objectFit?: "contain" | "cover";
+  /**
+   * Draw `children` until the image has loaded, not only without a `src` or
+   * once it fails, so a box that waits on a picture shows its stand-in rather
+   * than an empty one. The terminal always does.
+   */
+  fallbackWhileLoading?: boolean;
+  /**
+   * A colour behind the picture once it has loaded (a logo made for a light
+   * page), never behind `children`. The terminal draws none.
+   */
+  imageBackground?: string;
 }
 export interface MediaSurfaceProps extends BoxProps {
   src?: string;
@@ -709,7 +720,12 @@ export interface SaveTextFileRequest {
 
 export interface RendererHost {
   requestExit(): void;
-  startWindowDrag?(): Promise<void> | void;
+  /**
+   * From a press on a title bar. `press.detail` counts the clicks: where the
+   * system's title bars maximize on a double-click, the second press does that
+   * instead of moving the window.
+   */
+  startWindowDrag?(press?: { detail?: number }): Promise<void> | void;
   controlWindow?(action: "minimize" | "toggle-maximize" | "close"): Promise<void> | void;
   /**
    * Opens a link in the person's browser. Resolves false when no browser could

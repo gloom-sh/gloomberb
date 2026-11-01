@@ -6,7 +6,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { typoDistance } from "../../../utils/typo-distance";
-import { formatMove } from "../credit-boards/model";
+import { formatMove, SETTLEMENT_TEXT } from "../credit-boards/model";
 
 export const CDS_PANE_ID = "cds";
 
@@ -858,6 +858,8 @@ export interface CdsSpreadSummary {
   /** The latest level in that unit, and the New York trade date it is from. */
   level: number;
   date: string;
+  /** The level is that day's settlement price, not its trades. */
+  settlement: boolean;
   /** The same level in bp. */
   spreadBp: number;
   /** The running coupon of a name quoted upfront, bp. */
@@ -888,6 +890,7 @@ export function spreadSummary(line: CdsSpreadLine): CdsSpreadSummary | null {
     unit: upfront ? "pts" : "bp",
     level: upfront ? line.upfrontPts! : latest.spreadBp,
     date: latest.date,
+    settlement: latest.kind === "settlement",
     spreadBp: latest.spreadBp,
     couponBp: upfront ? line.couponBp : null,
     change1w: upfront ? line.change1WPts : line.change1W,
@@ -921,15 +924,16 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
   const summary = spreadSummary(line);
   if (!summary) return [];
   const { unit } = summary;
+  const dated = summary.settlement ? `${summary.date} · ${SETTLEMENT_TEXT}` : summary.date;
   return [
     unit === "pts"
       ? {
         id: "spread",
         label: "5Y upfront",
         value: formatPoints(summary.level),
-        detail: summary.couponBp == null ? summary.date : `${summary.date} · ${formatBp(summary.couponBp)} coupon`,
+        detail: summary.couponBp == null ? dated : `${dated} · ${formatBp(summary.couponBp)} coupon`,
       }
-      : { id: "spread", label: "5Y spread", value: formatBp(summary.level), detail: summary.date },
+      : { id: "spread", label: "5Y spread", value: formatBp(summary.level), detail: dated },
     ...(summary.change1w != null ? [{ id: "1w", label: "1W", value: formatQuotedMove(unit, summary.change1w) }] : []),
     ...(summary.change1m != null ? [{ id: "1m", label: "1M", value: formatQuotedMove(unit, summary.change1m) }] : []),
     ...(summary.range ? [{

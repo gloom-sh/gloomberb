@@ -85,3 +85,21 @@ test("asset controls survive loading, 503 and empty; r retries, stale rows stay 
     stub.mockRestore();
   }
 });
+
+test("the funds' price move shows beside the flows once the server sends it, and a day without one reads as none", async () => {
+  const priced = payload("BTC");
+  priced.days = [
+    { ...priced.days[0]!, priceChangePct: 2.15 },
+    { date: "2026-10-19", flows: { IBIT: null }, total: null, pending: [], priceChangePct: null },
+  ];
+  const stub = spyOn(apiClient, "getCloudCryptoEtfFlows").mockImplementation(async () => priced);
+  try {
+    await tui.render(<Harness />);
+    const frame = await tui.waitForFrameToContain("PRICE %");
+    expect(frame).toMatch(/2026-10-20\s+\+123\.0\s+\+2\.15%\s+\+123\.0/);
+    expect(frame).toMatch(/2026-10-19\s+—\s+—\s+—/);
+  } finally {
+    await tui.destroy();
+    stub.mockRestore();
+  }
+});

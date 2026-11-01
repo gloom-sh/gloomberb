@@ -6,6 +6,7 @@ import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { setCliColorEnabledOverride, setCliWidthOverride } from "../../../utils/cli-output";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 
 function args(symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}): HeadlessPaneLoadArgs {
@@ -16,8 +17,8 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const requested: string[] = [];
   const ctx = {
     marketData: createTestDataProvider({
-      async getTickerFinancials(symbol, exchange) {
-        requested.push(`${symbol}:${exchange}`);
+      async getTickerFinancials(symbol, exchange, context) {
+        requested.push(`${symbol}:${exchange}${context?.statementHistory ? ` ${context.statementHistory}` : ""}`);
         return {
           financialCurrency: "USD",
           annualStatements: [
@@ -32,7 +33,8 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const result = await financialStatementsHeadless.load(args(["AAPL:NASDAQ"], { period: "annual", statement: "income" }), ctx);
   const revenue = result.rows.find((row) => String(row.metric).includes("Revenue"))!;
   const cells = revenue.cells as Array<{ date: string; value: number; growth: number; formatted: string }>;
-  expect(requested).toEqual(["AAPL:NASDAQ"]);
+  // The extended history is read only to tell whether GF goes further back.
+  expect(requested).toEqual(["AAPL:NASDAQ", "AAPL:NASDAQ extended"]);
   expect(result.metadata).toMatchObject({ symbol: "AAPL:NASDAQ", period: "annual", statement: "income" });
   expect(revenue["2025-12-31"]).toBe(150);
   expect(cells[0]).toMatchObject({ date: "2025-12-31", value: 150, growth: 0.5 });
@@ -414,6 +416,40 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     expect(complete.freshness).not.toHaveProperty("periodToDate");
     expect(renderHeadlessPaneText(returnsHeadless, complete, input, "RETURN CSCO")).toContain("Wed 30 Sep 2026");
   } finally {
+    setSystemTime();
+  }
+});
+
+test("a narrow RETURN drops its dollar moves, the interval's first, rather than put a column under every row; its notices wrap", async () => {
+  setSystemTime(new Date("2026-10-31T00:30:00Z"));
+  setCliColorEnabledOverride(false);
+  try {
+    // SBLK's hourly closes, Friday 30 Oct: seven sessions' worth of rows, each with a four-figure move.
+    const hourly = Array.from({ length: 7 }, (_, hour) => ({ date: new Date(Date.UTC(2026, 9, 30, 13 + hour, 30)), close: 28.62 - hour * 0.045 }));
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "SBLK", exchange: "NASDAQ" }),
+      marketData: createTestDataProvider({ getDetailedPriceHistoryWithMetadata: async () => ({ points: hourly, resolution: "1h" }) }),
+    });
+    const input = args(["SBLK:NASDAQ"], { range: "1D", interval: "1h" });
+    const result = await returnsHeadless.load(input, ctx);
+    const at = (width: number | null) => {
+      setCliWidthOverride(width);
+      return renderHeadlessPaneText(returnsHeadless, result, input, "RETURN SBLK");
+    };
+    const header = (text: string) => text.split("\n").find((line) => line.startsWith("Time (UTC)"))!.split(/ {2,}/);
+    expect(header(at(null))).toEqual(["Time (UTC)", "Price", "Int $", "Int %", "Total $", "Total %"]);
+    const narrow = at(56);
+    expect(header(narrow)).toEqual(["Time (UTC)", "Price", "Int %", "Total $", "Total %"]);
+    expect(header(at(46))).toEqual(["Time (UTC)", "Price", "Int %", "Total %"]);
+    // One line a row, and no line past the width: the drawdown notice wraps.
+    expect(narrow.split("\n").filter((line) => line.startsWith("  "))).toEqual([]);
+    expect(narrow.split("\n").filter((line) => line.length > 56)).toEqual([]);
+    expect(narrow).toContain("Max drawdown");
+    // An export keeps every figure.
+    expect(result.columns!.map((column) => column.key)).toEqual(expect.arrayContaining(["intervalChange", "totalChange"]));
+  } finally {
+    setCliWidthOverride(null);
+    setCliColorEnabledOverride(null);
     setSystemTime();
   }
 });

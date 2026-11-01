@@ -178,13 +178,13 @@ export function PaneHeader({
     event.stopPropagation?.();
     onHeaderMouseDown?.(event);
   };
-  const beginWindowDrag = (event?: { stopPropagation?: () => void }) => {
+  const beginWindowDrag = (event?: { stopPropagation?: () => void; detail?: number }) => {
     event?.stopPropagation?.();
     if (titleBar) {
       onHeaderMouseDown?.(event);
       return;
     }
-    void rendererHost.startWindowDrag?.();
+    void rendererHost.startWindowDrag?.(event);
   };
   const barHandlers = windowDrag
     ? { onMouseDown: beginWindowDrag }

@@ -17,6 +17,7 @@ import { usePluginAppActions, usePluginConfigState, usePluginState } from "../..
 import {
   CALENDAR_ALERTS_KEY,
   EVENT_ALERTS_KEY,
+  IPO_ALERTS_KEY,
   IV_LEVEL_ALERTS_KEY,
   eventAlertStoreKey,
   eventAlertTarget,
@@ -54,12 +55,13 @@ const columnsFor = (width: number, lastCheck: boolean, needsSignIn: boolean): Da
 export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const [catalystStatus] = usePluginConfigState<string>(CATALYST_POLL_STATUS, "Catalyst alerts check every five minutes while the app is open");
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
-  // IV levels and calendar events are kept in their own lists, which released versions never read.
+  // IV levels, calendar events and IPOs are kept in their own lists, which released versions never read.
   const [ivJson, setIvJson] = usePluginConfigState<string>(IV_LEVEL_ALERTS_KEY, "[]");
   const [calendarJson, setCalendarJson] = usePluginConfigState<string>(CALENDAR_ALERTS_KEY, "[]");
+  const [ipoJson, setIpoJson] = usePluginConfigState<string>(IPO_ALERTS_KEY, "[]");
   const { rules, error } = useMemo(
-    () => readEventAlertStores((key) => key === IV_LEVEL_ALERTS_KEY ? ivJson : key === CALENDAR_ALERTS_KEY ? calendarJson : json),
-    [json, ivJson, calendarJson],
+    () => readEventAlertStores((key) => key === IV_LEVEL_ALERTS_KEY ? ivJson : key === CALENDAR_ALERTS_KEY ? calendarJson : key === IPO_ALERTS_KEY ? ipoJson : json),
+    [json, ivJson, calendarJson, ipoJson],
   );
   // Their readings stay on this device.
   const [savedChecks] = usePluginState<unknown>(IV_LEVEL_CHECKS_KEY, {});
@@ -70,9 +72,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const updateRules = useCallback(
     (rule: EventAlertRule, update: (rules: EventAlertRule[]) => EventAlertRule[]) => {
       const key = eventAlertStoreKey(rule);
-      (key === IV_LEVEL_ALERTS_KEY ? setIvJson : key === CALENDAR_ALERTS_KEY ? setCalendarJson : setJson)((current) => updateEventAlerts(current, update));
+      (key === IV_LEVEL_ALERTS_KEY ? setIvJson : key === CALENDAR_ALERTS_KEY ? setCalendarJson : key === IPO_ALERTS_KEY ? setIpoJson : setJson)((current) => updateEventAlerts(current, update));
     },
-    [setJson, setIvJson, setCalendarJson],
+    [setJson, setIvJson, setCalendarJson, setIpoJson],
   );
   const [selected, setSelected] = useState(0);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "created", direction: "desc" });

@@ -20,6 +20,21 @@ import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import type { ShortcutIntent } from "./shortcuts";
 import { clampIndex } from "../../../../utils/math";
 
+/** Written the way a symbol is: up to five letters and a share class (AAPL, nvda, BRK.B). */
+const SYMBOL_SHAPED_QUERY = /^[A-Za-z]{1,5}(?:[.\-/][A-Za-z]{1,2})?$/;
+
+/**
+ * Text that asks for a symbol rather than a local row: symbol-shaped, and in
+ * capitals or in no row's name. `nvda` matches Exposure only through its
+ * example input; `upd` is in Check for Updates.
+ */
+function readsAsSymbol(text: string, rows: readonly ResultItem[]): boolean {
+  if (!SYMBOL_SHAPED_QUERY.test(text)) return false;
+  if (text === text.toUpperCase()) return true;
+  const wanted = text.toLowerCase();
+  return !rows.some((row) => isDefaultSelectable(row) && row.label.toLowerCase().includes(wanted));
+}
+
 interface UseCommandBarRootRuntimeOptions {
   activeCollectionId: string | null;
   activePortfolio?: AppState["config"]["portfolios"][number];
@@ -154,6 +169,13 @@ export function useCommandBarRootRuntime({
 } {
   const previousRootSelectionContextRef = useRef<{ query: string; mode: string } | null>(null);
   const previousRootResultIdsRef = useRef<string[]>([]);
+  /**
+   * The row the untouched highlight rests on once the query's answer is in,
+   * and the answer it was on. A later answer that reorders the rows (a
+   * fresher search over a cached one, a broker's) moves the highlight with
+   * its row, so Enter opens the row that was highlighted.
+   */
+  const pinnedRootRowRef = useRef<{ id: string; answer: string | null } | null>(null);
   const activeMatch = matchPrefix(rootQuery, availableCommands);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
@@ -310,6 +332,13 @@ export function useCommandBarRootRuntime({
     writeTickerSearchCache,
   });
   const rootSearching = tickerSearching || providerSearching;
+  // A symbol whose search has not answered: the rows on screen are what the
+  // letters match locally (a pane whose example names AAPL), not the symbol,
+  // so none of them is highlighted and Enter waits for the answer, as it would
+  // get had the symbol been typed slowly. Lower case found in a row's name
+  // (`upd`, `list`) is that row and runs at once.
+  const rootSymbolAnswerPending = !rootResultsCurrent && rootPlainTickerSearchArg !== null
+    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, orderedRootResults));
 
   useLayoutEffect(() => {
     if (currentRoute) return;
@@ -326,6 +355,7 @@ export function useCommandBarRootRuntime({
     previousRootSelectionContextRef.current = { query: rootQuery, mode: rootModeKind };
     if (selectionContextChanged) {
       rootSelectionNavigatedRef.current = false;
+      pinnedRootRowRef.current = null;
     }
 
     setRootSelectedIdx((current) => {
@@ -338,15 +368,23 @@ export function useCommandBarRootRuntime({
         if (shiftedIdx >= 0) return shiftedIdx;
         return clampIndex(current, resultIds.length);
       }
-      // Untouched, the selection follows the best row on offer. When every row
-      // is an offer or a placeholder, none of them is the answer and none is
-      // selected: Enter must not take one of them for the ticker still being
-      // searched.
+      const pinnedIdx = pinnedRootRowRef.current ? resultIds.indexOf(pinnedRootRowRef.current.id) : -1;
+      if (pinnedIdx >= 0) return pinnedIdx;
+      // Untouched, the selection follows the best row on offer until the
+      // answer is in. When every row is an offer or a placeholder, none of
+      // them is the answer and none is selected: Enter must not take one of
+      // them for the ticker still being searched.
       const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
-      if (defaultIdx < 0) return -1;
-      return clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+      if (defaultIdx < 0 || rootSymbolAnswerPending) return -1;
+      const selected = clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+      pinnedRootRowRef.current = rootResultsCurrent && resultIds[selected]
+        ? { id: resultIds[selected]!, answer: activeRootProviderResultsKey }
+        : null;
+      return selected;
     });
   }, [
+    activeRootProviderResultsKey,
+    rootResultsCurrent,
     activeMatch?.command.id,
     currentRoute,
     orderedRootResults,
@@ -354,13 +392,20 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootResultModel.initialIdx,
     rootSelectionNavigatedRef,
+    rootSymbolAnswerPending,
     setRootHoveredIdx,
     setRootSelectedIdx,
   ]);
 
   useEffect(() => {
     if (!activeRootProviderResultsKey) return;
+    // A later answer that only reorders the rows leaves the highlight on its row.
+    const pinned = pinnedRootRowRef.current;
+    if (pinned && pinned.answer !== activeRootProviderResultsKey
+      && orderedRootResults.some((item) => item.id === pinned.id)) return;
     setRootSelectedIdx(0);
+    const top = orderedRootResults[0];
+    pinnedRootRowRef.current = top ? { id: top.id, answer: activeRootProviderResultsKey } : null;
     setRootHoveredIdx(null);
     nativeListScrollRef.current?.scrollTo(0);
   }, [activeRootProviderResultsKey, nativeListScrollRef, setRootHoveredIdx, setRootSelectedIdx]);

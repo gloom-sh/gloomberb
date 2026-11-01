@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
@@ -206,7 +207,7 @@ describe("fetchScreener", () => {
       async getMarketMovers() {
         calls += 1;
         if (calls === 1) return response();
-        throw new Error("upstream down");
+        throw outage("upstream down");
       },
     };
 
@@ -262,7 +263,7 @@ test("backend stale snapshots remain stale after persistence and cannot mask a r
   let calls = 0;
   const api: MarketScreenerApi = { getMarketMovers: async () => {
     calls++;
-    if (calls > 1) throw new Error("Unavailable");
+    if (calls > 1) throw outage("Unavailable");
     const value = response();
     return { ...value, stale: true };
   } };

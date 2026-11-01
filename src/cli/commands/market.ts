@@ -1,10 +1,13 @@
 import { logFailure } from "../../utils/log-failure";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
+import { CHART_RESOLUTION_STEP_MS } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
+import { newsSummaryLine } from "../../news/news-model";
+import { shortStoryId } from "../../news/story-id";
 import type {
   AnalystResearchData,
   CorporateActionsData,
@@ -40,7 +43,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, hasOlderStatements, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
@@ -52,6 +55,7 @@ import {
   analystReferenceMetadata,
   analystUpside,
   formatAnalystReference,
+  ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
@@ -103,6 +107,7 @@ import {
 } from "../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
 import { apiClient } from "../../api-client";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
 import { exchangeAnnouncementsPage, listsExchangeAnnouncements, type ExchangeAnnouncementsPage } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
@@ -120,7 +125,7 @@ import {
   type CliReportTables,
 } from "../report-tables";
 import { historyCoverageNotice } from "../../sources/history-coverage";
-import { maxDrawdown, maxDrawdownText } from "../../utils/max-drawdown";
+import { maxDrawdownText } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
@@ -131,6 +136,10 @@ import {
   historyCoverageWarning,
   historyFacts,
   historyFlagNote,
+  historyWickNote,
+  historyContractDrawdown,
+  historyRollNote,
+  historyThinNote,
   historyGapNote,
   historyJumpNote,
   historyUnbrokenFrom,
@@ -145,13 +154,14 @@ import {
   historyUnit,
   quotedPriceDivisor,
   historyVolume,
+  historyVolumeBasis,
   historyVolumeText,
   type HistoryRow,
   type HistoryUnit,
   type HistoryVolume,
 } from "../history-rows";
 import {
-  HISTORY_EXPORT_COLUMNS,
+  historyExportColumns,
   historyExportStatus,
   historyFailureRow,
   oneLineFailure,
@@ -190,7 +200,7 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
+import { fxRateNotes, refreshedFxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
@@ -245,13 +255,13 @@ import {
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
-import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
+import { bareListingNote, listingFateNotes, noLongerTradingNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
-import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -804,7 +814,10 @@ function financialStatementRows(financials: FinancialsCliData) {
 
 function newsRows(articles: NewsArticle[]) {
   return articles.map((article) => ({
+    id: article.id,
     title: article.title,
+    // Whole, as exports write it; the text table's line under the row (newsRowNote) runs it together.
+    summary: article.summary ?? null,
     source: article.source,
     publishedAt: isoDate(article.publishedAt),
     topic: article.topic,
@@ -822,6 +835,8 @@ function filingRows(filings: SecFilingItem[]) {
     companyName: filing.companyName ?? "",
     accessionNumber: filing.accessionNumber,
     url: filing.primaryDocumentUrl ?? filing.filingUrl,
+    // A current report's press release exhibit, where its index names one: the figures, not the cover page.
+    pressReleaseUrl: filing.pressReleaseUrl ?? "",
     items: secFilingItemCodes(filing.items) ?? "",
     // A current report's items by number and name: the results 8-K reads apart from another filed that day.
     itemsLabel: currentReportItemsLabel(filing.items) ?? "",
@@ -866,7 +881,14 @@ function analystRows(data: AnalystResearchData) {
     current: rating.current ?? "",
     prior: rating.prior ?? "",
     target: rating.currentPriceTarget ?? null,
+    ...(ratingReason(rating) ? { reason: rating.reason } : {}),
   }));
+}
+
+/** The reason coverage of an action gave, under its row with the article. */
+function analystRowNote(row: { reason?: AnalystResearchData["ratings"][number]["reason"] }): string | null {
+  const reason = row.reason;
+  return reason ? `${reason.text} · ${reason.url}` : null;
 }
 
 /** Provider values carry binary floating-point noise such as 0.26940000000000003. */
@@ -1043,7 +1065,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       const listing = asked[index]!;
       // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
       if (result.quote && bareListingNote(listing, result.quote)) return { change: null, formerIssuer: null };
-      const payload = await changes.get(listing)?.settle() ?? null;
+      const payload = await changes.get(listing)?.settle(SUCCESSOR_CHANGE_WAIT_MS) ?? null;
       const current = tradingListing(result.quote, now);
       return { change: describeTickerChange(listing.symbol, payload, current), formerIssuer: describeFormerIssuer(listing.symbol, payload, current) };
     }));
@@ -1390,7 +1412,7 @@ async function loadListingHistory(
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
   const quoted = quoteAnswer.then((answer) => answer.quote);
-  const fate = lookups ? listingFateLoader(listing, market, quoted) : null;
+  const fate = lookups ? listingFateLoader(listing, market, quoted, { successor: true }) : null;
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [loaded, quote] = await Promise.all([
     loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
@@ -1434,21 +1456,28 @@ async function loadListingHistory(
   // A bar history: dated by its last bar, stale once bars of its size stop arriving.
   // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
   const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
+  // Signed out or free, the bars of a session in progress run as late as the delayed quote they end on, and say how late.
+  const sessionTrading = quote?.marketState === "REGULAR" || quote?.marketState === "PRE" || quote?.marketState === "POST";
+  const delayedTail = quote?.dataSource === "delayed" && !quote.delisting && (dayToDate || (intraday && sessionTrading));
   // The source that served the bars, a broker or another source when Gloom Cloud could not.
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A window that closed before today is the history asked for: no later bar makes it stale.
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
     ...source,
     status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
+    ...(volume ? { note: historyVolumeText(volume, interval, historyVolumeBasis(data)) } : {}),
   }) : rowsFreshness(data, {
     ...source,
     ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
     observedKey: "date",
     oldest: null,
     cadenceExchange: venue,
+    // An intraday bar is dated by its open, so the line names its span: `last bar 15:00–16:00 UTC`.
+    ...(intraday && interval && interval in CHART_RESOLUTION_STEP_MS ? { barMinutes: CHART_RESOLUTION_STEP_MS[interval] / 60_000 } : {}),
     ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
     ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
-    ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
+    ...(delayedTail ? { status: "delayed" as const, delayMinutes: CLOUD_QUOTE_DELAY_MINUTES } : {}),
+    ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval, historyVolumeBasis(data)) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
   // The rows are drawn from the bars served, which say whether they are the saved copy.
   }), loaded);
   const gaps = historyGapNote(data, traded);
@@ -1464,14 +1493,29 @@ async function loadListingHistory(
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-    gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
+    gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
+    // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
+    historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
   ].flat();
   return {
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
+}
+
+/**
+ * A continuous future's history is the front month's, not the contract its
+ * quote names now: NG=F's rows from before the roll are November's under a
+ * quote of "Natural Gas Dec 2026". The heading says "Natural Gas front month"
+ * once the bars name their contracts.
+ */
+function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[]): ListingIdentity {
+  if (!/=F$/i.test(symbol) || !rows.some((row) => row.contract)) return identity;
+  const board = futuresBoardContract(symbol);
+  const name = board?.name ?? identity.name?.replace(/\s+[A-Z][a-z]{2}\s+\d{4}$/, "");
+  return name ? { ...identity, name: `${name} front month` } : identity;
 }
 
 /** What a listing with no bar for what was asked says, in a warning and in a list's status column. */
@@ -1519,6 +1563,8 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.partial ? cliStyles.muted("partial") : "",
     row.filled ? cliStyles.muted("filled") : "",
     row.unsettled ? cliStyles.muted("unsettled") : "",
+    row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
+    row.thin ? cliStyles.muted("thin") : "",
     typeof row.status === "string" ? cliStyles.warning(row.status) : "",
   ].filter(Boolean).join(" "),
 };
@@ -1572,8 +1618,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
     const textColumns = historyTextColumns(intraday, price).map((column) => column.key !== "volume" ? column
       : { ...column, format: historyVolumeCell(() => missingVolume) });
-    // The largest fall from a close to a later one in the bars shown, said under the heading.
-    const drawdown = maxDrawdown(data);
+    // The largest fall from a close to a later one in the bars shown, said under the heading: within one contract
+    // of a continuous future, never from one month's close to another's across a roll.
+    const contractDrawdown = historyContractDrawdown(data);
+    const drawdown = contractDrawdown?.drawdown ?? null;
     ctx.printResult({
       data,
       metadata: {
@@ -1590,20 +1638,21 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         // The first bar after the last gap or jump; the first bar when there is none.
         unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
-        maxDrawdown: drawdown,
+        maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
     }, {
-      heading: [listingHeading(identity), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
-        ...drawdown && interval ? [cliStyles.muted(maxDrawdownText(drawdown, { basis: `${BAR_INTERVAL_LABELS[interval]} closes`, price,
+      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
+        ...drawdown && interval ? [cliStyles.muted(maxDrawdownText(drawdown, {
+          basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
           date: (text) => intraday ? formatUtcTime(text) : text.slice(0, 10) }))] : []].join("\n"),
       dateKey: "date",
       textColumns: [...textColumns, HISTORY_FLAG_TEXT_COLUMN],
-      // One header whatever the market is doing, for one symbol as for a list (HISTORY_EXPORT_COLUMNS).
-      columns: HISTORY_EXPORT_COLUMNS,
+      // One header whatever the market is doing, for one symbol as for a list (historyExportColumns).
+      columns: historyExportColumns(data),
       exportStatus: historyExportStatus,
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
       exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
@@ -1709,7 +1758,7 @@ async function runHistoryList(
       dateKey: "date",
       textColumns: [{ key: "symbol", header: "Symbol", shrink: false }, ...textColumns,
         { key: "currency", header: "Cur", shrink: false, format: currencyCell }, HISTORY_FLAG_TEXT_COLUMN],
-      columns: HISTORY_EXPORT_COLUMNS,
+      columns: historyExportColumns(rows),
       exportStatus: historyExportStatus,
       // Every row names its symbol, the currency its prices are in, its bar size and the as-of of its own symbol's bars.
       exportIdentity: (row) => {
@@ -1881,7 +1930,11 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // Years filled from the listing's exchange, for the revenue and net income columns.
     const filled = filledPeriodsNote(financials.annualStatements.filter((statement) => rows.some((row) => row.date === statement.date)),
       new Set(["totalRevenue", "netIncome"]));
-    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
+    // GF is pointed to only when the listing's extended history goes further back than these years.
+    const dates = rows.map((row) => row.date);
+    const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
+      { statementHistory: "extended" }), "annual", dates);
+    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
@@ -1924,8 +1977,17 @@ const NEWS_COLUMNS = [
   { key: "source", header: "Source" },
   { key: "title", header: "Title" },
   { key: "tickers", header: "Tickers" },
+  // The short id `fn news-story-pane` opens the story by; exports keep the whole id.
+  { key: "id", header: "ID", format: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
   { key: "url", header: "URL", optional: true },
 ];
+
+/**
+ * A story's summary under its row, on one line, cut to the width (`rowNote`): the figure a headline leaves out.
+ * None for a summary that only repeats the headline; exports keep the summary whole.
+ */
+const newsRowNote = (row: Record<string, unknown>) => typeof row.summary === "string"
+  ? newsSummaryLine({ title: String(row.title ?? ""), summary: row.summary }) : null;
 
 /**
  * Stories matching text, printed as a symbol's news is, under a line saying
@@ -1963,6 +2025,7 @@ async function printNewsSearch(
     heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
     rows: newsRows,
     columns: NEWS_COLUMNS,
+    rowNote: newsRowNote,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
   });
 }
@@ -2006,6 +2069,7 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
     heading: metalNewsHeading(route),
     rows: newsRows,
     columns: NEWS_COLUMNS,
+    rowNote: newsRowNote,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
     ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
   });
@@ -2108,6 +2172,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
       columns: NEWS_COLUMNS,
+      rowNote: newsRowNote,
       ...(empty ? { empty } : {}),
       ...(wordHint ? { footnote: wordHint } : {}),
     });
@@ -2122,15 +2187,18 @@ const FILING_COLUMNS = [
   { key: "url", header: "URL", optional: true },
   { key: "items", header: "Items" },
   { key: "itemsLabel", header: "Item names" },
+  { key: "pressReleaseUrl", header: "Press release URL" },
 ];
 
-// The text table names the items before the URL, which a narrow terminal drops first.
+// The text table names the items before the URL, which a narrow terminal drops first. A current report's
+// URL is its press release where it has one, the page its figures are on; exports keep both links.
 const FILING_TEXT_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
   { key: "itemsLabel", header: "Items" },
-  { key: "url", header: "URL", optional: true },
+  { key: "url", header: "URL", optional: true,
+    format: (value: unknown, row: Record<string, unknown>) => String(row.pressReleaseUrl || (value ?? "")) },
 ];
 
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
@@ -2626,6 +2694,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: listingHeading(identity),
       rows: analystRows,
       summary: (research) => analystSummary(research, quote),
+      rowNote: analystRowNote,
       columns: [
         { key: "date", header: "Date" },
         { key: "firm", header: "Firm" },
@@ -2717,7 +2786,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const refresh = ctx.cliOptions.refresh;
     const venues = loadBareVenues(listing, market);
     const quotePromise = loadListingQuote(market.dataProvider, listing);
-    const fate = listingFateLoader(listing, market, quotePromise);
+    const fate = listingFateLoader(listing, market, quotePromise, { successor: true });
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
     const now = Date.now();
     // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.
@@ -3073,7 +3142,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     }));
     const freshness = fxPairFreshness(loaded);
     // A rate that is its pair's bar says which bar, and a stale one why it stands.
-    const rateNotes = fxRateNotes(new Map([...loaded].map(([code, leg]) => [code, leg.timing])));
+    const timings = new Map([...loaded].map(([code, leg]) => [code, leg.timing]));
+    // --refresh read every leg again: one that is still stale says the data service has no newer rate.
+    const rateNotes = [...fxRateNotes(timings), ...ctx.cliOptions.refresh ? refreshedFxRateNotes(timings) : []];
     if (tenor && shortRates && !("error" in tenor)) {
       const read = await shortRates;
       if ("error" in read) throw read.error;
@@ -3209,12 +3280,14 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
       })),
     ]);
-    const noCalendar = abroadNotes.join("\n");
+    // A listing at home the calendar has no date for is named as well: a list never drops a symbol unsaid.
+    const undated = undatedListingsNote(listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing)));
+    const noCalendar = [...abroadNotes, ...undated ? [undated] : []].join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
       ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
-      ...ctx.cliOptions.format === "text" ? [] : abroadNotes,
+      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? [undated] : []],
     ];
     ctx.printResult({
       data: events,
@@ -3280,14 +3353,15 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Bars",
         lines: [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
-          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. --json rows carry currency, unit, interval and flag.",
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. A low under half the open and close, or a high over twice them, is left blank alone and flagged low<close/2 or high>2*open. --json rows carry currency, unit, interval and flag.",
           "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
           "The heading's last line is the max drawdown of the bars shown: the largest fall from a close to a later close, with the peak and the trough, their dates, and the date a close got back to the peak, if one did (maxDrawdown in --json).",
         ],
       }, {
         title: "CSV",
         lines: [
-          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "Every --csv has one header, whatever the symbol, range or market state: Date, Open, High, Low, Close, Volume, Flag, Partial, Filled, Unsettled, Volume unit, Volume note, Venue volume, Volume venue, Volume basis, status, then symbol_or_series, currency_or_unit, interval, source and as_of. Prices are plain numbers in the currency currency_or_unit names. Partial, Filled and Unsettled are true or false, and status says why a row has no prices.",
+          "A continuous future whose bars name their contracts (NG=F) adds Contract, Roll and Thin before status: the contract per bar, and true or false for the bar it rolled at and a bar that traded far below those around it.",
         ],
       }, {
         title: "Several symbols",

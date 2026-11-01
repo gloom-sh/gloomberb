@@ -916,7 +916,7 @@ export class ChatController {
     const channel = this.ensureChannelState(channelId);
     mergeChatMessages({
       channel,
-      currentUserId: this.session.user?.id,
+      currentUser: this.session.user,
       messages,
       options,
       viewActive: this.appActive && channel.focusedViewCount > 0,

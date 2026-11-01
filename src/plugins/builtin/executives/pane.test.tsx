@@ -1,4 +1,5 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -186,17 +187,17 @@ function seedCache(stale = true) {
   return { persistence, report, list };
 }
 
-test("cached list and statement failures retain original age behind the warning indicator and refresh clears it", async () => {
+test("a list and statement answered from their saved copies say when they were saved, and a refresh clears it", async () => {
   const { persistence, report, list: payload } = seedCache();
   const cacheOptions = { sourceKey: "executives", allowExpired: true };
   const original = persistence.getResource("proxy", "ALPHA:2026", cacheOptions)!;
   let unavailable = true;
   const list = spyOn(apiClient, "getProxyStatements").mockImplementation(async () => {
-    if (unavailable) throw new Error("Discovery outage");
+    if (unavailable) throw outage("Discovery outage");
     return payload;
   });
   const detail = spyOn(apiClient, "getProxyStatement").mockImplementation(async () => {
-    if (unavailable) throw new Error("Statement outage");
+    if (unavailable) throw outage("Statement outage");
     return report;
   });
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
@@ -204,24 +205,18 @@ test("cached list and statement failures retain original age behind the warning 
   let frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
   expect(frame).toContain("filed Apr 01, 2026");
-  expect(frame).toContain("⚠");
+  // The footer line every pane gives a saved copy, not the failures or a notice of its own.
+  expect(frame).toContain("saved copy from");
+  expect(frame).not.toContain("⚠");
   expect(frame).not.toContain("Discovery outage");
   expect(frame).not.toContain("Statement outage");
   expect(persistence.getResource("proxy", "ALPHA:2026", cacheOptions)).toEqual(original);
-  await act(async () => tui.setup().mockInput.pressKey("!"));
-  await settle();
-  frame = tui.frame();
-  expect(frame).toContain("Discovery outage");
-  expect(frame).toContain("Statement outage");
-  expect(frame).toContain(new Date(original.fetchedAt).toISOString());
-  await tui.emitKeypress({ name: "escape" });
-  await settle();
   unavailable = false;
   await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
   frame = tui.frame();
   expect(frame).toContain("ALPHA compensation 2026");
-  expect(frame).not.toContain("⚠");
+  expect(frame).not.toContain("saved copy");
   const fresh = await loadProxyStatement("ALPHA", 2026);
   expect(fresh.refreshError).toBeUndefined();
   expect(fresh.fetchedAt).toBeGreaterThan(original.fetchedAt);
@@ -277,7 +272,7 @@ test("failed forced refresh of fresh cached discovery is retried on reopen witho
   const { persistence, list: payload } = seedCache(false);
   const original = persistence.getResource("proxies", "ALPHA", { sourceKey: "executives" })!;
   const list = spyOn(apiClient, "getProxyStatements")
-    .mockRejectedValueOnce(new Error("Temporary discovery outage")).mockResolvedValue(payload);
+    .mockRejectedValueOnce(outage("Temporary discovery outage")).mockResolvedValue(payload);
   restore.push(() => list.mockRestore());
   const retained = await loadProxyStatements("ALPHA", { force: true });
   expect(retained.fetchedAt).toBe(original.fetchedAt);
@@ -302,8 +297,9 @@ test("in-memory data survives a transient refresh but is removed when access is 
   failure = new Error("Transient request failed");
   await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
+  // Without a saved copy, what stays on screen says why its refresh failed.
   expect(tui.frame()).toContain("ALPHA compensation 2026");
-  expect(tui.frame()).toContain("⚠");
+  expect(tui.frame()).toContain("Transient request failed");
   failure = new ApiRequestError("Pro plan required", 402);
   await act(async () => tui.setup().mockInput.pressKey("r"));
   await settle();
@@ -311,7 +307,7 @@ test("in-memory data survives a transient refresh but is removed when access is 
   expect(frame).toContain("Executive pay is part of Gloom Cloud Pro.");
   expect(frame).not.toContain("ALPHA compensation");
   expect(frame).not.toContain("pen filing");
-  expect(frame).not.toContain("⚠");
+  expect(frame).not.toContain("Transient request failed");
 });
 
 test("failed rediscovery after an explicit 404 reports the failure instead of reusing the empty state", async () => {

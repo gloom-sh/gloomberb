@@ -105,11 +105,12 @@ export const VOLATILITY_SERIES: readonly SeriesDefinition[] = [
     tags: ["term structure", "contango", "backwardation", "VIX"],
     description: "VIX 3M over VIX on each date both closed, from Cboe's daily closes and FRED's before them; above 1 is contango.",
     load: async ({ start, signal }) => {
-      const { term, warning } = await loadVolatilityTermHistory({ ...(start ? { start } : {}), ...(signal ? { signal } : {}) });
+      const { term, warning, savedAt } = await loadVolatilityTermHistory({ ...(start ? { start } : {}), ...(signal ? { signal } : {}) });
       const attribution = termAttribution(term);
       return {
         points: term.ratioHistory.map((point) => ({ date: point.date, value: point.value })),
         ...(warning ? { warning } : {}),
+        ...(savedAt != null ? { savedAt } : {}),
         ...(attribution ? { attribution } : {}),
       };
     },

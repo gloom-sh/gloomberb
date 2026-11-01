@@ -1,6 +1,6 @@
 import type { CreditBoardPoint } from "../../../api-client/credit-boards";
 import type { SeriesDefinition, SeriesLoadResult } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadCdxBoard, loadSovrBoard } from "./client";
 
 /** The five on-the-run 5Y index contracts the CDX tab lists; IG and iTraxx quote spread, HY and EM price. */
@@ -27,14 +27,13 @@ function boardPoints(
   rows: ReadonlyArray<{ id: string; points: readonly CreditBoardPoint[] }>,
   id: string,
   label: string,
-  resource: { stale?: boolean; refreshError?: string | null },
+  resource: { stale?: boolean; refreshError?: string | null; savedAt?: number },
 ): SeriesLoadResult {
   const row = rows.find((entry) => entry.id === id);
   if (!row) throw new Error(`${label} is not on the board right now.`);
-  const warning = cachedSeriesWarning(resource);
   return {
     points: row.points.map((point) => ({ date: point.date, value: point.level })),
-    ...(warning ? { warning } : {}),
+    ...cachedSeriesNote(resource),
   };
 }
 

@@ -2,10 +2,14 @@ import type { CotClass, CotContractPayload, CotFamily, CotHistoryPoint, CotPosit
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
-import { formatPriceObservation } from "../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, formatPriceObservation } from "../../../market-data/market/format";
+import { futuresPricePer } from "../../../market-data/futures-contract";
+import { unitCurrencyToken } from "../../../time-series/price-units";
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
-import { bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByName, type FuturesContract } from "../../../market-data/futures-board";
+import {
+  bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByCode, futuresContractByName, type FuturesContract,
+} from "../../../market-data/futures-board";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
@@ -162,7 +166,35 @@ export function cotContractCode(value: unknown): string | null {
   if (alias) return alias;
   const market = typedMarket(value);
   if (market && "root" in market) return ROOTS[market.root]!.code;
-  return (market ? boardMarketCode(market.board) : null) ?? (market ? null : marketCode(input));
+  if (market) return boardMarketCode(market.board);
+  const proxy = proxyMarket(value);
+  const proxied = proxy ? futuresContractByCode(proxy.root) : null;
+  return (proxied ? boardMarketCode(proxied) : null) ?? marketCode(input);
+}
+/**
+ * Markets the CFTC does not report, opened as the one traders price and hedge
+ * them by: jet fuel (kerosene) as NY Harbor ULSD, heating oil (HO), which
+ * airlines' fuel hedges and analysts follow it with. Opened this way, the
+ * pane's title and the report say which market stands in.
+ */
+const PROXY_MARKETS: ReadonlyArray<{ names: readonly string[]; root: string; subject: string }> = [
+  { names: ["jet fuel", "jet fuels", "kerosene", "kerosine", "jet kerosene", "aviation fuel", "avtur"], root: "HO", subject: "jet fuel" },
+];
+function proxyMarket(value: string) {
+  const typed = value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  return PROXY_MARKETS.find((proxy) => proxy.names.includes(typed)) ?? null;
+}
+/** What a typed name opens in place of a market the CFTC does not report ("jet fuel" opens HO), or null. */
+export function cotProxyFor(value: unknown): { subject: string; root: string } | null {
+  if (typeof value !== "string" || typedMarket(value) || rootAlias(value.trim().toUpperCase())) return null;
+  const proxy = proxyMarket(value);
+  return proxy ? { subject: proxy.subject, root: proxy.root } : null;
+}
+/** The line a report opened through a proxy says: "Jet fuel has no CFTC market: heating oil (NY Harbor ULSD, HO) is the usual proxy." */
+export function cotProxyNote(proxy: { subject: string; root: string }): string {
+  const subject = `${proxy.subject[0]!.toUpperCase()}${proxy.subject.slice(1)}`;
+  return `${subject} has no CFTC market: heating oil (NY Harbor ULSD, ${proxy.root}) is the usual proxy. Its price: gloom quote ${proxy.root}=F; `
+    + "US jet fuel stocks (EIA, weekly): gloom fn G CAP:doe:jet";
 }
 /** The markets the unknown-market hint names, by the code and the word a newcomer knows them by. */
 const SUGGESTED_MARKETS: ReadonlyArray<readonly [string, string]> = [
@@ -234,10 +266,27 @@ export function cotInteger(value: number | null, signed = false): string {
   return value == null ? "--" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
+/**
+ * The front price's unit as a quote of the future writes it after the price:
+ * `USD/gal` for heating oil ($4.6218/gal), `USD` for gold, from the
+ * contract's unit ("USD / gallon"). Null where the unit names no currency
+ * (index points, Treasury points) or is unknown: the price reads bare.
+ */
+export function cotFrontPriceUnit(code: string, contractUnit: string | null | undefined): string | null {
+  const currency = contractUnit ? unitCurrencyToken(contractUnit.split("/")[0] ?? "") : null;
+  if (!currency) return null;
+  const root = cotRoot(code) ?? undefined;
+  return `${currency}${futuresPricePer({ root, spec: { unit: contractUnit } } as Parameters<typeof futuresPricePer>[0], currency)}`;
+}
+
 /** Legend values stay exact: a compact 7.8K hides the futures price and -100K the net position. */
-export function cotLegendValue(value: number, series: Pick<ResolvedSeries, "id">): string {
+export function cotLegendValue(value: number, series: Pick<ResolvedSeries, "id"> & Partial<Pick<ResolvedSeries, "unit">>): string {
+  if (series.id !== "price") return cotInteger(value, true);
   // Drop the float32 tail of provider bars without rounding away a 1/128 Treasury tick.
-  return series.id === "price" ? formatPriceObservation(cleanFloat32Price(value)) : cotInteger(value, true);
+  const price = cleanFloat32Price(value);
+  // In its currency and per its quantity, as a quote of the future reads: $4.6218/gal.
+  const [currency, per] = [series.unit?.split("/")[0]?.trim(), series.unit?.includes("/") ? `/${series.unit.split("/")[1]}` : ""];
+  return currency ? `${formatMarketPriceWithCurrency(price, currency, { assetCategory: "FUT" })}${per}` : formatPriceObservation(price);
 }
 
 /**
@@ -263,7 +312,9 @@ export function cotNetPoints(history: readonly CotHistoryPoint[], traderClass: C
   }
   return points;
 }
-export function cotChartSeries(data: CotContractPayload, traderClass: CotClass, price: readonly PricePoint[], colors: { positive: string; warning: string }): ResolvedSeries[] {
+/** `priceUnit` is the front price's (cotFrontPriceUnit), which its legend value is written in. */
+export function cotChartSeries(data: CotContractPayload, traderClass: CotClass, price: readonly PricePoint[], colors: { positive: string; warning: string },
+  priceUnit: string | null = null): ResolvedSeries[] {
   const series: ResolvedSeries[] = [{
     ...staticSeries(cotNetPoints(data.history, traderClass), { id: "net", label: `${COT_CLASSES[data.reportFamily].find((row) => row.value === traderClass)?.label ?? traderClass} net`, color: colors.warning, calendarSpaced: true }),
     panelId: "net", unit: "contracts", unitGroup: "positions",
@@ -271,7 +322,7 @@ export function cotChartSeries(data: CotContractPayload, traderClass: CotClass, 
   // Net positioning is the subject, so it leads the legend and the strip; the front price follows.
   if (price.length) series.push({
     ...staticSeries(price.map((row) => ({ date: row.date, observedAt: row.date, value: row.close })), { id: "price", label: "Front price", color: colors.positive, calendarSpaced: true }),
-    panelId: "price", unit: "", unitGroup: "price",
+    panelId: "price", unit: priceUnit ?? "", unitGroup: "price",
   });
   return series;
 }

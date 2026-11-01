@@ -14,7 +14,7 @@
  * Where the status bar has no room for it, as on a phone, it never shows and
  * neither arm is counted.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { apiClient } from "../../../api-client";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { exposeWebExperiment } from "../../../api-client/research-activity";
@@ -88,6 +88,27 @@ interface TrialOfferStatusWidgetProps {
   delayMs?: number;
 }
 
+let offerShowing = false;
+const offerListeners = new Set<() => void>();
+
+function setOfferShowing(next: boolean): void {
+  if (offerShowing === next) return;
+  offerShowing = next;
+  for (const listener of offerListeners) listener();
+}
+
+function subscribeOfferShowing(listener: () => void): () => void {
+  offerListeners.add(listener);
+  return () => {
+    offerListeners.delete(listener);
+  };
+}
+
+/** Whether the offer line is in the status bar, so the upgrade chip beside it does not pitch Pro twice. */
+export function useTrialOfferShowing(): boolean {
+  return useSyncExternalStore(subscribeOfferShowing, () => offerShowing, () => offerShowing);
+}
+
 export function TrialOfferStatusWidget(props: TrialOfferStatusWidgetProps) {
   if (getCurrentPluginTarget() !== "web") return null;
   return <WebTrialOffer {...props} />;
@@ -150,8 +171,10 @@ function WebTrialOffer({ expose = exposeWebExperiment, delayMs = TRIAL_OFFER_DEL
   useEffect(() => {
     if (!showing) return;
     hideShowingOffer = hide;
+    setOfferShowing(true);
     return () => {
       if (hideShowingOffer === hide) hideShowingOffer = null;
+      setOfferShowing(false);
     };
   }, [hide, showing]);
 

@@ -272,13 +272,13 @@ test("a listing on a venue without published closures is not re-checked through 
   const calls: string[] = [];
   const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
     calls.push(`${range} ${new Date().toISOString()}`);
-    return upTo("2026-09-23");
+    return ["2027-09-20", "2027-09-21", "2027-09-22"].map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 200, volume: 50_000_000 }));
   } };
   const store = new AppPersistence(createTempDbPath("calendar-jse"));
   const router = new AssetDataRouter(provider, [], store.resources);
   try {
-    // The JSE is closed for Heritage Day, Thursday 09-24, and its closures are not published.
-    for (let time = Date.parse("2026-09-24T00:00:00Z"); time < Date.parse("2026-09-28T00:00:00Z"); time += 10 * 60_000) {
+    // The JSE is closed for Heritage Day, Friday 24 Sep 2027, a year whose closures it has not published.
+    for (let time = Date.parse("2027-09-23T00:00:00Z"); time < Date.parse("2027-09-27T00:00:00Z"); time += 10 * 60_000) {
       setSystemTime(new Date(time));
       await router.getPriceHistory("NPN", "JSE", "1M");
       await router.getPriceHistory("NPN", "JSE", "1Y");
@@ -287,9 +287,9 @@ test("a listing on a venue without published closures is not re-checked through 
     // Each key is fetched as each weekday's session opens and settles, then once a day over the weekend:
     // the holiday is not a missing session, so it is not re-checked beyond that.
     expect(calls.map((call) => call.slice(3, 19))).toEqual([
-      "2026-09-24T00:00", "2026-09-24T00:00", "2026-09-24T07:00", "2026-09-24T07:00", "2026-09-24T15:50", "2026-09-24T15:50",
-      "2026-09-25T07:00", "2026-09-25T07:00", "2026-09-25T15:50", "2026-09-25T15:50",
-      "2026-09-26T16:00", "2026-09-26T16:00", "2026-09-27T16:10", "2026-09-27T16:10"]);
+      "2027-09-23T00:00", "2027-09-23T00:00", "2027-09-23T07:00", "2027-09-23T07:00", "2027-09-23T15:50", "2027-09-23T15:50",
+      "2027-09-24T07:00", "2027-09-24T07:00", "2027-09-24T15:50", "2027-09-24T15:50",
+      "2027-09-25T16:00", "2027-09-25T16:00", "2027-09-26T16:10", "2027-09-26T16:10"]);
   } finally { store.close(); }
 }, 30_000);
 

@@ -14,6 +14,15 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("an intraday history names its newest bar's span, not the time the bar opened", () => {
+    const hourly = rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null, barMinutes: 60 });
+    const bars = { rows: [{ date: "2026-10-09T02:00:00Z" }, { date: "2026-10-09T03:00:00Z" }] };
+    expect(line(hourly, bars)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026, last bar 03:00–04:00 UTC · not a live feed (hourly bars)");
+    // A bar that ends at midnight ends at 00:00, and a report without the span keeps the bar's open.
+    expect(line(hourly, { rows: [{ date: "2026-10-08T23:00:00Z" }] })).toContain("Thu 8 Oct 2026, last bar 23:00–00:00 UTC");
+    expect(line(rows({ source: "Gloom Cloud", status: "not-a-feed", basis: "hourly bars", observedKey: "date", oldest: null }), bars)).not.toContain("last bar");
+  });
+
   test("a monthly, quarterly or annual observation is the period it starts, not a day; a daily one keeps its date", () => {
     const fred = (periodicity: "monthly" | "quarterly" | "annual" | undefined) => rows({
       source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null, ...(periodicity ? { periodicity } : {}),
@@ -192,7 +201,10 @@ describe("report freshness", () => {
       "Source: Gloom Cloud · observed Sun 4 Oct (oldest Sun 27 Sep) · lag 6d · 1 of 2 stale",
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 of 2 stale",
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 stale",
-      "Observed Sun 4 Oct · lag 6d · 1 stale",
+      // The lag goes before the source and the date; the source before the date.
+      "Source: Gloom Cloud · observed Sun 4 Oct · 1 stale",
+      "Gloom Cloud · observed Sun 4 Oct · 1 stale",
+      "Observed Sun 4 Oct · 1 stale",
     ]);
     // The fn footer keeps its wording, with the day a dataset observes stated as a day.
     expect(formatFreshnessLine(dataset)).toBe("Source: Gloom Cloud · Sun 4 Oct 2026 (oldest Sun 27 Sep 2026) · 1 of 2 stale");
@@ -374,7 +386,7 @@ describe("report freshness", () => {
     const one = "Source: DTCC \u00b7 last trade 2026-10-09 \u00b7 lag 2 days";
     expect(formatFreshnessLine(freshness)).toBe(one);
     expect(paneStatusLine(freshness)).toBe(one);
-    expect(statusLineVariants(freshness)).toEqual([one, "Last trade 2026-10-09 \u00b7 lag 2 days"]);
+    expect(statusLineVariants(freshness)).toEqual([one, "Source: DTCC \u00b7 last trade 2026-10-09", "DTCC \u00b7 last trade 2026-10-09", "Last trade 2026-10-09"]);
     // The equity session of the ticker on screen does not date it.
     const quoted = deriveHeadlessFreshness(rows(), { rows: [
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NYSE", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T20:00:00Z") },

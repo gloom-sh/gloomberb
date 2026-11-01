@@ -8,6 +8,7 @@ import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { DividendYieldPane } from "../dividend-yield/pane";
 import { fetchProviderDividendData } from "../dividend-yield/provider-client";
+import { buildDividendMetrics, type fetchDividendData } from "../dividend-yield/client";
 import { AnalystResearchView } from "../research/analyst-pane";
 import { CorporateActionsView } from "../research/corporate-actions-pane";
 import { isCloudSessionRequired } from "./research-cloud-session";
@@ -133,4 +134,39 @@ test("Cloud account detection does not turn unrelated provider failures into sig
   for (const error of [null, "Unauthorized: Gloom", "Verification service unavailable", "Cloud request failed", "Gloom Cloud Pro required"]) {
     expect(isCloudSessionRequired(error)).toBe(false);
   }
+});
+
+test("DVD on several tickers shows the single-ticker DVD's sign-in wall signed out, and ranks them once the account is verified", async () => {
+  const commands: string[] = [];
+  const reads: string[] = [];
+  const loadData = (async (symbol: string) => {
+    reads.push(symbol);
+    if (!user?.emailVerified) throw new Error(denial);
+    return { payments: [], currency: "USD", price: 50, historyAvailable: true, metrics: buildDividendMetrics([], null, 50) };
+  }) as unknown as typeof fetchDividendData;
+  const id = "dividend-yield:rank:KO,JNJ";
+  const appState = createInitialState(createTestPaneConfig("/tmp/gloom-research-auth-test", {
+    instanceId: id, paneId: "dividend-yield", binding: { kind: "none" }, settings: { rankSymbols: ["KO", "JNJ"] },
+  }));
+  appState.focusedPaneId = id;
+  const runtime = createTestPluginRuntime({ openCommandBar: (query) => commands.push(query ?? "") });
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={appState} paneId={id} pluginId="dividend-yield" runtime={runtime} width={100} height={24}>
+      {() => <DividendYieldPane focused width={100} height={23} loadData={loadData} />}
+    </TestPaneFrame>, { width: 100, height: 24 });
+  });
+  for (let i = 0; i < 5; i++) await frame();
+  expect(tui.frame()).toContain("Sign in to view dividend history.");
+  expect(tui.frame()).not.toContain(denial);
+  expect(tui.frame()).not.toContain("TICKER");
+  await tui.clickFrameText("Log in");
+  expect(commands.at(-1)).toBe("Log In");
+  await setSession(false);
+  expect(tui.frame()).toContain("Verify your email to view dividend history.");
+  // Verified, the same pane reads both again and ranks them.
+  reads.length = 0;
+  await setSession(true);
+  expect(reads.sort()).toEqual(["JNJ", "KO"]);
+  expect(tui.frame()).toMatch(/TICKER +YIELD TTM/);
+  expect(tui.frame()).not.toContain("Sign in to");
 });

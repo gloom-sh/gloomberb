@@ -14,7 +14,7 @@ export interface CliGlobalOptions {
   limit?: number;
   /** `--tail <n>`: the newest n rows of a dated series, in their printed order. Never set with `limit`. */
   tail?: number;
-  /** `--width <n>`: fit tables to n columns. Unset, a terminal's own width fits them and piped output is not fitted. */
+  /** `--width <n>`: fit tables to n columns. Unset, a terminal's own width fits them, and piped output fits `COLUMNS` when set, else is not fitted. */
   width?: number;
   refresh: boolean;
   dryRun: boolean;

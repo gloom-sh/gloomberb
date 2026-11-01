@@ -97,6 +97,8 @@ function Capture-WindowScreenshotByTitle {
   throw "Original onboarding window failure"
 }
 
+function Assert-NativeEventsRead { param($Path, $Label) }
+
 function Capture-DesktopScreenshot {
   param($Path)
   Assert-Condition (-not $script:Stopped) "Failure screenshot was collected after cleanup"

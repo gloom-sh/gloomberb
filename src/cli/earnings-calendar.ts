@@ -43,6 +43,15 @@ export async function noListingCalendarNote(
 }
 
 /**
+ * "BG, FPI: no earnings date found." for the listings at home a calendar came
+ * back without, each named once; null when it dated them all.
+ */
+export function undatedListingsNote(listings: readonly Pick<CliListing, "key">[]): string | null {
+  const keys = [...new Set(listings.map((listing) => listing.key))];
+  return keys.length > 0 ? `${keys.join(", ")}: no earnings date found.` : null;
+}
+
+/**
  * "SAN = Banco Santander, NYSE (different companies on EPA, LSE)" for a bare symbol whose
  * calendar date is its US line's, when several companies list the symbol:
  * the event names the company the date is for.

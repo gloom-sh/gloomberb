@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import type { GpuBoardRow } from "../../../api-client/gpu";
+import type { GpuBoardRow, GpuSettle } from "../../../api-client/gpu";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, QueryBar,
   renderSectionedRowHeader, type DataTableCell, type DataTableColumn, type SectionedRow,
@@ -12,11 +12,11 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { loadGpuHistory } from "./client";
 import { GpuPriceLadder } from "./ladder";
 import {
-  gpuAvailability, gpuBoardSections, gpuChange, gpuChangeColor, gpuChangesLocked, gpuChangeWindows, gpuHeadline, gpuPrice, gpuPriceLadder, gpuShortSource, gpuSparklineSeries, gpuTime, gpuVariant,
-  type GpuChangeKey,
+  GPU_SETTLE_SECTION, gpuAvailability, gpuBoardSections, gpuChange, gpuChangeColor, gpuChangesLocked, gpuChangeWindows, gpuHeadline, gpuPrice, gpuPriceLadder,
+  gpuSettleRows, gpuShortSource, gpuSparklineSeries, gpuTime, gpuVariant, isGpuSettleRow, type GpuBoardItem, type GpuChangeKey,
 } from "./model";
 
-type BoardRow = SectionedRow<GpuBoardRow>;
+type BoardRow = SectionedRow<GpuBoardItem>;
 const rowKey = (row: BoardRow) => row.key;
 const EMPTY_HISTORY = new Map<string, PricePoint[]>();
 const CHANGE_LABELS: Record<GpuChangeKey, string> = { change1d: "1D", change7d: "7D", change30d: "30D" };
@@ -79,21 +79,29 @@ function boardColumns(width: number, options: { windows: GpuChangeKey[]; trend: 
   ];
 }
 
-export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, select, emptyTitle, width, height, focused, pending = false }: {
-  rows: GpuBoardRow[]; models: readonly string[]; asOf: string | null; model: string; setModel: (value: string) => void; selectedId: string; select: (row: GpuBoardRow, open?: boolean) => void;
+export function GpuBoard({ rows, settles, models, asOf, model, setModel, selectedId, select, emptyTitle, width, height, focused, pending = false }: {
+  rows: GpuBoardRow[]; settles?: readonly GpuSettle[]; models: readonly string[]; asOf: string | null; model: string; setModel: (value: string) => void; selectedId: string;
+  /** Opening a settle row selects it: its history is the GPU pages', not the History tab's. */
+  select: (row: GpuBoardItem, open?: boolean) => void;
   emptyTitle: string; width: number; height: number; focused: boolean;
   /** The picked GPU's free preview is still loading. */
   pending?: boolean;
 }) {
   const colors = useThemeColors();
   const sections = useMemo(() => gpuBoardSections(rows, model), [rows, model]);
-  const items = useMemo(() => buildSectionedRows(sections.map((section) => ({ label: section.label, items: section.rows })), (row) => row.id), [sections]);
+  // A GPU nobody quotes has no board to lead.
+  const settleRows = useMemo(() => sections.length ? gpuSettleRows(settles, model) : [], [sections, settles, model]);
+  const items = useMemo(() => buildSectionedRows<GpuBoardItem>([
+    ...(settleRows.length ? [{ label: GPU_SETTLE_SECTION, items: settleRows }] : []),
+    ...sections.map((section) => ({ label: section.label, items: section.rows })),
+  ], (row) => row.id), [settleRows, sections]);
   const visible = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
-  const windows = useMemo(() => gpuChangeWindows(visible), [visible]);
+  const windows = useMemo(() => gpuChangeWindows([...visible, ...settleRows.map((row) => row.settle)]), [visible, settleRows]);
   const history = useHeadlineHistory(rows, model);
   const trend = [...history.values()].some((points) => points.length >= MIN_TREND_POINTS);
   const ladder = useMemo(() => model ? gpuPriceLadder(rows, model) : [], [rows, model]);
-  const selected = visible.find((row) => row.id === selectedId) ?? visible[0] ?? null;
+  const selectedSettle = settleRows.find((row) => row.id === selectedId) ?? null;
+  const selected = selectedSettle ? null : visible.find((row) => row.id === selectedId) ?? visible[0] ?? null;
   const medium = width >= 100;
   const asOfDay = asOf?.slice(0, 10) ?? null;
   const columns = boardColumns(width, { windows, trend, range: visible.some((row) => row.stats), availability: visible.some((row) => row.availability) });
@@ -102,9 +110,10 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
 
   const renderCell = (item: BoardRow, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(item)) return EMPTY_TABLE_CELL;
+    const ink = state.selected ? colors.selectedText : undefined;
+    if (isGpuSettleRow(item.item)) return settleCell(item.item.settle, column, ink);
     const row = item.item;
     const headline = gpuHeadline(row);
-    const ink = state.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "source": {
         const name = gpuShortSource(row);
@@ -153,6 +162,36 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
     }
   };
 
+  /**
+   * A settle draws as the board's lead rows do (bold name and price), on the
+   * same columns: its moves are against earlier settles, and its time is the
+   * settle time.
+   */
+  const settleCell = (settle: GpuSettle, column: DataTableColumn, ink: string | undefined): DataTableCell => {
+    const settled = settle.status === "settled" && settle.pricePerGpuHr != null;
+    switch (column.id) {
+      case "source": {
+        const name = `Gloom ${settle.gpuModel}`;
+        const note = settle.kind === "correction" ? "corrected" : settled ? "settled" : "no settle";
+        return { text: `${name} ${note}`, content: <Box flexDirection="row" height={1} overflow="hidden">
+          <Text fg={ink ?? colors.textBright} attributes={TextAttributes.BOLD}>{name}</Text>
+          <Text fg={ink ?? colors.textDim}>{` ${note}`}</Text>
+        </Box> };
+      }
+      case "variant": return { text: gpuVariant(settle).join(" "), content: <GpuVariantChips row={settle} width={column.width} selected={!!ink} /> };
+      case "price": return settled ? { text: gpuPrice(settle.pricePerGpuHr), value: settle.pricePerGpuHr, color: colors.textBright, attributes: TextAttributes.BOLD }
+        : { text: "-", value: null, color: colors.textMuted };
+      case "unavailableChange": return { text: "-", value: null, color: colors.textMuted };
+      case "change1d": case "change7d": case "change30d": {
+        const value = settle[column.id];
+        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+      }
+      case "asof": return { text: asOfDay && settle.settleAt.startsWith(asOfDay) ? settle.settleAt.slice(11, 16) : gpuTime(settle.settleAt, true),
+        value: settle.settleAt, color: colors.textDim };
+      default: return EMPTY_TABLE_CELL;
+    }
+  };
+
   const query = <GpuModelQuery models={models} model={model} setModel={setModel} width={width} />;
   return <DataTableView<BoardRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
     status={pending && !items.length ? { loading: true, subject: "GPU rental prices" } : undefined}
@@ -161,9 +200,9 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
         render: (size) => <GpuPriceLadder rows={ladder} width={size.width} height={size.height}
           selected={selected && selected.gpuModel === model && selected.providerClass !== "aggregate" ? { basis: selected.basis, price: selected.pricePerGpuHr } : null} /> }} />
       : query}
-    selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowKey,
+    selection={{ kind: "id", selectedId: selectedSettle?.id ?? selected?.id ?? null, getId: rowKey,
       onChange: (_id, row) => { if (row && isSectionedItemRow(row)) select(row.item); } }}
     isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
-    getItemKey={rowKey} onActivate={(row) => { if (isSectionedItemRow(row)) select(row.item, true); }} sortColumnId={null} sortDirection="asc"
+    getItemKey={rowKey} onActivate={(row) => { if (isSectionedItemRow(row)) select(row.item, !isGpuSettleRow(row.item)); }} sortColumnId={null} sortDirection="asc"
     selectedTextOverridesCellColor renderCell={renderCell} emptyStateTitle={emptyTitle} />;
 }

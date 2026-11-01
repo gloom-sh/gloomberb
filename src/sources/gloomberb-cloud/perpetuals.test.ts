@@ -184,3 +184,20 @@ describe("the quote path", () => {
     }]]);
   });
 });
+
+test("a listing's name loses the stray code a venue's fixed-width file leaves after its spaces, alone or in a batch", async () => {
+  const client = fakeClient();
+  patch(apiClient, "getCloudPerpsBoard", client.getCloudPerpsBoard as typeof apiClient.getCloudPerpsBoard);
+  const rows = () => [
+    { providerId: "gloomberb-cloud", symbol: "YAR", name: "Americold Realty Trust Inc.   R", exchange: "HANOVER", type: "Common Stock" },
+    { providerId: "gloomberb-cloud", symbol: "YAR", name: "Yara International  ASA", exchange: "OSL", type: "Common Stock" },
+  ];
+  patch(apiClient, "searchInstruments", (async () => rows()) as unknown as typeof apiClient.searchInstruments);
+  patch(apiClient, "searchInstrumentsBatch", (async (queries: readonly string[]) =>
+    new Map(queries.map((query) => [query, rows()]))) as unknown as typeof apiClient.searchInstrumentsBatch);
+  const provider = new GloomberbCloudProvider();
+  // Only a one-letter code after a run of spaces is stray; a word after two spaces is the name's, kept with one space.
+  const names = ["Americold Realty Trust Inc.", "Yara International ASA"];
+  expect((await provider.search("YAR")).filter((row) => row.symbol === "YAR").map((row) => row.name)).toEqual(names);
+  expect((await provider.searchBatch(["YAR"]))?.get("YAR")?.filter((row) => row.symbol === "YAR").map((row) => row.name)).toEqual(names);
+});

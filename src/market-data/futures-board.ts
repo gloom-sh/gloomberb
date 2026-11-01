@@ -104,7 +104,7 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
 
   { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, aliases: ["oil"] },
   { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
-  { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
+  { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, aliases: ["natgas", "nat gas"] },
   // Quoted in euros per MWh.
   { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "EUR / MWh", bareCode: true },
   { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },

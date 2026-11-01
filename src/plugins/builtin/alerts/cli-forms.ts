@@ -33,6 +33,7 @@ export const ALERT_ADD_FORMS: readonly AlertAddForm[] = [
   { name: "short interest", usage: "<symbol> short interest [increase|decrease] [<percent>%]" },
   { name: "analyst change", usage: "<symbol> analyst [upgrade|downgrade]" },
   { name: "hiring move", usage: "<symbol> hiring [accelerating|slowing]" },
+  { name: "IPO", usage: "ipo <company or keyword>" },
   { name: "perpetual market", usage: "perps <market> <funding|oi|premium|closed-premium> <above|below> <percent>" },
   { name: "catalyst", usage: "catalyst [type <type> | agency <agency> | country <code>]" },
   { name: "catalyst", usage: "<symbol> catalyst" },
@@ -173,6 +174,17 @@ function perpsRule(words: readonly string[]): RuleAddRequest {
   return { kind: "rule", event: "perps_threshold", symbol: null, listing: "any", values: { marketId, metric, direction, threshold } };
 }
 
+/**
+ * `ipo Stripe`, `ipo "Space Exploration"`: a company or keyword on the IPO calendar, followed until its deal
+ * is on the calendar, dated, priced and trading. Kept as typed, 2 to 80 characters, as the form takes it.
+ */
+function ipoRule(words: readonly string[]): RuleAddRequest {
+  const keyword = words.join(" ").trim().replace(/\s+/g, " ");
+  if (!keyword) throw new Error("Name the company or a keyword: gloom alerts add ipo Stripe.");
+  if (keyword.length < 2 || keyword.length > 80) throw new Error(`An IPO alert follows a company or keyword of 2 to 80 characters, not "${keyword}": gloom alerts add ipo Stripe.`);
+  return { kind: "rule", event: "ipo", symbol: null, listing: "any", values: { keyword } };
+}
+
 /** `catalyst`, `catalyst type clinical`, `catalyst agency FDA`, `catalyst country US`: the catalysts followed with no company. */
 function catalystRule(words: readonly string[]): RuleAddRequest {
   if (words.length === 0) return { kind: "rule", event: "catalyst-watched", symbol: null, listing: "any", values: {} };
@@ -192,7 +204,7 @@ function catalystRule(words: readonly string[]): RuleAddRequest {
  * The forms of `alerts add` for the rest of what Add Event Alert offers:
  * 52-week range, unusual volume, filings, insider trades, short interest,
  * analyst changes and hiring on a symbol, perpetual markets, catalysts,
- * Congress trades and 13F filings. Null for any other words; throws, naming
+ * IPOs, Congress trades and 13F filings. Null for any other words; throws, naming
  * the form, when one of them is mistyped. A symbol that spells a form word
  * (`PERPS above 10`) is still a price alert.
  */
@@ -202,6 +214,8 @@ export function parseRuleAddArgs(args: readonly string[]): RuleAddRequest | null
   if (!CONDITION_WORDS.has(word(rest[0]))) {
     if (lead === "perps" || lead === "perp") return perpsRule(rest);
     if (lead === "catalyst" || lead === "catalysts") return catalystRule(rest);
+    // The IPO ETF keeps its other alerts written with its venue (IPO:NYSEARCA 52-week high).
+    if (lead === "ipo") return ipoRule(rest);
     if (lead === "congress") {
       const member = rest.join(" ").trim();
       return { kind: "rule", event: member ? "congress-member" : "congress-watched", symbol: null, listing: "any", values: member ? { value: member } : {} };

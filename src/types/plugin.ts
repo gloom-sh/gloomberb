@@ -183,7 +183,7 @@ export interface PaneDef {
    * `headless` model) cites, when "Gloom Cloud" with the state the footer
    * shows would be wrong: local data, a calculator, filed records.
    */
-  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis" | "local">;
   /**
    * Options a rendered-view report takes (`fn OMON AAPL --strikes 10`):
    * each sets the pane setting of its key, is checked by its `normalize`, and
@@ -203,7 +203,14 @@ export interface PaneDef {
    * catalog lists it, and `fn` refuses an argument from a function that
    * declares none here, in its shortcut or in a `headless` model.
    */
-  reportArgument?: Pick<HeadlessPaneArgumentDef, "kind" | "placeholder" | "description" | "optional">;
+  reportArgument?: Pick<HeadlessPaneArgumentDef, "kind" | "placeholder" | "description" | "optional"> & {
+    /**
+     * The argument names something the pane opens by its own id (the story
+     * pane's story id), never a symbol: `fn` does not look it up as a ticker.
+     * A query (X Feed's) leaves it unset and keeps its ticker reading.
+     */
+    identifier?: boolean;
+  };
   /**
    * Lines a rendered-view report prints above its table, from the settings it
    * ran with: what the default view leaves out and how to see more. `--json`
@@ -220,6 +227,12 @@ export interface PaneDef {
    * for the symbol (`lock.context` reads it), so the note may resolve later.
    */
   reportLockNote?(lock: PaneLock): string | Promise<string>;
+  /**
+   * The sign-in wall covers the whole pane whenever there is no Gloom Cloud
+   * session (ASKG): a rendered-view report without one prints its
+   * `reportLockNote` at once rather than render the wall to read it.
+   */
+  signInWall?: boolean;
   /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloom catalog` lists it under Requires, as it does a
@@ -541,15 +554,29 @@ export interface PaneTemplateDef {
   /** Template-specific headless model. Takes precedence over the pane-level model. */
   headless?: HeadlessPaneDefinition;
   /**
+   * A one-ticker template whose pane also opens on several at once (DVD's
+   * ranking): `fn` and `shot` pass a typed list (`shot DVD KO JNJ`) to
+   * createInstance as `symbols`. Any other one-ticker template gets the list
+   * as it always has, in `symbol` and `arg`.
+   */
+  opensTickerList?: boolean;
+  /**
    * Source and status of the view this template opens, for a template that
    * opens one view of a pane hosting several (Fixed Income's Issuer Debt).
    * Captures and rendered-view reports merge it over the pane's own
    * `reportFreshness`: each field set here wins, the rest are the pane's. So
    * they date the filings on screen, not the issuer's stock quote.
    */
-  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis" | "local">;
   wizard?: WizardStep[];
   canCreate?: (context: PaneTemplateContext, options?: PaneTemplateCreateOptions) => boolean;
+  /**
+   * Settings shown by catalog discovery without running createInstance. Supply
+   * these when opening a pane needs live data or has side effects. An empty
+   * object means there are no settings to describe before the pane is opened.
+   * When omitted, discovery derives settings from createInstance as before.
+   */
+  catalogSettings?: Record<string, unknown>;
   createInstance?: (
     context: PaneTemplateContext,
     options?: PaneTemplateCreateOptions,
@@ -962,6 +989,8 @@ export interface AppNotificationRequest {
     label: string;
     onClick: () => void;
   };
+  /** Runs once, when the in-app toast is first drawn. Not called when `toast` is false. */
+  onShown?: () => void;
 }
 
 export interface BrokerInstanceUpdateOptions {

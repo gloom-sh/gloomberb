@@ -23,11 +23,13 @@ const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as cons
 const QUANTITY_UNITS = [
   "number", "count", "units", "shares", "contracts", "days", "people", "jobs", "posts", "views", "hours",
   "barrels", "barrels/day", "cubic feet", "MW", "MWh", "TWh", "GWh/day", "tons", "ounces",
+  // A hash rate: exahashes per second.
+  "EH/s",
   // The instrument's own currency, for a field that applies to any ticker.
   "currency", "currency/share",
 ] as const;
-/** What a price is quoted per: `USD/barrel`, `USD/GPU-hour`. */
-const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "tCO2", "hour", "GPU-hour"] as const;
+/** What a price is quoted per: `USD/barrel`, `USD/GPU-hour`, a miner's `USD/PH/s/day`. */
+const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "tCO2", "hour", "GPU-hour", "PH/s/day"] as const;
 const SCALES = ["thousand", "million", "billion", "trillion"] as const;
 
 const RATE_SET: ReadonlySet<string> = new Set(RATE_UNITS);
@@ -140,6 +142,13 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   if (definition.tags !== undefined) {
     if (!Array.isArray(definition.tags) || definition.tags.length > 16) fail(id, "tags must be a list of at most 16 words.");
     for (const tag of definition.tags) checkLabel(id, "tag", tag, 40, context, false);
+  }
+  if (definition.aliases !== undefined) {
+    if (!Array.isArray(definition.aliases) || definition.aliases.length > 4) fail(id, "aliases must be a list of at most 4 words.");
+    if (definition.input !== undefined) fail(id, "a series with an input takes no aliases: the word would stand for a ticker.");
+    for (const alias of definition.aliases) {
+      if (typeof alias !== "string" || !/^[a-z][a-z-]{3,31}$/.test(alias)) fail(id, `alias "${String(alias)}" must be one lower-case word of 4 to 32 letters.`);
+    }
   }
   if (definition.url !== undefined && (typeof definition.url !== "string" || !/^https?:\/\/\S+$/.test(definition.url))) {
     fail(id, "url must be an http or https address.");

@@ -10,6 +10,7 @@ import { createHeadlessPaneContext } from "./headless";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { renderDesktopShot } from "./screenshot-render";
+import { resolvePersistedCloudSessionToken } from "./cloud-session";
 import type { PaneScreenshotResult } from "./screenshot-types";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
@@ -389,11 +390,55 @@ class RenderedReportFailure extends Error {
   }
 }
 
+/**
+ * The report of a pane the sign-in wall covers whole (`PaneDef.signInWall`)
+ * when there is no session: its lock note, as the rendered wall reports it,
+ * without waiting for the wall to render. Null with a session, or for any
+ * other pane.
+ */
+async function signedOutDomReport(
+  resolved: ResolvedPaneFunction,
+  context: MarketContext,
+  rawArg: string,
+): Promise<PaneFunctionReport | null> {
+  if (!resolved.pane.signInWall || !resolved.pane.reportLockNote || resolvePersistedCloudSessionToken(context)) return null;
+  const symbols = collectShotSymbols(resolved, rawArg);
+  const note = await resolved.pane.reportLockNote({
+    gate: "sign-in", symbol: symbols[0] ?? null, token: resolved.token,
+    context: createHeadlessPaneContext(resolved, context, new AbortController().signal),
+  });
+  const reason = lockNoteReason(note);
+  return {
+    data: {
+      kind: "rendered-view",
+      target: resolved.token,
+      capabilityId: resolved.capability.id,
+      symbols,
+      options: resolved.options,
+      rowCount: 0,
+      empty: true,
+      complete: false,
+      unavailableSymbols: [],
+      rows: [],
+      visibleText: "",
+      truncated: false,
+      truncationReasons: [],
+      limitation: DOM_LIMITATION,
+      reason,
+      locked: "sign-in",
+    },
+    text: [resolved.label, "", ...lockNoteLines(note)].join("\n").trimEnd(),
+    tables: domReportTables([], resolved.label, null, reason, []),
+  };
+}
+
 export async function buildDomFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
 ): Promise<PaneFunctionReport> {
+  const signedOut = await signedOutDomReport(resolved, context, rawArg);
+  if (signedOut) return signedOut;
   let result: PaneScreenshotResult;
   try {
     result = await renderDesktopShot({

@@ -31,6 +31,12 @@ export interface PaneFooterSegment {
    */
   icon?: "warning" | "clock";
   /**
+   * A few characters the desktop draws after `icon`, in the footer's muted
+   * tone, so the segment reads without hovering: a delay's `15m`. The
+   * terminal's `parts` already carry it (`◷15m`).
+   */
+  iconText?: string;
+  /**
    * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
    * shot` whose status line already dates that data leaves it out, so the
    * date is not said twice, and gives it up before its status line is cut.
@@ -52,6 +58,21 @@ export interface PaneFooterSegment {
    */
   capture?: boolean;
   /**
+   * The segment only says how long ago the pane's data loaded (`5m ago`,
+   * `fetched just now`), relative to the moment it is read: build it with
+   * {@link ageFooterSegment}. A row too narrow for every segment leaves it out
+   * first, whole, before anything else shortens or is cut, so the source and
+   * the date stay.
+   */
+  age?: boolean;
+  /**
+   * When the copy the pane shows was saved, on the saved-copy segment
+   * ({@link savedCopyFooterSegment}). The footer draws that segment first,
+   * wherever a pane registers it, and once: the oldest when several parts of
+   * the pane show a saved copy.
+   */
+  savedCopyAt?: number;
+  /**
    * Shorter forms of `parts`, longest first. When the row is too narrow for
    * `parts` beside the hints, it shows the first that fits, or the last, and
    * keeps the full text as the segment's title.
@@ -68,10 +89,11 @@ export interface PaneFooterSegment {
 const DELAYED_FOOTER_GLYPH = "◷";
 
 /**
- * The footer's one form for data a source delivers late: a yellow clock with
- * `detail` in its tooltip on the desktop, and the clock with the delay
- * (`◷15m`) in the terminal, which has no tooltip, so it takes a few cells
- * rather than a phrase. `onPress` makes it a button, such as an upgrade.
+ * The footer's one form for data a source delivers late: a yellow clock and
+ * the delay (`15m`) on the desktop, with `detail` in its tooltip, and the
+ * clock with the delay (`◷15m`) in the terminal, which has no tooltip, so it
+ * takes a few cells rather than a phrase. Without a known delay the desktop
+ * draws the clock alone. `onPress` makes it a button, such as an upgrade.
  */
 export function delayedFooterSegment({
   id,
@@ -94,6 +116,7 @@ export function delayedFooterSegment({
     label: detail,
     title: detail,
     parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
+    ...(delay ? { iconText: delay } : {}),
     ...(onPress ? { onPress } : {}),
     ...(quoteStatus ? { quoteStatus } : {}),
   };
@@ -113,10 +136,34 @@ export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.n
   return {
     id,
     quoteStatus: true,
+    savedCopyAt: savedAt,
     title: `${t("Couldn't refresh")}: ${text}`,
     parts: [{ text, tone: "warning" }],
     variants: [[{ text: t("saved copy"), tone: "warning" }]],
   };
+}
+
+/**
+ * The footer's one form for how long ago the pane's data loaded: `5m ago`,
+ * or `fetched 5m ago` with a `verb`. A narrow row leaves it out first (`age`).
+ */
+export function ageFooterSegment(ago: string, { id = "updated", verb, tone = "muted" }: {
+  id?: string;
+  /** Said before the age: `fetched`, `checked`, `updated`. */
+  verb?: string;
+  tone?: PaneFooterPart["tone"];
+} = {}): PaneFooterSegment {
+  return { id, age: true, parts: [{ text: verb ? `${verb} ${ago}` : ago, tone }] };
+}
+
+/**
+ * The saved-copy segment of a pane showing several answers (a list and the
+ * report it opens): the oldest of the copies among `savedAts` (ms), or no
+ * segment when none of them is one.
+ */
+export function savedCopyFooterInfo(savedAts: readonly (number | null | undefined)[], id = "saved-copy"): PaneFooterSegment[] {
+  const times = savedAts.filter((at): at is number => typeof at === "number" && Number.isFinite(at));
+  return times.length > 0 ? [savedCopyFooterSegment(id, Math.min(...times))] : [];
 }
 
 /**
@@ -299,7 +346,8 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): P
 }
 
 /**
- * The info segments as they fit `width`: segments with `variants` step down
+ * The info segments as they fit `width`: an `age` (`5m ago`) is left out
+ * first, so the source and the date outlast it; then segments with `variants` step down
  * together, one variant at a time, until the row fits or none is left; beside
  * the hints, the trailing status that still does not fit is then cut or left
  * out (trimTrailing). A status after every segment with shorter forms gives
@@ -310,6 +358,10 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): P
  * so a frame that fits its own status line sees it overflow.
  */
 export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
+  // How long ago the data loaded goes first, whole: a cut age (`fetched just`) says nothing.
+  if (infoTextWidth(info) > width && info.some((segment) => segment.age)) {
+    return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints });
+  }
   if (!besideHints) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
@@ -450,7 +502,20 @@ export function combinePaneFooterRegistrations(registrations: Map<string, PaneFo
   const shown = yielded.length > 0 ? hints.filter((hint) => !yielded.includes(hint)) : hints;
 
   if (info.length === 0 && shown.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
-  return { info, hints: shown, menu, keys };
+  return { info: savedCopyFirst(info), hints: shown, menu, keys };
+}
+
+/**
+ * The saved-copy segment in its one place: first, so it reads the same in
+ * every pane and is the last a narrow row cuts, and once, the oldest copy,
+ * when a list and the report it opens each register one.
+ */
+function savedCopyFirst(info: PaneFooterSegment[]): PaneFooterSegment[] {
+  let oldest: PaneFooterSegment | undefined;
+  for (const segment of info) {
+    if (segment.savedCopyAt != null && (oldest?.savedCopyAt == null || segment.savedCopyAt < oldest.savedCopyAt)) oldest = segment;
+  }
+  return oldest ? [oldest, ...info.filter((segment) => segment.savedCopyAt == null)] : info;
 }
 
 function sameFooterParts(left: PaneFooterPart[], right: PaneFooterPart[]): boolean {
@@ -507,6 +572,8 @@ export function samePaneFooterRegistration(
         && segment.shortcut === other.shortcut
         && !!segment.onPress === !!other.onPress
         && segment.disabled === other.disabled
+        && segment.savedCopyAt === other.savedCopyAt
+        && segment.age === other.age
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));

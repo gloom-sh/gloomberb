@@ -203,3 +203,43 @@ export interface DefiTvlPayload {
   history: { start: string; total: Array<number | null> } | null;
   warnings: string[];
 }
+
+/** One value per UTC day, oldest first. */
+export interface BitcoinNetworkDailyValue {
+  date: string;
+  value: number;
+}
+
+/**
+ * `GET /cloud/crypto/bitcoin/network`: the bitcoin network's daily hash rate,
+ * the difficulty at each retarget, the next retarget's estimate and hashprice,
+ * derived from the block rewards, the BTC price and the difficulty.
+ */
+export interface BitcoinNetworkPayload {
+  version: 1;
+  generatedAt: string;
+  status: "available" | "stale" | "unavailable";
+  /** Who serves the figures, as a chart cites them: Gloom Cloud. */
+  source: { name: string; url: string };
+  /** When the hash rate and rewards were last read. */
+  historyFetchedAt: string | null;
+  /** Exahashes per second, each UTC day's average; the newest day is the day so far. */
+  hashrate: BitcoinNetworkDailyValue[];
+  /** The difficulty each retarget set, dated by its block. */
+  difficulty: Array<{ date: string; height: number; difficulty: number; changePercent: number | null }>;
+  /** USD per PH/s per day, derived. */
+  hashprice: BitcoinNetworkDailyValue[];
+  /** The estimate of the next retarget, as last read. */
+  retarget: {
+    changePercent: number;
+    estimatedAt: string;
+    nextHeight: number;
+    remainingBlocks: number;
+    progressPercent: number;
+    previousChangePercent: number | null;
+    readAt: string;
+  } | null;
+  /** The estimated change in percent, the last read of each UTC day. */
+  retargetHistory: BitcoinNetworkDailyValue[];
+  warnings: string[];
+}

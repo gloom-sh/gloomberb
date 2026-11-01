@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createTestResolvedSeries } from "../test-support/time-series";
-import { resolveStudies, withVwapAnchors } from "./studies";
+import { resolveStudies } from "./studies/resolve";
+import { withVwapAnchors } from "./studies/vwap";
 import { anchoredVwap, averageTrueRange, sessionVwap, volumeProfile, type StudyBar } from "./trader-studies";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 

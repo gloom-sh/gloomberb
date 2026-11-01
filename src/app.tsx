@@ -20,6 +20,7 @@ import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
+import { useRunSetupAgain } from "./components/onboarding/run-setup-again";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
 import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
 import { SignInGate } from "./components/sign-in-gate";
@@ -30,7 +31,7 @@ import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-ser
 import { useThemeColors } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
-import type { CliLaunchRequest, GloomPlugin } from "./types/plugin";
+import type { AppNotificationRequest, CliLaunchRequest, GloomPlugin } from "./types/plugin";
 import type { DataProvider } from "./types/data-provider";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "./types/desktop-window";
 import type { DesktopApplicationMenuBridge } from "./types/desktop-menu";
@@ -69,6 +70,7 @@ import { AppLanguageConfigObserver } from "./app/language-observer";
 import { isPaneShareHandoff } from "./shares/location";
 import { apiClient } from "./api-client";
 import { reportTelemetryConfig } from "./telemetry/live-config";
+import { AttentionCountsNotice } from "./app/attention-notice";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
@@ -87,6 +89,8 @@ interface AppInnerProps {
   updatesEnabled?: boolean;
   onboardingActive?: boolean;
   onOnboardingComplete?: (config: AppConfig) => void | Promise<void>;
+  /** Shows setup again once Run Setup Again has saved its progress; absent where setup cannot run. */
+  onRunSetupAgain?: () => void;
   /** Hosted browser terminal: nothing is reachable until a session exists. */
   signInGateActive?: boolean;
   /** Fires once the startup state is in place and the first real layout can paint. */
@@ -127,6 +131,7 @@ function AppInner({
   updatesEnabled = true,
   onboardingActive = false,
   onOnboardingComplete,
+  onRunSetupAgain,
   signInGateActive = false,
   onInitialized,
   pluginsReady,
@@ -186,6 +191,8 @@ function AppInner({
   const dialog = useDialog();
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
+  // Not while setup is already showing.
+  const runSetupAgain = useRunSetupAgain(onboardingActive ? undefined : onRunSetupAgain);
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
   const focusDetachedPane = useMemo(() => {
     const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
@@ -222,6 +229,7 @@ function AppInner({
             onClick: dismissAfter(() => notification.secondaryAction?.onClick()),
           }
           : undefined,
+        onShown: notification.onShown,
       };
       if (type === "success") toastId = toast.success(notification.body, options);
       else if (type === "error") toastId = toast.error(notification.body, options);
@@ -231,6 +239,9 @@ function AppInner({
   }), [rendererHost, toast]);
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });
+  }, [pluginRegistry]);
+  const notifyRequest = useCallback((request: AppNotificationRequest) => {
+    pluginRegistry.notify(request);
   }, [pluginRegistry]);
 
   useEffect(() => {
@@ -489,6 +500,7 @@ function AppInner({
             />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
+          {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}
           <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
@@ -505,6 +517,7 @@ function AppInner({
               pluginRegistry={pluginRegistry}
               quitApp={() => rendererHost.requestExit()}
               onCheckForUpdates={updatesEnabled ? runUpdateCommand : undefined}
+              onRunSetupAgain={runSetupAgain}
               onNativeOccluderChange={setCommandBarNativeOccluder}
             />
           )}
@@ -534,6 +547,11 @@ interface AppProps {
    * terminal sets this; desktop and the TUI keep sign-in optional.
    */
   requireSignIn?: boolean;
+  /**
+   * Settings can open setup again (Run Setup Again). The browser keeps no
+   * setup progress, so it turns this off.
+   */
+  setupEnabled?: boolean;
   /** Fires once the startup state is in place and the first real layout can paint. */
   onInitialized?: () => void;
 }
@@ -552,6 +570,7 @@ export function App({
   remoteControlAdapter,
   updatesEnabled = true,
   requireSignIn = false,
+  setupEnabled = true,
   onInitialized,
 }: AppProps) {
   useAppLanguage();
@@ -593,6 +612,8 @@ export function App({
     && !shareHandoff
     && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
   ));
+
+  const showSetup = useCallback(() => setShowOnboarding(true), []);
 
   useEffect(() => bindAppActivity(renderer), [renderer]);
 
@@ -656,6 +677,7 @@ export function App({
             setConfig(updatedConfig);
             setShowOnboarding(false);
           }}
+          onRunSetupAgain={setupEnabled && !shareHandoff ? showSetup : undefined}
         />
       </AppProvider>
     </RemoteUiRegistryProvider>

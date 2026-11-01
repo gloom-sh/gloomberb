@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { gpuHeadless } from "./headless";
-import { gpuBoard, gpuEvent, gpuRow } from "./test-fixture";
+import { gpuBoard, gpuEvent, gpuRow, gpuSettle } from "./test-fixture";
 
 test("exports preserve archive evidence and effective dates while a preview stays incomplete", async () => {
   const ctx = createTestHeadlessContext();
@@ -46,4 +46,18 @@ test("a GPU the free board leaves out reads from its own free preview, printed t
   expect(report.errors).toEqual(["Free shows the latest rows of H100, which the free board leaves out. Gloom Pro adds every provider and the 1D, 7D and 30D moves."]);
   expect(report.notes).toBeUndefined();
   await expect(gpuHeadless.load(createTestHeadlessArgs({ argument: "X100" }), ctx)).rejects.toThrow(/No GPU matches "X100"\. GPUs: H100, .*A10\./);
+});
+
+test("the board report leads with Gloom's daily settle of the GPU asked for, a day with no settle included", async () => {
+  const ctx = createTestHeadlessContext();
+  ctx.apiClient.getCloudGpuBoard = async () => gpuBoard({ settles: [gpuSettle(), gpuSettle({ id: "12", formFactor: "PCIe", status: "no-settle", pricePerGpuHr: null }),
+    gpuSettle({ id: "13", gpuModel: "B200", memoryGb: null })] });
+  const report = await gpuHeadless.load(createTestHeadlessArgs({ argument: "H100", options: { tab: "board" } }), ctx);
+  const [settle, board] = report.sections;
+  expect([settle!.title, board!.title]).toEqual(["Gloom daily settle", "GPU rental prices"]);
+  const cells = settle!.rows!.map((row) => settle!.columns!.map((column) => column.format ? column.format(row[column.key], row) : String(row[column.key])));
+  expect(cells).toEqual([
+    ["H100 80GB SXM", "settled", "2.99", "-1.2%", "-", "-", "2026-10-02 20:00 UTC"],
+    ["H100 80GB PCIe", "no settle", "-", "-1.2%", "-", "-", "2026-10-02 20:00 UTC"],
+  ]);
 });

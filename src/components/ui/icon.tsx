@@ -94,13 +94,19 @@ export interface IconProps {
   /** Pixel size on the desktop; the terminal draws one glyph. */
   size?: number;
   color?: string;
+  /**
+   * Desktop: takes its row's full height and draws in the middle of it. A
+   * box centred in a row an odd number of pixels taller lands on a whole
+   * pixel, half a pixel off; the drawing inside the box does not.
+   */
+  fullHeight?: boolean;
 }
 
 /** One glyph from the app's icon set. */
-export function Icon({ name, size = 12, color }: IconProps) {
+export function Icon({ name, size = 12, color, fullHeight }: IconProps) {
   const colors = useThemeColors();
   const HostIcon = useUiHost().Icon as ComponentType<IconProps> | undefined;
-  if (HostIcon) return <HostIcon name={name} size={size} color={color} />;
+  if (HostIcon) return <HostIcon name={name} size={size} color={color} fullHeight={fullHeight} />;
   return <Text fg={color ?? colors.textDim} selectable={false}>{ICON_GLYPHS[name]}</Text>;
 }
 
@@ -132,6 +138,11 @@ export interface IconButtonProps {
   size?: number;
   /** Keep the press from also reaching a row or header behind the button. */
   stopPropagation?: boolean;
+  /**
+   * A few characters after the icon, in a muted tone, for a status that must
+   * read without hovering (a delay's `15m`). The label stays the accessible name.
+   */
+  text?: string;
 }
 
 /**
@@ -151,6 +162,7 @@ export function IconButton({
   disabled = false,
   size = 12,
   stopPropagation = true,
+  text,
 }: IconButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
@@ -176,6 +188,7 @@ export function IconButton({
         disabled={disabled}
         size={size}
         stopPropagation={stopPropagation}
+        text={text}
       />
     );
   }
@@ -195,7 +208,7 @@ export function IconButton({
     >
       {/* Pressed takes the colour the desktop and the terminal pane header give an active toggle. */}
       <Text fg={disabled ? colors.textMuted : color ?? (pressed ? colors.warning : colors.textDim)} selectable={false}>
-        {` ${ICON_GLYPHS[icon]} `}
+        {` ${ICON_GLYPHS[icon]}${text ?? ""} `}
       </Text>
     </Box>
   );

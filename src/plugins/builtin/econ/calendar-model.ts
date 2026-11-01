@@ -256,17 +256,40 @@ export function econEventName(event: Pick<EconEvent, "country" | "event" | "actu
 /** Letters and digits only, lower case: "Non-Farm" and "nonfarm" read alike. */
 const compactName = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
 
+/** Words an initialism leaves out: the U.S. Department of Agriculture is USDA. */
+const INITIALISM_SKIPS = new Set(["of", "the", "and", "for", "on", "in"]);
+
 /**
- * Whether a row's name carries every word of `query`, case, spaces and
- * punctuation aside: `nonfarm` finds Non Farm Payrolls and Non-Farm
- * Employment Change, `fed funds` the Federal Funds Rate. The name shown and the
- * feed's own are both read.
+ * The ways a row's publisher is written, compacted: its name, its initials
+ * ("usda" for the U.S. Department of Agriculture, "bls" for the Bureau of
+ * Labor Statistics) and the name of its site (usda.gov).
  */
-export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">, query: string): boolean {
+function publisherNames(source: EconEvent["source"]): string[] {
+  if (!source?.name?.trim()) return [];
+  const initials = source.name.split(/[\s.,&/()-]+/).filter((word) => word && !INITIALISM_SKIPS.has(word.toLowerCase()))
+    .map((word) => word[0]!).join("");
+  let site = "";
+  try {
+    site = source.url ? new URL(source.url).hostname.replace(/^www\./i, "").split(".")[0] ?? "" : "";
+  } catch {
+    // Intentional ignore: a publisher's address that does not parse leaves its name and initials.
+  }
+  return [source.name, initials, site].map(compactName).filter(Boolean);
+}
+
+/**
+ * Whether a row carries every word of `query` in its name or its publisher's,
+ * case, spaces and punctuation aside: `nonfarm` finds Non Farm Payrolls and
+ * Non-Farm Employment Change, `fed funds` the Federal Funds Rate, and `usda`
+ * every row the U.S. Department of Agriculture publishes. The name shown and
+ * the feed's own are both read.
+ */
+export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior" | "source">, query: string): boolean {
   const words = query.split(/\s+/).map(compactName).filter(Boolean);
   if (words.length === 0) return true;
   const names = [event.event, econEventName(event)].map(compactName);
-  return names.some((name) => words.every((word) => name.includes(word)));
+  const publisher = publisherNames(event.source);
+  return names.some((name) => words.every((word) => name.includes(word) || publisher.some((text) => text.includes(word))));
 }
 
 /**

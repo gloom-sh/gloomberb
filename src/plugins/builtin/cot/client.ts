@@ -3,7 +3,10 @@ import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, Co
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
-import { COT_CLASSES, cotPriceMapping } from "./model";
+import { COT_CLASSES, cotFrontPriceUnit, cotPriceMapping } from "./model";
+import { futuresPriceUnit, loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
+import { futuresBoardContract } from "../../../market-data/futures-board";
+import { settleWithin } from "../../../utils/async-deadline";
 
 export const cotBoardCache = createPluginCache<CotBoardPayload>({ kind: "cot-board", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 15 * 60_000, expireMs: 8 * 24 * 60 * 60_000 } });
@@ -88,7 +91,12 @@ export async function fetchCotContract(contractCode: string, family: CotFamily, 
   catch (error) { throw unavailable(error); }
 }
 export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null }
-export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient,
+/**
+ * A market's report and its front price. The price's unit is not waited for
+ * here: it joins the legend when it is known (loadCotPriceUnit).
+ */
+export async function loadCotDetail(contractCode: string, family: CotFamily,
+  client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient,
   positions: CotPositions = "futures-only"): Promise<CotDetailData> {
   const payload = await fetchCotContract(contractCode, family, client, positions);
   const mapping = cotPriceMapping(contractCode);
@@ -108,4 +116,22 @@ export async function loadCotDetail(contractCode: string, family: CotFamily, cli
     return { payload, price, priceSymbol: mapping.priceSymbol, priceAsOf: price.at(-1)?.date.toISOString().slice(0, 10) ?? null,
       priceWarning: result.stale ? "Front-price history is stale." : price.length ? null : "Front-price history unavailable." };
   } catch { return { payload, price: [], priceSymbol: mapping.priceSymbol, priceAsOf: null, priceWarning: "Front-price history unavailable. Positioning remains available." }; }
+}
+
+/** How long the front price's legend waits for the contract terms before it writes the catalog's unit. */
+const COT_PRICE_UNIT_WAIT_MS = 1_500;
+
+/**
+ * The unit a market's front price is written in, as its legend writes it
+ * after the price (cotFrontPriceUnit): `USD/gal` for heating oil. It is the
+ * contract terms' unit, else the futures catalog's where the terms fail or
+ * have not answered within `waitMs`; null for a market with no front price.
+ * The chart draws without it, so a slow answer never holds the detail up.
+ */
+export async function loadCotPriceUnit(contractCode: string, client: Pick<typeof apiClient, "getCloudFuturesContract"> = apiClient,
+  waitMs = COT_PRICE_UNIT_WAIT_MS): Promise<string | null> {
+  const symbol = cotPriceMapping(contractCode)?.priceSymbol;
+  if (!symbol) return null;
+  const terms = await settleWithin(loadFuturesPriceUnit(symbol, (key) => loadFuturesContractTerms(key, client)), waitMs);
+  return cotFrontPriceUnit(contractCode, terms ?? futuresPriceUnit(futuresBoardContract(symbol), null));
 }

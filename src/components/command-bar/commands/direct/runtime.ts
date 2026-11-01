@@ -39,6 +39,8 @@ interface UseCommandBarDirectCommandRuntimeOptions {
   focusTicker: (symbol: string, options?: PinTickerOptions) => void;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   onCheckForUpdates?: () => void | Promise<void>;
+  /** Settings' Run Setup Again; absent where setup cannot run. */
+  onRunSetupAgain?: () => Promise<void>;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (
@@ -66,6 +68,7 @@ export function useCommandBarDirectCommandRuntime({
   focusTicker,
   notify,
   onCheckForUpdates,
+  onRunSetupAgain,
   openBuiltInWorkflow,
   openInlineConfirm,
   openModeRoute,
@@ -136,6 +139,7 @@ export function useCommandBarDirectCommandRuntime({
       getState,
       notify,
       onCheckForUpdates,
+      onRunSetupAgain,
       openBuiltInWorkflow,
       openInlineConfirm,
       openModeRoute,
@@ -159,6 +163,7 @@ export function useCommandBarDirectCommandRuntime({
     getState,
     notify,
     onCheckForUpdates,
+    onRunSetupAgain,
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,

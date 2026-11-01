@@ -14,7 +14,9 @@ declare global {
      * Set by a capture that carries a status line: shows the first of the
      * variants (longest first) that fits the footer, cut in the middle when
      * none does, and resolves to the text shown. `dates` says what the line
-     * dates, so the pane's own text that says the same goes.
+     * dates, so the pane's own text that says the same goes. With no variants
+     * the pane has nothing to date: the footer row is given back to the body
+     * and the text shown is empty.
      */
     __GLOOM_CLI_SHOT_FIT_STATUS__?: (variants: string[], options?: { dates?: ShotLineDates }) => Promise<string>;
   }
@@ -90,22 +92,28 @@ function footerOverflows(): boolean {
 }
 
 interface ShotStatusLineState {
-  text: string;
+  /** Null once the capture has no line to show: the footer row is gone. */
+  text: string | null;
   dates: ShotLineDates;
   /** No variant fit beside the pane's own `as of`, so it gave way. */
   crowded: boolean;
 }
 
 function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatusLineState {
-  const [text, setText] = useState(PENDING_STATUS);
+  const [text, setText] = useState<string | null>(PENDING_STATUS);
   const [dates, setDates] = useState<ShotLineDates>(null);
   const [crowded, setCrowded] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     // What the line says goes before it is fitted, so the line gets its room.
-    window.__GLOOM_CLI_SHOT_FIT_STATUS__ = (variants, options) => {
+    window.__GLOOM_CLI_SHOT_FIT_STATUS__ = async (variants, options) => {
       setDates(options?.dates ?? null);
       setCrowded(false);
+      if (variants.length === 0) {
+        setText(null);
+        await nextFrames(2);
+        return "";
+      }
       const show = async (next: string) => {
         setText(next);
         await nextFrames(2);
@@ -148,7 +156,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const { text: statusText, dates, crowded } = useShotStatusLine(statusLine, hasAsOf);
   const datesData = statusLine && dates === "data";
   return <PaneFooterProvider>{(registeredFooter) => {
-    const status: PaneFooterSegment[] = statusLine ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
+    const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
     const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
       && !(segment.quoteStatus && statusLine && dates !== null));

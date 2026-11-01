@@ -4,7 +4,6 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { socialMentionPostsCache, socialMentionsCache } from "./client";
 import { socialMentionsHeadless } from "./headless";
 import { socialMentionsLockNote } from "./lock-note";
-import { SocialMentionsPane } from "./pane";
 
 const socialMentionsSettings = [
   { key: "socialRange", label: "History", type: "select" as const,
@@ -12,7 +11,7 @@ const socialMentionsSettings = [
 ];
 export const socialMentionsModule: PluginModule = {
   series: SOCIAL_MENTION_SERIES,
-  panes: [{ id: "social-mentions", reportLockNote: socialMentionsLockNote, name: "Social Mentions", icon: "B", component: SocialMentionsPane,
+  panes: [{ id: "social-mentions", reportLockNote: socialMentionsLockNote, name: "Social Mentions", icon: "B", get component(): typeof import("./pane").SocialMentionsPane { const { SocialMentionsPane } = require("./pane"); return SocialMentionsPane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
     tableExport: true, headless: socialMentionsHeadless, settings: { title: "Social Mentions", fields: socialMentionsSettings } }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "social-mentions-pane", paneId: "social-mentions", label: "Social Mentions",

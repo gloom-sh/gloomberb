@@ -4,7 +4,7 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { createDefaultConfig } from "../types/config";
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { extractFundamentalSeries, valuationPriceIssues } from "./fundamentals";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import { resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource, getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
 import { createQuoteStoreFixture } from "../test-support/quote-store";

@@ -10,6 +10,8 @@ import {
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
 import { auction } from "./test-fixture";
+import { ApiRequestError } from "../../../api-client/errors";
+import { outage } from "../../../test-support/outage";
 import type { TreasuryAuction } from "./types";
 
 function auctionFixture(id: string): TreasuryAuction {
@@ -41,20 +43,15 @@ afterEach(() => {
 });
 
 describe("loadTreasuryAuctions", () => {
+  // An invalid page is a reply that fails validation: the error, never covered by the saved board.
   test("incomplete pagination cannot overwrite a known board or lose its failure on the next read", async () => {
     const { persistence, writes } = fakePersistence();
     attachTreasuryAuctionsPersistence(persistence);
-    const original = await loadTreasuryAuctions(false, async () => [auctionFixture("known")]);
-    const failed = await loadTreasuryAuctions(true, () => fetchAuctionPages(async (page) => page === 1
+    await loadTreasuryAuctions(false, async () => [auctionFixture("known")]);
+    await expect(loadTreasuryAuctions(true, () => fetchAuctionPages(async (page) => page === 1
       ? { data: [{ security_type: "Note", security_term: "2-Year", auction_date: "2026-09-10" }], meta: { "total-pages": 2 } }
-      : { error: "Invalid page envelope" }));
-    const read = await loadTreasuryAuctions(false, async () => { throw new Error("Fresh cached read must not fetch"); });
-    for (const result of [failed, read]) {
-      expect(result.auctions).toEqual(original.auctions);
-      expect(result.fetchedAt).toBe(original.fetchedAt);
-      expect(result.stale).toBe(true);
-      expect(result.refreshError).toContain("page 2");
-    }
+      : { error: "Invalid page envelope" }))).rejects.toThrow("page 2");
+    await expect(loadTreasuryAuctions(false, async () => { throw new Error("Fresh cached read must not fetch"); })).rejects.toThrow("page 2");
     expect(writes).toHaveLength(1);
     const recovered = await loadTreasuryAuctions(true, async () => [auctionFixture("recovered")]);
     expect(recovered.stale).toBe(false);
@@ -111,11 +108,15 @@ describe("loadTreasuryAuctions", () => {
     attachTreasuryAuctionsPersistence(persistence);
 
     const result = await loadTreasuryAuctions(true, async () => {
-      throw new Error("503");
+      throw new ApiRequestError("Treasury Fiscal Data request failed (503)", 503);
     });
 
     expect(result.auctions[0]!.id).toBe("expired");
     expect(result.stale).toBe(true);
+    expect(result.savedAt).toBe(1_000);
+    // A refusal is said, saved board or not.
+    await expect(loadTreasuryAuctions(true, async () => { throw new ApiRequestError("Treasury Fiscal Data request failed (404)", 404); }))
+      .rejects.toThrow("(404)");
   });
 
   test("propagates the failure when there is nothing cached to fall back to", async () => {
@@ -127,15 +128,13 @@ describe("loadTreasuryAuctions", () => {
     })).rejects.toThrow("503");
   });
 
-  test("keeps the cached board when a refresh returns an empty payload", async () => {
+  test("an empty payload is an error and never replaces the cached board", async () => {
     const { persistence, writes } = fakePersistence({ value: [auctionFixture("cached")], stale: true, expired: false });
     attachTreasuryAuctionsPersistence(persistence);
 
-    const result = await loadTreasuryAuctions(true, async () => []);
-
-    expect(result.auctions[0]!.id).toBe("cached");
-    expect(result.stale).toBe(true);
+    await expect(loadTreasuryAuctions(true, async () => [])).rejects.toThrow("returned no auctions");
     expect(writes).toHaveLength(0);
+    expect((await loadTreasuryAuctions(true, async () => { throw outage(); })).auctions[0]!.id).toBe("cached");
   });
 
   test("never caches an empty payload, so the next load can still recover", async () => {

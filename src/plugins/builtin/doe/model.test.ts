@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -97,7 +97,10 @@ describe("DOE board boundary", () => {
 });
 
 describe("DOE report dates", () => {
-  afterEach(() => { (apiClient.getCloudDoeBoard as unknown as { mockRestore?: () => void }).mockRestore?.(); });
+  afterEach(() => {
+    (apiClient.getCloudDoeBoard as unknown as { mockRestore?: () => void }).mockRestore?.();
+    setSystemTime();
+  });
 
   const load = async (tab: string, argument = "") => {
     const args = { symbols: [], argument: argument ? [argument] : [], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
@@ -106,11 +109,15 @@ describe("DOE report dates", () => {
 
   test("the footer names what Vs 1Y and Vs 5Y avg are measured against, and the next storage line its consensus and prior", async () => {
     const petroleum = { ...board().reports[0]!, weekEnding: "2026-10-16", releasedAt: "2026-10-21T14:30:00.000Z", nextReleaseAt: "2026-10-28T14:30:00.000Z" };
+    // The load reads the clock: the day after the storage release, so its next one is still ahead ("next", not "due").
+    setSystemTime(new Date("2026-10-23T08:00:00Z"));
     spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(board({
       reports: [petroleum, { ...gasReport, nextConsensus: 80, nextPrior: 77 }],
       series: [crude({ basis: "computed" }), mountain()],
     }));
-    const gas = await load("gas");
+    // Before the next release, which the line calls due once its time has passed.
+    setSystemTime(new Date("2026-10-23T12:00:00Z"));
+    const gas = await load("gas").finally(() => setSystemTime());
     expect(gas.freshness?.basis).toBe("weekly release; year-ago and 5-year average as EIA published");
     expect(gas.sections[0]!.title).toBe("Gas Storage: Week ending Oct 16 · released Thu Oct 22 10:30 ET · next Thu Oct 29 10:30 ET, consensus +80 Bcf, prior +77 Bcf");
     expect(gas.sections[0]!.rows?.[0]).toMatchObject({ vsYearAgo: "-8.9%", vsFiveYear: "+4.5%" });
@@ -137,6 +144,30 @@ describe("DOE report dates", () => {
     expect(await dated("all", "crude-commercial")).toEqual(["2026-10-02", petroleum.releasedAt, petroleum.nextReleaseAt]);
     expect(await dated("all")).toEqual(["2026-10-02", gas.releasedAt, petroleum.nextReleaseAt]);
   });
+});
+
+/** `fn DOE NGS` asked for a petroleum series; the fix pointed every gas word at `fn NGS`, `fn NGS gas` included. */
+test("DOE given a gas word opens gas storage and points to NGS; NGS given one opens it without pointing to itself", async () => {
+  const spy = spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(board({ reports: [board().reports[0]!, gasReport], series: [crude(), mountain()] }));
+  try {
+    const load = async (tab: "all" | "gas", argument: string) => {
+      const args = { symbols: [], argument: [argument], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
+      return await doeHeadless(tab).load(args, {} as HeadlessPaneContext) as HeadlessBundleResult;
+    };
+    const doe = await load("all", "NGS");
+    expect(doe.sections.map((section) => section.title)).toEqual([expect.stringMatching(/^Gas Storage/)]);
+    expect(doe.warnings).toEqual(["Gas storage is its own function: gloom fn NGS (one region: gloom fn NGS east)"]);
+    for (const word of ["gas", "storage", "natural gas"]) {
+      const ngs = await load("gas", word);
+      expect(ngs.sections.map((section) => section.title)).toEqual([expect.stringMatching(/^Gas Storage/)]);
+      expect(ngs.warnings ?? []).toEqual([]);
+    }
+    // A word that is no series names the series to use, and NGS only from DOE.
+    await expect(load("all", "jet fuel")).rejects.toThrow("Use a series such as cushing, gasoline, distillate or east; for gas storage, gloom fn NGS");
+    await expect(load("gas", "jet fuel")).rejects.toThrow(/^Use a series such as cushing, gasoline, distillate or east$/);
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 describe("DOE figures", () => {

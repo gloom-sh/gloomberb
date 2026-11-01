@@ -11,6 +11,11 @@ import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
 import { catalogEmptyCopy } from "../plugins/builtin/chart-composer/catalog-inventory";
+import { doeModule } from "../plugins/builtin/doe";
+import { doeGasWord } from "../plugins/builtin/doe/headless";
+import { buildFuturesRows, DEFAULT_FUTURES_SORT } from "../plugins/builtin/futures/model";
+import { getContractsBySector } from "../market-data/futures-board";
+import { findCatalogSeries } from "./series-search";
 
 beforeEach(() => {
   // Catalog discovery starts chat and instantiates the map's chart templates.
@@ -18,6 +23,29 @@ beforeEach(() => {
   spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
 });
 afterEach(() => mock.restore());
+
+/**
+ * Dead ends from 30 Oct 2026: `fn DOE NGS` asked for a petroleum series, `fn FUT natgas` printed every tab and header
+ * then "Clear search.", and `catalog hurricane` found nothing and said nothing else.
+ */
+test("gas words open gas storage, FUT knows natgas and names what to try, and a catalog miss offers the news search", () => {
+  const doe = doeModule.paneTemplates!.find((template) => template.id === "doe-pane")!;
+  for (const word of ["NGS", "natural gas", "natgas"]) {
+    expect(doeGasWord(word)).toBe(true);
+    expect(doe.createInstance!({} as never, { arg: word })).toMatchObject({ settings: { tab: "gas" } });
+  }
+  expect(doeGasWord("cushing")).toBe(false);
+
+  const board = (query: string) => buildFuturesRows(getContractsBySector(), DEFAULT_FUTURES_SORT, new Map(), { query })
+    .flatMap((row) => row.type === "row" ? [row.contract.symbol] : []);
+  expect(board("natgas")).toEqual(["NG=F"]);
+  expect(board("gas")).toContain("NG=F");
+  expect(board("urea")).toEqual([]);
+
+  const miss = (query: string) => renderPaneCatalogReport([], parsePaneCatalogArgs([query]), lookupGlossary(query), null).replace(/\s+/g, " ");
+  expect(miss("hurricane")).toContain(`For stories that mention it: gloom news '"hurricane"'.`);
+  expect(miss("hurricane season")).toContain(`For stories that mention it: gloom news "hurricane season".`);
+});
 
 test("data a name search cannot find is pointed to, with its proxies, by search and catalog, instead of each pointing at the other", () => {
   const gap = "EU carbon (EUA): the auction price is in EPWR, chart CAP:carbon:eua. Traded proxies: CO2:LSE, KRBN.";
@@ -42,13 +70,28 @@ test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves
   expect(knownGapMessage("copper")).toBeNull();
 });
 
+test("jet fuel and kerosene lead to heating oil's price and COT, and the EIA's jet fuel stocks, not POWER", () => {
+  // `catalog "jet fuel"` opened POWER, and `catalog kerosene` found nothing.
+  const gap = knownGapMessage("jet fuel")!;
+  expect(gap).toStartWith("Jet fuel (kerosene): no price series; heating oil (NY Harbor ULSD) is the usual proxy");
+  for (const route of ["gloom quote HO=F", "gloom fn G CAP:doe:jet", "gloom fn COT HO"]) expect(gap).toContain(route);
+  for (const query of ["kerosene", "Jet Fuel", "jet fuel prices", "aviation fuel", "airline jet fuel"]) expect(knownGapMessage(query), query).toBe(gap);
+  for (const query of ["fuel", "jet", "fuel cells"]) expect(knownGapMessage(query), query).toBeNull();
+  // A topic pointer: catalog lists COT in place of the loose matches "fuel" finds (POWER's fuel filter).
+  expect(topicPointer("kerosene")?.codes).toEqual(["COT"]);
+});
+
 test("freight rates and the Baltic indices are said to be uncovered, naming what is; BDI alone is also a ticker", () => {
   const gap = knownGapMessage("freight")!;
   expect(gap).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
   for (const proxy of ["BDRY", "SBLK", "GNK", "DSX", "fn CHOKE", "news \"dry bulk\""]) expect(gap).toContain(proxy);
   for (const query of ["Baltic Dry", "dry-bulk", "Panamax", "freight rates", "FFA", "BDI", "charter rates"]) expect(knownGapMessage(query), query).toBe(gap);
-  // Only the whole query: a company, a sector or a ticker that merely carries the word is not the gap.
-  for (const query of ["baltic sea", "freight forwarder stocks", "BDIX", "BDRY", "ocean freight carriers"]) expect(knownGapMessage(query), query).toBeNull();
+  // A term among words that only qualify it matches on its tokens.
+  for (const query of ["panamax rates", "shipping rates", "bulk freight", "freight cost", "capesize spot rate", "dry bulk shipping rates"]) {
+    expect(knownGapMessage(query), query).toBe(gap);
+  }
+  // A company, a sector or a ticker that merely carries the word is not the gap: another word makes it another question.
+  for (const query of ["baltic sea", "freight forwarder stocks", "BDIX", "BDRY", "ocean freight carriers", "shipping stocks"]) expect(knownGapMessage(query), query).toBeNull();
   expect(knownGapForTicker("BDI")).toBe(gap);
   for (const symbol of ["FFA", "freight", "BDRY", "EUA"]) expect(knownGapForTicker(symbol), symbol).toBeNull();
 
@@ -174,6 +217,27 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["usdt"]), lookupGlossary("usdt"), null, series, commandPointer("usdt"));
   expect(catalog.indexOf(line)).toBe(0);
   expect(catalog).toContain("Taiwan dollar");
+});
+
+test("hashrate, hashprice, difficulty, mining and miner lead to the bitcoin network series and THEM crypto, ahead of DIST", async () => {
+  const line = "Bitcoin network: gloom fn G hashrate, difficulty or hashprice; listed miners: gloom fn THEM crypto";
+  for (const query of ["hashrate", "hash rate", "hashprice", "difficulty", "bitcoin difficulty", "mining", "miner", "bitcoin miners", "mining stocks"]) {
+    expect(commandPointer(query), query).toBe(line);
+    expect(commandPointerLeads(query), query).toBe(true);
+  }
+  // Mining of anything else, and data mining, are not the bitcoin network.
+  for (const query of ["gold mining", "data mining", "gold miners"]) expect(commandPointer(query), query).toBeNull();
+  const plugins = getLoadablePlugins();
+  expect(findCatalogSeries(plugins, "hashrate").map((match) => match.expression)).toEqual(["CAP:bitcoin:hashrate"]);
+  expect(findCatalogSeries(plugins, "hashprice")[0]).toMatchObject({ expression: "CAP:bitcoin:hashprice", unit: "USD/PH/s/day" });
+  expect(findCatalogSeries(plugins, "mining").map((match) => match.expression)).toEqual(expect.arrayContaining([
+    "CAP:bitcoin:hashrate", "CAP:bitcoin:difficulty", "CAP:bitcoin:retarget-estimate", "CAP:bitcoin:hashprice",
+  ]));
+  // The line comes first, before the series and before DIST, which "difficulty" finds by its description.
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["difficulty"]), lookupGlossary("difficulty"), null,
+    findCatalogSeries(plugins, "difficulty"), commandPointer("difficulty"), true);
+  expect(catalog.indexOf(line)).toBe(0);
+  expect(catalog).toContain("CAP:bitcoin:difficulty");
 });
 
 test("DeFi words find CRYP and name its DeFi list; exchange reserves are said plainly to be uncovered", async () => {
@@ -361,6 +425,22 @@ test("PMI and nowcast words lead to ECO, ECST and alerts add, with the terms exp
       expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token)[0], query).toBe("ECO");
     }
     for (const query of ["nowcast", "GDPNow"]) expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token)[0], query).toBe("ECST");
+  } finally {
+    registry.destroy();
+  }
+});
+
+test("USDA's and grain words find the crop balances, PSD and FUT's crops tab", async () => {
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    // `catalog usda` and the rest answered "No functions match".
+    for (const query of ["usda", "grain", "wasde", "fertilizer", "potash"]) {
+      const found = filterPaneCatalogEntries(entries, query);
+      expect(found.map((entry) => entry.token), query).toContain("PSD");
+      expect(found.find((entry) => entry.token === "PSD")!.paneId, query).toBe("commodities-energy");
+    }
   } finally {
     registry.destroy();
   }

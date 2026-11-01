@@ -203,7 +203,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   const input = object(value, "resolve output");
   onlyKeys(input, "resolve output", [
     "id", "label", "color", "unit", "unitGroup", "nativeFrequency", "timestampMode", "dataShape", "style", "transform",
-    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden", "attribution",
+    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "savedAt", "hidden", "attribution",
     "priceOf",
   ]);
   if (!Array.isArray(input.points)) fail("resolve output points", "expected an array.");
@@ -247,6 +247,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
       : {}),
     points: input.points.map(point),
     ...(warning !== undefined ? { warning } : {}),
+    ...(input.savedAt !== undefined ? { savedAt: finiteNumber(input.savedAt, "resolve output saved copy time") as number } : {}),
     ...(attribution ? { attribution: {
       source: boundedString(attribution.source, "resolve output source", 160),
       ...(publisher !== undefined ? { publisher } : {}),

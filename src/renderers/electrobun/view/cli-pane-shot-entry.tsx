@@ -16,8 +16,12 @@ import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
+  SHOT_API_SOCKET_PATH,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
+  shotRouteUrl,
+  type ShotApiSocketCall,
+  type ShotApiSocketReply,
 } from "../../../cli/desktop-pane-shot-routes";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
@@ -95,6 +99,12 @@ const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "text",
 ]);
 
+/**
+ * The page's own address, read once before anything can change it: the
+ * server answers only inside the secret folder the page opened at.
+ */
+const SHOT_PAGE_URL = window.location.href;
+
 let pendingShotWork = 0;
 let didInstallShotFetchTracker = false;
 const rendererHost: RendererHost = {
@@ -142,22 +152,90 @@ function installShotFetchTracker(): void {
   )) as typeof fetch;
 }
 
+/** Sends a read over the socket; null once the socket has closed. */
+type ShotApiSocketSend = (call: Omit<ShotApiSocketCall, "id">, signal: AbortSignal | null | undefined) => Promise<Response> | null;
+
+/**
+ * Cloud API reads over one socket to the Bun server, answered as each lands.
+ * A page's fetches share six connections to its origin, so a board's seventy
+ * contract histories and terms waited on each other for seconds. Null when
+ * the socket does not open; the page's fetch carries the reads then, and
+ * once the socket closes.
+ */
+function openShotApiSocket(): Promise<ShotApiSocketSend | null> {
+  return new Promise((resolve) => {
+    const pending = new Map<number, (reply: ShotApiSocketReply | null) => void>();
+    let nextId = 1;
+    let open = false;
+    const url = shotRouteUrl(SHOT_API_SOCKET_PATH, SHOT_PAGE_URL);
+    url.protocol = "ws:";
+    const socket = new WebSocket(url);
+    socket.addEventListener("message", (event) => {
+      let reply: ShotApiSocketReply;
+      try {
+        reply = JSON.parse(String(event.data)) as ShotApiSocketReply;
+      } catch {
+        // Intentional ignore: every reply the server sends is JSON; anything else answers no call.
+        return;
+      }
+      pending.get(reply.id)?.(reply);
+      pending.delete(reply.id);
+    });
+    socket.addEventListener("close", () => {
+      open = false;
+      for (const settle of pending.values()) settle(null);
+      pending.clear();
+      resolve(null);
+    });
+    socket.addEventListener("open", () => {
+      open = true;
+      resolve((call, signal) => !open ? null : new Promise<Response>((answer, fail) => {
+        const aborted = () => fail(signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+        if (signal?.aborted) return aborted();
+        const id = nextId++;
+        const onAbort = () => {
+          pending.delete(id);
+          aborted();
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        pending.set(id, (reply) => {
+          signal?.removeEventListener("abort", onAbort);
+          // A socket that closed mid-read is a request that never got an answer, as a dropped connection is to fetch.
+          if (!reply) return fail(new TypeError("Failed to fetch"));
+          if ("error" in reply) return fail(new TypeError(reply.error));
+          const bytes = Uint8Array.from(atob(reply.body), (char) => char.charCodeAt(0));
+          const empty = bytes.length === 0 || reply.status === 204 || reply.status === 304;
+          answer(new Response(empty ? null : bytes, { status: reply.status, statusText: reply.statusText, headers: reply.headers }));
+        });
+        socket.send(JSON.stringify({ id, ...call } satisfies ShotApiSocketCall));
+      }));
+    }, { once: true });
+  });
+}
+
 function installShotCloudApiTransport(): void {
   apiClient.setCookieSessionMode(true);
+  let socket: Promise<ShotApiSocketSend | null> | null = null;
   setCloudApiFetchTransport((url, init = {}) => {
     const upstream = new URL(url);
-    const proxyUrl = new URL(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, window.location.origin);
+    const proxyUrl = shotRouteUrl(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, SHOT_PAGE_URL);
     proxyUrl.search = upstream.search;
     const headers = new Headers(init.headers);
     // Bun owns the real session cookie. The browser only talks to the local
     // same-origin proxy and never receives or serializes the credential.
     headers.delete("Cookie");
     headers.delete("Origin");
-    return window.fetch(proxyUrl, {
+    const viaFetch = () => window.fetch(proxyUrl, {
       ...init,
       headers,
       credentials: "same-origin",
     });
+    if ((init.method ?? "GET").toUpperCase() !== "GET" || init.body != null) return viaFetch();
+    return trackShotWork((async () => {
+      socket ??= openShotApiSocket();
+      const send = await socket;
+      return await send?.({ path: `${upstream.pathname}${upstream.search}`, headers: [...headers] }, init.signal) ?? await viaFetch();
+    })());
   });
 }
 
@@ -168,7 +246,7 @@ function installShotCloudApiTransport(): void {
  */
 function installShotHttpFetchTransport(): void {
   setHttpFetchTransport(async (url, init) => {
-    const response = await window.fetch(SHOT_HTTP_BRIDGE_PATH, {
+    const response = await window.fetch(shotRouteUrl(SHOT_HTTP_BRIDGE_PATH, SHOT_PAGE_URL), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(await toRequestEnvelope(url, init)),
@@ -190,7 +268,7 @@ async function restoreShotCloudSession(): Promise<void> {
  * of the corporate action history come from providers the router merges in.
  */
 async function requestShotMarketData<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<T> {
-  const response = await window.fetch(SHOT_MARKET_BRIDGE_PATH, {
+  const response = await window.fetch(shotRouteUrl(SHOT_MARKET_BRIDGE_PATH, SHOT_PAGE_URL), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operation, args }),

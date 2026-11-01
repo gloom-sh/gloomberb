@@ -7,9 +7,10 @@ import { historicalPricesHeadless } from "../plugins/builtin/ticker-detail/headl
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { extractPriceSeries } from "./market";
 import { appendLiveQuotePoint } from "./chart-data";
+import { LiveBarAccumulator } from "./live-bars";
 import { seedChartResolutionResult } from "./chart-seed";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { resolveStudies } from "./studies";
+import { resolveStudies } from "./studies/resolve";
 import { buildPriceReturnFields } from "../market-data/performance";
 import { pricePointsToResolvedSeries } from "../components/chart/composite/price-series";
 import { applyCompositeChartCursor, buildCompositeChartScene } from "../components/chart/composite/scene";
@@ -120,6 +121,32 @@ test("a fresh quote cannot silently repair an inconsistent reported bar", () => 
   }, { now, mode: "ohlc", resolution: "1d", exchange: "ARCX" });
   expect(result[0]).toEqual(reported);
   expect(extractPriceSeries(result, source)[0]!.value).toBeNull();
+});
+
+test("a quote that names the bar's whole closed session replaces an inconsistent daily bar, in a single merge and a live one", () => {
+  // GOGL's 2026-10-30 bar as served for BATS: a high under its open. `history` and the quote after the close
+  // have the session as 15.63 / 15.63 / 14.88 / 15.19 on 55,310 shares.
+  const bars: PricePoint[] = [
+    { date: new Date("2026-10-29T00:00:00Z"), open: 16.38, high: 16.38, low: 15.24, close: 15.5, volume: 678_900 },
+    { date: new Date("2026-10-30T00:00:00Z"), open: 15.63, high: 15.465, low: 14.88, close: 15.19, volume: 55_260 },
+  ];
+  const now = Date.parse("2026-10-31T00:35:00Z");
+  const quote = {
+    symbol: "GOGL", currency: "USD", price: 15.19, change: -0.31, changePercent: -2, open: 15.63, high: 15.63, low: 14.88,
+    volume: 55_310, previousClose: 15.5, lastUpdated: Date.parse("2026-10-30T20:29:00Z"), marketState: "POST" as const,
+    postMarketPrice: 15.44, listingExchangeName: "BATS", instrumentType: "ETF",
+  };
+  const session = { open: 15.63, high: 15.63, low: 14.88, close: 15.19 };
+  const single = appendLiveQuotePoint(bars, quote, { now, mode: "ohlc", resolution: "1d", exchange: "BATS" }).at(-1)!;
+  expect(single).toMatchObject(session);
+  expect(pricePointIntegrity(single)).toBeUndefined();
+  const live = new LiveBarAccumulator().apply(bars, quote, { now, resolution: "1d", exchange: "BATS" }).at(-1)!;
+  expect(live).toMatchObject({ ...session, volume: 55_310 });
+  expect(extractPriceSeries([bars[0]!, live], source).at(-1)!.value).toBe(15.19);
+  // A quote with a price alone still cannot say which field was wrong.
+  const bare = { ...quote, open: undefined, high: undefined, low: undefined };
+  expect(appendLiveQuotePoint(bars, bare, { now, mode: "ohlc", resolution: "1d", exchange: "BATS" }).at(-1)).toEqual(bars[1]!);
+  expect(new LiveBarAccumulator().apply(bars, bare, { now, resolution: "1d", exchange: "BATS" }).at(-1)).toEqual(bars[1]!);
 });
 
 test("overview chart and return windows preserve the integrity boundary without suppressing unaffected horizons", () => {

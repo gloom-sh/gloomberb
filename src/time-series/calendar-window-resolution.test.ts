@@ -45,8 +45,10 @@ for (const start of ["2026-08-15", "2025-09-16", "2025-09-15"]) {
       expect(Date.parse(request.start)).toBeLessThanOrEqual(Date.parse(start));
       if (start === "2025-09-15") expect(request.start).toBe("2025-09-15T00:00:00.000Z");
     }
+    // An authored --from is measured from the close before it, where the loaded bars reach back to one.
+    const base = start === "2025-09-15" ? start : new Date(Date.parse(start) - 86_400_000).toISOString().slice(0, 10);
     for (const series of model.series) {
-      expect(series.points[0]?.date.toISOString().slice(0, 10)).toBe(start);
+      expect(series.points[0]?.date.toISOString().slice(0, 10)).toBe(base);
       expect(series.points.at(-1)?.date.toISOString()).toBe("2026-09-15T00:00:00.000Z");
     }
     const snapshot = JSON.parse(JSON.stringify(model.snapshot), (_key, value) =>
@@ -124,7 +126,8 @@ for (const resolution of ["auto", "1d"] as const) for (const dailyMax of ["1Y", 
     expect(oneShot.errors).toEqual([]);
     expect(new Set(requests)).toEqual(new Set([expected]));
     if (dailyMax === "1Y") {
-      expect(settled.priceComparison?.start).toBe(Date.parse("2025-09-15"));
+      // From the close before 15 Sep, which the 1Y daily history reaches.
+      expect(settled.priceComparison?.start).toBe(Date.parse("2025-09-14"));
       expect(settled.priceComparison?.end).toBe(Date.parse("2026-09-15"));
     }
   });

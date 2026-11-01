@@ -8,6 +8,7 @@ import {
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import {
@@ -119,8 +120,9 @@ function RiskFactorsReader({
   const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { force, listing })), [guard, listing, ticker, year]);
   const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
   const report = detail.data;
-  const listError = list.error ?? list.data?.refreshError ?? null;
-  const reportError = detail.error ?? report?.refreshError ?? null;
+  // A copy saved earlier answering a failed refresh says when it was saved, in the footer every pane uses, not as an error.
+  const listError = list.error ?? (list.data?.savedAt == null ? list.data?.refreshError : null) ?? null;
+  const reportError = detail.error ?? (report?.savedAt == null ? report?.refreshError : null) ?? null;
   const refresh = useCallback(() => {
     void list.reload();
     if (year !== null) void detail.reload();
@@ -151,12 +153,7 @@ function RiskFactorsReader({
       info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (listError) info.push({ id: "list-error", parts: [{ text: `Report list: ${listError}`, tone: "warning" }] });
     if (reportError) info.push({ id: "report-error", parts: [{ text: `${year} report: ${reportError}`, tone: "warning" }] });
-    if ((listError || list.data?.stale) && list.data) {
-      info.push({ id: "list-stale", parts: [{ text: `List cached ${new Date(list.data.fetchedAt).toISOString()}`, tone: "muted" }] });
-    }
-    if ((reportError || report?.stale) && report) {
-      info.push({ id: "report-stale", parts: [{ text: `Report cached ${new Date(report.fetchedAt).toISOString()}`, tone: "muted" }] });
-    }
+    info.push(...savedCopyFooterInfo([list.data?.savedAt, report?.savedAt]));
     const hints: PaneHint[] = report?.docUrl
       ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }]
       : [];

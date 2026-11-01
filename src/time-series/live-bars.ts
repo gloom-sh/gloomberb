@@ -54,6 +54,8 @@ interface HistoryAnchor {
   /** Identity of the loaded version of the history's newest bar. */
   key: string;
   time: number;
+  /** The session's open, from a quote whose session is the whole bar (quoteSessionRange). */
+  open: number | null;
   /** Live extremes and close observed while this bar is still forming. */
   high: number | null;
   low: number | null;
@@ -211,6 +213,7 @@ export class LiveBarAccumulator {
     this.anchor = {
       key,
       time: latestTime,
+      open: forming ? previous?.open ?? null : null,
       high: carried?.high ?? null,
       low: carried?.low ?? null,
       close: carried?.close ?? null,
@@ -316,6 +319,7 @@ export class LiveBarAccumulator {
       return;
     }
     if (!forming && this.inBar(time, anchor.time, options, exchange)) {
+      if (range?.open !== undefined) anchor.open = range.open;
       anchor.high = Math.max(anchor.high ?? price, price, range?.high ?? price);
       anchor.low = Math.min(anchor.low ?? price, price, range?.low ?? price);
       anchor.close = price;
@@ -364,8 +368,15 @@ export class LiveBarAccumulator {
     const anchor = this.anchor!;
     if (anchor.point?.source === latest && anchor.point.version === this.version) return anchor.point.value;
     let value = latest;
-    // A later quote cannot establish which reported OHLC field was wrong.
-    if (!pricePointIntegrity(latest)) {
+    if (pricePointIntegrity(latest)) {
+      // A later quote cannot establish which reported OHLC field was wrong, unless it names the bar's whole session:
+      // its open, range, price and count are the bar (mergeQuoteIntoLatestBar).
+      if (anchor.open !== null && anchor.close !== null) {
+        const close = anchor.close;
+        value = { ...latest, open: anchor.open, high: Math.max(anchor.high ?? close, anchor.open, close),
+          low: Math.min(anchor.low ?? close, anchor.open, close), close, ...this.cumulative !== null ? { volume: this.cumulative } : {} };
+      }
+    } else {
       let volume = latest.volume;
       const end = anchor.volumeEnd ?? this.cumulative;
       if (isFiniteNumber(volume) && end !== null && anchor.volumeBase !== null) {

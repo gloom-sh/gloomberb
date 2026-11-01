@@ -1,10 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { AnalystResearchView } from "./analyst-pane";
 import { CorporateActionsView } from "./corporate-actions-pane";
-import { EquityDiagnosticView } from "./equity-diagnostic-pane";
-import { RelativeValuationPane } from "./relative-valuation-pane";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { AUTO_PEERS_SETTING, relativeValuationTitle } from "./relative-valuation-peers";
 import { buildRelativeValuationSettingsDef, MAX_RELATIVE_VALUATION_TICKERS } from "./relative-valuation-settings";
@@ -29,14 +26,14 @@ export const researchModule: PluginModule = {
       id: "analyst-research",
       name: "Analyst",
       order: 32,
-      component: AnalystResearchView,
+      get component(): typeof import("./analyst-pane").AnalystResearchView { const { AnalystResearchView } = require("./analyst-pane"); return AnalystResearchView; },
       instruments: ["equity"],
     });
     ctx.registerTickerResearchTab({
       id: "equity-diagnostic",
       name: "Diagnostic",
       order: 33,
-      component: EquityDiagnosticView,
+      get component(): typeof import("./equity-diagnostic-pane").EquityDiagnosticView { const { EquityDiagnosticView } = require("./equity-diagnostic-pane"); return EquityDiagnosticView; },
       instruments: ["equity"],
     });
     ctx.registerTickerResearchTab({
@@ -53,7 +50,7 @@ export const researchModule: PluginModule = {
       id: "analyst-research",
       name: "Analyst Research",
       icon: "A",
-      component: AnalystResearchView,
+      get component(): typeof import("./analyst-pane").AnalystResearchView { const { AnalystResearchView } = require("./analyst-pane"); return AnalystResearchView; },
       defaultPosition: "right",
       tickerFollower: true,
       instruments: ["equity"],
@@ -68,7 +65,7 @@ export const researchModule: PluginModule = {
       reportRequirements: ["Free Gloom sign-in"],
       name: "Equity Diagnostic",
       icon: "D",
-      component: EquityDiagnosticView,
+      get component(): typeof import("./equity-diagnostic-pane").EquityDiagnosticView { const { EquityDiagnosticView } = require("./equity-diagnostic-pane"); return EquityDiagnosticView; },
       defaultPosition: "right",
       tickerFollower: true,
       instruments: ["equity"],
@@ -91,7 +88,7 @@ export const researchModule: PluginModule = {
       id: "relative-valuation",
       name: "Relative Valuation",
       icon: "R",
-      component: RelativeValuationPane,
+      get component(): typeof import("./relative-valuation-pane").RelativeValuationPane { const { RelativeValuationPane } = require("./relative-valuation-pane"); return RelativeValuationPane; },
       headless: relativeValuationHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
