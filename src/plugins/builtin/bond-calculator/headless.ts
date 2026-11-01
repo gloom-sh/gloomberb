@@ -45,7 +45,8 @@ export const bondCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
           { label: "Macaulay duration", value: a.macaulayDuration, formatted: `${a.macaulayDuration.toFixed(4)} years` },
           { label: "Modified duration", value: a.modifiedDuration, formatted: `${a.modifiedDuration.toFixed(4)} years` },
           { label: "Convexity", value: a.convexity, formatted: a.convexity.toFixed(4) },
-          { label: "DV01", value: a.dv01, formatted: a.dv01.toFixed(6) },
+          // The price change for a 1bp fall in yield, per 100 face as the prices are: 0.045493 is $45.49 on $100,000.
+          { label: "DV01", value: a.dv01, formatted: `${a.dv01.toFixed(6)} per 100 face` },
           { label: "Treasury spread", value: result.spread?.spreadBps ?? null, formatted: result.spread ? `${result.spread.spreadBps.toFixed(1)} bp as of ${result.spread.asOf}` : "Unavailable" },
         ] },
         { title: "Cash flows per 100 face", columns: [{ key: "date", header: "Payment" }, { key: "amount", header: "Cash", format: (n) => Number(n).toFixed(4) }, { key: "presentValue", header: "Present value", format: (n) => Number(n).toFixed(4) }], rows: a.cashFlows.map((flow) => ({ ...flow })) },
