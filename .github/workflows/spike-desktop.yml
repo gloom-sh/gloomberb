@@ -115,6 +115,9 @@ jobs:
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" /v ScoobeSystemSettingEnabled /t REG_DWORD /d 0 /f
           Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Format-Table Id, Name, MainWindowTitle -AutoSize | Out-String | Write-Host
           Get-Process WWAHost, UserOOBEBroker -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
+          # With the privacy screen gone the image opens the Start menu, which covers every window too.
+          Start-Sleep -Seconds 3
+          Get-Process StartMenuExperienceHost, SearchHost -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
       - name: Install
         id: install
         shell: pwsh
@@ -159,6 +162,9 @@ jobs:
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" /v ScoobeSystemSettingEnabled /t REG_DWORD /d 0 /f
           Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Format-Table Id, Name, MainWindowTitle -AutoSize | Out-String | Write-Host
           Get-Process WWAHost, UserOOBEBroker -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
+          # With the privacy screen gone the image opens the Start menu, which covers every window too.
+          Start-Sleep -Seconds 3
+          Get-Process StartMenuExperienceHost, SearchHost -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
       - name: Install
         id: install
         shell: pwsh
