@@ -29,7 +29,7 @@
       "binaries/bun"
     ],
     "resources": {
-      "../backend/": "backend/"
+      "../backend/index.js": "backend/index.js"
     },
     "windows": {
       "nsis": {

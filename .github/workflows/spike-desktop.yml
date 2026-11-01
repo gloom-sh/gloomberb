@@ -74,11 +74,14 @@ jobs:
           bunx @tauri-apps/cli@2 signer generate --ci -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" -w "$RUNNER_TEMP/updater.key"
           # The build takes the key as a path too.
           echo "TAURI_SIGNING_PRIVATE_KEY=$RUNNER_TEMP/updater.key" >> "$GITHUB_ENV"
+          # Updater artifacts need the updater's public key in the config; no endpoint is ever asked.
+          bun -e 'const dir = process.env.RUNNER_TEMP; const pubkey = (await Bun.file(`${dir}/updater.key.pub`).text()).trim(); await Bun.write(`${dir}/updater.json`, JSON.stringify({ plugins: { updater: { pubkey, endpoints: ["https://updates.invalid/latest.json"] } } }));'
+
 
       - name: Build the Tauri app
         working-directory: desktop-tauri/src-tauri
         shell: bash
-        run: bunx @tauri-apps/cli@2 build --bundles ${{ matrix.bundles }}
+        run: bunx @tauri-apps/cli@2 build --bundles ${{ matrix.bundles }} --config "$RUNNER_TEMP/updater.json"
 
       - name: Sizes
         shell: bash
