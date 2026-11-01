@@ -4,6 +4,8 @@ import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
 import { parseEconFigure } from "./figures";
+import { resolveFredMapping } from "./fred-series-map";
+import { STATS } from "../econ-statistics/stats";
 import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
 
 const CACHE_KIND = "calendar";
@@ -277,17 +279,37 @@ function publisherNames(source: EconEvent["source"]): string[] {
   return [source.name, initials, site].map(compactName).filter(Boolean);
 }
 
+/** ECST's names for each FRED series it charts, compacted: PAYEMS is Nonfarm Payrolls, nfp and the jobs report. */
+let statNames: ReadonlyMap<string, readonly string[]> | null = null;
+
+function statNamesOf(seriesId: string): readonly string[] {
+  statNames ??= STATS.reduce((names, stat) => names.set(stat.seriesId,
+    [...names.get(stat.seriesId) ?? [], ...[stat.label, ...stat.aliases ?? [], ...stat.keywords ?? []].map(compactName).filter(Boolean)]),
+  new Map<string, string[]>());
+  return statNames.get(seriesId) ?? [];
+}
+
 /**
- * Whether a row carries every word of `query` in its name or its publisher's,
- * case, spaces and punctuation aside: `nonfarm` finds Non Farm Payrolls and
- * Non-Farm Employment Change, `fed funds` the Federal Funds Rate, and `usda`
- * every row the U.S. Department of Agriculture publishes. The name shown and
- * the feed's own are both read.
+ * The names a row is searched by, compacted: the feed's own and the one the
+ * calendar shows, then what ECST calls the series the release is of
+ * (Non-Farm Employment Change is also nonfarm payrolls, nfp and the jobs report).
+ */
+function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string[] {
+  const series = resolveFredMapping(event.event, event.country)?.seriesId;
+  return [...[event.event, econEventName(event)].map(compactName), ...series ? statNamesOf(series) : []];
+}
+
+/**
+ * Whether a row carries every word of `query` in one of its names or its
+ * publisher's, case, spaces and hyphens aside: `nonfarm` finds Non Farm
+ * Payrolls and Non-Farm Employment Change, `nfp` and `jobs report` the
+ * latter by ECST's names for it, `fed funds` the Federal Funds Rate, and
+ * `usda` every row the U.S. Department of Agriculture publishes.
  */
 export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior" | "source">, query: string): boolean {
   const words = query.split(/\s+/).map(compactName).filter(Boolean);
   if (words.length === 0) return true;
-  const names = [event.event, econEventName(event)].map(compactName);
+  const names = eventSearchNames(event);
   const publisher = publisherNames(event.source);
   return names.some((name) => words.every((word) => name.includes(word) || publisher.some((text) => text.includes(word))));
 }
