@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../api-client/errors";
+import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData, withMarketData } from "../context";
 import { CLI_ERROR_CODE, failWithFields } from "../errors";
@@ -59,7 +59,7 @@ import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { coinListingNotes, EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -481,7 +481,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
   const search = takeOption(rawArgs, "--search")?.trim() ?? null;
-  if (search === "") ctx.fail("--search needs the words of an event's name.", "Such as econ --search nonfarm.");
+  if (search === "") ctx.fail("--search needs the words of an event's name or its publisher.", "Such as econ --search nonfarm.");
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   const tzOption = takeOption(rawArgs, "--tz");
   const viewerZone = tzOption == null ? null : canonicalTimeZone(tzOption);
@@ -646,16 +646,15 @@ function withSavedFredSeries<T>(ctx: Parameters<CliCommandDef["execute"]>[1], ru
 
 /**
  * A FRED series from Gloom Cloud, or the copy an earlier read saved when it
- * cannot be refreshed (marked as such). A refusal asking again will not change
- * (a series Gloom Cloud no longer serves, access denied) is said, not covered.
+ * cannot be refreshed (marked as such). A refusal (a series Gloom Cloud no
+ * longer serves, access denied) is said, not covered: `loadCachedFredSeries`
+ * throws it.
  */
 async function loadFredSeries(
   seriesId: string,
   params: { startDate?: string; limit?: number; sortOrder: "asc" | "desc" },
 ): Promise<CloudFredSeriesPayload> {
-  const result = await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params));
-  if (result.source === "stale-fallback" && isPermanentClientError(result.error)) throw result.error;
-  return result.data;
+  return (await loadCachedFredSeries({ seriesId, ...params }, () => apiClient.getCloudFredSeries(seriesId, params))).data;
 }
 
 async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -910,7 +909,12 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       asOf: newestReportTime(lastBars),
       oldest: oldestReportTime(lastBars),
     });
-    const warnings = [...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!), ...sessionNote ? [sessionNote] : []];
+    // A coin's code read as a listing (BTC, the Grayscale fund) says so, as `quote BTC` does.
+    const warnings = [
+      ...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!),
+      ...coinListingNotes(leftListing!, leftQuote), ...coinListingNotes(rightListing!, rightQuote),
+      ...sessionNote ? [sessionNote] : [],
+    ];
     ctx.printResult({
       data: [{ left, right, samples: sampleSize, correlation }],
       ...(warnings.length > 0 ? { warnings } : {}),
@@ -972,7 +976,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--search <words>", description: "Events whose name has these words, case, spaces and hyphens aside, such as nonfarm or fed funds" },
+        { flags: "--search <words>", description: "Events whose name or publisher has these words, case, spaces and hyphens aside, such as nonfarm, fed funds or USDA" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
         { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],

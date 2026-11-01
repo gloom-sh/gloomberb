@@ -1,4 +1,4 @@
-import type { GpuBasis, GpuBoardRow, GpuEvent, GpuObservation } from "../../../api-client/gpu";
+import type { GpuBasis, GpuBoardRow, GpuEvent, GpuObservation, GpuSettle } from "../../../api-client/gpu";
 import { staticSeries } from "../../../components/chart/static/series";
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -175,9 +175,27 @@ export function gpuBoardSections(rows: readonly GpuBoardRow[], model = ""): GpuB
   return sections;
 }
 
+/** Gloom's daily settle as a board row: it leads the board, above every quote. */
+export interface GpuSettleRow { kind: "settle"; id: string; settle: GpuSettle }
+export type GpuBoardItem = GpuBoardRow | GpuSettleRow;
+export const isGpuSettleRow = (row: GpuBoardItem): row is GpuSettleRow => (row as Partial<GpuSettleRow>).kind === "settle";
+export const GPU_SETTLE_SECTION = "Gloom daily settle";
+
+/**
+ * The settle rows of the board: every form factor of the picked GPU, settled
+ * or not, so a day with too few prices says so; across all GPUs only the ones
+ * settled. GPUs in board order, SXM first.
+ */
+export function gpuSettleRows(settles: readonly GpuSettle[] | undefined, model = ""): GpuSettleRow[] {
+  return (settles ?? []).filter((settle) => model ? settle.gpuModel === model : settle.status === "settled")
+    .sort((a, b) => gpuModelOrder(a.gpuModel, b.gpuModel) || Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM")
+      || a.formFactor.localeCompare(b.formFactor))
+    .map((settle) => ({ kind: "settle", id: `settle:${settle.gpuModel}:${settle.formFactor}`, settle }));
+}
+
 export type GpuChangeKey = "change1d" | "change7d" | "change30d";
 /** Change windows with at least one figure; missing windows remain unavailable. */
-export const gpuChangeWindows = (rows: readonly GpuBoardRow[]): GpuChangeKey[] =>
+export const gpuChangeWindows = (rows: readonly Pick<GpuBoardRow, GpuChangeKey>[]): GpuChangeKey[] =>
   (["change1d", "change7d", "change30d"] as const).filter((key) => rows.some((row) => row[key] != null));
 
 /**

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { apiClient } from "../../../api-client";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { RoadmapItem, RoadmapVote } from "../../../api-client/roadmap";
@@ -7,7 +7,9 @@ import {
   DataTableStackView,
   EMPTY_TABLE_CELL,
   isSectionedItemRow,
+  PaneFooterScope,
   renderSectionedRowHeader,
+  usePaneTabs,
   usePaneStatusFooter,
   useRowNotes,
   type DataTableCell,
@@ -23,6 +25,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
+import { ChangelogPane } from "../changelog";
 import {
   isVotable,
   optimisticVote,
@@ -97,7 +100,7 @@ function RoadmapDetail({ item, failure, width, scrollRef }: {
   );
 }
 
-export function RoadmapPane({ focused, width, height }: PaneProps) {
+function RoadmapView({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
   const client = useContext(RoadmapClientContext) ?? apiClient;
   const access = usePlanAccess();
@@ -240,5 +243,49 @@ export function RoadmapPane({ focused, width, height }: PaneProps) {
       selectedTextOverridesCellColor
       showHorizontalScrollbar={false}
     />
+  );
+}
+
+/**
+ * What is coming and what came: the roadmap's features, and the Changelog as
+ * CHG shows it. The first tab is not "Roadmap", which the title already says.
+ */
+const VIEWS = [
+  { value: "roadmap", label: "Features" },
+  { value: "changelog", label: "Changelog" },
+] as const;
+type ViewId = (typeof VIEWS)[number]["value"];
+const VIEW_PANES: Record<ViewId, (props: PaneProps) => ReactNode> = {
+  roadmap: RoadmapView,
+  changelog: ChangelogPane,
+};
+
+export function RoadmapPane(props: PaneProps) {
+  const [storedView, setView] = usePluginPaneState<string>("view", "roadmap");
+  const view: ViewId = storedView === "changelog" ? "changelog" : "roadmap";
+  // A view stays mounted once shown, so coming back to it keeps its place.
+  const [mounted, setMounted] = useState<ReadonlySet<ViewId>>(() => new Set([view]));
+  useEffect(() => {
+    setMounted((current) => (current.has(view) ? current : new Set([...current, view])));
+  }, [view]);
+  const { strip, rows } = usePaneTabs({ tabs: [...VIEWS], activeValue: view, onSelect: setView, focused: props.focused, dense: true });
+  const bodyHeight = Math.max(1, props.height - rows);
+
+  return (
+    <Box width={props.width} height={props.height} flexDirection="column" overflow="hidden">
+      {strip}
+      {VIEWS.map(({ value }) => {
+        if (!mounted.has(value) && value !== view) return null;
+        const View = VIEW_PANES[value];
+        const active = value === view;
+        return (
+          <Box key={value} visible={active} height={bodyHeight} flexGrow={1} flexBasis={0} overflow="hidden" data-gloom-role="nested-pane-content">
+            <PaneFooterScope active={active}>
+              <View {...props} height={bodyHeight} focused={props.focused && active} />
+            </PaneFooterScope>
+          </Box>
+        );
+      })}
+    </Box>
   );
 }

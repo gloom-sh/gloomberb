@@ -139,7 +139,8 @@ export interface CliTickerOptions {
  */
 export class CoinListingError extends ListingArgError {
   constructor(message: string, details: string, readonly hint: string) {
-    super(message, `${details}\n${hint}`);
+    // A listing message that already ends in the coin note (`describeOtherListings`) keeps it once.
+    super(message, details.endsWith(hint) ? details : `${details}\n${hint}`);
     this.name = "CoinListingError";
   }
 }

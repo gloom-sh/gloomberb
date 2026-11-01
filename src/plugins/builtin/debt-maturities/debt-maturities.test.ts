@@ -448,7 +448,8 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   };
   const annual = await load(fixture());
   expect(annual.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Annual filing history"]);
-  expect(annual.line).toBe("Source: SEC EDGAR · Mon 30 Jun 2025 · not a live feed (filed data)");
+  // The date is named by the filing it is: the annual schedule's form here, the 10-Q's below.
+  expect(annual.line).toBe("Source: SEC EDGAR · 20-F Mon 30 Jun 2025 · not a live feed (filed data)");
   // A server that sends `latestQuarter: null`, or a 10-Q that does not hold up, prints the JSON one without the field did.
   const json = (result: typeof annual.result) => JSON.stringify(serializeHeadlessPaneResult(debtMaturitiesHeadless, result));
   const stale = fixture();
@@ -463,7 +464,7 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   expect(quarterly.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Latest 10-Q", "Annual filing history"]);
   const row = quarterly.text.split("\n").find((line) => line.startsWith("2025-12-31"));
   for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "2026-02-10"]) expect(row).toContain(cell);
-  expect(quarterly.line).toBe("Source: SEC EDGAR · Wed 31 Dec 2025 · not a live feed (filed data)");
+  expect(quarterly.line).toBe("Source: SEC EDGAR · 10-Q Wed 31 Dec 2025 · not a live feed (filed data)");
 });
 
 test("a 52- or 53-week year that ends in January's first week is labelled the year before", () => {

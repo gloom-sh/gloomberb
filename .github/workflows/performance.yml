@@ -97,6 +97,51 @@ jobs:
       - name: Compare a pane drag's frame budget with the base branch
         run: bun run benchmark:pane-drag:compare --base ../base
 
+  # How long the app's database work holds the app's thread, on Windows,
+  # where a flush of the disk held it for seconds. Only for changes to the
+  # data layer, the check or this workflow.
+  app-database-windows:
+    name: App database on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: scope
+        name: Check whether the change touches the data layer
+        shell: bash
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          if git diff --name-only FETCH_HEAD HEAD | grep -E '^(src/data/|scripts/benchmark-app-database\.ts|\.github/workflows/performance\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The data layer needs no packages: Bun alone runs both checkouts.
+      - if: steps.scope.outputs.relevant == 'true'
+        uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - if: steps.scope.outputs.relevant == 'true'
+        name: Check out the base branch next to the PR
+        shell: bash
+        run: git worktree add ../base FETCH_HEAD
+
+      # The same seeded 100 MB cache and workload against both checkouts; the
+      # table lands in the job summary.
+      - if: steps.scope.outputs.relevant == 'true'
+        name: Compare the app database's time on the app's thread with the base branch
+        run: bun scripts/benchmark-app-database.ts --base ../base --seconds 45 --runs 2 --out app-database.json
+
+      - if: always() && steps.scope.outputs.relevant == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-database-windows
+          path: app-database.json
+          if-no-files-found: ignore
+
   # How long one Cloud sync blocks the desktop view on a large workspace, in
   # WebKit. Only for changes to the sync, the portfolio analytics it values,
   # the desktop view's RPC path (Electrobun's patch included), or the check.

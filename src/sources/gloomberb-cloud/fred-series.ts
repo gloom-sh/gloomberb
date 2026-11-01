@@ -1,4 +1,4 @@
-import { createPluginCache } from "../../data/plugin-cache";
+import { createPluginCache, savedCopyForTransientFailure } from "../../data/plugin-cache";
 import { getPublishedUsEquityCalendarDay } from "../../market-data/published-us-sessions";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type {
@@ -198,7 +198,9 @@ export async function loadCachedFredSeries(
   const cached = stored ? withFredSourceFreshness(stored) : null;
   if (!options?.force && !pending && cached && !cached.stale) return { ...cached, source: "cache" };
   const result = await cache.load(cacheKey(request), loader, pending ? { ...options, force: true } : options);
-  // An early re-read is opportunistic: a failure keeps the still-fresh copy as it was.
+  // An early re-read is opportunistic: a failure keeps the still-fresh copy as it was, as not asking would have.
   if (pending && result.source === "stale-fallback" && cached && !cached.stale && !options?.force) return { ...cached, source: "cache" };
-  return withFredSourceFreshness(result);
+  // A refusal (a series no longer served, a signed-out session) or a reply that fails validation is thrown,
+  // whatever copy is saved: a saved copy answers only for a failure asking again may get past.
+  return withFredSourceFreshness(savedCopyForTransientFailure(result));
 }

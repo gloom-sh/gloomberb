@@ -2,7 +2,7 @@
 import { useTerminalDimensions } from "@opentui/react";
 import { useSyncExternalStore } from "react";
 import { colors } from "../../theme/colors";
-import { createToastStore, type ToastHost, type ToastTone } from "../../ui/toast";
+import { createToastStore, useToastsShown, type ToastHost, type ToastTone } from "../../ui/toast";
 import { useActionShortcut } from "../../ui";
 import { displayWidth } from "../../utils/format";
 
@@ -26,6 +26,7 @@ function toneIcon(tone: ToastTone): string {
 function ToastViewport({ position = "bottom-right" }: { position?: string }) {
   const dimensions = useTerminalDimensions();
   const shownToasts = useSyncExternalStore(toastStore.subscribe, toastStore.getSnapshot, toastStore.getSnapshot);
+  useToastsShown(shownToasts);
   const actionShortcut = useActionShortcut("notification-action");
   const maxWidth = Math.max(1, Math.min(60, dimensions.width - 4));
   const placement = position.startsWith("top") ? { top: 1 } : { bottom: 1 };

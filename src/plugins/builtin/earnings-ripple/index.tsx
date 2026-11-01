@@ -1,7 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { formatTickerListInput, parseTickerListInput } from "../../../tickers/list";
 import { earningsRippleHeadless } from "./headless";
-import { EarningsRipplePane } from "./pane";
 
 function namedSymbols(arg: string | undefined): string[] {
   try { return arg?.trim() ? parseTickerListInput(arg) : []; } catch { return []; }
@@ -9,7 +8,7 @@ function namedSymbols(arg: string | undefined): string[] {
 
 export const earningsRippleModule: PluginModule = {
   panes: [{
-    id: "earnings-ripple", name: "Earnings Ripple", icon: "E", component: EarningsRipplePane,
+    id: "earnings-ripple", name: "Earnings Ripple", icon: "E", get component(): typeof import("./pane").EarningsRipplePane { const { EarningsRipplePane } = require("./pane"); return EarningsRipplePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 20 },
     tableExport: true,
     // Without named tickers it lists what is in the person's portfolios.

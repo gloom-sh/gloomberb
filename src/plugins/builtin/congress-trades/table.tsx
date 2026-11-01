@@ -1,6 +1,7 @@
 import { TextAttributes } from "../../../ui";
 import { TickerBadgeList, type DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
+import { signedColor } from "../shared/research-cells";
 import { formatShortDate } from "../../../utils/datetime-format";
 import type {
   CloudCongressMemberPayload,
@@ -11,12 +12,22 @@ import {
   formatAmountRange,
   formatCongressReturn,
   formatLag,
+  roundCongressReturn,
   FILING_DAY_FORMAT,
   tradeAssetLabel,
   type MemberColumn,
   type TradeColumn,
   type TickerColumn,
 } from "./model";
+
+/** A return or its excess over SPY takes the shared signed colours wherever CG shows one, by its digits. */
+export function congressReturnColor(value: number | null | undefined): string {
+  return signedColor(value == null ? value : roundCongressReturn(value), colors);
+}
+
+function congressReturnCell(value: number | null | undefined): DataTableCell {
+  return { text: formatCongressReturn(value), color: congressReturnColor(value) };
+}
 
 function sideColor(side: CloudCongressTradePayload["side"]): string {
   if (side === "BUY") return colors.positive;
@@ -32,7 +43,7 @@ export function renderCongressTradeCell(
   rowState: { selected: boolean },
 ): DataTableCell {
   switch (column.id) {
-    case "returnSinceTx": case "returnSinceFiling": return { text: formatCongressReturn(trade[column.id]), color: trade[column.id] == null ? colors.textDim : trade[column.id]! >= 0 ? colors.positive : colors.negative };
+    case "returnSinceTx": case "returnSinceFiling": case "excessSinceFiling": return congressReturnCell(trade[column.id]);
     case "filed":
       return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "tx":
@@ -81,7 +92,8 @@ export function renderCongressMemberCell(
 ): DataTableCell {
   switch (column.id) {
     case "party": return { text: member.party ?? "--", color: colors.textDim };
-    case "medianReturn": case "buyHitRate": return { text: column.id === "buyHitRate" ? member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%` : formatCongressReturn(member.medianReturn), color: colors.text };
+    case "medianReturn": case "medianExcessSinceFiling": return congressReturnCell(member[column.id]);
+    case "buyHitRate": return { text: member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%`, color: colors.text };
     case "member":
       return { text: member.memberName, color: colors.text };
     case "district":

@@ -1,7 +1,6 @@
 import type { PaneTemplateContext, PaneTemplateInstanceConfig, ShortcutArgError } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { unknownCollectionArgError } from "../../../portfolio/collection-name";
-import { PortfolioListPane } from "./pane";
 import {
   buildPortfolioPaneSettingsDef,
   getPortfolioPaneSettings,
@@ -54,7 +53,7 @@ export const portfolioListModule: PluginModule = {
       reportFreshness: { source: "Local portfolio and Gloom Cloud" },
       name: "Portfolio",
       icon: "P",
-      component: PortfolioListPane,
+      get component(): typeof import("./pane").PortfolioListPane { const { PortfolioListPane } = require("./pane"); return PortfolioListPane; },
       defaultPosition: "left",
       defaultMode: "floating",
       defaultWidth: "40%",

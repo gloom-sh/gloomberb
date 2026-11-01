@@ -28,7 +28,7 @@ import { DESK_KEYS, type DeskKey } from "./desk-keys";
 
 /**
  * Desks: ready-made layout tabs for one kind of trading, offered when the app
- * first runs ("What do you trade?") and later with DESK. A desk is a list of
+ * first runs ("What do you trade most?") and later with DESK. A desk is a list of
  * functions as the command bar takes them, built through the same pane
  * templates, so each tile is what typing the function opens. Only functions
  * that show real data signed out and on Free go in a desk; a Pro-only function

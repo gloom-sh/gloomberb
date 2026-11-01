@@ -30,6 +30,7 @@ import { DEFAULT_THEME, themes } from "../../../theme/themes";
 import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
 import { sanitizeCommandBarOpens } from "../../../app/command-bar-intro";
 import { sanitizeUpdatesConfig } from "../../../updater/channel";
+import { ATTENTION_NOTICE_ACCOUNTS } from "../../../telemetry/attention-setting";
 
 const configLog = debugLog.createLogger("config");
 const reportedUnknownThemes = new Set<string>();
@@ -201,15 +202,26 @@ function withUpdates(updates: AppConfig["updates"]): Pick<AppConfig, "updates"> 
   return updates ? { updates } : {};
 }
 
-/** Only the switches that are set survive; an empty object is the same as none. */
+/**
+ * Only the switches that are set survive; an empty object is the same as none.
+ * Attention Counts is on by default, so a value that cannot be read turns it
+ * off instead: a hand-edited "false" or a broken block never counts as on.
+ */
 function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
-  if (!isRecord(value)) return undefined;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return { attention: false };
   const telemetry: TelemetryConfig = {
     ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
     ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
-    ...(typeof value.attention === "boolean" ? { attention: value.attention } : {}),
+    ...(value.attention !== undefined ? { attention: value.attention === true } : {}),
+    ...sanitizeAttentionNotice(value.attentionNoticeShownTo),
   };
   return Object.keys(telemetry).length > 0 ? telemetry : undefined;
+}
+
+function sanitizeAttentionNotice(value: unknown): Pick<TelemetryConfig, "attentionNoticeShownTo"> {
+  const accounts = sanitizeUniqueStringList(value).slice(-ATTENTION_NOTICE_ACCOUNTS);
+  return accounts.length > 0 ? { attentionNoticeShownTo: accounts } : {};
 }
 
 /**
@@ -286,6 +298,7 @@ function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefi
     accountStatus,
     checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
     desks: Array.isArray(value.desks) ? sanitizeUniqueStringList(value.desks) : undefined,
+    rerun: value.rerun === true ? true : undefined,
   };
 }
 

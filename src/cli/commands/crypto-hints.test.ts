@@ -8,6 +8,7 @@ import { marketDataCliCommands } from "./market";
 import { serializeCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
 import { resetBoardCoins } from "../board-coins";
+import { serviceDidNotAnswerMessage } from "../../sources/provider-errors";
 
 beforeEach(() => resetBoardCoins([]));
 // A quote that finds nothing sets the exit status; it must not become the test run's.
@@ -53,11 +54,24 @@ test("a failed quote says why in text mode, and points crypto pairs at the crypt
   expect((json.data as Array<{ error: string }>)[0]!.error).toBe(`${none} for BTC-USD`);
 });
 
+test("the data service failing for several listings is one line naming each, and still says to try again", () => {
+  const failed = (symbol: string) => ({ target: { symbol }, quote: null, error: serviceDidNotAnswerMessage(symbol) });
+  expect(quoteNotes([failed("YAR:OSL"), failed("GNC:ASX")]))
+    .toEqual(["YAR:OSL, GNC:ASX: Gloom's data service did not answer. Try again in a moment."]);
+});
+
 test("a sentence the data service wrote keeps its own ending, before the crypto board pointer too", () => {
   const note = (symbol: string, error: string) => quoteNotes([{ target: { symbol }, quote: null, error }]);
   expect(note("XAU/USD", "Spot gold is not quoted; GC=F is the front-month future.")).toEqual(["XAU/USD: Spot gold is not quoted; GC=F is the front-month future."]);
   expect(note("BTC-USD", "Not listed on this feed.")).toEqual([`BTC-USD: Not listed on this feed. ${HINT}`]);
   expect(note("BTC-USD", "Not listed on this feed")).toEqual([`BTC-USD: Not listed on this feed. ${HINT}`]);
+});
+
+test("a top coin's delayed quote points at the board that streams it live; a live one or another pair does not", () => {
+  const coin = (symbol: string, dataSource: Quote["dataSource"]) => ({ target: { symbol }, quote: { name: "Bitcoin USD", instrumentType: "CRYPTOCURRENCY" as const, dataSource }, error: null });
+  expect(quoteNotes([coin("BTC-USD", "delayed")])).toEqual(["BTC-USD streams live on the CRYP board (gloom fn CRYP)."]);
+  expect(quoteNotes([coin("BTC-USD:CCC", "delayed"), coin("ETH-USD", "delayed")])).toEqual(["BTC-USD:CCC, ETH-USD stream live on the CRYP board (gloom fn CRYP)."]);
+  expect(quoteNotes([coin("BTC-USD", "live"), coin("BTC-EUR", "delayed"), coin("BTC-USD:COINBASE", "delayed")])).toEqual([]);
 });
 
 test("history keeps its error and adds the crypto board pointer only for crypto pairs in text mode", async () => {

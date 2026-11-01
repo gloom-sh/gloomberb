@@ -164,6 +164,22 @@ test("a future on a venue without a published calendar keeps its previous close 
   expect(quotePreviousCloseDate(vx)).toBeNull();
 });
 
+/** `quote HCI:JSE` in session on 30 Oct 2026 said "+0.59% vs prev close" where US and LSE rows named the day. */
+test("a JSE move names its close from the venue's calendar, without daily closes, across the election-day closure", () => {
+  const hci = createTestQuote({
+    symbol: "HCI", currency: "ZAR", instrumentType: "EQUITY", listingExchangeName: "JSE", exchangeName: "JSE",
+    price: 172, change: 1, changePercent: 0.59, previousClose: 171, changeSessionDate: "2026-10-30",
+    marketState: "REGULAR", lastUpdated: Date.parse("2026-10-30T10:00:00Z"),
+  });
+  expect(changeBasisLabel(quoteChangeBasis(hci)!, NOW)).toBe("vs Thu 29 Oct close");
+  // Wed 4 Nov is South Africa's local government election day, a public holiday the JSE closes for.
+  const thursday = { ...hci, changeSessionDate: "2026-11-05", lastUpdated: Date.parse("2026-11-05T10:00:00Z") };
+  const basis = quoteChangeBasis(thursday);
+  expect(basis).toEqual({ kind: "close", date: "2026-11-03", venue: "JSE", closed: ["2026-11-04"] });
+  expect(changeBasisLabel(basis!, NOW)).toBe("vs Tue 3 Nov close");
+  expect(changeBasisNote(basis, NOW)).toBe("JSE closed Wed 4 Nov, holiday");
+});
+
 test("an index quoted under its publisher names the venue whose days it trades in its holiday note", () => {
   const hsi = createTestQuote({
     symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",

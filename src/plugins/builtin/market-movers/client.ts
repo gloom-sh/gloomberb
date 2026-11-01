@@ -119,6 +119,7 @@ export async function loadMarketMoverTab(
       ...hydrated,
       source: "gloom",
       stale: trending.stale || !!hydrated.unavailableSymbols?.length,
+      ...(trending.savedAt != null ? { savedAt: trending.savedAt } : {}),
     };
   }
   const category = CATEGORY_MAP[tab];

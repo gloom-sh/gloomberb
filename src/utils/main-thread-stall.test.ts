@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
-import { startMainThreadStallMonitor } from "./main-thread-stall";
-import { measurePerf } from "./perf-marks";
+import {
+  markStartupComplete,
+  resetStartupCompleteForTests,
+  setStallSink,
+  startMainThreadStallMonitor,
+  type StallEvent,
+} from "./main-thread-stall";
+import { measurePerf, recordPerfSample } from "./perf-marks";
 
 function createHarness() {
   let clock = 0;
@@ -56,4 +62,114 @@ test("stopping the monitor ends the reports", () => {
   harness.fire();
 
   expect(harness.reports).toEqual([]);
+});
+
+// The monitor logs each stall as a sample of its own, and reporting one
+// reads the windows through measured calls. Were either the step the next
+// stall names, every stall after the first would read "after runtime.stall"
+// or the window read, and hide what really ran before it.
+test("stalls keep naming the work before them, with a SQLite statement's facts and the startup phase", () => {
+  const events: StallEvent[] = [];
+  const disposeSink = setStallSink((event) => {
+    events.push(event);
+    measurePerf("native.window.is-minimized", () => {});
+  });
+  let clock = 0;
+  let tick: (() => void) | null = null;
+  const stop = startMainThreadStallMonitor({
+    now: () => clock,
+    schedule: (callback) => { tick = callback; return 1; },
+    cancel: () => { tick = null; },
+  });
+  try {
+    recordPerfSample("sqlite.blocked", 900, { operation: "touch cached resource", attempts: 2, lockWait: true });
+    clock += 1_250;
+    tick!();
+    markStartupComplete();
+    clock += 1_250;
+    tick!();
+  } finally {
+    stop();
+    disposeSink();
+    resetStartupCompleteForTests();
+  }
+
+  expect(events.map(({ lastMeasured, sqlite, phase, uptimeMs }) => ({ lastMeasured, sqlite, phase, uptimeMs }))).toEqual([
+    { lastMeasured: "sqlite.blocked", sqlite: { operation: "touch cached resource", attempts: 2, lockWait: true }, phase: "startup", uptimeMs: 1_250 },
+    { lastMeasured: "sqlite.blocked", sqlite: { operation: "touch cached resource", attempts: 2, lockWait: true }, phase: "steady", uptimeMs: 2_500 },
+  ]);
+});
+
+// A window's request is measured around its handler, so it ends after any
+// statement inside it. Taking the step from that statement dropped whether
+// it waited on a lock, and how many tries it took.
+test("a statement that held the thread through most of a request stays the step, with its facts", () => {
+  const harness = createHarness();
+  harness.advance(250);
+  harness.fire();
+
+  const blocked = { operation: "save session snapshot", attempts: 3, lockWait: true };
+  measurePerf("rpc.request.save-session", () => {
+    recordPerfSample("sqlite.blocked", 900, blocked);
+  });
+  harness.advance(1_250);
+  harness.fire();
+
+  // A short statement before the request's real work does not name it.
+  measurePerf("rpc.request.load-layout", () => {
+    recordPerfSample("sqlite.blocked", 1, blocked);
+    const until = performance.now() + 5;
+    while (performance.now() < until) { /* the request's own work */ }
+  });
+  harness.advance(1_250);
+  harness.fire();
+  harness.stop();
+
+  expect(harness.reports.map(({ context }) => ({ lastMeasured: context.lastMeasured, sqlite: context.sqlite }))).toEqual([
+    { lastMeasured: "sqlite.blocked", sqlite: blocked },
+    { lastMeasured: "rpc.request.load-layout", sqlite: undefined },
+  ]);
+});
+
+// Windows keeps the timers' clock running while the computer sleeps, so a
+// closed lid read as a freeze of minutes. Only the awake part of a late
+// timer is a stall, and the platform's clocks say whether the thread was
+// busy or waiting through it.
+test("the time the computer slept is taken out, and a stall says how busy the thread and the others were", () => {
+  let clock = 0;
+  const clocks = { awakeMs: 0, threadCpuMs: 0, processCpuMs: 0 };
+  let tick: (() => void) | null = null;
+  const reports: Array<{ blockedMs: number; context: Record<string, unknown> }> = [];
+  const stop = startMainThreadStallMonitor({
+    now: () => clock,
+    clocks: () => ({ ...clocks }),
+    schedule: (callback) => { tick = callback; return 1; },
+    cancel: () => { tick = null; },
+    report: (blockedMs, context) => { reports.push({ blockedMs, context }); },
+  });
+  try {
+    // Asleep for 40 minutes, awake for the timer's quarter second.
+    clock += 2_400_250;
+    clocks.awakeMs += 250;
+    tick!();
+    // Asleep 10 minutes, then 1.5 s of waiting on the disk with a little help elsewhere.
+    clock += 601_750;
+    clocks.awakeMs += 1_750;
+    clocks.threadCpuMs += 75;
+    clocks.processCpuMs += 75 + 350;
+    tick!();
+    // 2 s of script.
+    clock += 2_250;
+    clocks.awakeMs += 2_250;
+    clocks.threadCpuMs += 1_980;
+    clocks.processCpuMs += 1_980 + 225;
+    tick!();
+  } finally {
+    stop();
+  }
+
+  expect(reports.map(({ blockedMs, context }) => ({ blockedMs, threadCpu: context.threadCpu, otherCpu: context.otherCpu }))).toEqual([
+    { blockedMs: 1_500, threadCpu: 0.05, otherCpu: 0.2 },
+    { blockedMs: 2_000, threadCpu: 0.99, otherCpu: 0.1 },
+  ]);
 });

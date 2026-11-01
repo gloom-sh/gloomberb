@@ -54,7 +54,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
-export { candidateExchange, listingDistance } from "./home-listing";
+export { candidateExchange, listingDistance, primaryCompanyLine } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 
@@ -507,7 +507,10 @@ async function resolveTickerSymbol(
     throw new AmbiguousContractError(symbol, matches.map((item) => tickerInstrumentLabel(item.symbol, item.result?.brokerContract)));
   }
   const listings = new Set(matches.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
-  const ambiguity = (query: string) => new AmbiguousTickerError(query, [...listings], Object.fromEntries(matches.map((item) => [
+  // A line the service marks as a company's home leads the choices: YAR is Yara on Oslo before Americold's German lines.
+  const homeFirst = [...matches.filter((item) => item.result?.homeListing === true), ...matches.filter((item) => item.result?.homeListing !== true)];
+  const choices = new Set(homeFirst.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
+  const ambiguity = (query: string) => new AmbiguousTickerError(query, [...choices], Object.fromEntries(matches.map((item) => [
     publicTickerKey(item.symbol, listingExchange(item.result!)), listingChoiceName(item.result!),
   ])));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);

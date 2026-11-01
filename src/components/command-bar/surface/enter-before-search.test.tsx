@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { InstrumentSearchResult } from "../../../types/instrument";
+import type { PluginRegistry } from "../../../plugins/registry";
 import { CommandBarHarness } from "./test-harness";
 
 const tui = createOpenTuiTestHarness();
@@ -81,5 +83,56 @@ describe("Enter before the symbol search answers", () => {
     expect(tui.frame()).toContain("query:NVDA");
     expect(tui.frame()).toContain("bar:open");
     expect(opened).toEqual([]);
+  });
+});
+
+// A symbol typed fast and entered at once: the only row up while its search is
+// out is a pane whose example input names it (Exposure, `AAPL=60% NVDA=40%`).
+// Enter waits for the symbol, as it does when typed slowly.
+describe("Enter right after typing a symbol", () => {
+  async function typeAndEnter(text: string, perKeyMs: number) {
+    const opened: string[] = [];
+    let searches = 0;
+    const addExposure = (registry: PluginRegistry) => {
+      registry.pinTicker = (key) => { opened.push(key); };
+      registry.panes.set("exposure", { id: "exposure", name: "Exposure", component: () => null, defaultPosition: "right" } as any);
+      registry.paneTemplates.set("exposure-pane", {
+        id: "exposure-pane", paneId: "exposure", label: "Exposure", description: "Scenario exposures across holdings",
+        shortcut: { prefix: "EXPO", argKind: "text", argOptional: true, argPlaceholder: "AAPL=60% NVDA=40%" },
+      } as any);
+      registry.createPaneFromTemplateAsync = (async (templateId: string) => { opened.push(`pane:${templateId}`); }) as any;
+    };
+    await tui.render(<CommandBarHarness
+      query=""
+      live
+      configurePluginRegistry={addExposure}
+      dataProvider={createTestDataProvider({
+        search: async () => { searches += 1; await Bun.sleep(150); return [nvda]; },
+        getQuote: async () => createTestQuote({ symbol: "NVDA", name: "NVIDIA Corporation" }),
+      })}
+    />, { width: 110, height: 28 });
+    for (const key of text) {
+      await act(async () => { await tui.setup().mockInput.typeText(key); });
+      await act(async () => { await Bun.sleep(perKeyMs); });
+    }
+    const frameAtEnter = tui.frame();
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    await tui.waitForFrameToContain("bar:closed", 40);
+    return { opened, frameAtEnter, searches };
+  }
+
+  for (const [text, perKeyMs] of [["NVDA", 25], ["nvda", 80]] as const) {
+    test(`${text} at ${perKeyMs} ms a key opens the symbol, not the pane that mentions it`, async () => {
+      const { opened, frameAtEnter } = await typeAndEnter(text, perKeyMs);
+      expect(frameAtEnter).toContain("Exposure");
+      expect(frameAtEnter).toContain("Searching");
+      expect(opened).toEqual(["NVDA"]);
+    });
+  }
+
+  test("a pane's name typed as fast opens the pane at once", async () => {
+    const { opened, searches } = await typeAndEnter("Exposure", 25);
+    expect(opened).toEqual(["pane:exposure-pane"]);
+    expect(searches).toBe(0);
   });
 });

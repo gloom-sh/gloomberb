@@ -1,8 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
-import { dirname } from "path";
-import { mkdir } from "fs/promises";
+import { createOutputFolder } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
 import {
@@ -28,7 +27,18 @@ import { quotesFreshness } from "../freshness";
 import { paneFitsRows, shotMaxHeightCells, buildDesktopShotPayload } from "./screenshot-payload";
 import { resolveDesktopShotApiProxy, createDesktopShotBridge } from "./screenshot-bridge";
 import type { PaneScreenshotResult } from "./screenshot-types";
-import { assessPaneScreenshot } from "./screenshot-assessment";
+import { assessPaneScreenshot, shotLoadedNothing } from "./screenshot-assessment";
+
+/**
+ * Whether a capture's footer keeps a row for the dated status line. A pane of
+ * the user's own state (notes, connections, documentation) declares `local`:
+ * it has no data to date, and "not a live feed" would be said of its own
+ * state. A capture that loaded nothing gives the row back later
+ * (`shotLoadedNothing`).
+ */
+export function shotHasStatusLine(resolved: Pick<ResolvedPaneFunction, "pane" | "template">): boolean {
+  return !declaredReportFreshness(resolved).local;
+}
 
 /** The bridge, keeping every quote it serves the page: what a pane that loads its own quotes (WEI) shows. */
 function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPaneShotBridge; quotes: Quote[] } {
@@ -241,7 +251,7 @@ export async function renderDesktopShot({
    */
   onStalledReport?: () => void;
 }): Promise<PaneScreenshotResult> {
-  if (captureImage) await mkdir(dirname(outputPath), { recursive: true });
+  if (captureImage) await createOutputFolder(outputPath);
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
@@ -277,7 +287,7 @@ export async function renderDesktopShot({
       watermark ?? null,
       loadModel,
     );
-    if (statusLine && captureImage) payload.statusLine = true;
+    if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
     const fitRoles = [
       ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),
       ...(fitReader && resolved.pane.shotFitsReader ? ["detail-scroll-body"] : []),
@@ -296,6 +306,10 @@ export async function renderDesktopShot({
       captureImage,
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
+        if (shotLoadedNothing(rendered)) {
+          abandonReports();
+          return null;
+        }
         const tab = report && shownReportTab(resolved, rendered.semanticUi);
         const shown = tab ? reportShotFreshness(resolved, () => loadReport({ ...resolved, options: { ...resolved.options, tab } })) : report;
         const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS));

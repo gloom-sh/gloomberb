@@ -340,6 +340,7 @@ for (const bundlePath of bundleCandidates(os)) {
       join(process.cwd(), "src", "renderers", "electrobun", "bun", "tui-entry.ts"),
       "--target=bun",
       "--production",
+      "--splitting",
       `--outdir=${tuiBundleDir}`,
       ...OPEN_TUI_NATIVE_PACKAGES.map((packageName) => `--external=${packageName}`),
     ],

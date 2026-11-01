@@ -44,7 +44,12 @@ export function curveOption(id: CurveId): CurveOption {
   return CURVE_OPTIONS.find((option) => option.id === id) ?? CURVE_OPTIONS[0]!;
 }
 
-/** `GC`, `GC 2026-01-02`, `GC JGB`, `GC TIPS 2024-01-02`: a curve word and a date, either order. */
+/**
+ * `GC`, `GC 2026-01-02`, `GC JGB`, `GC TIPS 2024-01-02`: a curve word and a
+ * date, either order. Words with no digit are no date: one that names no
+ * curve (`GC world`, `GC "South Africa"`) lists the curves and points at the
+ * world tab, which has the other countries' government yields.
+ */
 export function parseCurveArgument(value: unknown, now = new Date()): { curve: CurveId | null; date: string } {
   const words = typeof value === "string" ? value.trim().split(/\s+/).filter(Boolean) : [];
   let curve: CurveId | null = null;
@@ -54,7 +59,16 @@ export function parseCurveArgument(value: unknown, now = new Date()): { curve: C
     if (match && !curve) curve = match.id;
     else rest.push(word);
   }
-  return { curve, date: yieldCurveDate(rest.join(" ") || null, now) };
+  const text = rest.join(" ");
+  if (text && !/\d/.test(text) && text.toLowerCase() !== "latest") throw new Error(unknownCurveMessage(text));
+  return { curve, date: yieldCurveDate(text || null, now) };
+}
+
+/** `Unknown curve "world"`, with the curves there are and where the rest of the world's yields are. */
+export function unknownCurveMessage(word: string): string {
+  const names = CURVE_OPTIONS.map((option) => option.aliases[0]);
+  return `Unknown curve "${word}"; the curves are ${names.slice(0, -1).join(", ")} and ${names.at(-1)}. `
+    + "Other countries' government bond yields are on the world tab: gloom fn GC --tab world.";
 }
 
 /**

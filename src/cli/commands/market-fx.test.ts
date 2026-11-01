@@ -18,16 +18,18 @@ type Leg = number | {
   intradayBar?: { start: number; minutes: number }; staleReason?: string;
 };
 
-function harness(baseCurrency: string, rates: Record<string, Leg>) {
+function harness(baseCurrency: string, rates: Record<string, Leg>, cliOptions: { refresh?: boolean } = {}) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
   config.baseCurrency = baseCurrency;
   const requests: string[] = [];
+  const forced: string[] = [];
   const cli = createTestCliContext({
     config,
-    dataProvider: { getCachedQuery: (_method: string, [currency]: [string]) => ({ load: async () => {
+    dataProvider: { getCachedQuery: (_method: string, [currency]: [string]) => ({ load: async (options?: { force?: boolean }) => {
       // The router serves USD/USD as a static identity without a provider request.
       if (currency === "USD") return { value: 1, fetchedAt: 0, staleAt: Infinity, expiresAt: Infinity, source: "static" };
       requests.push(currency);
+      if (options?.force) forced.push(currency);
       const leg = rates[currency];
       if (leg == null) throw new Error(`Missing ${currency}/USD`);
       return typeof leg === "number"
@@ -35,10 +37,10 @@ function harness(baseCurrency: string, rates: Record<string, Leg>) {
         : { value: leg.rate, asOf: leg.asOf, delayMinutes: leg.delayMinutes, intradayBar: leg.intradayBar, staleReason: leg.staleReason,
           fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
     } }) },
-  });
+  }, cliOptions);
   /** What a text and a JSON run print, closing line included. */
   const output = (format: "text" | "json" | "csv") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
-  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, requests, closed: cli.closeCount };
+  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, requests, forced, closed: cli.closeCount };
 }
 
 test("FX command converts both USD legs into the configured base currency", async () => {
@@ -329,4 +331,19 @@ test("fx --forward with --date says the forward is today's only and how to get e
   } finally {
     spy.mockRestore();
   }
+});
+
+test("fx --refresh reads every leg again, and a leg still stale says the data service had no newer rate", async () => {
+  setSystemTime(new Date("2026-10-27T15:00:00Z"));
+  const now = Date.now();
+  const rates = { ZAR: { rate: 0.0573, asOf: Date.parse("2026-10-27T14:00:00Z"), staleAt: now - 1 } };
+  const refreshed = harness("USD", rates, { refresh: true });
+  await fx.execute(["ZAR"], refreshed.context);
+  expect(refreshed.forced).toEqual(["ZAR"]);
+  expect(JSON.parse(refreshed.output("json")[0]!).warnings).toContain("ZAR/USD: --refresh found no newer rate than Tue 27 Oct 14:00 UTC.");
+  // Without --refresh, the cached leg is read as it is, and nothing claims a refresh ran.
+  const cached = harness("USD", rates);
+  await fx.execute(["ZAR"], cached.context);
+  expect(cached.forced).toEqual([]);
+  expect(cached.output("json")[0]).not.toContain("--refresh");
 });

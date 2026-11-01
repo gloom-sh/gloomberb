@@ -7,6 +7,7 @@ import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./marketplace/store";
 import { bunCommand, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
+import { importSiblingsFromTheirFolders } from "./peer-imports";
 import {
   findAbsorbedCheckout,
   getPluginsDir,
@@ -42,7 +43,7 @@ function ensurePluginsDir() {
   }
 }
 
-const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?![\s\S])/;
 const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 export function validatePluginDirectoryName(name: string): string {
@@ -114,6 +115,13 @@ interface RunResult {
   stderr: string;
 }
 
+/** Resolves git before a command changes into a plugin checkout. */
+function gitExecutable(): string {
+  const executable = Bun.which("git");
+  if (!executable) throw Object.assign(new Error(gitMissingMessage()), { code: "ENOENT" });
+  return executable;
+}
+
 /**
  * Runs a command without blocking the event loop: a fetch or `bun install`
  * takes seconds, and the terminal UI and the desktop's Bun process keep
@@ -128,7 +136,7 @@ function run(
   env?: NodeJS.ProcessEnv,
 ): Promise<RunResult> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
+    const child = spawn(command === "git" ? gitExecutable() : command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
     let stdout = "";
     let stderr = "";
     child.stdout?.setEncoding("utf-8").on("data", (chunk: string) => { stdout += chunk; });
@@ -141,7 +149,13 @@ function run(
 /** Whether a `git` command is on the PATH; plugins from GitHub need one to install or update. */
 export function gitInstalled(): boolean {
   if (typeof Bun !== "undefined") return Bun.which("git") !== null;
-  return gitSucceeds(["--version"], process.cwd());
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    // Intentional ignore: a git that does not start is the answer this asks for.
+    return false;
+  }
 }
 
 /** What a plugin install says when there is no git to run: what to install, then to try again. */
@@ -171,14 +185,9 @@ async function git(args: string[], cwd: string, quiet: boolean, failure: string)
   return result.stdout.trim();
 }
 
-function isOnBranch(dir: string): boolean {
-  try {
-    execFileSync("git", ["symbolic-ref", "-q", "HEAD"], { cwd: dir, stdio: "ignore" });
-    return true;
-  } catch {
-    // Intentional ignore: Detached HEAD is expected after a pinned install.
-    return false;
-  }
+/** False on a detached HEAD, which a pinned install leaves. */
+function isOnBranch(dir: string): Promise<boolean> {
+  return gitSucceedsAsync(["symbolic-ref", "-q", "HEAD"], dir);
 }
 
 function pinMatches(commit: string | null, expected: string | undefined): boolean {
@@ -208,27 +217,27 @@ async function checkoutCommit(targetDir: string, commit: string, quiet: boolean)
   await git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`);
 }
 
-function gitSucceeds(args: string[], cwd: string): boolean {
-  try {
-    execFileSync("git", args, { cwd, stdio: "ignore" });
-    return true;
-  } catch {
-    // Intentional ignore: Non-ancestor and shallow histories use package versions and commit dates instead.
-    return false;
-  }
+
+/*
+ * The update path runs in the app (the terminal, the desktop's Bun process),
+ * where a sync git call holds the thread for the whole process start: tens of
+ * milliseconds each on Windows, several per plugin. These never block it.
+ */
+async function gitSucceedsAsync(args: string[], cwd: string): Promise<boolean> {
+  const result = await run("git", args, cwd, { stdout: "pipe", stderr: "pipe" })
+    .catch(logFailure("plugin-installer", "Could not run git", null));
+  return result?.code === 0;
 }
 
-function gitOutput(args: string[], cwd: string): string | null {
-  try {
-    return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString("utf-8").trim();
-  } catch {
-    // Intentional ignore: Shallow or manifest-free checkouts may lack historical metadata.
-    return null;
-  }
+/** Null when git fails: shallow or manifest-free checkouts may lack historical metadata. */
+async function gitOutputAsync(args: string[], cwd: string): Promise<string | null> {
+  const result = await run("git", args, cwd, { stdout: "pipe", stderr: "pipe" })
+    .catch(logFailure("plugin-installer", "Could not run git", null));
+  return result?.code === 0 ? result.stdout.trim() : null;
 }
 
-function versionAt(dir: string, commit: string): string | null {
-  const text = gitOutput(["show", `${commit}:package.json`], dir);
+async function versionAt(dir: string, commit: string): Promise<string | null> {
+  const text = await gitOutputAsync(["show", `${commit}:package.json`], dir);
   if (!text) return null;
   try {
     const version = JSON.parse(text).version;
@@ -247,15 +256,15 @@ function versionAt(dir: string, commit: string): string | null {
  * it; otherwise the versions the two commits declare decide, then, when
  * those match, their commit dates.
  */
-export function describeOlderCommit(dir: string, installed: string, candidate: string, label = candidate.slice(0, 7)): string | null {
-  if (installed === candidate || gitSucceeds(["merge-base", "--is-ancestor", installed, candidate], dir)) return null;
-  const installedVersion = versionAt(dir, installed);
-  const byVersion = compareSemver(versionAt(dir, candidate), installedVersion);
+export async function describeOlderCommit(dir: string, installed: string, candidate: string, label = candidate.slice(0, 7)): Promise<string | null> {
+  if (installed === candidate || await gitSucceedsAsync(["merge-base", "--is-ancestor", installed, candidate], dir)) return null;
+  const installedVersion = await versionAt(dir, installed);
+  const byVersion = compareSemver(await versionAt(dir, candidate), installedVersion);
   const older = () => `the registry's ${label} is older than the installed ${byVersion ? installedVersion : installed.slice(0, 7)}`;
-  if (gitSucceeds(["merge-base", "--is-ancestor", candidate, installed], dir)) return older();
+  if (await gitSucceedsAsync(["merge-base", "--is-ancestor", candidate, installed], dir)) return older();
   if (byVersion !== null && byVersion !== 0) return byVersion < 0 ? older() : null;
-  const candidateTime = Number(gitOutput(["show", "-s", "--format=%ct", candidate], dir));
-  const installedTime = Number(gitOutput(["show", "-s", "--format=%ct", installed], dir));
+  const candidateTime = Number(await gitOutputAsync(["show", "-s", "--format=%ct", candidate], dir));
+  const installedTime = Number(await gitOutputAsync(["show", "-s", "--format=%ct", installed], dir));
   return candidateTime > 0 && installedTime > 0 && candidateTime < installedTime ? older() : null;
 }
 
@@ -296,6 +305,9 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
   if (missingPeerPlugins(targetDir).length > 0) return null;
   const entryFile = await resolvePluginEntry(targetDir);
   if (!entryFile) return null;
+  // The siblings from their folders, as the loader imports them, so the
+  // modules this caches are the ones a load in this process reuses.
+  importSiblingsFromTheirFolders(targetDir);
   // Fresh so an update is validated against the new code, not the module Bun
   // cached when the previous version loaded.
   const plugin = pluginFromModule(await import(`${entryFile}?validate=${Date.now()}`));
@@ -403,17 +415,27 @@ export interface PluginUpdateResult extends PluginDirectoryInfo {
   kept?: string;
 }
 
+function githubRepoFromUrl(url: string): string | null {
+  const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(url.trim());
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
 /** `owner/repo` from the checkout's origin remote, or null for anything that is not a GitHub clone. */
 export function readPluginRemote(pluginDir: string): string | null {
   try {
-    const url = execFileSync("git", ["config", "--get", "remote.origin.url"], { cwd: pluginDir, stdio: ["ignore", "pipe", "ignore"] })
-      .toString("utf-8").trim();
-    const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(url);
-    return match ? `${match[1]}/${match[2]}` : null;
+    return githubRepoFromUrl(execFileSync(gitExecutable(), ["config", "--get", "remote.origin.url"], { cwd: pluginDir, stdio: ["ignore", "pipe", "ignore"] })
+      .toString("utf-8"));
   } catch {
     // Intentional ignore: Hand-copied plugins and local repositories may have no origin remote.
     return null;
   }
+}
+
+/** `readPluginRemote` without holding the thread, for the app's own update check. */
+export async function readPluginRemoteAsync(pluginDir: string): Promise<string | null> {
+  // No origin remote (a hand-copied plugin, a local repository) is a failed git, and no repo.
+  const url = await gitOutputAsync(["config", "--get", "remote.origin.url"], pluginDir);
+  return url ? githubRepoFromUrl(url) : null;
 }
 
 /** The sha from `git ls-remote origin HEAD`; null when the answer is not one. */
@@ -439,7 +461,7 @@ export async function readPluginRemoteHead(name: string): Promise<string | null>
   if (!existsSync(join(dir, ".git"))) return null;
   if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
   try {
-    const { stdout } = await execFile("git", ["ls-remote", "origin", "HEAD"], {
+    const { stdout } = await execFile(gitExecutable(), ["ls-remote", "origin", "HEAD"], {
       cwd: dir,
       timeout: REMOTE_HEAD_TIMEOUT_MS,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" },
@@ -500,7 +522,7 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
     const commit = await fetchPin(targetDir, pin, quiet);
     // Updates only move forward: a checkout installed from the default
     // branch can be ahead of the tag the registry reviewed.
-    const kept = before ? describeOlderCommit(targetDir, before, commit, pin.ref ?? commit.slice(0, 7)) : null;
+    const kept = before ? await describeOlderCommit(targetDir, before, commit, pin.ref ?? commit.slice(0, 7)) : null;
     if (kept) {
       if (!quiet) console.log(cliStyles.muted(`Kept ${name}: ${kept}.`));
       return { ...describe(targetDir, name, null), before, changed: false, kept };
@@ -510,7 +532,7 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
     // Not in the registry, so there is nothing reviewed to land on: follow the
     // remote's default branch, whether the checkout is on a branch or detached
     // from an earlier pin.
-    if (isOnBranch(targetDir)) {
+    if (await isOnBranch(targetDir)) {
       await git(["pull", "--ff-only"], targetDir, quiet, `Failed to update ${name}`);
     } else {
       await git(["fetch", "--depth", "1", "origin", "HEAD"], targetDir, quiet, `Failed to fetch ${name}`);

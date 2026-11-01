@@ -6,7 +6,6 @@ import type { PaneTemplateContext, PaneTemplateCreateOptions } from "../../../ty
 import { getSharedRegistry } from "../../registry";
 import { buildRegistryHelpIndex } from "../help/function-index";
 import type { PluginModule } from "../plugin-module";
-import { DocsPane } from "./pane";
 import { docsTopicForArgument, docsTopicForPane } from "./targets";
 
 /** One reader: every request lands in the same pane, on top of its history. */
@@ -38,8 +37,8 @@ export const docsModule: PluginModule = {
       id: "docs",
       name: "Docs",
       icon: "?",
-      component: DocsPane,
-      reportFreshness: { status: "not-a-feed", basis: "documentation" },
+      get component(): typeof import("./pane").DocsPane { const { DocsPane } = require("./pane"); return DocsPane; },
+      reportFreshness: { status: "not-a-feed", basis: "documentation", local: true },
       // A page reads whole in a report, not cut at the first screen.
       shotFitsReader: true,
       defaultPosition: "right",

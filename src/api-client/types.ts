@@ -11,6 +11,7 @@ import type {
 } from "../types/financials";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
 import type { ChatPaneLink } from "./chat-pane-link";
+import type { CreditLevelKind } from "./credit-boards";
 
 /**
  * What stands behind a chat account. `discord` is a person on the Gloom
@@ -249,7 +250,7 @@ export interface AccountProfile {
   showLocalTime?: boolean;
   /** The desks chat shows beside your name; empty shows none. */
   chatDesks?: string[];
-  /** Your answer to "What do you trade?" at the first run: private, it pre-fills `chatDesks`. */
+  /** Your answer to "What do you trade most?" at the first run: private, it pre-fills `chatDesks`. */
   onboardingDesks?: string[];
   syncEnabled: boolean;
   weeklyRoundupEnabled: boolean;
@@ -486,12 +487,16 @@ export interface CloudPricePointPayload {
    * alone), served in place of `volume`.
    */
   venueVolume?: { venue: string; volume: number };
+  /** What a coin bar's volume counts: `aggregate` across venues, or `3 spot venues` summed. */
+  volumeBasis?: string;
   /** A daily bar still forming when served: a coin's UTC day, or the trade date a future is trading. */
   partial?: boolean;
   /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */
   filled?: boolean;
   /** A future's closed session whose settlement is not confirmed yet: it closes on the last trade. */
   unsettled?: boolean;
+  /** A continuous future's calendar bar: the contract it closes on (NGZ26), where the server knows it. */
+  contract?: string;
 }
 
 type CloudEconImpact = "high" | "medium" | "low";
@@ -689,6 +694,8 @@ export interface CloudCdsHistoryPointPayload {
   maturity: string;
   /** For a line quoted upfront: that day's level in points on the line's coupon. */
   upfrontPts?: number;
+  /** The day's trades, or the settlement price on a day without enough of them (`prints` 0). */
+  kind?: CreditLevelKind;
 }
 
 /**
@@ -735,6 +742,8 @@ export interface CloudCdsLevelPayload extends CloudCdsUpfrontQuote {
   issuer: string;
   spreadBp: number;
   date: string;
+  /** As the history response's last point. */
+  kind?: CreditLevelKind;
   /** As the history response's moves for the same name. */
   change1W?: number | null;
   change1M?: number | null;
@@ -810,6 +819,12 @@ export interface CloudCongressTradePayload {
   sourceUrl: string;
   returnSinceTx?: number | null;
   returnSinceFiling?: number | null;
+  /** SPY's return over the same days as returnSinceTx, percent. */
+  spyReturnSinceTx?: number | null;
+  spyReturnSinceFiling?: number | null;
+  /** returnSinceTx less spyReturnSinceTx, percentage points. */
+  excessSinceTx?: number | null;
+  excessSinceFiling?: number | null;
   returnAsOf?: string | null;
   party?: string | null;
   committees?: string[];
@@ -829,9 +844,12 @@ export interface CloudCongressMemberPayload {
   lastFilingDate: string | null;
   avgLagDays: number | null;
   medianReturn?: number | null;
+  /** Median of the trades' excessSinceFiling. */
+  medianExcessSinceFiling?: number | null;
   buyHitRate?: number | null;
   pricedTradeCount?: number;
   pricedBuyCount?: number;
+  excessTradeCount?: number;
   party?: string | null;
   committees?: string[];
 }
@@ -1504,6 +1522,8 @@ interface CloudNewsTickerLinkPayload {
   confidence: number;
   relevanceScore: number;
   impactScore?: number;
+  /** The company's market cap, stated on its home listing and not on a cross-listing. */
+  marketCap?: number | null;
   sentiment?: "positive" | "neutral" | "negative" | null;
 }
 

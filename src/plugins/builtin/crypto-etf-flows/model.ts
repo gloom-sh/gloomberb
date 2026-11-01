@@ -103,11 +103,24 @@ export function pendingText(day: CryptoEtfFlowDay | null | undefined): string | 
 
 export type CryptoEtfFlowColumn = Omit<DataTableColumn, "id"> & { id: string };
 
-/** Date and the day's total, then each fund in the publisher's order. */
+/** Whether the server sent the funds' daily price move beside the flows. */
+export const hasFundPriceChanges = (payload: CryptoEtfFlowsPayload | null | undefined) =>
+  !!payload?.days.some((day) => day.priceChangePct !== undefined);
+
+/** A day's price move as the table shows it: `+2.15%`, `-0.40%`, `—` for none. */
+export function formatPriceChange(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+/** Date, the day's total and the funds' price move that day, then each fund in the publisher's order. */
 export function cryptoEtfFlowColumns(payload: CryptoEtfFlowsPayload | null | undefined): CryptoEtfFlowColumn[] {
   return [
     { id: "date", label: "Date", width: 12, align: "left" },
     { id: "total", label: "Total", width: 9, align: "right", title: "The day's net flow across the funds, US$ millions" },
+    ...hasFundPriceChanges(payload)
+      ? [{ id: "price", label: "Price %", width: 9, align: "right" as const, title: "The funds' price move that day: the median of their close-to-close changes" }]
+      : [],
     ...(payload?.funds ?? []).map((fund): CryptoEtfFlowColumn => ({
       id: `fund:${fund.ticker}`,
       label: fund.ticker,

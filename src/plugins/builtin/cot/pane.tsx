@@ -12,7 +12,7 @@ import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { cachedCotBoard, loadCotBoard, loadCotDetail } from "./client";
+import { cachedCotBoard, loadCotBoard, loadCotDetail, loadCotPriceUnit } from "./client";
 import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotFamily, cotInteger, cotLegendValue, cotMarketName, cotPositions, cotPositionsText, cotScope, type CotScope } from "./model";
 
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -159,10 +159,14 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   const session = useResearchCloudSession();
   const loader = useCallback(() => loadCotDetail(code, family, undefined, positions), [code, family, positions, session.requestKey]);
   const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  // The front price's unit joins the legend once the contract terms answer, or
+  // the catalog's after a short wait: the chart draws without waiting for it.
+  const unitLoader = useCallback(() => loadCotPriceUnit(code), [code]);
+  const priceUnit = useAsyncResource(unitLoader).data ?? null;
   const data = resource.data;
   const payload = data?.payload;
   const current = payload?.positions.find((row) => row.id === traderClass);
-  const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors) : [], [data, traderClass, colors]);
+  const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors, priceUnit) : [], [data, traderClass, colors, priceUnit]);
   // The selected class row already carries the net and both ranks, and the
   // legend names the class it charts, so the detail opens on the chart. A rank
   // over a short history is a limitation, so it sits behind the warning.

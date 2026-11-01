@@ -10,6 +10,7 @@ import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHist
   PerpMarketPayload, PerpLiquidationsPayload, PerpDepthPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
+import { createReadCoalescer } from "./coalesce";
 import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
@@ -30,7 +31,7 @@ import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { BitcoinNetworkPayload, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -53,7 +54,7 @@ import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
 import { LIVE_SCAN_PATH, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
 import { signalWithTimeout } from "../utils/async-deadline";
-import { ApiRequestError } from "./errors";
+import { ApiRequestError, isRetryableApiError, markAskedTwice } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
@@ -204,8 +205,161 @@ function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBa
   return answers;
 }
 
+/** How long a listing read waits before asking again after the service said its source failed. */
+const LISTING_RETRY_DELAY_MS = 400;
+
+/**
+ * Whether a failed listing read is asked again: the service answered that its
+ * own source failed (`retryable_error`, or the catch-all `fatal_error`, with no
+ * data), or failed with a 5xx or a timeout. A rate limit is never asked again,
+ * whatever wait it names: asking again is more of what it refused. An answer of
+ * no data, a refusal, and a request that never reached the service
+ * (`DataServiceUnreachableError`) are not asked again either.
+ */
+function isListingReadRetried(outcome: { response: CloudMarketResponse<unknown> } | { error: unknown }): boolean {
+  if ("response" in outcome) {
+    const { status, data } = outcome.response ?? {};
+    return (status === "retryable_error" || status === "fatal_error") && data == null;
+  }
+  return isRetryableApiError(outcome.error) && (outcome.error as ApiRequestError).status !== 429;
+}
+
+/**
+ * `batch`: the caller asks many reads like this one in the same moment (a
+ * board's rows), so the read may wait a few milliseconds to go out in a batch
+ * request with them. Any other read goes out on its own at once.
+ */
+export interface BatchableRead {
+  batch?: boolean;
+}
+
 export class CloudDataApi {
-  constructor(private readonly request: CloudApiRequest) {}
+  constructor(
+    private readonly request: CloudApiRequest,
+    /** The wait before a failed listing read is asked again (`readListing`); tests set 0. */
+    private readonly listingRetryDelayMs = LISTING_RETRY_DELAY_MS,
+  ) {}
+
+  /**
+   * Histories asked with others (`batch`) in the same moment with the same
+   * bars (a futures board's contracts, SOVR's currencies) go out as
+   * `/market/history/batch` requests, each answered as its own
+   * `/market/history` would be. Sixteen a request, sent side by side: a
+   * board's seventy-two rows are five requests, and the first rows land as
+   * soon as sixteen reads have.
+   */
+  private readonly histories = createReadCoalescer<
+    { symbol: string; exchange: string; params: Pick<CloudHistoryParams, "interval" | "outputsize" | "rangeKey"> },
+    CloudMarketResponse<CloudPricePointPayload[]>
+  >({
+    max: 16,
+    // Reads asked alone after a refused batch stay within what the panes kept in flight before: SOVR four, the board twelve with its terms.
+    fallbackConcurrency: 4,
+    group: ({ params }) => `${params.interval ?? ""}|${params.outputsize ?? ""}|${params.rangeKey ?? ""}`,
+    single: ({ symbol, exchange, params }) => this.request(cloudHistoryPath(symbol, exchange, params)),
+    batch: async (keys) => {
+      const { interval, outputsize, rangeKey } = keys[0]!.params;
+      // The server answers each target in the order asked, so a listing asked twice is asked once.
+      const targetKey = ({ symbol, exchange }: { symbol: string; exchange: string }) => `${symbol}\u001f${exchange}`;
+      const targets = [...new Map(keys.map((key) => [targetKey(key), { symbol: key.symbol, exchange: key.exchange }])).values()];
+      const response = await this.request<CloudMarketResponse<{ items: Array<CloudMarketResponse<CloudPricePointPayload[]>> }>>("/market/history/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          targets,
+          interval: interval ?? "1day",
+          ...(outputsize != null ? { outputsize: String(outputsize) } : {}),
+          ...(rangeKey ? { rangeKey } : {}),
+        }),
+      });
+      const items = response.data?.items;
+      // An answer that does not line up with the targets asked is not matched by place: each read is asked on its own.
+      if (!Array.isArray(items) || items.length !== targets.length) return keys.map(() => undefined);
+      const byTarget = new Map(targets.map((target, index) => [targetKey(target), items[index]]));
+      return keys.map((key) => byTarget.get(targetKey(key)));
+    },
+  });
+
+  /**
+   * Futures terms asked with others in the same moment (a futures board's rows) go out as
+   * `/cloud/futures/contracts` requests, sixteen a request like the histories.
+   * A symbol without known terms answers null there, which reads as the 404
+   * its own request answers.
+   */
+  private readonly futuresTerms = createReadCoalescer<string, FuturesContractTermsPayload | null>({
+    max: 16,
+    // With the board's histories' four, the twelve reads it kept in flight before.
+    fallbackConcurrency: 8,
+    group: () => "",
+    single: (symbol) => this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) }),
+    batch: async (symbols) => {
+      // The server answers each symbol once, by the symbol asked.
+      const { items } = await this.getCloudFuturesContracts([...new Set(symbols)]);
+      const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+      // A failed read is asked again on its own.
+      return symbols.map((symbol) => bySymbol.get(symbol)?.error ? undefined : bySymbol.get(symbol)?.terms);
+    },
+  });
+
+  /**
+   * Expiries of one listing's chain asked with others in the same moment (a
+   * volatility surface's) go out as `/market/options/batch` requests, each answered as
+   * its own `/market/options` would be. Six a request, the server's one round,
+   * sent side by side: a surface's eighteen expiries are three requests.
+   */
+  private readonly optionsChains = createReadCoalescer<
+    { symbol: string; exchange?: string; expirationDate: number },
+    CloudMarketResponse<CloudOptionsChainPayload>
+  >({
+    max: 6,
+    fallbackConcurrency: 4,
+    group: ({ symbol, exchange }) => `${symbol}|${exchange ?? ""}`,
+    single: ({ symbol, exchange, expirationDate }) => this.request(cloudOptionsChainPath(symbol, exchange, expirationDate)),
+    batch: async (keys) => {
+      const { symbol, exchange } = keys[0]!;
+      // The server answers each expiry once, naming it.
+      const expiries = [...new Set(keys.map((key) => key.expirationDate))];
+      const search = new URLSearchParams({ symbol, expirationDates: expiries.join(",") });
+      if (exchange) search.set("exchange", exchange);
+      const response = await this.request<CloudMarketResponse<{ items: Array<CloudMarketResponse<CloudOptionsChainPayload> & { expirationDate?: number }> }>>(
+        `/market/options/batch?${search}`,
+      );
+      const byExpiry = new Map((response.data?.items ?? []).map(({ expirationDate, ...item }) => [expirationDate, item]));
+      return keys.map((key) => byExpiry.get(key.expirationDate));
+    },
+  });
+
+  /**
+   * Whether reads of `kind` asked together go out in batch requests now:
+   * false while the service answers that batch route 404, until it is asked
+   * again. A caller limiting its reads in flight asks them all at once only
+   * when they do.
+   */
+  batchesReads(kind: "history" | "options" | "futures-terms"): boolean {
+    const coalescer = kind === "history" ? this.histories : kind === "options" ? this.optionsChains : this.futuresTerms;
+    return coalescer.batching();
+  }
+
+  /**
+   * A listing's quote, history or financials, asked again once when the
+   * service failed to answer it (`isListingReadRetried`): its source blinks for a
+   * few minutes at a time, and a known listing then read as one no source
+   * covers. A caller's abort stops the second ask.
+   */
+  private async readListing<T>(read: () => Promise<CloudMarketResponse<T>>, signal?: AbortSignal): Promise<CloudMarketResponse<T>> {
+    const first = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
+    const settle = () => {
+      if ("error" in first) throw first.error;
+      return first.response;
+    };
+    if (!isListingReadRetried(first) || signal?.aborted) return settle();
+    if (this.listingRetryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.listingRetryDelayMs));
+    if (signal?.aborted) return settle();
+    const second = await read().then((response) => ({ response }), (error: unknown) => ({ error }));
+    // Failing the same way twice, the service did not answer it (`markAskedTwice`).
+    if (isListingReadRetried(second)) markAskedTwice("error" in second ? second.error : second.response);
+    if ("error" in second) throw second.error;
+    return second.response;
+  }
 
   private requestMarketSymbol<T>(
     path: string,
@@ -315,7 +469,7 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudQuotePayload>> {
-    return this.requestMarketSymbol("/market/quote", symbol, exchange);
+    return this.readListing(() => this.requestMarketSymbol("/market/quote", symbol, exchange));
   }
 
   async getCloudQuotesBatch(
@@ -323,7 +477,7 @@ export class CloudDataApi {
     mode: "cache-first" | "refresh" = "cache-first",
     options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
-    return this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal);
+    return this.readListing(() => this.postMarketBatch("/market/quotes/batch", targets, mode, options.signal), options.signal);
   }
 
   async getCloudWorldVenues(): Promise<
@@ -388,7 +542,10 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
     expirationDate?: number,
+    options: BatchableRead = {},
   ): Promise<CloudMarketResponse<CloudOptionsChainPayload>> {
+    // A dated expiry asked with others may go out with the listing's other expiries asked in the same moment.
+    if (expirationDate != null && options.batch) return this.optionsChains.read({ symbol, exchange, expirationDate });
     return this.request<CloudMarketResponse<CloudOptionsChainPayload>>(
       cloudOptionsChainPath(symbol, exchange, expirationDate),
     );
@@ -400,14 +557,14 @@ export class CloudDataApi {
     statementHistory?: "extended",
   ): Promise<CloudMarketResponse<CloudFinancialsPayload>> {
     const path = cloudMarketSymbolPath("/market/financials", symbol, exchange);
-    return this.request(statementHistory === "extended" ? `${path}&statementHistory=extended` : path);
+    return this.readListing(() => this.request(statementHistory === "extended" ? `${path}&statementHistory=extended` : path));
   }
 
   async getCloudFinancialsBatch(
     targets: CloudMarketBatchTarget[],
     mode: "cache-first" | "refresh" = "cache-first",
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudFinancialsPayload>>> {
-    return this.postMarketBatch("/market/financials/batch", targets, mode);
+    return this.readListing(() => this.postMarketBatch("/market/financials/batch", targets, mode));
   }
 
   async getCloudHolders(
@@ -518,12 +675,16 @@ export class CloudDataApi {
     symbol: string,
     exchange: string,
     params: CloudHistoryParams = {},
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal } & BatchableRead = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    return this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
-      cloudHistoryPath(symbol, exchange, params),
-      options.signal ? { signal: options.signal } : undefined,
-    );
+    // Trailing bars asked with others, not a session, window or recovery of their own, may go out with the others asked in the same moment.
+    const shared = options.batch && !options.signal && !params.startDate && !params.endDate && !params.historyRecovery && !params.session;
+    return this.readListing(() => shared
+      ? this.histories.read({ symbol, exchange, params: { interval: params.interval, outputsize: params.outputsize, rangeKey: params.rangeKey } })
+      : this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
+        cloudHistoryPath(symbol, exchange, params),
+        options.signal ? { signal: options.signal } : undefined,
+      ), options.signal);
   }
 
   async getCloudExchangeRate(
@@ -732,6 +893,19 @@ export class CloudDataApi {
     return this.request<AwardDetailPayload>(`/cloud/awards/detail/${encodeURIComponent(id)}${query}`, { signal });
   }
 
+  /** Many symbols' disclosures, each as getCloudSupplyChain reads it; an item that failed has the status its own read would have had. */
+  async getCloudSupplyChains(symbols: string[], options: SupplyOptions = {}): Promise<{ items: Array<{ symbol: string; chain?: SupplyChainPayload; status?: number }> }> {
+    const query = new URLSearchParams({ symbols: symbols.join(",") });
+    if (options.tiers?.length) query.set("tiers", options.tiers.join(","));
+    if (options.includeLeads) query.set("includeLeads", "1");
+    return this.request(`/cloud/supply-chain/batch?${query}`);
+  }
+
+  /** Many symbols' graphs on the same options, each as getCloudSupplyGraph reads it. */
+  async getCloudSupplyGraphs(symbols: string[], options: Partial<GraphOptions> = {}): Promise<{ items: Array<{ symbol: string; graph?: GraphPayload; status?: number }> }> {
+    return this.request(`/cloud/supply-chain/graphs?symbols=${encodeURIComponent(symbols.join(","))}&${supplyGraphQuery(options)}`);
+  }
+
   async getCloudSupplyGraph(symbol: string, options: Partial<GraphOptions> = {}): Promise<GraphPayload> {
     return this.request<GraphPayload>(`/cloud/supply-chain/${encodeURIComponent(symbol)}/graph?${supplyGraphQuery(options)}`);
   }
@@ -896,6 +1070,11 @@ export class CloudDataApi {
     return this.request<DefiTvlPayload>("/cloud/crypto/defi/tvl", { signal: AbortSignal.timeout(30_000) });
   }
 
+  /** Bitcoin's daily hash rate, the difficulty at each retarget, the next retarget's estimate and derived hashprice. */
+  async getCloudBitcoinNetwork(): Promise<BitcoinNetworkPayload> {
+    return this.request<BitcoinNetworkPayload>("/cloud/crypto/bitcoin/network", { signal: AbortSignal.timeout(30_000) });
+  }
+
   /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */
   async getCloudCryptoEtfFlows(asset: CryptoEtfFlowAsset): Promise<CryptoEtfFlowsPayload> {
     return this.request<CryptoEtfFlowsPayload>(
@@ -1023,8 +1202,16 @@ export class CloudDataApi {
   }
 
   /** What a futures symbol (GC=F, GCZ26, CL1) trades: its contract, terms and latest confirmed settlement. */
-  async getCloudFuturesContract(symbol: string): Promise<FuturesContractTermsPayload> {
-    return this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) });
+  async getCloudFuturesContract(symbol: string, options: BatchableRead = {}): Promise<FuturesContractTermsPayload> {
+    if (!options.batch) return this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) });
+    const terms = await this.futuresTerms.read(symbol);
+    if (!terms) throw new ApiRequestError("Not a futures symbol with known contract terms", 404);
+    return terms;
+  }
+
+  /** Many symbols' terms, each as getCloudFuturesContract reads it: null for one without known terms, an error for a failed read. */
+  async getCloudFuturesContracts(symbols: string[]): Promise<{ items: Array<{ symbol: string; terms: FuturesContractTermsPayload | null; error?: string }> }> {
+    return this.request(`/cloud/futures/contracts?${new URLSearchParams({ symbols: symbols.join(",") })}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudFuturesCurveAsOf(root: string, date: string): Promise<FuturesCurveAsOfPayload> {

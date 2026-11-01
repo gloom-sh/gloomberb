@@ -23,15 +23,16 @@ const LETTER_STYLE: Record<LogoMarkSize, CSSProperties> = {
 };
 
 export interface LogoMarkProps {
-  /** The logo, an image URL; without one, or when it fails to load, the tile shows `name`'s initial. */
+  /** The logo, an image URL; without one, while it loads and when it fails to load, the tile shows `name`'s initial. */
   src?: string | null;
   /** What the logo stands for, such as a broker. Only its initial is drawn; the label beside it names it. */
   name: string;
   size?: LogoMarkSize;
   /**
-   * Draws the logo on a white plate. Company and coin logos are made for a
-   * light page: a black mark on a clear field (XRP's) would vanish on a dark
-   * theme, while a logo that fills its square covers the plate.
+   * Draws the logo on a white plate once it has loaded, never behind the
+   * initial. Company and coin logos are made for a light page: a black mark
+   * on a clear field (XRP's) would vanish on a dark theme, while a logo that
+   * fills its square covers the plate.
    */
   plate?: boolean;
 }
@@ -59,9 +60,11 @@ export function LogoMark({ src, name, size = "row", plate = false }: LogoMarkPro
       src={src ?? undefined}
       alt=""
       objectFit="cover"
+      fallbackWhileLoading
+      imageBackground={plate ? LOGO_PLATE : undefined}
       aria-hidden="true"
       data-gloom-role="logo-mark"
-      style={{ width: tile.side, height: tile.side, flexShrink: 0, borderRadius: tile.radius, ...(plate ? { background: LOGO_PLATE } : {}) }}
+      style={{ width: tile.side, height: tile.side, flexShrink: 0, borderRadius: tile.radius }}
     >
       <Box width="100%" height="100%" alignItems="center" justifyContent="center" backgroundColor={colors.border}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={LETTER_STYLE[size]}>

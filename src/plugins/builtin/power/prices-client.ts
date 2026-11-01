@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, PowerPriceRow } from "../../../api-client/europe-energy";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -87,7 +88,7 @@ export async function fetchPowerPrices(client: Pick<PricesApi, "getCloudEuropePo
   } catch (error) {
     throw unavailableOnServer(error, POWER_PRICES_NOT_AVAILABLE, [404, 503]);
   }
-  if (board.status === "unavailable") throw new Error(POWER_PRICES_NOT_AVAILABLE);
+  if (board.status === "unavailable") throw sourceDidNotAnswer(POWER_PRICES_NOT_AVAILABLE);
   return board;
 }
 
@@ -110,7 +111,7 @@ export async function fetchCarbonPrice(client: Pick<PricesApi, "getCloudEuropeCa
   } catch (error) {
     throw unavailableOnServer(error, CARBON_PRICE_NOT_AVAILABLE, [404, 503]);
   }
-  if (board.status === "unavailable") throw new Error(CARBON_PRICE_NOT_AVAILABLE);
+  if (board.status === "unavailable") throw sourceDidNotAnswer(CARBON_PRICE_NOT_AVAILABLE);
   return board;
 }
 

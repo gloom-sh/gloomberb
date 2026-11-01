@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { afterAll, beforeAll, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { act, useCallback, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsCalendarReport } from "../../../api-client/earnings";
@@ -278,7 +279,7 @@ test("a failed holdings refresh keeps the same industry's rows and marks its cac
   expect(rowKeys(root)).toEqual(["B:2026-10-16"]);
   const reads = holdingsRequests.mock.calls.length;
 
-  holdingsRequests.mockRejectedValueOnce(new Error("Holdings refresh failed"));
+  holdingsRequests.mockRejectedValueOnce(outage("Holdings refresh failed"));
   await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true, cancelable: true })));
   await settle();
   expect(holdingsRequests.mock.calls.length).toBe(reads + 1);

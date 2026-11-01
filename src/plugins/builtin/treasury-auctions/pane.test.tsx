@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
+import { outage } from "../../../test-support/outage";
+import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
@@ -59,6 +61,7 @@ const tui = createOpenTuiTestHarness();
 
 afterEach(() => {
   resetTreasuryAuctionsPersistence();
+  setHttpFetchTransport(null);
 });
 
 const PANE_INSTANCE_ID = "treasury-auctions:test";
@@ -137,5 +140,38 @@ describe("TreasuryAuctionsPane", () => {
     expect(detail).toContain("Bill 13-Week");
     expect(detail).toContain("Bid-to-cover");
     expect(detail).toContain("Total accepted");
+  });
+
+  // The saved board said "saved copy from" after the pane's loading and error status, and over a refusal too.
+  test("a board a failed refresh left leads the footer with when it was saved; a refusal is the error", async () => {
+    const savedAt = Date.now() - 2 * 86_400_000;
+    const record = { value: AUCTIONS, fetchedAt: savedAt, stale: true, staleAt: savedAt + 60_000, expiresAt: savedAt + 60_000 };
+    attachTreasuryAuctionsPersistence({ getResource: () => record, setResource: () => record } as unknown as PluginPersistence);
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-auctions-pane-test", {
+      paneId: "treasury-auctions", instanceId: PANE_INSTANCE_ID,
+    }));
+    const pane = () => (
+      <TestPaneFrame state={state} paneId={PANE_INSTANCE_ID} pluginId="macro" runtime={paneRuntime} width={92} height={20}>
+        {(body) => <TreasuryAuctionsPane paneId="treasury-auctions" paneType="treasury-auctions" focused {...body} />}
+      </TestPaneFrame>
+    );
+    const footer = () => tui.frame().replace(/\n+$/, "").split("\n").at(-1)!.replace(/^└\s*|┘$/g, "").trim();
+    const settle = async () => {
+      for (let index = 0; index < 6; index += 1) {
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); await tui.setup().renderOnce(); });
+      }
+    };
+
+    setHttpFetchTransport(async () => { throw outage(); });
+    await tui.render(pane(), { width: 92, height: 20 });
+    await settle();
+    expect(tui.frame()).toContain("13-Week");
+    expect(footer()).toMatch(/^saved copy from \S+ \d+ \d\d:\d\d +\S/);
+
+    setHttpFetchTransport(async () => new Response("not found", { status: 404 }));
+    await tui.render(pane(), { width: 92, height: 20 });
+    await settle();
+    expect(tui.frame()).toContain("Treasury Fiscal Data request failed (404)");
+    expect(tui.frame()).not.toContain("saved copy");
   });
 });

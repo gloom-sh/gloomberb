@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { ChartTableHeader, CompositeChart, CurveSurface, curveGhostColors, EmptyState, formatPercentAxis, MarketBoardStack, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTabs, type ChartTableChart, type MarketBoardRow, type StatItem } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -125,7 +126,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
     notices: [...(data ? moneyMarketNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
     stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">

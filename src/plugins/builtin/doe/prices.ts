@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import type { DoePricesPayload } from "../../../api-client/doe";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { SeriesDefinition } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 /**
@@ -73,10 +73,9 @@ export const DOE_PRICE_SERIES: readonly SeriesDefinition[] = PRICE_SERIES.map((s
     const resource = await loadCloudResource(doePriceCache, "prices", () => fetchDoePrices(), { validate: validatePrices });
     const row = resource.payload.series.find((entry) => entry.id === series.id);
     if (!row?.points.length) throw new Error(`${series.name} is not available yet.`);
-    const warning = cachedSeriesWarning(resource);
     return {
       points: row.points.map(([date, value]) => ({ date, value })),
-      ...(warning ? { warning } : {}),
+      ...cachedSeriesNote(resource),
       // Cited as the EIA series it is, not as the route that served it.
       attribution: { source: `EIA series ${series.key}`, publisher: "EIA" },
     };

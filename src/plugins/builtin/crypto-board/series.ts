@@ -1,6 +1,7 @@
 import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDefiTvl, loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
+import { BITCOIN_NETWORK_SERIES } from "./bitcoin-network";
 
 const DAY_MS = 86_400_000;
 
@@ -29,7 +30,7 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
       const resource = await loadStablecoinSupply();
       const history = resource.payload.history;
       if (!history) throw new Error("Stablecoin supply is not available yet.");
-      return { points: dailyPoints(history.start, history.total), warning: cachedSeriesWarning(resource) };
+      return { points: dailyPoints(history.start, history.total), ...cachedSeriesNote(resource) };
     },
   },
   {
@@ -45,7 +46,7 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
       const resource = await loadStablecoinSupplyHistory(stablecoinSymbol(ticker!));
       const history = resource.payload.history;
       if (!history) throw new Error(`${resource.payload.symbol} supply history is not available yet.`);
-      return { points: dailyPoints(history.start, history.values), warning: cachedSeriesWarning(resource) };
+      return { points: dailyPoints(history.start, history.values), ...cachedSeriesNote(resource) };
     },
   },
 ];
@@ -63,7 +64,7 @@ const DEFI_TVL_SERIES: SeriesDefinition = {
     const resource = await loadDefiTvl();
     const history = resource.payload.history;
     if (!history) throw new Error("DeFi TVL is not available yet.");
-    return { points: dailyPoints(history.start, history.total), warning: cachedSeriesWarning(resource) };
+    return { points: dailyPoints(history.start, history.total), ...cachedSeriesNote(resource) };
   },
 };
 
@@ -114,4 +115,5 @@ export const CRYPTO_SERIES: readonly SeriesDefinition[] = [
   },
   ...STABLECOIN_SUPPLY_SERIES,
   DEFI_TVL_SERIES,
+  ...BITCOIN_NETWORK_SERIES,
 ];

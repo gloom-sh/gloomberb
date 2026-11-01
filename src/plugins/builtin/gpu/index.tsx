@@ -2,11 +2,10 @@ import type { PluginModule } from "../plugin-module";
 import { gpuBoardCache, gpuEventsCache, gpuHistoryCache } from "./client";
 import { gpuHeadless } from "./headless";
 import { GPU_MODELS, gpuArgument } from "./model";
-import { GpuPane } from "./pane";
 import { GPU_SERIES } from "./series";
 
 export const gpuModule: PluginModule = {
-  panes: [{ id: "gpu", name: "GPU Rental Prices", icon: "G", component: GpuPane, defaultPosition: "right", defaultMode: "floating",
+  panes: [{ id: "gpu", name: "GPU Rental Prices", icon: "G", get component(): typeof import("./pane").GpuPane { const { GpuPane } = require("./pane"); return GpuPane; }, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 120, height: 34 }, tableExport: true, headless: gpuHeadless }],
   paneTemplates: [{ id: "gpu-pane", paneId: "gpu", label: "GPU Rental Prices",
     description: "Pro GPU rental list prices, provider-declared spot and marketplace asks, with sourced price history and related equities. Free preview available.",

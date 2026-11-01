@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  CloudEarningsCallPayload,
-  CloudEarningsTranscriptPayload,
-} from "../../../api-client";
+import type { CloudEarningsCallPayload } from "../../../api-client";
 import { recordResearchActivity } from "../../../api-client/research-activity";
 import {
   DataTableStackView,
@@ -49,7 +46,11 @@ import {
   loadEarningsCalls,
   loadTranscript,
   statusOf,
+  type EarningsTranscriptResult,
 } from "./data";
+import { isPermanentClientError } from "../../../api-client/errors";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
@@ -148,6 +149,8 @@ interface TickerLookup {
   calls: CloudEarningsCallPayload[];
   fetchedAt?: number;
   stale?: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
   refreshRequest?: number;
 }
@@ -280,6 +283,8 @@ function CallsListView({
   const [stale, setStale] = useState(initialShelf?.stale === true);
   // The company's home line the shelf is read from, for a receipt or a foreign line.
   const [companyFrom, setCompanyFrom] = useState(initialShelf?.companyFrom ?? null);
+  // The list's refresh failed and a copy saved at this time (ms) answered instead.
+  const [listSavedAt, setListSavedAt] = useState<number | null>(null);
   const [listFetchedAt, setListFetchedAt] = useState(initialShelf?.fetchedAt ?? 0);
   const listRequestVersion = useRef(0);
   const [listCompletedRequest, setListCompletedRequest] = useState(0);
@@ -292,7 +297,7 @@ function CallsListView({
 
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`${stateKey}selectedId`, null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>(`${stateKey}detailOpen`, false);
-  const [transcript, setTranscript] = useState<CloudEarningsTranscriptPayload | null>(null);
+  const [transcript, setTranscript] = useState<EarningsTranscriptResult | null>(null);
   useEffect(() => {
     if (focused && transcript && detailOpen) recordResearchActivity("pro_feature_used", "transcripts");
   }, [focused, transcript, detailOpen]);
@@ -344,10 +349,12 @@ function CallsListView({
           setHasMore(result.sourceLimitReached === true);
           setStale(result.stale);
           setCompanyFrom(result.companyFrom ?? null);
+          setListSavedAt(result.savedAt ?? null);
           setListFetchedAt(result.fetchedAt);
           setListPending(result.pending === true && result.calls.length === 0);
+          // A saved copy says when it was saved, in the footer, rather than why the refresh failed.
           setListError(
-            result.refreshError ? { message: result.refreshError, status: result.errorStatus } : null,
+            result.refreshError && result.savedAt == null ? { message: result.refreshError, status: result.errorStatus } : null,
           );
           setListStatus("loaded");
           setListCompletedRequest(request);
@@ -357,6 +364,7 @@ function CallsListView({
           setListPending(false);
           setHasMore(false);
           setNextOffset(0);
+          setListSavedAt(null);
           setListError({
             message: error instanceof Error ? error.message : String(error),
             status: statusOf(error),
@@ -415,6 +423,7 @@ function CallsListView({
     setListPending(held?.pending === true && held.calls.length === 0);
     setStale(held?.stale === true);
     setCompanyFrom(held?.companyFrom ?? null);
+    setListSavedAt(null);
     setListFetchedAt(held?.fetchedAt ?? 0);
     setListError(null);
     setLookup(null);
@@ -482,19 +491,22 @@ function CallsListView({
             calls: result.calls,
             fetchedAt: result.fetchedAt,
             stale: result.stale,
-            refreshError: result.refreshError,
+            savedAt: result.savedAt,
+            refreshError: result.savedAt == null ? result.refreshError : undefined,
             refreshRequest,
           });
         })
         .catch((error: unknown) => {
           if (cancelled) return;
-          const retainRows = ![401, 402, 403].includes(statusOf(error) ?? 0);
+          // A refusal asking again will not change clears the rows; a passing failure keeps them.
+          const retainRows = !isPermanentClientError(error);
           setLookup((current) => ({
             ticker: lookupTicker,
             status: "error",
             calls: retainRows && current?.ticker === lookupTicker ? current.calls : [],
             fetchedAt: retainRows && current?.ticker === lookupTicker ? current.fetchedAt : undefined,
             stale: retainRows && current?.ticker === lookupTicker && current.calls.length > 0,
+            savedAt: retainRows && current?.ticker === lookupTicker ? current.savedAt : undefined,
             refreshError: error instanceof Error ? error.message : String(error),
             refreshRequest,
           }));
@@ -864,15 +876,14 @@ function CallsListView({
         }
       }
       const visibleLookup = lookup && (lookup.ticker === lookupTicker || (detailOpen && selected?.ticker === lookup.ticker)) ? lookup : null;
-      if (visibleLookup?.stale) {
-        info.push({ id: "lookup-stale", parts: [{ text: `${visibleLookup.ticker} stale cache`, tone: "warning" }] });
-      }
       if (visibleLookup?.refreshError && lookupState !== "error") {
         info.push({ id: "lookup-error", parts: [{ text: `${visibleLookup.ticker}: ${visibleLookup.refreshError}`, tone: "warning" }] });
       }
-      if (stale) {
-        info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
-      }
+      // What a failed refresh left on screen: a saved copy says when it was saved; a list
+      // held from an earlier session, still refreshing, is only stale.
+      const savedCopy = savedCopyFooterInfo([listSavedAt, visibleLookup?.savedAt, readerOpen ? selectedTranscript?.savedAt : null]);
+      info.push(...savedCopy);
+      if (stale && listSavedAt == null) info.push(STALE_SEGMENT);
       if (listError) {
         info.push({ id: "error", parts: [{ text: listError.message, tone: "warning" }] });
       }
@@ -911,6 +922,8 @@ function CallsListView({
       lookupTicker,
       lookup,
       stale,
+      listSavedAt,
+      selectedTranscript,
       listError,
       proRequired,
       transcriptProRequired,

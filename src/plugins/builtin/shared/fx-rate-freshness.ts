@@ -2,6 +2,7 @@ import { intradayBarText } from "../../../market-data/quotes/intraday-bar";
 import type { Quote, QuoteIntradayBar } from "../../../types/financials";
 import { isFxMarketOpen } from "../../../utils/fx-market-hours";
 import { quoteFreshnessFields } from "./report-freshness";
+import { formatUtcDayTime } from "../../../utils/utc-time";
 
 /** The venue FX pairs trade on, so a report can place the FX market. */
 const FX_VENUE = "CCY";
@@ -53,6 +54,22 @@ export function fxRateNotes(legs: ReadonlyMap<string, FxRateTiming>, now = Date.
       ...timing.intradayBar ? [`${currency}/USD: ${intradayBarText(timing.intradayBar)}`] : [],
       ...stale && timing.error == null && timing.staleReason ? [`${currency}/USD: ${timing.staleReason}`] : [],
     ];
+  });
+}
+
+/**
+ * What `fx --refresh` says of a rate it read again and found still stale with
+ * no reason given (`ZAR/USD: --refresh found no newer rate than Tue 27 Oct
+ * 14:00 UTC.`): the refresh did run, and the data service has nothing newer.
+ * A rate whose refresh failed says that instead, and one with a stated reason
+ * says the reason (fxRateNotes).
+ */
+export function refreshedFxRateNotes(legs: ReadonlyMap<string, FxRateTiming>, now = Date.now()): string[] {
+  return [...legs].flatMap(([currency, timing]) => {
+    if (currency === "USD" || timing.error != null || timing.staleReason || timing.staleAt == null || timing.staleAt > now) return [];
+    const since = timing.asOf != null && Number.isFinite(timing.asOf)
+      ? ` than ${formatUtcDayTime({ time: timing.asOf, dateOnly: false }, now)} UTC` : "";
+    return [`${currency}/USD: --refresh found no newer rate${since}.`];
   });
 }
 

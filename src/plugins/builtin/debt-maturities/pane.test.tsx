@@ -89,7 +89,9 @@ test("a short or narrow maturity pane keeps the table's rows, and the chart shri
   expect(lines[2]).toMatch(/^ ● Due next 12 months .*%/);
   expect(lines[3]).toContain("MATURITY");
   expect(lines.filter((line) => /^ In(NextTwelve|Year)/.test(line))).toHaveLength(5);
-  expect(lines[9]).toContain("just now");
+  // The footer keeps which filing and its date; how long ago it loaded goes first.
+  expect(lines[9]).toContain("10-K 2025-06-30");
+  expect(lines[9]).not.toContain("just now");
 });
 
 test("the filing history names its bars and puts each year under its own bar", async () => {
@@ -139,13 +141,15 @@ test("a newer 10-Q is a dated figure row of its own, and every filing's year lab
   // Earlier tests left this issuer's annual-only answer in the cache.
   debtMaturitiesCache.reset();
   const lines = await render(94, 30);
-  const row = lines.find((line) => line.includes("Latest 10-Q"));
-  expect(row).toContain("Current 212.00M · Non-current 6.84B USD");
-  expect(row).toContain("2025-12-31 · filed 2026-02-10");
+  // Named by its period; the filed date beside the figures where it fits.
+  const row = lines.find((line) => line.includes("10-Q 2025-12-31"));
+  expect(row).toMatch(/10-Q 2025-12-31 +Current 212\.00M · Non-current 6\.84B USD  filed 2026-02-10/);
   // The schedule's own date is still said once, apart from the 10-Q's.
   expect(lines.find((line) => line.includes("As of"))).toContain("2025-06-30");
   // The idle legend reads the newest filing, and each fiscal year sits under the chart once, in order.
   expect(lines.find((line) => line.includes("Due next 12 months"))).toContain("4.8%");
   const axis = lines.find((line) => /^\s*2022\s/.test(line))!;
   expect(axis.trim().split(/\s+/)).toEqual(["2022", "2023", "2024", "2025"]);
+  // The footer says which filing the pane's date is.
+  expect(lines.find((line) => line.includes("[o]pen"))).toContain("10-Q 2025-12-31, filed 2026-02-10 · just now");
 });

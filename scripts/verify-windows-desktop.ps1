@@ -776,6 +776,27 @@ function Get-ScreenshotStats {
   }
 }
 
+# Electrobun's handlers for native window, webview, menu and tray events catch
+# their own errors, so a handler that cannot read what native code passed it
+# only shows in the app's stderr.
+function Assert-NativeEventsRead {
+  param(
+    [string]$Path,
+    [string]$Label
+  )
+
+  $Stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  try {
+    $Text = (New-Object System.IO.StreamReader $Stream).ReadToEnd()
+  } finally {
+    $Stream.Dispose()
+  }
+  $Failure = [regex]::Match($Text, '(?m)^.*(\[webviewEventJSCallback\] Error|error in eventBridgeHandler|error in internalBridgeHandler|error sending message to bun).*$')
+  if ($Failure.Success) {
+    throw "$Label could not read a native event: $($Failure.Value.Trim())"
+  }
+}
+
 function Assert-ScreenshotHasContent {
   param(
     [string]$Path,
@@ -1591,6 +1612,7 @@ function Capture-OnboardingScreenshot {
       -Path $OutputPath `
       -Label "Onboarding window" `
       -InitialDelaySeconds 8
+    Assert-NativeEventsRead (Join-Path $GuiArtifactDir "windows-onboarding-stderr.log") "The onboarding window"
   } catch {
     $OnboardingFailure = $_
     try {
@@ -1665,6 +1687,14 @@ foreach ($Path in $RequiredPaths) {
   if (-not (Test-Path $Path)) {
     throw "Missing expected Windows desktop file: $Path"
   }
+}
+
+# Bun 1.3 writes the code behind bun:ffi into heap memory it marks executable,
+# which Windows' heap can commit again as read-write: the app then crashes on
+# its next native callback, often seconds after it opens (electrobun.config.ts).
+$BundledBunVersion = "$(& (Join-Path $BundleDir "bin\bun.exe") --version)".Trim()
+if (-not ($BundledBunVersion -match '^\d+\.\d+\.\d+') -or [version]$Matches[0] -lt [version]"1.4.0") {
+  throw "The app ships Bun $BundledBunVersion; Windows builds need Bun 1.4 or later"
 }
 
 Assert-WindowsUpdateManifest $UpdateManifestPath
@@ -1830,6 +1860,7 @@ try {
   $PopOutClientScreenshot = Join-Path $GuiArtifactDir "windows-gui-popout-client.png"
   Capture-WindowClientScreenshot $DetachedWindow $PopOutClientScreenshot
   Assert-ScreenshotHasContent $PopOutClientScreenshot "Detached pop-out client area"
+  Assert-NativeEventsRead (Join-Path $GuiArtifactDir "windows-main-stderr.log") "The app"
 
   $ControlPaddingMeasurements = @(
     Measure-WindowCloseGlyphPadding `
@@ -1918,6 +1949,14 @@ try {
   Close-TrackedProcessHandles $TrackedGuiProcesses.ToArray()
 
   if ($SeededDesktopConfig) {
+    # The app's freeze log, so a run says what held the app up and when.
+    $StallLog = Join-Path $SeededDesktopConfig.DataDir "stall-log.txt"
+    if (Test-Path $StallLog) {
+      Write-Host "Stall log of the desktop smoke run:"
+      Get-Content $StallLog -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+    } else {
+      Write-Host "Stall log of the desktop smoke run: no stalls."
+    }
     Remove-Item -Path $SeededDesktopConfig.GlobalConfigPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $SeededDesktopConfig.DataDir -Recurse -Force -ErrorAction SilentlyContinue
   }

@@ -49,6 +49,7 @@ function formatFullCurrencyValue(
   options: MarketFormatOptions = {},
 ): string | null {
   if (unit.trim() === INDEX_POINTS_UNIT) return formatMarketPrice(value, { ...options, assetCategory, priceBasis: "points" });
+  if (unit.trim() === "32nds") return formatMarketPrice(value, { ...options, assetCategory, priceBasis: "thirty-seconds" });
   const currency = unitCurrencyCode(unit);
   return currency ? formatMarketPriceWithCurrency(value, currency, { ...options, assetCategory }) : null;
 }
@@ -362,6 +363,8 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
   // Derived dimensions are included in the legend value. Axis labels stay
   // numeric so a narrow gutter cannot truncate USD/JPY into a false USD label.
   if (group.startsWith("derived-unit:")) return compact;
+  // Treasury prices keep their whole points and 32nds at every zoom level.
+  if (domain.unit.trim() === "32nds") return formatAxisPriceValue(value, domain);
   // Compact labels suit a wide view, but a zoomed one can hold several ticks
   // inside a single rounding step and print one repeated price down the gutter.
   // Where that happens the axis spends the digits needed to tell them apart,

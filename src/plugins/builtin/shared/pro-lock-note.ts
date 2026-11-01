@@ -70,19 +70,23 @@ async function routeAnswers(route: FreeRoute, check: NonNullable<FreeRoute["answ
  * symbol the routes read `<ticker>` and the first is named; without a way to
  * read data, only a route that answers for every symbol is.
  */
-async function answeringFreeRoute(lock: PaneLock, routes: readonly FreeRoute[]): Promise<FreeRoute | null> {
+async function answeringFreeRoute(lock: PaneLock, routes: readonly FreeRoute[]): Promise<{ route: FreeRoute | null; noneHasData: boolean }> {
   const { symbol, context } = lock;
-  if (!symbol) return routes[0] ?? null;
+  if (!symbol) return { route: routes[0] ?? null, noneHasData: false };
   // Routes past the first that needs no check are never named, so they are not checked.
   const unchecked = routes.findIndex((route) => !route.answers);
   const candidates = unchecked < 0 ? routes : routes.slice(0, unchecked + 1);
   const deadline = Date.now() + ROUTE_CHECK_WAIT_MS;
   const checks = candidates.map((route) => !route.answers ? Promise.resolve(true)
-    : context ? routeAnswers(route, route.answers, symbol, context, deadline) : Promise.resolve(false));
+    : context ? routeAnswers(route, route.answers, symbol, context, deadline) : Promise.resolve(null));
+  const answered: Array<boolean | null> = [];
   for (const [index, check] of checks.entries()) {
-    if (await check) return candidates[index]!;
+    const answer = await check;
+    if (answer) return { route: candidates[index]!, noneHasData: false };
+    answered.push(answer);
   }
-  return null;
+  // Every check answered no: a failed or stalled one is not known to.
+  return { route: null, noneHasData: candidates.length > 0 && answered.every((answer) => answer === false) };
 }
 
 /**
@@ -114,6 +118,14 @@ export async function proLockNote(
      * command repeats the ticker only when the reader gave one. Default `ticker`.
      */
     argument?: "ticker" | "optional" | "none";
+    /**
+     * For a function that reads what its free routes read (RISK the SEC's
+     * 10-Ks and 20-Fs, FLOW the listing's options): the sentence the note
+     * says when every route answered that the symbol has none. The note then
+     * names no command for the symbol, which would read nothing once unlocked
+     * either: IAG:LSE files neither form, and LHA:XETRA has no options served.
+     */
+    noneFor?: (ticker: string) => string;
   },
 ): Promise<string> {
   const { gate, symbol, token: typed, verifyEmail } = lock;
@@ -129,12 +141,15 @@ export async function proLockNote(
   const unlock = gate === "pro"
     ? `To read ${pane.shows} in ${token}, upgrade in the app (gloom, then Ctrl+P, UPGRADE)`
     : `To read ${pane.shows} in ${token}, open the app (gloom), ${account}${pro ? ", then upgrade (Ctrl+P, UPGRADE)" : ""}`;
-  const bare = pane.argument === "none" || (pane.argument === "optional" && !symbol);
-  const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${ticker}`;
-  const free = pane.free ? await answeringFreeRoute(lock, pane.free) : null;
+  const { route: free, noneHasData } = pane.free ? await answeringFreeRoute(lock, pane.free) : { route: null, noneHasData: false };
+  // Unlocking reads nothing for a symbol none of the function's own data covers: it is named only where it has some.
+  const uncovered = noneHasData && !!pane.noneFor;
+  const bare = pane.argument === "none" || (pane.argument === "optional" && (!symbol || uncovered));
+  const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${uncovered ? "<ticker>" : ticker}`;
   return [
     `${token} ${what}: ${pane.does}. ${without} it shows none of ${pane.shows}.`,
     ...free ? [`Free, with no sign-in: ${free.text(ticker, symbol ?? "the company")}`] : [],
+    ...uncovered ? [pane.noneFor!(ticker)] : [],
     `${unlock}; ${command} then reads with that session.`,
   ].join("\n");
 }

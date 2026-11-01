@@ -3,14 +3,13 @@ import type { PluginModule } from "../plugin-module";
 import { IV_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
-import { IvHistoryPane } from "./pane";
 import { IvScreenPane, VCA_SCOPE_OPTIONS } from "./screen-pane";
 
 
 export const ivHistoryModule: PluginModule = {
   series: IV_SERIES,
   panes: [{
-    id: "iv-history", name: "Implied Volatility History", icon: "V", component: IvHistoryPane,
+    id: "iv-history", name: "Implied Volatility History", icon: "V", get component(): typeof import("./pane").IvHistoryPane { const { IvHistoryPane } = require("./pane"); return IvHistoryPane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 118, height: 36 },
     tableExport: true,
     settings: { title: "Implied Volatility History", fields: [

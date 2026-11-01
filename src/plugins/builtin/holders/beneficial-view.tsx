@@ -11,6 +11,7 @@ import {
 } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -42,8 +43,6 @@ import {
 } from "./beneficial-model";
 import type { Holder13FMatch } from "./thirteenf-match";
 import type { HolderRow } from "./types";
-
-const STALE_SEGMENT = { id: "stale", parts: [{ text: "stale", tone: "warning" as const }] };
 
 /**
  * A table line: a filer's row, or the line beneath it giving the same shares

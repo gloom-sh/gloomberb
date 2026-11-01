@@ -22,6 +22,32 @@ function context(): GloomPluginContext {
 }
 
 describe("composeBuiltinPlugin", () => {
+  test("a moved pane loads its component only when rendered and keeps the wrapped identity", () => {
+    let loads = 0;
+    const component = () => null;
+    const plugin = composeBuiltinPlugin({
+      id: "successor",
+      name: "Successor",
+      version: "1.0.0",
+      modules: [{
+        stateId: "legacy",
+        module: {
+          panes: [{
+            id: "moved", name: "Moved", defaultPosition: "right",
+            get component() { loads++; return component; },
+          }],
+        },
+      }],
+    });
+    const pane = plugin.panes![0]!;
+    expect(pane.id).toBe("moved");
+    expect(loads).toBe(0);
+    const wrapped = pane.component;
+    expect(loads).toBe(1);
+    expect(pane.component).toBe(wrapped);
+    expect(loads).toBe(1);
+  });
+
   test("combines every declarative contribution under the parent plugin", () => {
     const first: PluginModule = {
       cliCommands: [{ name: "example", description: "Example", execute: () => {} }],

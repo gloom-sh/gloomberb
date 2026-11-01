@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { PsdBoardPayload } from "../../../api-client/commodity-balances";
 import { unavailableOnServer } from "../shared/cloud-resource";
 import type { BalanceRow, PriceForecast } from "./model";
@@ -37,7 +38,9 @@ function readBoard(payload: PsdBoardPayload): CommodityBalances {
     || (payload.marketYear != null && !text(payload.marketYear))) {
     throw new Error("The server returned an invalid crop balance board");
   }
-  if (payload.status === "unavailable" || payload.rows.length === 0) throw new Error(CROPS_NOT_AVAILABLE);
+  // The server's source did not answer this time, which may pass; a board with no rows has none yet.
+  if (payload.status === "unavailable") throw sourceDidNotAnswer(CROPS_NOT_AVAILABLE);
+  if (payload.rows.length === 0) throw new Error(CROPS_NOT_AVAILABLE);
   return {
     rows: payload.rows,
     prices: payload.prices,

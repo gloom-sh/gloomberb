@@ -69,3 +69,16 @@ test("a calendar the source failed to answer says what failed, never a bare reas
   await expect(earnings.execute(["SAN:MCE"], run.context))
     .rejects.toThrow("Earnings dates for SAN:MCE did not load: the calendar source failed. Try again in a few minutes.");
 });
+
+// `earnings NTR MOS ICL ADM BG LAND FPI` printed five rows and said nothing of BG and FPI.
+test("a list names each listing the calendar came back without, at home or abroad, in text and as warnings", async () => {
+  const calendar = async () => [event("NTR", "Nutrien Ltd.", 5, false), event("MOS", "The Mosaic Company", 9, false)];
+  const run = harness(calendar);
+  await earnings.execute(["NTR", "BG", "MOS", "FPI", "SAN:EPA"], run.context);
+  const lines = run.text(0)!.split("\n");
+  expect(lines.slice(-2)).toEqual(["SAN:EPA: no calendar for this listing", "BG, FPI: no earnings date found."]);
+  const json = harness(calendar);
+  json.context.cliOptions.format = "json";
+  await earnings.execute(["NTR", "BG", "MOS", "FPI"], json.context);
+  expect(json.printed[0]!.result.warnings).toContain("BG, FPI: no earnings date found.");
+});

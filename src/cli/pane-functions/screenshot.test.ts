@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, missingActiveTabSelections, shotTableRows } from "./screenshot-assessment";
+import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, missingActiveTabSelections, shotLoadedNothing, shotTableRows } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
 import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
-import { shotFreshness, shownReportTab } from "./screenshot-render";
+import { shotFreshness, shotHasStatusLine, shownReportTab } from "./screenshot-render";
 import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
 import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
@@ -35,6 +35,8 @@ import { brokerManagerModule } from "../../plugins/builtin/broker-manager";
 import { changelogModule } from "../../plugins/builtin/changelog";
 import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { connectionsModule } from "../../plugins/builtin/connections";
+import { docsModule } from "../../plugins/builtin/docs";
+import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
 import { helpModule } from "../../plugins/builtin/help";
 import { layoutManagerModule } from "../../plugins/builtin/layout-manager";
 import { pluginMarketplaceModule } from "../../plugins/builtin/plugin-marketplace";
@@ -1319,6 +1321,45 @@ test("a pane with no market data is not dated by the quotes the page loaded for 
     expect(lines, resolved.pane.id).toContain("not a live feed");
     expect(lines, resolved.pane.id).not.toMatch(/delayed|markets? closed/);
   }
+});
+
+describe("a capture's footer with nothing to date", () => {
+  const nothing = { accessGate: null, emptyStateDetected: false, loadingStateDetected: false, errorStateDetected: false, rows: [], visibleKeyValues: [], semanticUi: [] } satisfies Parameters<typeof shotLoadedNothing>[0];
+  const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "Symbol", text: "AAPL" }] };
+
+  test("a sign-in wall, an empty, loading or failed pane has no status line: the quotes the page loaded are not on screen (RISK, SRCH, VIEW)", () => {
+    expect(shotLoadedNothing({ ...nothing, accessGate: "sign-in" })).toBe(true);
+    expect(shotLoadedNothing({ ...nothing, accessGate: "pro" })).toBe(true);
+    expect(shotLoadedNothing({ ...nothing, emptyStateDetected: true })).toBe(true);
+    expect(shotLoadedNothing({ ...nothing, loadingStateDetected: true })).toBe(true);
+    expect(shotLoadedNothing({ ...nothing, errorStateDetected: true, visibleKeyValues: [{ label: "Price", text: "Price -" }] })).toBe(true);
+  });
+
+  test("a pane that shows rows, labeled values or a chart keeps its line, whatever else it says (DES, a Pro lock on one section)", () => {
+    expect(shotLoadedNothing(nothing)).toBe(false);
+    expect(shotLoadedNothing({ ...nothing, emptyStateDetected: true, rows: [row] })).toBe(false);
+    expect(shotLoadedNothing({ ...nothing, accessGate: "pro", rows: [row] })).toBe(false);
+    expect(shotLoadedNothing({ ...nothing, emptyStateDetected: true, visibleKeyValues: [{ label: "Price", text: "Price 189.20" }] })).toBe(false);
+    const chart = (metadata: Record<string, unknown>) => [{ role: "chart-data", metadata } as RemoteUiNodeSnapshot];
+    expect(shotLoadedNothing({ ...nothing, errorStateDetected: true, semanticUi: chart({ plottedValueCount: 120 }) })).toBe(false);
+    expect(shotLoadedNothing({ ...nothing, errorStateDetected: true, semanticUi: chart({ kind: "chart-composer", baseSeries: [{ pointCount: 0 }, { pointCount: 250 }], projectedPointCount: 250 }) })).toBe(false);
+    // A chart's evidence node is there whether or not anything was plotted (COVN with no covenants).
+    expect(shotLoadedNothing({ ...nothing, emptyStateDetected: true, semanticUi: chart({ kind: "credit-documents", plottedValueCount: 0 }) })).toBe(true);
+    expect(shotLoadedNothing({ ...nothing, emptyStateDetected: true, semanticUi: chart({ kind: "chart-composer", baseSeries: [{ pointCount: 0 }], projectedPointCount: 0 }) })).toBe(true);
+  });
+
+  test("a pane of the user's own state keeps no row for a line; a market pane keeps it (NOTE, LAY, DOCS, CONN, a quote pane)", () => {
+    const local = [layoutManagerModule, connectionsModule, helpModule, docsModule, changelogModule, brokerManagerModule, accountManagementModule, pluginMarketplaceModule]
+      .map((module) => ({ pane: module.panes![0]! as ResolvedPaneFunction["pane"] }));
+    // Declared on the pane, as the notes pane registers it, or on the template that opens one view of a pane.
+    local.push({ pane: { reportFreshness: { source: "Your notes", status: "not-a-feed", basis: "your notes", local: true } } as ResolvedPaneFunction["pane"] });
+    for (const resolved of local) expect(shotHasStatusLine(resolved), resolved.pane.id).toBe(false);
+    const catalog = chartComposerModule.paneTemplates!.find((template) => template.shortcut?.prefix === "CAT")!;
+    expect(shotHasStatusLine({ pane: chartComposerModule.panes![0]! as ResolvedPaneFunction["pane"], template: catalog })).toBe(false);
+    // Market data keeps it, declared as not-a-feed or not.
+    for (const pane of tickerDetailModule.panes!) expect(shotHasStatusLine({ pane: pane as ResolvedPaneFunction["pane"] }), pane.id).toBe(true);
+    expect(shotHasStatusLine({ pane: { reportFreshness: undefined } as ResolvedPaneFunction["pane"] })).toBe(true);
+  });
 });
 
 describe("a board that grows to show every row (FUT)", () => {

@@ -182,6 +182,8 @@ function buildBar(bucket: Bucket, intraday: boolean): AggregatedPricePoint {
   let low = Number.POSITIVE_INFINITY;
   let volume: number | undefined;
   let venueVolume: PricePoint["venueVolume"] | null | undefined;
+  // What the volume counts carries over while every bar counts the same way.
+  let volumeBasis: string | null | undefined;
   let partial = false;
   let filled = false;
   const integrity: PriceHistoryIntegrity[] = [];
@@ -189,7 +191,10 @@ function buildBar(bucket: Bucket, intraday: boolean): AggregatedPricePoint {
     const close = bar.close;
     high = Math.max(high, isFiniteNumber(bar.high) ? bar.high : close);
     low = Math.min(low, isFiniteNumber(bar.low) ? bar.low : close);
-    if (isFiniteNumber(bar.volume)) volume = (volume ?? 0) + bar.volume;
+    if (isFiniteNumber(bar.volume)) {
+      volume = (volume ?? 0) + bar.volume;
+      volumeBasis = volumeBasis === undefined || volumeBasis === bar.volumeBasis ? bar.volumeBasis ?? null : null;
+    }
     // One venue's trades add up only while every bar counts the same venue.
     if (bar.venueVolume && venueVolume !== null) {
       venueVolume = venueVolume === undefined || venueVolume.venue === bar.venueVolume.venue
@@ -207,6 +212,7 @@ function buildBar(bucket: Bucket, intraday: boolean): AggregatedPricePoint {
     low,
     close: last.close,
     ...(volume !== undefined ? { volume } : {}),
+    ...(volume !== undefined && volumeBasis ? { volumeBasis } : {}),
     ...(volume === undefined && venueVolume ? { venueVolume } : {}),
     ...(partial ? { partial: true } : {}),
     ...(filled ? { filled: true } : {}),

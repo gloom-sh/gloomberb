@@ -16,6 +16,7 @@ import { startRemoteControlServer, type RemoteControlServer } from "../../../../
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
 import { installCrashReporter } from "../../../../telemetry/crash-reports";
 import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports-node";
+import { createStallClocks } from "../../../../telemetry/stall-clocks";
 import { installStallReporter, parseStallEvent, recordStall } from "../../../../telemetry/stall-reports";
 import { createNodeStallReporterHost } from "../../../../telemetry/stall-reports-node";
 import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
@@ -23,7 +24,7 @@ import { createNodeUpdateFailureHost } from "../../../../telemetry/update-failur
 import type { AppConfig } from "../../../../types/config";
 import { linkDesktopCommands } from "../../../../updater/command-names";
 import { debugLog } from "../../../../utils/debug-log";
-import { setStallSink, startMainThreadStallMonitor } from "../../../../utils/main-thread-stall";
+import { setStallClocks, setStallSink, startMainThreadStallMonitor } from "../../../../utils/main-thread-stall";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import type {
   ContextMenuSelectMessage,
@@ -45,6 +46,7 @@ import {
   takeExternalPluginBundles,
 } from "../external-plugins";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
+import { measureNativeWindowCalls } from "../window/native-timing";
 import { handleDesktopBackendRequest } from "./backend-requests";
 import { detectDesktopInstallKind, removeUpdateAsides } from "./update";
 import { removeLegacyMacApp } from "./app-name";
@@ -58,6 +60,7 @@ import { applyMacosDockIcon } from "./macos-dock-icon";
 import { handleDesktopPluginStateRequest } from "./plugin-state";
 import { scheduleDesktopRelaunch } from "./relaunch";
 import { createDesktopRpcRegistry } from "./rpc-registry";
+import { measureRpcTraffic } from "./rpc-timing";
 import { DesktopStateBroadcaster } from "./state-broadcaster";
 import { createDesktopWorkspace, type DesktopWorkspace } from "./workspace";
 import { handleDesktopWorkspaceRequest } from "./workspace/requests";
@@ -162,6 +165,8 @@ export class DesktopBackend {
       // Desktop has no Debug Log: freezes of this process and of its windows go to the stall log in the data folder.
       installStallReporter(createNodeStallReporterHost({ getDataDir: () => this.config?.dataDir ?? null }));
       setStallSink((event) => recordStall("app", event));
+      setStallClocks(createStallClocks());
+      measureNativeWindowCalls();
       startMainThreadStallMonitor();
     }
     // The native menu shows the same accelerators the keys use, so a rebind
@@ -273,6 +278,7 @@ export class DesktopBackend {
         },
       },
     });
+    measureRpcTraffic(rpc);
     this.rpcs.registerWindowRpc(key, rpc);
     return rpc;
   }

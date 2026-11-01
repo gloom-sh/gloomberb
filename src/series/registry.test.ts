@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeriesRegistry, capabilitySeriesId, seriesExpression } from "./registry";
+import { SeriesRegistry, capabilitySeriesId, seriesExpression, seriesNamedBy } from "./registry";
 import { normalizeSeriesPoints, resolveLoadedSeries, seriesLoadWindow } from "./resolve";
 import { chartSeriesResolveOutputSchema } from "../capabilities/chart-series";
 import { hostLabelWords, isValidSeriesUnit, validateSeriesDefinition } from "./validate";
@@ -16,7 +16,7 @@ const loaded = (overrides: Partial<SeriesDefinition> = {}): SeriesDefinition => 
 
 describe("series validation", () => {
   test("units follow one small grammar: rates, quantities with a scale, currencies and prices per unit", () => {
-    for (const unit of ["%", "bp", "index", "USD", "billion USD", "thousand barrels/day", "USD/barrel", "million shares", "currency/share"]) {
+    for (const unit of ["%", "bp", "index", "USD", "billion USD", "thousand barrels/day", "USD/barrel", "million shares", "currency/share", "EH/s", "USD/PH/s/day"]) {
       expect(isValidSeriesUnit(unit)).toBe(true);
     }
     for (const unit of ["", "percent", "thousand %", "usd", "USD/apple", "dozen eggs", "billion"]) {
@@ -159,7 +159,7 @@ describe("loading a series", () => {
     ]);
   });
 
-  test("the loader gets the chart's window and the typed symbol, and its result carries the unit, warning and attribution", async () => {
+  test("the loader gets the chart's window and the typed symbol, and its result carries the unit, warning, saved copy and attribution", async () => {
     let request: SeriesLoadRequest | null = null;
     const now = new Date("2026-06-15T00:00:00Z");
     const resolved = await resolveLoadedSeries({
@@ -171,7 +171,8 @@ describe("loading a series", () => {
       style: "step",
       load: (received) => {
         request = received;
-        return { points: [{ date: "2026-06-01", value: 0.5 }], warning: "cached", attribution: { source: "FINRA series FEE", publisher: "FINRA" } };
+        return { points: [{ date: "2026-06-01", value: 0.5 }], warning: "cached", savedAt: now.getTime() - 60_000,
+          attribution: { source: "FINRA series FEE", publisher: "FINRA" } };
       },
     }, { viewport: { range: "1Y", resolution: "auto" }, ticker: "aapl" }, now);
     expect(request!).toMatchObject({ ticker: "AAPL", start: new Date("2025-06-15T00:00:00Z") });
@@ -185,8 +186,10 @@ describe("loading a series", () => {
       interpolation: "step-after",
       warning: "cached",
     });
-    // A report cites what the loader named only if the resolve boundary lets it through.
-    expect(chartSeriesResolveOutputSchema.parse(resolved).attribution).toEqual({ source: "FINRA series FEE", publisher: "FINRA" });
+    // A report cites what the loader named, and the chart dates its saved copy, only if the resolve boundary lets them through.
+    expect(chartSeriesResolveOutputSchema.parse(resolved)).toMatchObject({
+      attribution: { source: "FINRA series FEE", publisher: "FINRA" }, savedAt: now.getTime() - 60_000,
+    });
     expect(() => chartSeriesResolveOutputSchema.parse({ ...resolved, attribution: { source: "" } })).toThrow();
     expect(seriesLoadWindow({ range: "ALL", resolution: "auto" })).toEqual({});
     expect(seriesLoadWindow({ range: "1Y", resolution: "auto", dateWindow: { start: "2024-01-01", end: "2024-02-01" } }))
@@ -276,4 +279,17 @@ describe("a series with lines", () => {
     expect(await b).toBe("closed");
     expect(aborted).toBe("closed");
   });
+});
+
+test("a bare word names only a series that lists it as an alias, and none that two series claim", () => {
+  const series = (id: string, aliases?: string[]) => ({ id, name: id, unit: "%", frequency: "daily", expression: `X:${id}`, ...aliases ? { aliases } : {} }) as SeriesDefinition;
+  const catalog = [series("bitcoin:hashrate", ["hashrate"]), series("bitcoin:difficulty", ["difficulty"]), series("doe:cushing"),
+    series("macro:inflation"), series("a:claimed", ["claimed"]), series("b:claimed", ["claimed"])];
+  expect(seriesNamedBy(catalog, "HASHRATE")?.id).toBe("bitcoin:hashrate");
+  expect(seriesNamedBy(catalog, "difficulty")?.id).toBe("bitcoin:difficulty");
+  // A series' own id of six letters or more is no alias; nor is a word two series claim.
+  for (const word of ["cushing", "inflation", "claimed", "hash"]) expect(seriesNamedBy(catalog, word), word).toBeUndefined();
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["Rate"]) })).toThrow('alias "Rate"');
+  expect(() => validateSeriesDefinition({ ...series("x:rate", ["rate"]), input: "ticker", expression: "{ticker}:close" } as SeriesDefinition))
+    .toThrow("a series with an input takes no aliases");
 });

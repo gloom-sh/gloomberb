@@ -263,13 +263,14 @@ for (const persisted of [false, true]) {
     fail = true;
     await press("r");
     expect(tui.frame()).toContain("FIRST CORP");
-    expect(tui.frame().includes("stale cache")).toBe(persisted);
-    expect(tui.frame()).toContain("Controlled outage");
+    // A saved copy says when it was saved, as every pane does; rows kept in memory say why the refresh failed.
+    expect(tui.frame().includes("saved copy from")).toBe(persisted);
+    expect(tui.frame().includes("Controlled outage")).toBe(!persisted);
     fail = false;
     await press("r");
     expect(tui.frame()).toContain("FIRST CORP");
     expect(tui.frame()).not.toContain("Controlled outage");
-    expect(tui.frame()).not.toContain("stale cache");
+    expect(tui.frame()).not.toContain("saved copy");
   });
 }
 
@@ -458,7 +459,7 @@ test("shelf refresh reloads the active company and a slower older lookup cannot 
   expect(tui.frame()).not.toContain("queued");
 });
 
-test("stale company fallback retains older quarters and its failure without replacing fresh global calls", async () => {
+test("a company lookup answered from its saved copy keeps older quarters and says when it was saved, without replacing fresh global calls", async () => {
   signIn();
   const q2 = call("FIRST");
   const q1 = { ...q2, id: "FIRST-q1", fiscalQuarter: 1, callAt: "2026-05-01T20:00:00Z" };
@@ -480,17 +481,17 @@ test("stale company fallback retains older quarters and its failure without repl
   const staleFrame = tui.frame();
   expect(staleFrame).not.toContain("queued");
   expect(staleFrame).toContain("FQ1 26");
-  expect(staleFrame).toContain("FIRST stale cache");
-  expect(staleFrame).toContain("Controlled company outage");
+  expect(staleFrame).toContain("saved copy from");
+  expect(staleFrame).not.toContain("Controlled company outage");
   fail = false;
   await press("r");
   const freshFrame = tui.frame();
   expect(freshFrame).toContain("FQ1 26");
-  expect(freshFrame).not.toContain("stale cache");
-  expect(freshFrame).not.toContain("Controlled company outage");
+  expect(freshFrame).not.toContain("saved copy");
 });
 
-for (const status of [503, 403]) {
+// A 404 is as final as a refusal: asking again will not bring the rows back.
+for (const status of [503, 404, 403]) {
   test(`company reload ${status} retains in-memory rows only for transient failures`, async () => {
     signIn();
     const q2 = call("FIRST");
@@ -510,7 +511,6 @@ for (const status of [503, 403]) {
     await press("r");
     const frame = tui.frame();
     expect(frame.includes("FQ1 26")).toBe(status === 503);
-    expect(frame.includes("stale cache")).toBe(status === 503);
     expect(frame).toContain("Controlled lookup failure");
   });
 }

@@ -1,4 +1,5 @@
-import { createContext, useContext, type ComponentType, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ComponentType, type ReactNode } from "react";
+import { logFailure } from "../utils/log-failure";
 
 /** @public */
 export interface ToastAction {
@@ -14,6 +15,8 @@ export interface ToastOptions {
   action?: ToastAction;
   /** Rendered next to `action`. Use for a dismissing counterpart such as snooze. */
   secondaryAction?: ToastAction;
+  /** Runs once, after a viewport first draws the toast. */
+  onShown?(): void;
 }
 
 export interface ToastHost {
@@ -139,6 +142,28 @@ export function useToastHost(): ToastHost {
   const host = useContext(ToastContext);
   if (!host) throw new Error("useToastHost must be used inside ToastHostProvider");
   return host;
+}
+
+/**
+ * Every viewport calls this with the toasts it draws: each toast's `onShown`
+ * runs once, after the commit that first puts it on screen.
+ */
+export function useToastsShown(toasts: readonly { id: number; options?: ToastOptions }[]): void {
+  const shown = useRef(new Set<number>());
+  useEffect(() => {
+    const current = new Set<number>();
+    for (const toast of toasts) {
+      current.add(toast.id);
+      if (shown.current.has(toast.id)) continue;
+      try {
+        toast.options?.onShown?.();
+      } catch (error) {
+        // One failing callback must not keep the others from running.
+        logFailure("toast", "A toast's shown callback failed")(error);
+      }
+    }
+    shown.current = current;
+  }, [toasts]);
 }
 
 export function ToastViewport(props: { position?: string }) {

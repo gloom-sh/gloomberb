@@ -110,9 +110,13 @@ async function bundlePluginDirectory(
     // production JSX runtime. A bundle built from a process without
     // NODE_ENV set targets jsx-dev-runtime instead and fails on first
     // render with "jsxDEV is not a function".
+    //
+    // The view has no `process`, so the bundler also gives a plugin that reads
+    // one a stand-in (see plugins/plugin-process.ts), named after the plugin.
     const outDir = pluginBundleCacheDir(getPluginCacheDir());
     const result = await bundleExternalPlugin(pluginDir, join(outDir, directory), {
       define: { "process.env.NODE_ENV": "\"production\"" },
+      pluginName: plugin.name || directory,
     });
     const code = await Bun.file(result.outputPath).text();
     bundleCache.set(pluginDir, { mtimeMs, code });

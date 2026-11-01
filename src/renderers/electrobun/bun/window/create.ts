@@ -1,4 +1,6 @@
 import { BrowserWindow } from "electrobun/bun";
+import { measurePerf } from "../../../../utils/perf-marks";
+import { trackWindowAttention } from "./attention";
 import {
   applyNativeWindowFrame,
   applyWindowMoveEvent,
@@ -83,7 +85,8 @@ interface AppWindowOptions {
  * its cached frame current as it moves, and holds it to `minSize` on resize.
  */
 export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, preload }: AppWindowOptions): BrowserWindow {
-  const window = new BrowserWindow({
+  // Opening a window waits on the native layer, the webview's creation included.
+  const window = measurePerf("native.window.create", () => new BrowserWindow({
     title,
     frame,
     url: APP_VIEW_URL,
@@ -94,7 +97,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     titleBarStyle: desktopTitleBarStyle(),
     navigationRules: JSON.stringify(["views://*"]),
     sandbox: false,
-  });
+  }));
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
   if (process.platform === "win32") {
@@ -105,6 +108,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     });
   }
   updateWindowFrameCache(window, frame, minSize);
+  trackWindowAttention(window);
   const readsNativeFrame = process.platform === "win32";
   (window as any).on?.("move", (event: WindowMoveEvent) => {
     if (readsNativeFrame) {

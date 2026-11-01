@@ -30,6 +30,11 @@ export interface VolatilityHistoryInput {
   stale?: boolean;
   error?: string | null;
   fetchedAt?: number | null;
+  /**
+   * When the copy shown was saved, when a failed refresh left it answering:
+   * the pane's footer says "saved copy from …" instead of the failure.
+   */
+  savedAt?: number | null;
 }
 export interface VolatilitySeriesInput {
   observations: CloudFredObservationPayload[];
@@ -37,6 +42,8 @@ export interface VolatilitySeriesInput {
   stale?: boolean;
   error?: string | null;
   fetchedAt?: number | null;
+  /** As `VolatilityHistoryInput.savedAt`. */
+  savedAt?: number | null;
 }
 export interface VolatilityInputs {
   history?: Partial<Record<VolatilityIndexId, VolatilityHistoryInput>>;
@@ -131,6 +138,8 @@ export interface VolatilityBoardRow {
   status: "available" | "limited" | "unavailable";
   stale: boolean;
   error: string | null;
+  /** When the copy shown was saved, when a failed refresh left it answering. */
+  savedAt?: number;
   warnings: string[];
 }
 export interface VolatilityData {
@@ -233,8 +242,9 @@ function fredHistory(inputs: VolatilityInputs["fred"]): FredVolatilityHistory {
     const input = inputs?.[definition.seriesId];
     const normalized = normalizeHistory(input?.observations ?? [], true);
     warnings.push(...normalized.warnings.map((warning) => `${definition.seriesId}: ${warning}`));
-    if (input?.error) warnings.push(`${definition.seriesId}: ${input.error}`);
-    if (input?.stale) warnings.push(`${definition.seriesId}: cached source is stale`);
+    // A saved copy is dated in the footer; its failed refresh is not repeated here.
+    if (input?.error && input.savedAt == null) warnings.push(`${definition.seriesId}: ${input.error}`);
+    if (input?.stale && input.savedAt == null) warnings.push(`${definition.seriesId}: cached source is stale`);
     const latest = normalized.history.at(-1);
     return { ...definition, title: input?.info?.title ?? definition.label, value: latest?.value ?? null,
       date: latest?.date ?? null, history: normalized.history,
@@ -300,15 +310,16 @@ function boardRow(definition: typeof VOLATILITY_INDICES[number], input: Volatili
   if (latest && latest.date !== normalized.rows.at(-1)?.date) warnings.push("Latest supplied close unavailable; showing last valid observation");
   if (latest && !adjacent) warnings.push("1D change unavailable: previous daily close missing or too far apart");
   if (latest && !broadCoverage) warnings.push(`1Y percentile unavailable: ${history.length} observations across ${coverageDays} days`);
-  if (input?.stale) warnings.push("Cached daily history is stale");
-  if (input?.error) warnings.push(input.error);
+  // A saved copy is dated in the footer; its failed refresh is not repeated here.
+  if (input?.stale && input.savedAt == null) warnings.push("Cached daily history is stale");
+  if (input?.error && input.savedAt == null) warnings.push(input.error);
   return { ...definition, unit: "index points", value: latest?.value ?? null, date: latest?.date ?? null,
     source: input?.source ?? null, previousDate: previous?.date ?? null, change1d,
     change1dPercent: change1d != null ? change1d / previous!.value! * 100 : null,
     percentile1y, sampleSize: history.length, coverageDays, history,
     missingDates: normalized.rows.filter((row) => row.value == null && Date.parse(row.date) > cutoff).map((row) => row.date),
     status: !latest ? "unavailable" : warnings.length > 0 ? "limited" : "available",
-    stale: input?.stale ?? false, error: input?.error ?? null, warnings };
+    stale: input?.stale ?? false, error: input?.error ?? null, ...(input?.savedAt != null ? { savedAt: input.savedAt } : {}), warnings };
 }
 function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatilityHistory, term: VolatilityTermHistory): VolatilityCurve {
   const rows = VOLATILITY_CURVE_INDICES.map((definition) => board.find((row) => row.id === definition.id)!);
@@ -337,7 +348,7 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
   const spot = points[1]!.value, threeMonth = points[2]!.value;
   const warnings = points.flatMap((point, index) => [
     ...(point.value == null ? [`${point.label}: no close aligned to ${date ?? "a common date"}`] : []),
-    ...(point.value != null && rows[index]!.stale ? [`${point.label}: aligned close is from stale cached history`] : []),
+    ...(point.value != null && rows[index]!.stale && rows[index]!.savedAt == null ? [`${point.label}: aligned close is from stale cached history`] : []),
   ]);
   const ratio = spot != null && threeMonth != null ? threeMonth / spot : null;
   const context = ratioPercentile(term, ratio, date);

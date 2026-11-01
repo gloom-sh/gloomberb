@@ -110,6 +110,23 @@ describe("ticker-search utilities", () => {
     expect(listingChoiceQuery("ES=F:")).toBeNull();
   });
 
+  test("the line the service marks as a company's home leads a symbol's choices, before another company's lines abroad", async () => {
+    // /market/search?q=YAR on 2026-10-30: `quote YAR` offered Americold's four German lines first and Yara's own line last.
+    const dataProvider = createTestDataProvider({
+      search: async () => [
+        makeSearchResult("YAR", "Americold Realty Trust, Inc.", { exchange: "MUNICH" }),
+        makeSearchResult("YAR", "Americold Realty Trust Inc.", { exchange: "HANOVER" }),
+        makeSearchResult("YAR", "Yari Minerals Limited", { exchange: "ASX" }),
+        { ...makeSearchResult("YAR", "Yara International ASA", { exchange: "OSL", currency: "NOK" }), homeListing: true },
+      ],
+      getQuote: async () => { throw new Error("NOT_FOUND"); },
+    });
+    const error = await resolveTickerSearch({ query: "YAR", activeTicker: null, tickers: new Map(), dataProvider }).catch((caught) => caught);
+    expect(error).toBeInstanceOf(AmbiguousTickerError);
+    expect(error.listings[0]).toMatch(/^YAR:(OSL|XOSL)$/);
+    expect(error.listings).toHaveLength(4);
+  });
+
   test("ambiguous symbols require venue, currency and exact quote evidence", async () => {
     const results = [makeSearchResult("GLD", "SPDR", { exchange: "BYMA", currency: "ARS" }),
       makeSearchResult("GLD", "SPDR", { exchange: "NYSE", currency: "USD" })];
@@ -1257,6 +1274,36 @@ describe("ticker-search utilities", () => {
       }
     });
 
+    test("a line of another business its name is in never takes the lead from the company's own line", () => {
+      // Sony Financial Group trades in Tokyo beside Sony Group, so it is another business; its search score
+      // took the lead from Sony Group's unscored home line.
+      const sony = [
+        listing("SONY", "Sony Group Corporation ADR", "NYSE", undefined, "American Depositary Receipt"),
+        listing("8729", "Sony Financial Group Inc.", "JPX", 20053),
+        listing("6758", "Sony Group Corp.", "JPX"),
+      ];
+      expect(primary("Sony Group", sony)).toBe("6758");
+      // Siemens Energy beside Siemens AG on XETRA, searched twice as often.
+      const siemens = [listing("SIE", "Siemens AG", "XETRA"), listing("ENR", "Siemens Energy AG", "XETRA", 42000), listing("ENR", "Siemens Energy AG", "VIE")];
+      expect(primary("Siemens AG", siemens)).toBe("SIE");
+      // A fuller name on no venue the company's own name trades on is still the company: Deutsche Lufthansa for LUFTHANSA.
+      const lufthansa = [listing("LUFTH", "LUFTHANSA", "BUD"), listing("LHA", "Deutsche Lufthansa AG", "XETRA", 20933)];
+      expect(primary("lufthansa", lufthansa)).toBe("LHA");
+    });
+
+    test("the row the service marks with the word is the company it means, ahead of a line abroad whose symbol is the word", () => {
+      // /market/search?q=siemens on 2026-10-29: SIEMENS is Siemens Ltd. in India; the service marks SIE with "siemens".
+      const home = (result: InstrumentSearchResult) => ({ ...result, homeListing: true });
+      const siemens = [
+        home(listing("SIEMENS", "Siemens Ltd.", "NSE")),
+        home({ ...listing("SIE", "Siemens Aktiengesellschaft", "XETRA", 21467), searchAliases: ["siemens"] }),
+        home(listing("ENR", "Siemens Energy AG", "XETRA", 24343)),
+      ];
+      expect(primary("siemens", siemens)).toBe("SIE");
+      // Unmarked, the symbol keeps its lead.
+      expect(primary("siemens", siemens.map(({ searchAliases: _aliases, ...result }) => result))).toBe("SIEMENS");
+    });
+
     test("a typed depositary receipt yields to its issuer's home listing; an untyped ADR keeps popularity order", () => {
       const toyota = [
         listing("TM", "Toyota Motor Corporation", "NYSE", 23125),
@@ -1303,6 +1350,22 @@ describe("ticker-search utilities", () => {
       ];
       expect(primary("LVMH", lvmh)).toBe("MC");
       expect(symbols("LVMH", lvmh).slice(0, 2)).toEqual(["MC", "LVMH"]);
+    });
+
+    test("a symbol's home listing leads another company's German regional line of it", () => {
+      // /market/search?q=YAR on 2026-10-30: Americold's lines in Germany came first, Yara's home line on Oslo seventh.
+      const yar = [
+        listing("YAR", "Americold Realty Trust, Inc.", "MUNICH", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust, Inc.", "FWB2", undefined, "REIT"),
+        listing("YAR", "Americold Realty Trust Inc.", "HANOVER", undefined, "Common Stock"),
+        listing("YAR", "Yari Minerals Limited", "ASX", undefined, "Common Stock"),
+        { ...listing("YAR", "Yara International ASA", "OSL", undefined, "Common Stock"), homeListing: true },
+      ];
+      const ranked = build("YAR", yar);
+      expect(ranked.find((item) => item.category === "Primary Listing")?.result?.exchange).toBe("OSL");
+      // A home line of its own leads only a regional line: a symbol's line on its home exchange keeps the lead.
+      const yari = [yar[3]!, yar[4]!];
+      expect(build("YAR", yari)[0]?.result?.exchange).toBe("ASX");
     });
   });
 

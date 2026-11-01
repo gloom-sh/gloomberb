@@ -31,15 +31,16 @@ const COIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "rank", header: "#", align: "right" },
   { key: "code", header: "Coin" },
   { key: "name", header: "Name" },
-  { key: "price", header: "Price", align: "right", format: (_value, row) => String(row.priceText ?? "—") },
+  // Every coin is priced, traded and valued in US dollars: the text headers say so; an export keeps its headers.
+  { key: "price", header: "Price", textHeader: "Price USD", align: "right", format: (_value, row) => String(row.priceText ?? "—") },
   // Since 00:00 UTC, the day `quote` gives a coin (CRYPTO_CHANGE_BASIS_LABEL): the text says so, as the pane's
   // CHG% UTC does, and an export keeps the header it has always had.
   { key: "changePercent", header: "Chg %", textHeader: "Chg % UTC", align: "right", format: percent },
   { key: "return7d", header: "7D %", align: "right", format: percent },
   { key: "return30d", header: "30D %", align: "right", format: percent },
   { key: "return1y", header: "1Y %", align: "right", format: percent },
-  { key: "volume24h", header: "Vol 24h", align: "right", format: compact },
-  { key: "marketCap", header: "Market cap", align: "right", format: compact },
+  { key: "volume24h", header: "Vol 24h", textHeader: "Vol 24h USD", align: "right", format: compact },
+  { key: "marketCap", header: "Market cap", textHeader: "Market cap USD", align: "right", format: compact },
 ];
 
 /**

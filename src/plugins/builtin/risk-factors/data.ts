@@ -3,7 +3,7 @@ import {
   type CloudRiskReportListPayload,
   type CloudRiskReportPayload,
 } from "../../../api-client";
-import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError, isTransientFailure } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
@@ -21,6 +21,8 @@ type RiskApiClient = Pick<HeadlessPaneApiClient, "getRiskReports" | "getRiskRepo
 interface RiskFreshness {
   fetchedAt: number;
   stale: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
   errorStatus?: number;
 }
@@ -72,9 +74,10 @@ function loadCached<T extends object>(
     // A failed forced refresh must be retried when this pane is reopened, even
     // when the previously cached value has not reached its ordinary TTL yet.
     if (current()) failedRefreshes.set(failedKey, store);
-    // A missing or denied resource must not be replaced by previously cached content.
-    if (isPermanentClientError(error)) {
-      if (current()) store?.deleteResource(kind, key, { sourceKey: CACHE_SOURCE });
+    // A saved copy answers only for a failure asking again may get past: a refusal or a reply that
+    // fails validation is the error, and a missing or denied resource also drops its copy.
+    if (!isTransientFailure(error)) {
+      if (isPermanentClientError(error) && current()) store?.deleteResource(kind, key, { sourceKey: CACHE_SOURCE });
       throw error;
     }
     const fallback = store?.getResource<T>(kind, key, { ...options, allowExpired: true });
@@ -84,6 +87,7 @@ function loadCached<T extends object>(
       ...fallback.value,
       fetchedAt: fallback.fetchedAt,
       stale: true,
+      savedAt: fallback.fetchedAt,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
       errorStatus: error instanceof ApiRequestError ? error.status : undefined,
     }, fallback.fetchedAt);

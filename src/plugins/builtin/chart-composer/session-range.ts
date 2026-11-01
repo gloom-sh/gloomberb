@@ -4,6 +4,7 @@ import { cleanFloat32Price } from "../../../cli/history-rows";
 import { exportNumber } from "../../../cli/report-tables";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatUtcTime } from "../../../utils/utc-time";
+import { pricePointWicks } from "../../../utils/price-history-integrity";
 
 interface SessionExtreme {
   price: number;
@@ -26,8 +27,10 @@ function sessionRange(points: readonly PricePoint[]): SessionRange | null {
   for (const point of points) {
     const at = point.date;
     if (!(at instanceof Date) || !Number.isFinite(at.getTime())) continue;
-    const pointLow = finitePositive(point.low) ?? finitePositive(point.close);
-    const pointHigh = finitePositive(point.high) ?? finitePositive(point.close);
+    // A wick too far from the bar's body to have traded is not a price the bars traded.
+    const wicks = pricePointWicks(point);
+    const pointLow = finitePositive(wicks.low) ?? finitePositive(point.close);
+    const pointHigh = finitePositive(wicks.high) ?? finitePositive(point.close);
     if (pointLow != null && (!low || pointLow < low.price)) low = { price: pointLow, at };
     if (pointHigh != null && (!high || pointHigh > high.price)) high = { price: pointHigh, at };
   }

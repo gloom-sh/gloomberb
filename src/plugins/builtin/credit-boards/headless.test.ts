@@ -175,6 +175,28 @@ test("every SOVR export row names its series, unit and own date", async () => {
   expect(csv[2]!.split(",").slice(-5)).toEqual(["sovereign-cds:eg", "bp", "daily", "DTCC", "2026-10-02"]);
 });
 
+test("a level that is the day's settlement price is marked in its own column, which a report without one leaves out", async () => {
+  const context = (board: SovrBoardPayload) => ({
+    apiClient: { getCloudSovrBoard: async () => board },
+    marketData: { getPriceHistory: async () => [] },
+  }) as unknown as HeadlessPaneContext;
+  const csvOf = async (board: SovrBoardPayload) => {
+    const result = await sovrHeadless.load(args, context(board));
+    const freshness = deriveHeadlessFreshness(sovrHeadless, result);
+    return renderReportCsv(headlessReportTables(sovrHeadless, result, args, "SOVR", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  };
+  expect((await csvOf(sovrPayload))[0]).not.toContain("Level");
+
+  const settled = { ...sovrPayload, sovereigns: [{ ...sovereign("AR", "Argentina", "ARS", 640.2), prints: 0, reported: 0, kind: "settlement" as const }, sovereign("BR", "Brazil", "BRL", 119.7)] };
+  const result = await sovrHeadless.load(args, context(settled));
+  expect((result as { rows: HeadlessPaneRow[] }).rows.map((row) => row.kind)).toEqual(["settlement", "traded"]);
+  const csv = await csvOf(settled);
+  const header = cells(csv[0]!);
+  const level = header.indexOf("Level");
+  expect(level).toBeGreaterThan(0);
+  expect([cells(csv[1]!)[level], cells(csv[2]!)[level]]).toEqual(["settlement", ""]);
+});
+
 test("SOVR lists one country's row when a country is named, and says which countries it has when it is not one", async () => {
   const context = {
     apiClient: { getCloudSovrBoard: async () => sovrPayload },

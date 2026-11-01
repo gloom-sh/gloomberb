@@ -1,5 +1,5 @@
-import { canonicalExchange } from "../../utils/exchanges";
-import { companyNameExtraWords, sameCompany } from "../company-name";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { companyLines, companyNameExtraWords, namedByService, type CompanyLineFacts } from "../company-name";
 import { answersOnlyByKeyword, isQualifiedTickerQuery } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
@@ -29,6 +29,69 @@ export function lineDistance(type: string, exchange: string, symbol: string): 0 
   return SECONDARY_VENUES.has(exchange) || /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
 }
 
+/** How the primary-listing choice weighs one of a company's lines. */
+export interface WeighedCompanyLine {
+  /** `listingDistance`: 0 its own line, 1 a line quoting shares listed elsewhere, 2 a receipt. */
+  distance: number;
+  /** The search score the service gives the listings people look up most; null when it gives none. */
+  score: number | null;
+}
+
+/**
+ * The line a company's search lists as its primary listing instead of `lead`,
+ * the line search put first, often the one-off cross-listing whose short name
+ * matched the query (LUFTHANSA on Budapest): its lines go by how far each is
+ * from being its own line, then by the search score. The lead gives way only
+ * to a closer line, or to one searched at least twice as often, or any scored
+ * line when it has no score. With `named` (the service marked the lead with
+ * the name as typed) no score outweighs the mark: only a closer line does.
+ * `lines` holds the lead. `search` and a company's name typed for a listing
+ * (`findListingOfCompanyName`) choose by this one rule, so both open the same
+ * listing.
+ */
+export function primaryCompanyLine<T>(
+  lead: T,
+  lines: readonly T[],
+  weigh: (line: T) => WeighedCompanyLine,
+  options: { named?: boolean } = {},
+): T {
+  const order = (line: T) => lines.indexOf(line);
+  const [home] = [...lines].sort((a, b) => weigh(a).distance - weigh(b).distance
+    || (weigh(b).score ?? -1) - (weigh(a).score ?? -1) || order(a) - order(b));
+  if (!home || home === lead) return lead;
+  const [best, first] = [weigh(home), weigh(lead)];
+  const closer = best.distance < first.distance;
+  const moreSearched = !options.named && best.distance === first.distance && best.score != null
+    && (first.score == null || best.score >= first.score * 2);
+  return closer || moreSearched ? home : lead;
+}
+
+/** A row as `companyLines` weighs it. */
+function lineFacts(candidate: TickerSearchCandidate): CompanyLineFacts {
+  return {
+    name: candidateName(candidate),
+    exchange: candidateExchange(candidate),
+    receipt: listingDistance(candidate) === 2,
+    home: candidate.result?.homeListing === true,
+  };
+}
+
+/** The rows of `lead`'s company among `items` (`companyLines`): never a line of another business its name is in (Siemens Energy for Siemens). */
+function companyRows<T extends TickerSearchCandidate>(lead: T, items: readonly T[]): T[] {
+  return companyLines(lead, items.filter((item) => item === lead || isListedEquity(item)), lineFacts);
+}
+
+/** `primaryCompanyLine` among `items` of `start`'s company, for the command bar's rows. */
+function primaryLineOf<T extends TickerSearchCandidate>(start: T, items: readonly T[], query: string): T {
+  const name = candidateName(start);
+  const named = !!start.result && namedByService(query, start.result);
+  const lines = companyRows(start, items).filter((item) => item === start
+    || !named || companyNameExtraWords(candidateName(item), name) != null);
+  return primaryCompanyLine(start, lines, (item) => ({
+    distance: listingDistance(item), score: item.result?.popularity ?? item.popularity ?? null,
+  }), { named });
+}
+
 function candidateName(candidate: TickerSearchCandidate): string {
   return candidate.result?.name || candidate.detail.split(" | ")[0] || "";
 }
@@ -51,24 +114,57 @@ function isListedEquity(candidate: TickerSearchCandidate): boolean {
  * service marks as the company's home (`homeListing`) takes the lead from
  * the company's first row. Without that mark, a receipt in the lead gives
  * way to the company's own shares on an exchange (`listingDistance` 0, not
- * an OTC or regional line), the name nearest the receipt's first. A query that names a venue (LVMH:TSX,
- * 7203.T) asked for that line, and a saved row keeps the lead.
+ * an OTC or regional line), the name nearest the receipt's first. Then the
+ * line `search` calls the company's primary listing (`primaryCompanyLine`)
+ * takes the lead, so a name opens what `search` lists first: LHA on XETRA
+ * for "lufthansa", not LUFTHANSA on Budapest. A company's lines are never
+ * another business's its name is in (`companyLines`: Siemens Energy AG for
+ * Siemens AG). The row the service marks with the word as typed is the
+ * company the word means, ahead of a line abroad whose symbol is the word:
+ * "siemens" is SIE on XETRA, not SIEMENS on NSE (Siemens Ltd.); a US line
+ * keeps its ticker. A symbol typed whose first row is another company's
+ * regional line abroad leads with the line the service marks as a home under
+ * that symbol (YAR is Yara on OSL, not Americold on Hanover). A query that
+ * names a venue (LVMH:TSX, 7203.T) asked for that line, and a saved row keeps
+ * the lead.
  */
 export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   if (isQualifiedTickerQuery(query)) return items;
   const lead = items.find((item) => item.instrumentClass !== "fund" && item.instrumentClass !== "derivative"
     && !answersOnlyByKeyword(item, query));
   if (!lead || !isListedEquity(lead)) return items;
+  const typedSymbol = lead.symbol.toUpperCase() === query.trim().toUpperCase();
+  const meant = typedSymbol && !isUsListingExchange(candidateExchange(lead)) && !(lead.result && namedByService(query, lead.result))
+    // A company's shares under another symbol: an index the code also names (SPX) or the word's own line elsewhere (SAP) is not it.
+    ? items.find((item) => item !== lead && isListedEquity(item) && item.instrumentClass === "equity" && !!item.result
+      && item.symbol.toUpperCase() !== lead.symbol.toUpperCase() && namedByService(query, item.result))
+    : undefined;
+  if (meant) return moveAhead(items, meant, lead);
+  // A line abroad that only quotes shares listed elsewhere (a German regional venue) gives way to the line the
+  // service marks as a company's home under the same symbol: YAR is Yara on Oslo, not Americold on Hanover.
+  const homeOfSymbol = typedSymbol && lead.result?.homeListing !== true && listingDistance(lead) === 1
+    && !isUsListingExchange(candidateExchange(lead))
+    ? items.find((item) => item !== lead && isListedEquity(item) && item.result?.homeListing === true
+      && item.symbol.toUpperCase() === lead.symbol.toUpperCase())
+    : undefined;
+  if (homeOfSymbol) return moveAhead(items, homeOfSymbol, lead);
   const name = candidateName(lead);
-  const lines = items.filter((item) => item !== lead && isListedEquity(item) && sameCompany(name, candidateName(item)));
+  const lines = companyRows(lead, items).filter((item) => item !== lead);
   const nearest = (candidates: T[]) => [...candidates].sort((a, b) => nameGap(name, candidateName(a)) - nameGap(name, candidateName(b))
     || items.indexOf(a) - items.indexOf(b))[0];
   const marked = lines.filter((item) => item.result?.homeListing === true);
+  const own = listingDistance(lead) === 2 ? nearest(lines.filter((item) => listingDistance(item) === 0)) : undefined;
   const home = lead.result?.homeListing === true ? undefined
     : marked.length ? nearest(marked)
-    : listingDistance(lead) === 2 ? nearest(lines.filter((item) => listingDistance(item) === 0))
-    : undefined;
-  if (!home) return items;
+    // A listing searched by its own symbol is that listing, as `search` keeps it.
+    : typedSymbol ? own
+    : primaryLineOf(own ?? lead, [lead, ...lines], query);
+  if (!home || home === lead) return items;
+  return moveAhead(items, home, lead);
+}
+
+/** `items` with `home` moved just ahead of `lead`. */
+function moveAhead<T>(items: readonly T[], home: T, lead: T): T[] {
   const rest = items.filter((item) => item !== home);
   const at = rest.indexOf(lead);
   return [...rest.slice(0, at), home, ...rest.slice(at)];

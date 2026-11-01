@@ -408,6 +408,7 @@ const CLI_DESCRIPTION = "Market research and portfolio tracker for the terminal"
 
 export interface DispatchCliOptions {
   externalPlugins?: LoadedExternalPlugin[];
+  loadExternalPlugins?: () => Promise<LoadedExternalPlugin[]>;
 }
 
 /** Old names kept so existing scripts still run; help and suggestions leave them out. */
@@ -430,6 +431,7 @@ async function createRegistry(options: DispatchCliOptions = {}): Promise<CliComm
   registry = buildCliCommandRegistry({
     coreCommands,
     externalPlugins: options.externalPlugins ?? [],
+    ...(options.externalPlugins === undefined ? { loadExternalPlugins: options.loadExternalPlugins } : {}),
     config,
   });
   return registry;
@@ -456,9 +458,23 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
 
   const registry = await createRegistry(options);
-  const resolved = registry.lookup.get(normalizeCliCommandToken(foldTypedText(command)));
+  const token = normalizeCliCommandToken(foldTypedText(command));
+  let resolved = registry.lookup.get(token);
+  if (!resolved) {
+    await registry.ensureExternalPlugins?.();
+    resolved = registry.lookup.get(token);
+  }
   if (!resolved) {
     return { kind: "unhandled" };
+  }
+
+  // The overview includes installed commands; one built-in command's help only
+  // needs that command. An unknown help topic may belong to an installed plugin.
+  if (resolved.command.name === "help") {
+    const topic = parsed.args[1];
+    if (!topic || !registry.lookup.has(normalizeCliCommandToken(foldTypedText(topic)))) {
+      await registry.ensureExternalPlugins?.();
+    }
   }
 
   // Help flags never reach the command, where they would read as a symbol, a
@@ -500,6 +516,7 @@ export async function failUnknownCliCommand(args: string[], options: DispatchCli
     // Intentional ignore: dispatchCli already reports invalid flags.
   }
   const registry = await createRegistry(options);
+  await registry.ensureExternalPlugins?.();
   const commands = listedCommands(registry).map((entry) => entry.command);
   // A function's code typed as a command is pointed at `fn`, and a word the catalog knows at its
   // functions, with the arguments the reader gave.

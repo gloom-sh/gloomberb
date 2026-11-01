@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { bareFredSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
+import { bareCatalogSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -212,6 +212,32 @@ test("a chart of daily bars is as of its newest point: the closed session's day,
     const text = renderHeadlessPaneText(definition, closed, args, "Custom Chart");
     expect(text).toContain("Fri 23 Oct 2026 · not a live feed (daily closes)");
     expect(text).not.toContain("00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a window that ended before today is the history asked for: dated through its last close, never stale", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+    getPriceHistoryForResolution: async () => daily,
+    getDetailedPriceHistory: async () => daily,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE"), "chart-composer", { rangePreset: "1M", chartResolution: "1d" });
+  spec.viewport.dateWindow = { start: "2026-10-21", end: "2026-10-23" };
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE", rawArgument: "DHI:NYSE", symbols: [], options: {} };
+  try {
+    // A week later: the window's last close is a week old, and that is what was asked for.
+    setSystemTime(new Date("2026-10-30T22:00:00Z"));
+    const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toContain("not a live feed (daily closes through Fri 23 Oct)");
+    expect(text).not.toContain("stale");
   } finally {
     setSystemTime();
   }
@@ -513,16 +539,27 @@ test("fn G DFII10 charts the FRED series once no listing answers to it, and a ti
   const quoted = async (symbol: string) => ({ symbol, price: 79, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0 });
   const guard = (getQuote: (symbol: string) => Promise<unknown>) => ({ marketData: createTestDataProvider({ getQuote: getQuote as never }), catalogSeriesName: catalog });
   // A listing read, a quote that answers, or a failure that is not "not a ticker" keep the ticker.
-  expect(await bareFredSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
-  expect(await bareFredSeries(ir, async () => null, guard(quoted))).toBeNull();
-  expect(await bareFredSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
+  expect(await bareCatalogSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
+  expect(await bareCatalogSeries(ir, async () => null, guard(quoted))).toBeNull();
+  expect(await bareCatalogSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
   // A symbol the catalog does not list is never asked about.
   let asked = 0;
-  expect(await bareFredSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
+  expect(await bareCatalogSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
   expect(asked).toBe(0);
-  expect(await bareFredSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
+  expect(await bareCatalogSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
     id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
   });
+
+  // A word a catalog series lists as an alias (fn G hashrate) charts that series, on the same terms.
+  const hashrate = buildCustomChartPreset("HASHRATE").series[0]!;
+  const named = (getQuote: (symbol: string) => Promise<unknown>) => ({
+    ...guard(getQuote),
+    catalogSeriesNamed: (word: string) => word === "HASHRATE" ? { expression: "CAP:bitcoin:hashrate", name: "Bitcoin network hash rate" } : undefined,
+  });
+  expect(await bareCatalogSeries(hashrate, async () => null, named(notATicker))).toMatchObject({
+    id: hashrate.id, source: { kind: "capability", capabilityId: "bitcoin", seriesId: "hashrate" }, label: "Bitcoin network hash rate",
+  });
+  expect(await bareCatalogSeries(hashrate, async () => null, named(quoted))).toBeNull();
 });
 
 test("fn CMP reads a leg's fund facts once through their cache, and never a leg a cached quote calls a stock", async () => {
@@ -559,4 +596,39 @@ test("fn CMP reads a leg's fund facts once through their cache, and never a leg 
   } finally {
     fundFactsCache.reset();
   }
+});
+
+test("GIP ends a closed session on its official close, says when it is still to come, and reads no quote for it while trading or for a coin", async () => {
+  const run = async (symbol: string, now: string, quote: Record<string, unknown>) => {
+    const points = [13, 14, 15, 16, 17, 18, 19].map((hour, index) => ({
+      date: new Date(`2026-10-30T${hour}:30:00Z`), open: 100, high: 101, low: 99, close: 100 + index, volume: 10,
+    })).filter((point) => point.date.getTime() <= Date.parse(now));
+    let calls = 0;
+    const provider = createTestDataProvider({
+      getQuote: async (requested) => {
+        calls++;
+        return { symbol: requested, price: 107, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "NASDAQ", lastUpdated: Date.parse(now), ...quote };
+      },
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getPriceHistoryForResolution: async () => points,
+      getDetailedPriceHistory: async () => points,
+    });
+    try {
+      setSystemTime(new Date(now));
+      const model = await chartHeadless("graph-intraday-price-pane").load({ argument: symbol, rawArgument: symbol, symbols: [symbol], options: {} },
+        createTestHeadlessContext({ marketData: provider, settings: { chartSpec: buildIntradayPriceChartPreset(symbol) } })) as ChartPaneModel;
+      return { calls, last: model.chart.series[0]?.points.at(-1)?.value, note: model.freshness?.note };
+    } finally {
+      setSystemTime();
+    }
+  };
+  // Fri 30 Oct 2026: AAPL trades until 20:00 UTC; its 19:30 bar ends on the last trade before the closing auction.
+  const trading = await run("AAPL:NASDAQ", "2026-10-30T18:45:00Z", { marketState: "REGULAR" });
+  const closed = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST", regularClose: 105.5, regularCloseSessionDate: "2026-10-30" });
+  expect(closed.last).toBe(105.5);
+  expect(closed.calls - trading.calls).toBe(1);
+  const waiting = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST" });
+  expect(waiting.note).toContain("closing print not in yet");
+  // A coin has no session to close: no quote is read for it.
+  expect((await run("BTC-USD:CCC", "2026-10-30T20:10:00Z", { marketState: "REGULAR", listingExchangeName: "CCC" })).calls).toBe(trading.calls);
 });

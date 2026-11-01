@@ -5,6 +5,7 @@ import type {
 import { formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
+import { unansweredRefreshError } from "../../../data/saved-copies";
 import type { TreasuryAuction } from "./types";
 import { FIXED_INCOME_VIEW_STATE } from "../fixed-income/model";
 import {
@@ -156,7 +157,8 @@ function createTreasuryAuctionsHeadless(
       ];
       return {
         complete: !result.refreshError,
-        errors: result.refreshError ? [result.refreshError] : [],
+        // A saved copy answering the failed refresh ends the report by saying when it was saved instead.
+        errors: [unansweredRefreshError(result)].filter((error): error is string => !!error),
         notes,
         rows: auctions.map((auction) => ({
           ...auction,

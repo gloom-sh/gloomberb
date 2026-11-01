@@ -1,3 +1,4 @@
+import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import type { TreasuryAuction, TreasuryAuctionRaw } from "./types";
 
@@ -222,9 +223,8 @@ export async function fetchTreasuryAuctions(
 ): Promise<TreasuryAuction[]> {
   return fetchAuctionPages(async (page) => {
     const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(query, page));
-    if (!response.ok) {
-      throw new Error(`Treasury Fiscal Data request failed (${response.status})`);
-    }
+    // The status stays: an overloaded server is a failure a saved board may answer for, a refusal is not.
+    if (!response.ok) throw new ApiRequestError(`Treasury Fiscal Data request failed (${response.status})`, response.status);
     return response.json();
   });
 }

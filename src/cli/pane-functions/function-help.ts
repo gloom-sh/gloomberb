@@ -234,10 +234,11 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["RV"],
   },
   EQS: {
-    summary: "Screen covered stocks on valuation, growth, margins, liquidity, volatility, technicals, float and ownership, short interest, insider activity and 13F holders, then rank the matches by any metric. "
+    summary: "Screen covered stocks on valuation, growth, margins, returns on capital, leverage, liquidity, volatility, technicals, float and ownership, short interest, insider activity and 13F holders, then rank the matches by any metric. "
       + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest. IV percentile, IV30 change in vol points, HV20 and HV rank screen premium to sell. "
-      + "Technical fields read the last completed session: RSI 14, price vs SMA 20, 50 and 200, trading days since a MACD or golden cross and since a new 20-day or 52-week high or low, and Bollinger width percentile (0 is a six-month squeeze). Ideas holds ready technical screens.",
-    usage: ["EQS", "gloom fn EQS --preset golden-cross"],
+      + "Technical fields read the last completed session: RSI 14, price vs SMA 20, 50 and 200, trading days since a MACD or golden cross and since a new 20-day or 52-week high or low, and Bollinger width percentile (0 is a six-month squeeze). "
+      + "ROIC, FCF yield, net debt / EBITDA, debt / equity and the revenue and EPS CAGRs read FA's bases, and forward growth EE's consensus; N/M where FA prints it. Ideas holds ready technical screens and Value, Quality and GARP.",
+    usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality"],
     keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
@@ -533,7 +534,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CAST", "DDIS"],
   },
   ATTN: {
-    summary: "See which tickers opted-in Gloom users are researching, with delayed privacy-qualified hourly counts, abnormal attention, sectors, countries and market context. Suppressed activity is unavailable, never zero.",
+    summary: "See which tickers Gloom users are researching, with delayed privacy-qualified hourly counts, abnormal attention, sectors, countries and market context. Suppressed activity is unavailable, never zero.",
     usage: ["ATTN", "ATTN 6758:JPX"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
     data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },
@@ -1427,9 +1428,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   ROADMAP: {
-    summary: "What is being built, what is planned and what shipped, with each item's votes. Pro members vote on what is building or planned, once per item, and can take the vote back.",
+    summary: "What is being built, what is planned and what shipped, with each item's votes, and the Changelog in a second tab. Pro members vote on what is building or planned, once per item, and can take the vote back.",
     usage: ["ROADMAP"],
-    keys: [OPEN, key("v", "ote")],
+    keys: [TABS, OPEN, key("v", "ote")],
     data: null,
     bloomberg: [],
   },

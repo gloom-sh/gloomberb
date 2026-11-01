@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -7,7 +8,7 @@ import {
   resetThirteenFApiPersistence,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
-import { corporateSplitFactor, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
+import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
 import { filingGapText } from "./report-notes";
 import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
@@ -32,10 +33,12 @@ describe("13F data cache", () => {
         filed_as_of_date: "2026-08-14", submission_type: "13F-HR" },
     ];
     let latestFilings = forms;
+    let formLists = 0;
     setHttpFetchTransport(async (url) => {
       const request = new URL(String(url));
       const path = request.pathname.split("/").at(-1);
       const withManager = (rows: any[]) => rows.map((form) => ({ ...form, cik: "1067983", company_name: "Fund" }));
+      if (path === "forms") formLists += 1;
       if (path === "forms") return json(withManager(forms.slice(Number(request.searchParams.get("offset") ?? 0), Number(request.searchParams.get("limit")))));
       if (path === "filings") return json(withManager(latestFilings));
       if (path === "funds") return json([{ cik: "1067983", name: "Fund" }]);
@@ -59,6 +62,13 @@ describe("13F data cache", () => {
     expect((await loadBrowserRows("funds", "Fund")).rows[0]).toMatchObject({ tableValueTotal: null, tableEntryTotal: null });
     latestFilings = [{ ...forms[0], period_of_report: "2026-03-31" }];
     expect((await loadBrowserRows("latest", "latest")).rows[0]).toMatchObject({ periodOfReport: "2026-03-31", tableValueTotal: null, tableEntryTotal: null });
+    // A restatement is its quarter's whole report: the latest list reads no fund's filings for it.
+    latestFilings = [{ ...forms[0], amendment_type: "RESTATEMENT", table_value_total: 70, table_entry_total: 4 }];
+    formLists = 0;
+    const restated = await loadBrowserRows("latest", "latest");
+    await restated.reportsLoaded;
+    expect(restated.rows[0]).toMatchObject({ tableValueTotal: 70, tableEntryTotal: 4 });
+    expect(formLists).toBe(0);
   });
 
   test("a missing prior report preserves current holdings and restores comparisons after refresh", async () => {
@@ -71,7 +81,7 @@ describe("13F data cache", () => {
       ]);
       const accession = request.searchParams.get("accession_number");
       if (accession === failure) return new Response("unavailable", { status: 503 });
-      return json([{ accession_number: accession, cik: "1067983", cusip: "111111111", value: accession === "current" ? 100 : 90, ssh_prnamt: 10 }]);
+      return filingJson(request, [{ accession_number: accession, cik: "1067983", cusip: "111111111", value: accession === "current" ? 100 : 90, ssh_prnamt: 10 }]);
     });
     const partial = await loadFundDetail("1067983", "Fund");
     expect(partial.latestReport).toMatchObject({ complete: true, tableValueTotal: 100 });
@@ -83,7 +93,8 @@ describe("13F data cache", () => {
     expect(hasComparable13FQuarter(recovered)).toBe(true);
     expect(buildFundHoldingRows(recovered)[0]).toMatchObject({ value: 100, previousValue: 90, action: "held", sharesChange: 0 });
     failure = "current";
-    await expect(loadFundDetail("1067983", "Fund", undefined, { forceRefresh: true })).rejects.toThrow("Forms13F 503");
+    // The service's own failure, not a second try at the public source.
+    await expect(loadFundDetail("1067983", "Fund", undefined, { forceRefresh: true })).rejects.toThrow("unavailable");
   });
 
   test("one failed holder enhancement retains every source CIK and healthy metadata", async () => {
@@ -148,8 +159,8 @@ describe("13F data cache", () => {
       if (parsed.pathname.endsWith("/forms")) return json(forms.map((form) => ({ ...form, cik: "1067983" })));
       const accession = parsed.searchParams.get("accession_number")!;
       fetched.push(accession);
-      return json([{ accession_number: accession, cik: "1067983", cusip: accession === "addition" ? "222222222" : "111111111",
-        ticker: accession === "addition" ? "NEW" : "OLD", value: accession === "addition" ? 50 : 100, ssh_prnamt: 10 }]);
+      return json({ complete: true, rows: [{ accession_number: accession, cik: "1067983", cusip: accession === "addition" ? "222222222" : "111111111",
+        ticker: accession === "addition" ? "NEW" : "OLD", value: accession === "addition" ? 50 : 100, ssh_prnamt: 10 }] });
     });
     const detail = await loadFundDetail("1067983", "Fund");
     expect(fetched.sort()).toEqual(["addition", "base", "previous"]);
@@ -258,7 +269,8 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
         { ...form, accession_number: "addition", filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS", table_value_total: 50, table_entry_total: 1 },
       ]);
     }
-    if (path === "filings") return json([{ ...form }]);
+    // The latest list's NEW HOLDINGS amendment, whose quarter's totals need the fund's original filing.
+    if (path === "filings") return json([{ ...form, accession_number: "addition", filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS", table_value_total: 50, table_entry_total: 1 }]);
     if (path === "funds") return json([{ cik: "1067983", name: "Fund" }]);
     if (path === "topfunds") return json([{ cik: "1067983", name: "Fund", period_of_report: "2026-06-30", pnl: 4 }]);
     if (path === "tickers") return json([{ cusip: "111111111", ticker: "AAA" }]);
@@ -277,7 +289,7 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
   for (let i = 0; i < 30 && formCalls === 0; i++) await Promise.resolve();
   expect(formCalls).toBeGreaterThan(0);
   expect(pages.map((page) => page.rows[0]?.name)).toEqual(["Fund", "Fund", "0001067983", "Fund"]);
-  expect(pages[0]?.rows[0]?.tableValueTotal).toBe(100);
+  expect(pages[0]?.rows[0]?.tableValueTotal).toBeNull();
   expect(pages[1]?.rows[0]?.tableValueTotal).toBeUndefined();
   expect(pages[2]?.rows[0]?.tableValueTotal).toBeUndefined();
   expect(pages[3]?.rows[0]).toMatchObject({ estQuarterReturn: 4, tableValueTotal: undefined });
@@ -287,6 +299,165 @@ test("ranked rows paint before filing reports, then take the reconciled totals",
   expect(pages[1]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
   expect(pages[2]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
   expect(pages[3]?.rows[0]).toMatchObject({ periodOfReport: "2026-06-30", estQuarterReturn: 4, tableValueTotal: 150, tableEntryTotal: 3 });
+});
+
+function holdingRows(accession: string, from: number, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    accession_number: accession, cik: "1067983", cusip: String(100_000_000 + from + index), value: from + index + 1, ssh_prnamt: 1,
+  }));
+}
+
+function filedForm(accession: string, period: string, entries: number) {
+  return {
+    accession_number: accession, cik: "1067983", company_name: "Fund", period_of_report: period,
+    filed_as_of_date: period, submission_type: "13F-HR", table_value_total: 100, table_entry_total: entries,
+  };
+}
+
+test("a filing comes whole in one request, and a page at a time, a few at once, from a service that cannot send it whole", async () => {
+  const asked: Array<{ path: string; offset?: number; limit?: number }> = [];
+  let whole: number | null = null;
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    asked.push({ path, ...(params.offset != null ? { offset: Number(params.offset), limit: Number(params.limit) } : {}) });
+    if (path === "/forms") return [filedForm("current", "2026-06-30", 1_234)];
+    if (path === "/holdings") {
+      if (whole != null) throw new ApiRequestError(whole === 404 ? "Unknown 13F path /holdings" : "Service unavailable", whole);
+      return { cik: "1067983", accession_number: "current", rows: holdingRows("current", 0, 1_234), complete: true };
+    }
+    if (path === "/form") return holdingRows("current", Number(params.offset), Math.max(0, Math.min(Number(params.limit), 1_234 - Number(params.offset))));
+    return {};
+  }) as never);
+  // Nothing falls through to the public source while Gloom Cloud answers.
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  try {
+    const detail = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false });
+    expect(detail.latestHoldings).toHaveLength(1_234);
+    expect(asked.map((request) => request.path)).toEqual(["/forms", "/holdings"]);
+
+    // A busy service is the error, not a reason to ask it 250 rows at a time.
+    whole = 503;
+    asked.length = 0;
+    await expect(loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true })).rejects.toThrow("Service unavailable");
+    expect(asked.some((request) => request.path === "/form")).toBe(false);
+
+    whole = 404;
+    asked.length = 0;
+    const paged = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(paged.latestHoldings.map((row) => row.value)).toEqual(Array.from({ length: 1_234 }, (_, index) => index + 1));
+    expect(paged.warnings).toEqual([]);
+    const pages = asked.filter((request) => request.path === "/form");
+    expect(pages[0]).toEqual({ path: "/form", offset: 0, limit: 250 });
+    // Five pages hold the filing; the few asked past its end come back empty.
+    expect(pages.map((page) => page.offset).slice(0, 5).sort((a, b) => a! - b!)).toEqual([0, 250, 500, 750, 1_000]);
+    expect(pages.length).toBeLessThanOrEqual(5 + 4);
+    // The older service is remembered: the next filing goes straight to pages.
+    asked.length = 0;
+    await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(asked.some((request) => request.path === "/holdings")).toBe(false);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a fund read ahead asks its filing list, and its holdings only when small, one fund at a time; opening it joins the read even when the read ahead stops", async () => {
+  attachThirteenFApiPersistence(new MemoryPluginPersistence());
+  const asked: string[] = [];
+  let entries = 1_500;
+  let releaseList!: () => void;
+  let listGate: Promise<void> = Promise.resolve();
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>, options?: { signal?: AbortSignal }) => {
+    asked.push(`${path}:${params.cik}${params.accession_number ? `:${params.accession_number}` : ""}`);
+    if (path === "/forms") {
+      await listGate;
+      options?.signal?.throwIfAborted();
+      return [filedForm(`${Number(params.cik)}-current`, "2026-06-30", entries), filedForm(`${Number(params.cik)}-previous`, "2026-03-31", 400)];
+    }
+    if (path === "/holdings") return { rows: holdingRows(String(params.accession_number), 0, 3), complete: true };
+    throw new Error(`unexpected ${path}`);
+  }) as never);
+  try {
+    // 1,900 rows over the two quarters: both filings are read ahead, and opening the fund asks nothing more.
+    await prefetchFundDetail("1", new AbortController().signal);
+    expect(asked).toEqual(["/forms:0000000001", "/holdings:0000000001:1-current", "/holdings:0000000001:1-previous"]);
+    asked.length = 0;
+    await loadFundDetail("1", "Fund", undefined, { filingGap: false });
+    expect(asked).toEqual([]);
+    // A large filer's list alone.
+    entries = 23_395;
+    await prefetchFundDetail("2", new AbortController().signal);
+    expect(asked).toEqual(["/forms:0000000002"]);
+
+    // Resting on another fund stops the last one; opening a fund while its read ahead is in flight joins it,
+    // and asks again when the read ahead is stopped under it.
+    asked.length = 0;
+    listGate = new Promise((resolve) => { releaseList = resolve; });
+    const prefetched: string[] = [];
+    const prefetcher = createFundPrefetcher(async (cik, signal) => {
+      prefetched.push(cik);
+      await prefetchFundDetail(cik, signal);
+    });
+    prefetcher.prefetch("3");
+    prefetcher.prefetch("3");
+    await Bun.sleep(1);
+    const opened = loadFundDetail("3", "Fund", undefined, { filingGap: false });
+    await Bun.sleep(1);
+    prefetcher.prefetch("4");
+    releaseList();
+    const detail = await opened;
+    expect(prefetched).toEqual(["3", "4"]);
+    expect(detail.latestForm?.accessionNumber).toBe("3-current");
+    expect(asked.filter((request) => request === "/forms:0000000003")).toHaveLength(2);
+    prefetcher.cancel();
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a large filing shows its first rows, then the whole filing, then the quarter it is compared with", async () => {
+  let releaseWhole!: () => void;
+  const wholeGate = new Promise<void>((resolve) => { releaseWhole = resolve; });
+  let releasePrevious!: () => void;
+  const previousGate = new Promise<void>((resolve) => { releasePrevious = resolve; });
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    if (path === "/forms") return [filedForm("current", "2026-06-30", 5_000), filedForm("previous", "2026-03-31", 10)];
+    if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+    if (params.accession_number === "previous") {
+      await previousGate;
+      return { rows: holdingRows("previous", 0, 10), complete: true };
+    }
+    if (params.limit != null) return { rows: holdingRows("current", 0, Number(params.limit)), complete: false };
+    await wholeGate;
+    return { rows: holdingRows("current", 0, 5_000), complete: true };
+  }) as never);
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  const seen: FundDetailData[] = [];
+  let shown!: () => void;
+  const firstShown = new Promise<void>((resolve) => { shown = resolve; });
+  try {
+    const loaded = loadFundDetail("1067983", "Fund", undefined, {
+      filingGap: false,
+      onProgress: (detail) => { seen.push(detail); shown(); },
+    });
+    await firstShown;
+    // The first rows, with nothing yet called a buy or a sale.
+    expect(seen[0]?.latestHoldings).toHaveLength(2_000);
+    expect(seen[0]?.loading).toEqual({ positions: true, comparison: true });
+    expect(hasComparable13FQuarter(seen[0]!)).toBe(false);
+    expect(buildFundHoldingRows(seen[0]!).every((row) => row.action === "unknown" && row.previousValue == null)).toBe(true);
+    releaseWhole();
+    await Bun.sleep(1);
+    expect(seen.at(-1)?.latestHoldings).toHaveLength(5_000);
+    expect(seen.at(-1)?.loading).toEqual({ comparison: true });
+    releasePrevious();
+    const detail = await loaded;
+    expect(detail.loading).toBeUndefined();
+    expect(seen.at(-1)?.loading).toBeUndefined();
+    expect(hasComparable13FQuarter(detail)).toBe(true);
+    expect(detail.latestHoldings).toHaveLength(5_000);
+    expect(detail.previousHoldings).toHaveLength(10);
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 test("abort during a holdings page stops the walk", async () => {
@@ -299,6 +470,8 @@ test("abort during a holdings page stops the walk", async () => {
       controller.abort();
       throw new DOMException("The operation was aborted.", "AbortError");
     }
+    // An older service, which reads a filing a page at a time.
+    if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
     throw new Error("cloud down");
   }) as never);
   setHttpFetchTransport(async (url) => {
@@ -364,6 +537,11 @@ test("a fund behind on its filings reads EDGAR's 13F-NT; a missing route, a serv
   }
 });
 
+/** A filing's rows as Gloom Cloud sends them: whole from `/holdings`, a page from `/form`. */
+function filingJson(request: URL, rows: unknown[]): Response {
+  return json(request.pathname.endsWith("/holdings") ? { rows, complete: true } : rows);
+}
+
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -372,17 +550,18 @@ function json(value: unknown): Response {
 }
 
 
-test("browser, reconciled report and individual filing expose failed-refresh cache provenance without changing filing dates", async () => {
+test("browser, reconciled report and individual filing say when the copy a failed refresh left was saved, without changing filing dates", async () => {
   attachThirteenFApiPersistence(new MemoryPluginPersistence());
+  const started = Date.now();
   let fail = false;
   setHttpFetchTransport(async url => {
-    if (fail) throw new Error("Controlled network outage");
+    if (fail) throw outage("Controlled network outage");
     if (new URL(String(url)).pathname.endsWith("/forms")) return json([{
       accession_number: "0001067983-26-000001", cik: "1067983", company_name: "Fund",
       period_of_report: "2026-06-30", filed_as_of_date: "2026-08-14", submission_type: "13F-HR",
       table_value_total: 100, table_entry_total: 1,
     }]);
-    return json([{ accession_number: "0001067983-26-000001", cik: "1067983", cusip: "111111111", value: 100, ssh_prnamt: 10 }]);
+    return filingJson(new URL(String(url)), [{ accession_number: "0001067983-26-000001", cik: "1067983", cusip: "111111111", value: 100, ssh_prnamt: 10 }]);
   });
   const browser = await loadBrowserRows("funds", "1067983");
   const detail = await loadFundDetail("1067983", "Fund");
@@ -395,14 +574,16 @@ test("browser, reconciled report and individual filing expose failed-refresh cac
   expect(retainedDetail.latestForm).toEqual(detail.latestForm);
   expect(retainedDetail.latestHoldings).toEqual(detail.latestHoldings);
   expect(retainedFiling.rows).toEqual(filing.rows);
-  for (const warning of [retainedBrowser.warning, ...retainedDetail.warnings!, ...retainedFiling.warnings]) {
-    expect(warning).toContain("Controlled network outage");
-    expect(warning).toMatch(/retrieved \d{4}-\d{2}-\d{2}T/);
+  // Each says when its copy was saved, for the footer every pane gives one, and none lists the failure.
+  for (const result of [retainedBrowser, retainedDetail, retainedFiling]) {
+    expect(result.savedAt).toBeGreaterThanOrEqual(started);
+    expect(result.savedAt!).toBeLessThanOrEqual(Date.now());
   }
+  expect([retainedBrowser.warning, ...retainedDetail.warnings!, ...retainedFiling.warnings].join(" ")).not.toContain("Controlled network outage");
   fail = false;
-  expect((await loadBrowserRows("funds", "1067983")).warning).toBeUndefined();
-  expect((await loadFundDetail("1067983", "Fund")).warnings).toEqual([]);
-  expect((await loadFilingPositions("1067983", "0001067983-26-000001")).warnings).toEqual([]);
+  for (const result of [await loadBrowserRows("funds", "1067983"), await loadFundDetail("1067983", "Fund"), await loadFilingPositions("1067983", "0001067983-26-000001")]) {
+    expect(result.savedAt).toBeUndefined();
+  }
 });
 
 test("performance history joins by CIK, rejects mismatched periods and leaves absent ranks unknown", async () => {
@@ -446,7 +627,7 @@ test("a fund's own performance row takes the ranking's return when it gives one,
       filed_as_of_date: form[key].filed, submission_type: "13F-HR", cik: "1067983",
     })));
     const accession = request.searchParams.get("accession_number") as "current" | "previous";
-    return json(scenario.lines[accession].map((line) => ({ accession_number: accession, cik: "1067983", cusip: line.cusip, ticker: line.cusip === "111111111" ? "AAA" : "", value: line.value, ssh_prnamt: line.shares })));
+    return filingJson(request, scenario.lines[accession].map((line) => ({ accession_number: accession, cik: "1067983", cusip: line.cusip, ticker: line.cusip === "111111111" ? "AAA" : "", value: line.value, ssh_prnamt: line.shares })));
   });
   const load = async (next: Partial<typeof scenario>, splitFactor?: Parameters<typeof loadFundPerformance>[3] extends infer O ? O extends { splitFactor?: infer F } ? F : never : never) => {
     scenario = { ...scenario, ...next };

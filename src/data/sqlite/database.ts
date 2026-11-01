@@ -1,4 +1,15 @@
 import { Database } from "bun:sqlite";
+import { closeSync, openSync } from "fs";
+import { logFailure } from "../../utils/log-failure";
+import { restrictFileSync } from "../../utils/private-files";
+import { createSqliteAccess, type SqliteAccess } from "./access";
+import {
+  SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
+  SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
+  startWalCheckpointer,
+  type WalCheckpointer,
+  type WalCheckpointerOptions,
+} from "./checkpointer";
 import { SQLITE_BUSY_TIMEOUT_MS, withSqliteBusyRetry } from "./retry";
 
 const SCHEMA = `
@@ -60,21 +71,86 @@ const SCHEMA = `
   );
 `;
 
+export interface SqliteDatabaseOptions {
+  /**
+   * The app's own connection, on the thread that answers the user (the
+   * terminal, the desktop app's Bun process): statements do not wait on
+   * another program's lock (see access.ts). Commands and tests wait it out.
+   */
+  interactive?: boolean;
+  /** Tests only: the WAL checkpointer's thread and how long it may go silent. */
+  checkpointer?: WalCheckpointerOptions;
+}
+
 export class SqliteDatabase {
   readonly connection: Database;
+  readonly access: SqliteAccess;
+  private readonly checkpointer: WalCheckpointer | null = null;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: SqliteDatabaseOptions = {}) {
+    const onDisk = dbPath !== "" && dbPath !== ":memory:" && !dbPath.startsWith("file:");
+    // The database holds the Cloud session: created readable by the user
+    // alone, so the WAL and shared-memory files SQLite makes beside it with
+    // the same mode are too, and an older one made so.
+    if (onDisk) {
+      try {
+        closeSync(openSync(dbPath, "a", 0o600));
+        restrictFileSync(dbPath);
+      } catch (error) {
+        logFailure("data.sqlite", "Restricting the database file to its user failed")(error);
+      }
+    }
     this.connection = new Database(dbPath);
+    // Opening waits for another program's lock: it happens once, and the app
+    // has nothing to show without its data.
     this.connection.exec(`PRAGMA busy_timeout=${SQLITE_BUSY_TIMEOUT_MS}`);
-    withSqliteBusyRetry("enable sqlite wal", () => {
-      this.connection.exec("PRAGMA journal_mode=WAL");
-    });
+    const journalMode = withSqliteBusyRetry("enable sqlite wal", () => (
+      this.connection.query<{ journal_mode: string }, []>("PRAGMA journal_mode=WAL").get()?.journal_mode
+    ));
+    // In WAL mode commits can stop flushing the disk and the database stays
+    // whole; user data is flushed soon after by the checkpointer, or per write
+    // where it does not run (access.ts). Where WAL does not take (a network
+    // share, an in-memory database), every commit flushes.
+    const wal = journalMode?.toLowerCase() === "wal";
+    if (onDisk && wal) {
+      try {
+        restrictFileSync(`${dbPath}-wal`);
+        restrictFileSync(`${dbPath}-shm`);
+      } catch (error) {
+        logFailure("data.sqlite", "Restricting the database's WAL files to their user failed")(error);
+      }
+    }
+    this.connection.exec(wal ? "PRAGMA synchronous=NORMAL" : "PRAGMA synchronous=FULL");
     withSqliteBusyRetry("initialize sqlite schema", () => {
       this.connection.exec(SCHEMA);
+    });
+    // The app's statements choose how long to wait for a lock themselves.
+    if (options.interactive) this.connection.exec("PRAGMA busy_timeout=0");
+    // The app's commits leave copying the WAL into the database, and flushing
+    // it, to a thread of its own, and only copy it themselves past a WAL ten
+    // times the usual.
+    let checkpointerRunning = false;
+    if (options.interactive && wal && dbPath !== ":memory:") {
+      this.checkpointer = startWalCheckpointer(dbPath, () => {
+        checkpointerRunning = false;
+        this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
+      }, options.checkpointer);
+      if (this.checkpointer) {
+        checkpointerRunning = true;
+        this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
+      }
+    }
+    const checkpointer = this.checkpointer;
+    this.access = createSqliteAccess(this.connection, {
+      interactive: options.interactive,
+      relaxedCommits: wal,
+      ...(checkpointer ? { onCommit: () => checkpointer.nudge(), flushedElsewhere: () => checkpointerRunning } : {}),
     });
   }
 
   close(): void {
+    this.access.close();
+    this.checkpointer?.close();
     this.connection.close();
   }
 }

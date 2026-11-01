@@ -195,7 +195,7 @@ export async function resolveLoadedSeries(
 ): Promise<ResolvedSeries> {
   const ticker = request.ticker?.trim().toUpperCase() || undefined;
   const line = definition.lines?.length ? request.line ?? definition.lines[0] : undefined;
-  const { points, edge, warning, attribution } = loadResult(await loadSeries(definition, {
+  const { points, edge, warning, savedAt, attribution } = loadResult(await loadSeries(definition, {
     ...seriesLoadWindow(request.viewport, now),
     ...(ticker ? { ticker } : {}),
     ...viewportBars(request.viewport, ticker),
@@ -221,6 +221,7 @@ export async function resolveLoadedSeries(
     panelId: "main",
     interpolation: style === "step" ? "step-after" : "none",
     ...(warning ? { warning } : {}),
+    ...(savedAt != null && Number.isFinite(savedAt) ? { savedAt } : {}),
     ...(attribution ? { attribution: { ...attribution } } : {}),
     points: normalizeSeriesPoints(points, edge),
   };

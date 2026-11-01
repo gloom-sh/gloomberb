@@ -1,10 +1,16 @@
 import { mkdir } from "fs/promises";
-import { join } from "path";
+import { basename, join } from "path";
 
 import { explainPluginLoadError } from "./compat";
 import { hostPublicModules } from "./host-link";
 import { resolvePluginBrowserEntry, resolvePluginEntry } from "./loader";
+import { siblingImportsBundlerPlugin } from "./peer-imports";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from "./host-modules";
+import {
+  PLUGIN_PROCESS_IDENTIFIER,
+  pluginProcessDeclaration,
+  pluginProcessModuleSource,
+} from "./plugin-process";
 
 /**
  * Compiles an external plugin for a renderer that cannot read the filesystem.
@@ -90,6 +96,7 @@ export interface BundlePluginResult {
 function createSharedModuleResolver(
   exportNamesFor: (specifier: string) => Promise<readonly string[]>,
   onShared?: (specifier: string) => void,
+  options: { providesProcess?: boolean } = {},
 ): import("bun").BunPlugin {
   const namespace = "gloom-host";
   const shared = new Set<string>(SHARED_SPECIFIERS);
@@ -116,6 +123,19 @@ function createSharedModuleResolver(
 
       build.onLoad({ filter: /.*/, namespace }, async (args) => ({
         contents: buildSharedModuleSource(args.path, await exportNamesFor(args.path)),
+        loader: "js",
+      }));
+
+      if (!options.providesProcess) return;
+      // `import process from "node:process"` reads the same shim as the bare
+      // global. Bun's own browser stand-in has no default export, so without
+      // this such a plugin did not compile for the desktop at all.
+      build.onResolve({ filter: /^(?:node:)?process$/ }, () => ({
+        path: "process",
+        namespace: "gloom-process",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "gloom-process" }, () => ({
+        contents: pluginProcessModuleSource(),
         loader: "js",
       }));
     },
@@ -145,6 +165,11 @@ export async function bundleExternalPlugin(
     minify?: boolean;
     define?: Record<string, string>;
     /**
+     * Named in the errors the browser's `process` stand-in throws. Defaults to
+     * the plugin's folder name.
+     */
+    pluginName?: string;
+    /**
      * `bun` compiles the native entry the terminal imports instead. Only the
      * registry check uses it, to cover the native half of a plugin that has
      * a separate browser entry.
@@ -161,7 +186,16 @@ export async function bundleExternalPlugin(
 
   await mkdir(outDir, { recursive: true });
 
+  // The browser has no `process`, which the terminal gives every plugin. Each
+  // bundle gets its own stand-in (see plugin-process.ts); a bundle compiled
+  // for Bun runs where the real one exists.
+  const providesProcess = (options.target ?? "browser") === "browser";
+  const pluginName = options.pluginName ?? basename(pluginDir);
+
   const shared = new Set<string>();
+  // A sibling plugin it imports is compiled from the sibling's folder, as
+  // the loader imports it, not through the plugin's link (peer-imports.ts).
+  const siblings = siblingImportsBundlerPlugin(pluginDir);
   const result = await Bun.build({
     entrypoints: [entry],
     outdir: outDir,
@@ -174,12 +208,19 @@ export async function bundleExternalPlugin(
     // `errors`. Returning it lets the check below report what actually broke,
     // such as an import this host version does not export.
     throw: false,
-    ...(options.define ? { define: options.define } : {}),
+    // The more specific `process.env.NODE_ENV` a caller defines still wins,
+    // so dead branches keyed on it stay dropped.
+    define: {
+      ...(providesProcess ? { process: PLUGIN_PROCESS_IDENTIFIER } : {}),
+      ...options.define,
+    },
     plugins: [
       createSharedModuleResolver(
         options.exportNamesFor ?? hostExportNames,
         (specifier) => shared.add(specifier),
+        { providesProcess },
       ),
+      ...(siblings ? [siblings] : []),
     ],
   });
 
@@ -187,6 +228,15 @@ export async function bundleExternalPlugin(
 
   const output = result.outputs.find((entryOutput) => entryOutput.kind === "entry-point");
   if (!output) throw new Error(`Bundling ${pluginDir} produced no entry point`);
+
+  // Only a bundle that reads `process` carries the stand-in, so the rest of
+  // the plugins the web app serves stay as small as they were.
+  if (providesProcess) {
+    const code = await Bun.file(output.path).text();
+    if (code.includes(PLUGIN_PROCESS_IDENTIFIER)) {
+      await Bun.write(output.path, pluginProcessDeclaration(pluginName) + code);
+    }
+  }
 
   return {
     outputPath: output.path,

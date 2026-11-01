@@ -5,6 +5,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { savedCopyMark, servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
+import { isTransientFailure, sourceDidNotAnswer } from "../../../api-client/errors";
 import type {
   CloudMarketResponse,
   CloudMarketScreenerCategory,
@@ -96,6 +97,8 @@ function writeCache<T>(key: string, data: T): void {
 export interface CachedResult<T> {
   data: T;
   stale: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
 }
 
 async function loadCached<T>(
@@ -119,11 +122,13 @@ async function loadCached<T>(
       return result;
     })
     .catch((error) => {
-      // Serving the expired copy is right; hiding that it is expired is not. A command that shows it
-      // ends with when the copy was saved.
-      if (fallback) {
-        failedFetches.add(key);
-        return servedFromSavedCopy({ data: fallback.data, stale: true }, fallback.fetchedAt);
+      // The next read asks again rather than read the saved copy as current.
+      if (fallback) failedFetches.add(key);
+      // Serving the expired copy is right for a failure asking again may get past; hiding that it is
+      // expired is not. A command that shows it ends with when the copy was saved. A refusal or a
+      // reply that fails validation is the error, saved copy or not.
+      if (fallback && isTransientFailure(error)) {
+        return servedFromSavedCopy({ data: fallback.data, stale: true, savedAt: fallback.fetchedAt }, fallback.fetchedAt);
       }
       throw error;
     })
@@ -146,6 +151,8 @@ export interface MarketMoversResult {
   quotes: ScreenerQuote[];
   source: MarketMoversDataSource;
   stale: boolean;
+  /** Its refresh failed and the list saved at this time (ms) answered instead. */
+  savedAt?: number;
 }
 
 export interface PreferredMarketMoverSources {
@@ -268,6 +275,8 @@ export async function fetchScreenerResult(
   const session = category === "most_actives" ? undefined : options?.session;
   const load = async () => {
     const response = await api.getMarketMovers(category, count, options?.forceRefresh, session);
+    // The service's own source did not answer this time: a saved list answers, as it does a 5xx.
+    if (!response.data && response.status === "retryable_error") throw sourceDidNotAnswer("Market movers temporarily unavailable");
     if (!response.data) throw new Error("Invalid market movers response");
     return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true };
   };
@@ -392,7 +401,13 @@ export async function fetchPreferredMarketMovers(
   const eligibility = sources.isCloudEligible();
   if (!(typeof eligibility === "boolean" ? eligibility : await eligibility)) {
     const result = await sources.fetchMarket(category, count, options);
-    return { ...savedCopyMark(result), quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
+    return {
+      ...savedCopyMark(result),
+      quotes: rankScreenerQuotes(category, result.data),
+      source: "gloom",
+      stale: result.stale,
+      ...(result.savedAt != null ? { savedAt: result.savedAt } : {}),
+    };
   }
 
   const marketMetadata = sources.fetchMarket(
@@ -432,6 +447,7 @@ export async function fetchPreferredMarketMovers(
     quotes: rankScreenerQuotes(category, fallback.data),
     source: "gloom",
     stale: fallback.stale,
+    ...(fallback.savedAt != null ? { savedAt: fallback.savedAt } : {}),
   };
 }
 
@@ -448,6 +464,7 @@ export async function fetchTrendingResult(
   const load = async () => {
     const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
     if (response.status === "empty") return { data: [], stale: response.stale === true };
+    if (!response.data && response.status === "retryable_error") throw sourceDidNotAnswer("Market trends temporarily unavailable");
     if (!response.data) throw new Error("Market trends unavailable");
     return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };

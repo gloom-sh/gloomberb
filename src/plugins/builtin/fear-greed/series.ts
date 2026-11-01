@@ -1,5 +1,6 @@
 import type { SeriesDefinition, SeriesLoadResult, SeriesPoint } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { savedCopyForTransientFailure } from "../../../data/plugin-cache";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadFearGreed } from "./cache";
 import type { FearGreedData } from "./data";
 
@@ -30,9 +31,10 @@ function series(id: string, name: string, unit: string, read: Reading, tags: rea
     tags: ["fear and greed", ...tags],
     refreshMs: REFRESH_MS,
     load: async (): Promise<SeriesLoadResult> => {
-      const result = await loadFearGreed();
-      const warning = cachedSeriesWarning(result);
-      return { points: read(result.data), ...(warning ? { warning } : {}) };
+      // A saved copy answers only a failure asking again may get past; a refusal is the chart's error.
+      const result = savedCopyForTransientFailure(await loadFearGreed());
+      return { points: read(result.data),
+        ...cachedSeriesNote({ ...result, ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) }) };
     },
   };
 }

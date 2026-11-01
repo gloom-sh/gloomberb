@@ -219,7 +219,8 @@ export function OnboardingCoach({
       </Box>
       <Box height={1} />
       <Box flexGrow={1} minHeight={0}>{children}</Box>
-      <Box height={1} flexDirection="row" gap={1}>{actions}</Box>
+      {/* As OnboardingActions: a button that does not fit beside the one before it wraps under it. */}
+      <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1} flexShrink={0}>{actions}</Box>
     </Box>
   );
 }
@@ -358,7 +359,8 @@ export function OnboardingHeader({
   }
 
   // Progress, not navigation: three segments, the current one lit, the ones
-  // behind it filled. A filled segment is still a way back.
+  // behind it filled. A filled segment is a way back unless the wizard marks
+  // it unavailable: a step done for good stays filled and is not offered again.
   const activeIndex = sections.findIndex((section) => section.id === active);
   return (
     <Box flexDirection="row" alignItems="flex-start" justifyContent="space-between" minWidth={0}>

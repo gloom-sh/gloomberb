@@ -1,3 +1,4 @@
+import { asciiText, localeReadsUtf8 } from "./ascii-text";
 type CliAlign = "left" | "right" | "center";
 
 export interface CliTableColumn {
@@ -45,6 +46,8 @@ export interface CliTableOptions {
   indent?: number;
   /** Lines printed under each row, by row index, indented and muted: a footnote that belongs to the row. */
   below?: ReadonlyArray<readonly string[] | undefined>;
+  /** Each line under a row stays one line, cut to the table's width, rather than wrapping: a story's summary. */
+  cutBelow?: boolean;
 }
 
 export type CliStatEntry = readonly [label: string, value: string];
@@ -73,7 +76,12 @@ const NUMBER_JOINER = /^(?:\/|·|→|↑|↓|[-–]|to|up|down)$/;
 const PLAIN_EMPTY_CELL = "—";
 let colorEnabledOverride: boolean | null = null;
 let widthOverride: number | null = null;
+/** The widths `COLUMNS` is taken at for piped output, as `--width` takes them; anything else is ignored. */
+const MIN_COLUMNS_VARIABLE = 20;
+const MAX_COLUMNS_VARIABLE = 1000;
 let plainOverride: boolean | null = null;
+/** Whether the terminal reads only ASCII (`localeReadsUtf8`); undefined until first asked. */
+let asciiLocale: boolean | undefined;
 /** Output is being rendered for a file (`renderForFile`), which has no terminal width. */
 let renderingForFile = false;
 
@@ -143,6 +151,23 @@ export function cliPlainEnabled(): boolean {
   return plainOverride === true;
 }
 
+/** Tests say whether the terminal reads only ASCII; null asks the environment again. */
+export function setCliAsciiLocaleOverride(value: boolean | null): void {
+  asciiLocale = value ?? undefined;
+}
+
+/**
+ * Plain output to a terminal that cannot show UTF-8 (a C locale, a Windows
+ * code page such as 437): it is written in ASCII (`asciiText`), so a dash, a
+ * euro or a cent sign does not print as `â€”`. Output rendered for a file
+ * keeps its UTF-8.
+ */
+export function cliAsciiEnabled(): boolean {
+  if (plainOverride !== true || renderingForFile) return false;
+  asciiLocale ??= !localeReadsUtf8();
+  return asciiLocale;
+}
+
 /**
  * Whether output is plain without `--plain` or `--no-plain`: NO_COLOR is set
  * to a value (an empty one is unset, as the convention says), or stdout is
@@ -185,14 +210,20 @@ export function plainWords(text: string): string {
 }
 
 /** A table header's sort mark in words: `MKT VAL ▼` is "MKT VAL (sorted descending)". */
-function plainHeader(header: string): string {
+function plainHeader(header: string, ascii: boolean): string {
   const sorted = header.replace(/\s*([▲▼])\s*$/, (_match, mark: string) => ` (sorted ${mark === "▲" ? "ascending" : "descending"})`);
-  return plainWords(sorted.trimStart());
+  const worded = plainWords(sorted.trimStart());
+  return ascii ? asciiText(worded) : worded;
 }
 
-/** A plain table's cell: arrows in words, and "—" for no value. */
-function plainCell(cell: string): string {
-  return EMPTY_CELL.test(stripAnsi(cell).trim()) ? PLAIN_EMPTY_CELL : plainWords(cell);
+/**
+ * A plain table's cell: arrows in words, and "—" for no value. In ASCII
+ * (`cliAsciiEnabled`) before the columns are measured, so `EUR211.25` lines
+ * up as `€211.25` did.
+ */
+function plainCell(cell: string, ascii: boolean): string {
+  const plain = EMPTY_CELL.test(stripAnsi(cell).trim()) ? PLAIN_EMPTY_CELL : plainWords(cell);
+  return ascii ? asciiText(plain) : plain;
 }
 
 function applyAnsi(text: string, code: string): string {
@@ -217,9 +248,22 @@ export function setCliWidthOverride(value: number | null): void {
 /** Columns the output is fitted to: `--width`, else the terminal's, or null when output is piped or redirected. */
 export function cliTerminalWidth(): number | null {
   if (widthOverride != null) return widthOverride;
-  if (renderingForFile || !process.stdout.isTTY) return null;
+  if (renderingForFile) return null;
+  if (!process.stdout.isTTY) return columnsVariable();
   const columns = process.stdout.columns;
   return typeof columns === "number" && columns > 0 ? columns : null;
+}
+
+/**
+ * `COLUMNS=60 gloom ... | less`: piped output is fitted to the width the
+ * variable sets, as `--width` does, so a screen reader or a pager gets the
+ * same narrow layout a terminal does. Unset or not a width, output stays whole.
+ */
+function columnsVariable(): number | null {
+  const value = process.env.COLUMNS?.trim();
+  if (!value || !/^\d+$/.test(value)) return null;
+  const columns = Number(value);
+  return columns >= MIN_COLUMNS_VARIABLE && columns <= MAX_COLUMNS_VARIABLE ? columns : null;
 }
 
 function padDisplay(text: string, width: number, align: CliAlign = "left"): string {
@@ -263,7 +307,8 @@ export function truncateDisplay(text: string, width: number): string {
 
 /**
  * Word-wraps text to `width` cells. Lines that already fit are kept verbatim, so aligned
- * columns survive; continuation lines keep the paragraph's leading indent.
+ * columns survive; continuation lines keep the paragraph's leading indent, and words on one
+ * line keep the spaces between them (a heading's `  ·  `).
  */
 export function wrapText(text: string, width: number): string[] {
   const lines: string[] = [];
@@ -273,7 +318,13 @@ export function wrapText(text: string, width: number): string[] {
       continue;
     }
     const indent = /^ */.exec(paragraph)![0];
-    const words = paragraph.slice(indent.length).split(/ +/).filter(Boolean);
+    // Each word with the spaces before it, which a line break drops. A separator (`·`) ends its line, never starts one.
+    const words: { gap: string; word: string }[] = [];
+    for (const [, gap, word] of paragraph.slice(indent.length).matchAll(/( *)([^ ]+)/g)) {
+      const last = words.at(-1);
+      if (last && word === "·") last.word += `${gap}${word}`;
+      else words.push({ gap: gap!, word: word! });
+    }
     if (words.length === 0) {
       lines.push("");
       continue;
@@ -281,16 +332,16 @@ export function wrapText(text: string, width: number): string[] {
     let line = indent;
     let lineWidth = indent.length;
     let lineHasWord = false;
-    for (const word of words) {
+    for (const { gap, word } of words) {
       const wordWidth = visibleLength(word);
-      if (lineHasWord && lineWidth + 1 + wordWidth > width) {
+      if (lineHasWord && lineWidth + gap.length + wordWidth > width) {
         lines.push(line);
         line = indent;
         lineWidth = indent.length;
         lineHasWord = false;
       }
-      line += lineHasWord ? ` ${word}` : word;
-      lineWidth += (lineHasWord ? 1 : 0) + wordWidth;
+      line += lineHasWord ? `${gap}${word}` : word;
+      lineWidth += (lineHasWord ? gap.length : 0) + wordWidth;
       lineHasWord = true;
     }
     lines.push(line);
@@ -512,6 +563,22 @@ function wrapCell(text: string, width: number): string[] {
   });
 }
 
+/**
+ * The columns that say what a row is: the leading ones up to the first figure
+ * after a word (`#`, Coin and Name before Price; Symbol and Name before Last).
+ */
+function rowIdentityColumns(columns: readonly CliTableColumn[]): Set<number> {
+  const identity = new Set<number>();
+  let named = false;
+  for (const [index, column] of columns.entries()) {
+    const figure = column.align === "right";
+    if (figure && named) break;
+    identity.add(index);
+    named ||= !figure;
+  }
+  return identity;
+}
+
 interface TableLayout {
   kept: TableEntry[];
   stacked: TableEntry[];
@@ -532,13 +599,18 @@ function movesSooner(left: readonly number[], right: readonly number[]): boolean
  * (a name, a title) before dates and figures, then rightmost first. The
  * first column stays. The list ends at the first layout that keeps every
  * column it shows whole on one line: moving more only adds lines.
+ *
+ * Plain output (`--plain`, read aloud by a screen reader) keeps the columns
+ * that say what a row is on its first line, after only the ones too wide to
+ * sit there: a row is heard as "BTC Bitcoin" before its figures.
  */
-function tableLayouts(entries: TableEntry[], available: number): TableLayout[] {
+function tableLayouts(entries: TableEntry[], available: number, identity: ReadonlySet<number> = new Set()): TableLayout[] {
   const fit = (kept: TableEntry[]) => fitColumnWidths(kept.map((entry) => entry.width), kept.map((entry) => entry.floor), available);
   const first = entries[0]!;
   const room = available - first.floor - COLUMN_GAP;
   const order = (entry: TableEntry) => [
     entry.floor > room ? 1 : 0,
+    identity.has(entry.index) ? 0 : 1,
     entry.column.stackPriority ?? 0,
     entry.text && entry.width > SOFT_MIN_COLUMN_WIDTH ? 1 : 0,
     entry.index,
@@ -601,7 +673,7 @@ function renderTableLayout(
   const belowIndent = `${indent}${" ".repeat(COLUMN_GAP)}`;
   const belowWidth = Math.max(1, (available ?? 0) - COLUMN_GAP);
   const renderBelow = (index: number) => (options.below?.[index] ?? []).flatMap((line) => (
-    available == null ? [line] : wrapText(line, belowWidth)
+    available == null ? [line] : options.cutBelow ? [truncateDisplay(line, belowWidth)] : wrapText(line, belowWidth)
   )).map((line) => `${belowIndent}${cliStyles.muted(line)}`.trimEnd());
   // Columns moved under the rows print there as `Header value`, as many to a line as fit.
   const renderStacked = (cells: string[], rowIndex: number): string[] => {
@@ -645,9 +717,10 @@ function renderTableLayout(
  */
 export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
   if (cliPlainEnabled()) {
-    columns = columns.map((column) => ({ ...column, header: plainHeader(column.header) }));
-    rows = rows.map((row) => columns.map((_, index) => plainCell(row[index] ?? "")));
-    if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map(plainWords)) };
+    const ascii = cliAsciiEnabled();
+    columns = columns.map((column) => ({ ...column, header: plainHeader(column.header, ascii) }));
+    rows = rows.map((row) => columns.map((_, index) => plainCell(row[index] ?? "", ascii)));
+    if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map((line) => ascii ? asciiText(plainWords(line)) : plainWords(line))) };
   }
   const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
   const available = maxWidth == null ? null : maxWidth - (options.indent ?? 0);
@@ -674,7 +747,7 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   });
   let best = "";
   let bestLines = Infinity;
-  for (const layout of tableLayouts(entries, available)) {
+  for (const layout of tableLayouts(entries, available, cliPlainEnabled() ? rowIdentityColumns(columns) : undefined)) {
     const stacked = layout.stacked.filter((entry) => entry.column.stackRows !== 0).sort((left, right) => left.index - right.index);
     const text = renderTableLayout(columns, rows, options, layout.kept, stacked, available, true);
     const lines = text.split("\n").length;

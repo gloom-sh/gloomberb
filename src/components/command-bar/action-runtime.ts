@@ -32,6 +32,8 @@ interface UseCommandBarActionRuntimeOptions {
   dispatch: Dispatch<AppAction>;
   focusedPaneId: string | null;
   onCheckForUpdates?: () => void | Promise<void>;
+  /** Settings' Run Setup Again; absent where setup cannot run. */
+  onRunSetupAgain?: () => Promise<void>;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   pushRoute: (route: CommandBarRoute) => void;
@@ -57,6 +59,7 @@ export function useCommandBarActionRuntime({
   dispatch,
   focusedPaneId,
   onCheckForUpdates,
+  onRunSetupAgain,
   persistConfig,
   pluginRegistry,
   pushRoute,
@@ -222,6 +225,7 @@ export function useCommandBarActionRuntime({
     focusTicker,
     notify,
     onCheckForUpdates,
+    onRunSetupAgain,
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,

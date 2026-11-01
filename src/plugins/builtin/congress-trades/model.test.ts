@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { cloudCongressHousePath } from "../../../api-client/paths";
 import type { CloudCongressHousePayload } from "../../../api-client";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import {
+  buildMemberColumns,
+  buildMemberTradeColumns,
+  buildTradeColumns,
   canLoadMoreCongress,
+  formatCongressReturn,
   congressScanNotice,
   mergeCongressPages,
   nextCongressPage,
@@ -125,5 +130,59 @@ describe("congress trade asset label", () => {
       .toBe("PUT $1100.5 exp 2027-06-07 · Bloom Energy Corporation Class A");
     expect(label("Apple Inc. - Common Stock", null)).toBe("OPTION · Apple Inc.");
     expect(label("Apple Inc. - Common Stock", "Call options", "ST")).toBe("Apple Inc. - Common Stock");
+  });
+});
+
+describe("congress return columns", () => {
+  const ids = (columns: { id: string }[]) => columns.map((column) => column.id);
+  const width = (columns: { id: string; width: number }[], id: string) => columns.find((column) => column.id === id)?.width;
+
+  test("VS SPY sits beside FILE RET%, and TX RET% is the first to give way", () => {
+    const wide = buildTradeColumns(160);
+    expect(ids(wide).slice(-3)).toEqual(["returnSinceTx", "returnSinceFiling", "excessSinceFiling"]);
+    expect(getTableWidth(wide)).toBe(160);
+    // TX RET% stays while member names keep 18 cells beside it; a ticker's pane has no ticker column.
+    expect(ids(buildTradeColumns(129))).toContain("returnSinceTx");
+    expect(ids(buildTradeColumns(128))).toEqual(["filed", "tx", "lag", "member", "side", "ticker", "amount", "owner", "returnSinceFiling", "excessSinceFiling"]);
+    expect(ids(buildTradeColumns(116, true))).toContain("returnSinceTx");
+    expect(width(buildTradeColumns(115, true), "member")).toBe(28);
+    // The default floating pane: the dates lose their year before anything else goes.
+    expect(ids(buildTradeColumns(112))).toEqual(ids(buildTradeColumns(128)));
+    expect(width(buildTradeColumns(112), "filed")).toBe(7);
+  });
+
+  test("a 720 px pane fits every column it keeps, and VS SPY outlasts the rest", () => {
+    const all = buildTradeColumns(90);
+    expect(ids(all)).toEqual(["filed", "member", "side", "ticker", "amount", "returnSinceFiling", "excessSinceFiling"]);
+    expect(getTableWidth(all)).toBe(90);
+    const ticker = buildTradeColumns(90, true);
+    expect(ids(ticker)).toEqual(["filed", "tx", "member", "side", "amount", "returnSinceFiling", "excessSinceFiling"]);
+    expect(getTableWidth(ticker)).toBe(90);
+    expect(ids(buildTradeColumns(80)).slice(-2)).toEqual(["amount", "excessSinceFiling"]);
+  });
+
+  test("members put the median against SPY beside the median return, which gives way first", () => {
+    const wide = buildMemberColumns(160);
+    expect(ids(wide).slice(-3)).toEqual(["medianReturn", "medianExcessSinceFiling", "buyHitRate"]);
+    expect(getTableWidth(wide)).toBe(160);
+    expect(ids(buildMemberColumns(112))).not.toContain("medianReturn");
+    expect(ids(buildMemberColumns(112)).slice(-2)).toEqual(["medianExcessSinceFiling", "buyHitRate"]);
+    const narrow = buildMemberColumns(90);
+    expect(ids(narrow)).toEqual(["member", "party", "trades", "buys", "sells", "range", "medianExcessSinceFiling"]);
+    expect(getTableWidth(narrow)).toBe(90);
+  });
+
+  test("a figure that rounds to zero reads flat, never -0.0%", () => {
+    expect(formatCongressReturn(-0.04)).toBe("0.0%");
+    expect(formatCongressReturn(-3)).toBe("-3.0%");
+    expect(formatCongressReturn(12.34)).toBe("+12.3%");
+    expect(formatCongressReturn(null)).toBe("--");
+  });
+
+  test("a member's trades end on VS SPY, and their own lag goes before it", () => {
+    expect(ids(buildMemberTradeColumns(160)).slice(-2)).toEqual(["lag", "excessSinceFiling"]);
+    const narrow = buildMemberTradeColumns(90);
+    expect(ids(narrow)).toEqual(["filed", "tx", "side", "ticker", "amount", "asset", "excessSinceFiling"]);
+    expect(getTableWidth(narrow)).toBe(90);
   });
 });

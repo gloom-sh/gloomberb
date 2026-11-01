@@ -28,6 +28,7 @@ describe("header market cluster", () => {
       showState: true,
       showBaseCurrency: true,
       showCountdown: true,
+      showSpyMove: true,
     });
     expect(resolveMarketSummaryFit({ available: 60, ...CLUSTER })).toMatchObject({
       showSpy: true,
@@ -82,6 +83,7 @@ describe("header market cluster", () => {
         showState: true,
         showBaseCurrency: true,
         showCountdown: true,
+        showSpyMove: true,
       });
       const updating = resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false });
       const quiet = resolveHeaderPromptGeometry({ termWidth });
@@ -95,6 +97,34 @@ describe("header market cluster", () => {
     expect(resolveMarketSummaryFit({ available: narrow.marketColumns, ...CLUSTER })).toMatchObject({
       showSpy: true,
       showState: false,
+    });
+  });
+
+  /**
+   * An account without Pro sees SPY late, and its mark (`◷15m`, or the clock
+   * and 15m on the desktop) makes SPY too wide for the narrowest cluster.
+   * SPY gives up its move there rather than leave the header to the state
+   * and base currency, which give way first at every wider step.
+   */
+  test("keeps a delayed SPY and its mark by shedding the rest, then SPY's move", () => {
+    const delayed = { ...CLUSTER, spyWidth: CLUSTER.spyWidth + 7, spyMoveWidth: 7 };
+    expect(resolveMarketSummaryFit({ available: 31, ...delayed })).toMatchObject({
+      showSpy: true,
+      showSpyMove: true,
+      showState: false,
+      showBaseCurrency: false,
+    });
+    expect(resolveMarketSummaryFit({ available: 21, ...delayed })).toEqual({
+      showSpy: true,
+      showSpyMove: false,
+      showState: false,
+      showBaseCurrency: false,
+      showCountdown: false,
+    });
+    // A SPY with no move to give up gives way as before.
+    expect(resolveMarketSummaryFit({ available: 21, ...delayed, spyMoveWidth: 0 })).toMatchObject({
+      showSpy: false,
+      showState: true,
     });
   });
 });

@@ -2,6 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { homedir, release } from "os";
 import { join } from "path";
+import { writePrivateFileSync } from "../utils/private-files";
 import type { CrashReportSurface } from "../api-client";
 import type { TelemetryConfig } from "../types/config";
 import {
@@ -109,7 +110,8 @@ export function createNodeCrashReporterHost(options: NodeCrashReporterHostOption
       const dir = dataDir();
       if (!dir) return;
       const reports = [...readSpool(dir), report].slice(-MAX_SPOOLED_REPORTS);
-      writeFileSync(spoolPath(dir), JSON.stringify(reports), "utf-8");
+      // Readable by the user alone: a report's stack names the user's files.
+      writePrivateFileSync(spoolPath(dir), JSON.stringify(reports));
     },
     clearSpool: () => {
       const dir = dataDir();

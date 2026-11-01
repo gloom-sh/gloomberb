@@ -46,6 +46,50 @@ export function pricePointIntegrityFlags(point: PricePoint): string[] {
   return flags;
 }
 
+/**
+ * A wick too far from its bar's body to have traded: a low under half the lower
+ * of open and close, or a high over twice the higher, as `low<close/2` or
+ * `high>2*open` (IAG on LSE, 2021-11-29: a low of 0.0155 under a close of
+ * 1.316). Only that wick is withheld: the open and close stand, so closes,
+ * returns and drawdowns read the bar while lows, highs and ranges do not.
+ * Empty when the wicks are plausible, or when the bar's prices contradict
+ * each other, which blanks it whole (pricePointIntegrityFlags).
+ */
+export function pricePointWickFlags(point: PricePoint): string[] {
+  const { open, high, low, close } = point;
+  if (pricePointIntegrityFlags(point).length > 0) return [];
+  const body = [["open", open], ["close", close]].filter((entry): entry is [string, number] => isFiniteNumber(entry[1]));
+  if (body.length === 0) return [];
+  // On a tie the close names the side, as the price the bar is read by.
+  const [bottomName, bottom] = body.reduce((least, entry) => entry[1] <= least[1] ? entry : least);
+  const [topName, top] = body.reduce((most, entry) => entry[1] >= most[1] ? entry : most);
+  const flags: string[] = [];
+  if (isFiniteNumber(low) && bottom > 0 && low < bottom / 2) flags.push(`low<${bottomName}/2`);
+  if (isFiniteNumber(high) && top > 0 && high > top * 2) flags.push(`high>2*${topName}`);
+  return flags;
+}
+
+/** Whether a flag code is a withheld wick (pricePointWickFlags), whose bar keeps its open and close. */
+export function isWickFlag(code: string): boolean {
+  return /^(low<(open|close)\/2|high>2\*(open|close))$/.test(code);
+}
+
+/** A bar's high and low with a wick too far from its body to have traded (pricePointWickFlags) left out. */
+export function pricePointWicks(point: PricePoint): { high: number | undefined; low: number | undefined } {
+  const flags = pricePointWickFlags(point);
+  return {
+    high: flags.some((flag) => flag.startsWith("high")) ? undefined : point.high,
+    low: flags.some((flag) => flag.startsWith("low")) ? undefined : point.low,
+  };
+}
+
+/** "1 bar has a low or high too far from its open and close to have traded; left out of ranges.", or undefined for none. */
+export function priceHistoryWickNotice(count: number): string | undefined {
+  return count > 0
+    ? `${count === 1 ? "1 bar has a low or high" : `${count} bars have lows or highs`} too far from ${count === 1 ? "its" : "their"} open and close to have traded; left out of ranges.`
+    : undefined;
+}
+
 export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | undefined {
   if (pricePointIntegrityFlags(point).length === 0) return undefined;
   const date = new Date(point.date);
@@ -58,8 +102,10 @@ export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | 
 /** Calculation/display fields deliberately exclude the contradictory source row. */
 export function pricePointValues(point: PricePoint, integrity = pricePointIntegrity(point)) {
   const value = (number: number | undefined) => !integrity && isFiniteNumber(number) ? number : null;
+  // A wick too far from the body to have traded is left out; the rest of the bar stands.
+  const wicks = pricePointWicks(point);
   return {
-    open: value(point.open), high: value(point.high), low: value(point.low),
+    open: value(point.open), high: value(wicks.high), low: value(wicks.low),
     close: value(point.close), volume: value(point.volume),
     ...(integrity ? { integrity } : {}),
   };

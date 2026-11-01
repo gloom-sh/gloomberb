@@ -3,12 +3,14 @@ import { fixedUsdRate, heldCurrencyUnit } from "../utils/currency-units";
 import { logFailure } from "../utils/log-failure";
 
 /** One rate a converter used: units of `baseCurrency` per unit of `currency`, and when it was observed. */
-interface BaseConversion {
+export interface BaseConversion {
   currency: string;
   baseCurrency: string;
   rate: number;
   /** Epoch ms of the older leg's observation; null when the source did not date it. */
   asOf: number | null;
+  /** A leg is past its fresh window, or its refresh failed and the last copy stands. */
+  stale: boolean;
 }
 
 /** Converts an amount into the base currency, and lists the rates it used so a report can state them. */
@@ -21,6 +23,8 @@ export type BaseConverter = ((value: number, fromCurrency: string) => Promise<nu
 interface UsdRate {
   rate: number;
   asOf: number | null;
+  /** Past its fresh window, or kept after a failed refresh. */
+  stale?: boolean;
 }
 
 export function createBaseConverter(
@@ -38,7 +42,10 @@ export function createBaseConverter(
       if (dataProvider.getCachedQuery) {
         const entry = await dataProvider.getCachedQuery("getExchangeRate", [currency])
           .load({ background: dataProvider.revalidatesInBackground });
-        return { rate: Number.isFinite(entry.value) && entry.value > 0 ? entry.value : Number.NaN, asOf: entry.asOf ?? null };
+        return {
+          rate: Number.isFinite(entry.value) && entry.value > 0 ? entry.value : Number.NaN, asOf: entry.asOf ?? null,
+          stale: entry.refreshError != null || entry.staleAt <= Date.now(),
+        };
       }
       const rate = await dataProvider.getExchangeRate(currency);
       return { rate: Number.isFinite(rate) && rate > 0 ? rate : Number.NaN, asOf: null };
@@ -73,6 +80,7 @@ export function createBaseConverter(
       baseCurrency: base.currency,
       rate: fromRate.rate / baseRate.rate,
       asOf: dates.length > 0 ? Math.min(...dates) : null,
+      stale: fromRate.stale === true || baseRate.stale === true,
     });
     return (value / from.divisor * fromRate.rate) / baseRate.rate * base.divisor;
   };

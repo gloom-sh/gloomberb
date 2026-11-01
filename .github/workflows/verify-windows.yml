@@ -22,7 +22,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       - name: Test
-        run: bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts src/plugins/loader.test.ts
+        run: bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts src/plugins/loader.test.ts src/telemetry/stall-clocks.test.ts
 
       - name: Build standalone CLI
         run: bun run scripts/build.ts
@@ -33,6 +33,11 @@ jobs:
           if (-not (Test-Path "dist\gloomberb-windows-x64.exe.gz")) {
             throw "Missing standalone Windows CLI archive"
           }
+
+      # Windows PowerShell 5.1, as `irm https://gloom.sh/install.ps1 | iex` runs in a stock terminal.
+      - name: Test the PowerShell install script
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/install.test.ps1
 
   desktop:
     runs-on: windows-latest
@@ -86,7 +91,47 @@ jobs:
           path: artifacts/windows-cli-verification
 
       - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: artifacts/stable-win-x64-GloomSetup.exe
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: gloomberb-windows-x64-package
           path: artifacts/*
+
+  # Windows on Arm runs the x64 app under emulation, where a build can open its
+  # window and crash seconds later while it runs fine on x64.
+  desktop-arm:
+    needs: desktop
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: installer
+
+      # Under emulation the app used to close some seconds after it opened on
+      # most launches but not all, so one launch proves little.
+      - name: Open the installed app four times and check it stays up
+        shell: pwsh
+        run: |
+          $Failed = @()
+          foreach ($Launch in 1..4) {
+            try {
+              ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label "arm64-$Launch" -Seconds 45 -Console
+            } catch {
+              $Failed += "launch ${Launch}: $($_.Exception.Message)"
+            }
+          }
+          if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-stays-up
+          path: artifacts/windows-stays-up

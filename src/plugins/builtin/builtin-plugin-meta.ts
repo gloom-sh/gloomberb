@@ -163,3 +163,19 @@ export const earningsPluginMeta = {
   version: "1.0.0",
   toggleable: true,
 };
+
+export const fearGreedPluginMeta = {
+  id: "fear-greed",
+  name: "Fear & Greed",
+  version: "1.0.0",
+  description: "CNN Fear & Greed index with the seven indicator charts",
+  toggleable: true,
+};
+
+export const notesPluginMeta = {
+  id: "notes",
+  name: "Notes",
+  version: "2.0.0",
+  description: "Markdown notes on tickers and on their own, personal or shared with a team.",
+  toggleable: true,
+};

@@ -12,6 +12,7 @@ const FILINGS: SecFilingItem[] = [
   {
     accessionNumber: "0000072971-26-000101", form: "8-K", filingDate: new Date("2026-10-13"), items: "2.02,7.01,9.01",
     cik: "72971", companyName: "WELLS FARGO & COMPANY/MN", filingUrl: "https://www.sec.gov/101",
+    pressReleaseUrl: "https://www.sec.gov/101/ex99-1.htm",
   },
   {
     accessionNumber: "0000072971-26-000100", form: "10-Q", filingDate: new Date("2026-08-01"),
@@ -34,6 +35,10 @@ async function filings(format: "text" | "json" | "csv"): Promise<string> {
 test("filings names an 8-K's items; exports keep the codes in items and add the names after the columns they had", async () => {
   const text = (await filings("text")).replace(/\u001b\[[0-9;]*m/g, "");
   expect(text).toContain("2.02 Results of operations; 7.01 Regulation FD disclosure");
+  // The 8-K's text row links its press release exhibit, where the figures are; the 10-Q its filing.
+  expect(text).toContain("https://www.sec.gov/101/ex99-1.htm");
+  expect(text).not.toMatch(/https:\/\/www\.sec\.gov\/101(\s|$)/m);
+  expect(text).toContain("https://www.sec.gov/100");
 
   const json = JSON.parse(await filings("json"));
   expect(json.data[0]).toMatchObject({ items: "2.02,7.01,9.01", itemsLabel: "2.02 Results of operations; 7.01 Regulation FD disclosure" });
@@ -41,9 +46,10 @@ test("filings names an 8-K's items; exports keep the codes in items and add the 
 
   const [header, eightK, tenQ] = (await filings("csv")).split("\n");
   // Date, Form, Company and URL where they were; the items, then the fixed columns every export ends with.
-  expect(header).toStartWith("Date,Form,Company,URL,Items,Item names,symbol_or_series,");
-  expect(eightK).toContain(',https://www.sec.gov/101,"2.02,7.01,9.01",2.02 Results of operations; 7.01 Regulation FD disclosure,');
-  expect(tenQ).toContain(",https://www.sec.gov/100,,,");
+  // Exports keep the filing's link in URL and add the press release after the columns they had.
+  expect(header).toStartWith("Date,Form,Company,URL,Items,Item names,Press release URL,symbol_or_series,");
+  expect(eightK).toContain(',https://www.sec.gov/101,"2.02,7.01,9.01",2.02 Results of operations; 7.01 Regulation FD disclosure,https://www.sec.gov/101/ex99-1.htm,');
+  expect(tenQ).toContain(",https://www.sec.gov/100,,,,");
 });
 
 // `filings NST.AX` was "Unknown ticker NST.AX", and NST:ASX ended on "files no SEC reports" with nowhere to go.

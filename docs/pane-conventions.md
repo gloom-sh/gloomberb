@@ -91,7 +91,7 @@ column under 480px steps every reading level down together (13.2px body).
 |---|---|
 | Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
 | Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it so it opens into the pane; an inactive one takes the hover fill in that shape. Their labels sit on the title's centre line. |
-| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
+| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A label's lowercase letters sit in the middle of the fill, and an icon in front of it centres with them. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
 | Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. |
 | Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
 | Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
@@ -212,6 +212,13 @@ states, WebKit (Linux WebKit crashes on several panes; the local audit
 pictures it), signed-in and Pro panes beyond their walls, and the terminal
 (its own frames, held byte for byte by the terminal tests).
 
+Where a chip's icon and letters sit is measured from their ink, in the font
+in question, not judged from font metrics: `bun run ui:badge-ink` pictures
+the badge specimens (`scenario=badge-ink`) at 2x in Chromium and WebKit, and
+on a Mac in the system WebKit with SF Mono (`--engines wkwebview`), and
+gives each chip's icon, x-height letters and capitals against the centre of
+its fill in device pixels. Half a pixel is the line between centred and not.
+
 ## 1. Anatomy
 
 **App chrome** (the shell's, never a pane's): the header holds the command
@@ -248,7 +255,8 @@ never goes there.
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
-| Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer, the detail in its tooltip; the terminal draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
+| Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer and, when the delay is known, the delay after it in the muted meta tone (`15m`), so it reads without hovering; the detail in its tooltip. The terminal draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
+| A price an account without Pro sees late, signed out included | The footer clock for a pane's prices; beside the price where there is no footer (the header's SPY, a quote's headline, onboarding's preview), as the clock and `15m` in the dim tone of the meta text around it. A narrow header sheds the base currency, the market state and then SPY's move before SPY and its mark. Pro and trial accounts see neither | `useQuoteDelayFooter`, `DelayedMark` with `useFreeQuoteDelay` / `freeQuoteDelayMinutes` |
 | Nothing can render yet (first load, hard failure, no data) | Body, replacing content below the tab strip and query bar, which stay | `PaneStatusBody`, a table's `status` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
 | Refresh failed but last data exists | Keep the data, failure in footer info | `loading={loading && !data}`, `error={!data ? error : null}` |
@@ -299,6 +307,16 @@ the origin of a number. The one count the kit draws is the
   against the hints: the hints that no longer fit go under More first. A
   longer one gives way to the hints. This is the footer's own layout
   (`layoutPaneFooterHintRow`); a pane does not shorten its status for it.
+- Data a failed refresh left answering from its saved copy says so with
+  `savedCopyFooterInfo` (or `savedCopyFooterSegment`): `saved copy from
+  14:37`. The footer draws it first, wherever the pane registers it, and
+  once: the oldest copy when a list and the report it opens each show one.
+  The copy answers only a failure asking again may get past (no connection,
+  a timeout, 408, 429, 5xx, `isTransientFailure`), and a reply saying its
+  source did not answer this time (a board's `unavailable`,
+  `sourceDidNotAnswer`). A permanent reason (a route not served yet, an
+  unsupported symbol or series, sign-in or entitlement) and a reply that
+  fails validation are the pane's error, saved copy or not.
 - Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
   `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`. Every hint is
   clickable. Hints follow the selection: a different array when a row is
@@ -337,6 +355,11 @@ the origin of a number. The one count the kit draws is the
   lines: a short label, the value, muted `detail` (percentile, date,
   window). Drop sample sizes ("252 obs"), dates the footer already carries,
   and anything the title, the active tab or the selected row shows.
+- A figure that spans its row (a `wide` one, or any in a one-column band)
+  and does not fit one line takes a second, never more: the detail under the
+  value, cut where it has no date, so a date is never what gives way. A pane
+  that sizes the content below by `statGridRows` passes the same `maxLines`
+  to both, the rows that content's least leaves, so a wrap never spills it.
 - Compact controls: `Button compact` with `displayLabel`, `Tabs dense` in
   narrow panes, `KeyValueRow`, `Badge` for a state word.
 - Empty states are one line plus an optional `hint`.
@@ -453,8 +476,11 @@ puts a row-size `CompanyLogoMark` in the cell's `leading`, the same
 `LogoMark` tile as a broker's, with the logo Gloom Cloud serves for the
 ticker (`CRYPTO` reads the coin's), on a white plate since logos are drawn for
 a light page (a black coin mark on a clear field would vanish on a dark
-theme). A company with no logo gets its initial on the same tile, so a missing logo moves nothing, and a logo that failed to load
-is not asked for again while the app runs. The logo sits in the name cell, not
+theme). The plate is drawn only behind a logo that has loaded: until then, and
+for a company with no logo or a logo that failed to load, the tile shows the
+initial, so a missing or late logo moves nothing and no row shows a blank white
+square on a dark theme. A logo that failed to load is not asked for again while
+the app runs. The logo sits in the name cell, not
 the ticker's: the ticker column keeps its width and the name gives up the
 tile's room, so no column moves and no row grows. The terminal draws none and
 gets the cell as it was. Lists of people, funds, indices and sectors, and
@@ -863,7 +889,7 @@ template, or add it with its reason.
 8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed. What concerns one row of a list is said on that row ([Row messages](#row-messages)).
 9. Per-instance configuration is a pane setting; important toggles are `quickSettings`.
 10. Methodology and usage text is in `docs/`.
-11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.
+11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true. A pane of the user's own state (notes, connections, documentation, an account) adds `local: true` to its `reportFreshness`: a `gloom shot` of it draws no status line, since it has no market or feed to date, and a capture of any pane with nothing loaded (a sign-in wall, an empty state) draws none either.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
 14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code, and its allowlist says for every file why the uses left stay (a shared API that speaks cells to every renderer, or a size the terminal shares by design).

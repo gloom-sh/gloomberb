@@ -3,7 +3,6 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate, type TickerSurfacePaneTemplateOptions } from "../shared/ticker-surface";
 import { optionsPositioningHeadless } from "./headless";
 import { isPositioningTab, type PositioningTab } from "./model";
-import { OptionsPositioningPane } from "./pane";
 
 /** The underlying OPX opens on when no ticker is active. */
 const DEFAULT_UNDERLYING = "SPY";
@@ -45,7 +44,7 @@ export const optionsPositioningModule: PluginModule = {
     id: "options-positioning",
     name: "Options Positioning",
     icon: "O",
-    component: OptionsPositioningPane,
+    get component(): typeof import("./pane").OptionsPositioningPane { const { OptionsPositioningPane } = require("./pane"); return OptionsPositioningPane; },
     defaultPosition: "right",
     tickerFollower: true,
     defaultMode: "floating",

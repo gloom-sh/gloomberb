@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -162,50 +162,51 @@ describe("a plugin updated in a running session to files its cached modules cann
   });
 });
 
+/** IBKR Gateway and Interactive Brokers in miniature: a plugin that imports its sibling, and the sibling. */
+function siblingPlugins(peerFiles: Record<string, string>) {
+  const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-plugins-"));
+  scratch.push(pluginsDir);
+  const folder = (name: string, files: Record<string, string>) => {
+    mkdirSync(join(pluginsDir, name));
+    for (const [file, content] of Object.entries(files)) writeFileSync(join(pluginsDir, name, file), content);
+    return join(pluginsDir, name);
+  };
+  const gateway = folder("gloom-fixture-gateway", {
+    "package.json": JSON.stringify({ name: "gloom-fixture-gateway", main: "index.ts", peerDependencies: { "gloom-fixture-peer": ">=1.0.0" } }),
+    "index.ts": `import { label, slot } from "./plugin";\nexport default { id: "fixture-gateway", name: label, slot };\n`,
+    "plugin.ts": `import { bridge, slot } from "gloom-fixture-peer/bridge";\nimport { suffix } from './parts/suffix';\nexport const label = bridge + suffix;\nexport { slot };\n`,
+  });
+  // A nested file that imports the sibling too, as the gateway's trading
+  // pane does: its folder is cached apart from the plugin's own.
+  mkdirSync(join(gateway, "parts"));
+  writeFileSync(join(gateway, "parts", "suffix.ts"), `import { bridge } from "gloom-fixture-peer/bridge";\nexport const suffix = bridge ? "" : "?";\n`);
+  const addPeer = () => folder("gloom-fixture-peer", { "package.json": JSON.stringify({ name: "gloom-fixture-peer" }), ...peerFiles });
+  const sent: CrashReportsPayload[] = [];
+  resetCrashReporterForTests();
+  installCrashReporter({
+    surface: "terminal",
+    isEnabled: () => true,
+    getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+    send: async (payload) => { sent.push(payload); },
+  });
+  return { gateway, addPeer, sent };
+}
+
+const PEER_BRIDGE = { "bridge.ts": `export const bridge = "Fixture Gateway";\nexport const slot = {};\n` };
+
 /**
  * An import of IBKR Gateway that ran before Interactive Brokers was linked
  * fails, and Bun keeps that failure for the rest of the process: its resolver
  * remembers the folder without the link, and the failed module stays failed
- * under its path. Desktop users on Windows saw the gateway fail on the first
- * launch after an update and work after a restart. The loader links
- * the sibling and imports the plugin again in a way that looks again, and the
- * report carries the link state. A sibling that really lacks the module is
- * still a failure.
+ * under its path. The loader links the sibling and imports the plugin again
+ * in a way that looks again, and the report carries the link state. A
+ * sibling that really lacks the module is still a failure.
  */
 describe("a plugin whose sibling plugin was linked after its import failed", () => {
   afterEach(() => resetCrashReporterForTests());
 
-  function setup(peerFiles: Record<string, string>) {
-    const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-plugins-"));
-    scratch.push(pluginsDir);
-    const folder = (name: string, files: Record<string, string>) => {
-      mkdirSync(join(pluginsDir, name));
-      for (const [file, content] of Object.entries(files)) writeFileSync(join(pluginsDir, name, file), content);
-      return join(pluginsDir, name);
-    };
-    const gateway = folder("gloom-fixture-gateway", {
-      "package.json": JSON.stringify({ name: "gloom-fixture-gateway", main: "index.ts", peerDependencies: { "gloom-fixture-peer": ">=1.0.0" } }),
-      "index.ts": `import { label, slot } from "./plugin";\nexport default { id: "fixture-gateway", name: label, slot };\n`,
-      "plugin.ts": `import { bridge, slot } from "gloom-fixture-peer/bridge";\nimport { suffix } from './parts/suffix';\nexport const label = bridge + suffix;\nexport { slot };\n`,
-    });
-    // A nested file that imports the sibling too, as the gateway's trading
-    // pane does: its folder is cached apart from the plugin's own.
-    mkdirSync(join(gateway, "parts"));
-    writeFileSync(join(gateway, "parts", "suffix.ts"), `import { bridge } from "gloom-fixture-peer/bridge";\nexport const suffix = bridge ? "" : "?";\n`);
-    const addPeer = () => folder("gloom-fixture-peer", { "package.json": JSON.stringify({ name: "gloom-fixture-peer" }), ...peerFiles });
-    const sent: CrashReportsPayload[] = [];
-    resetCrashReporterForTests();
-    installCrashReporter({
-      surface: "terminal",
-      isEnabled: () => true,
-      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
-      send: async (payload) => { sent.push(payload); },
-    });
-    return { gateway, addPeer, sent };
-  }
-
   test("loads in the same process once the module is there, and reports the link state it recovered from", async () => {
-    const { gateway, addPeer, sent } = setup({ "bridge.ts": `export const bridge = "Fixture Gateway";\nexport const slot = {};\n` });
+    const { gateway, addPeer, sent } = siblingPlugins(PEER_BRIDGE);
     await import(join(gateway, "index.ts")).catch(() => {});
     addPeer();
 
@@ -230,7 +231,7 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
   });
 
   test("still fails and reports a module the sibling does not have", async () => {
-    const { gateway, addPeer, sent } = setup({ "index.ts": `export default { id: "fixture-peer", name: "Fixture Peer" };\n` });
+    const { gateway, addPeer, sent } = siblingPlugins({ "index.ts": `export default { id: "fixture-peer", name: "Fixture Peer" };\n` });
     addPeer();
 
     const loaded = await loadExternalPlugin(gateway, "cli", { fresh: true });
@@ -258,6 +259,49 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     expect(unresolvedSpecifier(err, err.message)).toBe("gloom-fixture-peer/bridge");
     expect(unresolvedSpecifier(new Error("x"), "Cannot find module 'gloom-fixture-peer/bridge' from '/plugins/a.ts'")).toBe("gloom-fixture-peer/bridge");
   });
+});
+
+/**
+ * The first launch after an update on Windows: the gateway's junction to
+ * Interactive Brokers was in place and pointed at it, and still nothing in
+ * that process could read through it, rewritten or not. The sibling's own
+ * folder read fine. So a plugin imports its sibling from the sibling's
+ * folder, and the link only shows up in a report.
+ */
+describe("a plugin whose link to its sibling plugin does not resolve", () => {
+  afterEach(() => resetCrashReporterForTests());
+
+  // The link is made unreadable by a folder the loader cannot write, which
+  // Windows does not enforce on its owner and root ignores.
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "imports the sibling from its folder, shares its modules, and reports the link once",
+    async () => {
+      const { gateway, addPeer, sent } = siblingPlugins(PEER_BRIDGE);
+      const peer = addPeer();
+      const modules = join(gateway, "node_modules");
+      mkdirSync(modules);
+      symlinkSync(join(gateway, "..", "gone"), join(modules, "gloom-fixture-peer"), "dir");
+      chmodSync(modules, 0o555);
+      try {
+        const loaded = await loadExternalPlugin(gateway, "cli");
+        // The desktop's second read, to compile it for the view.
+        const again = await loadExternalPlugin(gateway, "cli");
+        await flushCrashReports({ timeoutMs: 500 });
+
+        expect({ name: loaded?.plugin.name, error: loaded?.error, needsRestart: loaded?.needsRestart })
+          .toEqual({ name: "Fixture Gateway", error: undefined, needsRestart: undefined });
+        expect(again?.plugin).toBe(loaded!.plugin);
+        const peerBridge = await import(realpathSync(join(peer, "bridge.ts")));
+        expect((loaded!.plugin as unknown as { slot: object }).slot).toBe(peerBridge.slot);
+        const messages = sent.flatMap((payload) => payload.errors.map((error) => error.message));
+        expect(messages).toEqual([expect.stringMatching(
+          /^Loaded gloom-fixture-gateway past a link to gloom-fixture-peer that does not resolve \[peer-import=folder peer=gloom-fixture-peer dir=gloom-fixture-peer link=symlink->gone\(not-resolving\) link-stat=ENOENT link-writes=0 installs=none loads=1 first-launch=unknown bun=/,
+        )]);
+      } finally {
+        chmodSync(modules, 0o755);
+      }
+    },
+  );
 });
 
 /**

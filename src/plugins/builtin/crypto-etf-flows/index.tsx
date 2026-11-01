@@ -2,7 +2,6 @@ import type { PluginModule } from "../plugin-module";
 import { cryptoEtfFlowsCache } from "./client";
 import { cryptoEtfFlowsHeadless } from "./headless";
 import { CRYPTO_ETF_FLOWS_PANE_ID } from "./model";
-import { CryptoEtfFlowsPane } from "./pane";
 
 /** ETFF: the daily net flows of the US spot bitcoin and ether ETFs, per fund. */
 export const cryptoEtfFlowsModule: PluginModule = {
@@ -11,7 +10,7 @@ export const cryptoEtfFlowsModule: PluginModule = {
       id: CRYPTO_ETF_FLOWS_PANE_ID,
       name: "Crypto ETF Flows",
       icon: "F",
-      component: CryptoEtfFlowsPane,
+      get component(): typeof import("./pane").CryptoEtfFlowsPane { const { CryptoEtfFlowsPane } = require("./pane"); return CryptoEtfFlowsPane; },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 120, height: 32 },

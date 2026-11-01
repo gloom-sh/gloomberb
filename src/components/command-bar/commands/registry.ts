@@ -276,7 +276,7 @@ export const commands: Command[] = [
     id: "toggle-attention-counts",
     prefix: "",
     label: "Attention Counts",
-    description: "Opt in to sharing ticker research counts for Gloom Trending",
+    description: "Turn ticker research counts on or off (on by default)",
     category: "Config",
   },
 
@@ -306,6 +306,15 @@ export const commands: Command[] = [
     hasArg: true,
     argPlaceholder: "locale",
     argOptions: () => LANGUAGE_PREFERENCES.map((value) => ({ value, label: describeLanguagePreference(value) })),
+    category: "Config",
+  },
+
+  // Setup, from its first step on what the user has (components/onboarding/run-setup-again.ts)
+  {
+    id: "run-setup-again",
+    prefix: "",
+    label: "Run Setup Again",
+    description: "Rebuild Home and setup's desk tabs; your other layouts stay",
     category: "Config",
   },
 

@@ -6,6 +6,7 @@ import { normalizeLoadedConfig, normalizeConfigForSave } from "../data/config/st
 import { createDefaultConfig } from "../types/config";
 import { __syncContributorInternalsForTests } from "../sync/core-contributors";
 import { AttentionCounter, attentionCountsEnabled } from "./attention-counts";
+import { withAttentionNoticeShown } from "./attention-setting";
 import { runAutomated } from "./usage-counts";
 
 const counters: AttentionCounter[] = [];
@@ -26,7 +27,7 @@ function harness() {
   return { state, counter, sent, signals, send: (next: typeof sender) => { sender = next; } };
 }
 
-describe("attention consent", () => {
+describe("attention setting", () => {
   test("credential replacement invalidates counts before the new user is restored", async () => {
     apiClient.setSessionToken("attention-account-one");
     apiClient.restoreCachedUser(verifiedUser);
@@ -57,26 +58,44 @@ describe("attention consent", () => {
       apiClient.setSessionToken(null);
     }
   });
-  test("cloud sync never exports consent or accepts remote opt-in", () => {
+  test("cloud sync carries only whether it is off, never the notice list or a remote telemetry block", () => {
     const local = createDefaultConfig("/tmp/attention-sync");
-    const enabled = { ...local, telemetry: { attention: true } };
+    const enabled = { ...local, telemetry: { attention: true, attentionNoticeShownTo: ["user-1"] } };
     const pushed = __syncContributorInternalsForTests.collectCoreConfigPayload(enabled);
     expect(JSON.stringify(pushed)).not.toContain("telemetry");
-    const pulled = __syncContributorInternalsForTests.mergeConfigPayload(local, { telemetry: { attention: true } });
-    expect(attentionCountsEnabled(pulled)).toBe(false);
+    expect(JSON.stringify(pushed)).not.toContain("user-1");
+    expect((pushed as Record<string, unknown>).attentionOff).toBe(false);
+    for (const telemetry of [{ attention: true }, { attentionNoticeShownTo: ["user-1"] }]) {
+      const pulled = __syncContributorInternalsForTests.mergeConfigPayload(local, { telemetry });
+      expect(attentionCountsEnabled(pulled, "user-1")).toBe(false);
+    }
     const optedOut = { ...local, telemetry: { attention: false } };
     const remote = __syncContributorInternalsForTests.mergeConfigPayload(optedOut, { telemetry: { attention: true } });
     expect(remote?.telemetry?.attention).toBe(false);
   });
-  test("old, malformed and usage-enabled settings never become ticker consent", () => {
-    for (const telemetry of [undefined, {}, { usage: true }, { usage: false }, { attention: "true" }, { attention: 1 }]) {
-      const { config } = normalizeLoadedConfig({ ...createDefaultConfig("/tmp/attention-config"), telemetry }, "/tmp/attention-config");
-      expect(attentionCountsEnabled(config)).toBe(false);
+  test("the default counts an account only after its notice; an explicit choice wins either way", () => {
+    // Old and usage-only settings are the default; an unreadable one is off.
+    for (const telemetry of [{ attention: "true" }, { attention: 1 }, { attention: null }, "on", null]) {
+      const { config } = normalizeLoadedConfig({ ...createDefaultConfig("/tmp/attention-config"), telemetry } as never, "/tmp/attention-config");
+      expect(config.telemetry?.attention).toBe(false);
+      expect(attentionCountsEnabled({ ...config, telemetry: withAttentionNoticeShown(config.telemetry, "user-1") }, "user-1")).toBe(false);
     }
-    const config = normalizeConfigForSave({ ...createDefaultConfig("/tmp/attention-config"), telemetry: { attention: true, usage: false } });
-    expect(attentionCountsEnabled(config)).toBe(true);
-    expect(attentionCountsEnabled(config, { DO_NOT_TRACK: "1" })).toBe(false);
-    expect(attentionCountsEnabled(config, { GLOOMBERB_NO_TELEMETRY: "1" })).toBe(false);
+    for (const telemetry of [undefined, {}, { usage: true }, { usage: false }]) {
+      const { config } = normalizeLoadedConfig({ ...createDefaultConfig("/tmp/attention-config"), telemetry }, "/tmp/attention-config");
+      expect(attentionCountsEnabled(config, "user-1")).toBe(false);
+      const shown = { ...config, telemetry: withAttentionNoticeShown(config.telemetry, "user-1") };
+      expect(attentionCountsEnabled(shown, "user-1")).toBe(true);
+      expect(attentionCountsEnabled(shown, "user-2")).toBe(false);
+      expect(attentionCountsEnabled(shown, null)).toBe(false);
+    }
+    const saved = normalizeConfigForSave({ ...createDefaultConfig("/tmp/attention-config"),
+      telemetry: { attentionNoticeShownTo: ["user-1", "user-1", 7 as unknown as string] } });
+    expect(saved.telemetry).toEqual({ attentionNoticeShownTo: ["user-1"] });
+    expect(attentionCountsEnabled({ telemetry: { attention: false, attentionNoticeShownTo: ["user-1"] } }, "user-1")).toBe(false);
+    const explicit = normalizeConfigForSave({ ...createDefaultConfig("/tmp/attention-config"), telemetry: { attention: true, usage: false } });
+    expect(attentionCountsEnabled(explicit, null)).toBe(true);
+    expect(attentionCountsEnabled(explicit, null, { DO_NOT_TRACK: "1" })).toBe(false);
+    expect(attentionCountsEnabled(explicit, null, { GLOOMBERB_NO_TELEMETRY: "1" })).toBe(false);
   });
 
   test("does not capture signed-out or disabled activity retroactively", async () => {

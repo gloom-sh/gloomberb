@@ -1,5 +1,4 @@
 import type { PluginModule } from "../plugin-module";
-import { RoadmapPane } from "./pane";
 
 export const roadmapModule: PluginModule = {
   panes: [
@@ -7,8 +6,8 @@ export const roadmapModule: PluginModule = {
       id: "roadmap",
       name: "Roadmap",
       icon: "R",
-      component: RoadmapPane,
-      reportFreshness: { status: "not-a-feed", basis: "curated list" },
+      get component(): typeof import("./pane").RoadmapPane { const { RoadmapPane } = require("./pane"); return RoadmapPane; },
+      reportFreshness: { status: "not-a-feed", basis: "curated list", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },

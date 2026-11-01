@@ -14,6 +14,8 @@ import {
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { companyDataNotes, readCompanyFrom } from "../../../types/company-from";
 import { formatUtcSeconds } from "../../../utils/utc-time";
+import { newsSummaryLine } from "../../../news/news-model";
+import { shortStoryId } from "../../../news/story-id";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
@@ -25,6 +27,11 @@ const NEWS_COLUMNS = [
   { key: "tickers", header: "Tickers", textFormat: (value: unknown) => Array.isArray(value) ? value.join(", ") : String(value ?? "") },
   { key: "sentiment", header: "Sentiment" },
   { key: "importance", header: "Score", align: "right" as const },
+  // The short id `fn news-story-pane` opens the story by, and its summary on one line under the row; exports keep both whole.
+  { key: "id", header: "ID", textFormat: (value: unknown) => typeof value === "string" ? shortStoryId(value) : "" },
+  { key: "summary", header: "Summary", underRow: "line" as const,
+    textFormat: (value: unknown, row: Record<string, unknown>) =>
+      newsSummaryLine({ title: String(row.headline ?? ""), summary: typeof value === "string" ? value : undefined }) ?? "" },
 ];
 
 export interface NewsHeadlessDependencies {

@@ -1,5 +1,5 @@
 import type { SeriesDefinition } from "../../../series/types";
-import { cachedSeriesWarning } from "../shared/series-warning";
+import { cachedSeriesNote } from "../shared/series-warning";
 import { loadGpuBoard, loadGpuHistory } from "./client";
 import { GPU_MODELS, gpuListIndex } from "./model";
 
@@ -27,12 +27,11 @@ export const GPU_SERIES: readonly SeriesDefinition[] = GPU_MODELS.map((model): S
     if (!index) throw new Error(`No ${model} list index is listed yet.`);
     const history = await loadGpuHistory(index.id);
     if (history.payload.access?.locked) throw new Error(GPU_PRO_ONLY);
-    const warning = cachedSeriesWarning(history);
     return {
       points: history.payload.points
         .filter((point) => `${point.source}:${point.skuKey}` === index.id)
         .map((point) => ({ date: point.observedAt, value: point.pricePerGpuHr })),
-      ...(warning ? { warning } : {}),
+      ...cachedSeriesNote(history),
     };
   },
 }));

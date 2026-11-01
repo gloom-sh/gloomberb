@@ -162,3 +162,80 @@ test("a portfolio in another currency converts income into it, a lot valued at i
     setCliColorEnabledOverride(null);
   }
 });
+
+test("a rand portfolio names and dates the USD/ZAR rate its dollar holding is valued at, flags a stale one, and puts TOTAL's yield on the invested value", async () => {
+  const now = Date.now();
+  const holding = createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["za"], positions: [{ ...position(100, 60, "USD"), portfolio: "za" }] });
+  const randBook = (zarAsOf: number, zarStaleAt: number, format?: "json") => createTestCliContext({
+    config: { ...createDefaultConfig("/unused-income"), baseCurrency: "ZAR",
+      portfolios: [{ id: "za", name: "ZA", currency: "ZAR", fixedCurrency: true, cash: { amount: 20_000, currency: "ZAR" } }] },
+    store: { loadAllTickers: async () => [holding] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 100, currency: "USD", change: 0, changePercent: 0, previousClose: 100, lastUpdated: now }),
+      // The cached rate a report reads, dated by its observation: R16 to the dollar.
+      getCachedQuery: ((method: string, args: unknown[]) => ({
+        load: async () => {
+          if (method !== "getExchangeRate") throw new Error(`${method} is unused in this test`);
+          const zar = args[0] === "ZAR";
+          return { value: zar ? 1 / 16 : 1, fetchedAt: now, asOf: zar ? zarAsOf : now, staleAt: zar ? zarStaleAt : now + 3_600_000,
+            expiresAt: now + 86_400_000, source: "test" };
+        },
+      })) as never,
+      revalidatesInBackground: false,
+      getCorporateActions: async () => history("KO", "USD", quarterly(0.5)),
+    }),
+  }, format ? { format } : {});
+  setCliColorEnabledOverride(false);
+  try {
+    // 100 shares at $100 are R160,000 beside R20,000 of cash; $200 a year is R3,200, 2.00% of what is invested, not 1.78% of R180,000.
+    const fresh = await text(() => showCollection("za", randBook(now - 600_000, now + 3_000_000).context));
+    expect(fresh).toMatch(/TOTAL[^\n]*ZAR180,000[^\n]*ZAR3,200\.00 +2\.00%/);
+    expect(fresh).toContain("TOTAL yield is income over the invested ZAR160,000, cash excluded.");
+    expect(fresh).toMatch(/^FX: USD\/ZAR 16, as of \w{3} \d{1,2} \w{3} \d\d:\d\d UTC$/m);
+    // A rate past its fresh window, read 47 hours ago, says so beside the value it moves.
+    const stale = await text(() => showCollection("za", randBook(now - 47 * 3_600_000, now - 1_000).context));
+    expect(stale).toMatch(/^FX: USD\/ZAR 16, as of [^\n]* UTC \(stale, 47h old\)$/m);
+    const cli = randBook(now - 47 * 3_600_000, now - 1_000, "json");
+    await showCollection("za", cli.context);
+    const exported = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
+    expect(exported.metadata.portfolioYield).toBeCloseTo(2, 8);
+    expect(exported.metadata.fxRates).toEqual([{ currency: "USD", baseCurrency: "ZAR", pair: "USD/ZAR", rate: 16,
+      asOf: new Date(now - 47 * 3_600_000).toISOString(), stale: true }]);
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
+test("a book that holds a short puts TOTAL's yield on its gross exposure, never on a net the hedge shrinks or turns negative", async () => {
+  const book = (longShares: number, shortShares: number, format?: "json") => createTestCliContext({
+    config: { ...createDefaultConfig("/unused-income"), portfolios: [{ id: "main", name: "Main", currency: "USD", cash: { amount: 5_000, currency: "USD" } }] },
+    store: { loadAllTickers: async () => [
+      createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["main"], positions: [position(longShares, 60, "USD")] }),
+      createTestTicker("MO", "Altria", { exchange: "NYSE", portfolios: ["main"], positions: [position(-shortShares, 60, "USD")] }),
+    ] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 100, currency: "USD", change: 0, changePercent: 0, previousClose: 100, lastUpdated: Date.now() }),
+      getExchangeRate: async () => 1,
+      // KO pays $2.00 a share a year; MO pays nothing, so the short owes nothing.
+      getCorporateActions: async (symbol) => history(symbol, "USD", symbol === "KO" ? quarterly(0.5) : []),
+    }),
+  }, format ? { format } : {});
+  const yieldOf = async (longShares: number, shortShares: number) => {
+    const cli = book(longShares, shortShares, "json");
+    await showCollection("main", cli.context);
+    return JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options)).metadata.portfolioYield;
+  };
+  setCliColorEnabledOverride(false);
+  try {
+    // Long $100,000 against short $80,000: $2,000 a year is 1.11% of the $180,000 gross, not 10% of the $20,000 net.
+    expect(await yieldOf(1_000, 800)).toBeCloseTo(2_000 / 180_000 * 100, 8);
+    const shown = await text(() => showCollection("main", book(1_000, 800).context));
+    expect(shown).toMatch(/TOTAL[^\n]*\$2,000\.00 +1\.11%/);
+    expect(shown).toContain("TOTAL yield is income over the gross exposure of $180,000, as the book holds a short; cash excluded.");
+    expect(shown).not.toContain("over the invested");
+    // Short more than long nets -$30,000: the yield is still $1,000 over the $130,000 gross.
+    expect(await yieldOf(500, 800)).toBeCloseTo(1_000 / 130_000 * 100, 8);
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});

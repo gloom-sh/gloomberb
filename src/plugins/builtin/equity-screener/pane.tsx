@@ -52,6 +52,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { usePlanAccess } from "../../../api-client/plan-access";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
 import { SCREEN_IDEAS, screenIdea } from "./ideas";
@@ -584,6 +585,8 @@ function EquityScreenView({
                 disabled: !selected,
               },
             ];
+  // Signed out or free, the quotes streamed over the snapshot's rows are delayed ones.
+  const quoteDelay = useQuoteDelayFooter(Array.from(liveEntries.values(), (entry) => entry.data ?? entry.lastGoodData), "screener-delay");
   usePaneFooter(
     "equity-screener",
     () => check ? null : ({
@@ -632,10 +635,12 @@ function EquityScreenView({
               },
             ]
           : []),
+        ...(quoteDelay ? [quoteDelay] : []),
       ],
       hints,
     }),
     [
+      quoteDelay,
       results.loading,
       results.loadingMore,
       data,

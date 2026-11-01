@@ -221,13 +221,30 @@ test("a transient refresh failure retains metadata, observations and their origi
   });
 });
 
-for (const status of [401, 402, 403]) {
-  test(`explicit ${status} remains an error instead of returning stale data`, async () => {
+// As every Gloom Cloud read: a client error asking again will not change (signed out, no Pro, a
+// route the server stopped serving) is said; a passing one (rate limit, timeout) answers from the copy.
+for (const status of [400, 401, 402, 403, 404, 408, 429]) {
+  const permanent = status !== 408 && status !== 429;
+  test(`a ${status} on the list, the calendar and a transcript ${permanent ? "is said over" : "answers from"} the saved copy`, async () => {
     attachEarningsCallsPersistence(new MemoryPluginPersistence());
+    const days = { from: "2026-10-21", to: "2026-10-23" };
     const client = clientWith(async () => ({ calls: [calls[0]!] }));
+    client.getCloudEarningsTranscript = async () => transcriptValue("Saved transcript");
     await loadEarningsCallsWithClient(client, "SYN");
-    client.getCloudEarningsCalls = async () => { throw new ApiRequestError("Controlled auth error", status); };
-    await expect(loadEarningsCallsWithClient(client, "SYN", { force: true })).rejects.toThrow("Controlled auth error");
+    await loadUpcomingCallsWithClient(client, days);
+    await loadTranscriptWithClient(client, "controlled-0");
+    const error = new ApiRequestError("Controlled client error", status);
+    client.getCloudEarningsCalls = async () => { throw error; };
+    client.getCloudEarningsTranscript = async () => { throw error; };
+    const reads = [
+      () => loadEarningsCallsWithClient(client, "SYN", { force: true }),
+      () => loadUpcomingCallsWithClient(client, days, { force: true }),
+      () => loadTranscriptWithClient(client, "controlled-0", { force: true }),
+    ];
+    for (const read of reads) {
+      if (permanent) await expect(read()).rejects.toBe(error);
+      else expect((await read()).savedAt).toEqual(expect.any(Number));
+    }
   });
 }
 

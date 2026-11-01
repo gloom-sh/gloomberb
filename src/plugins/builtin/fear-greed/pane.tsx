@@ -8,6 +8,7 @@ import {
   usePaneStatusFooter,
   type StatItem,
 } from "../../../components";
+import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import type { PaneProps } from "../../../types/plugin";
@@ -61,7 +62,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
       ],
     }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ...(updatedAgo ? [{ id: "age", parts: [{ text: `updated ${updatedAgo}`, tone: "value" as const }] }] : []),
+    ...(updatedAgo ? [ageFooterSegment(updatedAgo, { id: "age", verb: "updated", tone: "value" })] : []),
   ], [data, stale, updatedAgo]);
   usePaneStatusFooter({ registrationId: paneId, loading, error, info: footerInfo });
 

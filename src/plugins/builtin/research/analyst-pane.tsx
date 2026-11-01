@@ -8,7 +8,7 @@ import {
   spanAxisFormatter,
   staticSeries,
   useChartTableSelection,
-  usePaneFooter,
+  useExternalLinkFooter,
   type ChartTableSelection,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -39,6 +39,9 @@ import {
   buildRatingColumns,
   firstRatingSortDirection,
   formatRatingTarget,
+  ratingReason,
+  ratingReasonFooterWidth,
+  ratingReasonSource,
   ratingSplit,
   ratingTargetDelta,
   sortRatingRows,
@@ -142,13 +145,16 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
 /**
  * Streams the bound symbol and keeps the status bar's reference price on it.
  * Rendered beside the table so a tick redraws the footer, not the ratings.
+ * The selected action's reason, when coverage gave one, is a link there.
  */
-function AnalystFooter({ data, loading, error, width, binding }: {
+function AnalystFooter({ data, loading, error, width, binding, focused, reason }: {
   data: AnalystResearchData | null;
   loading: boolean;
   error: string | null;
   width: number;
   binding: AnalystQuoteBinding;
+  focused: boolean;
+  reason: ReturnType<typeof ratingReason>;
 }) {
   // The upside is a percentage; about one update a second is enough for it.
   const financials = useLiveTickerFinancials(binding.ticker ? binding.symbol : null, binding.ticker, {
@@ -157,9 +163,17 @@ function AnalystFooter({ data, loading, error, width, binding }: {
     weight: 40,
   });
   const reference = analystReferencePrice(data, financials?.quote);
-  usePaneFooter("analyst-research", () => ({
-    info: buildAnalystFooterInfo(data, { width, loading, error, reference }),
-  }), [data, error, loading, reference.freshness, reference.live, reference.price, width]);
+  const info = useMemo(
+    () => buildAnalystFooterInfo(data, { width: width - ratingReasonFooterWidth(reason), loading, error, reference }),
+    [data, error, loading, reason, reference.freshness, reference.live, reference.price, width],
+  );
+  useExternalLinkFooter({
+    registrationId: "analyst-research",
+    focused,
+    url: reason?.url,
+    source: reason ? ratingReasonSource(reason) : null,
+    info,
+  });
   return null;
 }
 
@@ -246,6 +260,9 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
       }
       case "prior":
         return { text: row.prior ?? "-", color: colors.textDim };
+      case "reason":
+        // Blank, not a dash: no coverage gave a reason.
+        return { text: ratingReason(row)?.text ?? "", color: colors.textDim };
     }
   }, [ratingCurrency]);
 
@@ -258,6 +275,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     }));
   }, []);
 
+  const selectedRow = rows.length > 0 ? rows[selectedIdx] : undefined;
   const footer = (
     <AnalystFooter
       data={authWall ? null : data}
@@ -265,6 +283,8 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
       error={authWall ? null : error}
       width={width}
       binding={binding}
+      focused={focused}
+      reason={authWall || !selectedRow ? null : ratingReason(selectedRow)}
     />
   );
 

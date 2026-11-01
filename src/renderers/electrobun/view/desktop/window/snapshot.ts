@@ -36,6 +36,9 @@ export function detachedSnapshotKey(snapshot: DesktopSharedStateSnapshot, paneId
     pluginConfig: snapshot.config.pluginConfig,
     disabledPlugins: snapshot.config.disabledPlugins,
     chartPreferences: snapshot.config.chartPreferences,
+    // A popped-out window collects Attention Counts on its own, so turning
+    // them off in the main window has to reach it.
+    telemetry: snapshot.config.telemetry ?? null,
     instances: paneStateIds.map((id) => findPaneInstance(snapshot.config.layout, id) ?? null),
     paneState: Object.fromEntries(paneStateIds.map((id) => [id, snapshot.paneState[id] ?? {}])),
   });

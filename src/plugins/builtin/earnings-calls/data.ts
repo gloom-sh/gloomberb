@@ -5,7 +5,7 @@ import {
   type CloudEarningsCallPayload,
   type CloudEarningsTranscriptPayload,
 } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isTransientFailure } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
@@ -45,6 +45,8 @@ export interface EarningsCallsResult {
   calls: CloudEarningsCallPayload[];
   fetchedAt: number;
   stale: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
   /** HTTP status when the request failed, used to pick the right gate. */
   errorStatus?: number;
@@ -122,6 +124,8 @@ export interface UpcomingCallsResult {
   stale: boolean;
   /** The server answered its limit's worth: calls later on these days may be missing. */
   truncated?: boolean;
+  /** Its refresh failed and the copy saved at this time (ms) answered instead. */
+  savedAt?: number;
   refreshError?: string;
   errorStatus?: number;
 }
@@ -134,7 +138,7 @@ export interface UpcomingDays {
 let persistence: PluginPersistence | null = null;
 const activeUpcomingFetches = new Map<string, Promise<UpcomingCallsResult>>();
 const activeListFetches = new Map<string, Promise<EarningsCallsResult>>();
-const activeTranscriptFetches = new Map<string, Promise<CloudEarningsTranscriptPayload>>();
+const activeTranscriptFetches = new Map<string, Promise<EarningsTranscriptResult>>();
 
 export function attachEarningsCallsPersistence(value: PluginPersistence): void {
   persistence = value;
@@ -253,20 +257,21 @@ export async function loadEarningsCallsWithClient(
     .catch((error: unknown) => {
       const refreshError = error instanceof Error ? error.message : String(error);
       const errorStatus = statusOf(error);
-      // An auth failure must surface its gate rather than silently showing
-      // a cached list the user is no longer entitled to refresh.
+      // A refusal (signed out, no Pro, a route the server stopped serving) or a reply that fails
+      // validation is said rather than covered by a cached list.
       const expired = store?.getResource<CloudEarningsCallListPayload>(LIST_KIND, key, {
         sourceKey: CACHE_SOURCE,
         schemaVersion: LIST_CACHE_SCHEMA_VERSION,
         allowExpired: true,
       });
-      if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
+      if (expired && isTransientFailure(error)) {
         // A command that shows it ends with when the copy was saved, not with the failure.
         return servedFromSavedCopy({
           ...expired.value,
           ...sourceScope(expired.value.calls),
           fetchedAt: expired.fetchedAt,
           stale: true,
+          savedAt: expired.fetchedAt,
           refreshError,
           errorStatus,
         }, expired.fetchedAt);
@@ -367,9 +372,10 @@ export async function loadUpcomingCallsWithClient(
       const errorStatus = statusOf(error);
       // Losing Pro access re-gates the calendar, as it does the list.
       const expired = read(true);
-      if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
+      if (expired && isTransientFailure(error)) {
         return servedFromSavedCopy({
           ...upcomingFromCache(expired.value, expired.fetchedAt, true),
+          savedAt: expired.fetchedAt,
           refreshError: error instanceof Error ? error.message : String(error),
           errorStatus,
         }, expired.fetchedAt);
@@ -409,11 +415,14 @@ export function isPendingTranscript(
   return record.status === "pending" || !Array.isArray(record.turns);
 }
 
+/** A transcript, and when it was saved when its refresh failed and the saved copy answered. */
+export type EarningsTranscriptResult = CloudEarningsTranscriptPayload & { savedAt?: number };
+
 export async function loadTranscriptWithClient(
   client: EarningsCallsApiClient,
   callId: string,
   options?: { force?: boolean },
-): Promise<CloudEarningsTranscriptPayload> {
+): Promise<EarningsTranscriptResult> {
   const force = options?.force ?? false;
   const store = persistence;
 
@@ -444,7 +453,6 @@ export async function loadTranscriptWithClient(
       return transcript;
     })
     .catch((error: unknown) => {
-      const status = statusOf(error);
       const expired = store?.getResource<CloudEarningsTranscriptPayload>(
         TRANSCRIPT_KIND,
         callId,
@@ -455,8 +463,8 @@ export async function loadTranscriptWithClient(
         },
       );
       // Losing Pro access must re-gate the transcript, not serve it from cache.
-      if (expired && status !== 401 && status !== 402 && status !== 403) {
-        return expired.value;
+      if (expired && isTransientFailure(error)) {
+        return servedFromSavedCopy({ ...expired.value, savedAt: expired.fetchedAt }, expired.fetchedAt);
       }
       throw error;
     })
@@ -473,7 +481,7 @@ export async function loadTranscriptWithClient(
 export function loadTranscript(
   callId: string,
   options?: { force?: boolean },
-): Promise<CloudEarningsTranscriptPayload> {
+): Promise<EarningsTranscriptResult> {
   return loadTranscriptWithClient(apiClient, callId, options);
 }
 

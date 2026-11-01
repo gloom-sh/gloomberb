@@ -58,6 +58,14 @@ async function run(root: string, ctxOptions: Parameters<typeof context>[0] = {},
   return { reads, result, rows: result.sections[0]!.rows as Array<Record<string, unknown>>, metadata: result.metadata as Record<string, unknown> };
 }
 
+test("a root no board lists fails naming the roots; the Baltic Dry Index adds the freight gap line and its proxies", async () => {
+  const failure = async (root: string) => run(root).then(() => null, (error: Error & { details?: string }) => error);
+  const bdi = await failure("BDI");
+  expect(bdi?.message).toStartWith("No futures curve for BDI");
+  expect(bdi?.details).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
+  expect((await failure("QQQ"))?.details).toBeUndefined();
+});
+
 describe("CTM report units", () => {
   test("Dutch TTF gas reports euros per MWh on every row, in the metadata and as its one contract term", async () => {
     const eur = { ...curve("TTF", [{ ...contract("TTF", "X26", 30, 81.434), currency: "EUR", quoteUnit: "EUR", settlement: 78.8490001 }]),

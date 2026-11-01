@@ -1,7 +1,7 @@
 import type { CotClass, CotClassSummary, CotContractPayload, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { REPORT_ROWS } from "../shared/headless-options";
 
@@ -67,6 +67,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (args.argument) {
       const code = cotContractCode(args.argument);
       if (!code) throw new Error(cotUnknownMarketMessage(args.argument));
+      const proxy = cotProxyFor(args.argument);
       const data = await fetchCotContract(code, family, ctx.apiClient, positions);
       const classes = data.positions.map((row) => row.id);
       const limit = args.options.limit == null ? null : Number(args.options.limit);
@@ -80,6 +81,8 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...classes.map((id) => ({ key: `${camelClass(id)}Net`, header: `${data.positions.find((row) => row.id === id)?.label ?? id} net`, align: "right" as const, format: signed }))],
         rows: weeks.map((row) => ({ reportDate: row.reportDate, openInterest: row.openInterest,
           ...Object.fromEntries(row.positions.map((position) => [`${camelClass(position.id)}Net`, position.net])) })) }],
+      // "jet fuel" reads heating oil's positions, and says so.
+      ...(proxy ? { notes: [cotProxyNote(proxy)] } : {}),
       errors: data.gaps, metadata: { ...data, complete: data.status === "available" } };
     }
     const traderClass = cotClass(family, args.options.traderClass);

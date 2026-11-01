@@ -66,20 +66,28 @@ async function loadSeries(
   loader: CreditSeriesLoader,
 ) {
   const request = requestFor(definition.seriesId);
-  const result = await loadCachedFredSeries(
-    request,
-    async () => {
-      const data = trimHistory(await loader(definition.seriesId, {
-        limit: HISTORY_LIMIT,
-        sortOrder: "desc",
-      }));
-      // Reject incompatible source responses before they replace usable cache.
-      // The shared cache can then retain the dated prior value as stale fallback.
-      normalizeCreditSeries(definition, data);
-      return data;
-    },
-    { force },
-  );
+  let result: Awaited<ReturnType<typeof loadCachedFredSeries>>;
+  try {
+    result = await loadCachedFredSeries(
+      request,
+      async () => {
+        const data = trimHistory(await loader(definition.seriesId, {
+          limit: HISTORY_LIMIT,
+          sortOrder: "desc",
+        }));
+        // Reject incompatible source responses before they replace usable cache.
+        normalizeCreditSeries(definition, data);
+        return data;
+      },
+      { force },
+    );
+  } catch (error) {
+    // A refusal or a reply that fails validation is no saved copy's to answer: it is this row's
+    // error, beside the dated prior value already read, which stays as stale rather than vanish.
+    const kept = getCachedFredSeries(request, { allowExpired: true });
+    if (!kept) throw error;
+    return { row: normalizeCreditSeries(definition, kept.data, true), refreshError: error instanceof Error ? error.message : String(error) };
+  }
   return {
     row: normalizeCreditSeries(definition, result.data, result.stale),
     refreshError: result.refreshError,

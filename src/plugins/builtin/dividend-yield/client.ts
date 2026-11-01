@@ -75,6 +75,19 @@ function statedRateSummary(stated: StatedForwardRate): QuoteSummaryDividendField
 interface DividendReadOptions {
   /** The forward rate fundamentals state (statedForwardRate), asked only when the summary is missing. */
   loadStatedForwardRate?: () => Promise<StatedForwardRate | null> | StatedForwardRate | null;
+  /** The history already asked for (requestDividendHistory), so it need not wait for the quote the price comes from. */
+  history?: Promise<DividendHistoryResponse>;
+}
+
+type DividendHistoryResponse = Awaited<ReturnType<typeof apiClient.getMarketDividends>>;
+
+/** Asks Gloom Cloud for a listing's dividend history, for fetchDividendData to read once the price is known. */
+export function requestDividendHistory(symbol: string, exchange = ""): Promise<DividendHistoryResponse> {
+  const pending = trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
+  pending.catch(() => {
+    // Intentional ignore: fetchDividendData awaits this same promise and reports its failure.
+  });
+  return pending;
 }
 
 let connectionHealth: ConnectionHealthRegistry | null = null;
@@ -125,8 +138,22 @@ function declaredCashByExDate(declared: DeclaredCash | undefined, cashCurrency: 
     ? [[row.exDate, { amount: row.amount / unit.divisor, currency: unit.currency }] as const] : []));
 }
 
+/**
+ * The currency the company declares in when it pays the listing another
+ * (South32's dollars, which its rand line converts): the listing's amounts are
+ * conversions of it. Undefined for a listing paid in what was declared.
+ */
+function declaredCurrencyOf(declared: DeclaredCash | undefined, cashCurrency: string): string | undefined {
+  const currency = resolveCurrencyUnit(declared?.currency).currency;
+  return currency && currency !== cashCurrency ? currency : undefined;
+}
+
 export interface DividendData {
   payments: DividendPayment[];
+  /** The currency the company declares in, when its amounts here are converted from it (declaredCurrencyOf). */
+  convertedFrom?: string;
+  /** Beside convertedFrom, the sub-unit the source states the cash in (GBp, ZAc): converted amounts are written in it. */
+  convertedSubUnit?: string;
   /** Declared and unpaid, in `currency`; never in `payments` or any figure. Absent from older servers. */
   declared?: DeclaredDividendAction[];
   metrics: DividendMetrics;
@@ -155,7 +182,7 @@ export async function fetchDividendData(
   currentPriceCurrency?: string,
   options: DividendReadOptions = {},
 ): Promise<DividendData> {
-  const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
+  const response = await (options.history ?? requestDividendHistory(symbol, exchange));
   if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
   const { actions: sourceActions, quote: rawQuote, summary, triedAt } = response.data;
   // In the major unit as the history arrives, as every other reader of it gets it.
@@ -180,6 +207,9 @@ export async function fetchDividendData(
     historyError = MISSING_DIVIDEND_CURRENCY;
   }
   const declaredCash = cashCurrency ? declaredCashByExDate(actions?.declaredCash, cashCurrency) : new Map();
+  const convertedFrom = cashCurrency ? declaredCurrencyOf(actions?.declaredCash, cashCurrency) : undefined;
+  const sourceUnit = sourceActions?.currency;
+  const convertedSubUnit = convertedFrom && sourceUnit && resolveCurrencyUnit(sourceUnit).divisor !== 1 ? sourceUnit : undefined;
   const payments = actions && cashCurrency ? actions.dividends.flatMap(action => {
     const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     const declared = declaredCash.get(action.exDate);
@@ -203,7 +233,7 @@ export async function fetchDividendData(
     throw new Error(`No dividend data found for ${symbol}`);
   }
   return {
-    payments, ...(declared.length > 0 ? { declared } : {}), metrics, price, currency: currency || undefined, historyAvailable,
+    payments, ...(declared.length > 0 ? { declared } : {}), ...(convertedFrom ? { convertedFrom } : {}), ...(convertedSubUnit ? { convertedSubUnit } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
     ...(statedFields && metrics.forwardRate != null ? { forwardFromFundamentals: true } : {}),

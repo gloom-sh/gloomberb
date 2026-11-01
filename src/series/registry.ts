@@ -24,6 +24,24 @@ export function seriesExpression(definition: SeriesDefinition): string {
 }
 
 /**
+ * The one catalog series a bare word is an alias of (`hashrate` is
+ * `bitcoin:hashrate`), for a chart typed with the word where a ticker goes.
+ * Only the words a series lists as its `aliases`, never any other id or
+ * name, and none that two series claim.
+ */
+export function seriesNamedBy(definitions: Iterable<SeriesDefinition>, word: string): SeriesDefinition | undefined {
+  const wanted = word.trim().toLowerCase();
+  if (!wanted) return undefined;
+  let found: SeriesDefinition | undefined;
+  for (const definition of definitions) {
+    if (definition.input || !definition.aliases?.includes(wanted)) continue;
+    if (found && found.id !== definition.id) return undefined;
+    found = definition;
+  }
+  return found;
+}
+
+/**
  * The capability series id a loaded series charts under: its name, one of its
  * lines after a tilde, and for a series with an input, the symbol after a
  * slash (`days-to-cover/AAPL`, `bands~upper/AAPL`).

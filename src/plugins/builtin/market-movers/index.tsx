@@ -2,6 +2,8 @@ import { Box, useUiCapabilities } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, QueryBar, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
+import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -12,6 +14,7 @@ import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
+import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import {
   attachMarketMoversPersistence,
   MARKET_SUMMARY_SYMBOLS,
@@ -60,6 +63,8 @@ import {
 const NO_SAVED_SELECTION: string[] = [];
 const SESSION_CHECK_MS = 30_000;
 const NO_QUOTES: MoverQuote[] = [];
+/** A list without Pro is the one built a delay before: the delayed clock reads it as one late price. */
+const DELAYED_LIST = [{ dataSource: "delayed" as const }];
 const moverKey = (row: Pick<ScreenerQuote, "symbol" | "exchange">) => publicTickerKey(row.symbol, row.exchange);
 
 /** What is trading in New York, re-read every half minute so the pane follows 04:00, 09:30 and 16:00. */
@@ -167,6 +172,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<MarketMoverSortPreference>(DEFAULT_SORT_PREFERENCE);
   const [moversStale, setMoversStale] = useState(false);
+  // The list's refresh failed and a copy saved at this time (ms) answered instead.
+  const [moversSavedAt, setMoversSavedAt] = useState<number | null>(null);
   const [lastSuccess, setLastSuccess] = useState<{ key: string; at: number } | null>(null);
 
   const fetchGenRef = useRef(0);
@@ -241,11 +248,13 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         if (!options?.background) setSelectedSymbol(null);
       }
       setMoversStale(result.stale);
+      setMoversSavedAt(result.savedAt ?? null);
       setLoadError(quoteError);
       if (!quoteError && !result.stale) setLastSuccess({ key: `${tab}:${minFloat ?? ""}`, at: Date.now() });
     } catch {
       if (fetchGenRef.current !== gen) return;
       setMoversStale(true);
+      setMoversSavedAt(null);
       setLoadError("Market movers temporarily unavailable");
     }
     finally {
@@ -279,6 +288,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     handleRefreshKey(event, () => loadTab(activeTab, { forceRefresh: true }), { stopPropagation: true })
   ), [activeTab, loadTab]);
 
+  // Without Pro the lists are the delayed ones (with Pro the real-time ones), and say so.
+  const quoteDelay = useQuoteDelayFooter(rows.length > 0 ? DELAYED_LIST : [], "movers-delay");
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
@@ -288,14 +299,14 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         id: "feed",
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
-      ...(moversStale && loadedKey === listKey ? [{
-        id: "stale",
-        parts: [{ text: "stale", tone: "muted" as const }],
-      }] : []),
+      // A saved copy answering a failed refresh says when it was saved; other stale rows say only that.
+      ...(loadedKey === listKey ? savedCopyFooterInfo([moversSavedAt]) : []),
+      ...(moversStale && moversSavedAt == null && loadedKey === listKey ? [STALE_SEGMENT] : []),
       // The FLOAT column shows while a minimum is set; a float the source does not date says so once.
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
+      ...(quoteDelay ? [quoteDelay] : []),
     ],
-  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, rows, summaryQuotes]);
+  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, moversSavedAt, quoteDelay, rows, summaryQuotes]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>

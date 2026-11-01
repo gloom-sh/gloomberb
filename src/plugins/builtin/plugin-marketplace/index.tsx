@@ -1,7 +1,6 @@
 import { PLUGIN_AUTO_UPDATE_SETTING } from "../../auto-update";
 import type { PluginModule } from "../plugin-module";
 import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
-import { PluginMarketplacePane } from "./pane";
 
 export const pluginMarketplaceModule: PluginModule = {
   panes: [
@@ -9,8 +8,8 @@ export const pluginMarketplaceModule: PluginModule = {
       id: PLUGIN_MARKETPLACE_PANE_ID,
       name: "Plugins",
       icon: "P",
-      component: PluginMarketplacePane,
-      reportFreshness: { status: "not-a-feed", basis: "plugin listings" },
+      get component(): typeof import("./pane").PluginMarketplacePane { const { PluginMarketplacePane } = require("./pane"); return PluginMarketplacePane; },
+      reportFreshness: { status: "not-a-feed", basis: "plugin listings", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 118, height: 34 },

@@ -193,8 +193,13 @@ export interface OnboardingProgress {
   positionsImported?: number;
   accountStatus?: "signed-in" | "skipped";
   checkoutOpenedAt?: string;
-  /** Desks picked at "What do you trade?", in the order picked; empty when skipped. */
+  /** Desks picked at "What do you trade most?", in the order picked; empty when skipped. */
   desks?: string[];
+  /**
+   * Opened again from Settings (Run Setup Again) after setup was done: every
+   * step can be left, and the layouts are rebuilt in place.
+   */
+  rerun?: boolean;
 }
 
 /**
@@ -231,8 +236,19 @@ export interface TelemetryConfig {
    * both off; absent means on.
    */
   usage?: boolean;
-  /** Ticker-level research counts. Only an explicit true opts in; absent is OFF. */
+  /**
+   * Ticker-level research counts (Attention Counts). On by default: `false`
+   * turns them off and `true` is an explicit on. While unset, an account is
+   * counted only once this installation has shown it the one-time notice.
+   * Cloud sync carries only whether it is off, so an off reaches the
+   * account's other devices.
+   */
   attention?: boolean;
+  /**
+   * The accounts this installation has shown the Attention Counts notice to,
+   * oldest first. Kept on this device; never synced or sent.
+   */
+  attentionNoticeShownTo?: string[];
 }
 
 /**

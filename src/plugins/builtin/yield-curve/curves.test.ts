@@ -1,7 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { compareDate, isCompareSpan, parseCompareInput } from "./curves";
+import { compareDate, isCompareSpan, parseCompareInput, parseCurveArgument } from "./curves";
 
 const now = new Date("2026-10-10T12:00:00Z");
+
+describe("the curve argument", () => {
+  test("a curve and a date in either order, and a word that names no curve lists the curves and the world tab", () => {
+    expect(parseCurveArgument("jgb 2026-01-02", now)).toEqual({ curve: "jp", date: "2026-01-02" });
+    expect(parseCurveArgument("Oct 1 2026 gilt", now)).toEqual({ curve: "gb", date: "2026-10-01" });
+    expect(parseCurveArgument("latest", now)).toEqual({ curve: null, date: "" });
+    for (const words of ["world", "South Africa", "ust brazil"]) {
+      expect(() => parseCurveArgument(words, now)).toThrow("the curves are ust, tips, breakeven, euro, bund, gilt, jgb and canada. "
+        + "Other countries' government bond yields are on the world tab: gloom fn GC --tab world.");
+    }
+    // A word beside digits is still read as a date, and says how to write one.
+    expect(() => parseCurveArgument("14 Octobre 2026", now)).toThrow("Use an as-of date");
+  });
+});
 
 describe("the compare input", () => {
   test("takes a span of days, weeks, months or years, in either case, before it takes a date", () => {
