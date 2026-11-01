@@ -141,6 +141,8 @@ jobs:
             artifacts/*.json
 
   windows-x64:
+    # Profiled at b8e413413 (same kernel); this run adds the terminal benchmark only.
+    if: false
     runs-on: windows-latest
     timeout-minutes: 90
     env:
