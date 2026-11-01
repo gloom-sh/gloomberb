@@ -1,6 +1,8 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
+import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { WebBox } from "./box";
 import { WebChartSurface } from "./chart-surface";
 import { createDomTestHarness } from "../test-utils";
 
@@ -320,4 +322,29 @@ test("a WebKit pinch over a chart arrives as the Ctrl+wheel Chromium sends for i
   // Out by a quarter, then back to where it began: the chart reads the same scale steps.
   expect(Math.exp(-scrolls[0]!.deltaY! / 100)).toBeCloseTo(1.25, 9);
   expect(Math.exp(-scrolls[1]!.deltaY! / 100)).toBeCloseTo(0.8, 9);
+});
+
+test("a re-render that leaves a box's style as it was does not touch the element's style", async () => {
+  let setWidth: (width: number) => void = () => {};
+  let setLabel: (label: string) => void = () => {};
+  function Harness() {
+    const [width, updateWidth] = useState(10);
+    const [label, updateLabel] = useState("a");
+    setWidth = updateWidth;
+    setLabel = updateLabel;
+    return <WebBox width={width} height={2} style={{ borderRadius: 4 }} data-label={label} />;
+  }
+  const container = await renderDom(<Harness />);
+  const element = container.firstElementChild as unknown as HTMLElement;
+  const style = element.style;
+  let reads = 0;
+  Object.defineProperty(element, "style", { configurable: true, get: () => { reads += 1; return style; } });
+
+  await act(async () => setLabel("b"));
+  expect(element.getAttribute("data-label")).toBe("b");
+  expect(reads).toBe(0);
+
+  await act(async () => setWidth(12));
+  expect(reads).toBeGreaterThan(0);
+  expect(style.width).toBe(`${12 * WEB_CELL_WIDTH}px`);
 });

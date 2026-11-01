@@ -26,7 +26,7 @@ import { hideDragShield, showDragShield } from "./drag-shield";
 import { applyLiveFrame } from "./live-frame";
 import { observeCellSize } from "./size-observer";
 import { fitSurface, surfaceFollows, trackSurface } from "./surface-fit";
-import { cleanDomProps, commonStyle } from "./style";
+import { cleanDomProps, commonStyle, useStableStyle } from "./style";
 
 /** Farther than this from the pointer, in px, a predicted point is noise. */
 const MAX_PREDICTION_PX = 48;
@@ -74,6 +74,17 @@ function releasePointer(captured: { element: HTMLElement; pointerId: number } | 
   }
 }
 
+interface BoxHandlers {
+  cancelPendingFrame(): void;
+  handleMouseDown(event: MouseEvent): void;
+  handlePointerDown(event: PointerEvent): void;
+  handleMouseDownCapture(event: MouseEvent): void;
+  handleMouseOver(event: MouseEvent): void;
+  handleMouseOut(event: MouseEvent): void;
+  handleMouseMove(event: MouseEvent): void;
+  handleMouseUp(event: MouseEvent): void;
+}
+
 export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { children?: ReactNode }>(
   function WebBox({ children, ...props }, ref: Ref<HTMLDivElement>) {
     const elementRef = useRef<HTMLDivElement | null>(null);
@@ -101,62 +112,6 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       return handle as unknown as HTMLDivElement;
     }, []);
 
-    const cancelPendingFrame = () => {
-      if (frameRef.current !== null) {
-        cancelWebFrame(frameRef.current);
-        frameRef.current = null;
-      }
-    };
-
-    const flushPendingFrameMouseHandlers = () => {
-      const moveEvent = pendingMoveRef.current;
-      const dragEvent = pendingDragRef.current;
-      pendingMoveRef.current = null;
-      pendingDragRef.current = null;
-
-      if (moveEvent) {
-        callCellMouseHandler(propsRef.current.onMouseMove, moveEvent);
-      }
-      if (dragEvent) {
-        callCellMouseHandler(propsRef.current.onMouse, dragEvent);
-        callCellMouseHandler(propsRef.current.onMouseDrag, dragEvent);
-      }
-    };
-
-    const flushPendingFrameNow = () => {
-      cancelPendingFrame();
-      flushPendingFrameMouseHandlers();
-    };
-
-    const scheduleFrameMouseHandler = (
-      event: MouseLikeEvent,
-      type: "move" | "drag",
-      ahead: { clientX: number; clientY: number } | null = null,
-    ) => {
-      // The DOM keeps firing mousemove while a button is held. A move means no
-      // button anywhere else in the app, so drags must not surface as moves.
-      if (type === "move" && draggingRef.current) return;
-      if (type === "move" && typeof propsRef.current.onMouseMove !== "function") return;
-      if (type === "drag"
-        && typeof propsRef.current.onMouse !== "function"
-        && typeof propsRef.current.onMouseDrag !== "function") {
-        return;
-      }
-
-      const nextEvent = cellMouseEvent(event, type, ahead);
-      if (type === "move") {
-        pendingMoveRef.current = nextEvent;
-      } else {
-        pendingDragRef.current = nextEvent;
-      }
-
-      if (frameRef.current !== null) return;
-      frameRef.current = requestWebFrame(() => {
-        frameRef.current = null;
-        flushPendingFrameMouseHandlers();
-      });
-    };
-
     const lastPointRef = useRef({ x: 0, y: 0 });
     // The pointer that pressed this box, so a drag can capture it.
     const pressedPointerRef = useRef<number | null>(null);
@@ -176,38 +131,186 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
      * took the pointer), so a move can put things back.
      */
     const endDocumentDragRef = useRef<(event: globalThis.MouseEvent | null, outcome: "end" | "cancel") => void>(() => {});
-    endDocumentDragRef.current = (event, outcome) => {
-      const session = dragSessionRef.current;
-      const wasDragging = draggingRef.current;
-      if (!session && !wasDragging) return;
-      draggingRef.current = false;
-      const shielded = session?.shielded === true;
-      dragSessionRef.current = null;
-      if (shielded) hideDragShield();
-      if (session) {
-        document.removeEventListener("pointermove", session.move);
-        document.removeEventListener("mousemove", session.move);
-        document.removeEventListener("mouseup", session.up);
-        document.removeEventListener("pointerup", session.up);
-        document.removeEventListener("pointercancel", session.cancel);
-        window.removeEventListener("blur", session.cancel);
-        releasePointer(session.captured);
-      }
-      if (!wasDragging) return;
-      const point = event ?? new MouseEvent("mouseup", {
-        clientX: lastPointRef.current.x,
-        clientY: lastPointRef.current.y,
-        button: 0,
-        bubbles: true,
-      });
-      flushPendingFrameNow();
-      callMouseHandler(propsRef.current.onMouse, point, "up");
-      callMouseHandler(propsRef.current.onMouseUp, point, "up");
-      callMouseHandler(propsRef.current.onMouseDragEnd, point, outcome === "cancel" ? "drag-cancel" : "drag-end");
-    };
+    const handlersRef = useRef<BoxHandlers | null>(null);
+    // Created once: they read the latest props through propsRef, so a re-render
+    // hands React the same listeners instead of a dozen new closures.
+    const handlers = handlersRef.current ??= (() => {
+      const cancelPendingFrame = () => {
+        if (frameRef.current !== null) {
+          cancelWebFrame(frameRef.current);
+          frameRef.current = null;
+        }
+      };
+
+      const flushPendingFrameMouseHandlers = () => {
+        const moveEvent = pendingMoveRef.current;
+        const dragEvent = pendingDragRef.current;
+        pendingMoveRef.current = null;
+        pendingDragRef.current = null;
+
+        if (moveEvent) {
+          callCellMouseHandler(propsRef.current.onMouseMove, moveEvent);
+        }
+        if (dragEvent) {
+          callCellMouseHandler(propsRef.current.onMouse, dragEvent);
+          callCellMouseHandler(propsRef.current.onMouseDrag, dragEvent);
+        }
+      };
+
+      const flushPendingFrameNow = () => {
+        cancelPendingFrame();
+        flushPendingFrameMouseHandlers();
+      };
+
+      const scheduleFrameMouseHandler = (
+        event: MouseLikeEvent,
+        type: "move" | "drag",
+        ahead: { clientX: number; clientY: number } | null = null,
+      ) => {
+        // The DOM keeps firing mousemove while a button is held. A move means no
+        // button anywhere else in the app, so drags must not surface as moves.
+        if (type === "move" && draggingRef.current) return;
+        if (type === "move" && typeof propsRef.current.onMouseMove !== "function") return;
+        if (type === "drag"
+          && typeof propsRef.current.onMouse !== "function"
+          && typeof propsRef.current.onMouseDrag !== "function") {
+          return;
+        }
+
+        const nextEvent = cellMouseEvent(event, type, ahead);
+        if (type === "move") {
+          pendingMoveRef.current = nextEvent;
+        } else {
+          pendingDragRef.current = nextEvent;
+        }
+
+        if (frameRef.current !== null) return;
+        frameRef.current = requestWebFrame(() => {
+          frameRef.current = null;
+          flushPendingFrameMouseHandlers();
+        });
+      };
+
+      endDocumentDragRef.current = (event, outcome) => {
+        const session = dragSessionRef.current;
+        const wasDragging = draggingRef.current;
+        if (!session && !wasDragging) return;
+        draggingRef.current = false;
+        const shielded = session?.shielded === true;
+        dragSessionRef.current = null;
+        if (shielded) hideDragShield();
+        if (session) {
+          document.removeEventListener("pointermove", session.move);
+          document.removeEventListener("mousemove", session.move);
+          document.removeEventListener("mouseup", session.up);
+          document.removeEventListener("pointerup", session.up);
+          document.removeEventListener("pointercancel", session.cancel);
+          window.removeEventListener("blur", session.cancel);
+          releasePointer(session.captured);
+        }
+        if (!wasDragging) return;
+        const point = event ?? new MouseEvent("mouseup", {
+          clientX: lastPointRef.current.x,
+          clientY: lastPointRef.current.y,
+          button: 0,
+          bubbles: true,
+        });
+        flushPendingFrameNow();
+        callMouseHandler(propsRef.current.onMouse, point, "up");
+        callMouseHandler(propsRef.current.onMouseUp, point, "up");
+        callMouseHandler(propsRef.current.onMouseDragEnd, point, outcome === "cancel" ? "drag-cancel" : "drag-end");
+      };
+
+      const handleMouseDown = (event: MouseEvent) => {
+        const hasSyntheticDrag = typeof propsRef.current.onMouse === "function";
+        const hasDirectDrag = typeof propsRef.current.onMouseDrag === "function" || typeof propsRef.current.onMouseDragEnd === "function";
+        pendingMoveRef.current = null;
+        // A press that never saw mouseup (the window move took the pointer) is still tracked.
+        // Finish it before the new press, so its drag-end cannot clear the drag this press starts.
+        endDocumentDragRef.current(null, "end");
+        callMouseHandler(propsRef.current.onMouseDown, event, "down");
+        if (event.button !== 0 || (event.isPropagationStopped() && !hasDirectDrag)) return;
+        if (!hasSyntheticDrag && !hasDirectDrag) return;
+        callMouseHandler(propsRef.current.onMouse, event, "down");
+        draggingRef.current = true;
+        lastPointRef.current = { x: event.clientX, y: event.clientY };
+        const originX = event.clientX;
+        const originY = event.clientY;
+        const move = (moveEvent: globalThis.MouseEvent) => {
+          if (!draggingRef.current) return;
+          const current = dragSessionRef.current;
+          if (isPointerMove(moveEvent)) {
+            if (current) current.pointerMoves = true;
+          } else if (current?.pointerMoves) {
+            return;
+          }
+          lastPointRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
+          // The button is up and mouseup never arrived. End the drag instead of following the cursor.
+          if (moveEvent.buttons === 0) {
+            endDocumentDragRef.current(moveEvent, "end");
+            return;
+          }
+          const dx = moveEvent.clientX - originX;
+          const dy = moveEvent.clientY - originY;
+          if (current && !current.shielded) {
+            if (dx * dx + dy * dy < 9) return;
+            current.shielded = true;
+            showDragShield(elementRef.current);
+            // Captured once it is a drag (a click keeps its usual target), the
+            // moves skip hit testing and leave every other element's hover state
+            // alone: nothing under the pointer restyles or repaints while a pane,
+            // divider or chart is dragged across it. The document listeners still
+            // see every move.
+            if (!current.captured) current.captured = capturePointer(elementRef.current, pressedPointerRef.current);
+          }
+          scheduleFrameMouseHandler(moveEvent, "drag", predictedPoint(moveEvent));
+        };
+        const up = (upEvent: globalThis.MouseEvent) => {
+          endDocumentDragRef.current(upEvent, "end");
+        };
+        const cancel = () => {
+          endDocumentDragRef.current(null, "cancel");
+        };
+        dragSessionRef.current = { move, up, cancel, captured: null, pointerMoves: false, shielded: false };
+        document.addEventListener("pointermove", move);
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+        document.addEventListener("pointerup", up);
+        document.addEventListener("pointercancel", cancel);
+        window.addEventListener("blur", cancel);
+      };
+
+      const handlePointerDown = (event: PointerEvent) => {
+        pressedPointerRef.current = event.pointerId;
+      };
+
+      const handleMouseDownCapture = (event: MouseEvent) => {
+        callMouseHandler(propsRef.current.onMouseDownCapture, event, "down");
+      };
+
+      const handleMouseOver = (event: MouseEvent) => {
+        callMouseHandler(propsRef.current.onMouseOver, event, "over");
+      };
+
+      const handleMouseOut = (event: MouseEvent) => {
+        pendingMoveRef.current = null;
+        callMouseHandler(propsRef.current.onMouseOut, event, "out");
+      };
+
+      return {
+        cancelPendingFrame,
+        handleMouseDown,
+        handlePointerDown,
+        handleMouseDownCapture,
+        handleMouseOver,
+        handleMouseOut,
+        handleMouseMove: (event: MouseEvent) => scheduleFrameMouseHandler(event, "move"),
+        handleMouseUp: (event: MouseEvent) => callMouseHandler(propsRef.current.onMouseUp, event, "up"),
+      };
+    })();
 
     useEffect(() => () => {
-      cancelPendingFrame();
+      handlers.cancelPendingFrame();
       pendingMoveRef.current = null;
       pendingDragRef.current = null;
       endDocumentDragRef.current(null, "end");
@@ -263,103 +366,28 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       };
     }, [handlesWheel, pinchAsWheel]);
 
-    const handleMouseDown = (event: MouseEvent) => {
-      const hasSyntheticDrag = typeof propsRef.current.onMouse === "function";
-      const hasDirectDrag = typeof propsRef.current.onMouseDrag === "function" || typeof propsRef.current.onMouseDragEnd === "function";
-      pendingMoveRef.current = null;
-      // A press that never saw mouseup (the window move took the pointer) is still tracked.
-      // Finish it before the new press, so its drag-end cannot clear the drag this press starts.
-      endDocumentDragRef.current(null, "end");
-      callMouseHandler(propsRef.current.onMouseDown, event, "down");
-      if (event.button !== 0 || (event.isPropagationStopped() && !hasDirectDrag)) return;
-      if (!hasSyntheticDrag && !hasDirectDrag) return;
-      callMouseHandler(propsRef.current.onMouse, event, "down");
-      draggingRef.current = true;
-      lastPointRef.current = { x: event.clientX, y: event.clientY };
-      const originX = event.clientX;
-      const originY = event.clientY;
-      const move = (moveEvent: globalThis.MouseEvent) => {
-        if (!draggingRef.current) return;
-        const current = dragSessionRef.current;
-        if (isPointerMove(moveEvent)) {
-          if (current) current.pointerMoves = true;
-        } else if (current?.pointerMoves) {
-          return;
-        }
-        lastPointRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
-        // The button is up and mouseup never arrived. End the drag instead of following the cursor.
-        if (moveEvent.buttons === 0) {
-          endDocumentDragRef.current(moveEvent, "end");
-          return;
-        }
-        const dx = moveEvent.clientX - originX;
-        const dy = moveEvent.clientY - originY;
-        if (current && !current.shielded) {
-          if (dx * dx + dy * dy < 9) return;
-          current.shielded = true;
-          showDragShield(elementRef.current);
-          // Captured once it is a drag (a click keeps its usual target), the
-          // moves skip hit testing and leave every other element's hover state
-          // alone: nothing under the pointer restyles or repaints while a pane,
-          // divider or chart is dragged across it. The document listeners still
-          // see every move.
-          if (!current.captured) current.captured = capturePointer(elementRef.current, pressedPointerRef.current);
-        }
-        scheduleFrameMouseHandler(moveEvent, "drag", predictedPoint(moveEvent));
-      };
-      const up = (upEvent: globalThis.MouseEvent) => {
-        endDocumentDragRef.current(upEvent, "end");
-      };
-      const cancel = () => {
-        endDocumentDragRef.current(null, "cancel");
-      };
-      dragSessionRef.current = { move, up, cancel, captured: null, pointerMoves: false, shielded: false };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("mousemove", move);
-      document.addEventListener("mouseup", up);
-      document.addEventListener("pointerup", up);
-      document.addEventListener("pointercancel", cancel);
-      window.addEventListener("blur", cancel);
-    };
-
     const handlesDrag = typeof props.onMouse === "function"
       || typeof props.onMouseDrag === "function"
       || typeof props.onMouseDragEnd === "function";
-    const handlePointerDown = (event: PointerEvent) => {
-      pressedPointerRef.current = event.pointerId;
-    };
-
-    const handleMouseDownCapture = (event: MouseEvent) => {
-      callMouseHandler(propsRef.current.onMouseDownCapture, event, "down");
-    };
-
-    const handleMouseOver = (event: MouseEvent) => {
-      callMouseHandler(propsRef.current.onMouseOver, event, "over");
-    };
-
-    const handleMouseOut = (event: MouseEvent) => {
-      pendingMoveRef.current = null;
-      callMouseHandler(propsRef.current.onMouseOut, event, "out");
-    };
-
+    const style = useStableStyle({
+      ...commonStyle(props),
+      "--gloom-box-hover-bg": hoverBackgroundColor,
+      ...(props.style as CSSProperties | undefined),
+      ...(props.visible === false ? { display: "none" } : undefined),
+    } as CSSProperties);
     return (
       <div
         {...cleanDomProps(props)}
         data-gloom-hover-bg={hoverBackgroundColor ? "true" : undefined}
         ref={elementRef}
-        onMouseDownCapture={typeof props.onMouseDownCapture === "function" ? handleMouseDownCapture : undefined}
-        onPointerDown={handlesDrag ? handlePointerDown : undefined}
-        onMouseDown={handleMouseDown}
-        onMouseOver={handleMouseOver}
-        onMouseMove={(event) => scheduleFrameMouseHandler(event, "move")}
-        onMouseUp={(event) => callMouseHandler(propsRef.current.onMouseUp, event, "up")}
-        onMouseOut={handleMouseOut}
-        style={{
-          ...commonStyle(props),
-          "--gloom-box-hover-bg": hoverBackgroundColor,
-          ...(props.style as CSSProperties | undefined),
-          ...(props.visible === false ? { display: "none" } : undefined),
-        } as CSSProperties}
+        onMouseDownCapture={typeof props.onMouseDownCapture === "function" ? handlers.handleMouseDownCapture : undefined}
+        onPointerDown={handlesDrag ? handlers.handlePointerDown : undefined}
+        onMouseDown={handlers.handleMouseDown}
+        onMouseOver={handlers.handleMouseOver}
+        onMouseMove={handlers.handleMouseMove}
+        onMouseUp={handlers.handleMouseUp}
+        onMouseOut={handlers.handleMouseOut}
+        style={style}
       >
         {children as ReactNode}
       </div>

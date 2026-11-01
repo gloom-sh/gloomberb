@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import { TextAttributes, type TextProps } from "../../../ui/host";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 
@@ -113,28 +113,57 @@ export function textStyle(props: TextProps): CSSProperties {
   };
 }
 
+/** Kit props a host element takes that are not DOM attributes (`onMouse*` handlers are left out too). */
+const NON_DOM_PROPS: ReadonlySet<string> = new Set([
+  "fg", "bg", "backgroundColor", "flexDirection", "flexGrow", "flexShrink", "flexBasis", "flexWrap",
+  "alignItems", "justifyContent",
+  "padding", "paddingX", "paddingY", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
+  "margin", "marginX", "marginY", "marginLeft", "marginRight", "marginTop", "marginBottom",
+  "bold", "underline", "inverse", "dim", "italic", "strikethrough", "attributes", "content", "position", "left", "right", "top", "bottom",
+  "zIndex", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "gap", "columnGap", "rowGap",
+  "border", "borderStyle", "borderColor", "overflow", "selectable", "visible", "name", "color",
+  "focused", "focusedBackgroundColor", "textColor", "focusedTextColor", "placeholderColor",
+  "cursorColor", "selectionBg", "selectionFg", "showCursor", "keyBindings", "wrapText", "wrapMode",
+  "initialValue", "value", "onInput", "onChange", "onSubmit", "onEscape", "onCursorChange", "onMouse",
+  "scrollX", "scrollY", "focusable", "bitmap", "bitmaps", "crosshair", "vectors", "text", "font",
+  "hoverBackgroundColor", "joinPastedLines", "stickyScroll", "stickyStart", "onStickyPinChange", "pinchAsWheel",
+]);
+
+/**
+ * The props a host element passes on to its DOM node, in their order. Built in
+ * one pass: every box and text run calls this on every render.
+ */
 export function cleanDomProps(props: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...props };
-  for (const key of [
-    "fg", "bg", "backgroundColor", "flexDirection", "flexGrow", "flexShrink", "flexBasis", "flexWrap",
-    "alignItems", "justifyContent",
-    "padding", "paddingX", "paddingY", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
-    "margin", "marginX", "marginY", "marginLeft", "marginRight", "marginTop", "marginBottom",
-    "bold", "underline", "inverse", "dim", "italic", "strikethrough", "attributes", "content", "position", "left", "right", "top", "bottom",
-    "zIndex", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "gap", "columnGap", "rowGap",
-    "border", "borderStyle", "borderColor", "overflow", "selectable", "visible", "name", "color",
-    "focused", "focusedBackgroundColor", "textColor", "focusedTextColor", "placeholderColor",
-    "cursorColor", "selectionBg", "selectionFg", "showCursor", "keyBindings", "wrapText", "wrapMode",
-    "initialValue", "value", "onInput", "onChange", "onSubmit", "onEscape", "onCursorChange", "onMouse",
-    "scrollX", "scrollY", "focusable", "bitmap", "bitmaps", "crosshair", "vectors", "text", "font",
-    "hoverBackgroundColor", "joinPastedLines", "stickyScroll", "stickyStart", "onStickyPinChange", "pinchAsWheel",
-  ]) {
-    delete next[key];
-  }
-  for (const key of Object.keys(next)) {
-    if (key.startsWith("onMouse")) delete next[key];
+  const next: Record<string, unknown> = {};
+  for (const key of Object.keys(props)) {
+    if (NON_DOM_PROPS.has(key) || key.startsWith("onMouse")) continue;
+    next[key] = props[key];
   }
   return next;
+}
+
+/**
+ * `style` as it was last rendered while nothing in it changed, so React skips
+ * the element's inline style on a re-render instead of comparing every
+ * property again (and reading `element.style`). A host box re-renders with
+ * each render of its parent, and most leave its style as it was.
+ */
+export function useStableStyle<T extends object>(style: T): T {
+  const previousRef = useRef<{ style: T; keys: string[] } | null>(null);
+  const previous = previousRef.current;
+  if (previous && sameStyle(previous.style as Record<string, unknown>, previous.keys, style as Record<string, unknown>)) return previous.style;
+  previousRef.current = { style, keys: Object.keys(style) };
+  return style;
+}
+
+/** The same keys with the same values, so React would write nothing. Read in order, which a rebuilt style keeps. */
+function sameStyle(left: Record<string, unknown>, leftKeys: readonly string[], right: Record<string, unknown>): boolean {
+  let index = 0;
+  for (const key in right) {
+    if (leftKeys[index] !== key || left[key] !== right[key]) return false;
+    index += 1;
+  }
+  return index === leftKeys.length;
 }
 
 function allowsZeroMinSize(props: Record<string, unknown>, axis: "inline" | "block"): boolean {

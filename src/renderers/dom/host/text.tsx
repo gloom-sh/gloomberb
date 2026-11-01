@@ -11,7 +11,7 @@ import { renderAsciiText } from "../../../ui/ascii-font";
 import { webAsciiTextLines, webAsciiTextWordmarkVariant } from "./ascii-text";
 import { BlockGlyphCanvas } from "./block-glyph-canvas";
 import { mouseHandlers } from "./mouse";
-import { cleanDomProps, commonStyle, selectionStyle, textStyle } from "./style";
+import { cleanDomProps, commonStyle, selectionStyle, textStyle, useStableStyle } from "./style";
 
 // Read per render: the cell width tracks the configured font size.
 function wordmarkCharWidthPx(): number {
@@ -60,11 +60,12 @@ function renderTextContent(children: ReactNode, content: TextProps["content"], b
 }
 
 export function WebText({ children, ...props }: TextProps) {
+  const style = useStableStyle({ ...textStyle(props), ...(props.style as CSSProperties | undefined) });
   return (
     <span
       {...cleanDomProps(props)}
       {...mouseHandlers(props)}
-      style={{ ...textStyle(props), ...(props.style as CSSProperties | undefined) }}
+      style={style}
     >
       {renderTextContent(children, props.content, props)}
     </span>
