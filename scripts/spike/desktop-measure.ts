@@ -61,6 +61,7 @@ const log = (...parts: unknown[]) => console.error(`[spike ${new Date().toISOStr
 // Probe
 
 const probeSockets = new Set<{ send(data: string): void }>();
+let captureOnConnect = false;
 const benchReplies: Array<{ bench?: unknown; benchError?: string; window: string }> = [];
 
 interface FrameState { window: string; at: number; panes: number; frame: number; loading: boolean; url: string }
@@ -76,6 +77,7 @@ function probeSource(port: number): string {
     try {
       socket = new WebSocket("ws://127.0.0.1:${port}/probe");
       socket.onopen = flush;
+      socket.onmessage = (event) => { if (window.__spikeOnCommand) window.__spikeOnCommand(event); };
       socket.onclose = () => { socket = null; setTimeout(connect, 250); };
     } catch { setTimeout(connect, 250); }
   };
@@ -85,15 +87,26 @@ function probeSource(port: number): string {
   const onCommand = async (event) => {
     let command = null;
     try { command = JSON.parse(event.data); } catch { return; }
+    if (command && command.cmd === "capture") {
+      globalThis.__gloomRasterCapture = globalThis.__gloomRasterCapture || [];
+      return;
+    }
     if (!command || command.cmd !== "bench") return;
     const reply = (body) => { queue.push(JSON.stringify({ window: token, ...body })); flush(); };
     try {
       const wait = (ms) => new Promise((done) => setTimeout(done, ms));
-      globalThis.__gloomRasterCapture = [];
-      document.body.style.width = "calc(100% - 7px)";
-      await wait(1500);
-      document.body.style.width = "";
-      await wait(1500);
+      // Kept since the page connected; when nothing was, redraw at another width.
+      if (!globalThis.__gloomRasterCapture || globalThis.__gloomRasterCapture.length === 0) {
+        globalThis.__gloomRasterCapture = [];
+        document.documentElement.style.width = "calc(100% - 9px)";
+        document.body.style.width = "calc(100% - 9px)";
+        dispatchEvent(new Event("resize"));
+        await wait(1500);
+        document.documentElement.style.width = "";
+        document.body.style.width = "";
+        dispatchEvent(new Event("resize"));
+        await wait(1500);
+      }
       const json = globalThis.__gloomRasterCaptureJson();
       globalThis.__gloomRasterCapture = undefined;
       const bench = await globalThis.__gloomRasterBench({ iterations: command.iterations || 15, json, runtime: navigator.userAgent });
@@ -102,10 +115,7 @@ function probeSource(port: number): string {
       reply({ benchError: String(error && error.stack || error) });
     }
   };
-  const attach = () => { if (socket) socket.onmessage = onCommand; else setTimeout(attach, 100); };
-  attach();
-  const reattach = setInterval(() => { if (socket && socket.onmessage !== onCommand) socket.onmessage = onCommand; }, 250);
-  setTimeout(() => clearInterval(reattach), 180000);
+  window.__spikeOnCommand = onCommand;
   const tick = () => {
     const panes = document.querySelectorAll("[data-gloom-pane-id]").length;
     const kind = document.querySelector("[data-gloom-boot-frame]")?.getAttribute("data-gloom-boot-frame");
@@ -152,7 +162,11 @@ const server = Bun.serve({
     return new Response("", { status: 404 });
   },
   websocket: {
-    open(ws) { probeSockets.add(ws as unknown as { send(data: string): void }); },
+    open(ws) {
+      probeSockets.add(ws as unknown as { send(data: string): void });
+      // The kernel run keeps every panel raster from the first one.
+      if (captureOnConnect) ws.send(JSON.stringify({ cmd: "capture" }));
+    },
     close(ws) { probeSockets.delete(ws as unknown as { send(data: string): void }); },
     message(_ws, raw) {
       try {
@@ -428,6 +442,7 @@ const kernelResults: unknown[] = [];
 
 async function runKernelBench(home: string): Promise<void> {
   log("launch kernel benchmark");
+  captureOnConnect = true;
   const launched = await launch(home, "kernel-1");
   try {
     await waitReady(launched, 4000, 120_000);
@@ -442,6 +457,7 @@ async function runKernelBench(home: string): Promise<void> {
   } catch (error) {
     kernelResults.push({ benchError: error instanceof Error ? error.message : String(error) });
   } finally {
+    captureOnConnect = false;
     await killApp(launched.pid, launched.before);
     await sleep(1500);
   }
