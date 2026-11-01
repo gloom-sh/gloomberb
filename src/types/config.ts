@@ -635,11 +635,6 @@ export function isDockStack(node: DockLayoutNode | null | undefined): node is Do
   return node?.kind === "split" && !!node.tabs;
 }
 
-/** The panes of a stack in tab order: every pane under it, first to last. */
-export function dockStackMembers(node: DockLayoutNode): string[] {
-  return getDockedPaneIdsFromNode(node);
-}
-
 /**
  * The stack of `instanceIds` showing `active` (the first when it is not one
  * of them), in its stored form; one pane is a plain pane, none is nothing.

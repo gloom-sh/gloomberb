@@ -1,9 +1,10 @@
 import type { LayoutConfig, PaneInstanceConfig } from "../../types/config";
-import { buildDockStack, dockStackMembers, findPaneInstance } from "../../types/config";
+import { buildDockStack, findPaneInstance } from "../../types/config";
 import {
   buildSplitAroundNode,
   clampRatio,
   findDockLeaf,
+  getDockedInstanceIds,
   getNodeAtPath,
   replaceNodeAtPath,
   type DockGeometryOptions,
@@ -75,7 +76,7 @@ function insertRelativeToLeaf(layout: LayoutConfig, instanceId: string, targetId
 }
 
 /** `instanceId` as the last tab of the spot `targetId` is in, shown: the spot becomes a stack if it was one pane. */
-export function stackOnto(layout: LayoutConfig, instanceId: string, targetId: string): LayoutConfig {
+function stackOnto(layout: LayoutConfig, instanceId: string, targetId: string): LayoutConfig {
   if (instanceId === targetId) return layout;
   const base = detachPane(layout, instanceId);
   const targetLeaf = findDockLeaf(base, targetId);
@@ -85,7 +86,7 @@ export function stackOnto(layout: LayoutConfig, instanceId: string, targetId: st
   if (!spot) return layout;
   return finalizeLayout({
     ...base,
-    dockRoot: replaceNodeAtPath(base.dockRoot, spotPath, buildDockStack([...dockStackMembers(spot), instanceId], instanceId)!),
+    dockRoot: replaceNodeAtPath(base.dockRoot, spotPath, buildDockStack([...getDockedInstanceIds(spot), instanceId], instanceId)!),
   });
 }
 

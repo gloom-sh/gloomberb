@@ -51,7 +51,6 @@ export {
   insertAtRootEdge,
   resizeSplitAtPath,
   simulateDrop,
-  stackOnto,
   swapPanes,
 } from "./docking";
 

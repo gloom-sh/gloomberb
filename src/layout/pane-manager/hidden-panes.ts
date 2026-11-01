@@ -1,6 +1,5 @@
 import {
   buildDockStack,
-  dockStackMembers,
   isDockStack,
   type DockLayoutNode,
   type DockSplitNode,
@@ -39,7 +38,7 @@ function collectHiddenBranches(
   if (node.kind !== "split") return;
   if (isDockStack(node)) {
     // A stack is one spot: its hidden tabs go back into it, not beside it.
-    const members = dockStackMembers(node);
+    const members = getDockedInstanceIds(node);
     const shown = members.filter((instanceId) => !hidden.has(instanceId));
     const tabs = members.filter((instanceId) => hidden.has(instanceId));
     if (tabs.length > 0 && shown.length > 0) {
@@ -102,7 +101,7 @@ function reattachBranch(
     const spotPath = beside[0].stackPath ?? beside[0].path;
     const spot = getNodeAtPath(root, spotPath);
     if (spot) {
-      const stack = buildDockStack([...dockStackMembers(spot), ...dockStackMembers(branch.node)], dockStackShown(spot));
+      const stack = buildDockStack([...getDockedInstanceIds(spot), ...getDockedInstanceIds(branch.node)], dockStackShown(spot));
       return replaceNodeAtPath(root, spotPath, stack!);
     }
   }

@@ -1,6 +1,5 @@
 import {
   buildDockStack,
-  dockStackMembers,
   isDockStack,
   type DockLayoutNode,
   type DockSplitNode,
@@ -88,7 +87,7 @@ export function collectDockLeafRefs(
 
 /** The pane a stack shows: its `active` tab, or its first when that is gone. */
 export function dockStackShown(node: DockLayoutNode): string {
-  const members = dockStackMembers(node);
+  const members = getDockedInstanceIds(node);
   return isDockStack(node) && members.includes(node.tabs.active) ? node.tabs.active : members[0]!;
 }
 
@@ -133,10 +132,10 @@ export function removeNodeAtPath(node: DockLayoutNode | null, path: Array<0 | 1>
   if (node.kind !== "split") return node;
   if (isDockStack(node)) {
     // A tab leaves its stack; the stack shows the tab next to it if that was the one shown.
-    const members = dockStackMembers(node);
+    const members = getDockedInstanceIds(node);
     const removed = getNodeAtPath(node, path);
     if (!removed) return node;
-    const leaving = new Set(dockStackMembers(removed));
+    const leaving = new Set(getDockedInstanceIds(removed));
     const kept = members.filter((id) => !leaving.has(id));
     const shown = dockStackShown(node);
     const index = members.indexOf(shown);
@@ -214,7 +213,7 @@ function collectDockGeometry(
   }
   if (isDockStack(node)) {
     // One spot, the tab shown; the splits that hold the tabs are not laid out.
-    leaves.push({ instanceId: dockStackShown(node), path, rect: { ...bounds }, stack: dockStackMembers(node) });
+    leaves.push({ instanceId: dockStackShown(node), path, rect: { ...bounds }, stack: getDockedInstanceIds(node) });
     return { leaves, dividers };
   }
 
@@ -364,6 +363,6 @@ export function showDockTab(layout: LayoutConfig, instanceId: string): LayoutCon
   if (!stack || !isDockStack(stack) || dockStackShown(stack) === instanceId) return layout;
   return {
     ...layout,
-    dockRoot: replaceNodeAtPath(layout.dockRoot, leaf.stackPath, buildDockStack(dockStackMembers(stack), instanceId)!),
+    dockRoot: replaceNodeAtPath(layout.dockRoot, leaf.stackPath, buildDockStack(getDockedInstanceIds(stack), instanceId)!),
   };
 }
