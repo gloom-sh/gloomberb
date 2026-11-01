@@ -14,7 +14,7 @@ const optionalText = (value: unknown) => value == null || text(value);
 const amount = (value: unknown) => value == null || text(value) && /^-?\d+(?:\.\d+)?$/.test(value) && Number.isFinite(Number(value));
 const date = (value: unknown) => text(value) && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const instant = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
-const url = (value: unknown) => { try { return text(value) && ["https:", "http:"].includes(new URL(value).protocol); } catch { return false; } };
+const url = (value: unknown) => { try { return text(value) && ["https:", "http:"].includes(new URL(value).protocol); } catch { /* Intentional ignore: malformed URLs fail this web link field validator. */ return false; } };
 const confidence = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 const count = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
 const currency = (value: unknown) => text(value) && /^[A-Z]{3}$/.test(value);

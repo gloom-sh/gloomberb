@@ -16,6 +16,7 @@ import { SWAP_TENORS, type SwapCurvePayload, type SwapTenor } from "../../../api
 import { fetchSwapCurve, loadSavedCurve, loadSavedWorldRows } from "./client";
 import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
+import { logFailure } from "../../../utils/log-failure";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
@@ -164,6 +165,7 @@ export function createYieldCurveHeadless(
         const curve = curveIdOf(args.options.curve) ?? parseCurveArgument(args.argument).curve ?? "us";
         return `Yield Curves | ${curveOption(curve).label}`;
       } catch {
+        // Intentional ignore: the load reports a curve it cannot read, so the title stays generic.
         return "Yield Curves";
       }
     },
@@ -206,7 +208,7 @@ export function createYieldCurveHeadless(
       const compareAsOf = comparePoints ? curveAsOf(comparePoints) : null;
       const compareAt = (maturity: string) => comparePoints?.find((point) => point.maturity === maturity)?.yield ?? null;
       // The stored curve brings its look-backs; the FRED fallback's load after it, and a failure leaves the move blank.
-      const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
+      const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(logFailure("yield-curve.headless", "Load yield curve lookbacks failed", {})) : {});
       const tenorRows = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row]));
       const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
       const missing = points.filter((point) => point.yield == null);

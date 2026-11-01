@@ -1,9 +1,10 @@
 import type { PluginModule } from "../plugin-module";
 import { formatTickerListInput, parseTickerListInput } from "../../../tickers/list";
 import { earningsRippleHeadless } from "./headless";
+import { logFailure } from "../../../utils/log-failure";
 
 function namedSymbols(arg: string | undefined): string[] {
-  try { return arg?.trim() ? parseTickerListInput(arg) : []; } catch { return []; }
+  try { return arg?.trim() ? parseTickerListInput(arg) : []; } catch (error) { return logFailure("earnings-ripple", "Read ripple ticker list failed", [])(error); }
 }
 
 export const earningsRippleModule: PluginModule = {

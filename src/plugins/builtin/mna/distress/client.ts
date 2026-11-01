@@ -48,6 +48,7 @@ const isWebUrl = (value: unknown): value is string => {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
   } catch {
+    // Intentional ignore: malformed URLs fail this web link field validator.
     return false;
   }
 };

@@ -22,7 +22,7 @@ const date = (value: unknown) => text(value) && /^\d{4}-\d{2}-\d{2}$/.test(value
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
 const tier = (value: unknown) => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 6;
 const claim = (value: unknown) => ["disclosed", "company_confirmed", "reported", "rumored"].includes(String(value));
-const url = (value: unknown) => { try { return text(value) && ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; } };
+const url = (value: unknown) => { try { return text(value) && ["http:", "https:"].includes(new URL(value).protocol); } catch { /* Intentional ignore: malformed URLs fail this web link field validator. */ return false; } };
 function evidence(value: SupplyEvidenceItem): boolean {
   return !!value && text(value.id) && tier(value.tier) && claim(value.claimType) && url(value.url)
     && text(value.title) && text(value.publisher) && timestamp(value.publishedAt) && timestamp(value.fetchedAt)

@@ -293,6 +293,7 @@ export function ratingReasonSource(reason: NonNullable<AnalystRatingRecord["reas
   try {
     return new URL(reason.url).hostname.replace(/^www\./, "");
   } catch {
+    // Intentional ignore: a malformed link has no site to name, so it reads as source.
     return "source";
   }
 }

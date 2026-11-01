@@ -31,7 +31,7 @@ function validPeriod(period: KpiPeriod): boolean {
 }
 function validEvidence(evidence: KpiEvidence): boolean {
   let safeUrl = false;
-  try { safeUrl = ["https:", "http:"].includes(new URL(evidence.url).protocol); } catch { /* Invalid evidence cannot be opened. */ }
+  try { safeUrl = ["https:", "http:"].includes(new URL(evidence.url).protocol); } catch { /* Intentional ignore: evidence without a web link cannot be opened, so it fails validation. */ }
   return !!evidence && text(evidence.id) && text(evidence.documentId) && text(evidence.sourceId)
     && sourceKinds.includes(evidence.sourceKind) && safeUrl && text(evidence.title) && instant(evidence.publishedAt)
     && text(evidence.country) && text(evidence.language) && text(evidence.quote) && evidence.quote.trim().length > 0

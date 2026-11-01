@@ -19,7 +19,7 @@ export const attentionScreenshotEvidence: PaneScreenshotEvidenceHook<AttentionEv
     if (!isRecord(value) || value.kind !== "attention" || value.version !== 1 || value.complete !== true
       || !isRecord(value.payload) || attentionTab(value.tab) !== value.tab || typeof value.selectedSymbol !== "string"
       || !Number.isInteger(value.plottedValueCount) || Number(value.plottedValueCount) < 0) return null;
-    try { validateAttention(value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch { return null; }
+    try { validateAttention(value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
   },
   mismatches(evidence, { resolved }) {
     return [evidence.payload.window !== attentionWindow(resolved.options.window) ? "Attention window does not match" : null,

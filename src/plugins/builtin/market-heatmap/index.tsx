@@ -101,6 +101,7 @@ import {
   overlayScreenerQuoteEntries,
   resolveScreenerQuoteFeedStatus,
 } from "../../../market-data/quotes/screener-live-quotes";
+import { logFailure } from "../../../utils/log-failure";
 
 const NO_ASSETS: HeatmapBoardAsset[] = [];
 const NO_TARGETS: QuoteSubscriptionTarget[] = [];
@@ -144,7 +145,7 @@ function loadCollectionSnapshots(
     const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
     return instrument ? [instrument] : [];
   });
-  if (instruments.length > 0) void coordinator.loadSnapshotsBatch(instruments, { forceRefresh }).catch(() => {});
+  if (instruments.length > 0) void coordinator.loadSnapshotsBatch(instruments, { forceRefresh }).catch(logFailure("market-heatmap", "Load heatmap collection snapshots failed"));
 }
 
 function formatMoneyCompact(value: number | null | undefined, currency: string): string {

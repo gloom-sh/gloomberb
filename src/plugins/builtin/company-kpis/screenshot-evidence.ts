@@ -6,6 +6,7 @@ import { isRecord } from "../../../utils/guards";
 import { resolveIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { allGuidance, allObservations } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 interface Evidence { kind: "company-disclosures"; version: 1; complete: boolean; plottedValueCount: number; payload: CompanyDataset; mode: CompanyMode; tab: string; rowIds: string[]; }
 export function useCompanyEvidence(payload: CompanyDataset | null, mode: CompanyMode, tab: string, rowIds: string[]) {
@@ -20,7 +21,7 @@ function screenshotEvidence(mode: CompanyMode): PaneScreenshotEvidenceHook<Evide
       const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
       if (!symbol) throw new Error("A company disclosure screenshot requires a ticker");
       // A bare symbol takes the saved listing's venue, as the pane does.
-      const saved = parsePublicTickerKey(symbol).exchange ? null : await context.store.loadTicker(symbol).catch(() => null);
+      const saved = parsePublicTickerKey(symbol).exchange ? null : await context.store.loadTicker(symbol).catch(logFailure("company-kpis.screenshot-evidence", "Load saved ticker for disclosure capture failed", null));
       const listing = await resolveIssuerListing(symbol, saved?.metadata.exchange, context.dataProvider);
       const payload = await fetchCompanyData(mode, symbol, companyQuery(resolved.options), apiClient, listing);
       // Keyed by the requested ticker: a listing abroad is answered under its bare symbol.
@@ -34,7 +35,7 @@ function screenshotEvidence(mode: CompanyMode): PaneScreenshotEvidenceHook<Evide
         const rows = "series" in payload ? allObservations(payload) : allGuidance(payload);
         if (value.plottedValueCount !== value.rowIds.length || value.rowIds.some((id) => !rows.some((row) => row.id === id))) return null;
         return value as unknown as Evidence;
-      } catch { return null; }
+      } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
     },
     mismatches(evidence, { resolved, payload }) {
       const snapshot = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings?.companySnapshot;

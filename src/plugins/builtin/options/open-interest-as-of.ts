@@ -1,6 +1,7 @@
 import type { OptionsChain } from "../../../types/financials";
 import { formatCalendarDay } from "./model-spot";
 import { loadOpenInterest, type OpenInterestPayload, type OptionsPositioningApi } from "../options-positioning/client";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * The session a chain's open interest is counted at
@@ -63,7 +64,8 @@ export async function loadListedOpenInterest(
   try {
     const listed = await loadOpenInterest(symbol, expiry, { signal: options.signal ?? AbortSignal.timeout(LISTED_TIMEOUT_MS) }, options.api);
     return listed.expiry === expiry ? listed : null;
-  } catch {
+  } catch (error) {
+    logFailure("options.open-interest-as-of", "Load listed open interest failed")(error);
     return null;
   }
 }

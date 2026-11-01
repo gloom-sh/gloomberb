@@ -18,6 +18,7 @@ import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { listingCell, toneColor } from "../shared/research-cells";
+import { logFailure } from "../../../utils/log-failure";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
@@ -65,7 +66,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("catalyst:selected", null);
   const [searchActive, setSearchActive] = useState(false);
   const [dateFieldActive, setDateFieldActive] = useState<string | null>(null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCatalysts(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCatalysts(snapshotSetting) : null; } catch (error) { return logFailure("catalysts.pane", "Validate catalysts snapshot failed", null)(error); } }, [snapshotSetting]);
   const query = useMemo(() => catalystQuery({ ...filters, tab }, symbol ?? undefined, litigation), [filters, tab, symbol, litigation]);
   const loader = useCallback(async ({ offset, signal, force }: PageRequest) => {
     const result = snapshot ? { payload: snapshot, stale: false, refreshError: null } : await loadCatalysts({ ...query, limit: 100, offset }, accessKey, force, signal);

@@ -7,6 +7,7 @@ import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../shared/
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatHedgePrice } from "./hedge";
 import { amountUnit, exportPercent, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * A cash-secured put (docs/research-data.md#cash-secured-put): one short put
@@ -158,7 +159,7 @@ export async function loadNextEarningsDates(
   provider: DataProvider | null | undefined, symbols: readonly string[], today = newYorkDay(),
 ): Promise<Map<string, string>> {
   const keys = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))];
-  const result = await loadEarningsCalendar(provider, keys).catch(() => null);
+  const result = await loadEarningsCalendar(provider, keys).catch(logFailure("options-scenario.csp", "Load earnings calendar for cash-secured puts failed", null));
   if (!provider || !result?.events.length) return new Map();
   const listings = keys.map((key) => {
     const listing = parsePublicTickerKey(key);

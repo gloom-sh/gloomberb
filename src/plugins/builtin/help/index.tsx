@@ -19,6 +19,7 @@ import { KeybindingsEditor } from "./keybindings-editor";
 import { ShortcutTable, type ShortcutTableEntry } from "./shortcut-table";
 import { resolveCommandShortcuts, resolveWindowTemplates } from "./shortcut-model";
 import { badgeColumnWidth } from "./table-cells";
+import { logFailure } from "../../../utils/log-failure";
 
 const HELP_TABS = [
   { label: "Basics", value: "basics" },
@@ -93,7 +94,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       .then((next) => {
         if (live) setPricing(next);
       })
-      .catch(() => {});
+      .catch(logFailure("help", "Load Cloud pricing for help failed"));
     return () => {
       live = false;
     };

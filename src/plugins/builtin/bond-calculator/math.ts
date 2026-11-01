@@ -157,7 +157,7 @@ export function treasurySpread(terms: BondTerms, yieldPercent: number, curve: re
   const before = points.findLast((point) => point.maturityYears <= maturityYears);
   const after = points.find((point) => point.maturityYears >= maturityYears);
   if (!before || !after || !before.asOf || before.asOf !== after.asOf) return null;
-  try { parseDate(before.asOf); } catch { return null; }
+  try { parseDate(before.asOf); } catch { /* Intentional ignore: a benchmark curve with an unreadable date gives no spread. */ return null; }
   const weight = before === after ? 0 : (maturityYears - before.maturityYears) / (after.maturityYears - before.maturityYears);
   const benchmarkPercent = before.yieldPercent! + weight * (after.yieldPercent! - before.yieldPercent!);
   return { benchmarkPercent, spreadBps: (yieldPercent - benchmarkPercent) * 100, asOf: before.asOf, maturityYears };

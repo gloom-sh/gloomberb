@@ -7,6 +7,7 @@ import type {
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { secListingKey } from "../../../utils/sec";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * Revenue by product, segment or region comes from Gloom Cloud, which reads
@@ -94,8 +95,8 @@ export function cachedRevenueBreakdown(
   if (!cached) return null;
   try {
     return { payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null };
-  } catch {
-    return null;
+  } catch (error) {
+    return logFailure("revenue-breakdown.client", "Validate cached revenue breakdown failed", null)(error);
   }
 }
 

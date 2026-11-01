@@ -26,6 +26,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { DATE_FIELD_EXAMPLES } from "../../../utils/calendar-date";
 import { displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { logFailure } from "../../../utils/log-failure";
 
 const PATH_COLUMNS: DataTableColumn[] = [{ id: "route", label: "Route", width: 40, align: "left" }, { id: "relationships", label: "Relationships", width: 22, align: "left" }, { id: "hops", label: "Hops", width: 6, align: "right" }, { id: "score", label: "Score", width: 9, align: "right" }, { id: "confidence", label: "Confidence", width: 12, align: "right" }, { id: "exposure", label: "Estimated exposure", width: 35, align: "left" }];
 const SOURCE_LABELS = { xbrl: "Structured filing", filing_text: "Filing text", press_release: "Company release", call: "Earnings call", news: "News", web: "Website", import: "Imported record" };
@@ -126,7 +127,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   const [visibleLinks, setVisibleLinks] = useState<string[]>([]);
   const [inputsOpen, setInputsOpen] = useState(false);
   const [snapshotSetting] = usePaneSettingValue<GraphPayload | null>("graphSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadGraph(focus, target, options, accessKey, force), [focus, target, options, accessKey, snapshot]);
   const resource = useAsyncResource(tab === "path" && !target ? null : loader, { initialData: () => cachedGraph(focus, target, options, accessKey), clearOnError: isAccessDenied });
   const data = resource.data?.payload ?? null;

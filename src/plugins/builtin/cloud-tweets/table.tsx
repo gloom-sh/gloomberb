@@ -49,6 +49,7 @@ import {
 } from "./model";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
+import { logFailure } from "../../../utils/log-failure";
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);
@@ -301,7 +302,7 @@ function useTweetSearchData(
         });
       })
       // The tweets on screen are still the answer; the next cycle tries again.
-      .catch(() => {});
+      .catch(logFailure("cloud-tweets.table", "Refresh latest tweets failed"));
   }, [enabled, load, requestKey]);
   const fetchedAt = state.data ? cachedTweetResult(requestKey)?.fetchedAt ?? null : null;
   useAutoRefresh(fetchedAt, refreshLatest, { intervalMs: TWEET_REFRESH_MS });
@@ -378,7 +379,7 @@ export function TweetSearchTable({
       content: (ctx: PromptContext<string>) => (
         <ChoiceDialog {...ctx} title="Open from this tweet" choices={selectedLinks.map(tweetLinkChoice)} />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("cloud-tweets.table", "Open tweet links prompt failed"));
     const link = choice === undefined ? undefined : selectedLinks[Number(choice)];
     if (!link) return;
     if (link.kind === "ticker") openTicker(link.symbol);

@@ -162,7 +162,7 @@ export function normalizeCapCurrency(value: string): string {
   try {
     known = Intl.supportedValuesOf("currency");
   } catch {
-    // An older runtime lists none; the shape check stands alone.
+    // Intentional ignore: an older runtime lists no currencies, so the shape check stands alone.
   }
   if (!CURRENCY_CODE.test(code) || (known.length > 0 && !known.includes(code))) {
     throw new Error(`Invalid --currency value "${value}". Use a three-letter currency code such as USD or EUR.`);

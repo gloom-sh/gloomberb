@@ -17,6 +17,7 @@ import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { listingFateNotes, listingFateReport, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
 import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
 import { fxVolatilityRefusal } from "../../../market-data/options-alternatives";
+import { logFailure } from "../../../utils/log-failure";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
 const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : "--";
@@ -50,7 +51,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     // What became of the symbol, as `quote` reads it, looked up beside the figures: FB's are the fund listed
     // there now, TWTR stopped trading, and HFC, which became DINO, has none of its own.
     const changes = startTickerChangeLookup(ctx.marketData, instrument.symbol, instrument.exchange);
-    const quote = ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(() => null);
+    const quote = ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(logFailure("iv-history.headless", "Load IV history quote failed", null));
     const [payload, prices, releases] = await Promise.all([
       loadIvHistory(instrument.symbol, { signal: ctx.signal }, ctx.apiClient),
       loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)),

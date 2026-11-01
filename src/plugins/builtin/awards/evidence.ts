@@ -24,7 +24,7 @@ export const awardsScreenshotEvidence: PaneScreenshotEvidenceHook<AwardsEvidence
   read(value) {
     if (!isRecord(value) || value.kind !== "government-awards" || value.version !== 1 || value.complete !== true || !Number.isSafeInteger(value.plottedValueCount)
       || Number(value.plottedValueCount) < 0 || awardTab(value.tab) !== value.tab || !isRecord(value.payload)) return null;
-    try { validateAwards(value.payload as unknown as AwardsPayload); return value as unknown as AwardsEvidence; } catch { return null; }
+    try { validateAwards(value.payload as unknown as AwardsPayload); return value as unknown as AwardsEvidence; } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
   },
   mismatches(evidence, { resolved, payload }) {
     const snapshot = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings?.awardsSnapshot;

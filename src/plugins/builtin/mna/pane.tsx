@@ -53,6 +53,7 @@ import {
   stageLabel,
   termsLabel,
 } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 const STATUS_OPTIONS: { value: MnaStatusFilter; label: string }[] = [
   { value: "pending", label: "Pending" },
@@ -238,7 +239,9 @@ function MnaDealsView({ focused, width, height, symbol }: {
       .then((page) => {
         if (pageRequest.current === request) setPaged({ owner: first, payload: appendMnaDeals(data, page) });
       })
-      .catch(() => {})
+      .catch((error) => {
+        if (!request.signal.aborted) logFailure("mna.pane", "Load more M&A deals failed")(error);
+      })
       .finally(() => {
         if (pageRequest.current === request) setLoadingMore(false);
       });

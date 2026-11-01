@@ -27,6 +27,7 @@ import { allGuidance, allObservations, basisLabel, changeText, changeTone, compa
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
+import { logFailure } from "../../../utils/log-failure";
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -92,7 +93,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const openUpgrade = useCloudUpgradeAction(mode === "kpis" ? "kpis" : "guide");
   const [snapshotSetting] = usePaneSettingValue<CompanyDataset | null>("companySnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCompanyData(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCompanyData(snapshotSetting) : null; } catch (error) { return logFailure("company-kpis.pane", "Validate company disclosures snapshot failed", null)(error); } }, [snapshotSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null })
     : loadCompanyData(mode, symbol!, accessKey, force, { exchange, name }), [mode, symbol, exchange, name, accessKey, snapshot]);
   const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey, { exchange, name }) : null, clearOnError: isAccessDenied });

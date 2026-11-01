@@ -9,6 +9,7 @@ import {
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
+import { logFailure } from "../../../utils/log-failure";
 
 const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: gpuSource(row), basis: gpuBasisLabel(row.basis),
   price: row.pricePerGpuHr, availability: row.availability, observedAt: row.observedAt, effectiveAt: row.effectiveAt, provenance: row.provenance ?? "live", provenanceLabel: gpuProvenanceLabel(row, true),
@@ -98,7 +99,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
       const related = gpuEquityRows(rows, selected, !!board.access?.locked);
       const histories = await loadGpuEquityHistory(ctx.marketData);
       const equities = await Promise.all(related.map(async (row) => {
-        const quote = await ctx.marketData.getQuote(row.symbol, row.exchange).catch(() => null);
+        const quote = await ctx.marketData.getQuote(row.symbol, row.exchange).catch(logFailure("gpu.headless", "Load GPU equity quote failed", null));
         const history = histories.find((entry) => entry.symbol === row.symbol);
         // The regular session's last and move, as the pane's board shows them.
         const headline = getRegularSessionDisplay(quote);

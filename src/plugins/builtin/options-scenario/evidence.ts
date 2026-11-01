@@ -56,7 +56,7 @@ export function readScenarioEvidence(value: unknown): ScenarioEvidence | null {
     || !isRecord(value.scenario) || !isStringArray(value.scenario.warnings)) return null;
   const scenario = value.scenario as unknown as ScenarioModel;
   let expected: ScenarioModel;
-  try { expected = buildScenario(scenario.position, scenario.controls); } catch { return null; }
+  try { expected = buildScenario(scenario.position, scenario.controls); } catch { /* Intentional ignore: a scenario that cannot be repriced is rejected as evidence by returning null. */ return null; }
   if (value.symbol !== expected.position.symbol) return null;
   // A clamped requested date can add a warning to the original model. Its
   // normalized controls reproduce the values, while retaining that warning.

@@ -16,6 +16,7 @@ import {
   type KellyHistoryInputs,
 } from "./history";
 import { formatPct, formatSignedPct } from "./view";
+import { logFailure } from "../../../utils/log-failure";
 
 /** The fractions of full Kelly a report sizes, largest first. */
 const KELLY_FRACTIONS = [
@@ -77,7 +78,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     // coordinator every chart reads daily closes from (the History tab's request, cache included).
     const [entry, quote] = await Promise.all([
       new MarketDataCoordinator(ctx.marketData).loadChart(kellyHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh }),
-      ctx.marketData.getQuote(symbol, exchange, ctx.refresh ? { cacheMode: "refresh" } : undefined).catch(() => null),
+      ctx.marketData.getQuote(symbol, exchange, ctx.refresh ? { cacheMode: "refresh" } : undefined).catch(logFailure("kelly-sizer.headless", "Load Kelly sizing quote failed", null)),
     ]);
     const history = clipPriceHistoryToRange(resolveEntryValue(entry) ?? [], range);
     ctx.signal.throwIfAborted();

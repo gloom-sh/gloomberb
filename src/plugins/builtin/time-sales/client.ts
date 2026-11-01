@@ -79,6 +79,7 @@ export function tapeRejection(body: string): string | null {
     const value = JSON.parse(body) as { gaps?: unknown };
     return Array.isArray(value?.gaps) && typeof value.gaps[0] === "string" ? value.gaps[0] : null;
   } catch {
+    // Intentional ignore: an error body that is not JSON names no gap, so the request's own error stands.
     return null;
   }
 }

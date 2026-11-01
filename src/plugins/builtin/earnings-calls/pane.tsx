@@ -647,7 +647,7 @@ function CallsListView({
   // which is a deliberate act reserved for Enter.
   const prefetchTranscript = useCallback((call: CloudEarningsCallPayload) => {
     if (!call.hasTranscript || !access.emailVerified || !access.hasProAccess) return;
-    void loadTranscript(call.id).catch(() => {});
+    void loadTranscript(call.id).catch(() => { /* Intentional ignore: a warm-up that fails is loaded again, and its failure shown, when the call opens. */ });
   }, [access.emailVerified, access.hasProAccess]);
 
   // A published transcript is immutable, so it loads once per call. Opening
