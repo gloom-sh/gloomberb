@@ -103,8 +103,8 @@ public static class W {
   }
 
   public static int HitTest(IntPtr h, int x, int y) {
-    long l = ((long)(y & 0xFFFF) << 16) | (long)(x & 0xFFFF);
-    return (int)(long)SendMessageW(h, 0x0084, IntPtr.Zero, new IntPtr(l));
+    uint l = (((uint)y & 0xFFFFu) << 16) | ((uint)x & 0xFFFFu);
+    return (int)(long)SendMessageW(h, 0x0084, IntPtr.Zero, new IntPtr((long)l));
   }
 
   public static void Down() { mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); }

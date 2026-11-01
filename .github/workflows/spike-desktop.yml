@@ -198,8 +198,12 @@ jobs:
 
       - name: Measure
         run: |
-          Xvfb :99 +xinerama -screen 0 1920x1080x24 -screen 1 1920x1080x24 -nolisten tcp &
+          # Two 1920x1080 monitors side by side on one screen (RandR 1.5 monitors).
+          Xvfb :99 -screen 0 3840x1080x24 -nolisten tcp &
           sleep 1
+          DISPLAY=:99 xrandr --setmonitor LEFT 1920/508x1080/286+0+0 screen || true
+          DISPLAY=:99 xrandr --setmonitor RIGHT 1920/508x1080/286+1920+0 none || true
+          DISPLAY=:99 xrandr --listmonitors || true
           DISPLAY=:99 openbox &
           sleep 1
           folder="${{ steps.install.outputs.folder }}"
