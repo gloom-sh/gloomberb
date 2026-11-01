@@ -106,7 +106,7 @@ export function useAppTickerInspectorRuntime({
     const sourceDocked = findDockLeaf(state.config.layout, sourcePaneId);
     const layout = sourceDocked && paneDef.defaultMode !== "floating"
       ? addPaneToLayout(state.config.layout, instance, { relativeTo: sourcePaneId, position: "right" })
-      : addPaneFloating(state.config.layout, instance, width, height, paneDef);
+      : addPaneFloating(state.config.layout, instance, width, height, paneDef, { focusedPaneId: sourcePaneId });
     return { layout, instance };
   }, [pluginRegistry, resolveInspectorPane, state.config.layout]);
 

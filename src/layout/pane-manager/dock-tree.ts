@@ -44,6 +44,12 @@ export interface DockGeometryOptions {
   precise?: boolean;
   dividerSize?: number | { horizontal: number; vertical: number };
   reserveDividerGutters?: boolean;
+  /**
+   * Precise only: the space left between two panes, in cells per axis (the
+   * desktop's 4px). Each pane gives up half of it on the side it shares with
+   * the other; the split and its divider stay where the ratio puts them.
+   */
+  gap?: number | { horizontal: number; vertical: number };
 }
 
 export function clampRatio(ratio: number): number {
@@ -173,21 +179,25 @@ function collectDockGeometry(
     ? options.dividerSize[node.axis]
     : options.dividerSize ?? 1;
   const reserveDividerGutters = options.reserveDividerGutters === true && !precise;
+  const gap = precise
+    ? Math.max(0, typeof options.gap === "object" ? options.gap[node.axis] : options.gap ?? 0)
+    : 0;
 
   if (node.axis === "horizontal") {
     const reserveDividerGutter = reserveDividerGutters && bounds.width > dividerSize;
     const splitWidth = reserveDividerGutter ? bounds.width - dividerSize : bounds.width;
     const [firstWidth, secondWidth] = resolveSplitSizes(splitWidth, node.ratio, MIN_PANE_WIDTH, precise);
-    const firstBounds = { x: bounds.x, y: bounds.y, width: firstWidth, height: bounds.height };
+    const halfGap = Math.min(gap / 2, firstWidth / 2, secondWidth / 2);
+    const firstBounds = { x: bounds.x, y: bounds.y, width: firstWidth - halfGap, height: bounds.height };
     const dividerX = reserveDividerGutter
       ? bounds.x + firstWidth
       : precise
         ? bounds.x + firstWidth - (dividerSize / 2)
         : bounds.x + firstWidth - 1;
     const secondBounds = {
-      x: reserveDividerGutter ? bounds.x + firstWidth + dividerSize : bounds.x + firstWidth,
+      x: reserveDividerGutter ? bounds.x + firstWidth + dividerSize : bounds.x + firstWidth + halfGap,
       y: bounds.y,
-      width: secondWidth,
+      width: secondWidth - halfGap,
       height: bounds.height,
     };
     dividers.push({
@@ -210,7 +220,8 @@ function collectDockGeometry(
   const reserveDividerGutter = reserveDividerGutters && bounds.height > dividerSize;
   const splitHeight = reserveDividerGutter ? bounds.height - dividerSize : bounds.height;
   const [firstHeight, secondHeight] = resolveSplitSizes(splitHeight, node.ratio, MIN_DOCKED_HEIGHT, precise);
-  const firstBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: firstHeight };
+  const halfGap = Math.min(gap / 2, firstHeight / 2, secondHeight / 2);
+  const firstBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: firstHeight - halfGap };
   const dividerY = reserveDividerGutter
     ? bounds.y + firstHeight
     : precise
@@ -218,9 +229,9 @@ function collectDockGeometry(
       : bounds.y + firstHeight - 1;
   const secondBounds = {
     x: bounds.x,
-    y: reserveDividerGutter ? bounds.y + firstHeight + dividerSize : bounds.y + firstHeight,
+    y: reserveDividerGutter ? bounds.y + firstHeight + dividerSize : bounds.y + firstHeight + halfGap,
     width: bounds.width,
-    height: secondHeight,
+    height: secondHeight - halfGap,
   };
   dividers.push({
     path,

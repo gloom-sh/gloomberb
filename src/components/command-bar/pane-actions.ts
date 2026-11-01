@@ -114,7 +114,7 @@ export function useCommandBarPaneActions({
 
     const { width, height } = pluginRegistry.getTermSize();
     const nextLayout = currentState.config.layout.floating.some((entry) => entry.instanceId === paneId)
-      ? addPaneFloating(currentState.config.layout, duplicate, width, height, paneDef)
+      ? addPaneFloating(currentState.config.layout, duplicate, width, height, paneDef, { focusedPaneId: paneId })
       : addPaneToLayout(currentState.config.layout, duplicate, { relativeTo: paneId, position: "right" });
     persistLayoutChange(nextLayout);
     dispatch({ type: "FOCUS_PANE", paneId: duplicate.instanceId });

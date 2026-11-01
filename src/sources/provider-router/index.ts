@@ -51,7 +51,7 @@ import {
   type ProviderRouterCachePolicyKey,
 } from "./cache";
 import { ProviderRouterSearchRoutes } from "./search";
-import { collectCapabilityRouteSources, normalizeRouteSource } from "./sources";
+import { collectCapabilityRouteSources, mergeRouteSourcesById, normalizeRouteSource } from "./sources";
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { withProviderConnectionHealth } from "./connection-health";
 import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
@@ -612,7 +612,7 @@ export class AssetDataRouter implements DataProvider {
         ...this.registry.getEnabledCapabilities("news"),
       ]));
     }
-    return sources
+    return mergeRouteSourcesById(sources)
       .filter((source) => source.id !== this.id && source.id !== this.fallbackSource?.id)
       .sort((a, b) => routeSourcePriority(a) - routeSourcePriority(b));
   }

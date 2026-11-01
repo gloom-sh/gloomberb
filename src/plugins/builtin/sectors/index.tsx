@@ -4,7 +4,7 @@ import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type Da
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import { usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -46,7 +46,7 @@ import {
   type SectorRowsByCollection,
   type SectorSortPreference,
 } from "./sector-model";
-import { loadSectorRows } from "./client";
+import { loadSectorRows, type SectorHistories } from "./client";
 import { sectorsHeadless } from "./headless";
 import { membersCache, themesCache } from "../themes/client";
 import { themesHeadless } from "../themes/headless";
@@ -60,7 +60,9 @@ const NO_SAVED_ETFS: string[] = [];
  * Prices, the day move and the returns stream; the year of history behind the
  * returns only reloads on the app's research cadence. While the feed is not
  * carrying a fund, the last load failed, or a fund printed in a session the
- * board has not rolled to, the snapshot reloads quietly at this pace.
+ * board has not rolled to, the quotes reload quietly at this pace, read
+ * against the history already loaded: outside regular hours that is all an
+ * open board asks for.
  */
 const SECTOR_FALLBACK_REFRESH_MS = 60_000;
 
@@ -150,6 +152,9 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
   );
 
   const fetchGenRef = useRef(0);
+  const researchIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
+  /** The history the last full load read, for the funds it was read for, which quote refreshes reuse. */
+  const historiesRef = useRef<{ funds: string; loadedAt: number; histories: SectorHistories } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const rows = useMemo(
@@ -223,6 +228,14 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     const gen = fetchGenRef.current;
     const collectionId = activeCollection.id;
     const sectorDefs = activeItems;
+    // A background refresh reads its quotes against the history already loaded
+    // for these funds, until that history is one research interval old.
+    const funds = sectorDefs.map((item) => item.etf).join(",");
+    const stored = historiesRef.current;
+    // The app's own research cadence (app-runtime): a minute at least, and an unreadable setting reloads.
+    const researchMs = Math.max(1, researchIntervalMinutes) * 60_000;
+    const reuse = background && stored?.funds === funds && Date.now() - stored.loadedAt < researchMs;
+    const histories: SectorHistories = reuse ? stored!.histories : new Map();
     const updateRows = (updater: (rows: SectorRow[]) => SectorRow[]) => {
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, updater));
     };
@@ -238,8 +251,9 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
 
     if (!background) updateRows((rows) => rows.map((row) => ({ ...row, loading: true })));
 
-    loadSectorRows(sectorDefs, dataProvider).then((outcomes) => {
+    loadSectorRows(sectorDefs, dataProvider, { histories }).then((outcomes) => {
       if (fetchGenRef.current !== gen) return;
+      if (!reuse) historiesRef.current = { funds, loadedAt: Date.now(), histories };
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       updateRows((rows) => applySectorReload(rows, loadedByEtf, background));
 
@@ -253,7 +267,7 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
       setLoadError("Sector data unavailable");
       if (!background) updateRows(clearLoading);
     });
-  }, [activeCollection.id, activeItems, dataProvider, setLastRefreshByCollection, setRowsByCollection]);
+  }, [activeCollection.id, activeItems, dataProvider, researchIntervalMinutes, setLastRefreshByCollection, setRowsByCollection]);
   const fetchAll = useCallback(() => load(false), [load]);
   const refreshInBackground = useCallback(() => load(true), [load]);
 

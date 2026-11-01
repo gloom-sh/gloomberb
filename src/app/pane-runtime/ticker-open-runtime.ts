@@ -173,7 +173,7 @@ export function useAppTickerOpenRuntime({
     const { width, height } = pluginRegistry.getTermSize();
     const shouldFloat = options?.floating ?? true;
     const nextLayout = shouldFloat
-      ? addPaneFloating(currentLayout, instance, width, height, paneDef)
+      ? addPaneFloating(currentLayout, instance, width, height, paneDef, { focusedPaneId: currentState.focusedPaneId })
       : addPaneToLayout(
         currentLayout,
         instance,

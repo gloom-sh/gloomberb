@@ -20,9 +20,17 @@ export interface SectorRowOutcome {
   row: Partial<SectorRow> | null;
 }
 
+/**
+ * The year of daily bars each fund's returns are read from, by fund. A load
+ * given one asks only for the funds it lacks and adds what it reads, so a
+ * refresh of the prices alone sends no history request.
+ */
+export type SectorHistories = Map<string, PricePoint[]>;
+
 export async function loadSectorRows(
   sectors: readonly SectorDef[],
   provider: DataProvider,
+  options: { histories?: SectorHistories } = {},
 ): Promise<SectorRowOutcome[]> {
   const quotes = new Map<string, Quote | null>();
   if (provider.getQuotesBatch) {
@@ -41,10 +49,12 @@ export async function loadSectorRows(
     }
   }));
 
-  const histories = new Map(await Promise.all(sectors.map(async (sector) => [
-    sector.etf,
-    await provider.getPriceHistory(sector.etf, "", "1Y").catch(logFailure("sectors", "Sector price history failed", [])),
-  ] as const)));
+  const histories: SectorHistories = options.histories ?? new Map();
+  // Funds whose history this load reads; a stored one is not asked again, nor for its boundary buffer.
+  const read = new Set(sectors.filter((sector) => !histories.get(sector.etf)?.length).map((sector) => sector.etf));
+  await Promise.all([...read].map(async (etf) => {
+    histories.set(etf, await provider.getPriceHistory(etf, "", "1Y").catch(logFailure("sectors", "Sector price history failed", [])));
+  }));
   // The quotes as sent carry any pre-market or after-hours print, for its own column.
   const sentQuotes = new Map(quotes);
   // Pre-market quotes whose last completed session nothing confirms.
@@ -62,7 +72,7 @@ export async function loadSectorRows(
   const datedQuotes = [...quoteDates].filter((entry): entry is [string, string] => entry[1] != null);
   const confirmedQuotes = datedQuotes.filter(([symbol]) => !unconfirmed.has(symbol));
   const asOfDate = [...(confirmedQuotes.length > 0 ? confirmedQuotes : datedQuotes).map(([, date]) => date),
-    ...[...histories.values()].map(latestHistoryDate)]
+    ...sectors.map((sector) => latestHistoryDate(histories.get(sector.etf) ?? []))]
     .filter((date): date is string => date != null).sort().at(-1) ?? null;
 
   const outcomes = await Promise.all(sectors.map(async (sector) => {
@@ -90,7 +100,7 @@ export async function loadSectorRows(
     const quoteIssue = priceIssue ?? (changePercent == null ? "1D change unavailable" : null);
     // A strict trailing request may begin after the prior year's weekend or
     // holiday. Ask for a small boundary buffer when the provider supports it.
-    if (asOfDate && computeTrailingReturn(history, "1Y", price, asOfDate)?.value == null
+    if (read.has(sector.etf) && asOfDate && computeTrailingReturn(history, "1Y", price, asOfDate)?.value == null
       && provider.getDetailedPriceHistory) {
       const start = new Date(`${sectorReturnTargetDate(asOfDate, "1Y")}T00:00:00Z`);
       start.setUTCDate(start.getUTCDate() - SECTOR_RETURN_BASE_MAX_GAP_DAYS);
@@ -133,8 +143,8 @@ export async function loadSectorRows(
   // These ETFs share a market calendar. A missing observation for one fund
   // must not silently give it an earlier baseline than its peers. Use every
   // reported baseline, independently of whether that fund has an ending price.
-  const sharedStartDate = (range: "1M" | "1Y") => [...histories.values()]
-    .map((history) => sectorReturnStartDate(history, range, asOfDate))
+  const sharedStartDate = (range: "1M" | "1Y") => sectors
+    .map((sector) => sectorReturnStartDate(histories.get(sector.etf) ?? [], range, asOfDate))
     .filter((date): date is string => !!date).sort().at(-1);
   const monthStartDate = sharedStartDate("1M");
   const yearStartDate = sharedStartDate("1Y");

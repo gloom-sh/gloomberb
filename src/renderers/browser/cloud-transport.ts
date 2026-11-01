@@ -28,7 +28,12 @@ export function browserCredentialedFetch(url: string, init: RequestInit = {}): P
   // carrying them into fetch would either fail or misrepresent the web origin.
   headers.delete("Cookie");
   headers.delete("Origin");
-  return fetch(url, { ...init, headers, credentials: "include" });
+  // Reads skip the HTTP cache. Chromium lets only one request per URL use the
+  // cache at a time, so the same read from a second tab, or a second pane,
+  // waits for the first to finish and then goes to the network anyway: three
+  // tabs opened together waited seconds per request that way.
+  const read = (init.method ?? "GET").toUpperCase() === "GET" && init.cache === undefined;
+  return fetch(url, { ...init, headers, credentials: "include", ...(read ? { cache: "no-store" as const } : {}) });
 }
 
 function parseResponseHeaders(raw: string): Headers {

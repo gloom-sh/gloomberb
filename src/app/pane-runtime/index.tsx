@@ -185,7 +185,7 @@ export function useAppPaneRuntime({
     const dockedPaneIds = getDockedPaneIds(nextLayout);
 
     if (options?.placement === "floating" || (options?.placement !== "docked" && paneDef.defaultMode === "floating")) {
-      nextLayout = addPaneFloating(nextLayout, instance, width, height, paneDef);
+      nextLayout = addPaneFloating(nextLayout, instance, width, height, paneDef, { focusedPaneId });
     } else if (relativeTo && findDockLeaf(nextLayout, relativeTo)) {
       nextLayout = addPaneToLayout(nextLayout, instance, { relativeTo, position: relativePosition });
     } else if (dockedPaneIds.length === 0) {

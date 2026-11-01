@@ -182,3 +182,50 @@ test("new-credential validation supersedes an older live request without recheck
   expect(apiClient.getWebSocketToken()).toBe("new-ws");
   expect(apiClient.getCurrentUser()).toMatchObject(pro);
 });
+
+test("a cookie session checked at boot is not asked for again once chat restores its state", async () => {
+  apiClient.setCookieSessionMode(true);
+  let requests = 0;
+  setCloudApiFetchTransport(async () => { requests++; return new Response("", { status: 200 }); });
+  await apiClient.getSession();
+  controller.attachPersistence(new MemoryPluginPersistence());
+  expect(await apiClient.ensureVerifiedSession()).toBeNull();
+  expect(requests).toBe(1);
+});
+
+test("a refresh may take the session the app checked moments ago, and asks once that check is old", async () => {
+  apiClient.setCookieSessionMode(true);
+  let requests = 0;
+  setCloudApiFetchTransport(async (url) => {
+    if (new URL(url).pathname !== "/auth/get-session") return Response.json({ channels: [] });
+    requests++;
+    return Response.json({ user: pro });
+  });
+  await apiClient.getSession();
+  controller.attachPersistence(new MemoryPluginPersistence());
+  await controller.refreshSession({ reuseCheckWithinMs: 30_000 });
+  expect(requests).toBe(1);
+  expect(controller.getSnapshot().user?.id).toBe(pro.id);
+  await controller.refreshSession({ reuseCheckWithinMs: 0 });
+  expect(requests).toBe(2);
+});
+
+test("a read asked once another account's session is found does not join one sent before", async () => {
+  apiClient.setCookieSessionMode(true);
+  const reads: Array<(response: Response) => void> = [];
+  setCloudApiFetchTransport(async (url) => {
+    if (new URL(url).pathname === "/auth/get-session") return Response.json({ user: pro });
+    const { promise, resolve } = Promise.withResolvers<Response>();
+    reads.push(resolve);
+    return promise;
+  });
+  const settled = async (count: number) => { for (let i = 0; i < 50 && reads.length < count; i++) await Bun.sleep(1); };
+  const signedOut = apiClient.getCloudQuote("NVDA", "NASDAQ");
+  await settled(1);
+  await apiClient.getSession();
+  const signedIn = apiClient.getCloudQuote("NVDA", "NASDAQ");
+  await settled(2);
+  expect(reads).toHaveLength(2);
+  for (const answer of reads) answer(Response.json({ status: "success", data: { symbol: "NVDA", price: 1 } }));
+  await Promise.all([signedOut, signedIn]);
+});

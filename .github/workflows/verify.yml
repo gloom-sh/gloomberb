@@ -110,7 +110,7 @@ jobs:
           for attempt in {1..12}; do
             if curl --fail --silent --show-error --max-time 15 https://term.gloom.sh/health >/dev/null \
               && curl --fail --silent --show-error --max-time 15 "https://term.gloom.sh/l/00000000000000000000000000000000?ref=$GITHUB_SHA" \
-                | grep --fixed-strings --quiet '/assets/share/main.js'; then
+                | grep --fixed-strings --quiet '/assets/share/main-'; then
               exit 0
             fi
             sleep 5
