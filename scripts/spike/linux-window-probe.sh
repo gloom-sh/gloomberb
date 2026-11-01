@@ -51,9 +51,10 @@ shot() { [[ -n "$shots" ]] && mkdir -p "$shots" && import -window root "$shots/$
 place() { xdotool windowsize "$main" 1000 680; xdotool windowmove "$main" 100 80; sleep 0.6; xdotool windowactivate "$main" 2>/dev/null; sleep 0.2; }
 
 screen="$(xdpyinfo | awk '/dimensions:/ {print $2; exit}')"
-hints="$(xprop -id "$main" WM_NORMAL_HINTS 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g')"
-motif="$(xprop -id "$main" _MOTIF_WM_HINTS 2>/dev/null | sed 's/"/\\"/g')"
-frame_extents="$(xprop -id "$main" _NET_FRAME_EXTENTS _GTK_FRAME_EXTENTS 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g')"
+hints="$(xprop -id "$main" WM_NORMAL_HINTS 2>/dev/null | tr '\n\t"' '  ' )"
+motif="$(xprop -id "$main" _MOTIF_WM_HINTS 2>/dev/null | tr '\n\t"' '  ')"
+frame_extents="$(xprop -id "$main" _NET_FRAME_EXTENTS _GTK_FRAME_EXTENTS 2>/dev/null | tr '\n\t"' '  ')"
+monitors="$(xrandr --listmonitors 2>/dev/null | tr '\n\t"' '  ')"
 
 place
 read -r sx sy sw sh <<<"$(geometry "$main")"
@@ -81,7 +82,7 @@ read -r _ _ lw lh <<<"$(geometry "$main")"
 place
 wmctrl -i -r "$main" -b add,maximized_vert,maximized_horz; sleep 1
 read -r mx my mw mh <<<"$(geometry "$main")"
-state="$(xprop -id "$main" _NET_WM_STATE 2>/dev/null | sed 's/"/\\"/g')"
+state="$(xprop -id "$main" _NET_WM_STATE 2>/dev/null | tr '\n\t"' '  ')"
 shot 03-maximized
 wmctrl -i -r "$main" -b remove,maximized_vert,maximized_horz; sleep 0.6
 
@@ -100,6 +101,7 @@ closed=$(( $(date +%s%3N) - start ))
 cat > "$out" <<EOF
 {
   "screen": "$screen",
+  "monitors": "$monitors",
   "topLevelWindows": ${#windows[@]},
   "normalHints": "$hints",
   "motifHints": "$motif",
