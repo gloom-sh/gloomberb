@@ -104,6 +104,15 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms
           [System.Windows.Forms.Screen]::AllScreens | Format-List
 
+      - name: Clear the first-run privacy screen
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # The Arm image signs in to the first-run privacy screen, which covers every window.
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE" /v DisablePrivacyExperience /t REG_DWORD /d 1 /f
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" /v ScoobeSystemSettingEnabled /t REG_DWORD /d 0 /f
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Format-Table Id, Name, MainWindowTitle -AutoSize | Out-String | Write-Host
+          Get-Process WWAHost, UserOOBEBroker -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
       - name: Install
         id: install
         shell: pwsh
@@ -139,6 +148,15 @@ jobs:
           name: spike-windows-installer
           path: installer
 
+      - name: Clear the first-run privacy screen
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # The Arm image signs in to the first-run privacy screen, which covers every window.
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE" /v DisablePrivacyExperience /t REG_DWORD /d 1 /f
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" /v ScoobeSystemSettingEnabled /t REG_DWORD /d 0 /f
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Format-Table Id, Name, MainWindowTitle -AutoSize | Out-String | Write-Host
+          Get-Process WWAHost, UserOOBEBroker -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Stopping $($_.Name) $($_.Id)"; Stop-Process -Id $_.Id -Force }
       - name: Install
         id: install
         shell: pwsh
