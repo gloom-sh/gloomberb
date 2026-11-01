@@ -113,7 +113,8 @@
    "description": "Browse chartable series",
    "detail": "Searches every series the chart composer knows: securities, options, crypto, FRED, treasuries, and futures. Pick one to chart it.",
    "category": "research",
-   "arg": "fed funds"
+   "arg": "fed funds",
+   "shot": "https://gloom.sh/screenshots/fn/CAT.png"
   },
   {
    "code": "FA",
@@ -133,6 +134,7 @@
    "category": "research",
    "arg": "FICO",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/CRDOC.png",
    "lesson": "/academy/rates-bonds-credit/credit/debt-and-covenants"
   },
   {
@@ -289,6 +291,7 @@
    "detail": "One tab per strategy: cash-secured put, covered call, vertical, iron condor, straddle, strangle and calendar. For each ticker it picks the legs by delta and expiry, then shows credit or debit, max gain and loss, break-evens, probability of profit, IV rank, wide spreads and earnings before expiry. Income trades rank by yearly return, debit trades by reward to risk.",
    "category": "research",
    "arg": "JPM, GS, KO",
+   "shot": "https://gloom.sh/screenshots/fn/CSP.png",
    "lesson": "/academy/options-and-volatility/chain-and-strategies/screening-option-trades"
   },
   {
@@ -378,6 +381,7 @@
    "category": "research",
    "arg": "MSFT",
    "access": "cloud",
+   "shot": "https://gloom.sh/screenshots/fn/EM.png",
    "lesson": "/academy/fundamentals-and-earnings/earnings/estimates-and-revisions"
   },
   {
@@ -388,6 +392,7 @@
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/KPIS.png",
    "lesson": "/academy/fundamentals-and-earnings/the-statements/segments-and-kpis"
   },
   {
@@ -398,6 +403,7 @@
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/GUIDE.png",
    "lesson": "/academy/fundamentals-and-earnings/earnings/guidance"
   },
   {
@@ -457,7 +463,8 @@
    "description": "Outstanding settlement fails",
    "detail": "The Short Interest pane on Fails to deliver: SEC outstanding fail shares by settlement date and CUSIP, with reported prices. Each date is a separate snapshot; never add fails across dates. Published twice monthly with a delay. Missing records do not establish zero fails.",
    "category": "research",
-   "arg": "AAPL"
+   "arg": "AAPL",
+   "shot": "https://gloom.sh/screenshots/fn/FTD.png"
   },
   {
    "code": "ATS",
@@ -465,7 +472,8 @@
    "description": "Weekly off-exchange shares and trades",
    "detail": "The Short Interest pane on Weekly ATS/OTC: FINRA ATS and non-ATS shares and trades, including dark-pool activity. ATS % divides ATS shares by published off-exchange shares, not total market volume or short volume. Missing categories stay blank. Published weekly with a two- or four-week delay depending on the security tier.",
    "category": "research",
-   "arg": "AAPL"
+   "arg": "AAPL",
+   "shot": "https://gloom.sh/screenshots/fn/ATS.png"
   },
   {
    "code": "DIAG",
@@ -530,6 +538,7 @@
    "category": "research",
    "arg": "NET",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/HIRE.png",
    "lesson": "/academy/special-datasets/hiring"
   },
   {
@@ -540,6 +549,7 @@
    "category": "research",
    "arg": "META",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/APPS.png",
    "lesson": "/academy/special-datasets/app-attention"
   },
   {
@@ -665,6 +675,7 @@
    "category": "news",
    "arg": "TSLA",
    "access": "cloud",
+   "shot": "https://gloom.sh/screenshots/fn/BUZZ.png",
    "lesson": "/academy/compare-screen-follow-money/filings-and-attention/attention"
   },
   {
@@ -782,7 +793,8 @@
    "name": "Crypto ETF flows",
    "description": "Daily spot bitcoin and ether ETF flows",
    "detail": "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, as Farside Investors publishes them: the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
-   "category": "markets"
+   "category": "markets",
+   "shot": "https://gloom.sh/screenshots/fn/ETFF.png"
   },
   {
    "code": "PERP",
@@ -792,6 +804,7 @@
    "category": "markets",
    "arg": "BTC",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/PERP.png",
    "lesson": "/academy/crypto-and-prediction-markets/perpetuals"
   },
   {
@@ -840,6 +853,7 @@
    "category": "markets",
    "arg": "NEE",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/POWER.png",
    "lesson": "/academy/futures-commodities-energy/power-and-grid"
   },
   {
@@ -850,6 +864,7 @@
    "category": "research",
    "arg": "AAPL",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/EXPO.png",
    "lesson": "/academy/special-datasets/supply-chain-and-exposure"
   },
   {
@@ -871,6 +886,7 @@
    "category": "research",
    "arg": "LMT",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/AWARDS.png",
    "lesson": "/academy/special-datasets/government-awards"
   },
   {
@@ -881,6 +897,7 @@
    "category": "research",
    "arg": "AAPL",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/SEG.png",
    "lesson": "/academy/fundamentals-and-earnings/the-statements/segments-and-kpis"
   },
   {
@@ -890,6 +907,7 @@
    "detail": "The yearly free cash flow growth over ten years that makes a DCF equal today's enterprise value, next to the growth the company actually delivered.",
    "category": "research",
    "arg": "AAPL",
+   "shot": "https://gloom.sh/screenshots/fn/RDCF.png",
    "lesson": "/academy/fundamentals-and-earnings/the-statements/reverse-dcf"
   },
   {
@@ -899,6 +917,7 @@
    "detail": "Weekly price against round multiples of trailing EPS, stepping when each EPS figure became known, with today's P/E ranked in the stock's own history.",
    "category": "research",
    "arg": "AAPL",
+   "shot": "https://gloom.sh/screenshots/fn/PEB.png",
    "lesson": "/academy/compare-screen-follow-money/compare-and-screen/valuation-graphs"
   },
   {
@@ -908,6 +927,7 @@
    "detail": "Interval and cumulative price returns in a scrollable table, for a range and granularity you pick.",
    "category": "research",
    "arg": "AAPL",
+   "shot": "https://gloom.sh/screenshots/fn/RETURN.png",
    "lesson": "/academy/company-and-price/history-and-returns/returns-table"
   },
   {
@@ -917,6 +937,7 @@
    "detail": "A name's average move on CPI, jobs report and FOMC days against a normal day, with the share of up days and the move on every release day.",
    "category": "research",
    "arg": "SPY",
+   "shot": "https://gloom.sh/screenshots/fn/MDAY.png",
    "lesson": "/academy/futures-commodities-energy/macro-days"
   },
   {
@@ -926,6 +947,7 @@
    "detail": "Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your portfolios and watchlists, or the tickers you give. Updates twice a month.",
    "category": "research",
    "arg": "GME, AMC, CVNA",
+   "shot": "https://gloom.sh/screenshots/fn/SIW.png",
    "lesson": "/academy/compare-screen-follow-money/who-owns-it/short-interest"
   },
   {
@@ -935,6 +957,7 @@
    "detail": "Customers your holdings name in their filings, and suppliers whose filings name your holdings, with the disclosed revenue share, by report date.",
    "category": "research",
    "arg": "CRUS QRVO",
+   "shot": "https://gloom.sh/screenshots/fn/RIPL.png",
    "lesson": "/academy/company-and-price/company-at-a-glance/earnings-ripple"
   },
   {
@@ -956,6 +979,7 @@
    "category": "research",
    "arg": "PFE",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/CATL.png",
    "lesson": "/academy/fundamentals-and-earnings/events-and-deals/catalysts"
   },
   {
@@ -966,6 +990,7 @@
    "category": "research",
    "arg": "AAPL",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/LITI.png",
    "lesson": "/academy/special-datasets/litigation-and-comment-letters"
   },
   {
@@ -975,6 +1000,7 @@
    "detail": "Clinical studies by condition, drug or sponsor, with status, phase and enrollment. Open a study for its full record.",
    "category": "research",
    "arg": "semaglutide",
+   "shot": "https://gloom.sh/screenshots/fn/TRIAL.png",
    "lesson": "/academy/special-datasets/fda-and-trials"
   },
   {
@@ -984,6 +1010,7 @@
    "detail": "FDA drug and device adverse event reports and drug recalls, by drug, device or firm name. A report is what someone observed, not proof the product caused it.",
    "category": "research",
    "arg": "metformin",
+   "shot": "https://gloom.sh/screenshots/fn/FDA.png",
    "lesson": "/academy/special-datasets/fda-and-trials"
   },
   {
@@ -1027,6 +1054,7 @@
    "description": "Your own intraday stock scan",
    "detail": "Scan all US stocks, an index, a sector or a watchlist for your own conditions: a move over the last minutes, volume against its usual pace, a new session high or low, a VWAP cross or a gap, above price, market cap and volume floors. Matches refresh through the session and new ones can alert. Real-time on Pro, 15-minute delayed on Free.",
    "category": "markets",
+   "shot": "https://gloom.sh/screenshots/fn/SCAN.png",
    "lesson": "/academy/compare-screen-follow-money/compare-and-screen/live-scanner"
   },
   {
@@ -1037,6 +1065,7 @@
    "category": "markets",
    "arg": "NVDA",
    "access": "pro",
+   "shot": "https://gloom.sh/screenshots/fn/FLOW.png",
    "lesson": "/academy/options-and-volatility/positioning-and-flow/options-flow"
   },
   {
@@ -1065,6 +1094,7 @@
    "detail": "Curated themes with equal-weight returns and breadth. Open a theme for its members, leaders and laggards. The Themes tab of BI.",
    "category": "markets",
    "arg": "nuclear",
+   "shot": "https://gloom.sh/screenshots/fn/THEM.png",
    "lesson": "/academy/macro-markets-and-news/markets/sectors-themes-rotation"
   },
   {
@@ -1074,6 +1104,7 @@
    "detail": "Pending, rumored and closed mergers and acquisitions, with arbitrage spreads on listed targets. Free is delayed 7 days; Pro is live.",
    "category": "markets",
    "arg": "NVDA",
+   "shot": "https://gloom.sh/screenshots/fn/MA.png",
    "lesson": "/academy/fundamentals-and-earnings/events-and-deals/mergers"
   },
   {
@@ -1081,7 +1112,8 @@
    "name": "Distress",
    "description": "Bankruptcy and delisting records",
    "detail": "Dated public records about companies in difficulty: 8-K bankruptcy, obligation and listing filings, SEC going-concern disclosures, Taiwan exchange listing designations, and French and UK insolvency notices. The Distress tab of MA.",
-   "category": "markets"
+   "category": "markets",
+   "shot": "https://gloom.sh/screenshots/fn/DIST.png"
   },
   {
    "code": "MAP",
@@ -1125,7 +1157,8 @@
    "description": "Ships through Suez, Hormuz, Panama",
    "detail": "Daily vessel transits through the main shipping chokepoints, charted together or one by name. Use it to see a disruption in trade before it shows up in prices; each transit series also charts in G next to oil or a shipper.",
    "category": "markets",
-   "arg": "SUEZ"
+   "arg": "SUEZ",
+   "shot": "https://gloom.sh/screenshots/fn/CHOKE.png"
   },
   {
    "code": "ECO",
@@ -1253,7 +1286,8 @@
    "name": "Fixed Income",
    "description": "Credit, bonds, and Treasuries",
    "detail": "One workspace for credit markets, issuer debt, corporate bond sales, Treasury auctions, Treasury cash and debt, and primary dealer positions. FI opens it; the older shortcuts still land on their own section.",
-   "category": "macro"
+   "category": "macro",
+   "shot": "https://gloom.sh/screenshots/fn/FI.png"
   },
   {
    "code": "TRACE",
@@ -1261,21 +1295,24 @@
    "description": "Corporate and agency sales by issuer or CUSIP",
    "detail": "Latest corporate and agency bond sales: issuer, CUSIP, coupon, maturity, price, yield, and grade. TRACE alone lists the tape; TRACE with an issuer name, a bond symbol root, a stock ticker, or a CUSIP finds that issuer's outstanding bonds. It opens the Bonds section of Fixed Income.",
    "category": "macro",
-   "arg": "issuer"
+   "arg": "issuer",
+   "shot": "https://gloom.sh/screenshots/fn/TRACE.png"
   },
   {
    "code": "DTS",
    "name": "Treasury cash and debt",
    "description": "Operating cash and debt held by the public",
    "detail": "Treasury operating cash for the latest day, and debt held by the public for the last 20 business days. It opens the Treasury section of Fixed Income.",
-   "category": "macro"
+   "category": "macro",
+   "shot": "https://gloom.sh/screenshots/fn/DTS.png"
   },
   {
    "code": "PDLR",
    "name": "Primary dealer positions",
    "description": "Weekly dealer positions and fails",
    "detail": "Weekly net positions and settlement fails in Treasuries and mortgage-backed securities, from the primary dealers. It opens the Treasury section of Fixed Income.",
-   "category": "macro"
+   "category": "macro",
+   "shot": "https://gloom.sh/screenshots/fn/PDLR.png"
   },
   {
    "code": "VAL",
@@ -1284,6 +1321,7 @@
    "detail": "Market-wide valuation ratios against their own history, with zones and trend deviation.",
    "category": "macro",
    "arg": "buffett",
+   "shot": "https://gloom.sh/screenshots/fn/VAL.png",
    "lesson": "/academy/macro-markets-and-news/markets/sentiment-and-valuation"
   },
   {
@@ -1353,6 +1391,7 @@
    "detail": "A US-listed fund's SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
    "category": "ownership",
    "arg": "SPY",
+   "shot": "https://gloom.sh/screenshots/fn/ETF.png",
    "lesson": "/academy/company-and-price/company-at-a-glance/fund-filings"
   },
   {
@@ -1362,6 +1401,7 @@
    "detail": "SEC staff comment letters and company responses, newest first. Search their text, or type a ticker for one company's letters.",
    "category": "ownership",
    "arg": "revenue recognition",
+   "shot": "https://gloom.sh/screenshots/fn/CLTR.png",
    "lesson": "/academy/special-datasets/litigation-and-comment-letters"
   },
   {
@@ -3358,7 +3398,7 @@
     },
     {
      "type": "paragraph",
-     "text": "When signed in, searches you finish in the command bar are saved to improve search, shown to no one, and deleted with your account. Attention Counts, the research attention contribution, is a separate opt-in, off by default."
+     "text": "When signed in, searches you finish in the command bar are saved to improve search, shown to no one, and deleted with your account. Attention Counts, the research attention contribution, is a separate setting, on by default after a one-time notice; turn it off by running `Attention Counts` in the command bar, and while signed in the off reaches your other devices when they next sync."
     },
     {
      "type": "paragraph",
