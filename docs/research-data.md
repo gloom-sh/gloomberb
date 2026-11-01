@@ -1094,7 +1094,7 @@ The floor and cap are shown with how far each is from the scenario's spot, and o
 | Out of the money | (spot - strike) / spot, against the scenario's spot, which the report names (`implied by option quotes`, `typed`, the last price) |
 | Break-even | strike - entry price, per share |
 | Days to expiry | calendar days from the valuation date in New York to the expiry date |
-| Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date |
+| Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date, and `unknown (earnings calendar unavailable)` when the calendar could not be read |
 
 KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 85 x 100 = 8,500.00, premium 0.695 x 100 = 69.50, yield on cash 69.50 / 8,500 = 0.82%, annualised 0.8176% x 365 / 38 = 7.85%, at the bid 67.00 / 8,500 x 365 / 38 = 7.57%, spread 0.05 (7.2% of the mid), break-even 85 - 0.695 = 84.305, and the October 27 report falls before expiry. GS's November 820 put at 5.40/6.75, valued on 2026-10-21, 30 days out: 607.50 / 82,000 x 365 / 30 = 9.01% at the mid, 540.00 / 82,000 x 365 / 30 = 8.01% at the bid, with a spread of 1.35 (22.2% of the mid). Assignment, margin and the interest the cash earns are not modelled.
 
@@ -1110,7 +1110,7 @@ KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 8
 | Mid yield/yr, Bid yield/yr | the annualised yield at the quote midpoint and at the bid |
 | Spread | (ask - bid) / mid; over `--max-spread` (10%) it is marked `wide` |
 | IVR | the 30-day IV rank against the prior 52 weeks of stored closes, as VCA and HIVG read it; `--` with the reason in the notes when IV history has none |
-| Earnings | `before` or `after` with the date of the calendar's next report, `unknown` without one |
+| Earnings | `before` or `after` with the date of the calendar's next report, `unknown` without one, `unavailable` when the calendar could not be read |
 
 Names are ranked by annualised yield at the bid, highest first: a wide spread costs a seller the difference between the mid and the bid, so a name priced rich only at the mid does not rank first. A wide put is ranked with the rest and flagged; a name with no chain, no quoted put or no rate to value it by is listed after the ranked ones with the reason. Up to 20 names; `--csv` writes the percents as numbers with `wide spread` and `earnings before expiry` as yes/no columns. The screen reads the chains, quotes and rates OSA reads, and its closing line dates it by the underlying quotes.
 
