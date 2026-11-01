@@ -103,11 +103,24 @@ function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
     const unit = catalogueCurveUnit(data.root);
     return unit ? [{ key: "unit", label: "Unit", value: unit }] : [];
   }
-  return futuresSpecLines(spec).map((line) => {
-    const value = spec[line.key as keyof typeof spec];
-    return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
-  });
+  return [
+    ...futuresSpecLines(spec).map((line) => {
+      const value = spec[line.key as keyof typeof spec];
+      return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
+    }),
+    ...curveReadsThirtySeconds(data.root) ? [TREASURY_DV01_ENTRY] : [],
+  ];
 }
+
+/**
+ * A Treasury contract's DV01 is its cheapest-to-deliver note's divided by
+ * that note's conversion factor. CME publishes the factors, but not where they
+ * can be read, so the terms say how to size it rather than print a figure.
+ */
+const TREASURY_DV01_ENTRY: HeadlessPaneEntry = {
+  key: "dv01", label: "DV01", value: null,
+  formatted: "not published here; price the cheapest-to-deliver in fn YAS and divide its DV01 by its CME conversion factor",
+};
 
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CTM"], dataRequirements: ["Gloom Cloud futures curve endpoint"],
