@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
 import { answerShotApiCall, serveShotPage, type DesktopPaneShotBridge } from "./desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
@@ -192,10 +193,28 @@ test("the API proxy sends the reads panes make and refuses anything that acts on
       ["POST", "/theses"],
       ["DELETE", "/layouts/1"],
       ["POST", "/brokers/ibkr/connect"],
+      // The Buildout plan is read, its token is minted by a POST that is not sent.
+      ["POST", "/account/buildout/token"],
+      ["POST", "/account/buildout"],
+      ["GET", "/account/buildout/token"],
+      ["GET", "/account/buildout/"],
+      ["POST", "/stripe/buildout/checkout"],
+      // The equity screen's query is named exactly; its saved screens, check and export are not sent.
+      ["POST", "/cloud/equity-screener/saved"],
+      ["PATCH", "/cloud/equity-screener/saved/1"],
+      ["DELETE", "/cloud/equity-screener/saved/1"],
+      ["POST", "/cloud/equity-screener/check"],
+      ["POST", "/cloud/equity-screener/export"],
+      ["POST", "/cloud/equity-screener/Query"],
+      ["POST", "/cloud/equity-screener/%71uery"],
+      ["POST", "/cloud/equity-screener/query/"],
     ] as const) {
       expect((await send(method, path, method === "GET" ? undefined : {})).status).toBe(403);
     }
     expect(asked.length).toBe(count);
+    // A refusal says it is the capture's own, which a pane draws as such.
+    const refused = await send("POST", "/account/buildout/token", {});
+    expect(await refused.json()).toEqual({ error: SHOT_REQUEST_REFUSED });
 
     // A batch read sent as POST still reaches the API, whole and with the user's session; the caller's own
     // address, key or method override does not.
@@ -217,13 +236,19 @@ test("the API proxy sends the reads panes make and refuses anything that acts on
       expect(sent.headers.get(name)).toBeNull();
     }
 
+    // The equity screen's query is a read sent as POST: its definition reaches the API whole, with the session.
+    const screen = await send("POST", "/cloud/equity-screener/query", { limit: 50, sort: { field: "marketCap" } });
+    expect(screen.status).toBe(200);
+    expect(asked.at(-1)).toMatchObject({ method: "POST", path: "/v1/cloud/equity-screener/query", body: '{"limit":50,"sort":{"field":"marketCap"}}' });
+    expect(asked.at(-1)!.cookie).toContain("secret");
+
     // The session read gives the page its user, never the session's token.
     const session = await send("GET", "/auth/get-session");
     expect(session.status).toBe(200);
     expect(await session.json()).toEqual({ user: { id: "u1", name: "Ada" } });
 
     // Reads a signed-in pane makes: theses, layouts, a signed-in broker's catalog and holdings.
-    for (const path of ["/theses?scope=mine", "/layouts", "/brokers/connectors", "/brokers/ibkr/snapshot"]) {
+    for (const path of ["/theses?scope=mine", "/layouts", "/brokers/connectors", "/brokers/ibkr/snapshot", "/account/buildout", "/cloud/equity-screener/saved"]) {
       expect((await send("GET", path)).status).toBe(200);
     }
 
