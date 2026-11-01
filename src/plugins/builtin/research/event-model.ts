@@ -14,6 +14,7 @@ import {
   formatPercentRaw,
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import {
@@ -180,9 +181,15 @@ function estimateValue(pair: EstimatePair): string {
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
-  /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency). */
-  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency"> | null;
+  /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
+  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
+  quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
+
+/** A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows for one are another company's or noise. */
+function isFundListing(financials: EventFinancials | null): boolean {
+  return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
+}
 
 /**
  * The four reported rows behind the latest four statement quarters, summed, only when every one is on the adjusted
@@ -325,7 +332,7 @@ export function buildEventRows(
 ): EventRow[] {
   const rows: EventRow[] = [];
   const quarterlyStatements = sortedQuarterlyStatements(financials);
-  const earnings = data?.earnings ?? [];
+  const earnings = isFundListing(financials) ? [] : data?.earnings ?? [];
   const ttm = ttmRow(quarterlyStatements, earnings, financials);
   if (ttm) rows.push(ttm);
 
