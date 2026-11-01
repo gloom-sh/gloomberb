@@ -4,7 +4,7 @@ import { SCREEN_IDEAS } from "./ideas";
 import { screenDefinitionKey } from "./model";
 
 /** What a screen is called: the idea it is, else the saved screen it was opened from, else EQS. */
-export function screenTitle(definition: ScreenDefinition, savedName?: string | null): string {
+function screenTitle(definition: ScreenDefinition, savedName?: string | null): string {
   const key = screenDefinitionKey(definition);
   return SCREEN_IDEAS.find((idea) => screenDefinitionKey(idea.definition) === key)?.name ?? (savedName?.trim() || "EQS");
 }
