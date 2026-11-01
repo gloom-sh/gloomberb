@@ -15,6 +15,7 @@ import {
 import { formatCompact } from "../../../utils/format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { renderCompositeAxisText } from "./text-renderer";
+import { compositeAxisLabelWidth } from "./panel-labels";
 import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
 
 function scene(start: string, end: string): CompositeChartScene {
@@ -368,5 +369,35 @@ describe("axis ticks never repeat a label", () => {
         }
       }
     }
+  });
+});
+
+// A chart builds its axes again on every tick. What was worked out for an
+// equal axis is kept, and only for one: another range or formatter reads its own.
+describe("an axis built again", () => {
+  const axis = (max: number) => ({
+    side: "right" as const,
+    seriesIds: ["price"],
+    min: 100,
+    max,
+    scale: "linear" as const,
+    unit: "USD",
+    unitGroup: "currency",
+    maxTicks: 6,
+  });
+
+  test("reads the ticks worked out for an equal axis, and a moved one its own", () => {
+    const ticks = compositeAxisTicks(axis(200));
+    expect(compositeAxisTicks({ ...axis(200), seriesIds: ["price"] })).toBe(ticks);
+    expect(compositeAxisTicks(axis(260)).map((tick) => tick.value)).not.toEqual(ticks.map((tick) => tick.value));
+    expect(compositeAxisTicks(axis(200), String).map((tick) => tick.label)).toEqual(ticks.map((tick) => String(tick.value)));
+  });
+
+  test("sizes its gutter for the cursor's precision with no formatter, whichever was asked first", () => {
+    // A fresh range for each order, so the first question finds nothing kept.
+    const bare = compositeAxisLabelWidth(axis(201), undefined, true);
+    expect(compositeAxisLabelWidth(axis(201), formatCompositeAxisValue, true)).toBeLessThan(bare);
+    const formatted = compositeAxisLabelWidth(axis(202), formatCompositeAxisValue, true);
+    expect(compositeAxisLabelWidth(axis(202), undefined, true)).toBeGreaterThan(formatted);
   });
 });
