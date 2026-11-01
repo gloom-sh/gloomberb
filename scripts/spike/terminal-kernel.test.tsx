@@ -79,7 +79,7 @@ test("the kitty chart rasters through the WebAssembly kernel, byte for byte", as
   expect(stats.calls).toBeGreaterThan(0);
   expect(stats.kernel).toBe("wasm");
   expect(stats.fallbacks).toBe(0);
-  const bench = await runRasterBench(distinctRasterInputs(hooks.__gloomRasterCapture!), { iterations: 3, warmup: 1, repeat: 1, runtime: "terminal (OpenTUI, kitty)" });
+  const bench = await runRasterBench(distinctRasterInputs(hooks.__gloomRasterCapture!), { iterations: 20, warmup: 3, repeat: 1, runtime: "terminal (OpenTUI, kitty)" });
   console.log(`terminal panels: ${bench.panels}, mismatched ${bench.mismatchedPanels}, TS ${bench.tsMs.toFixed(2)} ms, WASM ${bench.wasmMs.toFixed(2)} ms`);
   expect(bench.panels).toBeGreaterThan(0);
   expect(bench.mismatchedPanels).toBe(0);

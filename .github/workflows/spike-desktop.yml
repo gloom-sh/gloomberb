@@ -62,6 +62,9 @@ jobs:
       - name: Benchmark the kernel in Bun on the same panels
         run: bun scripts/spike/bench-raster.ts --panels spike-profile/panels.json --out spike-profile
 
+      - name: Benchmark the kernel on the terminal's kitty chart
+        run: set -o pipefail; timeout -k 10 300 bun test ./scripts/spike/terminal-kernel.test.tsx 2>&1 | tee spike-profile/terminal-kernel.txt
+
       - name: Summary
         if: always()
         run: |
@@ -74,6 +77,10 @@ jobs:
             echo '```json'
             bun -e 'const r = await Bun.file("spike-profile/bench-bun.json").json(); delete r.tsSamples; delete r.wasmSamples; console.log(JSON.stringify(r, null, 2))'
             echo '```'
+            echo
+            echo "## Raster kernel on the terminal's kitty chart"
+            echo
+            grep '^terminal' spike-profile/terminal-kernel.txt
           } >> "$GITHUB_STEP_SUMMARY" || true
 
       - uses: actions/upload-artifact@v4
