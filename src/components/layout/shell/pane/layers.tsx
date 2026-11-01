@@ -62,7 +62,7 @@ interface ShellPaneLayersProps {
   paneMap: Map<string, ResolvedPane>;
   setHoveredPaneIfChanged: (paneId: string | null) => void;
   startNativeDividerDrag: (divider: DockDividerLayout, event: any) => void;
-  startNativeDockedDrag: (paneId: string, rect: LayoutBounds, event: any) => void;
+  startNativeDockedDrag: (paneId: string, rect: LayoutBounds, event: any, options?: { focus?: boolean }) => void;
   startNativeFloatingDrag: (paneId: string, rect: FloatingRect, event: any) => void;
   startNativeFloatResize: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
   transientFocusActive: boolean;
@@ -81,7 +81,8 @@ interface ShellPaneLayersProps {
 interface PaneLayerActions {
   paneMouseDown: (paneId: string, event: any) => void;
   hover: (paneId: string) => void;
-  dockedDragStart: (paneId: string, rect: LayoutBounds, event: any) => void;
+  /** `focus` false: a press on a stack's hidden tab, which shows it only on release. */
+  dockedDragStart: (paneId: string, rect: LayoutBounds, event: any, options?: { focus?: boolean }) => void;
   floatingDragStart: (paneId: string, rect: FloatingRect, event: any) => void;
   floatResizeStart: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
   drag: ShellMouseHandler;
@@ -226,7 +227,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     tabs: stackTabs,
     active: paneId,
     onSelect: actions.showTab,
-    onTabMouseDown: nativeMove ? (tabId, event) => actions.dockedDragStart(tabId, rect, event) : undefined,
+    onTabMouseDown: nativeMove ? (tabId, event) => actions.dockedDragStart(tabId, rect, event, { focus: tabId === paneId }) : undefined,
   } : null), [actions, nativeMove, paneId, rect, stackTabs]);
   return (
     <Box
@@ -753,7 +754,7 @@ export function ShellPaneLayers({
   const actions = useMemo<PaneLayerActions>(() => ({
     paneMouseDown: (paneId, event) => handlersRef.current.handleNativePaneMouseDown(paneId, event),
     hover: (paneId) => handlersRef.current.setHoveredPaneIfChanged(paneId),
-    dockedDragStart: (paneId, rect, event) => handlersRef.current.startNativeDockedDrag(paneId, rect, event),
+    dockedDragStart: (paneId, rect, event, options) => handlersRef.current.startNativeDockedDrag(paneId, rect, event, options),
     floatingDragStart: (paneId, rect, event) => handlersRef.current.startNativeFloatingDrag(paneId, rect, event),
     floatResizeStart: (paneId, rect, event, edges) => handlersRef.current.startNativeFloatResize(paneId, rect, event, edges),
     drag: (event) => handlersRef.current.handleNativeDrag(event),
@@ -808,21 +809,32 @@ export function ShellPaneLayers({
 
   return (
     <>
-      {dockLeafLayouts.map((leaf) => {
-        if (transientFocusActive && leaf.instanceId !== transientFocusPaneId) return null;
-        const pane = paneMap.get(leaf.instanceId);
-        if (!pane) return null;
-        return (
-          <DockedPaneLayer
-            // A stack keeps its layer as it shows another tab, so the press on
-            // a tab that shows it carries on into a drag.
-            key={`dock:${leaf.stack?.[0] ?? leaf.instanceId}`}
-            {...layerProps(pane, transientFocusActive ? fullscreenRect : leaf.rect)}
-            dockEdges={nativePaneChrome && !transientFocusActive ? dockEdgesOf(leaf.rect, width, contentHeight) : undefined}
-            stackTabs={transientFocusActive ? undefined : stackTabsById.get(leaf.instanceId)}
-            live={live}
-          />
-        );
+      {dockLeafLayouts.flatMap((leaf) => {
+        if (transientFocusActive && leaf.instanceId !== transientFocusPaneId) return [];
+        // Every tab of a stack has a layer of its own, keyed by its pane, so
+        // each keeps its own state (a draft, a scroll, a failure) and never
+        // another tab's. The hidden ones stay mounted out of sight, at the
+        // off-screen cadence, as a pane under a floating window does.
+        const members = transientFocusActive || !leaf.stack ? [leaf.instanceId] : leaf.stack;
+        const rect = transientFocusActive ? fullscreenRect : leaf.rect;
+        const stackTabs = transientFocusActive ? undefined : stackTabsById.get(leaf.instanceId);
+        return members.map((memberId) => {
+          const pane = paneMap.get(memberId);
+          if (!pane) return null;
+          const props = layerProps(pane, rect);
+          const shown = memberId === leaf.instanceId;
+          return (
+            <DockedPaneLayer
+              key={`dock:${memberId}`}
+              {...props}
+              hidden={props.hidden || !shown}
+              inView={props.inView && shown}
+              dockEdges={nativePaneChrome && !transientFocusActive ? dockEdgesOf(leaf.rect, width, contentHeight) : undefined}
+              stackTabs={shown ? stackTabs : undefined}
+              live={live}
+            />
+          );
+        });
       })}
 
       {floatingLayers.map(({ pane, rect }) => {

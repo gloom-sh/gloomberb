@@ -350,9 +350,9 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
-          // A press on one of a stack's tabs moves that pane; a click on it shows it.
+          // A press on one of a stack's tabs moves that pane; the release
+          // shows it if the pointer did not move.
           const tabId = leaf.stack ? stackTabAt(leaf.stack, relativeX - paneHeaderTitleStart(isFocused), paneMap, getPaneTitle) : null;
-          if (tabId && tabId !== leaf.instanceId) focusPane(tabId);
           startDrag({
             type: "pane-drag",
             paneId: tabId ?? leaf.instanceId,

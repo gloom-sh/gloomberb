@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { ReactNode } from "react";
-import { act, useReducer, useState } from "react";
+import { act, useEffect, useReducer, useState } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { createOpenTuiTestHarness, TestDialogProvider, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { openTuiUiHost } from "../../../renderers/opentui/ui-host";
@@ -12,7 +12,8 @@ import {
   usePaneTicker,
 } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
-import { TICKER_RESEARCH_PANE_ID, buildDockStack, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import { buildDockStack } from "../../../layout/pane-manager/dock-stack";
 import type { DesktopWindowBridge } from "../../../types/desktop-window";
 import type { PaneProps } from "../../../types/plugin";
 import { Text, Textarea } from "../../../ui";
@@ -759,6 +760,61 @@ describe("Shell", () => {
     const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
     expect(moved?.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
     expect(moved?.floating.map((entry) => entry.instanceId)).toEqual(["ticker-detail:main"]);
+  });
+
+  test("each tab of a stack keeps its own state as the tabs switch, never another tab's", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-stack-state-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const other = { ...main, instanceId: "portfolio-list:other" };
+    const layout: LayoutConfig = {
+      dockRoot: buildDockStack([main.instanceId, other.instanceId], main.instanceId),
+      instances: [{ ...main }, other],
+      floating: [],
+      detached: [],
+    };
+    // The same pane type in both tabs: local state set when it mounted.
+    const mounts: string[] = [];
+    const Remember = ({ paneId }: PaneProps) => {
+      const [mountedAs] = useState(paneId);
+      useEffect(() => { mounts.push(paneId); }, []);
+      return <Text>{`${mountedAs} showing ${paneId}`}</Text>;
+    };
+    const controls: {
+      dispatch?: (action: ShellTestAction) => void;
+      state?: ReturnType<typeof createInitialState>;
+      transientLayout: TransientLayoutState | null;
+    } = { transientLayout: null };
+    await tui.render(
+      <ShellTransientHarness
+        initialState={createShellStateWithLayout(config, layout, main.instanceId)}
+        registry={createShellPluginRegistry({ portfolioListComponent: Remember })}
+        controls={controls}
+      />,
+      { width: 80, height: 18 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("portfolio-list:main showing portfolio-list:main");
+
+    const show = async (paneId: string) => {
+      await act(async () => {
+        controls.dispatch!({ type: "FOCUS_PANE", paneId });
+        await tui.setup().renderOnce();
+      });
+      await act(async () => {
+        await tui.setup().renderOnce();
+      });
+    };
+    await show(other.instanceId);
+    expect(tui.frame()).toContain("portfolio-list:other showing portfolio-list:other");
+    expect(tui.frame()).not.toContain("portfolio-list:main showing");
+    await show(main.instanceId);
+    expect(tui.frame()).toContain("portfolio-list:main showing portfolio-list:main");
+    expect(tui.frame()).not.toContain("portfolio-list:other showing");
+    // Each mounted once: a switch shows the other tab's own tree, it neither
+    // reuses this one nor starts that one over.
+    expect(mounts.sort()).toEqual(["portfolio-list:main", "portfolio-list:other"]);
   });
 
   test("keeps the focused textarea cursor visible when it is not covered", async () => {
