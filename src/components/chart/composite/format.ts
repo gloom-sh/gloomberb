@@ -457,7 +457,7 @@ function sameAxisDomainValue(left: unknown, right: unknown): boolean {
  * one level down. A chart builds its axes again on every tick, and they come
  * out the same until the price leaves the range.
  */
-export function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
+function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
   if (left === right) return true;
   const keys = Object.keys(left) as Array<keyof CompositeAxisDomain>;
   return keys.length === Object.keys(right).length

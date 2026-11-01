@@ -31,7 +31,7 @@ export function createValueStore<T>(initial: T): ValueStore<T> {
 }
 
 /** The cursor charts in one tab share: the time another chart's crosshair is at. */
-export interface SharedCursorTime {
+interface SharedCursorTime {
   subscribe(listener: Listener): () => void;
   time(): number | null;
 }
