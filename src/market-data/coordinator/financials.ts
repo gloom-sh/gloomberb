@@ -120,9 +120,14 @@ function repeatsHeldSavedCopy(current: QueryEntry<Quote>, incoming: Quote): bool
   return !!held && savedCopyAt(held) != null && savedCopyAt(incoming) == null && !(incoming.lastUpdated > held.lastUpdated);
 }
 
-/** Fresh data, or a failure too recent to ask about again unless forced. */
-function canReuseSnapshotEntry(entry: QueryEntry<TickerFinancials>): boolean {
-  return hasFreshEntryData(entry, SNAPSHOT_CACHE_TTL_MS) || hasRecentFailedAttempt(entry, SNAPSHOT_FAILURE_RETRY_MS);
+/**
+ * Fresh data, or a failure too recent to ask about again unless forced. A
+ * failure from before `failuresBefore` (the moment the data service answered
+ * again after an outage) does not count: the outage, not the symbol, failed it.
+ */
+function canReuseSnapshotEntry(entry: QueryEntry<TickerFinancials>, failuresBefore = 0): boolean {
+  return hasFreshEntryData(entry, SNAPSHOT_CACHE_TTL_MS)
+    || hasRecentFailedAttempt(entry, SNAPSHOT_FAILURE_RETRY_MS, Date.now(), failuresBefore);
 }
 
 function storeFinancialsFailure(
@@ -141,7 +146,12 @@ function storeFinancialsFailure(
 type CoordinatorSingleFlight = <T>(key: string, task: () => Promise<T>) => Promise<T>;
 type CoordinatorLoadOptions = { forceRefresh?: boolean };
 
-interface LoadFinancialsSnapshotEntryOptions {
+interface SnapshotLoadPolicy {
+  /** Failures that finished before this moment no longer hold an unforced load back (`canReuseSnapshotEntry`). */
+  failuresBefore?: number;
+}
+
+interface LoadFinancialsSnapshotEntryOptions extends SnapshotLoadPolicy {
   dataProvider: DataProvider;
   instrument: InstrumentRef;
   options?: CoordinatorLoadOptions;
@@ -155,10 +165,11 @@ export async function loadFinancialsSnapshotEntry({
   options = {},
   runSingleFlight,
   stores,
+  failuresBefore,
 }: LoadFinancialsSnapshotEntryOptions): Promise<QueryEntry<TickerFinancials>> {
   const key = buildSnapshotKey(instrument);
   const current = stores.snapshotStore.get(key);
-  if (!options.forceRefresh && canReuseSnapshotEntry(current)) {
+  if (!options.forceRefresh && canReuseSnapshotEntry(current, failuresBefore)) {
     return current;
   }
   const flightKey = options.forceRefresh ? `${key}|refresh` : key;
@@ -192,7 +203,7 @@ export async function loadFinancialsSnapshotEntry({
   });
 }
 
-interface LoadFinancialsSnapshotBatchOptions {
+interface LoadFinancialsSnapshotBatchOptions extends SnapshotLoadPolicy {
   dataProvider: DataProvider;
   instruments: InstrumentRef[];
   options?: CoordinatorLoadOptions;
@@ -206,6 +217,7 @@ export async function loadFinancialsSnapshotBatch({
   options = {},
   runSingleFlight,
   stores,
+  failuresBefore,
 }: LoadFinancialsSnapshotBatchOptions): Promise<QueryEntry<TickerFinancials>[]> {
   const uniqueInstruments = [...new Map(instruments.map((instrument) => [buildSnapshotKey(instrument), instrument] as const)).values()];
   const results = new Map<string, QueryEntry<TickerFinancials>>();
@@ -214,7 +226,7 @@ export async function loadFinancialsSnapshotBatch({
   for (const instrument of uniqueInstruments) {
     const key = buildSnapshotKey(instrument);
     const current = stores.snapshotStore.get(key);
-    if (!options.forceRefresh && canReuseSnapshotEntry(current)) {
+    if (!options.forceRefresh && canReuseSnapshotEntry(current, failuresBefore)) {
       results.set(key, current);
     } else {
       misses.push(instrument);
@@ -253,6 +265,7 @@ export async function loadFinancialsSnapshotBatch({
       options,
       runSingleFlight,
       stores,
+      failuresBefore,
     }));
   }));
 

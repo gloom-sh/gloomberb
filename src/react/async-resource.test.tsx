@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { useAsyncResource } from "./async-resource";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../core/connection-health";
 
 type Loader = ((force: boolean) => Promise<string>) | null;
 const tui = createOpenTuiTestHarness({ width: 20, height: 5 });
@@ -135,4 +136,34 @@ test("an inline error predicate neither reloads nor loops across renders", async
   await act(async () => { rerender(); await tui.setup().renderOnce(); });
   expect(calls).toBe(1);
   expect(resource.data).toBe("loaded");
+});
+
+// A pane whose load failed in an outage kept its failure after the network
+// came back, until the user refreshed it by hand.
+test("a load that failed is asked again once the data service answers after an outage", async () => {
+  const disposeSources = registerGloomCloudConnectionSources(connectionHealth);
+  try {
+    let online = false;
+    let asked = 0;
+    await mount(async () => {
+      asked += 1;
+      if (!online) throw new Error("Gloom couldn't reach its data service");
+      return "board";
+    });
+    expect(resource).toMatchObject({ data: null, error: "Gloom couldn't reach its data service" });
+
+    connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    online = true;
+    await act(async () => { connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true); });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(asked).toBe(2);
+    expect(resource).toMatchObject({ data: "board", error: null });
+
+    // A resource that answered is left alone by the next recovery.
+    connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+    await act(async () => { connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true); });
+    expect(asked).toBe(2);
+  } finally {
+    disposeSources();
+  }
 });

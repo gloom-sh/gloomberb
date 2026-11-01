@@ -247,6 +247,16 @@ export class QuoteSubscriptionManager {
     return dispose;
   }
 
+  /** Whether a pane streams this quote key now. */
+  isStreaming(key: string): boolean {
+    return (this.quoteSubscriptions.get(key)?.targets.size ?? 0) > 0;
+  }
+
+  /** The quote keys panes stream now. */
+  streamingKeys(): string[] {
+    return [...this.quoteSubscriptions].filter(([, entry]) => entry.targets.size > 0).map(([key]) => key);
+  }
+
   private createNoopSubscription(): QuoteSubscriptionHandle {
     const dispose = (() => {}) as QuoteSubscriptionHandle;
     dispose.update = () => {};
