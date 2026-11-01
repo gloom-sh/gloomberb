@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildDockStack,
-  normalizePaneLayout,
-  type DockLayoutNode,
-  type LayoutConfig,
-} from "../../types/config";
+import { normalizePaneLayout, type DockLayoutNode, type LayoutConfig } from "../../types/config";
+import { buildDockStack } from "./dock-stack";
 import {
   applyDrop,
   dockPane,
@@ -15,6 +11,7 @@ import {
   removePane,
   restoreHiddenPanes,
   showDockTab,
+  swapPanes,
 } from "./index";
 import { finalizeLayout } from "./layout-state";
 
@@ -57,6 +54,13 @@ describe("stacked tabs in the dock", () => {
   test("the centre drop stacks instead of swapping", () => {
     const layout = layoutOf(split(pane("a"), pane("b")), ["a", "b"]);
     expect(spots(applyDrop(layout, "b", { kind: "leaf", targetId: "a", position: "center" }))).toEqual(["b[a,b]"]);
+  });
+
+  test("a shown tab swapped with another pane, docked or floating, leaves that pane shown in its place", () => {
+    const layout = layoutOf(split(buildDockStack(["a", "b"], "b")!, pane("c")), ["a", "b", "c", "d"]);
+    expect(spots(swapPanes(layout, "b", "c"))).toEqual(["c[a,c]", "b"]);
+    const floating = { ...layout, floating: [{ instanceId: "d", x: 2, y: 2, width: 30, height: 10 }] };
+    expect(spots(swapPanes(floating, "b", "d"))).toEqual(["d[a,d]", "c"]);
   });
 
   test("a tab that leaves shows the next one, and a stack of one is a plain pane again", () => {

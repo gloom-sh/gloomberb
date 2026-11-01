@@ -1,5 +1,6 @@
-import type { LayoutConfig, PaneInstanceConfig } from "../../types/config";
-import { buildDockStack, findPaneInstance } from "../../types/config";
+import type { DockLayoutNode, LayoutConfig, PaneInstanceConfig } from "../../types/config";
+import { findPaneInstance } from "../../types/config";
+import { buildDockStack } from "./dock-stack";
 import {
   buildSplitAroundNode,
   clampRatio,
@@ -158,6 +159,18 @@ export function simulateDrop(
   };
 }
 
+/** `node` with each stack that showed a pane in `moved` showing the pane that took its place. */
+function withShownTabsMoved(node: DockLayoutNode | null, moved: ReadonlyMap<string, string>): DockLayoutNode | null {
+  if (!node || node.kind === "pane") return node;
+  const active = node.tabs ? moved.get(node.tabs.active) : undefined;
+  return {
+    ...node,
+    first: withShownTabsMoved(node.first, moved)!,
+    second: withShownTabsMoved(node.second, moved)!,
+    ...(node.tabs && active ? { tabs: { active } } : {}),
+  };
+}
+
 export function swapPanes(layout: LayoutConfig, firstId: string, secondId: string): LayoutConfig {
   if (firstId === secondId) return layout;
   const firstLeaf = findDockLeaf(layout, firstId);
@@ -173,7 +186,9 @@ export function swapPanes(layout: LayoutConfig, firstId: string, secondId: strin
     if (!firstNode || !secondNode || firstNode.kind !== "pane" || secondNode.kind !== "pane") return layout;
     const withFirst = replaceNodeAtPath(layout.dockRoot, firstLeaf.path, { kind: "pane", instanceId: secondId });
     const withSecond = replaceNodeAtPath(withFirst, secondLeaf.path, { kind: "pane", instanceId: firstId });
-    return finalizeLayout({ ...layout, dockRoot: withSecond });
+    // A tab trades places too, and is still the one shown where it was.
+    const moved = new Map([[firstId, secondId], [secondId, firstId]]);
+    return finalizeLayout({ ...layout, dockRoot: withShownTabsMoved(withSecond, moved) });
   }
 
   if (firstFloating && secondFloating) {
@@ -192,7 +207,7 @@ export function swapPanes(layout: LayoutConfig, firstId: string, secondId: strin
   const dockedLeaf = firstLeaf ?? secondLeaf!;
   const floatingEntry = firstFloating ?? secondFloating!;
   const base = layout.dockRoot && dockedLeaf
-    ? replaceNodeAtPath(layout.dockRoot, dockedLeaf.path, { kind: "pane", instanceId: floatingId })
+    ? withShownTabsMoved(replaceNodeAtPath(layout.dockRoot, dockedLeaf.path, { kind: "pane", instanceId: floatingId }), new Map([[dockedId, floatingId]]))
     : layout.dockRoot;
 
   return finalizeLayout({

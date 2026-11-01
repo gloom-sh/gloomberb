@@ -726,10 +726,23 @@ function withLocalSessionLayoutState(
   });
 }
 
+/** A dock tree with no stack's shown tab: like stacking order, it follows whichever pane was focused last. */
+function withoutShownTabs(node: unknown): unknown {
+  if (!isRecord(node) || node.kind !== "split") return node;
+  const { tabs, ...rest } = node;
+  return {
+    ...rest,
+    first: withoutShownTabs(node.first),
+    second: withoutShownTabs(node.second),
+    ...(tabs === undefined ? {} : { tabs: true }),
+  };
+}
+
 /**
- * A layout as the user arranged it. Stacking order follows whichever floating
- * pane was focused last, and a pane in its own desktop window is one a
- * terminal draws inline as a floating pane, so neither tells two copies apart.
+ * A layout as the user arranged it. Stacking order and the tab a stack shows
+ * follow whichever pane was focused last, and a pane in its own desktop window
+ * is one a terminal draws inline as a floating pane, so none of them tells two
+ * copies apart.
  */
 function arrangedLayout(layout: unknown): unknown {
   if (!isRecord(layout)) return layout;
@@ -743,7 +756,7 @@ function arrangedLayout(layout: unknown): unknown {
   });
   const instanceId = (entry: unknown) => (isRecord(entry) ? String(entry.instanceId) : "");
   windows.sort((left, right) => instanceId(left).localeCompare(instanceId(right)));
-  return { ...layout, floating: windows, detached: [] };
+  return { ...layout, dockRoot: withoutShownTabs(layout.dockRoot), floating: windows, detached: [] };
 }
 
 // Pulled and last synced payloads are compared on every sync and never change.
@@ -1575,6 +1588,7 @@ export function createCoreSyncContributors(): SyncContributor[] {
 }
 
 export const __syncContributorInternalsForTests = {
+  layoutIntent,
   sanitizeUnknown,
   collectCoreConfigPayload,
   collectCoreCollectionsPayload,

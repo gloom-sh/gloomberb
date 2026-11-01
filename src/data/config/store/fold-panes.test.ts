@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { migrateSavedConfig } from "./migrations";
 import { foldCommoditiesPaneLayout, foldFixedIncomePaneLayout, foldPaneLayout } from "./fold-panes";
 import { CURRENT_CONFIG_VERSION, type DockLayoutNode, type LayoutConfig, type PaneInstanceConfig } from "../../../types/config";
+import { buildDockStack } from "../../../layout/pane-manager/dock-stack";
 
 function layout(instances: PaneInstanceConfig[], dockRoot: DockLayoutNode | null = null, floating: LayoutConfig["floating"] = []): LayoutConfig {
   return { dockRoot, instances, floating, detached: [] };
@@ -36,6 +37,29 @@ describe("fold short volume and sovereign CDS", () => {
       placementMemory: { docked: { anchorInstanceId: "short-interest:AAPL" } },
     });
     expect(folded.layout.floating.map((entry) => entry.instanceId)).toEqual(["cdx-1"]);
+  });
+
+  test("a stack keeps showing a tab that folds into another pane, and stops being a stack when a fold leaves one tab", () => {
+    const folded = foldPaneLayout(layout([
+      { instanceId: "short-volume:AAPL", paneId: "short-volume", binding: { kind: "fixed", symbol: "AAPL" } },
+      { instanceId: "chart", paneId: "ticker-chart", binding: { kind: "none" } },
+      { instanceId: "sovr-1", paneId: "sovr-board", binding: { kind: "none" } },
+      { instanceId: "cdx-1", paneId: "cdx-board", binding: { kind: "none" } },
+    ], {
+      kind: "split",
+      axis: "vertical",
+      ratio: 0.5,
+      first: buildDockStack(["chart", "short-volume:AAPL"], "short-volume:AAPL")!,
+      second: buildDockStack(["cdx-1", "sovr-1"], "sovr-1")!,
+    }));
+
+    expect(folded.layout.dockRoot).toEqual({
+      kind: "split",
+      axis: "vertical",
+      ratio: 0.5,
+      first: buildDockStack(["chart", "short-interest:AAPL"], "short-interest:AAPL")!,
+      second: { kind: "pane", instanceId: "cdx-1" },
+    });
   });
 
   test("a sovereign board with no index board keeps its id and opens on Sovereign", () => {
