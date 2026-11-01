@@ -730,6 +730,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   usListingsOnlyHint?(key: string): string;
   /**
+   * The ticker argument also takes a FRED series as the catalog writes it
+   * (`FRED:T10Y2Y`), which reaches `load` as typed instead of being read as a
+   * listing: MDAY reads a spread's moves on release days.
+   */
+  fredSeriesArgument?: boolean;
+  /**
    * A typed symbol the function reads as another before it is resolved, with
    * the note that says so: OPX and OVDV read a bare BTC or ETH as the coin
    * (BTC-USD), whose options are the ones asked about, not the US fund that

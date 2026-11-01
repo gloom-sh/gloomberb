@@ -11,6 +11,7 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
+import { fredSeriesArgument } from "../../series/fred-argument";
 import { listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
@@ -175,6 +176,9 @@ export async function applyListingArgument(
   if (!(takesOneTicker || takesList) || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
   }
+  // A function that reads FRED series (MDAY) gets FRED:T10Y2Y as typed; any other is told it is no listing.
+  const fred = takesOneTicker && headless?.fredSeriesArgument && typeof args.options.exchange !== "string" ? fredSeriesArgument(args.arg) : null;
+  if (fred) return { ...args, arg: `FRED:${fred}` };
   // A ticker with spaces is no listing, unless it is a terminal's code for one ("JPM US Equity"). A company's name
   // typed there (`fn RDCF "Palantir Technologies"`) stops before a report of dashes is drawn, as `quote` words a
   // name that is no ticker, with the company search finds for it.

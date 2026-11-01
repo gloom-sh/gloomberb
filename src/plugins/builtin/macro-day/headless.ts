@@ -1,6 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
-import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
+import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
+import { fredSeriesArgument } from "../../../series/fred-argument";
 import { formatMacroDayMove, macroDayEventLabel, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
   type MacroEventKind, type MacroSurprise } from "./releases";
@@ -11,13 +12,15 @@ const multiple = (value: unknown) => typeof value === "number" ? `${value.toFixe
 const share = (value: unknown) => typeof value === "number" ? `${Math.round(value * 100)}%` : "--";
 
 export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
+  shape: "bundle", argument: { kind: "ticker", description: "Ticker, or a FRED series such as FRED:T10Y2Y", examples: ["TLT", "FRED:T10Y2Y"] },
   usListingsOnly: "Macro release day data",
+  // A spread the catalog prints (FRED:T10Y2Y) moves on release days too: its moves in bp.
+  fredSeriesArgument: true,
   // Dated by the release list (releasesThrough) as much as by the closes, so no session schedule applies.
   freshness: { status: "not-a-feed", basis: "release-day study on daily closes" },
   describe: (args) => `MDAY ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: [
-    "US listings; close-to-close on the release day.",
+    "US listings, or a FRED series (FRED:T10Y2Y, whose moves in a rate or spread read in bp); close-to-close on the release day.",
     "Published CPI, jobs and FOMC days, and Brazil's IPCA days from Gloom Cloud; sessions after the list's last covered day (releasesThrough) are left out.",
     "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
     "A release day that is also the reaction session of the company's own earnings report is marked earnings and left out of the release averages and the normal day.",
@@ -31,11 +34,18 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "lookbackYears", type: "integer", minimum: 1, maximum: 5, defaultValue: 5, description: "Years of daily closes" },
   ],
   async load(args, ctx) {
-    const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
-    const [history, releases, earnings] = await Promise.all([loadMacroDayHistory({ instrument, signal: ctx.signal }, ctx.marketData), loadMacroReleases(),
-      loadMacroDayEarnings({ instrument, signal: ctx.signal })]);
+    // FRED:T10Y2Y is a series, read from FRED: it has no earnings, and a rate or spread moves by its level.
+    const seriesId = fredSeriesArgument(args.symbols[0]!);
+    const instrument = seriesId ? null : await resolveHeadlessInstrument(ctx, args.symbols[0]!);
+    const symbol = instrument?.symbol ?? `FRED:${seriesId}`;
+    const [history, releases, earnings] = await Promise.all([
+      instrument ? loadMacroDayHistory({ instrument, signal: ctx.signal }, ctx.marketData) : loadMacroDaySeriesHistory({ seriesId: seriesId!, signal: ctx.signal }, ctx.apiClient),
+      loadMacroReleases(),
+      instrument ? loadMacroDayEarnings({ instrument, signal: ctx.signal }) : Promise.resolve<MacroDayEarnings>({ reports: [], stale: false, error: null }),
+    ]);
+    const basis = "rate" in history ? history.rate ? "yield" as const : "return" as const : undefined;
     ctx.signal.throwIfAborted();
-    const model = projectMacroDays(history.history, { symbol: instrument.symbol, lookbackYears: Number(args.options.lookbackYears) || 5,
+    const model = projectMacroDays(history.history, { symbol, basis, lookbackYears: Number(args.options.lookbackYears) || 5,
       releases: releases.releases, coveredThrough: releases.coveredThrough, earnings: earnings.reports });
     const notes = [staleMacroReleasesNotice(releases), macroDayEarningsNotice(earnings)].filter((note): note is string => !!note);
     const row = (label: string, stats: MacroDayStats) => ({ label, ...stats });
@@ -67,10 +77,10 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(figures ? { headline: figures.event } : {}) })) },
       ],
       complete: !history.stale && !earnings.stale && !history.error && !notes.length && model.events.length > 0,
-      unavailableSymbols: model.events.length ? [] : [instrument.symbol],
+      unavailableSymbols: model.events.length ? [] : [symbol],
       errors: history.error ? [history.error] : [],
       ...(notes.length ? { notes } : {}),
-      metadata: { unit: yieldMoves ? "change in the yield in percentage points, close to close on the release day"
+      metadata: { unit: yieldMoves ? `change in the ${seriesId ? "rate" : "yield"} in percentage points, close to close on the release day`
         : "decimal return, close to close on the release day", start: model.start, asOf: model.asOf,
         releasesThrough: releases.coveredThrough, releaseSources: Object.values(MACRO_RELEASE_SOURCES),
         stale: history.stale || earnings.stale, fetchedAt: history.fetchedAt, methodology: "docs/research-data.md#macro-day-reaction" },

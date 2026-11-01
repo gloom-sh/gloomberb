@@ -76,6 +76,47 @@ export async function loadMacroDayHistory(
   }
 }
 
+/** A FRED series read as closes: its daily values, and whether a value is a rate, whose moves read in bp. */
+export interface MacroDaySeriesHistory extends MacroDayHistory {
+  /** The series is in percent (a yield or a spread such as T10Y2Y): a move is the change in its level. */
+  rate: boolean;
+  /** FRED's title for it, "10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity". */
+  title: string | null;
+}
+
+/** The five years of daily values a release-day study reads, as the price history is. */
+const SERIES_LOOKBACK_DAYS = 5 * 366;
+
+/**
+ * A FRED series (`FRED:T10Y2Y`) as the study's closes: each dated value, with
+ * blank days (holidays FRED lists as no value) left out. A rate or spread in
+ * percent moves by its level, read in basis points; any other series by its
+ * return. Never rejects but on cancel.
+ */
+export async function loadMacroDaySeriesHistory(
+  request: { seriesId: string; signal?: AbortSignal },
+  client: Pick<typeof apiClient, "getCloudFredSeries"> = apiClient,
+  now = Date.now(),
+): Promise<MacroDaySeriesHistory> {
+  if (request.signal?.aborted) throw abortError(CANCELLED);
+  const startDate = new Date(now - SERIES_LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
+  try {
+    const payload = await abortable(client.getCloudFredSeries(request.seriesId, { startDate, sortOrder: "asc" },
+      request.signal ? { signal: request.signal } : {}), request.signal, CANCELLED);
+    const history = payload.observations
+      .filter((point) => typeof point.value === "number" && Number.isFinite(point.value) && /^\d{4}-\d{2}-\d{2}$/.test(point.date))
+      .map((point) => ({ date: new Date(`${point.date}T00:00:00Z`), close: point.value! }))
+      .sort((left, right) => left.date.getTime() - right.date.getTime());
+    const fetchedAt = payload.fetchedAt ? Date.parse(payload.fetchedAt) : now;
+    return { history, stale: payload.stale === true, error: history.length ? null : `No values for FRED:${request.seriesId}`,
+      fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : now,
+      rate: /^percent\b/i.test(payload.info?.units?.trim() ?? ""), title: payload.info?.title?.trim() || null };
+  } catch (error) {
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
+    return { history: [], stale: false, error: errorMessage(error), fetchedAt: now, rate: false, title: null };
+  }
+}
+
 export interface MacroDayEarnings {
   reports: MacroDayEarningsReport[];
   stale: boolean;
