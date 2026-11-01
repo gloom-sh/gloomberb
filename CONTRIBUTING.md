@@ -6,7 +6,7 @@ Bug reports and pull requests are welcome. Please follow the [code of conduct](C
 
 ## Running locally
 
-Requires [Bun](https://bun.sh) 1.3.11, the version CI runs (`packageManager` in `package.json`). Install it with `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.11"`, and recheck a test that fails only on another version against 1.3.11 before chasing it.
+Requires [Bun](https://bun.sh) 1.3.14, the version CI runs (`packageManager` in `package.json`). Install it with `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, and recheck a test that fails only on another version against 1.3.14 before chasing it.
 
 ```bash
 git clone https://github.com/gloom-sh/gloomberb.git
