@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-28",
+ "updatedAt": "2026-10-31",
  "categories": [
   {
    "id": "research",
@@ -261,8 +261,7 @@
    "detail": "Open interest by strike with max pain, each expiry's put/call ratio and net dealer gamma, and dealer gamma by strike with its flip level and call and put walls. Open interest is about two sessions old; the footer names its date. GEX and MAXPAIN open it too.",
    "category": "research",
    "arg": "SPY",
-   "shot": "https://gloom.sh/screenshots/fn/OPX.png",
-   "lesson": "/academy/options-and-volatility/positioning-and-flow/open-interest-max-pain"
+   "shot": "https://gloom.sh/screenshots/fn/OPX.png"
   },
   {
    "code": "OVME",
@@ -289,7 +288,8 @@
    "description": "Puts, covered calls, spreads, condors, straddles and calendars across a list",
    "detail": "One tab per strategy: cash-secured put, covered call, vertical, iron condor, straddle, strangle and calendar. For each ticker it picks the legs by delta and expiry, then shows credit or debit, max gain and loss, break-evens, probability of profit, IV rank, wide spreads and earnings before expiry. Income trades rank by yearly return, debit trades by reward to risk.",
    "category": "research",
-   "arg": "JPM, GS, KO"
+   "arg": "JPM, GS, KO",
+   "lesson": "/academy/options-and-volatility/chain-and-strategies/screening-option-trades"
   },
   {
    "code": "OVDV",
@@ -298,8 +298,7 @@
    "detail": "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew, and forwards. Steps back through stored daily closes; live is real-time on Pro, 15-minute delayed on Free.",
    "category": "research",
    "arg": "NVDA",
-   "shot": "https://gloom.sh/screenshots/fn/OVDV.png",
-   "lesson": "/academy/options-and-volatility/reading-volatility/surface-and-skew"
+   "shot": "https://gloom.sh/screenshots/fn/OVDV.png"
   },
   {
    "code": "HIVG",
@@ -1027,7 +1026,8 @@
    "name": "Live scanner",
    "description": "Your own intraday stock scan",
    "detail": "Scan all US stocks, an index, a sector or a watchlist for your own conditions: a move over the last minutes, volume against its usual pace, a new session high or low, a VWAP cross or a gap, above price, market cap and volume floors. Matches refresh through the session and new ones can alert. Real-time on Pro, 15-minute delayed on Free.",
-   "category": "markets"
+   "category": "markets",
+   "lesson": "/academy/compare-screen-follow-money/compare-and-screen/live-scanner"
   },
   {
    "code": "FLOW",
@@ -1224,8 +1224,8 @@
   {
    "code": "CDX",
    "name": "Index CDS",
-   "description": "CDX and iTraxx on the run",
-   "detail": "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D and 1W moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price.",
+   "description": "CDX, iTraxx and CMBX",
+   "detail": "CDX IG, HY and EM with iTraxx Main and Crossover on the run, and CMBX A, BBB- and BB on the newest series: the level, 1D and 1W moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY, EM and CMBX in price.",
    "category": "macro",
    "shot": "https://gloom.sh/screenshots/fn/CDX.png",
    "lesson": "/academy/rates-bonds-credit/credit/cds"
@@ -1517,11 +1517,19 @@
    "code": "TBO",
    "name": "TheBuildout",
    "description": "Infrastructure intelligence",
-   "detail": "Data center and semiconductor supply chain intelligence from TheBuildout: company lists, sites, and intel. Limited free data; full access with a TheBuildout subscription.",
+   "detail": "Data center and semiconductor supply chain intelligence from TheBuildout: a board of AI buildout themes sized by market cap and coloured by median 1Y return, each theme's companies, sites, and intel. Limited free data; full access with Buildout.",
    "category": "cloud",
    "access": "cloud",
    "shot": "https://gloom.sh/screenshots/fn/TBO.png",
    "lesson": "/academy/special-datasets/infrastructure"
+  },
+  {
+   "code": "TBOC",
+   "name": "TheBuildout company",
+   "description": "A company's deals, sites and hiring",
+   "detail": "One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site, and the signals that name it. Linked to TBO, it follows the company under the cursor. Signals are 72 hours delayed and hiring by site needs Buildout.",
+   "category": "cloud",
+   "access": "cloud"
   },
   {
    "code": "ACM",
@@ -1728,7 +1736,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-10-25",
+   "updatedAt": "2026-10-30",
    "blocks": [
     {
      "type": "heading",
@@ -1797,16 +1805,20 @@
       "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
       "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
       "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
-      "**Versions:** Windows 11 x64. Windows 10 and ARM PCs (x64 emulation) are untested."
+      "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
      ]
     },
     {
      "type": "paragraph",
-     "text": "Terminal only, with [Bun](https://bun.sh), in PowerShell:"
+     "text": "Terminal only, in PowerShell, with no admin rights. It installs `gloom.exe` from the latest release into `%USERPROFILE%\\.local\\bin`, checks its SHA-256, and adds the folder to your PATH; open a new terminal window afterwards."
     },
     {
      "type": "code",
-     "code": "bun install -g @gloom-sh/terminal"
+     "code": "irm https://gloom.sh/install.ps1 | iex"
+    },
+    {
+     "type": "paragraph",
+     "text": "The bash line above is for macOS and Linux; under Git Bash it points here. With [Bun](https://bun.sh), `bun install -g @gloom-sh/terminal` works too."
     },
     {
      "type": "heading",
@@ -2212,7 +2224,7 @@
   {
    "slug": "workflows",
    "title": "Goal-based workflows",
-   "lead": "Short recipes for a market check, company research, peer comparison, earnings, macro and the AI buildout.",
+   "lead": "Short recipes for a market check, company research, peer comparison, earnings, macro, the AI buildout and dry-bulk freight.",
    "category": "Start here",
    "tags": [
     "beginner",
@@ -2220,7 +2232,7 @@
     "research",
     "markets"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-10-31",
    "blocks": [
     {
      "type": "heading",
@@ -2440,6 +2452,40 @@
     {
      "type": "paragraph",
      "text": "All five are Pro. Free shows a preview of each except `JOBS`. See [All functions](/docs/functions) for the rest."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Follow dry-bulk freight"
+    },
+    {
+     "type": "paragraph",
+     "text": "Gloom has no Baltic indices (BDI, Capesize, Panamax, Supramax), freight forwards (FFA), time-charter equivalents or route rates: they are licensed data. These traded proxies are covered:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Command",
+      "For"
+     ],
+     "rows": [
+      [
+       "`GP BDRY`",
+       "A freight futures ETF, the closest traded read of dry-bulk rates."
+      ],
+      [
+       "`CMP SBLK, GNK, DSX`",
+       "Dry-bulk shipowners, whose shares move with rates."
+      ],
+      [
+       "`CHOKE`",
+       "Daily vessel transits through Suez, Panama, Hormuz and the other main straits."
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`gloom search \"baltic dry\"` prints the same list in a shell, and `gloom news \"dry bulk\"` the latest stories."
     }
    ]
   },
@@ -4430,7 +4476,7 @@
     "compute",
     "rental"
    ],
-   "updatedAt": "2026-10-10",
+   "updatedAt": "2026-10-31",
    "blocks": [
     {
      "type": "heading",
@@ -4468,7 +4514,7 @@
      "rows": [
       [
        "Board",
-       "One row per provider and variant: USD per GPU-hour, 1, 7 and 30-day change, availability. Enter opens its history. The Hyperscaler and Neocloud rows are list indexes."
+       "One row per provider and variant: USD per GPU-hour, 1, 7 and 30-day change, availability. Enter opens its history. The Gloom settled row on top is the official daily price. The Hyperscaler and Neocloud rows are list indexes."
       ],
       [
        "History",
@@ -4521,6 +4567,19 @@
     {
      "type": "heading",
      "level": 2,
+     "text": "Gloom daily settle"
+    },
+    {
+     "type": "paragraph",
+     "text": "One official Gloom price per GPU and form factor (SXM and PCIe apart), set every day at 20:00 UTC and never revised. A day with too few prices to set one shows \"No settle\". In the rare case a settle is corrected, the correction is a new entry marked Corrected, and the original stays on record."
+    },
+    {
+     "type": "paragraph",
+     "text": "The latest settle and the last 30 days are free for everyone, on the board and the [GPU price pages](/gpu-prices). The full history is in the Datasets API."
+    },
+    {
+     "type": "heading",
+     "level": 2,
      "text": "Free and Pro"
     },
     {
@@ -4550,7 +4609,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloom fn GPU H100`. MCP `gpu.board`, `gpu.history`, `gpu.changes`. Related: [Power and grid](/docs/power)."
+     "text": "CLI `gloom fn GPU H100`. MCP `gpu.board`, `gpu.history`, `gpu.changes`, `gpu.settles`. Datasets API `gpu.settles` for the latest settle and its full history. Related: [Power and grid](/docs/power)."
     }
    ]
   },
@@ -6870,7 +6929,7 @@
     "developer api",
     "market news"
    ],
-   "updatedAt": "2026-10-14",
+   "updatedAt": "2026-10-30",
    "blocks": [
     {
      "type": "heading",
@@ -6896,31 +6955,15 @@
     {
      "type": "heading",
      "level": 2,
-     "text": "Access levels"
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Plan",
-      "Price",
-      "News"
-     ],
-     "rows": [
-      [
-       "Free key",
-       "Free",
-       "Delayed 12 hours. Real-time with a paid [Gloom Datasets](/docs/datasets) plan."
-      ],
-      [
-       "Unlimited",
-       "$99/mo or $999/yr",
-       "Real-time."
-      ]
-     ]
+     "text": "Access"
     },
     {
      "type": "paragraph",
-     "text": "Both get the same v1 response, including ticker links and source clusters, and neither is metered. Create or rotate a key from [News API account](/news/account)."
+     "text": "The free key reads news delayed 12 hours, with the full v1 response: ticker links and source clusters, no metering. Create or rotate it from [News API account](/news/account)."
+    },
+    {
+     "type": "paragraph",
+     "text": "Real-time news: from $99 a month with the [News and our own data plan](/datasets/pricing#news). Unlimited is no longer sold; existing Unlimited subscriptions keep real-time access."
     },
     {
      "type": "heading",
@@ -7202,32 +7245,41 @@
     },
     {
      "type": "paragraph",
-     "text": "Paid plans only: an account without a plan has no key."
+     "text": "Paid plans only: an account without a plan has no key. A plan reads one band of datasets, or all of them, for personal or company use."
     },
     {
      "type": "table",
      "headers": [
       "Plan",
-      "Price"
+      "Personal use",
+      "Company use"
      ],
      "rows": [
       [
-       "Basic",
-       "$200/month"
+       "Reference: prices, fundamentals, calendars, macro, futures, crypto",
+       "$29/month",
+       "$249/month"
       ],
       [
-       "Desk",
-       "$800/month"
+       "Filings and research: SEC and insiders, transcripts, congress, M&A, KPIs, estimates",
+       "$59/month",
+       "$499/month"
       ],
       [
-       "Enterprise",
-       "From $2,000/month"
+       "News and our own data: news, options flow, GPU, supply chain, hiring, power",
+       "$99/month",
+       "$999/month"
+      ],
+      [
+       "Everything",
+       "$200/month",
+       "$1,999/month"
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "Enterprise is an annual contract. Basic and Desk are also sold yearly at ten months' price."
+     "text": "Personal use is one person's own research and trading; company use is internal use across a business. Every plan is also sold yearly at ten months' price. Showing the data on your own site or app starts at $1,000/month, and Enterprise (display at scale, redistribution, SLA) at $5,000/month on an annual contract."
     },
     {
      "type": "paragraph",
@@ -7235,7 +7287,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Credits, rate limits, usage rights and the founding offer (40% off Basic and Desk for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing)."
+     "text": "A key reads its plan's datasets; any other answers `402 dataset_not_included`, naming the plan that has it. Credits, rate limits and the founding offer (40% off every plan for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing)."
     },
     {
      "type": "heading",
@@ -7385,7 +7437,7 @@
    "title": "Getting help (HELP, F1, CHG, FB)",
    "summary": "HELP opens the guide and every function, and F1 opens the help card of the pane in front of you, including how fresh its data is on your plan.",
    "chapter": "The terminal and your workspace",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/free-pro-and-freshness",
@@ -7432,9 +7484,9 @@
   {
    "url": "/academy/terminal-and-workspace/your-workspace/alerts",
    "title": "Alerts (ALRT, SA)",
-   "summary": "An alert watches the market for you, firing on a price level or an event such as an earnings date, a filing or an insider trade, and ALRT lists them all.",
+   "summary": "An alert watches the market for you, firing on a price level, a valuation or technical level, or an event such as an earnings date, a filing or an insider trade, and ALRT lists them all.",
    "chapter": "The terminal and your workspace",
-   "minutes": 4
+   "minutes": 6
   },
   {
    "url": "/academy/terminal-and-workspace/your-workspace/notes-and-theses",
@@ -7480,10 +7532,10 @@
   },
   {
    "url": "/academy/company-and-price/company-at-a-glance/fund-filings",
-   "title": "A fund's official documents (ETF)",
-   "summary": "ETF lists a US fund's filings with the SEC (prospectus, holdings reports, shareholder reports) and opens any of them.",
+   "title": "A fund's facts and official documents (ETF)",
+   "summary": "ETF shows a US fund's facts (fee, NAV, premium or discount, net assets), then lists its filings with the SEC (prospectus, holdings reports, shareholder reports) and opens any of them.",
    "chapter": "One company and its price",
-   "minutes": 4
+   "minutes": 6
   },
   {
    "url": "/academy/company-and-price/company-at-a-glance/earnings-ripple",
@@ -7497,7 +7549,7 @@
    "title": "Reading a price chart (GP)",
    "summary": "GP is the price chart: candles on top, volume below, a multi-year range by default.",
    "chapter": "One company and its price",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/company-and-price/charts/intraday-chart",
@@ -7518,7 +7570,7 @@
    "title": "VWAP, bands, ATR and price levels (chart tools)",
    "summary": "VWAP, Bollinger Bands, ATR, volume profile and your own price levels are different ways of asking whether today's price is normal, and a level can become an alert.",
    "chapter": "One company and its price",
-   "minutes": 5
+   "minutes": 6
   },
   {
    "url": "/academy/company-and-price/charts/chart-anything",
@@ -7595,14 +7647,14 @@
    "title": "Revenue by segment and company KPIs (SEG, KPIS)",
    "summary": "SEG splits a company's revenue by product, segment and region from its filings, and KPIS tracks the operating numbers it reports beyond the statements, each with its source quote.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 5
+   "minutes": 4
   },
   {
    "url": "/academy/fundamentals-and-earnings/the-statements/reverse-dcf",
    "title": "What growth is priced in? (RDCF)",
    "summary": "RDCF runs a discounted cash flow model backwards, finding the yearly growth today's value assumes and setting it next to the growth the company actually delivered.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 5
+   "minutes": 4
   },
   {
    "url": "/academy/fundamentals-and-earnings/earnings/earnings-calendar",
@@ -7692,6 +7744,13 @@
    "url": "/academy/compare-screen-follow-money/compare-and-screen/screener",
    "title": "Screening the market (EQS)",
    "summary": "EQS keeps only the stocks in its stored universe that meet all your rules (valuation, growth, margins, liquidity, ownership and more) and ranks the matches.",
+   "chapter": "Compare, screen and follow the money",
+   "minutes": 5
+  },
+  {
+   "url": "/academy/compare-screen-follow-money/compare-and-screen/live-scanner",
+   "title": "Your own intraday scan (SCAN)",
+   "summary": "SCAN watches US stocks through the trading day and lists the ones that match your intraday conditions right now (a fast move, a burst of volume, a new high or low, a VWAP cross, a gap), and can alert you when a new one appears.",
    "chapter": "Compare, screen and follow the money",
    "minutes": 5
   },
@@ -7801,6 +7860,13 @@
    "minutes": 5
   },
   {
+   "url": "/academy/options-and-volatility/chain-and-strategies/screening-option-trades",
+   "title": "Screening option trades (CSP)",
+   "summary": "CSP builds the same option trade on a list of stocks at once (a cash-secured put, a covered call, a spread, a condor, a straddle, a strangle or a calendar) and ranks them, so you can see which name pays most for the risk.",
+   "chapter": "Options and the volatility desk",
+   "minutes": 6
+  },
+  {
    "url": "/academy/options-and-volatility/reading-volatility/surface-and-skew",
    "title": "The volatility surface and skew (OVDV)",
    "summary": "Implied volatility changes with the strike (the skew) and with the expiry (the term structure), and OVDV fits the whole surface from option quotes.",
@@ -7845,9 +7911,9 @@
   {
    "url": "/academy/options-and-volatility/positioning-and-flow/options-flow",
    "title": "Options flow (FLOW)",
-   "summary": "FLOW is a live tape of large option trades on the busiest US contracts (sweeps, blocks and big-premium prints) with ticker, contract, size, premium and implied volatility.",
+   "summary": "FLOW is a live tape of large option trades on the busiest US contracts (sweeps, blocks and big-premium prints) with ticker, contract, size, premium and implied volatility, plus the session's net premium tide.",
    "chapter": "Options and the volatility desk",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/futures-commodities-energy/futures-from-zero",
@@ -7868,7 +7934,7 @@
    "title": "Who holds the futures (COT)",
    "summary": "The CFTC's weekly Commitments of Traders shows how many futures contracts speculators, hedgers and small traders hold long and short, and COT shows it per market with history and percentiles.",
    "chapter": "Futures, commodities and energy",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/futures-commodities-energy/oil-and-gas-inventories",
@@ -7980,7 +8046,7 @@
    "title": "Inflation by component (CPI)",
    "summary": "CPI breaks US consumer prices into their components with each one's weight, its monthly, annualized and yearly change, and its contribution to the headline.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 4
+   "minutes": 3
   },
   {
    "url": "/academy/macro-markets-and-news/the-economy/currencies",
@@ -8001,7 +8067,7 @@
    "title": "Sectors, themes and rotation (BI, THEM, RRG)",
    "summary": "BI shows sector and industry performance, THEM curated themes as equal-weight baskets with breadth, and RRG plots each sector's strength and momentum against the market.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/macro-markets-and-news/markets/heatmap",
@@ -8015,14 +8081,14 @@
    "title": "Movers, new highs and lows, halts (MOST, HILO, HALT)",
    "summary": "MOST lists today's biggest gainers, losers and most active stocks, HILO counts new session highs and lows live, and HALT lists trading halts.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/macro-markets-and-news/markets/ipos",
    "title": "IPOs (IPO)",
    "summary": "IPO lists upcoming, priced and recent initial public offerings on the main US, Asia-Pacific and European venues, with size, price range and first-day performance.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 3
+   "minutes": 4
   },
   {
    "url": "/academy/macro-markets-and-news/markets/sentiment-and-valuation",
@@ -8056,6 +8122,13 @@
    "url": "/academy/crypto-and-prediction-markets/perpetuals",
    "title": "Perpetual futures, funding and open interest (PERP)",
    "summary": "A perpetual future never expires and is kept close to its underlying by a periodic funding payment, and PERP shows a market's funding, open interest and premium over time.",
+   "chapter": "Crypto and prediction markets",
+   "minutes": 5
+  },
+  {
+   "url": "/academy/crypto-and-prediction-markets/crypto-options",
+   "title": "Bitcoin and ether options (OPX, OVDV)",
+   "summary": "Bitcoin and ether have listed options of their own, and OPX BTC-USD and OVDV BTC-USD read them like a stock's: open interest, max pain, the volatility surface, and DVOL, the 30-day implied volatility index of the coin.",
    "chapter": "Crypto and prediction markets",
    "minutes": 4
   },

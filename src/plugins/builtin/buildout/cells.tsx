@@ -11,6 +11,7 @@ import {
   activityColor,
   activityLabel,
   criticalityColor,
+  listWord,
   metricColor,
   moneyAmount,
   moneyText,
@@ -115,6 +116,10 @@ export function renderBuildoutCell(
         return { text: text(company.return1y), color: metricColor(company.return1y) };
       case "employees":
         return { text: text(company.employeeCount), color: colors.textDim };
+      case "listRole":
+        return { text: text(listWord(company.listRole)), color: colors.textDim };
+      case "listTier":
+        return { text: text(listWord(company.listTier)), color: company.listTier === "leader" ? colors.text : colors.textDim };
     }
   }
 

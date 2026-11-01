@@ -26,6 +26,8 @@ import {
   type DataTableCell,
   type PageRequest,
   type PaneHint,
+  type QueryBarFilter,
+  TickerBadgeList,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import {
@@ -36,13 +38,17 @@ import {
   usePluginPaneState,
 } from "../../../public/react";
 import { relativeLuminance } from "../../../theme/color-utils";
+import { displayWidth } from "../../../utils/format";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
-import { ENTITY_PAGE_SIZE, loadEntityDetail, loadEntityPage, loadWorldVenues } from "./client";
+import { ENTITY_PAGE_SIZE, loadEntityDetail, loadEntityPage, loadWorldVenues, scopedGeoRequest } from "./client";
+import { isLocalGeoLayer } from "./local-layers";
+import { useLinkedGeoScope } from "./scope";
 import { EntityDetail } from "./entity-detail";
 import { useWorldMapEvidence } from "./evidence";
 import { entityCellText, entityColumns, TICKER_COLUMN_ID, type EntityColumn } from "./entity-table";
@@ -52,6 +58,7 @@ import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 import {
   entityOpenZoom,
   entityTableBbox,
+  framePlaces,
   featureAnchor,
   formatGeoValue,
   formatTickerLinks,
@@ -162,7 +169,7 @@ const SelectedEntityHeader = memo(function SelectedEntityHeader({
   return (
     <Box flexDirection="column" height={2} width={width} paddingX={1}>
       <Box flexDirection="row" justifyContent="space-between" width="100%">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{row.label}</Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{truncateWithEllipsis(row.label, Math.max(1, width - 3 - displayWidth(layer.name)))}</Text>
         <Text fg={color}>{layer.name}</Text>
       </Box>
       <Text fg={colors.textMuted}>{meta}</Text>
@@ -193,7 +200,11 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     setView((current) => sameGeoView(current, next) ? current : next);
   }, []);
   const canAccess = useCallback((layer: GeoLayerInfo) => layer.access !== "pro" || hasProAccess, [hasProAccess]);
-  const states = useGeoLayerFeed(layers, view, visible, { canAccess });
+  // A linked map narrows the app's own layers to what its source pane selects.
+  const linkedScope = useLinkedGeoScope(layers.some((layer) => isLocalGeoLayer(layer.id)));
+  const scope = linkedScope.scope;
+  const request = useMemo(() => scopedGeoRequest(scope?.key ?? null), [scope?.key]);
+  const states = useGeoLayerFeed(layers, view, visible, { canAccess, request });
 
   // A layer coloured by class (ships) takes the first colour, so its own never meets the class colours.
   const colorOrder = useMemo(
@@ -244,7 +255,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       ...(sort.key ? { sort: sort.key, dir: sort.dir } : {}),
       ...(tableBbox ? { bbox: tableBbox } : {}),
       offset,
-    }, signal);
+    }, signal, request);
     const rows = page.rows ?? [];
     const total = typeof page.total === "number" ? page.total : null;
     return {
@@ -252,18 +263,28 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       rows,
       hasMore: rows.length >= ENTITY_PAGE_SIZE && (total === null || offset + rows.length < total),
       nextOffset: offset + rows.length,
+      scopeKey: scope?.key ?? null,
     };
-  }, [query, sort.dir, sort.key, tableBboxKey, tableLayer.id]);
+  }, [query, request, scope?.key, sort.dir, sort.key, tableBboxKey, tableLayer.id]);
   const pages = usePagedRows(tableReadable ? loadPage : null, { getId: (row) => row.id });
   const rows = pages.rows;
+  // A linked map frames the places of each company or theme it moves to, once.
+  const framedScopeRef = useRef<string | null>(null);
+  const firstPage = pages.pages[0];
+  useEffect(() => {
+    if (!firstPage?.scopeKey || !isLocalGeoLayer(tableLayer.id) || framedScopeRef.current === firstPage.scopeKey) return;
+    framedScopeRef.current = firstPage.scopeKey;
+    const frame = framePlaces(firstPage.rows);
+    if (frame) setFocus({ key: `scope:${firstPage.scopeKey}`, ...frame, exact: true });
+  }, [firstPage, tableLayer.id]);
   useWorldMapEvidence(tokens, states, rows.length, pages.loading);
   const refresh = useCallback(() => pages.reload(), [pages.reload]);
   usePaneRefreshKey(refresh, { focused: focused && !searchFocused });
 
   const detailOpen = !!open && open.layer === tableLayer.id;
   const detailLoader = useMemo(
-    () => (detailOpen && open ? () => loadEntityDetail(open.layer, open.id) : null),
-    [detailOpen, open?.id, open?.layer],
+    () => (detailOpen && open ? () => loadEntityDetail(open.layer, open.id, undefined, request) : null),
+    [detailOpen, open?.id, open?.layer, request],
   );
   const detail = useAsyncResource(detailLoader);
   const openRow = detailOpen
@@ -412,9 +433,29 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
 
   const onScroll = useTableLoadMore(scrollRef, pages.hasMore && !detailOpen, pages.loadMore);
   // A layer that cannot serve has nothing to search and, alone, nothing to switch to: no bar at all.
+  // What a linked map shows, before the search: a switch between the company and its theme when the
+  // source has both, else the one it has.
+  const scoped = !!scope && isLocalGeoLayer(tableLayer.id);
+  const { company: scopeCompany, theme: scopeTheme } = linkedScope;
+  const scopeFilter: QueryBarFilter | null = scoped && scopeCompany && scopeTheme ? {
+    id: "scope",
+    label: "Show",
+    inline: true,
+    value: linkedScope.mode,
+    options: [
+      { value: "company", label: scopeCompany.label },
+      { value: "theme", label: "Theme", description: scopeTheme.label },
+    ],
+    onChange: linkedScope.setMode,
+  } : null;
+  const scopeLeading = !scoped || scopeFilter ? undefined
+    : scopeCompany ? <TickerBadgeList symbols={[scopeCompany.label]} width={displayWidth(scopeCompany.label) + 2} listed />
+      : <Text fg={colors.textDim}>{truncateWithEllipsis(scope.label, Math.max(8, Math.floor(listWidth / 3)))}</Text>;
   const queryBar = !tableReadable && layers.length < 2 ? undefined : (
     <QueryBar
       width={listWidth}
+      leading={scopeLeading}
+      filters={scopeFilter ? [scopeFilter] : undefined}
       search={tableReadable ? {
         value: query,
         onChange: setQuery,

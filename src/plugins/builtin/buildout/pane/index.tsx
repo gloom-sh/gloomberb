@@ -61,8 +61,23 @@ import {
   updateBuildoutFooterInfo,
 } from "./status";
 import { useBuildoutDataRuntime } from "../data-runtime";
+import { GEO_SCOPE_STATE_KEY } from "../../world-venue-map/scope";
+import type { GeoScope } from "../../world-venue-map/local-layers";
+import { boardRows, boardThemes, resolveBoardTheme, ThemeBoard, ThemeStats, themeStatRows, useThemeStepKeys } from "./themes";
 
 const BUILDOUT_UPGRADE_URL = "https://thebuildout.ai/pricing";
+/** How long the cursor rests on a company before linked panes follow it. */
+const CURSOR_PUBLISH_MS = 150;
+
+/** A symbol the rest of the app can open: the dataset writes some Asian listings by number alone. */
+function linkableTicker(value: string | null | undefined): string | null {
+  const symbol = tickerSymbol(value);
+  return symbol && /^[A-Z][A-Z0-9.-]*$/.test(symbol) ? symbol : null;
+}
+
+function sameScope(left: GeoScope | null, right: GeoScope | null): boolean {
+  return left?.key === right?.key && left?.label === right?.label;
+}
 
 /** A star a row's company or site did not take: said by its star cell, in full at the top of its detail. */
 const favoriteNoteKey = (row: BuildoutRow) => favoriteKey(row) ?? rowKey(row);
@@ -97,8 +112,11 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const favoriteBusyKeysRef = useRef<Set<string>>(new Set());
   const clearFavoriteNotesRef = useRef<() => void>(() => {});
-  const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "companies");
+  const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "themes");
   const [selectedList, setSelectedList] = useState<BuildoutList | null>(null);
+  const [themeSlug, setThemeSlug] = usePaneStateValue<string | null>("themeSlug", null);
+  const [, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
+  const [, setGeoScope] = usePaneStateValue<GeoScope | null>(GEO_SCOPE_STATE_KEY, null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<BuildoutRow | null>(null);
   const [sort, setSort] = useState<SortPreference<BuildoutColumnId>>({ columnId: null, direction: "asc" });
@@ -126,7 +144,12 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     activeTab,
     onBeforeLoad: handleBeforeLoad,
     selectedList,
+    themeSlug,
   });
+  const themes = useMemo(() => (state.status === "ready" ? boardThemes(state.lists) : []), [state]);
+  const themeList = useMemo(() => resolveBoardTheme(themes, themeSlug), [themeSlug, themes]);
+  // The list whose companies the table shows: the board's theme, or the one opened from Companies.
+  const currentList = activeTab === "themes" ? themeList : selectedList;
   const favoriteToken = state.status === "ready" ? state.token : null;
   const canFavorite = favoriteToken != null;
 
@@ -146,25 +169,43 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     setSelectedIndex(0);
     setDetailRow(null);
-    const nextColumn: BuildoutColumnId | null = activeTab === "companies"
-      ? selectedList ? "marketCap" : null
+    const nextColumn: BuildoutColumnId | null = activeTab === "companies" || activeTab === "themes"
+      ? currentList ? "marketCap" : null
       : activeTab === "sites" ? "capture" : "time";
     setSort({ columnId: nextColumn, direction: defaultSortDirection(nextColumn) });
-  }, [activeTab, selectedList?.slug]);
+  }, [activeTab, currentList?.slug]);
 
   const rows = useMemo(
-    () => sortRows(activeRows(state, activeTab, selectedList), sort.columnId, sort.direction),
-    [activeTab, selectedList, sort, state],
+    () => sortRows(activeRows(state, activeTab, currentList), sort.columnId, sort.direction),
+    [activeTab, currentList, sort, state],
   );
   // Until the next star on that row, or a reload.
   const favoriteNotes = useRowNotes<BuildoutRow, string>(rows, { key: favoriteNoteKey });
   const { setNote: setFavoriteNote, noteFor: favoriteNoteFor } = favoriteNotes;
   clearFavoriteNotesRef.current = favoriteNotes.clearNotes;
   const columns = useMemo(
-    () => columnsForTab(activeTab, selectedList, canFavorite, width),
-    [activeTab, canFavorite, selectedList, width],
+    () => columnsForTab(activeTab, currentList, canFavorite, width),
+    [activeTab, canFavorite, currentList, width],
   );
   const selectedRow = rows[selectedIndex] ?? rows[0] ?? null;
+
+  // Panes linked to this one follow the company under the cursor, and a linked map can widen to the
+  // theme it belongs to. Off the company tabs both stay where they were.
+  const cursorCompany = detailRow?.kind === "company" ? detailRow.item : selectedRow?.kind === "company" ? selectedRow.item : null;
+  const cursorTicker = linkableTicker(cursorCompany?.ticker);
+  // Published once the cursor rests: arrowing down a theme would otherwise load every company it passes.
+  useEffect(() => {
+    if (!cursorTicker) return;
+    const timer = setTimeout(() => setCursorSymbol(cursorTicker), CURSOR_PUBLISH_MS);
+    return () => clearTimeout(timer);
+  }, [cursorTicker, setCursorSymbol]);
+  const companyTab = activeTab === "themes" || activeTab === "companies";
+  const themeScope = companyTab && currentList && currentList.slug !== "all" ? currentList : null;
+  useEffect(() => {
+    if (!companyTab) return;
+    const next: GeoScope | null = themeScope ? { key: `theme:${themeScope.slug}`, label: themeScope.name } : null;
+    setGeoScope((current) => (sameScope(current, next) ? current : next));
+  }, [companyTab, setGeoScope, themeScope?.name, themeScope?.slug]);
   // The table's cells carry their own badges; this catalog only serves the open
   // detail: its row's tickers, plus the loaded rows' tickers its text mentions.
   // Streaming every loaded row here would subscribe pages of symbols nobody sees.
@@ -226,8 +267,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   // The free tier sees the head of a list; the footer says so, the `$` hint
   // is the way out, and no count of what is hidden is drawn.
   const partialList = state.status === "ready"
-    && activeTab === "companies"
-    && !!selectedList
+    && companyTab
+    && !!currentList
     && !state.companies.loadingMore
     && !state.companies.hasMore
     && !state.companies.error
@@ -261,6 +302,10 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     }
     setDetailRow(row);
   }, [openCompanyList]);
+
+  const selectTheme = useCallback((list: BuildoutList) => {
+    setThemeSlug(list.slug);
+  }, [setThemeSlug]);
 
   const updateFavorite = useCallback((key: string, starred: boolean) => {
     setState((current) => applyFavoriteToState(current, key, starred));
@@ -328,23 +373,23 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   }, [chooseOpenTarget, favoriteBusyKey, favoriteTarget, favoriteTargetKey, openTargets.length, startUpgrade, state, toggleFavoriteRow]);
 
   usePaneFooter("buildout", () => ({
-    info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
+    info: updateBuildoutFooterInfo(state, activeTab, currentList, {
       upgradeMessage,
       partialList,
       onUpgrade: startUpgrade,
       quoteFreshness: detailQuoteFreshness,
     }),
     hints: footerHints,
-  }), [activeTab, detailQuoteFreshness, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
+  }), [activeTab, currentList, detailQuoteFreshness, footerHints, partialList, startUpgrade, state, upgradeMessage]);
 
-  const activePage = state.status === "ready" ? activeBuildoutPage(state, activeTab, selectedList) : null;
+  const activePage = state.status === "ready" ? activeBuildoutPage(state, activeTab, currentList) : null;
   const loadMoreActiveRows = useTableLoadMore(
     tableScrollRef,
     !!activePage && !activePage.loadingMore && !!activePage.hasMore && !activePage.error,
     () => {
       if (!activePage) return;
-      if (activeTab === "companies" && selectedList) {
-        void loadCompanies(selectedList, activePage.offset, true);
+      if (companyTab && currentList) {
+        void loadCompanies(currentList, activePage.offset, true);
       } else if (activeTab === "sites") {
         void loadSites(activePage.offset, true);
       } else if (activeTab === "intel") {
@@ -385,6 +430,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     toggleFavorite,
   }), [favoriteBusyKey, favoriteNoteFor, toggleFavorite]);
 
+  useThemeStepKeys({ themes, selectedSlug: themeList?.slug ?? null, enabled: focused && activeTab === "themes" && !detailRow, onSelect: selectTheme });
+
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs,
     activeValue: activeTab,
@@ -406,7 +453,12 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   }
 
   const listOpen = activeTab === "companies" && !!selectedList;
-  const tableHeight = Math.max(1, height - tabRows - (listOpen ? 1 : 0));
+  // Themes: the board, the theme in figures, then its companies; an open company takes the whole body.
+  const themesBody = activeTab === "themes" && !detailRow;
+  const bodyHeight = Math.max(1, height - tabRows);
+  const boardHeight = themesBody ? boardRows(bodyHeight) : 0;
+  const statHeight = themesBody ? themeStatRows(themeList, width) : 0;
+  const tableHeight = Math.max(1, bodyHeight - (listOpen ? 1 : 0) - boardHeight - statHeight);
   const table = (
     <DataTableStackView<BuildoutRow, BuildoutColumn>
       focused={focused}
@@ -430,7 +482,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       selection={{
         kind: "index",
         selectedIndex,
-        onChange: (index) => setSelectedIndex(index),
+        onChange: setSelectedIndex,
       }}
       onActivate={activateRow}
       // The lists start unsorted, and every table sorts by its headers.
@@ -441,15 +493,34 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       getItemKey={rowKey}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyContent={renderBuildoutPageStatus(state, activeTab, selectedList)}
-      emptyStateTitle={selectedList ? "No companies" : "No rows"}
+      emptyContent={renderBuildoutPageStatus(state, activeTab, currentList)}
+      emptyStateTitle={currentList ? "No companies" : "No rows"}
       onRootKeyDown={handleRootKeyDown}
       onDetailKeyDown={handleDetailKeyDown}
       onBodyScrollActivity={loadMoreActiveRows}
       scrollRef={tableScrollRef}
-      resetScrollKey={`${activeTab}:${selectedList?.slug ?? "lists"}`}
+      resetScrollKey={`${activeTab}:${currentList?.slug ?? "lists"}`}
     />
   );
+
+  if (activeTab === "themes") {
+    return (
+      <Box flexDirection="column" width={width} height={height} overflow="hidden">
+        {tabStrip && <Box height={1}>{tabStrip}</Box>}
+        {boardHeight > 0 ? (
+          <ThemeBoard
+            themes={themes}
+            selectedSlug={themeList?.slug ?? null}
+            width={width}
+            height={boardHeight}
+            onSelect={selectTheme}
+          />
+        ) : null}
+        {themesBody ? <ThemeStats list={themeList} width={width} /> : null}
+        {table}
+      </Box>
+    );
+  }
 
   // Tabs on top; below them a list opened from Companies is a stack level with
   // the shared Back row, and a company opened from that list is the table's

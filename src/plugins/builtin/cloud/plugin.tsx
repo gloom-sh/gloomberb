@@ -2,6 +2,7 @@ import type { GloomPlugin } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 import { accountManagementModule } from "../account-management";
+import { buildoutModule } from "../buildout";
 import { chatModule } from "../chat";
 import {
   CONGRESS_TRADES_PANE_ID,
@@ -179,8 +180,7 @@ const congressTradesModule: PluginModule = {
   }],
 };
 
-/** The desktop and browser builds differ only in the modules they add here. */
-export function createGloomberbCloudPlugin(extraModules: readonly PluginModule[] = []): GloomPlugin {
+export function createGloomberbCloudPlugin(): GloomPlugin {
   return composeBuiltinPlugin({
     id: "gloomberb-cloud",
     name: "Gloom Cloud",
@@ -197,7 +197,7 @@ export function createGloomberbCloudPlugin(extraModules: readonly PluginModule[]
       cloudAccountModule,
       askgModule,
       terminalRelayModule,
-      ...extraModules,
+      buildoutModule,
       congressTradesModule,
       cloudTweetsModule,
     ],

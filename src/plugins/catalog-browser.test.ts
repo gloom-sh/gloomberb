@@ -27,12 +27,7 @@ describe("browser plugin catalog", () => {
   });
 
   test("omits unsupported modules inside otherwise browser-safe product areas", () => {
-    for (const forbidden of [
-      "buildout",
-      "market-movers",
-    ]) {
-      expect(paneIds).not.toContain(forbidden);
-    }
+    expect(paneIds).not.toContain("market-movers");
   });
 
   test.each([
