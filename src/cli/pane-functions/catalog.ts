@@ -289,7 +289,7 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: argument.kind,
     argPlaceholder: argument.placeholder,
-    ...(argExamples(headless, context) ? { argExamples: argExamples(headless, context) } : {}),
+    ...argExamples(headless, context),
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
@@ -303,13 +303,13 @@ async function buildTemplateCatalogEntry(
  * for a list of more than two symbols, a watchlist's name, which stands for
  * its symbols (the reader's first watchlist).
  */
-function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext): readonly string[] | null {
+function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext): { argExamples: readonly string[] } | null {
   const own = headless?.argument.examples ?? [];
   const argument = headless?.argument;
   const list = (argument?.kind === "symbol-list" || argument?.kind === "tickers") && (argument.maximum == null || argument.maximum > 2);
   const name = context.config.watchlists[0]?.name ?? "Watchlist";
   const examples = list ? [...own, /^[\w.-]+$/.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`] : own;
-  return examples.length > 0 ? examples : null;
+  return examples.length > 0 ? { argExamples: examples } : null;
 }
 
 /**
@@ -347,7 +347,7 @@ export async function buildPaneCatalogEntries(
       aliases,
       argKind: argument.kind,
       argPlaceholder: argument.placeholder,
-      ...(argExamples(pane.headless, context) ? { argExamples: argExamples(pane.headless, context) } : {}),
+      ...argExamples(pane.headless, context),
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),
