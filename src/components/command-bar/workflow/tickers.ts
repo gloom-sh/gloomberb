@@ -4,6 +4,7 @@ import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { isManualPortfolio } from "../../../portfolio/mutations";
+import { findNamedCollection } from "../../../portfolio/collection-name";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
@@ -266,6 +267,14 @@ export async function resolveTickerListInput(
   deps: SharedWorkflowDeps,
   keepToken?: (token: string) => boolean,
 ): Promise<string[]> {
+  // A watchlist's name stands for its symbols, as `fn` reads it (`SIW HY3`).
+  const state = deps.getState();
+  const watchlist = /[,;\n]/.test(rawInput) ? null : findNamedCollection(state.config.watchlists, rawInput);
+  const members = watchlist
+    ? [...state.tickers.values()].filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id)).map((ticker) => ticker.metadata.ticker)
+    : [];
+  if (members.length > 0) return members;
+
   const tokens = parseTickerListInput(rawInput);
   const symbols: string[] = [];
   const seen = new Set<string>();
