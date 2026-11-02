@@ -190,7 +190,7 @@ describe("static Cloudflare host", () => {
     expect(proxied).toBe(false);
   });
 
-  test("confirms plugin proxy sessions with api.gloom.sh, sending only the session cookie", async () => {
+  test("checks plugin proxy sessions with api.gloom.sh, sending only the session cookie", async () => {
     const { env, requests } = fixture();
     const checks: Request[] = [];
     const response = await handleRequest(new Request("https://term.example/http-proxy", {
@@ -207,7 +207,8 @@ describe("static Cloudflare host", () => {
       return new Response(null, { status: 200 });
     });
 
-    expect(response.status).toBe(401);
+    // Signed out is served too; this target is simply not on the allowlist.
+    expect(response.status).toBe(403);
     expect(checks).toHaveLength(1);
     expect(checks[0]?.url).toBe("https://api.gloom.sh/auth/get-session");
     expect(checks[0]?.headers.get("cookie")).toBe("__Secure-gloomberb.session_token=worker-route-test");

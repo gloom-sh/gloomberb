@@ -53,6 +53,10 @@ export async function fetchCheckingRedirects(
   init: ProxiedRequestInit,
   options: { fetch: typeof fetch; check: ProxyTargetCheck; signal: AbortSignal },
 ): Promise<ProxyUpstreamResult> {
+  // Taken off `options` before calling: `options.fetch(...)` would call the
+  // runtime's fetch with `options` as `this`, which Cloudflare Workers reject
+  // with "Illegal invocation", failing every proxied request.
+  const { fetch: fetchUpstream, check, signal } = options;
   const headers = upstreamHeaders(init.headers);
   const mode = init.redirect ?? "follow";
   let url = first;
@@ -60,7 +64,7 @@ export async function fetchCheckingRedirects(
   let body = init.body;
 
   for (let followed = 0; ; followed += 1) {
-    const response = await options.fetch(url, { method, headers, body, redirect: "manual", signal: options.signal });
+    const response = await fetchUpstream(url, { method, headers, body, redirect: "manual", signal });
     const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get("location") : null;
     // "manual" hands the redirect back to the plugin. If it follows it, that
     // comes back through here as a new request and is checked like one.
@@ -77,7 +81,7 @@ export async function fetchCheckingRedirects(
       // Intentional ignore: a Location that does not parse is reported as an invalid redirect, never followed.
       return { error: "The upstream sent an invalid redirect.", status: 502 };
     }
-    const target = await options.check(next);
+    const target = await check(next);
     if ("error" in target) return { error: `The upstream redirect was refused. ${target.error}`, status: 502 };
 
     if (target.url.origin !== url.origin) {

@@ -4,13 +4,15 @@ import { join } from "path";
 
 import { browserBuiltinPlugins } from "../src/plugins/catalog-browser";
 import type { GloomPlugin } from "../src/types/plugin";
+import { isProxiedHost, WEB_DIRECT_HOSTS } from "../src/utils/plugin-proxy-hosts";
 import { compileWebBundledPlugins } from "./web-plugins";
 
 /**
  * Writes `src/utils/plugin-proxy-hosts.json`: the hosts the web worker will
  * proxy for plugins, derived from what the plugins in the web build declare:
  * the browser catalog's built-ins, and the plugins compiled in from their own
- * repositories (`plugins/web-bundled.ts`).
+ * repositories (`plugins/web-bundled.ts`). Hosts the browser calls directly
+ * (`WEB_DIRECT_HOSTS`, allowed by the worker's CSP) are left off.
  *
  * The worker cannot import the catalog (it would pull the whole app into the
  * worker bundle), so the list is generated and committed. Run with --check in
@@ -48,6 +50,7 @@ const byHost = new Map<string, string[]>();
 for (const plugin of [...browserBuiltinPlugins, ...await webBundledPlugins()]) {
   for (const host of plugin.hosts ?? []) {
     const normalized = normalizeHost(host, plugin.id);
+    if (isProxiedHost(normalized, WEB_DIRECT_HOSTS)) continue;
     byHost.set(normalized, [...(byHost.get(normalized) ?? []), plugin.id]);
   }
 }

@@ -3,7 +3,7 @@ import { basename, dirname, extname, join, relative, resolve } from "path";
 import { buildViewBundle, pageBootFrameScript, pageBuildId, type PageBootFrame } from "../src/renderers/dom/build-assets";
 import { BROWSER_STORAGE_KEYS } from "../src/data/json-storage";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
-import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../src/utils/plugin-proxy-hosts";
+import { isProxiedHost, PROXY_ALLOWED_HOSTS, WEB_DIRECT_HOSTS } from "../src/utils/plugin-proxy-hosts";
 import { takeOption } from "./tui-benchmark-harness";
 import { compileExtraWebPlugins, compileWebBundledPlugins } from "./web-plugins";
 
@@ -137,7 +137,7 @@ async function buildBundledPlugins(): Promise<WebBundledPluginDescriptor[]> {
   const compiled = await compileWebBundledPlugins(pluginsDir, { minify: !keepNames });
 
   const missing = compiled.flatMap(({ plugin }) => (plugin.hosts ?? [])
-    .filter((host) => !isProxiedHost(host.trim().toLowerCase(), PROXY_ALLOWED_HOSTS))
+    .filter((host) => ![PROXY_ALLOWED_HOSTS, WEB_DIRECT_HOSTS].some((hosts) => isProxiedHost(host.trim().toLowerCase(), hosts)))
     .map((host) => `${plugin.id} -> ${host}`));
   if (missing.length) {
     throw new Error(
