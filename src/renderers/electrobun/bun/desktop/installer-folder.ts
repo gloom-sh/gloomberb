@@ -20,7 +20,8 @@ import { psString, runScriptInBackground, writePowerShellScript } from "./window
  * this build from it. This build then retires the installer's folder: its
  * own uninstaller removes what it installed, its entry and PATH entry, and
  * the shortcuts it made, which the launcher had just pointed at this folder
- * and which come back here. A folder the user picked keeps their own files.
+ * and which come back here. What it leaves in a folder the installer picked
+ * (files the app wrote there) goes too; one the user picked keeps them.
  * It runs in the background, once the window is up, and again at the next
  * start if it did not finish.
  */
@@ -183,11 +184,19 @@ try {
   if (Test-Path -LiteralPath $UninstallKey) {
     Write-Log "the installer's entry is still there; removing it here"
     Remove-Item -LiteralPath $UninstallKey -Recurse -Force
-    foreach ($Default in @('Programs\Gloom', 'Programs\Gloomberb')) {
-      $DefaultFolder = Join-Path $env:LOCALAPPDATA $Default
-      if (((Get-NormalPath $DefaultFolder) -eq (Get-NormalPath $Folder)) -and (Test-Path -LiteralPath $Folder)) {
+  }
+  # The uninstaller leaves what the app wrote there after the install. That
+  # goes too, from a folder the installer picked itself only.
+  $DefaultFolders = @('Programs\Gloom', 'Programs\Gloomberb') | ForEach-Object { Get-NormalPath (Join-Path $env:LOCALAPPDATA $_) }
+  if ($DefaultFolders -contains (Get-NormalPath $Folder)) {
+    for ($Wait = 0; ($Wait -lt 20) -and (Test-Path -LiteralPath $Folder); $Wait += 1) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path -LiteralPath $Folder) {
+      $Left = @(Get-ChildItem -LiteralPath $Folder -Recurse -Force -File -ErrorAction SilentlyContinue | Select-Object -First 5 | ForEach-Object { $_.FullName.Substring($Folder.Length) })
+      try {
         Remove-Item -LiteralPath $Folder -Recurse -Force
-        Write-Log ('removed ' + $Folder)
+        Write-Log ('removed ' + $Folder + ', which still held ' + ($Left -join ', '))
+      } catch {
+        Write-Log ('could not remove ' + $Folder + ': ' + $_.Exception.Message)
       }
     }
   }

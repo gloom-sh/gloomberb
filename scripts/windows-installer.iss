@@ -204,7 +204,7 @@ end;
 // An install from an earlier setup is uninstalled with its own uninstaller,
 // which removes what it installed, its PATH entry and its shortcuts and keeps
 // the user's own files in a folder they picked. Without one, its record and
-// PATH entry go here, and its folder when it is a default one.
+// PATH entry go here. What is left in a folder the setup picked goes too.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   PreviousDir: string;
@@ -236,9 +236,24 @@ begin
   begin
     Log('Removing the record of the earlier install in ' + PreviousDir);
     RegDeleteKeyIncludingSubkeys(HKCU, UninstallKey);
-    RemovePathEntryFor(AddBackslash(PreviousDir) + 'bin');
-    if IsDefaultInstallDir(PreviousDir) and DirExists(PreviousDir) and not DelTree(PreviousDir, True, True, True) then
-      Log('Could not remove the earlier install folder ' + PreviousDir);
+  end;
+  RemovePathEntryFor(AddBackslash(PreviousDir) + 'bin');
+  // The uninstaller leaves what the app wrote there after the install. That
+  // goes too, from a folder the installer picked itself only.
+  if IsDefaultInstallDir(PreviousDir) then
+  begin
+    Attempt := 0;
+    while DirExists(PreviousDir) and (Attempt < 20) do
+    begin
+      Sleep(500);
+      Attempt := Attempt + 1;
+    end;
+    if DirExists(PreviousDir) then
+    begin
+      Log('Removing what is left in the earlier install folder ' + PreviousDir);
+      if not DelTree(PreviousDir, True, True, True) then
+        Log('Could not remove the earlier install folder ' + PreviousDir);
+    end;
   end;
 end;
 
