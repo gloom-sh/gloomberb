@@ -2287,13 +2287,19 @@ class Run {
   async windowsComeBack(): Promise<void> {
     await this.step("windows-come-back", "Quit and open again, twice: every window comes back where it was", async (shots) => {
       if (this.extras.length < 2) return { status: "skip", detail: "New Window did not open three windows to bring back" };
-      // One moved by its title bar, so what comes back is where a person left it.
+      // One moved by its title bar, so what comes back is where a person left
+      // it: down and right, as far as keeps all of it in the work area. Past
+      // it, the app is right to put it back where it was, and the check below
+      // would count that against it.
       const moved = this.extras[1]!;
       if (await this.clickTitleBar(moved)) {
         const point = await evaluate<{ x: number; y: number } | null>(moved.page.cdp, "window.__winCheck.titleBarPoint()", 3_000).catch(() => null);
         if (point) {
           const from = this.toScreen(moved, point);
-          await win.drag(from, { x: from.x + 160, y: from.y + 70 }, { steps: 12 });
+          const frame = win.visibleRect(moved.hwnd);
+          const work = win.monitorOf(moved.hwnd).work;
+          const room = (space: number, wanted: number) => Math.max(0, Math.min(wanted, space - 16));
+          await win.drag(from, { x: from.x + room(work.right - frame.right, 160), y: from.y + room(work.bottom - frame.bottom, 70) }, { steps: 12 });
         }
       }
       await sleep(1_500);
