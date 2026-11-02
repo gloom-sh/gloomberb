@@ -200,6 +200,45 @@ export function sortedDebtHistory(
       b.asOf.localeCompare(a.asOf),
   );
 }
+/** A year's cost proxy: the value, what it divides when there is one, and why not when there is none. */
+export interface DebtCostProxy {
+  value: number | null;
+  basis: string | null;
+  reason: string | null;
+}
+
+/**
+ * A year's borrowing cost proxy, in percent. The filing's own when it has
+ * one (debt interest over its reported debt balances, as the server reads
+ * it); else the year's interest expense over the average of its opening and
+ * closing scheduled principal, the opening one being the schedule a year
+ * earlier in `history`. With neither, null and the reason.
+ */
+export function debtCostProxy(history: readonly DebtHistoryPoint[], point: DebtHistoryPoint): DebtCostProxy {
+  if (point.borrowingCostPercent !== null) return { value: point.borrowingCostPercent, basis: point.borrowingCostDebtTags, reason: null };
+  const none = (reason: string): DebtCostProxy => ({ value: null, basis: null, reason });
+  if (point.interestExpense === null) return none("no annual interest expense reported");
+  if (point.totalPrincipal === null) return none("partial principal schedule");
+  const opening = history.find((row) => {
+    const days = (Date.parse(point.asOf) - Date.parse(row.asOf)) / DAY_MS;
+    return days >= 350 && days <= 380;
+  });
+  if (!opening) return none("no schedule a year earlier to average");
+  if (opening.totalPrincipal === null) return none(`partial principal schedule at ${opening.asOf}`);
+  const average = (opening.totalPrincipal + point.totalPrincipal) / 2;
+  if (average <= 0) return none("no principal to average");
+  return { value: (100 * point.interestExpense) / average, basis: `Interest over average principal since ${opening.asOf}`, reason: null };
+}
+
+/** The note for the years a cost proxy cannot be read for: "Cost proxy %: none for 2021-12-31 (no schedule a year earlier to average)." */
+export function debtCostProxyNote(history: readonly DebtHistoryPoint[]): string | null {
+  const missing = history.toReversed().flatMap((point) => {
+    const { reason } = debtCostProxy(history, point);
+    return reason ? [`${point.asOf} (${reason})`] : [];
+  });
+  return missing.length > 0 ? `Cost proxy %: none for ${missing.join(", ")}.` : null;
+}
+
 export function debtNotices(data: DebtMaturitiesPayload): string[] {
   // Standing scope and open-ended bucket methodology are documented, not repeated as
   // active failures. The backend stops sending them; this covers older servers and caches.

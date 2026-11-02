@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
+import { bucketShare, debtAmount, debtCostProxy, debtCostProxyNote, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -46,6 +46,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const symbol = args.symbols[0]!;
     const data = await fetchDebtMaturities(symbol, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
     const quarter = newerQuarter(data);
+    const costNote = debtCostProxyNote(data.history);
     return {
       complete: data.status === "available",
       errors: debtNotices(data),
@@ -114,9 +115,10 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "currency", header: "Currency" },
             { key: "filed", header: "Filed" },
           ],
-          rows: data.history.toReversed().map((point) => ({ ...point })),
+          rows: data.history.toReversed().map((point) => ({ ...point, borrowingCostPercent: debtCostProxy(data.history, point).value })),
         },
       ],
+      ...(costNote ? { notes: [costNote] } : {}),
       metadata: { ...data },
       // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
       // not read as the schedule's; the history rows are past years, not stale data.

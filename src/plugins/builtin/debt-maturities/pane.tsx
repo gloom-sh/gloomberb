@@ -51,6 +51,7 @@ import {
   bucketShare,
   datedBucketScale,
   debtAmount,
+  debtCostProxy,
   debtFilingUrl,
   debtMetricCaption,
   debtMetricValue,
@@ -165,17 +166,22 @@ function QuarterFactRow({ label, fact }: { label: string; fact: DebtFact | null 
 }
 function FilingDetail({
   latest,
+  history,
   quarter,
   width,
   height,
 }: {
   latest: DebtLatest;
+  history: readonly DebtHistoryPoint[];
   quarter: DebtQuarter | null;
   width: number;
   height: number;
 }) {
   const expense = latest.interestExpenseFact,
     evidence = latest.borrowingCostEvidence;
+  // No debt-only proxy in the filing: interest over the year's average scheduled principal, or why there is none.
+  const point = history.at(-1);
+  const cost = latest.borrowingCostPercent.value === null && point ? debtCostProxy(history, point) : null;
   return (
     <DetailScroll width={width} height={height}>
       <KeyValueRow
@@ -205,7 +211,16 @@ function FilingDetail({
           value={`${expense.start} to ${expense.end}`}
         />
       ) : null}
-      <MetricRow label="Debt cost proxy" metric={latest.borrowingCostPercent} />
+      {cost ? (
+        <KeyValueRow
+          labelWidth={20}
+          label="Debt cost proxy"
+          value={debtPercent(cost.value)}
+          detail={cost.basis ?? cost.reason ?? undefined}
+        />
+      ) : (
+        <MetricRow label="Debt cost proxy" metric={latest.borrowingCostPercent} />
+      )}
       <KeyValueRow
         labelWidth={20}
         label="Debt concepts"
@@ -250,13 +265,16 @@ function FilingDetail({
 }
 function HistoryDetail({
   point,
+  history,
   width,
   height,
 }: {
   point: DebtHistoryPoint;
+  history: readonly DebtHistoryPoint[];
   width: number;
   height: number;
 }) {
+  const cost = debtCostProxy(history, point);
   return (
     <DetailScroll width={width} height={height}>
       <KeyValueRow
@@ -297,8 +315,8 @@ function HistoryDetail({
       <KeyValueRow
         labelWidth={20}
         label="Debt cost proxy"
-        value={debtPercent(point.borrowingCostPercent)}
-        detail={point.borrowingCostDebtTags ?? undefined}
+        value={debtPercent(cost.value)}
+        detail={cost.basis ?? cost.reason ?? undefined}
       />
     </DetailScroll>
   );
@@ -559,7 +577,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         {latest ? (
           <>
             {tab === "filing" ? (
-              <FilingDetail latest={latest} quarter={quarter} width={width} height={bodyHeight} />
+              <FilingDetail latest={latest} history={data?.history ?? []} quarter={quarter} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (
               <DataTableStackView<DebtBucket, BucketColumn>
                 emptyStateTitle="No maturity buckets available."
@@ -679,6 +697,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                   openHistoryRow ? (
                     <HistoryDetail
                       point={openHistoryRow}
+                      history={data?.history ?? []}
                       width={width}
                       height={bodyHeight - 2}
                     />

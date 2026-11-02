@@ -27,6 +27,8 @@ import {
   bucketColumns,
   bucketShare,
   datedBucketScale,
+  debtCostProxy,
+  debtCostProxyNote,
   historyAxis,
   historyBars,
   fiscalYearOf,
@@ -502,4 +504,27 @@ test("each fiscal year labels its own point on both history charts, a December y
   }
   // The newest filing ends the lines, so the idle legend reads its value.
   expect(historyChartPoints(bars, (row) => row.next12MonthsShare, { edges: false }).at(-1)!.value).toBe(10);
+});
+
+test("a year with no debt-only proxy reads interest over its average scheduled principal, and a year that cannot says why", () => {
+  // New Fortress Energy's DDIS on 2 Nov 2026: principal and interest filled, the cost proxy blank for all five years.
+  const current = fixture().history[0]!;
+  const year = (asOf: string, totalPrincipal: number | null, interestExpense: number | null) => ({
+    ...current, asOf, totalPrincipal, interestExpense, borrowingCostPercent: null, borrowingCostDebtTags: null,
+  });
+  const history = [
+    year("2021-12-31", 3.9e9, 154.32e6),
+    year("2022-12-31", 4.58e9, 236.86e6),
+    year("2023-12-31", null, 277.84e6),
+    year("2024-12-31", 9.03e9, 328.38e6),
+    year("2025-12-31", 8.33e9, 777.85e6),
+  ];
+  const proxies = history.map((point) => debtCostProxy(history, point));
+  expect(proxies.map((proxy) => proxy.value === null ? null : Number(proxy.value.toFixed(2)))).toEqual([null, 5.59, null, null, 8.96]);
+  expect(proxies[4]!.basis).toBe("Interest over average principal since 2024-12-31");
+  expect(debtCostProxyNote(history)).toBe("Cost proxy %: none for 2024-12-31 (partial principal schedule at 2023-12-31), "
+    + "2023-12-31 (partial principal schedule), 2021-12-31 (no schedule a year earlier to average).");
+  // The filing's own debt-only proxy stands when it has one.
+  const own = { ...history[4]!, borrowingCostPercent: 7.5, borrowingCostDebtTags: "LongTermDebt+ShortTermBorrowings" };
+  expect(debtCostProxy(history, own)).toEqual({ value: 7.5, basis: "LongTermDebt+ShortTermBorrowings", reason: null });
 });
