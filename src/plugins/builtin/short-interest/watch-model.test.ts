@@ -52,7 +52,9 @@ describe("short watch rows", () => {
     // ECHO read "Crowded, rising" beside SI Chg -3.9%.
     const echo = buildShortWatchRow({ symbol: "ECHO", records: [settlement("2026-08-29", 10), settlement("2026-09-15", 9.61, 6)], floatShares: 60, history: rising });
     expect(echo.changePercent).toBeLessThan(0);
-    expect(setupLabel(echo.setup!)).toBe("Crowded, price rising");
+    // The label fits the 16-character Setup column whole.
+    expect(setupLabel(echo.setup!)).toBe("Crowded, px up");
+    expect(setupLabel(echo.setup!).length).toBeLessThanOrEqual(16);
   });
 
   test("a float under half the shares short is not used, so days to cover decides alone", () => {
