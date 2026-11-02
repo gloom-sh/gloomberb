@@ -68,11 +68,16 @@ func finish(_ passed: Bool, _ detail: String) -> Never {
   quit.arguments = ["-f", bundlePath + "/Contents/"]
   try? quit.run()
   quit.waitUntilExit()
+  try? FileManager.default.removeItem(atPath: profile)
   exit(required && !passed ? 1 : 0)
 }
 
 let launch = Process()
 launch.executableURL = URL(fileURLWithPath: bundlePath + "/Contents/MacOS/launcher")
+// A profile of its own, as scripts/desktop-measure/measure.ts gives each launch.
+let profile = FileManager.default.temporaryDirectory.appendingPathComponent("gloom-min-size-\(getpid())").path
+try? FileManager.default.createDirectory(atPath: profile, withIntermediateDirectories: true)
+launch.environment = ProcessInfo.processInfo.environment.merging(["GLOOMBERB_HOME": profile, "GLOOMBERB_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1"]) { _, new in new }
 do { try launch.run() } catch { finish(false, "could not start the app: \(error)") }
 
 var found: (bounds: CGRect, pid: pid_t)?

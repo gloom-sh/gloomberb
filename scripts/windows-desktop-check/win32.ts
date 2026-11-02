@@ -46,6 +46,7 @@ function load() {
     MonitorFromWindow: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.u64 },
     GetMonitorInfoW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.bool },
     GetDpiForWindow: { args: [FFIType.ptr], returns: FFIType.u32 },
+    SystemParametersInfoW: { args: [FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.u32], returns: FFIType.bool },
     GetWindowDpiAwarenessContext: { args: [FFIType.ptr], returns: FFIType.u64 },
     GetAwarenessFromDpiAwarenessContext: { args: [FFIType.u64], returns: FFIType.i32 },
     GetDC: { args: [FFIType.u64], returns: FFIType.u64 },
@@ -227,6 +228,24 @@ export function primaryMonitor(): MonitorInfo {
 }
 
 const AWARENESS = ["unaware", "system aware", "per-monitor aware"];
+
+const SPI_GETDRAGFULLWINDOWS = 0x0026;
+const SPI_SETDRAGFULLWINDOWS = 0x0025;
+const SPIF_SENDCHANGE = 0x0002;
+
+/**
+ * Whether Windows shows a window's contents while it is dragged or resized
+ * ("Show window contents while dragging"). Off, as on a CI runner, a resize
+ * moves an outline and the window takes its size only once the button is up.
+ */
+export function dragFullWindows(): boolean {
+  const value = new Int32Array(1);
+  return user32.SystemParametersInfoW(SPI_GETDRAGFULLWINDOWS, 0, ptr(value), 0) && value[0] !== 0;
+}
+
+export function setDragFullWindows(on: boolean): void {
+  user32.SystemParametersInfoW(SPI_SETDRAGFULLWINDOWS, on ? 1 : 0, null, SPIF_SENDCHANGE);
+}
 
 export function windowDpi(hwnd: Hwnd): { dpi: number; awareness: string } {
   const context = user32.GetWindowDpiAwarenessContext(hwnd as never);

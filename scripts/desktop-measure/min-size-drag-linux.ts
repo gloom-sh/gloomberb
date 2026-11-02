@@ -8,8 +8,9 @@
  *
  *   bun scripts/desktop-measure/min-size-drag-linux.ts --launch <app>/bin/launcher --min 640x400 --out result.json [--require]
  */
-import { mkdirSync, writeFileSync } from "fs";
-import { dirname } from "path";
+import { mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join, resolve } from "path";
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -38,7 +39,25 @@ function geometry(window: string): { x: number; y: number; width: number; height
 }
 
 const result: Record<string, unknown> = { minimum: { width: minWidth, height: minHeight } };
-const app = Bun.spawn([launchPath], { stdout: "ignore", stderr: "ignore" });
+// A profile of its own, as scripts/desktop-measure/measure.ts gives each launch.
+const profile = mkdtempSync(join(tmpdir(), "gloom-min-size-"));
+const app = Bun.spawn([launchPath], {
+  stdout: "ignore",
+  stderr: "ignore",
+  env: { ...process.env, GLOOMBERB_HOME: profile, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
+});
+/** Ends whatever runs from inside the app, found by its executable: a name match would take this script too. */
+function stopApp(): void {
+  const root = `${resolve(dirname(dirname(launchPath!)))}/`;
+  for (const entry of readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      if (readlinkSync(join("/proc", entry, "exe")).startsWith(root)) process.kill(Number(entry), "SIGKILL");
+    } catch {
+      // Gone, or not ours to read.
+    }
+  }
+}
 
 function finish(passed: boolean, detail: string): never {
   Object.assign(result, { passed, detail });
@@ -46,7 +65,8 @@ function finish(passed: boolean, detail: string): never {
   writeFileSync(outPath!, JSON.stringify(result, null, 2));
   console.log(`${passed ? "pass" : "fail"}: ${detail}`);
   app.kill();
-  Bun.spawnSync(["pkill", "-f", dirname(dirname(launchPath!))]);
+  stopApp();
+  rmSync(profile, { recursive: true, force: true });
   process.exit(required && !passed ? 1 : 0);
 }
 

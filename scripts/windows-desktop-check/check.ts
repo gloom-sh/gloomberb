@@ -1353,16 +1353,24 @@ class Run {
         samples.push({ width: win.rectWidth(rect), height: win.rectHeight(rect) });
       };
       const area = { left: before.left - 20, top: before.top - 20, right: before.right + 20, bottom: before.bottom + 20 };
-      await win.drag(grab.point, to, {
-        steps: 24,
-        stepMs: 30,
-        afterStep: sample,
-        whileHeld: async () => {
-          sample();
-          const shot = this.shots.take(`${name}-minimum-during`, area);
-          if (shot) shots.push(shot);
-        },
-      });
+      // The window follows the pointer, as with Windows' default, so a size it
+      // takes while the button is held can be read.
+      const liveBefore = win.dragFullWindows();
+      if (!liveBefore) win.setDragFullWindows(true);
+      try {
+        await win.drag(grab.point, to, {
+          steps: 24,
+          stepMs: 30,
+          afterStep: sample,
+          whileHeld: async () => {
+            sample();
+            const shot = this.shots.take(`${name}-minimum-during`, area);
+            if (shot) shots.push(shot);
+          },
+        });
+      } finally {
+        if (!liveBefore) win.setDragFullWindows(false);
+      }
       await sleep(800);
       if (!win.isWindow(window.hwnd)) return { status: "fail", detail: `the window closed: the press landed on ${grab.hit}` };
       const after = win.windowRect(window.hwnd);
@@ -1374,7 +1382,9 @@ class Run {
       const under = samples.filter((size) => size.width < floor.width - 1 || size.height < floor.height - 1);
       const atMinimum = near(win.rectWidth(after), floor.width, 2) && near(win.rectHeight(after), floor.height, 2);
       const fills = await this.contentFills(window, `${name}-minimum-after`, shots);
+      const followed = samples.some((size) => size.width !== win.rectWidth(before) || size.height !== win.rectHeight(before));
       const problems = [
+        ...(followed ? [] : ["the window did not follow the pointer while the button was held"]),
         ...(under.length ? [`went under the minimum while held (${under.length} of ${samples.length} readings, down to ${smallest.width}x${smallest.height})`] : []),
         ...(atMinimum ? [] : [`ended at ${win.rectWidth(after)}x${win.rectHeight(after)}`]),
       ];
