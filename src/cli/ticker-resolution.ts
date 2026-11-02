@@ -1,4 +1,6 @@
 import { logFailure } from "../utils/log-failure";
+import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
+import { isNoSourceAnswer, isProviderBusy, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
@@ -428,10 +430,35 @@ async function nameFromListingQuote(
     const named: TickerRecord = { ...ticker, metadata: { ...metadata, name } };
     await store.saveTicker(named);
     return { ticker: named, quote };
-  } catch {
-    // Without a quote the catalogue name stands, and whether the listing still trades is unknown.
-    return { ticker, quote: null, failed: true };
+  } catch (error) {
+    // Without a quote the catalogue name stands. Refused, whether the listing still trades is unknown; answered
+    // with an error of the listing's own, a later look would answer the same, so the match stands as it is.
+    return { ticker, quote: null, ...quoteRefused(error) ? { failed: true as const } : {} };
   }
+}
+
+/**
+ * Whether a quote failed as the service refusing or not reaching it (a rate
+ * limit, an overload, a timeout, no connection), which a later look may get
+ * past. A failure the service gave for the listing itself (no quote for it, a
+ * 4xx, a source that failed it twice) is the listing's own: a symbol whose
+ * quote always errors costs no wait. What cannot be told apart is taken for
+ * a refusal, so a busy service never lets a line that stopped trading pass as
+ * one that trades.
+ */
+function quoteRefused(error: unknown): boolean {
+  if (isNoSourceAnswer(error)) return false;
+  for (let current = error, depth = 0; current && typeof current === "object" && depth < 5; depth += 1) {
+    if (current instanceof ApiRequestError) {
+      const { status } = current;
+      if (status === 408 || status === 429 || status === 503) return true;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return !wasAskedTwice(current);
+    }
+    if (wasAskedTwice(current)) return false;
+    current = (current as { failure?: unknown }).failure ?? (current as { cause?: unknown }).cause;
+  }
+  return true;
 }
 
 export type CliTickerResolution =
@@ -497,7 +524,16 @@ function lookUpTickers(
   });
 }
 
-/** Whether a lookup is to be made again while requests fail: one that failed as refused, or a match whose quote could not be read. */
+/**
+ * Whether a lookup failed as busy: a search no source answered in time
+ * ("Search is busy"), which gives up before its request fails, so the
+ * requests the service failed do not count it.
+ */
+function busyLookup(entry: CliTickerResolution): boolean {
+  return !!entry.error && (entry.error.message === SEARCH_BUSY_MESSAGE || isProviderBusy(entry.error));
+}
+
+/** Whether a lookup is to be made again while requests fail: one that failed as refused, or a match whose quote was refused. */
 function lookAgain(entry: CliTickerResolution): boolean {
   return entry.error ? mayBeRefusal(entry.error) : entry.unchecked === true;
 }
@@ -576,7 +612,7 @@ export async function resolveTickersForCli(
   try {
     const looked = await look(symbols, RESOLVE_CONCURRENCY, progress);
     let lookups = symbols.map((input) => looked.get(input)!);
-    let failing = failedRequests.count() > 0;
+    let failing = failedRequests.count() > 0 || lookups.some(busyLookup);
     for (const waitMs of retryWaitsMs) {
       // A match whose quote was refused is looked at again too, so it gets the check a first look gives.
       const failed = lookups.filter(lookAgain).map((entry) => entry.input);
@@ -586,11 +622,11 @@ export async function resolveTickersForCli(
       const before = failedRequests.count();
       const again = await look(failed, RETRY_CONCURRENCY);
       lookups = lookups.map((entry) => again.get(entry.input) ?? entry);
-      failing = failedRequests.count() > before;
+      failing = failedRequests.count() > before || [...again.values()].some(busyLookup);
     }
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
-    // and a match that could not be checked is not taken as trading.
+    // and a match whose quote was refused is not taken as trading.
     return lookups.map((entry) => lookAgain(entry)
       ? { input: entry.input, error: new LookupUnansweredError(entry.input) }
       : entry);

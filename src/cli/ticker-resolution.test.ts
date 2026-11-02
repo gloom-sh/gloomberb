@@ -8,6 +8,8 @@ import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
 import { ListingArgError, savedListingName } from "./listing-arg";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { ApiRequestError, markAskedTwice } from "../api-client/errors";
+import { createProviderMiss, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import { ListingChoiceError, resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
 import { addSymbols, failedReason, failedRow } from "./symbol-rows";
 
@@ -142,6 +144,14 @@ test("a symbol whose search the service refused is looked up again, never report
   const refusedThroughout = await lookUp(3);
   expect(refusedThroughout.retries).toEqual([2, 2]);
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
+
+  // A search no source answered in time is busy with no request failed yet: looked up again too.
+  // 2 Nov 2026: seven symbols of a 300-name add ended "Search is busy" with no new look.
+  const retries: number[] = [];
+  const [entry] = await resolveTickersForCli(["NVDA"], tickerStore(), createTestDataProvider({
+    search: async () => { if (retries.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE); return [nvda]; },
+  }), undefined, { retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count) });
+  expect({ retries, ticker: entry?.ticker?.metadata.ticker }).toEqual({ retries: [1], ticker: "NVDA" });
 });
 
 test("what cannot be a symbol fails before any request, and never makes a list wait to look it up again", async () => {
@@ -353,4 +363,21 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
   expect(await lookUp(2)).toEqual({ retries: [1], ended: "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", error: null });
   // Refused throughout: not looked up, never taken as trading.
   expect(await lookUp(10)).toEqual({ retries: [1, 1], ended: null, error: "Could not look up OLDCO: Gloom Cloud did not answer. Try again in a minute." });
+  // A quote the service fails for the listing itself, on every look, while other requests are refused: no wait, and the
+  // match stands (review: it cost both waits and ended as "did not answer").
+  for (const own of [createProviderMiss("Cloud quotes are unavailable for OLDCO"), markAskedTwice(new ApiRequestError("Quote source failed", 500))]) {
+    const retries: number[] = [];
+    const failing = createTestDataProvider({
+      search: async (query) => query === "OLDCO" ? [oldco] : [],
+      getQuote: async () => {
+        connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+          operation: "POST /market/quotes", success: false, latencyMs: retries.length + Math.random(), error: own,
+        });
+        throw own;
+      },
+    });
+    const [entry] = await resolveTickersForCli(["OLDCO"], tickerStore(), failing, undefined, { retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count) });
+    expect({ retries, ticker: entry?.ticker?.metadata.ticker ?? null, error: entry?.error?.message ?? null }, own.message)
+      .toEqual({ retries: [], ticker: "OLDCO", error: null });
+  }
 });
