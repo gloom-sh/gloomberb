@@ -2,9 +2,60 @@ import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../../../types/config";
 import { addPaneFloating } from "../../../../../layout/pane-manager";
 import { updatePaneInstance } from "../../../../../pane-settings";
+import { MAIN_WINDOW_ID } from "../../../../desktop/screen-setup";
 import { createDesktopWorkspace } from "./index";
 
 describe("desktop workspace", () => {
+  test("a config the main window saves after a cloud pull changes another window's tab only where the pull did", () => {
+    const base = createDefaultConfig("/tmp/gloomberb-desktop");
+    const config = { ...base, layouts: base.layouts.map((entry) => ({ ...entry, id: `tab:${entry.name.toLowerCase()}` })) };
+    const second = "window:two";
+    const workspace = createDesktopWorkspace(config, null, [{ id: second, layoutIds: ["tab:monitor"] }]);
+    const told = workspace.otherWindowTabs();
+    expect(told.map(({ at, tab }) => [at, tab.name])).toEqual([[1, "Monitor"]]);
+
+    // The other window renames its tab before the main window hears of it.
+    const shown = workspace.getWindowSnapshot(second)!;
+    const renamed = structuredClone(shown);
+    renamed.config.layouts[0]!.name = "Desk";
+    renamed.mainStateRevision = 1;
+    workspace.syncWindowState(second, renamed, null);
+    expect(workspace.getWindowSnapshot(second)!.config.layouts.map((entry) => entry.name)).toEqual(["Desk"]);
+
+    // A pull changes Macro; the main window saves every tab as it was told them.
+    const main = workspace.getWindowSnapshot(MAIN_WINDOW_ID)!;
+    const layouts = [...main.config.layouts];
+    layouts.splice(told[0]!.at, 0, told[0]!.tab);
+    const pulled = (macro: string, monitor: string) => ({
+      ...main.config,
+      layouts: layouts.map((entry) => (entry.id === "tab:macro" ? { ...entry, name: macro } : entry.id === "tab:monitor" ? { ...entry, name: monitor } : entry)),
+      activeLayoutIndex: 0,
+    });
+    let saved = workspace.replaceConfigFromWindow(MAIN_WINDOW_ID, pulled("Rates", "Monitor"));
+    expect(saved.config.layouts.map((entry) => entry.name)).toEqual(["Home", "Desk", "Rates"]);
+    expect(workspace.getWindowSnapshot(second)!.config.layouts.map((entry) => entry.name)).toEqual(["Desk"]);
+
+    // A tab the pull did change takes the pulled copy and stays in its window.
+    workspace.otherWindowTabs();
+    saved = workspace.replaceConfigFromWindow(MAIN_WINDOW_ID, pulled("Rates", "Pulled"));
+    expect(saved.config.layouts.map((entry) => entry.name)).toEqual(["Home", "Pulled", "Rates"]);
+    expect(workspace.getWindowSnapshot(second)!.config.layouts.map((entry) => entry.name)).toEqual(["Pulled"]);
+  });
+
+  test("a pane moved to a new window opens there in the one change, and one that cannot move opens no window", () => {
+    const workspace = createDesktopWorkspace(createDefaultConfig("/tmp/gloomberb-desktop"), null);
+    const paneId = workspace.getSnapshot().config.layout.instances[0]!.instanceId;
+
+    expect(workspace.openWindow("window:none", { paneId: "gone:pane" })).toBeNull();
+    expect(workspace.windowIds()).toEqual([MAIN_WINDOW_ID]);
+
+    expect(workspace.openWindow("window:two", { paneId })).not.toBeNull();
+    expect(workspace.windowIds()).toEqual([MAIN_WINDOW_ID, "window:two"]);
+    expect(workspace.locatePane(paneId)?.windowId).toBe("window:two");
+    const shown = workspace.getWindowSnapshot("window:two")!;
+    expect(shown.config.layout.instances.map((entry) => entry.instanceId)).toEqual([paneId]);
+  });
+
   test("popping out a pane persists it into the active layout", () => {
     const config = createDefaultConfig("/tmp/gloomberb-desktop");
     const workspace = createDesktopWorkspace(config, null);

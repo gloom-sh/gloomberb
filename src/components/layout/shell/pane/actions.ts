@@ -20,6 +20,7 @@ import {
   exportPaneTableCsv,
   hasPaneTableExporter,
 } from "../../../../state/pane-table-export-registry";
+import { getDesktopWindows } from "../../../../state/desktop-windows";
 
 function notifyPaneLocked(pluginRegistry: PluginRegistry): void {
   pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
@@ -177,6 +178,9 @@ export function useShellPaneActions({
 
   const popOutFocusedPane = useCallback(() => {
     if (!focusedPaneId || desktopWindowBridge?.kind !== "main" || !desktopWindowBridge.popOutPane) return false;
+    // Only the main window pops panes out.
+    const windows = getDesktopWindows();
+    if (windows && windows.windowId !== "main") return false;
     if (!isPaneInLayout(visibleLayout, focusedPaneId)) return false;
     const shot = shots.get("pop-out");
     if (shot.refuses()) return true;

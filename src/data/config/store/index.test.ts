@@ -330,6 +330,30 @@ describe("sanitizeLayout", () => {
     expect(getDockedPaneIds(layout)).toEqual(["ticker-detail:main"]);
   });
 
+  test("keeps a link to a pane on another saved tab, as a pane moved to another desktop window has", async () => {
+    const dataDir = await createTempConfigDir();
+    const follower = (sourceInstanceId: string) => ({
+      dockRoot: { kind: "pane", instanceId: "ticker-detail:moved" },
+      instances: [{ instanceId: "ticker-detail:moved", paneId: "ticker-detail", binding: { kind: "follow", sourceInstanceId } }],
+      floating: [],
+      detached: [],
+    });
+    const { config } = normalizeLoadedConfig({
+      configVersion: CURRENT_CONFIG_VERSION,
+      layout: DEFAULT_LAYOUT,
+      activeLayoutIndex: 0,
+      layouts: [
+        { id: "tab:home", name: "Home", layout: DEFAULT_LAYOUT },
+        { id: "tab:other", name: "Other", layout: follower("portfolio-list:main") },
+        { id: "tab:dangling", name: "Dangling", layout: follower("portfolio-list:missing") },
+      ],
+    }, dataDir);
+
+    expect(findPaneInstance(config.layouts[1]!.layout, "ticker-detail:moved")?.binding)
+      .toEqual({ kind: "follow", sourceInstanceId: "portfolio-list:main" });
+    expect(findPaneInstance(config.layouts[2]!.layout, "ticker-detail:moved")?.binding).toEqual({ kind: "none" });
+  });
+
   test("clamps floating placement memory and drops invalid docked placement hints", () => {
     const layout = sanitizeLayout({
       dockRoot: {

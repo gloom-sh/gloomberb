@@ -60,6 +60,33 @@ describe("resolveTickerForPane", () => {
     });
   });
 
+  test("a follower whose source is in another desktop window keeps its link, and its last ticker when that source closes", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const layout = removePane(config.layout, "portfolio-list:main");
+    const follower = findPaneInstance(config.layout, "ticker-detail:main")!;
+    const snapshot = (linkedTickers?: Record<string, string>) => ({
+      config: { ...config, layout: { ...layout, instances: layout.instances.map((entry) => (entry.instanceId === follower.instanceId ? follower : entry)) } },
+      paneState: {},
+      focusedPaneId: null,
+      statusBarVisible: true,
+      ...(linkedTickers ? { linkedTickers } : {}),
+    });
+
+    const linked = appReducer(createInitialState(config), {
+      type: "HYDRATE_DESKTOP_SNAPSHOT",
+      snapshot: snapshot({ "portfolio-list:main": "AAPL" }),
+    });
+    expect(findPaneInstance(linked.config.layout, follower.instanceId)?.binding).toEqual(follower.binding);
+    expect(resolveTickerForPane(linked, follower.instanceId)).toBe("AAPL");
+    // A layout edit in this window does not cut it either.
+    const edited = appReducer(linked, { type: "UPDATE_LAYOUT", layout: linked.config.layout });
+    expect(findPaneInstance(edited.config.layout, follower.instanceId)?.binding).toEqual(follower.binding);
+
+    const closed = appReducer(linked, { type: "HYDRATE_DESKTOP_SNAPSHOT", snapshot: snapshot() });
+    expect(findPaneInstance(closed.config.layout, follower.instanceId)?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
+    expect(closed.linkedTickers).toBeUndefined();
+  });
+
   test("uses fixed ticker bindings for pinned panes", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const instance = createPaneInstance("ticker-detail", {

@@ -51,7 +51,9 @@ import type {
   LayoutConfig,
   PaneInstanceConfig,
 } from "../../types/config";
-import { findPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../types/config";
+import { findPaneInstance, normalizePaneId, TICKER_RESEARCH_PANE_ID } from "../../types/config";
+import { getDesktopWindows } from "../../state/desktop-windows";
+import { fireAndForget } from "../../utils/fire-and-forget";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
@@ -278,6 +280,13 @@ export function bindAppPanePluginRegistry({
       }
       const instanceId = resolvePaneTarget(paneId);
       if (!instanceId || !isPaneInLayout(stateRef.current.config.layout, instanceId)) {
+        // A pane id that is no pane type may be a pane in another desktop
+        // window, as a link's source is: that window brings it forward.
+        const windows = getDesktopWindows();
+        if (windows && windows.list().length > 1 && !pluginRegistry.panes.has(normalizePaneId(paneId))) {
+          fireAndForget(windows.focusPane(paneId), "desktop.focusPane");
+          return;
+        }
         showPane(paneId);
         return;
       }

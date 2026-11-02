@@ -4,24 +4,84 @@ import type {
   DesktopSharedStateSnapshot,
   DesktopThemePreviewState,
   DesktopWindowBridge,
+  DesktopWindowInfo,
+  DesktopWindowsBridge,
+  DesktopWindowTarget,
+  OtherWindowTab,
 } from "../../../../../types/desktop-window";
 import { backendRequest, getElectrobunBackendInitSnapshot, onBackendMessage } from "../../backend-rpc";
 import { createDetachedSnapshotFilter } from "./snapshot";
 
+const MAIN_WINDOW_ID = "main";
+
+function targetWindowId(target: DesktopWindowTarget): string | null {
+  return "windowId" in target ? target.windowId : null;
+}
+
+/**
+ * The full windows as the backend lists them, and for the main window the
+ * tabs the others hold, kept current by its `desktop.windows` and
+ * `desktop.otherWindowTabs` messages.
+ */
+function createDesktopWindowsBridge(
+  windowId: string,
+  initial: DesktopWindowInfo[],
+  initialTabs: readonly OtherWindowTab[],
+): DesktopWindowsBridge {
+  let windows = initial;
+  let otherTabs = initialTabs;
+  const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const listener of listeners) listener();
+  };
+  onBackendMessage("desktop.windows", (message) => {
+    windows = message.windows;
+    changed();
+  });
+  onBackendMessage("desktop.otherWindowTabs", (message) => {
+    otherTabs = message.tabs as OtherWindowTab[];
+    changed();
+  });
+  return {
+    windowId,
+    list: () => windows,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    async openWindow() {
+      await backendRequest("desktop.openWindow", null);
+    },
+    moveLayout: (layoutId, target) => backendRequest("desktop.moveLayoutToWindow", { layoutId, windowId: targetWindowId(target) }),
+    movePane: (paneId, target) => backendRequest("desktop.movePaneToWindow", { paneId, windowId: targetWindowId(target) }),
+    async focusWindow(targetId) {
+      await backendRequest("desktop.focusWindow", { windowId: targetId });
+    },
+    focusPane: (paneId) => backendRequest("desktop.focusPane", { paneId }),
+    subscribeFocusRequests: (listener) => onBackendMessage("desktop.focusPane", (message) => listener(message.paneId)),
+    otherWindowTabs: () => otherTabs,
+  };
+}
+
 export function createDesktopWindowBridge(kind: "main" | "detached", paneId?: string): DesktopWindowBridge {
-  const initialDesktopSnapshot = getElectrobunBackendInitSnapshot()?.desktopSnapshot ?? null;
+  const init = getElectrobunBackendInitSnapshot();
+  const initialDesktopSnapshot = init?.desktopSnapshot ?? null;
   const takeDetachedSnapshot = kind === "detached" && paneId
     ? createDetachedSnapshotFilter(paneId, initialDesktopSnapshot)
     : null;
+  const windowId = kind === "main" ? init?.windowId ?? MAIN_WINDOW_ID : null;
 
   return {
     kind,
     paneId,
+    primary: windowId === MAIN_WINDOW_ID,
+    windows: windowId ? createDesktopWindowsBridge(windowId, init?.windows ?? [], init?.otherWindowTabs ?? []) : undefined,
     syncMainState: kind === "main"
-      ? async (snapshot: DesktopSharedStateSnapshot) => {
-        await backendRequest("desktop.syncMainState", { snapshot });
+      ? async (snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null) => {
+        await backendRequest("desktop.syncMainState", { snapshot, baseSeq });
       }
       : undefined,
+    // The theme preview reaches every window from the one with Settings open.
     syncThemePreview: kind === "main"
       ? async (preview: DesktopThemePreviewState) => {
         await backendRequest("desktop.setThemePreview", { preview });

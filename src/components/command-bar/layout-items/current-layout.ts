@@ -9,7 +9,27 @@ import {
 } from "../../../types/config";
 import { groupIdFor } from "../../layout/status-bar-groups";
 import type { ResultItem } from "../list/model";
-import type { LayoutItemsContext } from "./types";
+import type { CloseAll, LayoutItemsContext } from "./types";
+import { getDesktopWindows, layoutMoveTargets } from "../../../state/desktop-windows";
+import { fireAndForget } from "../../../utils/fire-and-forget";
+
+/** The desktop app's other windows, and a new one, where the current layout tab can go. */
+function layoutWindowMoves(layoutId: string | undefined, tabCount: number, closeAll: CloseAll): ResultItem[] {
+  const windows = getDesktopWindows();
+  if (!windows || !layoutId) return [];
+  return layoutMoveTargets(windows, tabCount).map((move) => ({
+    id: `layout-move-to-window:${move.key}`,
+    label: move.label,
+    detail: move.detail ?? "Open a window for the current layout tab",
+    searchText: "screen monitor display",
+    category: "Current Layout",
+    kind: "action" as const,
+    action: () => {
+      closeAll({ revertThemePreview: false });
+      fireAndForget(windows.moveLayout(layoutId, move.target), "desktop.moveLayoutToWindow");
+    },
+  }));
+}
 
 /**
  * The saved layouts drawn in the same run of status bar tabs as `index`, in tab
@@ -176,6 +196,7 @@ export function buildCurrentLayoutItems({
     },
     moveLayoutTab(-1),
     moveLayoutTab(1),
+    ...layoutWindowMoves(state.config.layouts[activeLayoutIndex]?.id, state.config.layouts.length, closeAll),
     {
       id: "layout-duplicate-layout",
       label: "Duplicate Layout",

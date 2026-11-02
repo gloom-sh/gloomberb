@@ -35,6 +35,7 @@ function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationM
     case "layout-redo":
     case "layout-gridlock":
     case "open-devtools":
+    case "new-window":
     case "quit":
       return { type: command.type };
     default:

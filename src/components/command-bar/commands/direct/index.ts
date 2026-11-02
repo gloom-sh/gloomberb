@@ -33,6 +33,8 @@ import { ATTENTION_OFF_MESSAGE } from "../../../../telemetry/attention-setting";
 import { NIGHTLY_CHANNEL_SUMMARY, withUpdateChannel } from "../../../../updater/channel";
 import { isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
+import { getDesktopWindows } from "../../../../state/desktop-windows";
+import { fireAndForget } from "../../../../utils/fire-and-forget";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 
@@ -124,6 +126,10 @@ export function runDirectCommandAction(options: {
     case "window-mode":
       closeAll({ revertThemePreview: false });
       pluginRegistry.openWindowMode(state.focusedPaneId ?? undefined, parseWindowModeCommandArg(arg) ?? "move");
+      return;
+    case "new-window":
+      closeAll({ revertThemePreview: false });
+      fireAndForget(getDesktopWindows()?.openWindow(), "desktop.openWindow");
       return;
     case "minimize-window":
     case "maximize-window":

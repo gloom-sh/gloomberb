@@ -1,4 +1,7 @@
 import type { BrowserWindow } from "electrobun/bun";
+import type { NativeWindowEvent } from "../../../desktop/window-host";
+import { clampFrameToScreens, sameRect } from "../../../desktop/geometry";
+import { MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
 import { findPaneInstance } from "../../../../types/config";
 import { isPaneDetached } from "../../../../layout/pane-manager";
 import {
@@ -7,13 +10,7 @@ import {
   normalizeWindowFrameWithMinimum,
   type WindowFrame,
 } from "../window/frame";
-import {
-  detachedRpcKey,
-  focusWindowForRpcKey,
-  paneIdFromDetachedRpcKey,
-} from "../window/focus";
-import { getWindowFrame } from "../window/events";
-import { createAppWindow } from "../window/create";
+import { detachedRpcKey, paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend } from "./backend";
 
 const INITIAL_DOCK_SUPPRESSION_MS = 800;
@@ -21,11 +18,16 @@ const WINDOW_CONTROL_DOCK_SUPPRESSION_MS = 5_000;
 /** How long after the main window has its data the popped-out windows of the last session open. */
 const LAUNCH_WINDOWS_DELAY_MS = 300;
 
+/**
+ * The windows that hold one popped-out pane each, opened and moved through
+ * the window host like every other window. Their frames live in the config's
+ * layout, which is how they reopen where they were.
+ */
 export class DesktopDetachedWindowManager {
-  private readonly windows = new Map<string, BrowserWindow>();
+  /** The panes with a window open. */
+  private readonly windows = new Set<string>();
   private readonly frameTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly dockTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly closingPanes = new Set<string>();
   private readonly pendingMoveFlush = new Set<string>();
   private readonly suppressDockUntil = new Map<string, number>();
   private readonly windowControlDockSuppressed = new Set<string>();
@@ -41,28 +43,58 @@ export class DesktopDetachedWindowManager {
 
   /**
    * The main window has its data: the popped-out windows open shortly
-   * after, once it has had a moment to draw and ask for what it shows.
+   * after, once it has had a moment to draw and ask for what it shows, and
+   * then `onOpen` runs (the extra full windows open there).
    */
-  openAfterMainWindow(): void {
+  openAfterMainWindow(onOpen?: () => void): void {
     if (this.windowsAllowed || this.windowsTimer) return;
     this.windowsTimer = setTimeout(() => {
       this.windowsTimer = null;
       this.windowsAllowed = true;
       this.reconcile();
+      onOpen?.();
     }, LAUNCH_WINDOWS_DELAY_MS);
   }
 
   focusDetachedPane(instanceId: string): boolean {
-    return this.focusWindowForRpcKey(detachedRpcKey(instanceId));
-  }
-
-  focusWindowForRpcKey(rpcKey: string | undefined): boolean {
-    return focusWindowForRpcKey(rpcKey, this.backend.mainWindow, this.windows);
+    return this.backend.focusWindow(detachedRpcKey(instanceId));
   }
 
   getWindowForRpcKey(rpcKey: string | undefined): BrowserWindow | null {
     const paneId = paneIdFromDetachedRpcKey(rpcKey);
-    return paneId ? this.windows.get(paneId) ?? null : null;
+    return paneId && this.windows.has(paneId) ? this.backend.nativeWindow(rpcKey) : null;
+  }
+
+  /** A popped-out pane's window moved or closed. */
+  handleWindowEvent(event: NativeWindowEvent): void {
+    const instanceId = paneIdFromDetachedRpcKey(event.id);
+    // A window this side closed says nothing (the host only reports the
+    // person's closes), and its state went with the close.
+    if (!instanceId || !this.windows.has(instanceId)) return;
+    if (event.type === "frame") {
+      this.scheduleMove(instanceId);
+      return;
+    }
+    if (event.type !== "close") return;
+    this.cleanupState(instanceId);
+    const workspace = this.backend.workspace;
+    const config = this.backend.config;
+    if (!workspace || !config || !isPaneDetached(config.layout, instanceId)) return;
+    void this.backend.commitDesktopSnapshot(workspace.closeDetachedPane(instanceId));
+  }
+
+  /**
+   * A popped-out pane's saved frame, on a screen that is connected: one
+   * saved on a monitor since unplugged or at another resolution opens on
+   * screen, as the shell would leave it where it was asked.
+   */
+  private onScreen(frame: WindowFrame): WindowFrame {
+    const host = this.backend.windowHost;
+    return host?.canPlaceWindows ? clampFrameToScreens(frame, host.listDisplays()) : frame;
+  }
+
+  private frameOf(rpcKey: string): WindowFrame | null {
+    return this.backend.windowHost?.getWindowState(rpcKey)?.frame ?? null;
   }
 
   suppressAutoDockForRpcKey(rpcKey: string | undefined): void {
@@ -82,7 +114,7 @@ export class DesktopDetachedWindowManager {
     if (remembered) {
       return normalizeWindowFrameWithMinimum(remembered, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
     }
-    const mainFrame = getWindowFrame(this.backend.mainWindow) ?? DEFAULT_WINDOW_FRAME;
+    const mainFrame = this.frameOf(MAIN_WINDOW_ID) ?? DEFAULT_WINDOW_FRAME;
     return normalizeWindowFrameWithMinimum({
       x: mainFrame.x + 72,
       y: mainFrame.y + 72,
@@ -107,20 +139,26 @@ export class DesktopDetachedWindowManager {
     const desiredEntries = new Map(config.layout.detached
       .filter((entry) => !hidden(entry.instanceId))
       .map((entry) => [entry.instanceId, entry] as const));
+    const host = this.backend.windowHost;
     for (const [instanceId, entry] of desiredEntries) {
-      const existingWindow = this.windows.get(instanceId);
-      if (!existingWindow) {
+      if (!this.windows.has(instanceId)) {
         if (this.windowsAllowed) this.createWindow(instanceId, entry);
         continue;
       }
 
-      const currentFrame = getWindowFrame(existingWindow);
+      const key = detachedRpcKey(instanceId);
+      const currentFrame = this.frameOf(key);
       const hasLiveFrameUpdate = this.pendingMoveFlush.has(instanceId)
         || this.frameTimers.has(instanceId)
         || this.dockTimers.has(instanceId);
-      const nextFrame = currentFrame
+      const savedFrame = currentFrame
         ? normalizeWindowFrameWithMinimum(entry, currentFrame, DETACHED_WINDOW_MIN_SIZE)
         : null;
+      // Where the person left the window stays, even part off screen; a
+      // frame from elsewhere (or one saved off screen) lands on one.
+      const nextFrame = savedFrame && currentFrame && !sameRect(savedFrame, currentFrame)
+        ? this.onScreen(savedFrame)
+        : savedFrame;
       if (!hasLiveFrameUpdate
         && currentFrame
         && nextFrame
@@ -128,26 +166,25 @@ export class DesktopDetachedWindowManager {
           || currentFrame.y !== nextFrame.y
           || currentFrame.width !== nextFrame.width
           || currentFrame.height !== nextFrame.height)) {
-        existingWindow.setFrame(nextFrame.x, nextFrame.y, nextFrame.width, nextFrame.height);
+        host?.setFrame(key, nextFrame);
       }
-      (existingWindow as any).setTitle?.(this.resolveTitle(instanceId));
+      host?.setTitle(key, this.resolveTitle(instanceId));
     }
 
-    for (const [instanceId, window] of this.windows) {
+    for (const instanceId of [...this.windows]) {
       if (desiredEntries.has(instanceId)) continue;
-      this.closingPanes.add(instanceId);
-      this.cleanupState(instanceId);
-      (window as any).close?.();
+      this.closePaneWindow(instanceId);
     }
   }
 
   closeAll(): void {
-    for (const [instanceId, window] of this.windows) {
-      this.closingPanes.add(instanceId);
-      this.cleanupState(instanceId);
-      (window as any).close?.();
-    }
+    for (const instanceId of [...this.windows]) this.closePaneWindow(instanceId);
     this.backend.stateBroadcaster.resetDockPreview();
+  }
+
+  private closePaneWindow(instanceId: string): void {
+    this.cleanupState(instanceId);
+    this.backend.windowHost?.closeWindow(detachedRpcKey(instanceId));
   }
 
   private resolveTitle(instanceId: string): string {
@@ -158,7 +195,7 @@ export class DesktopDetachedWindowManager {
   }
 
   private resolveDockEdge(frame: WindowFrame): "left" | "right" | "top" | "bottom" | null {
-    const mainFrame = getWindowFrame(this.backend.mainWindow);
+    const mainFrame = this.frameOf(MAIN_WINDOW_ID);
     if (!mainFrame) return null;
     const threshold = 72;
     const headerMidX = frame.x + (frame.width / 2);
@@ -187,32 +224,18 @@ export class DesktopDetachedWindowManager {
   private createWindow(
     instanceId: string,
     frame: Partial<WindowFrame>,
-  ): BrowserWindow {
-    const rpc = this.backend.createWindowRpc(detachedRpcKey(instanceId));
-    const initialFrame = normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE);
-    const title = this.resolveTitle(instanceId);
-    const window = createAppWindow({
-      title,
-      frame: initialFrame,
-      rpc: rpc as never,
-      minSize: DETACHED_WINDOW_MIN_SIZE,
-      onFrameChange: () => this.scheduleMove(instanceId),
-    });
-    this.windows.set(instanceId, window);
+  ): void {
+    const host = this.backend.windowHost;
+    if (!host) return;
+    this.windows.add(instanceId);
     this.suppressDockUntil.set(instanceId, Date.now() + INITIAL_DOCK_SUPPRESSION_MS);
-
-    (window as any).on?.("close", () => {
-      const shouldIgnore = this.closingPanes.delete(instanceId);
-      this.cleanupState(instanceId);
-      const workspace = this.backend.workspace;
-      const config = this.backend.config;
-      if (shouldIgnore || !workspace || !config || !isPaneDetached(config.layout, instanceId)) {
-        return;
-      }
-      void this.backend.commitDesktopSnapshot(this.backend.requireWorkspace().closeDetachedPane(instanceId));
+    host.openWindow({
+      id: detachedRpcKey(instanceId),
+      kind: "pane",
+      title: this.resolveTitle(instanceId),
+      frame: this.onScreen(normalizeWindowFrameWithMinimum(frame, DEFAULT_WINDOW_FRAME, DETACHED_WINDOW_MIN_SIZE)),
+      minSize: DETACHED_WINDOW_MIN_SIZE,
     });
-
-    return window;
   }
 
   private scheduleMove(instanceId: string): void {
@@ -225,14 +248,13 @@ export class DesktopDetachedWindowManager {
   }
 
   private handleMove(instanceId: string): void {
-    const window = this.windows.get(instanceId);
     const workspace = this.backend.workspace;
     const config = this.backend.config;
-    if (!window || !workspace || !config || !isPaneDetached(config.layout, instanceId)) {
+    if (!this.windows.has(instanceId) || !workspace || !config || !isPaneDetached(config.layout, instanceId)) {
       return;
     }
 
-    const frame = getWindowFrame(window);
+    const frame = this.frameOf(detachedRpcKey(instanceId));
     if (!frame) return;
     const edge = this.resolveDockEdge(frame);
 

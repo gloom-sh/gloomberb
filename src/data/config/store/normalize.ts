@@ -58,7 +58,7 @@ export function normalizeLoadedConfig(
   const defaults = createDefaultConfig(dataDir);
   const migration = migrateSavedConfig(saved, dataDir, host);
   const candidate = migration.config;
-  const directLayout = sanitizeLayout(candidate.layout, defaults.layout);
+  const directLayout = sanitizeLayout(candidate.layout, defaults.layout, {}, savedPaneIds(candidate.layouts));
   const layouts = sanitizeSavedLayouts(candidate.layouts, directLayout);
   const activeLayoutIndex = sanitizeActiveLayoutIndex(candidate.activeLayoutIndex, layouts.length);
   const layout = cloneLayout(layouts[activeLayoutIndex]?.layout ?? directLayout);
@@ -139,7 +139,7 @@ export function normalizeLoadedConfig(
 
 export function normalizeConfigForSave(config: AppConfig): AppConfig {
   const defaults = createDefaultConfig(config.dataDir);
-  const directLayout = sanitizeLayout(config.layout, defaults.layout);
+  const directLayout = sanitizeLayout(config.layout, defaults.layout, {}, savedPaneIds(config.layouts));
   const sanitizedLayouts = sanitizeSavedLayouts(config.layouts, directLayout);
   const activeLayoutIndex = sanitizeActiveLayoutIndex(config.activeLayoutIndex, sanitizedLayouts.length || 1);
   const layout = cloneLayout(sanitizedLayouts[activeLayoutIndex]?.layout ?? directLayout);
@@ -469,10 +469,44 @@ function sanitizeLayoutOrigin(value: unknown): LayoutOrigin | undefined {
 const sanitizedLayouts = new WeakMap<object, LayoutConfig>();
 const sanitizedPaneStates = new WeakMap<object, { layout: LayoutConfig; result: ReturnType<typeof sanitizeSavedPaneState> }>();
 
-function sanitizeSavedLayoutOnce(value: unknown, fallbackLayout: LayoutConfig): LayoutConfig {
+/** Every pane id on a saved tab: the panes a link on another tab may follow. */
+function savedPaneIds(value: unknown): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(value)) return ids;
+  for (const entry of value) {
+    const instances = isRecord(entry) && isRecord(entry.layout) ? entry.layout.instances : null;
+    if (!Array.isArray(instances)) continue;
+    for (const instance of instances) {
+      if (isRecord(instance) && typeof instance.instanceId === "string") ids.add(instance.instanceId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The panes a layout's links reach on other tabs. Links stay within a tab,
+ * except where another desktop window shows the tab a pane was moved to;
+ * those are kept, and every other dangling link is cut as before.
+ */
+function crossTabSources(value: LayoutConfig, paneIds: ReadonlySet<string>): ReadonlySet<string> | undefined {
+  if (!Array.isArray(value.instances)) return undefined;
+  const own = new Set(value.instances.map((instance) => instance?.instanceId));
+  const sources = new Set<string>();
+  for (const instance of value.instances) {
+    const binding = instance?.binding;
+    if (binding?.kind !== "follow" || typeof binding.sourceInstanceId !== "string") continue;
+    if (!own.has(binding.sourceInstanceId) && paneIds.has(binding.sourceInstanceId)) sources.add(binding.sourceInstanceId);
+  }
+  return sources.size > 0 ? sources : undefined;
+}
+
+function sanitizeSavedLayoutOnce(value: unknown, fallbackLayout: LayoutConfig, paneIds: ReadonlySet<string>): LayoutConfig {
   // An invalid value sanitizes to a copy of the fallback, which is not a
   // function of the value alone.
   if (!isLayoutConfig(value)) return sanitizeLayout(value, fallbackLayout);
+  const external = crossTabSources(value, paneIds);
+  // A link to another tab depends on the other tabs too: those are not cached.
+  if (external) return sanitizeLayout(value, fallbackLayout, {}, external);
   const cached = sanitizedLayouts.get(value);
   if (cached) return cached;
   const layout = sanitizeLayout(value, fallbackLayout);
@@ -497,6 +531,7 @@ function sanitizeSavedLayouts(
     return [{ name: "Default", layout: cloneLayout(fallbackLayout) }];
   }
 
+  const paneIds = savedPaneIds(value);
   const layouts = value
     .filter((entry): entry is SavedLayout =>
       !!entry
@@ -504,7 +539,7 @@ function sanitizeSavedLayouts(
       && typeof (entry as SavedLayout).name === "string",
     )
     .map((entry) => {
-      const layout = sanitizeSavedLayoutOnce(entry.layout, fallbackLayout);
+      const layout = sanitizeSavedLayoutOnce(entry.layout, fallbackLayout, paneIds);
       const placedPaneIds = new Set(getPlacedPaneInstanceIds(layout));
       const paneState = sanitizeSavedPaneStateOnce((entry as { paneState?: unknown }).paneState, layout);
       return {
