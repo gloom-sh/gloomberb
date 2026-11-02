@@ -10,6 +10,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { markPure } from "../../ui/same-props";
 import type { PricePoint } from "../../types/financials";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../chart/native/bitmap-support";
+import { useNativeBitmapMetrics } from "../chart/native/use-bitmap-metrics";
 import { renderSparklineBitmap } from "./bitmap";
 import {
   buildSamples,
@@ -91,10 +92,14 @@ function TerminalPriceSparkline({
 }) {
   const { nativeCharts, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
-  const rendererResolution = nativeRenderer.resolution;
-  const rendererCapabilities = nativeRenderer.capabilities;
-  const rendererTerminalWidth = nativeRenderer.terminalWidth;
-  const rendererTerminalHeight = nativeRenderer.terminalHeight;
+  // Subscribed, not read off the renderer: the sparkline skips the renders a
+  // quote gives its row, so a resize or a late pixel size has to reach it.
+  const {
+    resolution: rendererResolution,
+    capabilities: rendererCapabilities,
+    terminalWidth: rendererTerminalWidth,
+    terminalHeight: rendererTerminalHeight,
+  } = useNativeBitmapMetrics(nativeRenderer);
   const bitmap = useMemo(() => {
     if (values.length < 2 || !shouldRenderNativeBitmap(nativeRenderer, nativeCharts === true)) return null;
     const bitmapSize = resolveNativeBitmapSize({
