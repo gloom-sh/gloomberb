@@ -332,6 +332,11 @@ describe("opening a conversation from the command bar", () => {
 
 describe("a Chat pane switched from outside", () => {
   test("takes the new conversation in the render that focuses it, so the old one is not marked read", async () => {
+    // The shared controller's channel list is process state, and a pane on a
+    // channel the list lacks moves to the first one it has. Own the list, so
+    // what an earlier test file left in it cannot move this pane.
+    const originalChannels = (chatController as any).channelCatalog.channels;
+    installServerChannels(chatController, [everyone, dmBob]);
     const attached: Array<[string, boolean]> = [];
     chatController.attachChannelView = (channelId: string, focused = true) => {
       attached.push([channelId, focused]);
@@ -393,6 +398,7 @@ describe("a Chat pane switched from outside", () => {
       expect(attached).toContainEqual(["dm:bob", true]);
       expect(attached).not.toContainEqual(["everyone", true]);
     } finally {
+      installServerChannels(chatController, originalChannels);
       for (const key of ["attachChannelView", "refreshChannels", "refreshSession", "refreshPresence", "refreshChannelMessages"]) {
         delete (chatController as any)[key];
       }
