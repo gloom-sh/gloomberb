@@ -50,6 +50,15 @@ function templateDeps(
   };
 }
 
+test("a list argument that names a watchlist, AI also a ticker, reads its symbols up to the function's maximum and says so", async () => {
+  const state = createInitialState({ ...createDefaultConfig(":memory:"), watchlists: [{ id: "ai", name: "AI" }] });
+  for (const symbol of ["NVDA", "AMD", "AVGO"]) state.tickers.set(symbol, createTestTicker(symbol, symbol, { watchlists: ["ai"] }));
+  state.tickers.set("AI", createTestTicker("AI", "C3.ai"));
+  const notes: string[] = [];
+  expect(await resolveTickerListInput("ai", null, workflowDeps(state, {}), undefined, { maximum: 2, notes })).toEqual(["NVDA", "AMD"]);
+  expect(notes).toEqual(["Read ai as watchlist AI (3 symbols); the first 2 are read."]);
+});
+
 test("qualified command inputs persist each selected venue without copying existing holdings", async () => {
   for (const savedVenue of [null, "NASDAQ", "AMS"]) {
     const tickerRepository = new JsonTickerRepository();

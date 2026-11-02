@@ -30,8 +30,9 @@ test("a list function given a watchlist's name reads its symbols, at most the fu
   // 2 Nov 2026: `fn SIW HY3` answered "Not a ticker: HY3" after 12 s.
   const three = await applyListingArgument(registry, market(3), parsePaneFunctionArgs(["SIW", "hy3"], {}));
   expect(three.arg).toBe("HY0, HY1, HY2");
-  expect(three.listingNotes).toBeUndefined();
+  // The note says the name was read as the watchlist, which matters when a ticker has that name too.
+  expect(three.listingNotes).toEqual(["Read hy3 as watchlist HY3 (3 symbols)."]);
   const many = await applyListingArgument(registry, market(70), parsePaneFunctionArgs(["SIW", "HY3"], {}));
   expect(many.arg?.split(", ").length).toBe(60);
-  expect(many.listingNotes?.[0]).toBe("HY3 holds 70 symbols; the first 60 are read.");
+  expect(many.listingNotes?.[0]).toBe("Read HY3 as watchlist HY3 (70 symbols); the first 60 are read.");
 });

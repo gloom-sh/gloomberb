@@ -24,6 +24,7 @@ import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
 import { findWatchlist } from "../helpers";
+import { readWatchlistArgument } from "../../portfolio/collection-name";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
@@ -318,8 +319,9 @@ export async function applyListingArgument(
 
 /**
  * The symbols of the watchlist a list argument names (case aside), as saved,
- * at most the function's `maximum` of them with a note saying so. Null when
- * the argument names no watchlist, or one with nothing in it.
+ * at most the function's `maximum` of them, with the note that says the name
+ * was read as that watchlist (`readWatchlistArgument`). Null when the
+ * argument names no watchlist, or one with nothing in it.
  */
 async function watchlistArgument(
   arg: string,
@@ -333,8 +335,8 @@ async function watchlistArgument(
     .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
     .map((ticker) => ticker.metadata.ticker);
   if (symbols.length === 0) return null;
-  if (maximum == null || symbols.length <= maximum) return { symbols, notes: [] };
-  return { symbols: symbols.slice(0, maximum), notes: [`${watchlist.name} holds ${symbols.length} symbols; the first ${maximum} are read.`] };
+  const read = readWatchlistArgument(arg, watchlist, symbols, maximum);
+  return { symbols: read.symbols, notes: [read.note] };
 }
 
 /**

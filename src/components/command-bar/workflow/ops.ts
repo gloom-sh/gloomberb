@@ -170,7 +170,8 @@ async function resolvePaneTemplateOptions(
     const rawInput = resolvedOptions?.arg ?? resolvedOptions?.values?.tickers ?? "";
     const symbols = !String(rawInput).trim() && template.shortcut?.openWithoutArg
       ? []
-      : await resolveTickerListInput(rawInput, baseContext.activeCollectionId, deps, template.shortcut?.keepArgToken);
+      : await resolveTickerListInput(rawInput, baseContext.activeCollectionId, deps, template.shortcut?.keepArgToken,
+        { maximum: template.headless?.argument.maximum });
     resolvedOptions = {
       ...resolvedOptions,
       arg: rawInput,
