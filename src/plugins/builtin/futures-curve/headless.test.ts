@@ -78,6 +78,19 @@ describe("CTM report units", () => {
     // A root with neither server terms nor a catalogue unit adds no terms section.
     expect((await run("ES")).result.sections.some((section) => section.title === "Contract terms")).toBe(false);
   });
+
+  test("a Treasury contract's terms say how to size its DV01, which no conversion factor is sourced for; other roots' terms do not", async () => {
+    const terms = async (root: string, unit: string) => {
+      const payload = { ...curve(root, [contract(root, "Z26", 50, 106.640625)]),
+        spec: { unit, size: "$100,000 face value", pointValue: 1000, tick: 1 / 64, tickValue: 15.625, settlement: "physical" as const } };
+      const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never });
+      const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: root, argument: root, symbols: [], options: {} }), ctx) as HeadlessBundleResult;
+      return result.sections.find((section) => section.title === "Contract terms")?.entries ?? [];
+    };
+    expect((await terms("ZN", "% of par")).at(-1)).toEqual({ key: "dv01", label: "DV01", value: null,
+      formatted: "not published here; price the cheapest-to-deliver in fn YAS and divide its DV01 by its CME conversion factor" });
+    expect((await terms("GC", "USD / troy oz")).some((entry) => entry.key === "dv01")).toBe(false);
+  });
 });
 
 describe("CTM report basis", () => {

@@ -94,6 +94,27 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
 
+test("FRED:T10Y2Y is the series the catalog prints, never FRED on an exchange called T10Y2Y; FRED on a known venue is a listing", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const searched: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      return [{ providerId: "test", symbol: "FRED", name: "Fredonia Mining Inc.", exchange: "TSXV", type: "Common Stock", currency: "CAD" }];
+    },
+  });
+  const deps = { store: new TickerRepository(persistence.tickers), dataProvider };
+  const refused = await resolveCliListing("FRED:T10Y2Y", undefined, deps).catch((error: unknown) => error);
+  expect(refused).toBeInstanceOf(ListingArgError);
+  expect((refused as ListingArgError).message).toBe("FRED:T10Y2Y is a FRED series, not a listing.");
+  expect((refused as ListingArgError).details).toBe("Chart it with gloom fn G FRED:T10Y2Y, or read it with gloom fred T10Y2Y.");
+  // Said before any lookup, and the same however it is cased.
+  expect(searched).toEqual([]);
+  expect(((await resolveCliListing("fred:dgs10", undefined, deps).catch((error: unknown) => error)) as Error).message).toBe("FRED:DGS10 is a FRED series, not a listing.");
+  expect((await resolveCliListing("FRED:TSXV", undefined, deps)).request).toEqual({ symbol: "FRED:TSXV", exchange: "TSXV" });
+});
+
 test("an index typed with the venue search files it under resolves as the bare symbol does", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);

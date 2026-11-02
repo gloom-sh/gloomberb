@@ -221,6 +221,8 @@ function curveScale(coordinates: readonly number[], rowCoordinates: readonly num
 
 export interface CurveChartOptions {
   xScale?: CurveXScale;
+  /** The grid the value axis ticks on, for prices quoted in fractions of a point (`ResolvedSeries.tickGrid`). */
+  valueGrid?: number;
 }
 
 export function buildCurveChart(series: readonly CurveSeries[], width: number, colors: readonly string[], options: CurveChartOptions = {}) {
@@ -238,7 +240,8 @@ export function buildCurveChart(series: readonly CurveSeries[], width: number, c
       value: point.value != null && Number.isFinite(point.value) ? point.value : null,
     })),
     { id: entry.id, label: entry.label, color: entry.color ?? colors[index % Math.max(1, colors.length)] ?? "#ffffff",
-      style: entry.role === "marker" ? "points" : entry.style, calendarSpaced: true, negativeColor: entry.negativeColor },
+      style: entry.role === "marker" ? "points" : entry.style, calendarSpaced: true, negativeColor: entry.negativeColor,
+      tickGrid: options.valueGrid },
   ));
   // References and markers are not maturities of the curve, so they never label the axis.
   const candidates = [...new Map((rowSeries.length ? rowSeries : plotted).flatMap((entry) => entry.points)

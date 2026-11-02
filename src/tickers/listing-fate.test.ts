@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { createTestQuote } from "../test-support/data-provider";
 import { MOVED_SYMBOL_CHANGES as CHANGES, MOVED_SYMBOL_QUOTES as QUOTES } from "../test-support/moved-symbols";
 import type { TickerChanges } from "../types/ticker-changes";
-import { describeListingFate, listingFateGate, listingFateNotes } from "./listing-fate";
+import { describeListingFate, listingFateGate, listingFateNotes, loadNoQuoteLastTraded, noQuoteLastTraded, noQuoteLastTradeNote } from "./listing-fate";
+import { collectSavedCopies, servedFromSavedCopy } from "../data/saved-copies";
 
 test("what became of a symbol is one line from quote's sources: a listing that stopped, a company that left, bars from its old symbol", () => {
   const now = Date.parse("2026-10-12T06:00:00Z");
@@ -65,4 +66,41 @@ test("a pane serves a symbol at once unless its quote shows the line ended, and 
   expect(gate("META", undefined, CHANGES.META)).toBe("serve");
   // A moved company whose old symbol now lists something else that trades serves that.
   expect(gate("HFC", createTestQuote({ symbol: "HFC", name: "Hightower Fund", lastUpdated: now, lastTradeTime: now }), CHANGES.HFC)).toBe("serve");
+});
+
+test("a listing with no quote is no longer listed only on the service's record, never from a saved copy; its own US line is read", async () => {
+  const now = Date.parse("2026-11-01T21:00:00Z");
+  const bar = (date: string) => ({ date: new Date(`${date}T00:00:00Z`), open: 1, high: 1, low: 1, close: 1 });
+  // The service's record says it no longer trades, and its last day wins over the bars.
+  const flat = noQuoteLastTraded({ points: [bar("2020-06-02")], delisting: { status: "inactive", lastTradeDate: "2020-06-03", historyStart: "2016-01-04" } }, now);
+  expect(flat).toEqual({ date: "2020-06-03", recorded: true });
+  expect(noQuoteLastTradeNote("FLAT", flat!)).toBe("FLAT last traded 2020-06-03; no longer listed");
+  // Bars alone over a month old (a thin listing looks the same) say only that it has not traded since.
+  const thin = noQuoteLastTraded({ points: [bar("2026-09-28")] }, now);
+  expect(thin).toEqual({ date: "2026-09-28", recorded: false });
+  expect(noQuoteLastTradeNote("THIN", thin!)).toBe("THIN: no trades since 2026-09-28");
+  // A copy saved a month ago, served because the refresh failed, or one behind the latest session, says nothing.
+  await collectSavedCopies(async () => {
+    expect(noQuoteLastTraded(servedFromSavedCopy({ points: [bar("2026-09-28")] }, Date.parse("2026-10-02T12:00:00Z")), now)).toBeNull();
+  });
+  expect(noQuoteLastTraded({ points: [bar("2026-09-28")], savedCopyBehind: true }, now)).toBeNull();
+  // A quiet month, or nothing at all, is no ending.
+  expect(noQuoteLastTraded({ points: [bar("2026-10-05")] }, now)).toBeNull();
+  expect(noQuoteLastTraded({ points: [] }, now)).toBeNull();
+
+  // STPP: the bare symbol's bars are a fund abroad's; its US line on any US venue ended in 2020.
+  const asked: string[] = [];
+  const provider = {
+    getQuoteMetadata: async () => null,
+    getPriceHistory: async () => [],
+    getPriceHistoryWithMetadata: async (symbol: string, exchange: string) => {
+      asked.push(`${symbol}:${exchange}`);
+      return exchange ? { points: [bar("2020-07-16")], resolution: null, delisting: { status: "inactive" as const, lastTradeDate: "2020-07-16", historyStart: "2016-01-04" } }
+        : { points: [bar("2026-09-28")], resolution: null };
+    },
+  };
+  expect(await loadNoQuoteLastTraded({ symbol: "STPP", exchange: "" }, provider, now)).toEqual({ date: "2020-07-16", recorded: true });
+  expect(asked).toEqual(["STPP:NYSE"]);
+  // A failed read says nothing.
+  expect(await loadNoQuoteLastTraded({ symbol: "STPP" }, { ...provider, getPriceHistoryWithMetadata: async () => { throw new Error("down"); } }, now)).toBeNull();
 });

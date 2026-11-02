@@ -4,7 +4,8 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
+import { compositeAxisMaxTicks, compositeAxisTicks } from "../../../components/chart/composite/format";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRoundedPrice, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -82,12 +83,17 @@ test("charts the strip within the horizon and dates it by its freshest quote, no
   expect(newestQuote([])).toBeNull();
 });
 
-test("Treasury prices keep one decimal count per root on their 32nd tick grid and contracts read by delivery month", () => {
-  expect(curvePrice(105.265625, "ZN")).toBe("105.265625");
-  expect(curvePrice(105.5, "ZN")).toBe("105.500000");
-  expect(curvePrice(101.6796875, "ZT")).toBe("101.67968750");
-  expect(curvePrice(108, "ZB")).toBe("108.00000");
-  expect(curvePrice(-0.1875, "ZN")).toBe("-0.187500");
+test("Treasury prices read in 32nds, as quote and FUT write them, and contracts read by delivery month", () => {
+  expect(curvePrice(106.640625, "ZN")).toBe("106-20\u00bd");
+  expect(curvePrice(105.5, "ZN")).toBe("105-16");
+  expect(curvePrice(101.6796875, "ZT")).toBe("101-21\u00be");
+  expect(curvePrice(108, "ZB")).toBe("108-00");
+  // The M2-M1 spread and a move are signed 32nds; one that is flat is unsigned.
+  expect(curvePrice(-0.171875, "ZN")).toBe("-0-05\u00bd");
+  expect(curveChangeText(0.453125, "ZN")).toBe("+0-14\u00bd");
+  expect(curveChangeText(0, "ZN")).toBe("0-00");
+  // Each number a report exports keeps its decimals.
+  expect(curveRoundedPrice(106.6406250001, "ZN")).toBe(106.640625);
   expect(curvePrice(-0.001, "CL")).toBe("0.00");
   expect(curvePrice(0.00635, "6J")).toBe("0.0063500");
   // Crude's November contract expires in October.
@@ -355,8 +361,33 @@ test("axis labels take their decimals from the plotted range, never the contract
   expect(curveAxisPrice(7803.75, domain(7690, 8080), "ES")).toBe("7804");
   // A VIX strip spans a few points: one decimal, not the settlement's four.
   expect(curveAxisPrice(18, domain(17.4, 22.3), "VX")).toBe("18.0");
-  // A narrow Treasury range keeps the 1/4 ticks exact.
-  expect(curveAxisPrice(104.75, domain(104.4, 105.1), "ZN")).toBe("104.75");
+  // A Treasury axis reads in 32nds, as its prices do.
+  expect(curveAxisPrice(104.75, domain(104.4, 105.1), "ZN")).toBe("104-24");
+});
+
+test("a Treasury curve's axis steps on its 32nds grid, whatever range it plots", () => {
+  const ticks = (root: string, min: number, max: number, rows?: number) => {
+    const grid = curveAxisGrid(root);
+    const domain: CompositeAxisDomain = { side: "right", min, max, scale: "linear", unit: "", unitGroup: "", seriesIds: [],
+      maxTicks: rows ? compositeAxisMaxTicks(rows) : undefined, tickRows: rows, ...(grid ? { tickGrid: grid } : {}) };
+    return compositeAxisTicks(domain, (value, axis) => curveAxisPrice(value, axis, root));
+  };
+  const onGrid = (values: readonly { value: number }[], grid: number) => values.every(({ value }) => Number.isInteger(value / grid));
+  // ZN over an off-grid range: whole and half 32nds, never 104-25.60 or 104-19.20.
+  for (const rows of [undefined, 12, 7, 3]) {
+    const zn = ticks("ZN", 104.37, 105.13, rows);
+    expect(zn.length).toBeGreaterThanOrEqual(rows === 3 ? 1 : 2);
+    expect(onGrid(zn, 1 / 64)).toBe(true);
+    expect(zn.every(({ label }) => /^\d+-\d{2}½?$/.test(label))).toBe(true);
+  }
+  expect(ticks("ZN", 104.37, 105.13, 12).map(({ label }) => label)).toEqual(["105-00", "104-26", "104-20", "104-14"]);
+  // ZT's flat curve steps in quarter 32nds; ZB in whole ones.
+  const zt = ticks("ZT", 103.391, 103.437, 12);
+  expect(onGrid(zt, 1 / 128)).toBe(true);
+  expect(zt.every(({ label }) => !label.includes("."))).toBe(true);
+  expect(onGrid(ticks("ZB", 112.11, 113.93, 12), 1 / 32)).toBe(true);
+  // A decimal root keeps its 1-2-5 steps.
+  expect(ticks("CL", 61.37, 64.81).map(({ value }) => value)).toEqual([64, 63, 62]);
 });
 
 

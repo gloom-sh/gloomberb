@@ -25,6 +25,7 @@ import {
   renderSection,
   renderStats,
   wrapText,
+  wrapToTerminal,
   type CliStatEntry,
 } from "../../utils/cli-output";
 import {
@@ -81,8 +82,8 @@ import {
   coinListingNotes, failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
-import { movedAwayChange } from "../../tickers/ticker-changes";
-import { listingChangeLine } from "../../tickers/listing-fate";
+import { isUsSymbolVenue, movedAwayChange } from "../../tickers/ticker-changes";
+import { listingChangeLine, loadNoQuoteLastTraded, noQuoteLastTradeNote, otherListingProfile, otherListingProfileNote } from "../../tickers/listing-fate";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -99,7 +100,7 @@ import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statemen
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
-import { bondFigures, NOT_SEC_YIELD } from "../../market-data/bond-funds";
+import { bondFigures, durationDv01PerShare, formatDv01PerShare, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { readFundFacts } from "../../market-data/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
@@ -646,7 +647,11 @@ function reportedDividendYield(
  * was last paid; a trailing one the twelve months it covers. A yield of no
  * stated basis is the figure alone.
  */
-function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: DividendDistributions | null): MetricFigure {
+function forwardYieldFigure(
+  fundamentals: TickerFinancials["fundamentals"],
+  distributions: DividendDistributions | null,
+  bond: FundBondFacts | null = null,
+): MetricFigure {
   const lapse = forwardYieldLapse(fundamentals, distributions);
   if (lapse) return { text: noCurrentDividend(lapse), value: null };
   const figure = percentFigure(reportedDividendYield(fundamentals, distributions), formatFractionPercentCell);
@@ -654,7 +659,9 @@ function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], dist
   const basis = fundamentals.dividendYieldBasis === "forward"
     ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
     : fundamentals.dividendYieldBasis === "trailing" ? TRAILING_DIVIDEND_BASIS : null;
-  return basis ? { ...figure, text: `${figure.text} (${basis})` } : figure;
+  // A bond fund's says first that it is not the SEC yield on the next line, which its label keeps short.
+  const said = [bond ? NOT_SEC_YIELD : null, basis].filter(Boolean).join("; ");
+  return said ? { ...figure, text: `${figure.text} (${said})` } : figure;
 }
 
 /**
@@ -673,13 +680,12 @@ export function exportedDividendFundamentals<T extends object & Pick<NonNullable
 }
 
 /**
- * `Dividend Yield (forward)`, or for a bond fund `Distribution Yield (forward,
- * not SEC yield)`: the cash it paid, annualized, which its SEC yield (the line
- * after it) is not.
+ * `Dividend Yield (forward)`, or for a bond fund `Distribution Yield
+ * (forward)`: the cash it paid, annualized, which its value says its SEC
+ * yield (the line after it) is not.
  */
 function dividendYieldLabel(basis: string | undefined, bond: FundBondFacts | null): string {
-  if (bond) return `Distribution Yield (${basis ? `${basis}, ` : ""}${NOT_SEC_YIELD})`;
-  return `Dividend Yield${basis ? ` (${basis})` : ""}`;
+  return `${bond ? "Distribution" : "Dividend"} Yield${basis ? ` (${basis})` : ""}`;
 }
 
 /** The labels a bond fund's sponsor figures print under, after its distribution yield. */
@@ -687,16 +693,21 @@ const BOND_METRIC_LABELS = { secYield: "30-Day SEC Yield", yieldToWorst: "Yield 
 
 /**
  * A bond fund's 30-day SEC yield, yield to worst and duration as its sponsor
- * publishes them, each dated: `4.04% (as of 2026-10-15)`.
+ * publishes them, each dated: `4.04% (as of 2026-10-15)`, then the DV01 per
+ * share its duration gives at the regular session price.
  */
-function bondFundMetrics(bond: FundBondFacts | null): FundamentalsMetric[] {
+function bondFundMetrics(bond: FundBondFacts | null, price: number | null): FundamentalsMetric[] {
   if (!bond) return [];
-  return bondFigures(bond).map((figure) => ({
-    label: figure.key === "duration" ? (bond.duration?.measure === "average" ? "Average Duration" : "Effective Duration") : BOND_METRIC_LABELS[figure.key],
-    text: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
-    value: figure.value,
-    unit: figure.key === "duration" ? "years" : "%",
-  }));
+  const dv01 = durationDv01PerShare(price, bond);
+  return [
+    ...bondFigures(bond).map((figure) => ({
+      label: figure.key === "duration" ? figure.label : BOND_METRIC_LABELS[figure.key],
+      text: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
+      value: figure.value,
+      unit: figure.key === "duration" ? "years" : "%",
+    })),
+    ...dv01 == null ? [] : [{ label: "DV01", text: `${formatDv01PerShare(dv01)} (from duration)`, value: dv01, unit: "USD per bp" }],
+  ];
 }
 
 /** Whether a metric is a yield line, which `valuation` keeps beside the multiples. */
@@ -757,9 +768,9 @@ function fundamentalsMetrics(
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
     {
       label: dividendYieldLabel(fundamentals?.dividendYieldBasis, bond),
-      ...forwardYieldFigure(fundamentals, distributions),
+      ...forwardYieldFigure(fundamentals, distributions, bond),
     },
-    ...bondFundMetrics(bond),
+    ...bondFundMetrics(bond, regularSessionValuationPrice(quote)),
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
     { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
@@ -811,6 +822,14 @@ function floatAndShortInterestMetrics(
     { label: "Short % of Float", ...percentFigure(fundamentals?.shortPercentOfFloat, formatFractionPercentCell) },
     finite(days) ? { label: "Days to Cover", text: formatNumber(days, 2), value: days } : { label: "Days to Cover", text: "—" },
   ];
+}
+
+/** Rows a company's earnings and accounts fill: a fund's report never shows them, whatever a provider sends for it. */
+const STOCK_ONLY_METRICS = new Set(["Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)",
+  "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)", "Operating Margin", "Profit Margin", "Revenue Growth", "Last Quarter Growth"]);
+
+function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
+  return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metric.label)) : metrics;
 }
 
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
@@ -963,8 +982,9 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
-  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
-    undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true);
+  const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
+    fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true),
+  resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
       .filter((metric) => metric.text !== "—");
@@ -988,10 +1008,11 @@ export function renderFundamentalsReport(
   const symbol = quote?.symbol ?? financials.symbol;
   const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
   const lines = [`${cliStyles.accent(symbol)}${name}`];
+  const isFund = resolveTickerInstrumentKind(null, financials) === "fund";
   const profileParts = [
     financials.exchange ? exchangeLabel(financials.exchange) : undefined,
-    profile?.sector ? `Sector ${profile.sector}` : undefined,
-    profile?.industry ? `Industry ${profile.industry}` : undefined,
+    !isFund && profile?.sector ? `Sector ${profile.sector}` : undefined,
+    !isFund && profile?.industry ? `Industry ${profile.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (profileParts.length > 0) lines.push(cliStyles.muted(profileParts.join(METADATA_SEPARATOR)));
 
@@ -1016,7 +1037,8 @@ export function renderFundamentalsReport(
     }
     appendDescription(lines, profile);
   }
-  return lines.join("\n");
+  // A line wider than the terminal (a heading's venue and state, a note) wraps at it, as the stat blocks do.
+  return lines.map(wrapToTerminal).join("\n");
 }
 
 /** What the Bank section reads from the rest of the report: the newest statement period, and the annual report form. */
@@ -1193,10 +1215,12 @@ export async function buildTickerReport({
   const instrumentType = instrumentTypeLabel(quote?.instrumentType?.trim()
     || financials.quoteMetadata?.instrumentType?.trim()
     || tickerFile?.metadata.assetCategory, name, { detail: true });
+  // A fund has no sector or industry of its own, nor the earnings rows below.
+  const isFund = resolveTickerInstrumentKind(tickerFile, financials) === "fund";
   const metadataParts = [
     instrumentType ? `Type ${instrumentType}` : undefined,
-    (tickerFile?.metadata.sector || profile?.sector) ? `Sector ${tickerFile?.metadata.sector || profile?.sector}` : undefined,
-    (tickerFile?.metadata.industry || profile?.industry) ? `Industry ${tickerFile?.metadata.industry || profile?.industry}` : undefined,
+    !isFund && (tickerFile?.metadata.sector || profile?.sector) ? `Sector ${tickerFile?.metadata.sector || profile?.sector}` : undefined,
+    !isFund && (tickerFile?.metadata.industry || profile?.industry) ? `Industry ${tickerFile?.metadata.industry || profile?.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (metadataParts.length > 0) {
     lines.push(cliStyles.muted(metadataParts.join(METADATA_SEPARATOR)));
@@ -1304,8 +1328,8 @@ export async function buildTickerReport({
 
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials, listing),
-    { text: enterpriseValueText }, distributions, bondFund, codes);
+  const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)
@@ -1384,7 +1408,8 @@ export async function buildTickerReport({
 
   await appendTickerPositions(lines, tickerFile, quote, config, toBase, rates);
 
-  return lines.join("\n");
+  // A line wider than the terminal (a heading's venue and state, a note) wraps at it, as the stat blocks do.
+  return lines.map(wrapToTerminal).join("\n");
 }
 
 function buildTickerStructuredData({
@@ -1529,6 +1554,11 @@ function depositaryPairJson(financials: TickerFinancials) {
   if (!pair) return {};
   const receipt = isReceiptSide(financials);
   return { depositaryPair: { ...pair, side: receipt ? "receipt" : "home", text: depositaryPairText(pair, receipt) } };
+}
+
+/** The research a stopped listing shows when what came under its symbol is another listing's: its quote data alone. */
+function withoutResearch(financials: TickerFinancials): TickerFinancials {
+  return { ...financials, profile: undefined, fundamentals: undefined, annualStatements: [], quarterlyStatements: [] };
 }
 
 const QUOTE_UNAVAILABLE = "Quote unavailable.";
@@ -1676,7 +1706,17 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
-    const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
+    // A listing with no quote and no bar in over a month stopped trading: the line under its name says when.
+    const lastTraded = quote ? null : await loadNoQuoteLastTraded({ symbol: requestSymbol, exchange }, dataProvider);
+    // The profile under its symbol is another listing's only on evidence: another issuer's name, or one abroad.
+    const otherProfile = lastTraded ? otherListingProfile(resolvedFinancials.profile, {
+      usLine: isUsSymbolVenue(exchange),
+      issuerNames: [tickerFile?.metadata.name, researchFate.change?.issuer, researchFate.formerIssuer?.name],
+    }) : null;
+    const quoteNote = lastTraded
+      ? [`${noQuoteLastTradeNote(requestSymbol, lastTraded)}.`, otherProfile ? otherListingProfileNote(requestSymbol, otherProfile) : null]
+        .filter(Boolean).join("\n")
+      : quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
     // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
     const successor = listingChangeLine(researchFate);
     const choiceNotes = [
@@ -1687,8 +1727,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     ];
     const listingNote = choiceNotes.join("\n") || undefined;
     const memberships = await membershipsLoad;
-    // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports.
-    const shownFinancials = await atReportTtmRate(resolvedFinancials, toBase);
+    // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports. A listing that
+    // stopped trading shows none of the profile and figures another listing under its symbol was served with.
+    const shownFinancials = await atReportTtmRate(otherProfile ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);

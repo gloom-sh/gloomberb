@@ -470,6 +470,7 @@ function buildAxisDomain(
     seriesIds: axisSeries.map((entry) => entry.id),
     maxTicks: compositeAxisMaxTicks(rows),
     tickRows: rows,
+    ...(first.tickGrid ? { tickGrid: first.tickGrid } : {}),
     scaleKey,
     ...(manual ? { manual: true } : {}),
   };

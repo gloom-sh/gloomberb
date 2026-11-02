@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportFundFacts, renderFundamentalsReport } from "./ticker";
+import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportFundFacts, renderFundamentalsReport, ticker } from "./ticker";
+import type { MarketContext } from "../types";
+import { createTestDataProvider } from "../../test-support/data-provider";
 import { createBaseConverter } from "../base-converter";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
@@ -433,10 +435,12 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
   const mub: TickerFinancials = { quote: { ...quote, symbol: "MUB", instrumentType: "ETF", exchangeName: "NYSEArca" },
     annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals: { dividendYield: 0.0327, dividendYieldBasis: "forward" } };
   const lines = [
-    "Distribution Yield (forward, not SEC yield)  3.27%",
-    "30-Day SEC Yield                             4.04% (as of 2026-10-15)",
-    "Yield to Worst                               4.16% (as of 2026-10-15)",
-    "Effective Duration                           7.13 yrs (as of 2026-10-15)",
+    "Distribution Yield (forward)  3.27% (not SEC yield; latest distribution annualized)",
+    "30-Day SEC Yield              4.04% (as of 2026-10-15)",
+    "Yield to Worst                4.16% (as of 2026-10-15)",
+    "Effective duration            7.13 yrs (as of 2026-10-15)",
+    // Sized for a curve trade: the regular session price times the duration, per basis point.
+    "DV01                          $0.0713 per share (from duration)",
   ];
   const fundamentals = plain(renderFundamentalsReport({ ...mub, symbol: "MUB", exchange: "NYSEArca", bondFund }, "fundamentals"));
   for (const line of lines) expect(fundamentals).toContain(line);
@@ -587,4 +591,52 @@ test("a coin's volume says it is traded value in the quote currency; a stock's s
   };
   expect(await volumeLine("BTC-USD", "CCC")).toBe("Volume 75,244,118,016 USD");
   expect(await volumeLine("MARA", "NASDAQ")).toBe("Volume 75,244,118,016");
+});
+
+test("a fund shows no stock rows, whatever a provider sends", async () => {
+  const fund: TickerFinancials = {
+    quote: { ...quote, symbol: "SPY", instrumentType: "ETF" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    profile: { sector: "Basic Materials", industry: "Specialty Chemicals" },
+    fundamentals: { trailingPE: 20.74, revenue: 1_000_000, netIncome: 5, eps: 0.18, dividendYield: 0.012, dividendYieldBasis: "trailing" },
+  };
+  const text = await report(fund);
+  for (const row of ["P/E (TTM)", "Revenue (TTM)", "Net Income (TTM)", "EPS (TTM)", "Sector", "Industry"]) expect(text).not.toContain(row);
+  expect(text).toContain("Dividend Yield (trailing)");
+  // The same figures on a stock are its own.
+  expect(await report({ ...fund, quote: { ...fund.quote!, instrumentType: "EQUITY" } })).toContain("P/E (TTM) 20.74");
+});
+
+test("a stopped listing with no quote keeps its own profile, and hides one only shown to be another listing's", async () => {
+  const run = async (symbol: string, financials: TickerFinancials) => {
+    let printed: { data: any; warnings: string[] } | null = null;
+    const dataProvider = createTestDataProvider({
+      getTickerFinancials: async () => financials,
+      getQuoteMetadata: async () => null,
+      getPriceHistoryWithMetadata: async () => ({ points: [{ date: new Date("2022-10-27T00:00:00Z"), close: 53.7 }], resolution: null,
+        delisting: { status: "delisted" as const, lastTradeDate: "2022-10-27", historyStart: "2013-11-07" } }),
+      getNews: async () => [],
+    });
+    await ticker(symbol, {
+      initMarketData: async () => ({
+        config, dataDir: "/tmp/gloom-ticker-units-unused", dataProvider,
+        store: { loadTicker: async () => null, loadAllTickers: async () => [] }, persistence: { close: () => {} },
+      }) as unknown as MarketContext,
+      fail: (message) => { throw new Error(message); },
+      printResult: (result) => { printed = { data: result.data, warnings: result.warnings ?? [] }; },
+    });
+    return printed!;
+  };
+  const stopped = { quote: undefined, annualStatements: [{ date: "2021-12-31", totalRevenue: 5_077_482_000 }], quarterlyStatements: [], priceHistory: [] };
+  // TWTR: the company stopped trading and nothing says the profile under its symbol is anyone else's.
+  const twtr = await run("TWTR", { ...stopped, profile: { name: "Twitter, Inc.", country: "US", sector: "Communication Services" } });
+  expect(twtr.warnings).toContain("TWTR last traded 2022-10-27; no longer listed.");
+  expect(twtr.warnings.join("\n")).not.toContain("another listing's");
+  expect(twtr.data.profile).toMatchObject({ name: "Twitter, Inc.", sector: "Communication Services" });
+  expect(twtr.data.annualStatementCount).toBe(1);
+  // STPP: the profile under the symbol is a fund domiciled abroad, on a US line: named, and none of it shown.
+  const stpp = await run("STPP", { ...stopped, profile: { name: "State Street SPDR MSCI Europe Materials UCITS ETF", country: "NL", sector: "Basic Materials" } });
+  expect(stpp.warnings).toContain("STPP last traded 2022-10-27; no longer listed.\n"
+    + "The profile served under STPP is another listing's (State Street SPDR MSCI Europe Materials UCITS ETF), not shown.");
+  expect(stpp.data.profile ?? null).toBeNull();
+  expect(stpp.data.annualStatementCount).toBe(0);
 });

@@ -6,6 +6,8 @@ import type { CurveBasis } from "./forward";
 import { yieldSpreads, type YieldLookbackCurves } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
 import { DATE_OPTION_FORMATS, dateOptionHint, readCalendarDate } from "../../../utils/calendar-date";
+import { formatBasisPoints } from "../../../utils/basis-points";
+import { formatPercentileRank } from "../../../utils/format";
 import { isYieldObservationDate, loadYieldCurve, type YieldPoint } from "./treasury-data";
 
 export type CurveId = CloudCurveId;
@@ -164,6 +166,19 @@ export function curveSpreadFigures(data: CurveData | null, lookbacks: YieldLookb
   if (!data) return [];
   return data.spreads ?? yieldSpreads(data.points, lookbacks)
     .map(({ id, spread, change1d }) => ({ id, value: spread, change1d, percentile1y: null }));
+}
+
+/**
+ * A spread as GC reads it, the pane's figure and the report's row alike: its
+ * level ("+38bp"), and under it the day's move and where it sits in the last
+ * year ("+1bp 1D · 20 pctl 1Y"), the rank left out when the source has none.
+ */
+export function curveSpreadText(figure: CurveSpreadFigure): { value: string; detail: string } {
+  return {
+    value: figure.value == null ? "--" : formatBasisPoints(figure.value),
+    detail: [`${figure.change1d == null ? "--" : formatBasisPoints(figure.change1d)} 1D`,
+      ...(figure.percentile1y == null ? [] : [formatPercentileRank(figure.percentile1y, "1Y")])].join(" · "),
+  };
 }
 
 /**

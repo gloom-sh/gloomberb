@@ -3,7 +3,7 @@ import { apiClient } from "../../api-client";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
-import { buildPaneCatalogEntries, buildTemplateContext, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
+import { buildPaneCatalogEntries, buildTemplateContext, filterPaneCatalogEntries, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 
@@ -90,6 +90,24 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
     expect(entry("COT")).toContain("Data         Gloom Cloud CFTC history");
     // A sign-in stays a requirement, beside the data it opens.
     expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
+test("sizing a curve trade finds the bond calculator, a bond fund's DV01 and the Treasury futures under each word a trader searches", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const codes = (query: string) => filterPaneCatalogEntries(entries, query).map((entry) => entry.token);
+    for (const query of ["dv01", "hedge ratio", "steepener"]) expect(codes(query), query).toEqual(expect.arrayContaining(["YAS", "ETF", "CTM"]));
+    expect(codes("duration")).toEqual(expect.arrayContaining(["YAS", "ETF"]));
+    expect(codes("steepener")).toContain("GC");
   } finally {
     registry.destroy();
     channels.mockRestore();

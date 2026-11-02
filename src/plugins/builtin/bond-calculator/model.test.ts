@@ -16,12 +16,14 @@ test("incomplete numeric drafts cannot silently become zero or exponential input
   expect(() => bondDraftFromOptions({ endOfMonth: "false" })).toThrow("boolean");
 });
 
-test("a number typed with a decimal comma is told to use a dot", () => {
-  expect(() => calculateBond({ ...draft, coupon: "4,5" })).toThrow("Coupon must be a number; use a dot: 4.5");
-  expect(() => calculateBond({ ...draft, quote: " -0,25 " })).toThrow("Yield must be a number; use a dot: -0.25");
+test("a coupon or yield typed with a decimal comma reads as that decimal; a price is told to use a dot", () => {
+  // A rate is never in the thousands: 3,875 is 3.875%.
+  expect(calculateBond({ ...draft, coupon: "3,875" }).terms.couponPercent).toBe(3.875);
+  expect(calculateBond({ ...draft, coupon: "4,5", quote: " -0,25 " }).analytics.yieldPercent).toBe(-0.25);
+  expect(calculateBond({ ...draft, coupon: "4,5" }).analytics.cleanPrice).toBe(calculateBond({ ...draft, coupon: "4.5" }).analytics.cleanPrice);
   expect(() => calculateBond({ ...draft, mode: "price", quote: "99,5" })).toThrow("Clean price must be a number; use a dot: 99.5");
-  // Anything else keeps the plain message, and a comma between thousands is not a decimal one.
-  for (const coupon of ["4,5,6", "1,234", "4,", "abc", "4,5%"]) {
+  // Anything else keeps the plain message.
+  for (const coupon of ["4,5,6", "4,", ",5", "abc", "4,5%"]) {
     expect(() => calculateBond({ ...draft, coupon })).toThrow(/^Coupon must be a number$/);
   }
 });
@@ -58,6 +60,8 @@ test("headless calculations remain usable when optional cloud benchmark is absen
     settlement: draft.settlement, maturity: draft.maturity, coupon: draft.coupon, yield: draft.quote,
   } }, { apiClient: { getCloudYieldCurve: async () => { throw new Error("HTTP 404"); } } } as unknown as HeadlessPaneContext);
   expect(report.sections[0]!.entries?.find((entry) => entry.label === "Clean price")?.value).toBeCloseTo(103.333937, 6);
+  // DV01 says what it is per, as the prices are: 100 face.
+  expect(report.sections[0]!.entries?.find((entry) => entry.label === "DV01")?.formatted).toMatch(/^0\.0\d{5} per 100 face$/);
   expect(report.complete).toBe(false);
   expect(report.errors?.some((error) => error.includes("HTTP 404"))).toBe(true);
   expect(report.metadata?.treasuryAsOf).toBeNull();

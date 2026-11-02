@@ -36,6 +36,11 @@ export interface CompositeAxisDomain {
   seriesIds: string[];
   /** Most labeled ticks the axis shows, sized to the panel height. */
   maxTicks?: number;
+  /**
+   * The grid its ticks fall on, for prices quoted in fractions of a point: a
+   * Treasury future's 32nds (`ResolvedSeries.tickGrid`). Unset on a decimal axis.
+   */
+  tickGrid?: number;
   /** Rows the labels snap to, one per row, in the terminal. Unset where labels
    * sit at their exact heights. */
   tickRows?: number;

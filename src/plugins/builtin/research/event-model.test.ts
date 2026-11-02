@@ -507,3 +507,12 @@ describe("event source notice", () => {
     });
   });
 });
+
+test("a fund lists its distributions but no earnings, whatever EPS a feed sends for its symbol", () => {
+  const actions = { symbol: "SPY", currency: "USD", splits: [], dividends: [{ exDate: "2026-09-18", amount: 1.889 }],
+    earnings: [{ date: "2026-07-29", dateType: "announcement" as const, epsActual: 1.35, epsEstimate: 1.19 }] };
+  const statuses = (financials: EventFinancials) => buildEventRows(actions, null, financials, "USD").map((row) => row.status);
+  expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "ETF" } })).toEqual(["Dividend"]);
+  expect(statuses({ quarterlyStatements: [], quoteMetadata: { instrumentType: "ETF" } })).toEqual(["Dividend"]);
+  expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "EQUITY" } })).toContain("Earnings");
+});

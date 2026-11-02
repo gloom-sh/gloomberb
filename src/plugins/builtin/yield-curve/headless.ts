@@ -3,7 +3,7 @@ import type {
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
 import {
-  compareDate, curveCutoff, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
+  compareDate, curveCutoff, curveIdOf, curveOption, curveSpreadFigures, curveSpreadText, curveTenorMove, loadComparePoints,
   parseCompareInput, parseCurveArgument, unknownCurveMessage, type CurveData, type CurveId,
 } from "./curves";
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
@@ -241,6 +241,11 @@ export function createYieldCurveHeadless(
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: compareColumns(compareAsOf) } : ranked ? { columns: RANKED_COLUMNS } : {}),
         ...(ranked ? { notes: [RANK_NOTE] } : {}),
+        // The spreads the pane shows over its table, each with its day move and where it sits in the last year.
+        ...(spreads.length ? { textSections: [{ title: "Spreads", entries: spreads.map((figure) => {
+          const text = curveSpreadText(figure);
+          return { key: figure.id, label: figure.id, value: bp(figure.value), formatted: `${text.value}  ${text.detail}` };
+        }) }] } : {}),
         rows: rows.map((point) => {
           const compare = compareAt(point.maturity);
           const change = tenorRows.get(point.maturity)?.change1d ?? null;

@@ -20,18 +20,27 @@ export function defaultBondDraft(now = new Date()): BondDraft {
     frequency: "2", dayCount: "act-act-icma", endOfMonth: false };
 }
 
-function inputNumber(value: string, label: string): number {
-  if (!value.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim())) throw new Error(numberErrorMessage(`${label} must be a number`, value));
-  const number = Number(value);
+/**
+ * A coupon or yield typed with a decimal comma (`3,875`, `-0,25`) reads as the
+ * decimal it is: a percent rate is never in the thousands, so `3,875` is
+ * 3.875%, not 3875. A clean price keeps the dot it is told to use.
+ */
+const DECIMAL_COMMA_RATE = /^([+-]?\d+),(\d+)$/;
+
+function inputNumber(value: string, label: string, decimalComma = false): number {
+  const comma = decimalComma ? DECIMAL_COMMA_RATE.exec(value.trim()) : null;
+  const text = comma ? `${comma[1]}.${comma[2]}` : value.trim();
+  if (!text || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) throw new Error(numberErrorMessage(`${label} must be a number`, value));
+  const number = Number(text);
   if (!Number.isFinite(number)) throw new Error(`${label} must be finite`);
   return number;
 }
 
 export function calculateBond(draft: BondDraft, curve: readonly TreasuryBenchmarkPoint[] = []) {
   if (!["yield", "price"].includes(draft.mode)) throw new Error("Select price or yield input");
-  const terms: BondTerms = { settlement: draft.settlement, maturity: draft.maturity, couponPercent: inputNumber(draft.coupon, "Coupon"),
+  const terms: BondTerms = { settlement: draft.settlement, maturity: draft.maturity, couponPercent: inputNumber(draft.coupon, "Coupon", true),
     frequency: Number(draft.frequency) as BondTerms["frequency"], dayCount: draft.dayCount as BondTerms["dayCount"], endOfMonth: draft.endOfMonth };
-  const quote = inputNumber(draft.quote, draft.mode === "yield" ? "Yield" : "Clean price");
+  const quote = draft.mode === "yield" ? inputNumber(draft.quote, "Yield", true) : inputNumber(draft.quote, "Clean price");
   const yieldPercent = draft.mode === "yield" ? quote : solveBondYield(terms, quote);
   const analytics = priceBond(terms, yieldPercent);
   const spread = treasurySpread(terms, yieldPercent, curve);

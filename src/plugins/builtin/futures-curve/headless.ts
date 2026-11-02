@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -91,6 +91,9 @@ const FRONT_SPREAD_FIELDS = ["label", "frontSymbol", "nextSymbol", "value", "ann
 const GHOST_FIELDS = ["symbol", "expiration", "price", "asOf"];
 /** The annualized roll yield reads as the percent it is (+32.36%); an export keeps the number. */
 const ROLL_YIELD_FORMAT = { annualizedRollYield: (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : "--" };
+/** A Treasury root's prices read in 32nds in every section, as its contracts do; an export keeps the number. */
+const thirtySecondsFormat = (root: string, key: string): Record<string, HeadlessPaneColumn["textFormat"]> => curveReadsThirtySeconds(root)
+  ? { [key]: (value: unknown) => typeof value === "number" ? curvePrice(value, root) : "--" } : {};
 
 /** What one contract is: the terms a hedge is sized on, once rather than on every row, worded as `ticker` words them. */
 function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
@@ -100,11 +103,24 @@ function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
     const unit = catalogueCurveUnit(data.root);
     return unit ? [{ key: "unit", label: "Unit", value: unit }] : [];
   }
-  return futuresSpecLines(spec).map((line) => {
-    const value = spec[line.key as keyof typeof spec];
-    return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
-  });
+  return [
+    ...futuresSpecLines(spec).map((line) => {
+      const value = spec[line.key as keyof typeof spec];
+      return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
+    }),
+    ...curveReadsThirtySeconds(data.root) ? [TREASURY_DV01_ENTRY] : [],
+  ];
 }
+
+/**
+ * A Treasury contract's DV01 is its cheapest-to-deliver note's divided by
+ * that note's conversion factor. CME publishes the factors, but not where they
+ * can be read, so the terms say how to size it rather than print a figure.
+ */
+const TREASURY_DV01_ENTRY: HeadlessPaneEntry = {
+  key: "dv01", label: "DV01", value: null,
+  formatted: "not published here; price the cheapest-to-deliver in fn YAS and divide its DV01 by its CME conversion factor",
+};
 
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CTM"], dataRequirements: ["Gloom Cloud futures curve endpoint"],
@@ -162,11 +178,11 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: "Contracts", columns: contractColumns(root, data.settlementDate ?? null, columnOptions),
           ...bases ? { textColumns: contractColumns(root, data.settlementDate ?? null, { ...columnOptions, text: true }) } : {},
           rows: data.contracts.map((row) => contractRow(row, data, root, !!date, bases?.get(row.symbol))) },
-        { title: "Front spread", columns: fieldColumns(FRONT_SPREAD_FIELDS, data.slope, ROLL_YIELD_FORMAT), rows: [{ label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
+        { title: "Front spread", columns: fieldColumns(FRONT_SPREAD_FIELDS, data.slope, { ...ROLL_YIELD_FORMAT, ...thirtySecondsFormat(root, "value") }), rows: [{ label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
           annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
           percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile) }] },
         ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
-        ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}),
+        ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}, thirtySecondsFormat(root, "price")),
           rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,

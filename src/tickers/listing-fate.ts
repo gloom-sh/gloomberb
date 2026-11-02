@@ -1,6 +1,8 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
-import type { Quote } from "../types/financials";
+import type { CompanyProfile, ListingDelisting, PricePoint, Quote } from "../types/financials";
+import { savedCopyAt } from "../data/saved-copies";
+import { sameCompany } from "./company-name";
 import type { TickerChanges } from "../types/ticker-changes";
 import {
   describeFormerIssuer,
@@ -75,6 +77,150 @@ export function noLongerTradingNote(label: string, quote: Quote, now = Date.now(
   return quote.delisting
     ? `${label}: ${delistingLabel(quote.delisting)} (last price ${price})`
     : `${label}: no longer trading since ${date} (last price ${price})`;
+}
+
+// A listing with no quote whose newest bar is this old has not traded since; a newer one is a quiet month.
+const NO_QUOTE_ENDED_AFTER_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * When a listing the service has no quote for last traded, and whether the
+ * service says it no longer trades. `recorded`: its history carries the
+ * service's delisting record, whose last day wins over the bars. Otherwise
+ * only its newest bar, over 30 days old, says it: a retired line and a thin
+ * one that has not traded in a month look alike, so that says no more than
+ * "no trades since".
+ */
+export interface NoQuoteLastTrade {
+  date: string;
+  recorded: boolean;
+}
+
+/**
+ * When a listing the service has no quote for last traded (`NoQuoteLastTrade`).
+ * Null for one that traded within the month, has no bars, or whose bars are a
+ * copy saved earlier because the refresh failed: the age of a saved copy's
+ * bars says when it was saved, not that the listing stopped.
+ */
+export function noQuoteLastTraded(
+  history: { points: readonly Pick<PricePoint, "date">[]; delisting?: ListingDelisting; savedCopyBehind?: true },
+  now = Date.now(),
+): NoQuoteLastTrade | null {
+  if (history.delisting) return { date: history.delisting.lastTradeDate, recorded: true };
+  if (history.savedCopyBehind || savedCopyAt(history) != null) return null;
+  const newest = Math.max(...history.points.map((point) => new Date(point.date).getTime()).filter(Number.isFinite));
+  return Number.isFinite(newest) && now - newest > NO_QUOTE_ENDED_AFTER_MS
+    ? { date: new Date(newest).toISOString().slice(0, 10), recorded: false }
+    : null;
+}
+
+/** "FLAT last traded 2020-06-03; no longer listed": what `quote`, `ticker`, `history` and `search` say of such a listing. */
+export function noLongerListedNote(symbol: string, lastTraded: string): string {
+  return `${symbol} last traded ${lastTraded}; no longer listed`;
+}
+
+/**
+ * What a command says of a listing with no quote that has not traded in over
+ * a month: "no longer listed" only on the service's record of it, else "XYZ:
+ * no trades since 2026-08-14".
+ */
+export function noQuoteLastTradeNote(symbol: string, lastTrade: NoQuoteLastTrade): string {
+  return lastTrade.recorded ? noLongerListedNote(symbol, lastTrade.date) : `${symbol}: no trades since ${lastTrade.date}`;
+}
+
+/** What says whether a profile served under a stopped listing's symbol is its own (`otherListingProfile`). */
+export interface ListingProfileEvidence {
+  /** The listing asked for is a US line: a bare symbol, read on its US line, or one on a US venue. */
+  usLine: boolean;
+  /** The names on record for the symbol's own issuer: its saved listing's, its ticker change's, a former issuer's. */
+  issuerNames?: readonly (string | null | undefined)[];
+}
+
+const US_COUNTRY = /^(?:us|usa|united states(?: of america)?)$/i;
+
+/**
+ * The name of the other listing a profile served under a stopped listing's
+ * symbol is of (STPP: a UCITS fund domiciled abroad took the symbol after the
+ * iPath steepener ended), only on evidence: it names a company none of the
+ * names on record for the symbol's issuer are, or, with none of those
+ * matching it, its issuer is domiciled outside the US while the listing asked
+ * for is a US line. Otherwise the profile is the listing's own (a stopped
+ * company keeps its profile), and the answer is null. A profile that names no
+ * one, shown to be abroad, is named by its country.
+ */
+export function otherListingProfile(
+  profile: Pick<CompanyProfile, "name" | "country"> | null | undefined,
+  evidence: ListingProfileEvidence,
+): string | null {
+  const named = profile?.name?.trim() || null;
+  const country = profile?.country?.trim() || null;
+  const issuers = (evidence.issuerNames ?? []).flatMap((name) => name?.trim() ? [name.trim()] : []);
+  const ownName = !!named && issuers.some((issuer) => sameCompany(issuer, named));
+  const otherIssuer = !!named && issuers.length > 0 && !ownName;
+  const abroad = evidence.usLine && !!country && !US_COUNTRY.test(country) && !ownName;
+  if (!otherIssuer && !abroad) return null;
+  return named ?? `a company domiciled in ${country}`;
+}
+
+/** "The profile served under STPP is another listing's (...), not shown.": the line for `otherListingProfile`'s answer. */
+export function otherListingProfileNote(symbol: string, other: string): string {
+  return `The profile served under ${symbol} is another listing's (${other}), not shown.`;
+}
+
+/**
+ * The US venue to read a bare symbol's own US line on, where a source can
+ * otherwise answer it with a listing abroad: the one its listing metadata
+ * names, else NYSE. The US exchanges share one symbol, and the service reads
+ * any of them as the symbol's one US line (STPP's ended on BATS in 2020).
+ */
+export async function usVenueOf(
+  symbol: string,
+  dataProvider: Pick<DataProvider, "getQuoteMetadata">,
+): Promise<string> {
+  const venue = (await dataProvider.getQuoteMetadata?.(symbol, "")
+    .catch(logFailure("tickers-listing-fate", "Read a stopped listing's venue failed", null)))?.listingExchangeName;
+  return venue && isUsListingExchange(venue) ? venue : "NYSE";
+}
+
+/** When a listing with no quote last traded (`NoQuoteLastTrade`), and its last close then. */
+export interface NoQuoteEnding extends NoQuoteLastTrade {
+  lastClose: number | null;
+}
+
+/**
+ * `noQuoteLastTraded` for a listing a command has no quote for, from its
+ * latest month of daily bars (a listing that stopped answers its last ones),
+ * with its last close: a bare symbol's on the US venue its metadata names,
+ * whose bars a source can otherwise answer with a listing abroad's. Fails
+ * soft: a source that does not answer says nothing.
+ */
+export async function loadNoQuoteEnding(
+  listing: { symbol: string; exchange?: string | null },
+  dataProvider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryWithMetadata" | "getQuoteMetadata">,
+  now = Date.now(),
+): Promise<NoQuoteEnding | null> {
+  try {
+    const exchange = listing.exchange || await usVenueOf(listing.symbol, dataProvider);
+    // Asked afresh: a copy saved for the bare symbol (a listing abroad's bars) can otherwise answer for the venue.
+    const history = dataProvider.getPriceHistoryWithMetadata
+      ? await dataProvider.getPriceHistoryWithMetadata(listing.symbol, exchange, "1M", { cacheMode: "refresh" })
+      : { points: await dataProvider.getPriceHistory(listing.symbol, exchange, "1M", { cacheMode: "refresh" }) };
+    const lastTrade = noQuoteLastTraded(history, now);
+    const close = history.points.at(-1)?.close;
+    return lastTrade ? { ...lastTrade, lastClose: typeof close === "number" && Number.isFinite(close) ? close : null } : null;
+  } catch (error) {
+    logFailure("tickers-listing-fate", "Could not read a listing's last bars")(error);
+    return null;
+  }
+}
+
+/** `loadNoQuoteEnding` without the close: what `quote`, `ticker` and `history` say of a listing with no quote. */
+export async function loadNoQuoteLastTraded(
+  listing: { symbol: string; exchange?: string | null },
+  dataProvider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryWithMetadata" | "getQuoteMetadata">,
+  now = Date.now(),
+): Promise<NoQuoteLastTrade | null> {
+  const ending = await loadNoQuoteEnding(listing, dataProvider, now);
+  return ending ? { date: ending.date, recorded: ending.recorded } : null;
 }
 
 /**

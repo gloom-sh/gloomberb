@@ -575,10 +575,10 @@ function statisticsEntries(stats: NonNullable<HeadlessSeriesResult["stats"]>): H
 
 function renderBundle(
   definition: HeadlessPaneDefinition,
-  result: HeadlessBundleResult,
+  sections: readonly HeadlessBundleSection[],
 ): string[] {
   // A locked table is named once, on the Pro line, not under each heading.
-  return result.sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
+  return sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
     ...(section.title ? [renderSection(section.textTitle ?? section.title)] : []),
@@ -920,10 +920,11 @@ export function renderHeadlessPaneText(
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
       lines.push(renderRows(rowsResult.textRows ?? rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
+      if (rowsResult.textSections?.length) lines.push("", ...renderBundle(definition, rowsResult.textSections));
       break;
     }
     case "bundle":
-      lines.push(...renderBundle(definition, result as HeadlessBundleResult));
+      lines.push(...renderBundle(definition, (result as HeadlessBundleResult).sections));
       break;
     case "series":
       lines.push(...renderSeries(result as HeadlessSeriesResult));

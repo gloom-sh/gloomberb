@@ -97,6 +97,28 @@ describe("yield curve headless model", () => {
     expect(cells("5Y")[3]).toBe("-");
   });
 
+  test("the text prints the pane's spreads under the tenors, ranked when the stored curve ranks them", async () => {
+    const headless = createYieldCurveHeadless({
+      load: async (_curve, requestedDate) => ({
+        curve: "us", requestedDate, basis: "par", couponsPerYear: 2, lookbacks: null,
+        points: curve("2026-10-30", { "3M": 4.16, "2Y": 4.56, "5Y": 4.71, "10Y": 4.94, "30Y": 5.31 }),
+        spreads: [{ id: "2s10s", value: 0.38, change1d: 0.01, percentile1y: 20 }, { id: "3m10y", value: 0.78, change1d: -0.02, percentile1y: null },
+          { id: "5s30s", value: null, change1d: null, percentile1y: null }],
+      }),
+    });
+    const result = await headless.load(args, {} as HeadlessPaneContext);
+    const lines = renderHeadlessPaneText(headless, result, args, "GC").split("\n");
+    const at = lines.indexOf("Spreads");
+    expect(at).toBeGreaterThan(lines.findIndex((line) => line.startsWith("30Y ")));
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      "2s10s  +38bp  +1bp 1D \u00b7 20 pctl 1Y",
+      "3m10y  +78bp  -2bp 1D",
+      "5s30s  --  -- 1D",
+    ]);
+    // JSON keeps the spreads as numbers in metadata, not as text.
+    expect(result.metadata).toMatchObject({ spread2Y10YBasisPoints: 38, spread3M10YBasisPoints: 78, spread5Y30YBasisPoints: null });
+  });
+
   test("leaves the move blank when the stored curve has no previous session, and loads FRED's look-backs for the fallback", async () => {
     const result = await createYieldCurveHeadless(stored({ "2Y": 4.8 }, null)).load(args, {} as HeadlessPaneContext);
     expect(result.rows.find((row) => row.maturity === "2Y")!.change1dBasisPoints).toBeNull();

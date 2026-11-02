@@ -511,3 +511,19 @@ test("--search also finds an event by its publisher's name, initials or site: us
   // A word in neither the name nor the publisher still finds nothing.
   expect(await names("usda payrolls")).toEqual([]);
 });
+
+test("--search finds the jobs report by what ECST calls it: nfp, nonfarm payrolls, jobs report", async () => {
+  const calendar = [
+    ...twoWeeks,
+    event("2026-11-06T13:30:00.000Z", "US", "high", "Non-Farm Employment Change"),
+    event("2026-11-04T13:15:00.000Z", "US", "high", "ADP Non-Farm Employment Change"),
+    event("2026-11-06T13:30:00.000Z", "CA", "high", "Employment Change"),
+  ];
+  setSystemTime(new Date("2026-10-28T12:00:00.000Z"));
+  const names = async (words: string) => ((await econPrinted(calendar, ["--search", words, "--country", "US"])).result.data as Array<{ event: string }>).map((row) => row.event);
+  for (const words of ["nfp", "NFP", "jobs report", "jobsreport", "nonfarm payrolls", "non-farm payrolls"]) {
+    expect(await names(words), words).toEqual(["Non-Farm Employment Change"]);
+  }
+  // Hyphens and spacing aside, the name itself still finds ADP's report too.
+  expect(await names("non farm")).toEqual(["ADP Non-Farm Employment Change", "Non-Farm Employment Change"]);
+});
