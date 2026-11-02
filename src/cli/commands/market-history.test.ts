@@ -451,7 +451,7 @@ test("history of several symbols is one long table with the single-symbol header
 
 /** A history run of `args` against a source whose bars are `bars(symbol)`; a symbol it throws for is not a ticker. */
 async function runList(args: string[], bars: (symbol: string) => Promise<PriceHistoryResult["points"]>, format: "csv" | "json" = "csv",
-  resolution: PriceHistoryResult["resolution"] = "1d") {
+  resolutionOf: (symbol: string) => PriceHistoryResult["resolution"] = () => "1d") {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
     dataProvider: createTestDataProvider({
@@ -459,8 +459,8 @@ async function runList(args: string[], bars: (symbol: string) => Promise<PriceHi
         await bars(symbol);
         return createTestQuote({ symbol, currency: "USD", marketState: "CLOSED" });
       },
-      getPriceHistoryWithMetadata: async (symbol) => ({ resolution, points: await bars(symbol) }),
-      getPriceHistoryForResolutionWithMetadata: async (symbol) => ({ resolution, points: await bars(symbol) }),
+      getPriceHistoryWithMetadata: async (symbol) => ({ resolution: resolutionOf(symbol), points: await bars(symbol) }),
+      getPriceHistoryForResolutionWithMetadata: async (symbol) => ({ resolution: resolutionOf(symbol), points: await bars(symbol) }),
     }),
   }, { format });
   await history.execute(args, cli.context);
@@ -490,18 +490,39 @@ test("history --wide sets several pairs side by side: a row a date, a close colu
   expect(result.failure).toBeUndefined();
 });
 
-test("history --wide sets intraday bars under the slot they start in, so a source stamping the half hour shares the hour's row", async () => {
+/** Bars from `start`, one every `minutes`, each closing at the next of `closes`. */
+const intradayBars = (start: string, minutes: number, closes: number[]) => closes.map((close, index) =>
+  ({ date: new Date(Date.parse(start) + index * minutes * 60_000), open: close, high: close, low: close, close }));
+
+test("history --wide sets intraday bars that do not line up under the bar they start in, and leaves aligned ones as they come", async () => {
   // ^VIX's hourly bars start on the hour, ^VIX9D's on the half hour: side by side, every row was half empty.
-  const hourly = (start: string, closes: number[]) => closes.map((close, index) =>
-    ({ date: new Date(Date.parse(start) + index * 3_600_000), open: close, high: close, low: close, close }));
-  const bars: Record<string, PriceHistoryResult["points"]> = {
-    "^VIX": hourly("2026-10-29T13:00:00Z", [17.1, 17.3, 17.2]),
-    "^VIX9D": hourly("2026-10-29T13:30:00Z", [16.4, 16.6, 16.5]),
+  const vix: Record<string, PriceHistoryResult["points"]> = {
+    "^VIX": intradayBars("2026-10-29T13:00:00Z", 60, [17.1, 17.3, 17.2]),
+    "^VIX9D": intradayBars("2026-10-29T13:30:00Z", 60, [16.4, 16.6, 16.5]),
   };
-  const { csv, result } = await runList(["^VIX", "^VIX9D", "--range", "1W", "--wide"], async (symbol) => bars[symbol]!, "csv", "1h");
-  expect(csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+  const crossed = await runList(["^VIX", "^VIX9D", "--range", "1W", "--wide"], async (symbol) => vix[symbol]!, "csv", () => "1h");
+  expect(crossed.csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
     "2026-10-29T13:00:00Z,17.1,16.4", "2026-10-29T14:00:00Z,17.3,16.6", "2026-10-29T15:00:00Z,17.2,16.5"]);
-  expect(result.warnings).toContain("Bars off the 1h grid (^VIX9D) are listed under the 1h they start in.");
+  expect(crossed.result.warnings).toContain("^VIX9D bars are listed under the ^VIX 1h bar they start in.");
+  // Two US stocks' hours both start at :30: each bar keeps its own start, never one before the open, and nothing is said.
+  const stocks = await runList(["AAPL", "MSFT", "--range", "1W", "--wide"], async (symbol) =>
+    intradayBars("2026-10-29T13:30:00Z", 60, symbol === "AAPL" ? [270.1, 270.5] : [520.2, 521.4]), "csv", () => "1h");
+  expect(stocks.csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+    "2026-10-29T13:30:00Z,270.1,520.2", "2026-10-29T14:30:00Z,270.5,521.4"]);
+  expect(stocks.result.warnings?.some((warning) => warning.includes("bar they start in")) ?? false).toBe(false);
+});
+
+test("history --wide merges 30m bars beside 1h ones into the hour they start in, its close the last bar's, and says so", async () => {
+  const bars: Record<string, PriceHistoryResult["points"]> = {
+    AAPL: intradayBars("2026-10-29T13:30:00Z", 60, [270.1, 270.5]),
+    MSFT: intradayBars("2026-10-29T13:30:00Z", 30, [520.2, 520.9, 521.4, 521.1]),
+  };
+  const { csv, result } = await runList(["AAPL", "MSFT", "--range", "1W", "--wide"], async (symbol) => bars[symbol]!, "csv",
+    (symbol) => symbol === "MSFT" ? "30m" : "1h");
+  // The 14:00 bar is not dropped for the 14:30 one: the hour's close is its second half hour's.
+  expect(csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+    "2026-10-29T13:30:00Z,270.1,520.9", "2026-10-29T14:30:00Z,270.5,521.1"]);
+  expect(result.warnings).toContain("MSFT's 30m bars are merged under the AAPL 1h bar they start in, 4 bars into 2 rows: a row's close is its last bar's.");
 });
 
 test("a currency's name is its pair: history swiss franc and history yen name fx and the pair, and one word is a ticker first", async () => {
