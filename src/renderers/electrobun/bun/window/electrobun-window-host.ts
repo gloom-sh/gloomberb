@@ -10,9 +10,9 @@ import { getWindowFrame, updateWindowFrameCache } from "./events";
 import type { FocusableElectrobunWindow } from "./focus";
 
 /**
- * Electrobun 1.18 has no event for displays coming and going, nor for a window
- * being minimized: both are read on a timer, this often while there is more
- * than one window...
+ * Electrobun (2.0.5, as 1.18) has no event for displays coming and going, nor
+ * for a window being minimized: both are read on a timer, this often while
+ * there is more than one window...
  */
 const POLL_MS = 3_000;
 /**
@@ -90,7 +90,7 @@ function read(call: () => boolean): boolean {
   }
 }
 
-/** The desktop window host on Electrobun 1.18: windows, their frames and events, and the displays. */
+/** The desktop window host on Electrobun: windows, their frames and events, and the displays. */
 export class ElectrobunWindowHost implements DesktopWindowHost {
   readonly canPlaceWindows: boolean;
   /** Windows has no way into full screen with Electrobun's frameless windows. */
