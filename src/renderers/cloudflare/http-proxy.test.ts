@@ -244,6 +244,20 @@ describe("proxy session check", () => {
     expect(proxy.upstreamCalls).toHaveLength(3);
   });
 
+  test("lets a signed-out caller read but not change anything upstream", async () => {
+    // The Origin check stops browsers, not scripts, so anonymous use must not
+    // be a way to send writes to the allowlisted hosts from our address.
+    const proxy = harness({ api: NO_SESSION });
+    const anonymous = (method: string) => proxy.send(proxyRequest({ url: "https://substack.com/x", init: { method, body: method === "GET" ? undefined : "{}" } }, fromIp("198.51.100.7")));
+    const statuses: number[] = [];
+    for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) statuses.push((await anonymous(method)).status);
+    const signedIn = await harness().send(proxyRequest({ url: "https://substack.com/x", init: { method: "DELETE" } }));
+
+    expect(statuses).toEqual([200, 200, 401, 401, 401]);
+    expect(proxy.upstreamCalls.map((call) => call.init.method)).toEqual(["GET", "POST"]);
+    expect(signedIn.status).toBe(200);
+  });
+
   test("counts an IPv6 caller by its /64, so rotating addresses does not reset the window", async () => {
     const proxy = harness({ gate: { anonymousRequestsPerWindow: 2 } });
     const statuses: number[] = [];

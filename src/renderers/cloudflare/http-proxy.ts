@@ -25,6 +25,13 @@ import { fetchCheckingRedirects, readBytesWithin, type ProxyUpstreamResult } fro
 import type { ProxySessionGate } from "./proxy-session";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+/**
+ * What a caller without a confirmed session may send. The functions that work
+ * signed out only read (a POST carries a search, as FINRA's tape does), and
+ * the Origin check is no barrier to a script, so anonymous use stays a
+ * read-only proxy to the allowlisted hosts.
+ */
+const ANONYMOUS_METHODS = new Set(["GET", "HEAD", "POST"]);
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** Plugin request bodies are small JSON; anything near this is not one. */
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -134,6 +141,9 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
   const init = readRequestInit(payload.init);
   if (!PROXY_METHODS.has(init.method)) {
     return proxyError("Method not allowed", 405);
+  }
+  if (!admission.signedIn && !ANONYMOUS_METHODS.has(init.method)) {
+    return proxyError("Sign in to Gloom to send this request.", 401);
   }
 
   const signal = AbortSignal.timeout(Math.min(init.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS));
