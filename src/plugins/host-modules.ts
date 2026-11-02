@@ -24,6 +24,25 @@ interface HostModule {
 }
 
 /**
+ * A CommonJS package's exports as an ES module's: each property of its
+ * `module.exports` a named export, beside `default`.
+ *
+ * The terminal binary and the desktop app's terminal are bundled with
+ * `--splitting` (scripts/build.ts, scripts/install-electrobun-tui-shim.ts),
+ * and once any module default-imports React, as the OpenTUI renderer does,
+ * Bun answers `import("react")` with a chunk that exports `module.exports`
+ * as `default` and nothing else. Served like that, a plugin's
+ * `import React from "react"` linked and its `import { useEffect } from
+ * "react"` did not, and nearly every plugin failed to load there.
+ */
+async function importCommonJs(load: HostModuleImporter): Promise<object> {
+  const namespace = (await load()) as Record<string, unknown>;
+  const moduleExports = namespace.default;
+  if (moduleExports === null || typeof moduleExports !== "object") return namespace;
+  return { ...moduleExports, ...namespace };
+}
+
+/**
  * Every specifier a plugin may import that must resolve to the host's copy.
  * Anything else is a plugin's own dependency and gets bundled normally.
  *
@@ -37,9 +56,9 @@ interface HostModule {
  * desktop and break in the TUI.
  */
 const HOST_MODULES: Readonly<Record<string, HostModule>> = {
-  "react": { load: () => import("react") },
-  "react/jsx-runtime": { load: () => import("react/jsx-runtime") },
-  "react/jsx-dev-runtime": { load: () => import("react/jsx-dev-runtime") },
+  "react": { load: () => importCommonJs(() => import("react")) },
+  "react/jsx-runtime": { load: () => importCommonJs(() => import("react/jsx-runtime")) },
+  "react/jsx-dev-runtime": { load: () => importCommonJs(() => import("react/jsx-dev-runtime")) },
   "gloomberb/types/plugin": { load: () => import("../types/plugin") },
   "gloomberb/types/persistence": { load: () => import("../types/persistence") },
   // Type modules also export runtime values (`TICKER_RESEARCH_PANE_ID`,
