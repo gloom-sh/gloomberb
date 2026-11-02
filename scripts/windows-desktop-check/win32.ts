@@ -353,7 +353,14 @@ export async function click(point: Point, { double = false } = {}): Promise<void
 export async function drag(
   from: Point,
   to: Point,
-  { steps = 12, stepMs = 24, holdMs = 120, whileHeld }: { steps?: number; stepMs?: number; holdMs?: number; whileHeld?: () => Promise<void> } = {},
+  { steps = 12, stepMs = 24, holdMs = 120, whileHeld, afterStep }: {
+    steps?: number;
+    stepMs?: number;
+    holdMs?: number;
+    whileHeld?: () => Promise<void>;
+    /** Runs after each move of the pointer, while the button is held. */
+    afterStep?: () => void;
+  } = {},
 ): Promise<void> {
   moveMouse(from);
   await sleep(120);
@@ -365,6 +372,7 @@ export async function drag(
       y: Math.round(from.y + ((to.y - from.y) * step) / steps),
     });
     await sleep(stepMs);
+    afterStep?.();
   }
   await sleep(150);
   try {

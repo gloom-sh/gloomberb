@@ -12,6 +12,7 @@ import {
   type WindowResizeEvent,
 } from "./events";
 import type { WindowFrame, WindowMinimumSize } from "./frame";
+import { applyNativeMinimumSize } from "./native-min-size";
 import { applyWindowsCustomChrome } from "./windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./windows-icons";
 import { fitPageToClientArea } from "./windows-native";
@@ -98,7 +99,8 @@ interface AppWindowOptions {
 
 /**
  * Opens a window on the app view with this platform's chrome and icon, keeps
- * its cached frame current as it moves, and holds it to `minSize` on resize.
+ * its cached frame current as it moves, and holds it to `minSize`: the system
+ * does while it is resized, and a resize that still ends under it is undone.
  */
 export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, preload }: AppWindowOptions): BrowserWindow {
   // Opening a window waits on the native layer, the webview's creation included.
@@ -116,6 +118,7 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
   }));
   applyWindowsWindowIcon(title);
   applyWindowsCustomChrome(title);
+  applyNativeMinimumSize(window, minSize);
   if (process.platform === "win32") {
     loadAgainWhenTakenForCtrlClick(window);
     // The page exists once it has loaded; until then there is nothing to fit.

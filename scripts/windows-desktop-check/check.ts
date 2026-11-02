@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
+import { DETACHED_WINDOW_MIN_SIZE, MAIN_WINDOW_MIN_SIZE } from "../../src/renderers/electrobun/bun/window/frame";
 import * as win from "./win32";
 import type { Bitmap, Point, Rect } from "./win32";
 import type { CheckResult, CheckRun, CheckStatus } from "./results";
@@ -1310,6 +1311,66 @@ class Run {
     });
   }
 
+  /**
+   * Drags the bottom right corner far past the window's minimum size: the
+   * window has to stop at the minimum while the button is held, never go
+   * under it to jump back once it is let go.
+   */
+  async resizeToMinimum(window: AppWindow, name: string, start: Rect): Promise<void> {
+    const minimum = name === "main" ? MAIN_WINDOW_MIN_SIZE : DETACHED_WINDOW_MIN_SIZE;
+    const label = name === "main" ? "Main window" : "Popped-out window";
+    await this.step(`${name}-minimum-size`, `${label}: drag the corner far past the minimum size, and it stops there`, async (shots) => {
+      await this.reset(window, start);
+      const before = win.windowRect(window.hwnd);
+      const dpi = win.windowDpi(window.hwnd).dpi || 96;
+      // The app's minimum is in the window frame's logical pixels: the window rect, at its DPI.
+      const floor = { width: Math.round((minimum.width * dpi) / 96), height: Math.round((minimum.height * dpi) / 96) };
+      const grab = await this.grabPoint(window, "bottom-right");
+      const to = { x: before.left + Math.round(floor.width / 3), y: before.top + Math.round(floor.height / 3) };
+      const samples: Array<{ width: number; height: number }> = [];
+      const sample = () => {
+        if (!win.isWindow(window.hwnd)) return;
+        const rect = win.windowRect(window.hwnd);
+        samples.push({ width: win.rectWidth(rect), height: win.rectHeight(rect) });
+      };
+      const area = { left: before.left - 20, top: before.top - 20, right: before.right + 20, bottom: before.bottom + 20 };
+      await win.drag(grab.point, to, {
+        steps: 24,
+        stepMs: 30,
+        afterStep: sample,
+        whileHeld: async () => {
+          sample();
+          const shot = this.shots.take(`${name}-minimum-during`, area);
+          if (shot) shots.push(shot);
+        },
+      });
+      await sleep(800);
+      if (!win.isWindow(window.hwnd)) return { status: "fail", detail: `the window closed: the press landed on ${grab.hit}` };
+      const after = win.windowRect(window.hwnd);
+      const smallest = {
+        width: Math.min(...samples.map((size) => size.width)),
+        height: Math.min(...samples.map((size) => size.height)),
+      };
+      // A pixel of rounding either way.
+      const under = samples.filter((size) => size.width < floor.width - 1 || size.height < floor.height - 1);
+      const atMinimum = near(win.rectWidth(after), floor.width, 2) && near(win.rectHeight(after), floor.height, 2);
+      const fills = await this.contentFills(window, `${name}-minimum-after`, shots);
+      const problems = [
+        ...(under.length ? [`went under the minimum while held (${under.length} of ${samples.length} readings, down to ${smallest.width}x${smallest.height})`] : []),
+        ...(atMinimum ? [] : [`ended at ${win.rectWidth(after)}x${win.rectHeight(after)}`]),
+      ];
+      return {
+        status: !problems.length && fills.ok ? "pass" : "fail",
+        detail: [
+          ...problems,
+          `minimum ${floor.width}x${floor.height} px at ${dpi} dpi; dragged from ${grab.cursor} (${grab.hit}): ${fmt(before)} -> ${fmt(after)}, smallest while held ${smallest.width}x${smallest.height}`,
+          fills.detail,
+        ].join("; "),
+        data: { floor, before, after, samples, grab },
+      };
+    });
+  }
+
   async clickControl(window: AppWindow, control: "maximize" | "minimize" | "close"): Promise<boolean> {
     const layout = await layoutOf(window.page);
     const rect = layout[control];
@@ -1511,6 +1572,7 @@ class Run {
       ]
       : [["right", { x: 100, y: 0 }], ["bottom-right", { x: 80, y: 60 }], ["left", { x: -80, y: 0 }]];
     for (const [edge, delta] of edges) await this.resizeEdge(window, name, edge, delta, start);
+    await this.resizeToMinimum(window, name, start);
 
     await this.step(`${name}-maximize-button`, `${label}: maximize and restore with the window button`, async (shots) => {
       await this.reset(window, start);
