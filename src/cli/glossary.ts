@@ -606,9 +606,9 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     // SIW's Setup column prints these two words.
     term: "Crowded", aliases: ["crowded short", "crowded shorts", "crowded trade", "crowded, rising", "crowded rising", "setup"], functions: ["SIW"],
-    shown: ["Crowded", "Crowded, rising"],
+    shown: ["Crowded", "Crowded, price rising"],
     definition: "SIW's flag for a heavily shorted name: at least 10% of the float short, or five or more days to cover with at least 5% of the float short "
-      + "(days to cover alone when the float is unknown). Crowded, rising adds a price up over the month. A fixed threshold, not a squeeze forecast.",
+      + "(days to cover alone when the float is unknown). Crowded, price rising adds a price up over the month. A fixed threshold, not a squeeze forecast.",
   },
   {
     term: "Squeeze", aliases: ["short squeeze", "squeezes", "short covering"], functions: ["SIW"], shown: ["Short squeeze watch"],

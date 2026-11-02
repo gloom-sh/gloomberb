@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import { createTestTicker } from "../../../test-support/ticker";
-import { buildShortWatchRow, customUniverse, oneMonthReturn, ownNamesUniverse, sortShortWatchRows } from "./watch-model";
+import { buildShortWatchRow, customUniverse, oneMonthReturn, ownNamesUniverse, setupLabel, sortShortWatchRows } from "./watch-model";
 
 const close = (date: string, value: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close: value });
 /** Weekday closes from `from` to `to`, at `value` unless the day has its own close. */
@@ -46,6 +46,13 @@ describe("short watch rows", () => {
     expect(row("MEGA", 1, 100, 9).setup).toBeNull();
     expect(row("NOFLOAT", 1, null, 9, falling).setup).toBe("crowded");
     expect(row("HIGH", 12, 100, 1).changePercent).toBeCloseTo(100, 9);
+  });
+
+  test("a crowded name whose price rose says it is the price, beside a short interest that can be falling", () => {
+    // ECHO read "Crowded, rising" beside SI Chg -3.9%.
+    const echo = buildShortWatchRow({ symbol: "ECHO", records: [settlement("2026-08-29", 10), settlement("2026-09-15", 9.61, 6)], floatShares: 60, history: rising });
+    expect(echo.changePercent).toBeLessThan(0);
+    expect(setupLabel(echo.setup!)).toBe("Crowded, price rising");
   });
 
   test("a float under half the shares short is not used, so days to cover decides alone", () => {

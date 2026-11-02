@@ -146,6 +146,7 @@ export const distressHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: { kind: "none" },
   discovery: {
     aliases: ["DIST"],
+    intents: ["distressed exchange", "chapter 11", "bankruptcy", "missed payment", "forbearance", "going concern", "covenant waiver", "delisting notice"],
     dataRequirements: ["Public SEC EDGAR filings and financial statement notes, TWSE and TPEx open data, BODACC and The Gazette notices"],
     limitations: [
       "A company missing from a list may still be in difficulty; absence is not a finding.",
