@@ -5,8 +5,9 @@
  * updates it, from a copy of the release served on this machine:
  *
  * 1. The installed build (an earlier release, built with Electrobun 1) finds
- *    the release in --release (this build's artifacts), downloads it, and U
- *    restarts it into this build, in the same place.
+ *    the release in --release (this build's artifacts), downloads it, and
+ *    the command bar's "Update ready, restart to apply" restarts it into
+ *    this build, in the same place.
  * 2. This build updates the same way to a newer one (the same build under
  *    another hash, with a file of its own), with Electrobun 2's own update
  *    manager.
@@ -14,8 +15,8 @@
  * `--app` is the installed app: `/Applications/Gloom.app` on macOS, the
  * `app` folder under `~/.local/share/<identifier>/<channel>` on Linux, where
  * Electrobun's updater keeps it. It seeds the config in ~/.gloomberb and
- * changes the installed app, so it runs only on a CI machine. U goes to the
- * window through System Events (macOS) or xdotool (Linux, on $DISPLAY).
+ * changes the installed app, so it runs only on a CI machine. The command bar
+ * is driven through the app's remote control.
  * Writes what it saw, step by step, to <out>/update-in-place.json.
  */
 import { existsSync, readdirSync, readlinkSync } from "fs";
@@ -135,48 +136,41 @@ function openApp(label: string): void {
   }).unref();
 }
 
-/** U, to the app's window: what restarts it into a downloaded update. */
-function pressU(): void {
-  const pids = appProcesses().map(({ pid }) => pid);
+/** A request to the app's remote control, which writes where it listens into its data folder. */
+async function remoteControl(request: Record<string, unknown>): Promise<{ ok?: boolean; error?: { message?: string } } | null> {
+  const endpoint = await readJson<{ port: number; token: string }>(join(work, "data", "remote-control.desktop.json"));
+  if (!endpoint) return null;
+  const response = await fetch(`http://127.0.0.1:${endpoint.port}/rpc`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${endpoint.token}`, "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return await response.json() as { ok?: boolean; error?: { message?: string } };
+}
+
+/**
+ * Restarts the app into the downloaded update as a person does from the
+ * command bar: "update" finds Check for Updates, which reads "Update ready,
+ * restart to apply" once the download is in, and Enter restarts. Through the
+ * app's remote control rather than keys: a runner's macOS takes no synthetic
+ * keys without an accessibility grant.
+ */
+async function askForRestart(): Promise<void> {
   try {
-    if (mac) {
-      const script = [
-        "on run argv",
-        "  tell application \"System Events\"",
-        "    repeat with i in argv",
-        "      try",
-        "        set p to first process whose unix id is (i as integer)",
-        "        if (count of windows of p) > 0 then",
-        "          set frontmost of p to true",
-        "          delay 0.3",
-        "          keystroke \"u\"",
-        "          return \"pressed\"",
-        "        end if",
-        "      end try",
-        "    end repeat",
-        "  end tell",
-        "  return \"no window\"",
-        "end run",
-      ].join("\n");
-      log(`U: ${run(["osascript", "-e", script, ...pids.map(String)]).trim()}`);
-    } else {
-      for (const pid of pids) {
-        const windows = Bun.spawnSync(["xdotool", "search", "--onlyvisible", "--pid", String(pid)], { stdout: "pipe" }).stdout.toString().trim().split("\n").filter(Boolean);
-        for (const window of windows) {
-          Bun.spawnSync(["xdotool", "windowactivate", "--sync", window]);
-          Bun.spawnSync(["xdotool", "key", "--window", window, "u"]);
-          log(`U: pressed in window ${window} of ${pid}`);
-          return;
-        }
-      }
-      log("U: no window");
+    const opened = await remoteControl({ type: "call", operation: "app.openCommandBar", input: { query: "update" } });
+    if (!opened) {
+      log("restart: no remote control yet");
+      return;
     }
+    const activated = await remoteControl({ type: "call", operation: "commandBar.activateResult", input: { label: "Update ready, restart to apply" } });
+    log(`restart: ${activated?.ok ? "asked" : `not yet (${activated?.error?.message ?? opened.error?.message ?? "no answer"})`}`);
   } catch (error) {
-    log(`U: ${error instanceof Error ? error.message : String(error)}`);
+    // The app quitting for the restart cuts the request off.
+    log(`restart: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-/** Waits for the download of `hash`, then presses U until the app that ran quits for the restart. */
+/** Waits for the download of `hash`, then asks for the restart until the app that ran quits for it. */
 async function restartIntoUpdate(hash: string, label: string): Promise<void> {
   const downloaded = join(channelRoot, "self-extraction", `${hash}.tar`);
   if (!await waitUntil(300, () => existsSync(downloaded))) {
@@ -186,10 +180,10 @@ async function restartIntoUpdate(hash: string, label: string): Promise<void> {
   if (before.length === 0) throw new Error(`${label}: the app is not running before U`);
   const alive = () => before.filter((pid) => { try { process.kill(pid, 0); return true; } catch { return false; } });
   for (let attempt = 0; attempt < 30 && alive().length === before.length; attempt += 1) {
-    pressU();
+    await askForRestart();
     await waitUntil(5, () => alive().length < before.length);
   }
-  if (alive().length === before.length) throw new Error(`${label}: U did not restart the app into the downloaded update`);
+  if (alive().length === before.length) throw new Error(`${label}: the app did not restart into the downloaded update`);
   log(`${label}: the app quits for the restart`);
 }
 

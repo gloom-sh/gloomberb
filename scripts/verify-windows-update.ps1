@@ -250,6 +250,29 @@ function Send-RestartKey {
   }
 }
 
+# The same through the app's remote control, which a page without a DevTools
+# port (WebView2) still has: "update" in the command bar finds Check for
+# Updates, which reads "Update ready, restart to apply" once the download is
+# in, and activating it restarts. The app writes where it listens into its
+# data folder.
+function Send-RestartRequest {
+  $Endpoint = Join-Path $DataDir "remote-control.desktop.json"
+  if (-not (Test-Path -LiteralPath $Endpoint)) { Write-Host "No remote control yet"; return }
+  try {
+    $Info = Get-Content -LiteralPath $Endpoint -Raw | ConvertFrom-Json
+    $Headers = @{ Authorization = "Bearer $($Info.token)" }
+    $Url = "http://127.0.0.1:$($Info.port)/rpc"
+    $Open = @{ type = "call"; operation = "app.openCommandBar"; input = @{ query = "update" } } | ConvertTo-Json -Depth 5 -Compress
+    Invoke-RestMethod -Method Post -Uri $Url -Headers $Headers -ContentType "application/json" -Body $Open -TimeoutSec 10 | Out-Null
+    $Activate = @{ type = "call"; operation = "commandBar.activateResult"; input = @{ label = "Update ready, restart to apply" } } | ConvertTo-Json -Depth 5 -Compress
+    $Reply = Invoke-RestMethod -Method Post -Uri $Url -Headers $Headers -ContentType "application/json" -Body $Activate -TimeoutSec 10 -SkipHttpErrorCheck
+    Write-Host ("Asked for the restart: {0}" -f $(if ($Reply.ok) { "asked" } else { "not yet ($($Reply.error.message))" }))
+  } catch {
+    # The app quitting for the restart cuts the request off.
+    Write-Host "Asked for the restart: $($_.Exception.Message)"
+  }
+}
+
 # What the page shows, for a failure's message.
 function Get-PageText {
   foreach ($Page in Get-MainPages) {
@@ -288,8 +311,9 @@ function Open-App {
   param([string]$Shortcut, [string]$Folder, [string]$Label)
 
   foreach ($Attempt in 1..2) {
+    Remove-Item -LiteralPath (Join-Path $DataDir "remote-control.desktop.json") -Force -ErrorAction SilentlyContinue
     Open-Shortcut $Shortcut "$Label-$Attempt"
-    if (Wait-Until 90 { ((Get-ProcessesUnder $Folder).Count -gt 0) -and (@(Get-MainPages).Count -gt 0) }) { return }
+    if (Wait-Until 90 { ((Get-ProcessesUnder $Folder).Count -gt 0) -and ((@(Get-MainPages).Count -gt 0) -or (Test-Path -LiteralPath (Join-Path $DataDir "remote-control.desktop.json"))) }) { return }
     Write-Host "The app did not open its window from $Folder. It runs: $((Get-ProcessesUnder $Folder | ForEach-Object { $_.Path }) -join ', ')"
     Stop-ProcessesUnder @($Folder)
   }
@@ -320,6 +344,7 @@ function Restart-IntoUpdate {
   for ($Attempt = 0; $Attempt -lt 30 -and -not $Quitting; $Attempt += 1) {
     $Pressed = Get-Date
     Send-RestartKey
+    if (-not (Wait-Until 2 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count })) { Send-RestartRequest }
     $Quitting = Wait-Until 5 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count }
   }
   if (-not $Quitting) { throw "${Label}: U did not restart the app into the downloaded update. The page shows: $(Get-PageText)" }

@@ -28,11 +28,19 @@ if (Test-Path $ExtractRoot) {
 }
 New-Item -ItemType Directory -Force -Path $ExtractRoot | Out-Null
 
-# The zig-zstd the build ships in the app.
-$Zstd = Join-Path $Root "build\stable-$Platform\Gloom\bin\zig-zstd.exe"
-if (-not (Test-Path $Zstd)) {
-  throw "zig-zstd.exe was not found: $Zstd"
+# The zig-zstd the build ships in the app: Electrobun 2 clears its build
+# folder once it has packed it, so it comes from where Hutch keeps Electrobun
+# for this machine.
+$Zstd = @(
+  @(Join-Path $Root "build\stable-$Platform\Gloom\bin\zig-zstd.exe") | Where-Object { Test-Path -LiteralPath $_ }
+  Get-ChildItem -Path (Join-Path $env:USERPROFILE ".hutch\releases\electrobun") -Recurse -Filter "zig-zstd.exe" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -like "*\$Platform\*" -or $_.FullName -like "*\windows-$Arch\*" } |
+    Select-Object -ExpandProperty FullName
+) | Select-Object -First 1
+if (-not $Zstd) {
+  throw "zig-zstd.exe was not found in the build or under ~\.hutch\releases\electrobun"
 }
+Write-Host "Unpacking with $Zstd"
 
 $TarPath = Join-Path $ExtractRoot "Gloom.tar"
 & $Zstd decompress -i $ArchivePath -o $TarPath
