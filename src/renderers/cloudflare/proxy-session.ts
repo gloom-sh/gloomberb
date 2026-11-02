@@ -79,7 +79,8 @@ interface RateWindow {
 }
 
 type ProxyAdmission =
-  | { ok: true }
+  /** `signedIn` is true only for a session the API confirmed. */
+  | { ok: true; signedIn: boolean }
   | { ok: false; status: number; error: string; retryAfterSeconds?: number };
 
 export interface ProxySessionGate {
@@ -262,7 +263,7 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
     return verdict;
   }
 
-  function withinRate(windowKey: string, limit: number): ProxyAdmission {
+  function withinRate(windowKey: string, limit: number, signedIn: boolean): ProxyAdmission {
     const at = now();
     let window = windows.get(windowKey);
     if (!window || at - window.startedAt >= windowMs) {
@@ -272,7 +273,7 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
       windows.set(windowKey, window);
     }
     window.count += 1;
-    if (window.count <= limit) return { ok: true };
+    if (window.count <= limit) return { ok: true, signedIn };
     return {
       ok: false,
       status: 429,
@@ -285,8 +286,8 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
     async admit(request, fetchApi) {
       const cookie = forwardedCookies(request.headers.get("cookie"));
       const verdict = cookie ? await verdictFor(await cacheKey(cookie), cookie, request, fetchApi) : "invalid";
-      if (typeof verdict === "object") return withinRate(`user:${verdict.userId}`, requestsPerWindow);
-      return withinRate(anonymousRateKey(request), anonymousRequestsPerWindow);
+      if (typeof verdict === "object") return withinRate(`user:${verdict.userId}`, requestsPerWindow, true);
+      return withinRate(anonymousRateKey(request), anonymousRequestsPerWindow, false);
     },
   };
 }

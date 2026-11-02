@@ -26,10 +26,19 @@ export const PROXY_ALLOWED_HOSTS: readonly string[] = allowed.hosts;
  * costs a worker round trip or a slot in anyone's rate limit.
  *
  * Add a host here only after checking that it sends
- * `access-control-allow-origin` for https://term.gloom.sh, preflight
- * included when the plugin sends `Authorization`.
+ * `access-control-allow-origin` for https://term.gloom.sh on the requests the
+ * plugin makes, and on their preflight when the plugin sends a header outside
+ * the CORS-safelisted ones (`Authorization`, say). The browser transport
+ * leaves `User-Agent` off these requests, so it never causes a preflight.
  */
-export const WEB_DIRECT_HOSTS: readonly string[] = ["api.fiscaldata.treasury.gov", "api.thebuildout.ai"];
+export const WEB_DIRECT_HOSTS: readonly string[] = [
+  "api.fiscaldata.treasury.gov",
+  "api.thebuildout.ai",
+  // Polymarket's read APIs. An events page can pass the proxy's 5 MB cap.
+  "clob.polymarket.com",
+  "data-api.polymarket.com",
+  "gamma-api.polymarket.com",
+];
 
 /** The worker route the browser posts proxied requests to. */
 export const HTTP_PROXY_PATH = "/http-proxy";

@@ -47,12 +47,25 @@ async function webBundledPlugins(): Promise<GloomPlugin[]> {
 }
 
 const byHost = new Map<string, string[]>();
+const declared: string[] = [];
 for (const plugin of [...browserBuiltinPlugins, ...await webBundledPlugins()]) {
   for (const host of plugin.hosts ?? []) {
     const normalized = normalizeHost(host, plugin.id);
+    declared.push(normalized);
     if (isProxiedHost(normalized, WEB_DIRECT_HOSTS)) continue;
     byHost.set(normalized, [...(byHost.get(normalized) ?? []), plugin.id]);
   }
+}
+
+// A direct host is a hole in the page's CSP, so one no plugin declares any
+// more is removed rather than left open.
+const undeclaredDirect = WEB_DIRECT_HOSTS.filter((direct) => !declared.some((host) => isProxiedHost(host, [direct])));
+if (undeclaredDirect.length) {
+  console.error(
+    `WEB_DIRECT_HOSTS lists hosts no plugin in the web build declares: ${undeclaredDirect.join(", ")}.\n`
+      + "Remove them from src/utils/plugin-proxy-hosts.ts, or declare them in the plugin that fetches them.",
+  );
+  process.exit(1);
 }
 
 const hosts = [...byHost.keys()].sort();
