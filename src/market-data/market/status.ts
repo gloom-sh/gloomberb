@@ -5,7 +5,7 @@ import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 import { isQuoteBeforeLatestSession } from "../quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
-import { preMarketOpenOn, regularSessionCloseOn } from "./freshness";
+import { preMarketOpenOn, regularSessionCloseOn, venueSessionOnOrBefore } from "./freshness";
 import { futuresWeekendClosure } from "./futures-week";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
@@ -324,6 +324,18 @@ function reportedRegularMove(quote: Quote, close: number): CompletedRegularSessi
 }
 
 /**
+ * The session a quote's day belongs to: its trading day (quoteTradingDay), or
+ * for a print stamped on a day its venue does not trade (a Saturday after
+ * midnight New York, a holiday), the latest session before it. No session is
+ * read into a non-trading day.
+ */
+function quoteSessionDay(quote: Quote): string | null {
+  const day = quoteTradingDay(quote);
+  if (!day) return null;
+  return venueSessionOnOrBefore(quote.listingExchangeName || quote.exchangeName, day) ?? day;
+}
+
+/**
  * The regular session the quote's day follows, once it is over: after hours,
  * overnight, and through a weekend or holiday until the next pre-market, and
  * in the pre-market when the quote reports the last session's close and move,
@@ -344,7 +356,8 @@ function completedRegularSession(quote: Quote): CompletedRegularSession | null {
       const today = quoteTradingDay(quote);
       return reported && closeDate && today && closeDate < today ? { close, reported, date: closeDate } : null;
     }
-    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") {
+    // A print after the close, a weekend print included, never headlines over that close.
+    if (closeDate ? closeDate === quoteSessionDay(quote) : state === "POST") {
       return closeDate ? { close, reported, date: closeDate } : { close, reported };
     }
   }
