@@ -322,7 +322,8 @@ const shareClassSymbol = (symbol: string) => symbol.trim().toUpperCase().replace
  * in lower case, is one only when search lists its root there (JPM on a US
  * exchange, VOD on LSE); otherwise it is the name it reads as, and is searched
  * as one. One in capitals naming a venue abroad (`MC FP`), or the US with its
- * yellow key (`SEAS US Equity`), is one as typed: the venue's own check speaks
+ * yellow key as the terminal writes it (`SEAS US Equity`, never all in
+ * capitals), is one as typed: the venue's own check speaks
  * when the symbol is not there. A code that can name
  * several listings (`VOLVB SS` is VOLVB or VOLV.B in Stockholm, `RY CN`
  * Toronto or the Venture exchange) is the first of them search lists. A
@@ -336,9 +337,10 @@ export async function readTerminalCodeArg(
   const code = readTerminalListingCode(typed);
   if (!code?.market) return code;
   const us = !code.exchange || isUsListingExchange(code.exchange);
-  // Its root in capitals and its yellow key typed (`SEAS US Equity`), a US code is one as typed, as a code abroad
-  // is: a line that stopped trading is one search no longer lists, and it is still that symbol, never a name.
-  const keyed = /\sequity$/i.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  // Its root in capitals and its yellow key typed as the terminal shows it (`SEAS US Equity`), a US code is one as
+  // typed, as a code abroad is: a line that stopped trading is one search no longer lists, and it is still that
+  // symbol, never a name. All in capitals (`PUTNAM US EQUITY`) it may be a fund's name, so search decides.
+  const keyed = /\s[Ee]quity$/.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
   const verify = (us && !keyed) || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
   if (!verify && !code.alternatives) return code;
   const listings: TerminalListing[] = [code, ...code.alternatives ?? []];

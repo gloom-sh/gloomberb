@@ -152,9 +152,13 @@ test("the shared resolver reads a code before a company name search, and fn take
   // Words whose root is no US ticker are a fund's name, or fail as the words they are, never PUTNAM or GLOBAL.
   expect(await resolveCliListing("Putnam US Equity", undefined, deps))
     .toMatchObject({ key: "PUEQX:NASDAQ", readAs: 'Read "Putnam US Equity" as PUEQX:NASDAQ (Putnam US Equity Fund).' });
-  const global = await resolveCliListing("Global US Equity", undefined, deps).then((listing) => listing.key, (error: Error) => error.message);
-  expect(global).not.toBe("GLOBAL");
-  expect(global).not.toContain("Read");
+  // All in capitals too: a fund's name in capitals is no code as typed.
+  expect(await resolveCliListing("PUTNAM US EQUITY", undefined, deps)).toMatchObject({ key: "PUEQX:NASDAQ" });
+  for (const typed of ["Global US Equity", "GLOBAL US EQUITY"]) {
+    const global = await resolveCliListing(typed, undefined, deps).then((listing) => listing.key, (error: Error) => error.message);
+    expect(global, typed).not.toBe("GLOBAL");
+    expect(global, typed).not.toContain("Read");
+  }
 
   const pane: PaneDef = { id: "sec", name: "SEC", component: () => null, defaultPosition: "right" };
   const headless: HeadlessPaneDefinition<"rows"> = { shape: "rows", argument: { kind: "ticker" }, options: [], load: () => ({ rows: [] }) };
