@@ -233,7 +233,8 @@ export async function resolveCliTicker(
   // A saved listing names what lists there; the issuer that left, if it is that one, is its old line.
   if (listing.saved) {
     const saved = options.refreshName === false ? { ticker: listing.saved, quote: null } : await nameFromListingQuote(listing.saved, store, dataProvider, null);
-    return withChange({ ...withEnded(saved, read), ...uncheckedIf(listing, saved) }, { name: saved.ticker.metadata.name });
+    // A saved line that stopped trading is the old line, not something listed under the symbol now.
+    return withChange({ ...withEnded(saved, read), ...uncheckedIf(listing, saved) }, saved.quote ? tradingListing(saved.quote) : { name: saved.ticker.metadata.name });
   }
   // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
   // blocks a listing the quote knows. Search is asked after, for the venues a note names, and may fail.
@@ -294,7 +295,7 @@ export async function resolveCliTicker(
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local) }, { name: local.ticker.metadata.name });
+    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);

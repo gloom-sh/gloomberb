@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
+import { createTestTicker } from "../test-support/ticker";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
@@ -335,6 +336,11 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
     ["needs_choice", "RAD stopped trading 2023-10-17, now RADCQ", "RADCQ"],
     ["needs_choice", "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", null],
   ]);
+  // Saved already, as an add before this check left it, its old line is no listing under the symbol now.
+  const saved = tickerStore();
+  await saved.saveTicker(createTestTicker("RAD", "RAD", { exchange: "" }));
+  const again = await addSymbols({ symbols: ["RAD", "OLDCO"], store: saved, dataProvider: source(0), add: (ticker) => ({ ticker, changed: true }) });
+  expect(again[0]).toMatchObject({ status: "needs_choice", message: "RAD stopped trading 2023-10-17, now RADCQ" });
 
   const lookUp = async (refusals: number) => {
     const retries: number[] = [];

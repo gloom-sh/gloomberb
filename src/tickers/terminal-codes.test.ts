@@ -146,8 +146,9 @@ test("the shared resolver reads a code before a company name search, and fn take
   expect(await resolveCliListing("jpm us equity", undefined, deps)).toMatchObject({ key: "JPM" });
   expect(await resolveCliListing("WFC.N", undefined, deps))
     .toMatchObject({ key: "WFC:NYSE", request: { symbol: "WFC:NYSE", exchange: "NYSE" }, readAs: "Read WFC.N as WFC:NYSE." });
-  // A Reuters code costs no search; a Bloomberg code asks for its root, never for the words as a name.
-  expect(searched).toEqual(["JPM", "JPM"]);
+  // A Reuters code costs no search, nor a US code in capitals with its yellow key; one in lower case asks for its
+  // root, never for the words as a name.
+  expect(searched).toEqual(["JPM"]);
   // Words whose root is no US ticker are a fund's name, or fail as the words they are, never PUTNAM or GLOBAL.
   expect(await resolveCliListing("Putnam US Equity", undefined, deps))
     .toMatchObject({ key: "PUEQX:NASDAQ", readAs: 'Read "Putnam US Equity" as PUEQX:NASDAQ (Putnam US Equity Fund).' });
@@ -166,6 +167,8 @@ test("the shared resolver reads a code before a company name search, and fn take
   expect(await resolve("WFC.N")).toBe("WFC:NYSE");
   // A ticker argument with spaces that is no code is no ticker: it stops before any report, as `quote` words it.
   await expect(resolve("Global US Equity")).rejects.toThrow("Not a ticker: GLOBAL US EQUITY.");
+  // A line search no longer lists, written as Bloomberg writes it, is still that symbol: RAD, never a name.
+  expect(await resolveCliListing("RAD US Equity", undefined, deps)).toMatchObject({ key: "RAD" });
 });
 
 test("a code abroad in capitals costs no search, one naming several listings is the first search lists, one in lower case is a code only where search lists it", async () => {
