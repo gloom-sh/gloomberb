@@ -405,6 +405,16 @@ const PAGE_HELPER = String.raw`(() => {
       }
       return points;
     },
+    /** Bare points along the status bar, left to right: the strip of it a window cascaded over this one leaves uncovered. */
+    statusBarPoints() {
+      const bar = q("[data-gloom-role=status-bar]");
+      if (!bar) return [];
+      const h = bar.getBoundingClientRect();
+      const y = h.top + h.height / 2;
+      const points = [];
+      for (let x = h.left + 20; x < h.right - 20; x += 12) if (bare(bar, x, y)) points.push({ x, y });
+      return points;
+    },
     /** What a press at this point lands on, for the report. */
     whatIsAt(x, y) {
       const hit = document.elementFromPoint(x, y);
@@ -534,6 +544,25 @@ async function connectPage(target: { id: string; webSocketDebuggerUrl: string })
 }
 
 const layoutOf = (page: Page) => evaluate<PageLayout>(page.cdp, "window.__winCheck.layout()", 5_000);
+
+/**
+ * Waits for a page to draw the app: its top bar with the command prompt, and
+ * its status bar. A new window's page can be reached before its document has
+ * loaded, and then loads again: the page helper is put back when it is gone.
+ * How long it took, or null when it did not within `ms`.
+ */
+async function waitForApp(page: Page, ms: number): Promise<number | null> {
+  const started = Date.now();
+  while (Date.now() - started < ms) {
+    if (!await evaluate<boolean>(page.cdp, "!!window.__winCheck", 3_000).catch(() => false)) {
+      await evaluate(page.cdp, PAGE_HELPER, 3_000).catch(() => null);
+    }
+    const layout = await layoutOf(page).catch(() => null);
+    if (layout?.header && layout.prompt && layout.status) return Date.now() - started;
+    await sleep(300);
+  }
+  return null;
+}
 
 /** A press or key the page saw, as `inputsSince` lists them. */
 interface PageInput { at: number; type: string; x: number; y: number; detail: number; key: string; ctrl: boolean; target: string }
@@ -2073,19 +2102,24 @@ class Run {
 
   /**
    * Clicks a bare spot of a window's title bar that no other window covers,
-   * as a person brings a window forward. The point clicked, or null when its
-   * title bar is covered all along.
+   * as a person brings a window forward; with `orStatusBar`, of its status
+   * bar when its title bar is covered, as a window cascaded over by the one
+   * it came from shows only its bottom strip. The point clicked, or null when
+   * those bars are covered all along.
    */
-  async clickTitleBar(window: AppWindow): Promise<Point | null> {
-    const points = await evaluate<Array<{ x: number; y: number }>>(window.page.cdp, "window.__winCheck.titleBarPoints()", 3_000).catch(() => []);
-    const point = points.map((entry) => this.toScreen(window, entry)).find((entry) => {
-      const hit = win.hitTest(entry);
-      return hit.root === window.hwnd && !/left|right|top|bottom|border/.test(hit.code);
-    });
-    if (!point) return null;
-    await win.click(point);
-    await sleep(500);
-    return point;
+  async clickTitleBar(window: AppWindow, options: { orStatusBar?: boolean } = {}): Promise<Point | null> {
+    for (const bar of options.orStatusBar ? ["titleBarPoints", "statusBarPoints"] : ["titleBarPoints"]) {
+      const points = await evaluate<Array<{ x: number; y: number }>>(window.page.cdp, `window.__winCheck.${bar}()`, 3_000).catch(() => []);
+      const point = points.map((entry) => this.toScreen(window, entry)).find((entry) => {
+        const hit = win.hitTest(entry);
+        return hit.root === window.hwnd && !/left|right|top|bottom|border/.test(hit.code);
+      });
+      if (!point) continue;
+      await win.click(point);
+      await sleep(500);
+      return point;
+    }
+    return null;
   }
 
   /** Brings a window forward without input, to have another one behind it. */
@@ -2126,6 +2160,7 @@ class Run {
    * New Window.
    */
   async openNewWindow(from: AppWindow, index: number, shots: string[]): Promise<{ window: AppWindow | null; detail: string; missing?: boolean }> {
+    if (await waitForApp(from.page, 30_000) === null) return { window: null, detail: "the window it opens from drew no top bar with a command prompt in 30 s" };
     if (!await this.clickTitleBar(from)) await this.raise(from);
     const layout = await layoutOf(from.page);
     if (!layout.prompt) return { window: null, detail: "no command prompt in the top bar" };
@@ -2162,8 +2197,14 @@ class Run {
       if (!page) await sleep(500);
     }
     if (!page) return { window: null, detail: `a window opened ${((Date.now() - clickedAt) / 1000).toFixed(1)} s after the click, but no page for it within 40 s` };
+    // Its checks and the next New Window use the app it draws.
+    const drew = await waitForApp(page, 30_000);
     const window: AppWindow = { hwnd: opened.hwnd, title: opened.title, page, scale: await this.scaleOf(opened.hwnd, page) };
-    return { window, detail: `opened at ${fmt(win.visibleRect(opened.hwnd))}` };
+    const seconds = ((Date.now() - clickedAt) / 1000).toFixed(1);
+    return {
+      window,
+      detail: `opened at ${fmt(win.visibleRect(opened.hwnd))}, ${drew === null ? "with no top bar and command prompt 30 s after its page was reached" : `the app drawn ${seconds} s after the click`}`,
+    };
   }
 
   /** What is wrong with a window: not painted with the app's top bar and status bar, or not all on screen. */
@@ -2185,9 +2226,10 @@ class Run {
   }
 
   /**
-   * New Window twice, the second from the window the first opened: three
-   * full windows, each painted with the app, all of it on screen, and
-   * brought forward by a click on its title bar from behind another window.
+   * New Window twice, the second from the window the first opened once it
+   * has drawn the app: three full windows, each painted with the app, all of
+   * it on screen, and brought forward from behind another window by a click
+   * on what shows of it, its title bar or else its status bar.
    */
   async newWindows(): Promise<void> {
     this.extras = [];
@@ -2219,9 +2261,9 @@ class Run {
           problems.push(`${name} stayed in front when another was brought forward`);
           continue;
         }
-        const point = await this.clickTitleBar(window);
+        const point = await this.clickTitleBar(window, { orStatusBar: true });
         if (!point) {
-          problems.push(`no spot of ${name}'s title bar is uncovered`);
+          problems.push(`no spot of ${name}'s title bar or status bar is uncovered`);
           continue;
         }
         const front = win.foregroundWindow() === window.hwnd;
@@ -2231,7 +2273,7 @@ class Run {
           problems.push(`a click on ${name}'s title bar at ${point.x},${point.y} left ${front ? "it in front, its page without focus" : `"${inFront?.title ?? "nothing"}" in front`}`);
         }
       }
-      lines.push(`${windows.length} full windows, each brought forward by a click on its title bar`);
+      lines.push(`${windows.length} full windows, each brought forward by a click on its title bar or, under the window it came from, its status bar`);
       const ok = this.extras.length === 2 && problems.length === 0;
       return { status: ok ? "pass" : "fail", detail: [...problems, ...lines].join("; ") };
     });
