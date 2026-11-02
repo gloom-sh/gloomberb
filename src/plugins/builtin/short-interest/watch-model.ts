@@ -26,7 +26,7 @@ const LISTED_TYPES = new Set(["", "STK", "EQUITY", "COMMONSTOCK", "ADR", "ETF", 
 export type ShortWatchSetup = "crowded-rising" | "crowded";
 
 export function setupLabel(setup: ShortWatchSetup | null): string {
-  return setup === "crowded-rising" ? "Crowded, rising" : setup === "crowded" ? "Crowded" : "";
+  return setup === "crowded-rising" ? "Crowded, px up" : setup === "crowded" ? "Crowded" : "";
 }
 
 export interface ShortWatchRow {

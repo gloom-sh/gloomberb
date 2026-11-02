@@ -483,6 +483,12 @@ interface PaneTemplateShortcut {
   keepArgToken?: (token: string) => boolean;
   argOptional?: boolean;
   /**
+   * The argument is a company the function reports on (CDS, TRACE): with
+   * none typed, the command bar opens it on the ticker in focus, and with no
+   * ticker in focus market-wide. `<ticker> <code>` opens it too.
+   */
+  focusedIssuer?: boolean;
+  /**
    * With no argument typed and none to infer from the active ticker, open
    * the pane without one instead of asking for it (ERN alone is the market
    * board). Without it an optional argument still falls back to the form.

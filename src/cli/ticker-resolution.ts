@@ -1,4 +1,6 @@
 import { logFailure } from "../utils/log-failure";
+import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
+import { isNoSourceAnswer, isProviderBusy, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
@@ -103,6 +105,13 @@ export interface CliTicker {
    * still to be asked.
    */
   otherVenues: string[] | null;
+  /**
+   * A bare US-style symbol whose quote could not be read (the service refused
+   * or failed it): whether the listing still trades is unknown, so an add
+   * cannot tell a live match from a dead one (`choiceNeeded`). A list looks
+   * it up again with the symbols that failed.
+   */
+  unchecked?: true;
 }
 
 export interface CliTickerOptions {
@@ -226,7 +235,8 @@ export async function resolveCliTicker(
   // A saved listing names what lists there; the issuer that left, if it is that one, is its old line.
   if (listing.saved) {
     const saved = options.refreshName === false ? { ticker: listing.saved, quote: null } : await nameFromListingQuote(listing.saved, store, dataProvider, null);
-    return withChange(withEnded(saved, read), { name: saved.ticker.metadata.name });
+    // A saved line that stopped trading is the old line, not something listed under the symbol now.
+    return withChange({ ...withEnded(saved, read), ...uncheckedIf(listing, saved) }, saved.quote ? tradingListing(saved.quote) : { name: saved.ticker.metadata.name });
   }
   // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
   // blocks a listing the quote knows. Search is asked after, for the venues a note names, and may fail.
@@ -287,11 +297,12 @@ export async function resolveCliTicker(
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null }, { name: local.ticker.metadata.name });
+    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
-  const named = created ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
+  // A listing saved before (by an earlier look at a list) is read again too: its quote says whether it still trades.
+  const named = created || !bareQuote ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
   const saved = savedListingName(named.ticker);
   const others = resolved.otherListings?.map((key) => parsePublicTickerKey(key).exchange ?? key) ?? [];
   // Several companies' listings name the company it went to and theirs; one company's name its other venues.
@@ -307,7 +318,13 @@ export async function resolveCliTicker(
     notes: [...read, venueNote, ended].filter((note): note is string => !!note),
     ended,
     otherVenues: bareNote ? bareVenues : others,
+    ...uncheckedIf(listing, named),
   }, current);
+}
+
+/** `unchecked` for a bare US-style symbol whose quote could not be read (`CliTicker.unchecked`). */
+function uncheckedIf(listing: Pick<CliListing, "symbol" | "exchange">, read: { failed?: true }): { unchecked?: true } {
+  return read.failed && !listing.exchange && tickerChangeSymbol(listing.symbol) ? { unchecked: true } : {};
 }
 
 /**
@@ -399,22 +416,49 @@ async function nameFromListingQuote(
   store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   known: Quote | null,
-): Promise<{ ticker: TickerRecord; quote: Quote | null }> {
+): Promise<{ ticker: TickerRecord; quote: Quote | null; failed?: true }> {
   const { metadata } = ticker;
   try {
     const quote = known ?? await dataProvider.getQuote(metadata.ticker, metadata.exchange);
     const name = quote.name?.trim();
-    // A quote that names no listing may be another venue's line served from cache.
+    // A quote that names no listing may be another venue's line served from cache. A bare US row (RAD, no
+    // venue) is asked with none, and its own quote names none when the line stopped trading.
     const quoteExchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-    if (!quoteExchange || quoteExchange !== canonicalExchange(metadata.exchange)) return { ticker, quote: null };
+    const ownExchange = canonicalExchange(metadata.exchange);
+    if (quoteExchange !== ownExchange || (!quoteExchange && !quote.delisting)) return { ticker, quote: null };
     if (!name || name === metadata.name) return { ticker, quote };
     const named: TickerRecord = { ...ticker, metadata: { ...metadata, name } };
     await store.saveTicker(named);
     return { ticker: named, quote };
-  } catch {
-    // Without a quote the catalogue name stands.
-    return { ticker, quote: null };
+  } catch (error) {
+    // Without a quote the catalogue name stands. Refused, whether the listing still trades is unknown; answered
+    // with an error of the listing's own, a later look would answer the same, so the match stands as it is.
+    return { ticker, quote: null, ...quoteRefused(error) ? { failed: true as const } : {} };
   }
+}
+
+/**
+ * Whether a quote failed as the service refusing or not reaching it (a rate
+ * limit, an overload, a timeout, no connection), which a later look may get
+ * past. A failure the service gave for the listing itself (no quote for it, a
+ * 4xx, a source that failed it twice) is the listing's own: a symbol whose
+ * quote always errors costs no wait. What cannot be told apart is taken for
+ * a refusal, so a busy service never lets a line that stopped trading pass as
+ * one that trades.
+ */
+function quoteRefused(error: unknown): boolean {
+  if (isNoSourceAnswer(error)) return false;
+  for (let current = error, depth = 0; current && typeof current === "object" && depth < 5; depth += 1) {
+    if (current instanceof ApiRequestError) {
+      const { status } = current;
+      if (status === 408 || status === 429 || status === 503) return true;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return !wasAskedTwice(current);
+    }
+    if (wasAskedTwice(current)) return false;
+    current = (current as { failure?: unknown }).failure ?? (current as { cause?: unknown }).cause;
+  }
+  return true;
 }
 
 export type CliTickerResolution =
@@ -435,9 +479,10 @@ const MARKET_OPERATION = /^(?:GET|POST) \/market\//;
 /**
  * Waits before each new look at the symbols that failed while requests were
  * failing. The first outlasts the five seconds the router keeps an empty
- * search answer; the service's rate limit is a minute's window.
+ * search answer. Two, so a long add is done within a minute: what is still
+ * refused after them is named with the command that adds it.
  */
-const RETRY_WAITS_MS = [6_000, 15_000, 30_000];
+const RETRY_WAITS_MS = [6_000, 15_000];
 
 /**
  * Counts the data service's market requests that fail while it watches. A
@@ -466,14 +511,31 @@ function lookUpTickers(
   symbols: readonly string[],
   concurrency: number,
   resolve: (symbol: string) => Promise<CliTicker>,
+  looked?: () => void,
 ): Promise<CliTickerResolution[]> {
   return mapWithConcurrency(symbols, concurrency, async (input): Promise<CliTickerResolution> => {
     try {
       return { input, ...await resolve(input) };
     } catch (error) {
       return { input, error: error instanceof Error ? error : new Error(String(error)) };
+    } finally {
+      looked?.();
     }
   });
+}
+
+/**
+ * Whether a lookup failed as busy: a search no source answered in time
+ * ("Search is busy"), which gives up before its request fails, so the
+ * requests the service failed do not count it.
+ */
+function busyLookup(entry: CliTickerResolution): boolean {
+  return !!entry.error && (entry.error.message === SEARCH_BUSY_MESSAGE || isProviderBusy(entry.error));
+}
+
+/** Whether a lookup is to be made again while requests fail: one that failed as refused, or a match whose quote was refused. */
+function lookAgain(entry: CliTickerResolution): boolean {
+  return entry.error ? mayBeRefusal(entry.error) : entry.unchecked === true;
 }
 
 /**
@@ -520,16 +582,21 @@ export async function resolveTickersForCli(
     retry,
     askWhenAmbiguous,
     onRetry,
+    onProgress,
     retryWaitsMs = RETRY_WAITS_MS,
   }: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous"> & {
     /** Told before each new look, with how many symbols and how long it waits first. */
     onRetry?: (count: number, waitMs: number) => void;
+    /** Told as each symbol of the first look is settled, with how many are and how many there are. */
+    onProgress?: (looked: number, total: number) => void;
     retryWaitsMs?: readonly number[];
   } = {},
 ): Promise<CliTickerResolution[]> {
   const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange)] as const));
+  let settled = 0;
+  const progress = onProgress ? () => onProgress(++settled, symbols.length) : undefined;
   // Each look asks for its symbols' searches and changes in batches first.
-  const look = async (inputs: readonly string[], concurrency: number): Promise<Map<string, CliTickerResolution>> => {
+  const look = async (inputs: readonly string[], concurrency: number, looked?: () => void): Promise<Map<string, CliTickerResolution>> => {
     const batched = await batchedListLookups(dataProvider, inputs.map((input) => plans.get(input)!));
     const resolve = (symbol: string) => resolveCliTicker(symbol, store, batched.dataProvider, exchange, {
       retry, askWhenAmbiguous, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS,
@@ -537,28 +604,30 @@ export async function resolveTickersForCli(
     // Symbols whose searches were answered ask only for quotes, which go out together; the rest ask as before.
     const answered = (input: string) => batched.answered(plans.get(input)!);
     return new Map((await Promise.all([
-      lookUpTickers(inputs.filter(answered), ANSWERED_CONCURRENCY, resolve),
-      lookUpTickers(inputs.filter((input) => !answered(input)), concurrency, resolve),
+      lookUpTickers(inputs.filter(answered), ANSWERED_CONCURRENCY, resolve, looked),
+      lookUpTickers(inputs.filter((input) => !answered(input)), concurrency, resolve, looked),
     ])).flat().map((entry) => [entry.input, entry] as const));
   };
   const failedRequests = watchFailedRequests();
   try {
-    const looked = await look(symbols, RESOLVE_CONCURRENCY);
+    const looked = await look(symbols, RESOLVE_CONCURRENCY, progress);
     let lookups = symbols.map((input) => looked.get(input)!);
-    let failing = failedRequests.count() > 0;
+    let failing = failedRequests.count() > 0 || lookups.some(busyLookup);
     for (const waitMs of retryWaitsMs) {
-      const failed = lookups.filter((entry) => entry.error && mayBeRefusal(entry.error)).map((entry) => entry.input);
+      // A match whose quote was refused is looked at again too, so it gets the check a first look gives.
+      const failed = lookups.filter(lookAgain).map((entry) => entry.input);
       if (!failing || failed.length === 0) break;
       onRetry?.(failed.length, waitMs);
       await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
       const before = failedRequests.count();
       const again = await look(failed, RETRY_CONCURRENCY);
       lookups = lookups.map((entry) => again.get(entry.input) ?? entry);
-      failing = failedRequests.count() > before;
+      failing = failedRequests.count() > before || [...again.values()].some(busyLookup);
     }
     if (!failing) return lookups;
-    // Still refused after the last wait: a failure may only be the refusal, so none is called not found.
-    return lookups.map((entry) => entry.error && mayBeRefusal(entry.error)
+    // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
+    // and a match whose quote was refused is not taken as trading.
+    return lookups.map((entry) => lookAgain(entry)
       ? { input: entry.input, error: new LookupUnansweredError(entry.input) }
       : entry);
   } finally {

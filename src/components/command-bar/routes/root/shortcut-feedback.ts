@@ -35,7 +35,7 @@ export function buildRootShortcutFeedback({
   if (rootShortcutIntent.source === "pane-template") {
     const argKind = getPaneTemplateArgKind(rootShortcutIntent.template);
     if (argKind === "ticker") {
-      if (rootShortcutIntent.template.shortcut?.argOptional && !rootShortcutIntent.argText) {
+      if (rootShortcutIntent.template.shortcut?.argOptional && !rootShortcutIntent.argText && !rootShortcutIntent.inferredArg) {
         return `Shortcut: ${rootShortcutIntent.label}`;
       }
       // Same ticker the intent inferred: the prompt's, so a linked desk counts.

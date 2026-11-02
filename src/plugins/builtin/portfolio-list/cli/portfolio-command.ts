@@ -74,7 +74,7 @@ import {
   requirePortfolio,
   takeCollectionName,
 } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
@@ -263,6 +263,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       suggest: true,
       dryRun,
       onRetry: retryNotice(ctx),
+      onProgress: progressNotice(ctx),
       retry,
       add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
     });

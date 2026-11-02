@@ -2,13 +2,16 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
+import { createTestTicker } from "../test-support/ticker";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
 import { ListingArgError, savedListingName } from "./listing-arg";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { ApiRequestError, markAskedTwice } from "../api-client/errors";
+import { createProviderMiss, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import { ListingChoiceError, resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
-import { failedReason, failedRow } from "./symbol-rows";
+import { addSymbols, failedReason, failedRow } from "./symbol-rows";
 
 const persistences: AppPersistence[] = [];
 
@@ -141,6 +144,14 @@ test("a symbol whose search the service refused is looked up again, never report
   const refusedThroughout = await lookUp(3);
   expect(refusedThroughout.retries).toEqual([2, 2]);
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
+
+  // A search no source answered in time is busy with no request failed yet: looked up again too.
+  // 2 Nov 2026: seven symbols of a 300-name add ended "Search is busy" with no new look.
+  const retries: number[] = [];
+  const [entry] = await resolveTickersForCli(["NVDA"], tickerStore(), createTestDataProvider({
+    search: async () => { if (retries.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE); return [nvda]; },
+  }), undefined, { retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count) });
+  expect({ retries, ticker: entry?.ticker?.metadata.ticker }).toEqual({ retries: [1], ticker: "NVDA" });
 });
 
 test("what cannot be a symbol fails before any request, and never makes a list wait to look it up again", async () => {
@@ -293,5 +304,80 @@ test("a symbol several companies list names their listings and, when its own com
     const failure = failedRow("NEP", nep!.error!);
     expect(failure.choices?.map((choice) => choice.key)).toEqual(["NEP:SET", "NEP:XHAM"]);
     expect(failedReason(failure, "NEP")).toBe("Choose an exchange for NEP: NEP:SET, NEP:XHAM; NEP became XIFR on 2025-02-03");
+  }
+});
+
+test("a bare symbol whose line stopped trading as its company moved needs a choice, and one whose quote was refused is looked at again before it counts as trading", async () => {
+  const day = 24 * 60 * 60_000;
+  // Rite Aid's old line: search's bare US row names no venue, and neither does the quote that says it stopped.
+  const rad = { providerId: "test", symbol: "RAD", name: "RAD", exchange: "", currency: "USD", type: "Common Stock" };
+  const oldco = { ...rad, symbol: "OLDCO", name: "Oldco Inc.", exchange: "NYSE" };
+  const changes: Record<string, TickerChanges> = {
+    RAD: { symbol: "RAD", moved: { symbol: "RADCQ", name: null, hops: [{ from: "RAD", to: "RADCQ", date: "2023-10-17" }] },
+      formerly: null, listedName: null, changes: [{ from: "RAD", to: "RADCQ", date: "2023-10-17" }] },
+  };
+  const ended = (symbol: string, exchange?: string) => createTestQuote({
+    symbol, price: 0.65, lastUpdated: Date.now() - 1_000 * day, stale: true,
+    ...exchange ? { listingExchangeName: exchange, exchangeName: exchange } : {},
+    delisting: { status: "inactive", lastTradeDate: "2023-10-13", historyStart: "2019-04-22" },
+  });
+  /** A source that refuses OLDCO's quote this many times while it limits the rate, as connection health sees it. */
+  const source = (refusals: number) => {
+    let refused = 0;
+    return createTestDataProvider({
+      search: async (query) => query === "RAD" ? [rad] : query === "OLDCO" ? [oldco] : [],
+      getQuote: async (symbol, exchange) => {
+        if (symbol === "RAD") return ended("RAD");
+        if (refused < refusals) {
+          refused += 1;
+          connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+            operation: "POST /market/quotes", success: false, latencyMs: refused, error: new Error("Anonymous market rate limit exceeded"),
+          });
+          throw new Error("Anonymous market rate limit exceeded");
+        }
+        return ended("OLDCO", exchange || "NYSE");
+      },
+      getTickerChanges: async (symbol) => changes[symbol] ?? null,
+    });
+  };
+
+  const rows = await addSymbols({ symbols: ["RAD", "OLDCO"], store: tickerStore(), dataProvider: source(0), add: (ticker) => ({ ticker, changed: true }) });
+  expect(rows.map((row) => [row.status, row.message ?? null, row.tradesAs ?? null])).toEqual([
+    ["needs_choice", "RAD stopped trading 2023-10-17, now RADCQ", "RADCQ"],
+    ["needs_choice", "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", null],
+  ]);
+  // Saved already, as an add before this check left it, its old line is no listing under the symbol now.
+  const saved = tickerStore();
+  await saved.saveTicker(createTestTicker("RAD", "RAD", { exchange: "" }));
+  const again = await addSymbols({ symbols: ["RAD", "OLDCO"], store: saved, dataProvider: source(0), add: (ticker) => ({ ticker, changed: true }) });
+  expect(again[0]).toMatchObject({ status: "needs_choice", message: "RAD stopped trading 2023-10-17, now RADCQ" });
+
+  const lookUp = async (refusals: number) => {
+    const retries: number[] = [];
+    const [, entry] = await resolveTickersForCli(["RAD", "OLDCO"], tickerStore(), source(refusals), undefined, {
+      retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count),
+    });
+    return { retries, ended: entry?.ended ?? null, error: entry?.error?.message ?? null };
+  };
+  // Refused through the first look (its own quote, then the match's): looked at again, and checked as a first look checks it.
+  expect(await lookUp(2)).toEqual({ retries: [1], ended: "OLDCO:NYSE (Oldco Inc.): Last traded Oct 13, 2023 (last price $0.65)", error: null });
+  // Refused throughout: not looked up, never taken as trading.
+  expect(await lookUp(10)).toEqual({ retries: [1, 1], ended: null, error: "Could not look up OLDCO: Gloom Cloud did not answer. Try again in a minute." });
+  // A quote the service fails for the listing itself, on every look, while other requests are refused: no wait, and the
+  // match stands (review: it cost both waits and ended as "did not answer").
+  for (const own of [createProviderMiss("Cloud quotes are unavailable for OLDCO"), markAskedTwice(new ApiRequestError("Quote source failed", 500))]) {
+    const retries: number[] = [];
+    const failing = createTestDataProvider({
+      search: async (query) => query === "OLDCO" ? [oldco] : [],
+      getQuote: async () => {
+        connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+          operation: "POST /market/quotes", success: false, latencyMs: retries.length + Math.random(), error: own,
+        });
+        throw own;
+      },
+    });
+    const [entry] = await resolveTickersForCli(["OLDCO"], tickerStore(), failing, undefined, { retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count) });
+    expect({ retries, ticker: entry?.ticker?.metadata.ticker ?? null, error: entry?.error?.message ?? null }, own.message)
+      .toEqual({ retries: [], ticker: "OLDCO", error: null });
   }
 });

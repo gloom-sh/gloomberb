@@ -375,6 +375,7 @@ export function createCdsHeadless(
         description: "Days of a named issuer's daily 5Y levels, the report's Daily section (fn CDS F --csv --section daily).",
       },
     ],
+    discovery: { aliases: ["CDS", "CDSW"] },
     describe: (args) => typeof args.argument === "string" ? `CDS | ${args.argument}` : "Single-Name CDS",
     async load(args, ctx) {
       const issuer = typeof args.argument === "string" ? args.argument : null;

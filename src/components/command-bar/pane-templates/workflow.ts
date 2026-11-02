@@ -178,11 +178,14 @@ export function useCommandBarPaneTemplateActions({
         return;
       }
       try {
+        // A watchlist's name reads as its symbols, at most the function's maximum, and the bar says so.
+        const notes: string[] = [];
         const symbols = await resolveTickerListInput(
           trimmedList,
           activeCollectionId,
           buildWorkflowDeps(),
           template.shortcut?.keepArgToken,
+          { maximum: template.headless?.argument.maximum, notes },
         );
         const createOptions = {
           arg: trimmedList,
@@ -192,6 +195,7 @@ export function useCommandBarPaneTemplateActions({
           openPaneTemplateWorkflow(template, { arg: trimmedArg });
           return;
         }
+        if (notes.length > 0) notify(notes.join(" "), { type: "info" });
         await openPaneTemplateDirect(template, createOptions);
       } catch {
         openPaneTemplateWorkflow(template, { arg: trimmedArg });
@@ -209,6 +213,7 @@ export function useCommandBarPaneTemplateActions({
     activeTickerSymbol,
     buildWorkflowDeps,
     getPaneTemplateContext,
+    notify,
     openModeRoute,
     openPaneTemplateDirect,
     openPaneTemplateWorkflow,

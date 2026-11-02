@@ -1041,7 +1041,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CDS", "CDS F", "gloom fn CDS --sort 1m", "gloom fn CDS F --csv --section daily"],
     keys: [OPEN, STEP],
     data: same("Delayed, as trades are disseminated"),
-    bloomberg: ["CDS"],
+    bloomberg: ["CDS", "CDSW"],
   },
   CDX: {
     summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D, 1W and 1M moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Naming an index opens the board on it, and `fn` adds its daily history. Sovereign CDS is the other tab.",

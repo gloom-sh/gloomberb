@@ -17,7 +17,7 @@ import {
   resolvePreferredCollectionTarget,
   resolveSoleCollectionTarget,
 } from "../../workflow/ops";
-import type { parseRootShortcutIntent } from "./shortcuts";
+import { shortcutArgument, type parseRootShortcutIntent } from "./shortcuts";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
@@ -62,11 +62,10 @@ export function buildRootShortcutItem({
   if (rootShortcutIntent.kind === "none") return null;
 
   if (rootShortcutIntent.source === "pane-template") {
+    const arg = shortcutArgument(rootShortcutIntent);
     return createPaneTemplateItem(rootShortcutIntent.template, {
       category: "Panes",
-      createOptions: rootShortcutIntent.argText
-        ? { arg: rootShortcutIntent.argText }
-        : undefined,
+      createOptions: arg ? { arg } : undefined,
       showShortcut: true,
       shortcutExecution: true,
     });
