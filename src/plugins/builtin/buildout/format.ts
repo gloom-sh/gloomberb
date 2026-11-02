@@ -1,4 +1,6 @@
 import { colors, priceColor } from "../../../theme/colors";
+import { collectUniqueTickerSymbols } from "../../../tickers/tokenizer";
+import { isKnownExchangeCode } from "../../../utils/exchanges";
 import { formatDetailDate as sharedFormatDetailDate, parseDisplayDate } from "../../../utils/datetime-format";
 import type { BuildoutSource, BuildoutUpdate } from "./model/types";
 
@@ -141,9 +143,29 @@ export function tickerSymbol(value: string | null | undefined): string | null {
   return symbol ? symbol.toUpperCase() : null;
 }
 
+/**
+ * The key the app looks a dataset ticker up and opens it by. A name-led
+ * symbol (NVDA, BRK.B) is its own. The dataset writes some Asian listings by
+ * number alone (2330, 005930), which a cashtag reads as money, so one takes
+ * the venue the dataset names (2330:TWSE, 005930:KRX). Null when the dataset
+ * names no venue the app knows: such a ticker is plain text, never a chip
+ * that looks different from the resolved ones around it.
+ */
+export function listingKey(ticker: string | null | undefined, exchange?: string | null): string | null {
+  const symbol = tickerSymbol(ticker);
+  if (!symbol) return null;
+  let key: string | null = symbol;
+  if (!/^[A-Z]/.test(symbol)) {
+    const venue = tickerSymbol(exchange);
+    // `688795.SS` names its venue twice: the dataset's venue is the one kept.
+    key = venue && isKnownExchangeCode(venue) ? `${symbol.replace(/\.[A-Z]{1,4}$/, "")}:${venue}` : null;
+  }
+  return key && collectUniqueTickerSymbols([`$${key}`]).includes(key) ? key : null;
+}
+
 export function tickerSearchText(symbols: readonly string[]) {
   return symbols
-    .filter((symbol) => /^[A-Z]/.test(symbol))
+    .filter((symbol) => collectUniqueTickerSymbols([`$${symbol}`]).includes(symbol))
     .map((symbol) => `$${symbol}`)
     .join(" ");
 }

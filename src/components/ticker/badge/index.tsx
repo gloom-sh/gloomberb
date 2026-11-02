@@ -11,6 +11,8 @@ import { usePaneLinkMenuEntry } from "../../ui/external-link";
 
 export interface TickerBadgeProps {
   symbol: string;
+  /** The listing the chip stands for when it is not the symbol as written (`2330` is `2330:TWSE`): what it resolves, prices and opens. */
+  listing?: string;
   status: TickerBadgeStatus;
   quote: Quote | null;
   liveQuote?: boolean;
@@ -37,6 +39,7 @@ const NATIVE_PRICE_OVER_RESTING_TEXT = { position: "absolute", inset: 0, overflo
 
 export function TickerBadge({
   symbol,
+  listing,
   status,
   quote,
   liveQuote = true,
@@ -49,8 +52,9 @@ export function TickerBadge({
 }: TickerBadgeProps) {
   const registry = getSharedRegistry();
   const { nativeContextMenu, nativePaneChrome } = useUiCapabilities();
-  const ticker = typeof registry?.getTicker === "function" ? registry.getTicker(symbol) : null;
-  const financials = typeof registry?.getData === "function" ? registry.getData(symbol) : null;
+  const key = listing ?? symbol;
+  const ticker = typeof registry?.getTicker === "function" ? registry.getTicker(key) : null;
+  const financials = typeof registry?.getData === "function" ? registry.getData(key) : null;
   const openTickerContextMenu = useTickerContextMenu({
     ticker,
     financials,
@@ -65,7 +69,7 @@ export function TickerBadge({
   const { fg: color, bg: backgroundColor } = tickerBadgeColors(tone, hovered);
   // An ambiguous symbol is worth opening: that is how the listing gets picked.
   const interactive = status !== "loading";
-  usePaneLinkMenuEntry(interactive ? `ticker:${symbol}` : null, tf("Open {ticker}", { ticker: symbol }), () => onOpen(symbol));
+  usePaneLinkMenuEntry(interactive ? `ticker:${key}` : null, tf("Open {ticker}", { ticker: symbol }), () => onOpen(key));
 
   return (
     <Box paddingRight={trailingGap ? 1 : 0} flexShrink={0} justifyContent={nativePaneChrome ? "center" : undefined}>
@@ -95,7 +99,7 @@ export function TickerBadge({
           event.stopPropagation?.();
           event.preventDefault?.();
           if (!interactive) return;
-          onOpen(symbol);
+          onOpen(key);
         }}
         onContextMenu={(event: any) => {
           void openTickerContextMenu(event);

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { TickerBadgeList } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { Button } from "../../../../components/ui/button";
@@ -7,8 +8,8 @@ import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-ti
 import { colors } from "../../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
-import { sourceDetailEntries, text, textOrNull, tickerSymbol } from "../format";
-import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
+import { listingKey, sourceDetailEntries, text, textOrNull, tickerSymbol } from "../format";
+import type { BuildoutRelatedCompany, BuildoutSource } from "../model/types";
 
 export type InlineTickerCatalog = Record<string, InlineTickerCatalogEntry>;
 
@@ -80,6 +81,38 @@ export function DetailListLine({
   );
 }
 
+/** A ticker as the dataset writes it, with the venue it names when it names one. */
+export interface DatasetTicker {
+  ticker?: string | null;
+  exchange?: string | null;
+}
+
+/**
+ * The dataset's tickers, drawn one way: a chip for each the app can look up,
+ * price and open, a number-only Asian listing through the venue the dataset
+ * names, and bold plain text for one it cannot read. Never a chip that skips
+ * the lookup and so looks different from the resolved ones.
+ */
+export function ListingBadges({ tickers, width, fallbackColor = colors.textBright }: {
+  tickers: readonly DatasetTicker[];
+  width: number;
+  fallbackColor?: string;
+}) {
+  const { symbols, listings } = useMemo(() => {
+    const shown: string[] = [];
+    const known: Record<string, string | null> = {};
+    for (const entry of tickers) {
+      const symbol = tickerSymbol(entry.ticker);
+      if (!symbol) continue;
+      shown.push(symbol);
+      const key = listingKey(entry.ticker, entry.exchange);
+      if (key !== symbol) known[symbol] = key;
+    }
+    return { symbols: shown, listings: known };
+  }, [tickers]);
+  return <TickerBadgeList symbols={symbols} width={width} fallbackColor={fallbackColor} listings={listings} />;
+}
+
 export function RelatedCompaniesLine({
   label,
   companies,
@@ -93,25 +126,19 @@ export function RelatedCompaniesLine({
   if (items.length === 0) return null;
 
   const visible = items.slice(0, 8);
-  const symbols = visible
-    .map((company) => tickerSymbol(company.ticker))
-    .filter((symbol): symbol is string => symbol != null);
+  const withTicker = visible.filter((company) => tickerSymbol(company.ticker) != null);
   const names = visible
     .filter((company) => !tickerSymbol(company.ticker))
     .map((company) => textOrNull(company.name))
     .filter((name): name is string => name != null);
   const overflow = items.length > visible.length ? ` +${items.length - visible.length}` : "";
   const prefix = `${label}: `;
-  const badgeWidth = Math.min(Math.max(0, width - prefix.length - (names.length > 0 ? 1 : 0)), Math.max(0, symbols.length * 9));
+  const badgeWidth = Math.min(Math.max(0, width - prefix.length - (names.length > 0 ? 1 : 0)), Math.max(0, withTicker.length * 9));
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{prefix}</Text>
-      {symbols.length > 0 ? (
-        <TickerBadgeList
-          symbols={symbols}
-          width={badgeWidth}
-          fallbackColor={colors.textBright}
-        />
+      {withTicker.length > 0 ? (
+        <ListingBadges tickers={withTicker} width={badgeWidth} />
       ) : null}
       <ClippedText fg={colors.textDim} text={`${names.length > 0 ? names.join(", ") : ""}${overflow}`} width={Math.max(0, width - prefix.length - badgeWidth)} cut={truncateWithEllipsis} />
     </Box>
@@ -205,31 +232,5 @@ export function FavoriteCell({
       stopPropagation
       onPress={onPress}
     >{failed && !busy ? <Text fg={colors.negative} attributes={TextAttributes.BOLD}>!</Text> : undefined}</Button>
-  );
-}
-
-export function CompanyCell({
-  company,
-  width,
-  selected,
-}: {
-  company: BuildoutCompany;
-  width: number;
-  selected: boolean;
-}) {
-  const symbol = tickerSymbol(company.ticker);
-  if (!symbol) {
-    return <ClippedText fg={selected ? colors.selectedText : colors.text} text={company.name} width={width} cut={truncateWithEllipsis} />;
-  }
-  const badgeWidth = Math.min(11, width);
-  return (
-    <Box flexDirection="row" width={width} height={1} overflow="hidden">
-      <TickerBadgeList
-        symbols={[symbol]}
-        width={badgeWidth}
-        fallbackColor={selected ? colors.selectedText : colors.textBright}
-      />
-      <ClippedText fg={selected ? colors.selectedText : colors.text} text={company.name} width={Math.max(0, width - badgeWidth)} cut={truncateWithEllipsis} />
-    </Box>
   );
 }
