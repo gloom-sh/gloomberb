@@ -47,7 +47,7 @@ test("a narrow bar shortens the label to upgrade rather than clip it into Feedba
   };
   // The mark and "upgrade" take 13 columns, 3 past half the held-back 20; "delayed data · " is 15 more.
   expect(await at(STATUS_WIDGET_COLUMNS + 18)).toBe("◷15m delayed data · upgrade");
-  expect(claimed).toBe(18);
+  expect(claimed).toBe(15);
   expect(await at(STATUS_WIDGET_COLUMNS + 17)).toBe("◷15m upgrade");
   expect(claimed).toBe(3);
 });

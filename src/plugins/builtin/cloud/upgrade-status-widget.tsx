@@ -39,10 +39,11 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   const commandBarKey = useCommandBarShortcut();
   const [access, setAccess] = useState(() => resolvePlanAccess(apiClient.getCurrentUser()));
   // The bar holds back its usual columns for the widgets' own text, which
-  // this one shares with the chat's sign-in: half of them are its own. What
-  // the mark and "upgrade" draw past that half, and "delayed data · " where
-  // the terminal has room for it, are claimed so the version chip gives way:
-  // the label is never clipped into Feedback beside it.
+  // this one shares with the chat's sign-in: half of them are its own. The
+  // label never shrinks into Feedback beside it: "delayed data · upgrade"
+  // where the row has room for what the mark and "upgrade" draw past that
+  // half and the words before it, else "upgrade". What it draws past the
+  // usual columns is claimed, so the version chip gives way to it.
   const room = useStatusWidgetRoom();
   const othersClaimed = useOtherStatusWidgetClaims(CLAIM_ID);
   const free = !access.isTrialActive && !access.hasProAccess && !offerShowing;
@@ -52,7 +53,7 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
     - STATUS_WIDGET_COLUMNS / 2);
   const extra = displayWidth(longLabel) - displayWidth(shortLabel);
   const long = nativePaneChrome || room - STATUS_WIDGET_COLUMNS - othersClaimed >= overflow + extra;
-  useStatusWidgetClaim(CLAIM_ID, free && !nativePaneChrome ? overflow + (long ? extra : 0) : 0);
+  useStatusWidgetClaim(CLAIM_ID, free && !nativePaneChrome ? long ? extra : overflow : 0);
 
   useEffect(
     // The chat widget already drives session refreshes; this only follows them.
