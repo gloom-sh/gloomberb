@@ -143,6 +143,138 @@ for (const seed of [8, 18, 39]) test(`after any change, each node a frame draws 
   }
 });
 
+/** Counts the layouts the core reads from yoga, over every node of the renderer. */
+function countLayoutReads(root: Renderable): { reads: number; restore: () => void } {
+  const yogaPrototype = Object.getPrototypeOf((root as unknown as LayoutState).yogaNode) as LayoutState["yogaNode"];
+  const read = yogaPrototype.getComputedLayout;
+  const counter = {
+    reads: 0,
+    restore: () => { yogaPrototype.getComputedLayout = read; },
+  };
+  yogaPrototype.getComputedLayout = function (this: unknown) {
+    counter.reads += 1;
+    return read.call(this);
+  };
+  return counter;
+}
+
+test("a frame with nothing new reads no layout from yoga, and a change reads only the nodes yoga laid out again", async () => {
+  current = await createTestRenderer({ width: 60, height: 24 });
+  const { renderer, renderOnce } = current;
+  const texts: TextRenderable[] = [];
+  let nodes = 1;
+  for (let column = 0; column < 3; column += 1) {
+    const box = new BoxRenderable(renderer, { id: `column-${column}`, flexDirection: "column", width: 20 });
+    renderer.root.add(box);
+    nodes += 1;
+    for (let row = 0; row < 10; row += 1) {
+      const line = new BoxRenderable(renderer, { id: `row-${column}-${row}`, height: 1 });
+      const text = new TextRenderable(renderer, { id: `text-${column}-${row}`, content: `row ${row}` });
+      line.add(text);
+      box.add(line);
+      texts.push(text);
+      nodes += 2;
+    }
+  }
+  await renderOnce();
+  await renderOnce();
+
+  const counter = countLayoutReads(renderer.root);
+  try {
+    await renderOnce();
+    expect(counter.reads).toBe(0);
+
+    // One column lays out again; the other two keep their rows.
+    texts[3]!.content = "a longer row";
+    counter.reads = 0;
+    await renderOnce();
+    expect(counter.reads).toBeGreaterThan(0);
+    expect(counter.reads).toBeLessThan(nodes / 2);
+    expect(staleBoxes(renderer.root, renderer.frameId)).toEqual([]);
+  } finally {
+    counter.restore();
+  }
+});
+
+test("a node moved on to a parent the frame reads after it still takes its new box", async () => {
+  current = await createTestRenderer({ width: 40, height: 16 });
+  const { renderer, renderOnce } = current;
+  const first = new BoxRenderable(renderer, { id: "first", flexDirection: "column", height: 4 });
+  const second = new BoxRenderable(renderer, { id: "second", flexDirection: "column", height: 6, paddingLeft: 5 });
+  const home = new BoxRenderable(renderer, { id: "home", height: 3 });
+  renderer.root.add(first);
+  renderer.root.add(second);
+  renderer.root.add(home);
+  second.add(new BoxRenderable(renderer, { id: "spacer", height: 2 }));
+  const moved = new BoxRenderable(renderer, { id: "moved", width: 7, height: 2 });
+  home.add(moved);
+  await renderOnce();
+
+  // Added to the first box, the node is queued to be read straight after it,
+  // and stays queued when it moves on: the frame reads it before its parent.
+  first.add(moved);
+  second.add(moved);
+  await renderOnce();
+  expect(staleBoxes(renderer.root, renderer.frameId)).toEqual([]);
+  const state = moved as unknown as LayoutState;
+  expect([state._x, state._y]).toEqual([5, 2]);
+});
+
+test("a terminal resize gives every node the box yoga laid out at the new size", async () => {
+  current = await createTestRenderer({ width: 60, height: 20 });
+  const { renderer, renderOnce, resize } = current;
+  const row = new BoxRenderable(renderer, { id: "row", flexDirection: "row", flexGrow: 1 });
+  renderer.root.add(row);
+  const columns = [0, 1, 2].map((index) => {
+    const column = new BoxRenderable(renderer, { id: `column-${index}`, flexDirection: "column", flexGrow: 1 });
+    row.add(column);
+    for (let line = 0; line < 4; line += 1) {
+      const cell = new BoxRenderable(renderer, { id: `cell-${index}-${line}`, flexGrow: 1 });
+      cell.add(new TextRenderable(renderer, { id: `label-${index}-${line}`, content: `cell ${line}` }));
+      column.add(cell);
+    }
+    return column;
+  });
+  await renderOnce();
+  await renderOnce();
+  expect(columns.map((column) => column.width)).toEqual([20, 20, 20]);
+
+  resize(30, 8);
+  await renderOnce();
+  expect(staleBoxes(renderer.root, renderer.frameId)).toEqual([]);
+  expect(columns.map((column) => column.width)).toEqual([10, 10, 10]);
+  expect(columns.map((column) => column.height)).toEqual([8, 8, 8]);
+});
+
+test("a hovered box destroyed under the pointer no longer makes every other box look for a hovered parent", async () => {
+  current = await createTestRenderer({ width: 20, height: 6 });
+  const { renderer } = current;
+  const hovered = new BoxRenderable(renderer, { id: "hovered", width: 6, height: 2, hoverBackgroundColor: "#336699" } as ConstructorParameters<typeof BoxRenderable>[1]);
+  const plain = new BoxRenderable(renderer, { id: "plain", width: 6, height: 2 });
+  const probe = new BoxRenderable(renderer, { id: "probe", width: 2, height: 1 });
+  renderer.root.add(hovered);
+  renderer.root.add(plain);
+  plain.add(probe);
+  type Hoverable = BoxRenderable & { getActiveHoverBackgroundColor(): RGBA | undefined; processMouseEvent(event: { type: string }): void };
+  // Counts the probe's look at its parent's hover state.
+  let looks = 0;
+  let plainHovered = false;
+  Object.defineProperty(plain, "_isHovered", {
+    configurable: true,
+    get: () => { looks += 1; return plainHovered; },
+    set: (value: boolean) => { plainHovered = value; },
+  });
+
+  (hovered as Hoverable).processMouseEvent({ type: "over" });
+  expect((probe as Hoverable).getActiveHoverBackgroundColor()).toBeUndefined();
+  expect(looks).toBeGreaterThan(0);
+
+  hovered.destroyRecursively();
+  looks = 0;
+  expect((probe as Hoverable).getActiveHoverBackgroundColor()).toBeUndefined();
+  expect(looks).toBe(0);
+});
+
 test("a box takes the fill of the hovered box it sits in, and gives it back when the pointer leaves", async () => {
   current = await createTestRenderer({ width: 20, height: 6 });
   const { renderer } = current;
