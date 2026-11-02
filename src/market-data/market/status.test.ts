@@ -18,6 +18,7 @@ import {
   quoteSessionStateLabel,
 } from "./status";
 import { parseListingDelisting } from "../quotes/delisting";
+import { changeBasisLabel, quoteChangeBasis } from "./change-basis";
 import { colors } from "../../theme/colors";
 
 describe("marketStateCountdown", () => {
@@ -167,6 +168,34 @@ describe("regular and extended session displays", () => {
     const noTrade = { ...pre, preMarketPrice: undefined, preMarketChange: undefined, preMarketChangePercent: undefined };
     expect(getExtendedSessionDisplay(noTrade)).toBeNull();
     expect(getSessionMoveDisplay(noTrade)).toEqual({ price: 162, change: 1.43, changePercent: 0.8906 });
+  });
+
+  test("a print stamped Sat 04:58 UTC, after midnight New York, never headlines over Friday's close", () => {
+    // SPY as Gloom Cloud served it on Sun 1 Nov 2026: the print, above the ask, dated to the Saturday it printed
+    // on and measured from Friday's close, beside Friday's close and its move from Thursday.
+    const saturday: Quote = {
+      symbol: "SPY", currency: "USD", instrumentType: "ETF", listingExchangeName: "ARCA", exchangeName: "ARCA",
+      price: 762.8, change: 7.08, changePercent: 0.9369, previousClose: 755.72, bid: 755.57, ask: 760.87,
+      regularClose: 755.72, regularCloseSessionDate: "2026-10-30", regularChange: -13.64, regularChangePercent: -1.7729,
+      changeSessionDate: "2026-10-31", sessionConfidence: "derived", marketState: "CLOSED",
+      lastUpdated: Date.parse("2026-10-31T04:58:28Z"),
+    };
+    const sunday = Date.parse("2026-11-01T18:00:00Z");
+    expect(getRegularSessionDisplay(saturday)).toEqual({ price: 755.72, change: -13.64, changePercent: -1.7729 });
+    const extended = getExtendedSessionDisplay(saturday)!;
+    expect(extended).toMatchObject({ session: "POST", price: 762.8 });
+    expect(extended.change).toBeCloseTo(7.08, 8);
+    // The headline's move is Friday's, so its basis is Thursday's close.
+    const basis = quoteChangeBasis(saturday)!;
+    expect(basis).toMatchObject({ kind: "close", date: "2026-10-29" });
+    expect(changeBasisLabel(basis, sunday)).toBe("vs Thu 29 Oct close");
+    // Dated to Friday's session as the service now dates it, it reads the same.
+    const friday = { ...saturday, changeSessionDate: "2026-10-30", previousClose: 769.36, change: -6.56, changePercent: -0.8527 };
+    expect(getRegularSessionDisplay(friday)).toEqual(getRegularSessionDisplay(saturday));
+    expect(getExtendedSessionDisplay(friday)).toEqual(extended);
+    // A Monday print is a new session's: the live price headlines it.
+    const monday = { ...saturday, changeSessionDate: "2026-11-02", lastUpdated: Date.parse("2026-11-02T15:00:00Z") };
+    expect(getRegularSessionDisplay(monday)).toEqual({ price: 762.8, change: 7.08, changePercent: 0.9369 });
   });
 });
 

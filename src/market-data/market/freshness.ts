@@ -296,6 +296,24 @@ export function isVenueTradingDay(exchange: string | undefined, date: string): b
   return isLocalTradingDay(canonicalExchange(exchange), date);
 }
 
+/**
+ * The venue's session a local `date` belongs to: the date itself when the
+ * venue trades on it (isVenueTradingDay), otherwise the latest trading day
+ * before it, as a print stamped on a Saturday or a holiday follows the last
+ * session and opens none of its own. Null for round-the-clock venues and when
+ * no trading day falls within the lookback.
+ */
+export function venueSessionOnOrBefore(exchange: string | undefined, date: string): string | null {
+  const canonical = canonicalExchange(exchange);
+  const day = isoLocalDateToUtcDay(date);
+  if (day == null || ALWAYS_OPEN_EXCHANGES.has(canonical)) return null;
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
+    const iso = new Date((day - offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    if (isLocalTradingDay(canonical, iso)) return iso;
+  }
+  return null;
+}
+
 /** `weekendDays` replaces the venue's days off (historySourceWeekendDays). */
 function isLocalTradingDay(exchange: string, date: string, weekendDays?: readonly number[]): boolean {
   const weekday = localWeekday(date);

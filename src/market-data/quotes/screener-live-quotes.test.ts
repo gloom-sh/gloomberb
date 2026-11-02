@@ -240,11 +240,11 @@ describe("a board read by its regular session alone", () => {
     const saturday: Quote = { ...friday, marketState: "CLOSED", price: 229.33, change: -1.15, changePercent: -0.499,
       postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined, lastUpdated: Date.parse("2026-10-09T23:59:50Z") };
     expect(regular(saturday)).toMatchObject({ price: 229.28, changePercent: -0.5207 });
-    // Thanksgiving: a quote whose day rolled to the holiday cannot date its close, so the snapshot's session stands.
-    const thanksgiving: Quote = { ...saturday, changeSessionDate: "2026-11-26", regularCloseSessionDate: "2026-11-25",
-      lastUpdated: Date.parse("2026-11-26T15:00:00Z") };
-    const wednesday = { ...tile, price: 231, change: 1.72, changePercent: 0.7501, regularChangePercent: 0.7501 };
-    expect(regular(thanksgiving, wednesday, "2026-11-25")).toBe(wednesday);
+    // Thanksgiving opens no session: a print dated to the holiday follows Wednesday's, so its close stands, not the print.
+    const thanksgiving: Quote = { ...saturday, price: 232.4, changeSessionDate: "2026-11-26", regularClose: 231,
+      regularCloseSessionDate: "2026-11-25", regularChange: 1.72, regularChangePercent: 0.7501, lastUpdated: Date.parse("2026-11-26T15:00:00Z") };
+    const wednesday = { ...tile, price: 230.5, change: 1.22, changePercent: 0.5322, regularChangePercent: 0.5322 };
+    expect(regular(thanksgiving, wednesday, "2026-11-25")).toMatchObject({ price: 231, change: 1.72, changePercent: 0.7501 });
   });
 
   test("in the pre-market after the day rolls it shows the prior session's move, and only a close no older than the board's", () => {
