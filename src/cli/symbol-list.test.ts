@@ -154,4 +154,11 @@ test("a pasted grid keeps every cell when some are a terminal's codes or numeric
   expect(parseSymbolText("AAL\tczr us equity\tUAL\nDAL\t2007\tULCC\n").ignored).toEqual([]);
   // A column of whole numbers alone is still each symbol's value.
   expect(parseSymbolText("ED\t2582\nCNX\t1200\n")).toEqual({ symbols: ["ED", "CNX"], ignored: ["2582", "1200"] });
+  // A grid of Hong Kong codes alone reads every cell.
+  expect(parseSymbolText("0700\t9988\n1810\t3690\n")).toEqual({ symbols: ["0700", "9988", "1810", "3690"], ignored: [] });
+  // A name before its legal form is no code (SE and AG are market codes too), and a rating or a quantity beside a
+  // symbol is a value, never a symbol, even where the column also holds one.
+  expect(parseSymbolText("SAP SE\tSAP\nSIEMENS AG\tSIE\n").symbols).toEqual(["SAP SE", "SIEMENS AG"]);
+  expect(parseSymbolText("AAPL\tHOLD\nMSFT\tBUY\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["HOLD", "BUY"] });
+  expect(parseSymbolText("AAPL\tHOLD\nMSFT\t100\nNVDA\tAMD\n").symbols).toEqual(["AAPL", "MSFT", "NVDA"]);
 });

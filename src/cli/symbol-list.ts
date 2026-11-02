@@ -3,7 +3,7 @@ import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 import { foldTypedText } from "../utils/typed-text";
 import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
-import { readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
+import { endsInLegalForm, readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -145,28 +145,52 @@ function looksLikeSymbol(cell: string): boolean {
   return SYMBOL_TOKEN.test(cell) && !isNumberCell(cell);
 }
 
-/** A cell that is a terminal's code for one listing, spaces and all: `CZR US Equity`, `1128 HK Equity`, `VOD LN`. */
+/**
+ * A cell that is a terminal's code for one listing, spaces and all: `CZR US
+ * Equity`, `1128 HK Equity`, `VOD LN`. A company's name before its legal form
+ * (`SAP SE`, `SIEMENS AG`) is a name, though SE and AG are market codes too.
+ */
 function isTerminalCodeCell(cell: string): boolean {
-  return /\s/.test(cell.trim()) && (readTerminalListingCode(cell) != null || unknownBloombergMarket(cell) != null);
+  return /\s/.test(cell.trim()) && !endsInLegalForm(cell)
+    && (readTerminalListingCode(cell) != null || unknownBloombergMarket(cell) != null);
 }
 
-/** A numeric exchange code as a grid holds one (`2007`, `0700`, `600519`): Hong Kong, Tokyo, Shanghai. */
-const NUMERIC_CODE = /^\d{3,6}$/;
+/** A numeric exchange code as a grid holds one (`2007`, `0700`, `600519`): Hong Kong, Tokyo, Shanghai. Shorter is a quantity. */
+const NUMERIC_CODE = /^\d{4,6}$/;
+
+/** What a sheet holds beside its symbols that reads like one: a rating, a side, a flag. */
+const VALUE_WORD = /^(?:buy|sell|hold|long|short|neutral|overweight|underweight|outperform|underperform|yes|no|true|false|none|total)$/i;
+
+/** A cell a grid of symbols can hold: a symbol, never a rating or a side (`HOLD`, `BUY`). */
+function isGridSymbol(cell: string): boolean {
+  return looksLikeSymbol(cell) && !VALUE_WORD.test(cell.trim());
+}
 
 /**
  * The columns after the first that hold a symbol with a letter in it (or a
- * terminal's code): a whole number there is a numeric exchange code among
- * tickers (`2007` beside `AAL`), not a value beside its symbol, whose column
- * holds numbers alone (`ED 2582`).
+ * terminal's code), and nothing that is a value: a whole number there is a
+ * numeric exchange code among tickers (`2007` beside `AAL`), not a value
+ * beside its symbol, whose column holds numbers alone (`ED 2582`) or values
+ * (`HOLD`, `100`).
  */
 function symbolColumns(rows: readonly string[][]): Set<number> {
   const columns = new Set<number>();
+  const values = new Set<number>();
   for (const cells of rows) {
     cells.forEach((cell, index) => {
-      if (index > 0 && cell && (isTerminalCodeCell(cell) || (looksLikeSymbol(cell) && /\p{L}/u.test(cell)))) columns.add(index);
+      if (index === 0 || !cell) return;
+      if (VALUE_WORD.test(cell.trim()) || (isFigure(cell) && !NUMERIC_CODE.test(cell.trim()))) values.add(index);
+      else if (isTerminalCodeCell(cell) || (looksLikeSymbol(cell) && /\p{L}/u.test(cell))) columns.add(index);
     });
   }
+  for (const index of values) columns.delete(index);
   return columns;
+}
+
+/** A grid of numeric exchange codes alone, two or more to a row (`0700  9988`): every cell is a listing. */
+function numericCodeGrid(rows: readonly string[][]): boolean {
+  return rows.some((cells) => cells.filter(Boolean).length > 1)
+    && rows.every((cells) => cells.every((cell) => !cell || NUMERIC_CODE.test(cell.trim())));
 }
 
 /** How many cells a table's ignored-cells note names before it counts the rest. */
@@ -225,9 +249,9 @@ export function parseSymbolText(text: string): SymbolText {
   if (!delimited && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true };
   // A grid of symbols: a terminal's code is one cell (`CZR US Equity`), and so is a numeric code among tickers (`2007`).
   const codes = symbolColumns(cleaned);
-  const grid = cleaned.every((cells) => cells.every((cell, index) => (
+  const grid = numericCodeGrid(cleaned) || cleaned.every((cells) => cells.every((cell, index) => (
     !cell || isJunkCell(cell) || isTerminalCodeCell(cell)
-    || (looksLikeSymbol(cell) && (index === 0 || !isFigure(cell) || (NUMERIC_CODE.test(cell) && codes.has(index))))
+    || (isGridSymbol(cell) && (index === 0 || !isFigure(cell) || (NUMERIC_CODE.test(cell) && codes.has(index))))
   )));
   if (grid) return { symbols: records.flat().filter(Boolean), ignored: [] };
   // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
