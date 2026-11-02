@@ -19,6 +19,14 @@ describe("OpenTUI data table model", () => {
     expect(window.visibleItems).toEqual([6, 7, 8, 9, 10, 11, 12, 13, 14]);
   });
 
+  test("a viewport not laid out yet keeps the default window, so a render before the first layout does not shrink it to a row", () => {
+    const items = Array.from({ length: 60 }, (_, index) => index);
+    const unmeasured = resolveDataTableVisibleWindow({ appViewportHeight: 40, items, measuredViewportHeight: undefined, overscan: 3, scrollTop: 0, virtualize: true });
+    const notLaidOut = resolveDataTableVisibleWindow({ appViewportHeight: 40, items, measuredViewportHeight: 0, overscan: 3, scrollTop: 0, virtualize: true });
+    expect(notLaidOut.endIndex).toBe(unmeasured.endIndex);
+    expect(notLaidOut.endIndex).toBe(22);
+  });
+
   test("uses all rows when virtualization is disabled", () => {
     const window = resolveDataTableVisibleWindow({
       appViewportHeight: 3,

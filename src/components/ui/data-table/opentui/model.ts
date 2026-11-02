@@ -258,11 +258,14 @@ export function resolveDataTableVisibleWindow<T>({
   scrollTop,
   virtualize,
 }: DataTableVisibleWindowOptions<T>): DataTableVisibleWindow<T> {
+  // A viewport the renderer has not laid out yet reads 0 (a laid-out one is at
+  // least a row): a render before the first layout keeps the default window
+  // rather than drawing one row until the size change re-renders the table.
   const viewportHeight = virtualize
     ? Math.max(
         1,
         Math.min(
-          measuredViewportHeight ?? Math.min(items.length, 16),
+          measuredViewportHeight || Math.min(items.length, 16),
           Math.max(1, Math.ceil(appViewportHeight)),
         ),
       )

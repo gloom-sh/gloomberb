@@ -411,7 +411,9 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   }, [assetOnly, carried, compareAsset, marketTab, setSearch, setCompareAsset, setTab]);
   const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = openingTab(row.marketId, access.hasProAccess)) => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab, access.hasProAccess]);
   const openMarketId = useCallback((marketId: string) => { setSearch(marketId); setTab(openingTab(marketId, access.hasProAccess)); }, [setSearch, setTab, access.hasProAccess]);
-  const { strip, rows: tabRows } = usePaneTabs({ tabs: PERP_TABS.map((value) => ({ value, label: label(value) })), activeValue: tab, onSelect: selectTab, focused, dense: true });
+  // Kept between board updates, so the tab strip skips the renders they give the pane.
+  const tabItems = useMemo(() => PERP_TABS.map((value) => ({ value, label: label(value) })), []);
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: tabItems, activeValue: tab, onSelect: selectTab, focused, dense: true });
   const refreshMarket = useCallback(() => { void resource.reload(); }, [resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(refreshMarket, { focused: focused && marketTab && !querySearch.active && (tab !== "history" || !active) });
