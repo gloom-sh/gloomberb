@@ -1,4 +1,5 @@
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
+import { readTerminalListingCode } from "../../../../tickers/terminal-codes";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { getPaneTemplateDisplayLabel, paneTemplateShortcutPrefixes } from "../../pane-templates/items";
 
@@ -14,6 +15,8 @@ interface ShortcutIntentBase {
   argPlaceholder?: string;
   argText: string;
   completionQuery: string | null;
+  /** The ticker in focus the argument was filled with, when none was typed. */
+  inferredArg?: string;
 }
 
 interface CommandShortcutIntent extends ShortcutIntentBase {
@@ -72,12 +75,27 @@ export function getPluginCommandShortcutArgKind(command: CommandDef): RootShortc
   return command.shortcutArg?.kind ?? (command.shortcutArg ? "text" : null);
 }
 
-function inferShortcutArg(argKind: RootShortcutArgKind | null, activeTicker: string | null): string | null {
+function inferShortcutArg(argKind: RootShortcutArgKind | null, activeTicker: string | null, issuer = false): string | null {
   if (!activeTicker) return null;
-  if (argKind === "ticker" || argKind === "ticker-list") {
+  if (argKind === "ticker" || argKind === "ticker-list" || (issuer && argKind === "text")) {
     return activeTicker;
   }
   return null;
+}
+
+/** A plain ticker, as one word: NFE, BRK.B, 0700, VOD:LSE. */
+const TICKER_WORD = /^\$?[A-Za-z0-9][A-Za-z0-9.\-]{0,11}(?::[A-Za-z0-9]{1,8})?$/;
+
+/**
+ * The ticker a query names before a function code, Bloomberg's word order:
+ * `NFE CDS` and `NFE US Equity CDS` are `CDS NFE`. The ticker is one word or
+ * a terminal code (`NFE US Equity`, `VOD LN`), read as its listing. Null for
+ * anything else, so a company's name stays a search.
+ */
+function tickerBeforeCode(text: string): string | null {
+  const words = text.trim().split(/\s+/);
+  if (words.length === 1) return TICKER_WORD.test(words[0]!) ? words[0]!.replace(/^\$/, "").toUpperCase() : null;
+  return readTerminalListingCode(text)?.key ?? null;
 }
 
 function buildShortcutCandidates(
@@ -142,6 +160,16 @@ export function leadingShortcutCode({
     .find((candidate) => candidate.prefix === first)?.prefix ?? null;
 }
 
+/** What a shortcut opens with: the argument typed, else the ticker in focus an issuer's function took. */
+export function shortcutArgument(intent: Exclude<ShortcutIntent, { kind: "none" }>): string {
+  return intent.argText || intent.inferredArg || "";
+}
+
+/** A function whose argument is a company it reports on, which opens on the ticker in focus when none is typed. */
+function takesIssuer(template: PaneTemplateDef | undefined): boolean {
+  return template?.shortcut?.focusedIssuer === true;
+}
+
 export function parseRootShortcutIntent({
   query,
   commands,
@@ -158,23 +186,40 @@ export function parseRootShortcutIntent({
   /** The command prompt's instrument, used when a pane requires a ticker and the focused pane has none. */
   promptTicker?: string | null;
 }): ShortcutIntent {
-  const trimmed = query.trim();
-  if (!trimmed) return { kind: "none" };
+  const typed = query.trim();
+  if (!typed) return { kind: "none" };
 
-  const upper = trimmed.toUpperCase();
-  const match = buildShortcutCandidates(commands, pluginCommands, paneTemplates).find((candidate) => {
-    if (upper === candidate.prefix) return true;
-    return !!candidate.argKind && upper.startsWith(`${candidate.prefix} `);
-  });
-  if (!match) return { kind: "none" };
+  const candidates = buildShortcutCandidates(commands, pluginCommands, paneTemplates);
+  const leading = (text: string) => {
+    const upper = text.toUpperCase();
+    return candidates.find((candidate) => {
+      if (upper === candidate.prefix) return true;
+      return !!candidate.argKind && upper.startsWith(`${candidate.prefix} `);
+    });
+  };
+  let trimmed = typed;
+  let match = leading(trimmed);
+  if (!match) {
+    // Bloomberg's order, the ticker first: `NFE CDS`, `NFE US Equity CDS`.
+    const words = typed.split(/\s+/);
+    const code = words.length > 1 ? words.at(-1)!.toUpperCase() : "";
+    const trailing = candidates.find((candidate) => candidate.prefix === code && candidate.argKind
+      && (candidate.argKind !== "text" || takesIssuer(candidate.template)));
+    const ticker = trailing ? tickerBeforeCode(words.slice(0, -1).join(" ")) : null;
+    if (!trailing || !ticker) return { kind: "none" };
+    trimmed = `${trailing.prefix} ${ticker}`;
+    match = trailing;
+  }
 
   const argText = trimmed.slice(match.prefix.length).trim();
-  // A pane that requires a ticker takes the one already in the prompt. An
-  // optional ticker stays unbound, and other commands keep the focused ticker.
+  // A pane that requires a ticker takes the one already in the prompt, and so
+  // does one that takes an issuer (CDS, TRACE). Another optional ticker stays
+  // unbound, and other commands keep the focused ticker.
+  const issuer = takesIssuer(match.template);
   const inferFrom = match.source === "pane-template"
-    ? (match.template?.shortcut?.argOptional ? null : (promptTicker ?? activeTicker))
+    ? (match.template?.shortcut?.argOptional && !issuer ? null : (promptTicker ?? activeTicker))
     : activeTicker;
-  const inferredArg = inferShortcutArg(match.argKind, inferFrom);
+  const inferredArg = inferShortcutArg(match.argKind, inferFrom, issuer);
   const completionQuery = inferredArg ? `${match.prefix} ${inferredArg}` : null;
 
   let kind: Exclude<ShortcutIntentKind, "none">;
@@ -195,6 +240,7 @@ export function parseRootShortcutIntent({
     argPlaceholder: match.argPlaceholder,
     argText,
     completionQuery,
+    ...(kind === "inferred-complete" && inferredArg && issuer ? { inferredArg } : {}),
   };
 
   if (match.source === "command" && match.command) {

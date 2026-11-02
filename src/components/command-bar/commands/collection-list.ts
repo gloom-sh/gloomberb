@@ -3,6 +3,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { splitSymbolArgs, splitSymbolWords, symbolInputKey, uniqueSymbols } from "../../../cli/symbol-args";
 import { protectFigureCommas } from "../../../cli/symbol-cells";
 import { readSymbolList } from "../../../cli/symbol-list";
+import { readTerminalListingCode } from "../../../tickers/terminal-codes";
 import { readNameEntries } from "../../../cli/name-entries";
 import {
   addSymbols,
@@ -41,6 +42,43 @@ export interface PastedSymbolList {
   repeated: number;
   /** Whether the text separates its symbols with commas, semicolons, tabs or lines, rather than spaces alone. */
   separated: boolean;
+}
+
+/** A symbol as one word, in capitals: NFE, BRK.B, 0700, VOD:LSE. */
+const CAPITAL_SYMBOL = /^\$?[A-Z0-9][A-Z0-9.\-]{0,11}(?::[A-Z0-9]{1,8})?$/;
+
+/**
+ * The symbols of a list pasted into the bare command bar, which flattens its
+ * lines into spaces: entries split by commas, semicolons, tabs or lines (two
+ * or more), or by spaces alone three or more symbols in capitals, where
+ * Bloomberg's cells keep their words (`NFE US Equity RAD US Equity`). Null for
+ * anything else, which stays a search: a name, a sentence, one code.
+ */
+export function pastedRootList(query: string): string[] | null {
+  const text = protectFigureCommas(query.trim());
+  if (/[,;\t\r\n]/.test(text)) {
+    const entries = uniqueSymbols(splitSymbolArgs([query])).symbols;
+    return entries.length >= 2 ? entries : null;
+  }
+  const words = text.split(/\s+/).filter(Boolean);
+  const entries: string[] = [];
+  let codes = 0;
+  for (let index = 0; index < words.length;) {
+    // A terminal code's words read as one: `NFE US Equity`, `1128 HK Equity`, `VOD LN`.
+    const code = [3, 2].map((size) => words.slice(index, index + size).join(" "))
+      .find((candidate) => candidate.split(" ").length > 1 && readTerminalListingCode(candidate));
+    if (code) {
+      entries.push(code);
+      index += code.split(" ").length;
+      codes += 1;
+      continue;
+    }
+    if (!CAPITAL_SYMBOL.test(words[index]!)) return null;
+    entries.push(words[index]!.replace(/^\$/, ""));
+    index += 1;
+  }
+  const unique = [...new Set(entries)];
+  return unique.length >= 3 || (codes > 0 && unique.length >= 2) ? unique : null;
 }
 
 /**

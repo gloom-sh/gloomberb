@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
-import { parseRootShortcutIntent } from "./shortcuts";
+import { parseRootShortcutIntent, shortcutArgument } from "./shortcuts";
 
 function tickerTemplate(id: string, prefix: string): PaneTemplateDef {
   return {
@@ -47,11 +47,25 @@ const paneTemplates: PaneTemplateDef[] = [
     shortcut: { prefix: "SRCH", argPlaceholder: "query", argKind: "text", argOptional: true },
   },
   {
+    id: "jobs-pane",
+    paneId: "jobs",
+    label: "Job Postings",
+    description: "JOBS shortcut",
+    shortcut: { prefix: "JOBS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+  },
+  {
     id: "cds-pane",
     paneId: "cds",
     label: "Single-Name CDS",
     description: "CDS shortcut",
-    shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+    shortcut: { prefix: "CDS", aliases: ["CDSW"], argPlaceholder: "ticker", argKind: "ticker", argOptional: true, focusedIssuer: true },
+  },
+  {
+    id: "trace-bonds-pane",
+    paneId: "trace-bonds",
+    label: "Corporate Bond Tape",
+    description: "TRACE shortcut",
+    shortcut: { prefix: "TRACE", argKind: "text", argOptional: true, focusedIssuer: true, argPlaceholder: "issuer, symbol or CUSIP" },
   },
 ];
 
@@ -118,7 +132,7 @@ describe("ticker data root shortcuts", () => {
 
   test("an optional ticker pane does not take the prompt ticker", () => {
     const intent = parseRootShortcutIntent({
-      query: "CDS",
+      query: "JOBS",
       commands: [],
       paneTemplates,
       activeTicker: null,
@@ -169,12 +183,12 @@ describe("ticker data root shortcuts", () => {
   });
 
   test("optional ticker shortcuts do not infer the active ticker", () => {
-    const bare = parse("CDS", "MSFT");
+    const bare = parse("JOBS", "MSFT");
     expect(bare.kind).toBe("partial");
     if (bare.kind === "none") throw new Error("Expected shortcut intent");
     expect(bare.completionQuery).toBeNull();
 
-    const scoped = parse("CDS ORCL", "MSFT");
+    const scoped = parse("JOBS ORCL", "MSFT");
     expect(scoped.kind).toBe("complete");
     if (scoped.kind === "none") throw new Error("Expected shortcut intent");
     expect(scoped.argText).toBe("ORCL");
@@ -192,6 +206,35 @@ describe("ticker data root shortcuts", () => {
     if (scoped.kind === "none") throw new Error("Expected shortcut intent");
     expect(scoped.source).toBe("plugin-command");
     expect(scoped.argText).toBe("AAPL,MSFT");
+  });
+});
+
+describe("Bloomberg word order and the issuer in focus", () => {
+  const opened = (query: string, activeTicker: string | null = null) => {
+    const intent = parse(query, activeTicker);
+    if (intent.kind === "none") return null;
+    return { prefix: intent.prefix, kind: intent.kind, arg: shortcutArgument(intent) };
+  };
+
+  test("a ticker before a function code opens the function on it, a terminal code included", () => {
+    // 2 Nov 2026: `NFE CDS` and `NFE US Equity CDS` offered only Ask AI.
+    expect(opened("NFE CDS")).toEqual({ prefix: "CDS", kind: "complete", arg: "NFE" });
+    expect(opened("nfe us equity cds")).toEqual({ prefix: "CDS", kind: "complete", arg: "NFE" });
+    expect(opened("NFE US Equity CDSW")).toEqual({ prefix: "CDSW", kind: "complete", arg: "NFE" });
+    expect(opened("VOD LN GP")).toEqual({ prefix: "GP", kind: "complete", arg: "VOD:LSE" });
+    expect(opened("AMD GF")).toEqual({ prefix: "GF", kind: "complete", arg: "AMD" });
+    expect(opened("NFE TRACE")).toEqual({ prefix: "TRACE", kind: "complete", arg: "NFE" });
+    // A name, a search's text argument or a code alone stays as typed.
+    expect(opened("new fortress cds")).toBeNull();
+    expect(opened("apple SRCH")).toBeNull();
+    expect(opened("CDS NFE")).toEqual({ prefix: "CDS", kind: "complete", arg: "NFE" });
+  });
+
+  test("an issuer's function opens on the ticker in focus, and market-wide with none", () => {
+    expect(opened("CDS", "NFE")).toEqual({ prefix: "CDS", kind: "inferred-complete", arg: "NFE" });
+    expect(opened("TRACE", "NFE")).toEqual({ prefix: "TRACE", kind: "inferred-complete", arg: "NFE" });
+    expect(opened("CDS")).toEqual({ prefix: "CDS", kind: "partial", arg: "" });
+    expect(opened("JOBS", "NFE")).toEqual({ prefix: "JOBS", kind: "partial", arg: "" });
   });
 });
 

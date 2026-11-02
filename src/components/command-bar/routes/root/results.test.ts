@@ -465,3 +465,27 @@ describe("Start Here in the empty bar", () => {
     expect(ordered.some((item) => item.id === "security-description")).toBe(true);
   });
 });
+
+describe("a pasted list in the root result model", () => {
+  test("a list the bar flattened leads with adding its symbols, Bloomberg's cells whole, and asks the AI nothing", () => {
+    // 2 Nov 2026: a pasted list offered Ask AI only.
+    const added: Array<[string, string | undefined]> = [];
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "NFE US Equity RAD US Equity TUP US Equity CZR",
+      assist: { enabled: true, auto: true, state: { status: "idle" as const }, onAsk: () => {}, onSignUp: () => {}, onRunCandidate: () => {} },
+      executeCollectionCommand: (commandId, rawInput) => { added.push([commandId, rawInput]); },
+    }));
+    const ordered = orderListResults(items);
+    expect(ordered.map((item) => [item.label, item.detail])).toEqual([
+      ["Add 4 symbols to a watchlist", "NFE US Equity, RAD US Equity, TUP US Equity, CZR"],
+    ]);
+    ordered[0]!.action();
+    expect(added).toEqual([["add-watchlist", "NFE US Equity, RAD US Equity, TUP US Equity, CZR"]]);
+
+    // A name, two words or a sentence stays a search.
+    for (const rootQuery of ["palo alto networks", "AAPL MSFT", "what is NFE", "NFE US Equity"]) {
+      const { items: rows } = buildRootResultModel(rootOptions({ rootQuery }));
+      expect(rows.some((item) => item.id.startsWith("pasted-list:")), rootQuery).toBe(false);
+    }
+  });
+});
