@@ -17,11 +17,14 @@ function tickerBeforeCode(text: string): string | null {
 /**
  * A query in Bloomberg's word order, the ticker first, as the bar reads it:
  * `NFE CDS` and `NFE US Equity CDS` are `CDS NFE`, when `takesTicker` says
- * the last word is a function code that takes one. Null for anything else.
+ * the last word is a function code that takes one. Null for anything else,
+ * and for a whole query that is a listing's code, whose market code is a
+ * function's too: `SAP GR` is SAP on Xetra, `AMD GF` AMD in Frankfurt,
+ * `600519 CG` Moutai in Shanghai.
  */
 export function tickerFirstQuery(query: string, takesTicker: (code: string) => boolean): string | null {
   const words = query.trim().split(/\s+/);
-  if (words.length < 2) return null;
+  if (words.length < 2 || readTerminalListingCode(query) != null) return null;
   const code = words.at(-1)!.toUpperCase();
   if (!takesTicker(code)) return null;
   const ticker = tickerBeforeCode(words.slice(0, -1).join(" "));

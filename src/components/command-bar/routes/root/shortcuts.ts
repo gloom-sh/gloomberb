@@ -1,5 +1,8 @@
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
 import { tickerFirstQuery } from "./ticker-first";
+import { kindFromListingSyntax } from "../../../../tickers/instrument-kind";
+import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
+import { parsePublicTickerKey } from "../../../../utils/exchanges";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { getPaneTemplateDisplayLabel, paneTemplateShortcutPrefixes } from "../../pane-templates/items";
 
@@ -155,6 +158,18 @@ function takesIssuer(template: PaneTemplateDef | undefined): boolean {
   return template?.shortcut?.focusedIssuer === true;
 }
 
+/**
+ * Whether a ticker in focus can be a company an issuer's function reports on:
+ * never an index, a currency or coin pair, a future or a coin (`^VIX`,
+ * `EURUSD=X`, `EUR/USD`, `CL=F`, `BTC-USD`), with which CDS and TRACE open
+ * market-wide.
+ */
+function canBeIssuer(symbol: string): boolean {
+  const { symbol: bare, exchange } = parsePublicTickerKey(symbol);
+  if (bare.includes("/") || isRoundTheClockCoin(symbol, exchange)) return false;
+  return kindFromListingSyntax(symbol, exchange) == null;
+}
+
 export function parseRootShortcutIntent({
   query,
   commands,
@@ -198,8 +213,9 @@ export function parseRootShortcutIntent({
   // does one that takes an issuer (CDS, TRACE). Another optional ticker stays
   // unbound, and other commands keep the focused ticker.
   const issuer = takesIssuer(match.template);
+  const focused = promptTicker ?? activeTicker;
   const inferFrom = match.source === "pane-template"
-    ? (match.template?.shortcut?.argOptional && !issuer ? null : (promptTicker ?? activeTicker))
+    ? (match.template?.shortcut?.argOptional && !(issuer && focused && canBeIssuer(focused)) ? null : focused)
     : activeTicker;
   const inferredArg = inferShortcutArg(match.argKind, inferFrom, issuer);
   const completionQuery = inferredArg ? `${match.prefix} ${inferredArg}` : null;

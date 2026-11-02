@@ -222,8 +222,9 @@ describe("Bloomberg word order and the issuer in focus", () => {
     expect(opened("nfe us equity cds")).toEqual({ prefix: "CDS", kind: "complete", arg: "NFE" });
     expect(opened("NFE US Equity CDSW")).toEqual({ prefix: "CDSW", kind: "complete", arg: "NFE" });
     expect(opened("VOD LN GP")).toEqual({ prefix: "GP", kind: "complete", arg: "VOD:LSE" });
-    expect(opened("AMD GF")).toEqual({ prefix: "GF", kind: "complete", arg: "AMD" });
     expect(opened("NFE TRACE")).toEqual({ prefix: "TRACE", kind: "complete", arg: "NFE" });
+    // A listing's code whose market code is also a function's stays that listing: AMD in Frankfurt, SAP on Xetra.
+    for (const query of ["AMD GF", "SAP GR", "BMW GR", "LHA GF", "600519 CG"]) expect(opened(query), query).toBeNull();
     // A name, a search's text argument or a code alone stays as typed.
     expect(opened("new fortress cds")).toBeNull();
     expect(opened("apple SRCH")).toBeNull();
@@ -234,6 +235,11 @@ describe("Bloomberg word order and the issuer in focus", () => {
     expect(opened("CDS", "NFE")).toEqual({ prefix: "CDS", kind: "inferred-complete", arg: "NFE" });
     expect(opened("TRACE", "NFE")).toEqual({ prefix: "TRACE", kind: "inferred-complete", arg: "NFE" });
     expect(opened("CDS")).toEqual({ prefix: "CDS", kind: "partial", arg: "" });
+    // An index, a currency pair, a coin or a future in focus is no issuer: market-wide, never an empty pane.
+    for (const focused of ["^VIX", "EURUSD=X", "EUR/USD", "BTC-USD", "BTC:CCC", "CL=F"]) {
+      expect(opened("CDS", focused), focused).toEqual({ prefix: "CDS", kind: "partial", arg: "" });
+      expect(opened("TRACE", focused), focused).toEqual({ prefix: "TRACE", kind: "partial", arg: "" });
+    }
     expect(opened("JOBS", "NFE")).toEqual({ prefix: "JOBS", kind: "partial", arg: "" });
   });
 });
