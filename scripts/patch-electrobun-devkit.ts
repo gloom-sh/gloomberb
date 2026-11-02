@@ -43,7 +43,8 @@ function parsePatch(text: string): FilePatch[] {
     if (file && hunk) file.hunks.push({ before: hunk.before.join("\n"), after: hunk.after.join("\n") });
     hunk = null;
   };
-  for (const line of text.split("\n")) {
+  // A Windows checkout gives the patch CRLF line ends.
+  for (const line of text.split(/\r?\n/)) {
     if (line.startsWith("diff --git ")) {
       closeHunk();
       file = null;
@@ -122,7 +123,9 @@ export async function patchElectrobunDevkit(): Promise<string[]> {
   for (const file of parsePatch(readFileSync(patchPath, "utf8"))) {
     const path = join(DEVKIT_DIR, file.path);
     const content = readFileSync(path, "utf8");
-    const next = applyHunks(file.path, content, file.hunks);
+    const crlf = content.includes("\r\n");
+    const patched = applyHunks(file.path, crlf ? content.replaceAll("\r\n", "\n") : content, file.hunks);
+    const next = crlf ? patched.replaceAll("\n", "\r\n") : patched;
     if (next === content) continue;
     writeFileSync(path, next);
     changed.push(file.path);
