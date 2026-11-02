@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, SCORE_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, GRADE_FIELDS, LETTER_GRADE_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, SCORE_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenFieldDefinition, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -11,17 +11,22 @@ import {
   dividendYieldBasis,
   formatScreenMetric,
   formatScreenValue,
+  gradeRankText,
   metricDate,
   parseCriterion,
   parseThreshold,
   resultFields,
   parseScreenDefinition,
   screenColumnLabel,
+  screenDetailValue,
   screenLabel,
+  screenSignValue,
   screenYtdBase,
   SHORT_LABELS,
   SIGN_COLORED,
   validateScreenPayload,
+  criterionInputText,
+  criterionValueLabel,
 } from "./model";
 const field = {
   id: "trailingPE" as const,
@@ -201,7 +206,7 @@ test("the field list is requested with the volatility group, which servers witho
   } as never);
   try {
     const data = await fetchScreenFields();
-    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b.*\btechnical\b/);
+    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b.*\btechnical\b.*\bgrades\b/);
     expect(data.fields.map((entry) => entry.id)).toEqual(["atrPercent"]);
   } finally {
     ask.mockRestore();
@@ -279,4 +284,49 @@ test("score fields: whole scores and ranks, Z and fair values to the cent, upsid
   const membership = { version: 1, currency: "USD", criteria: [{ field: "dowMember", op: "gte", value: 1 }], sort: { field: "marketCap", direction: "desc" } };
   expect(() => parseScreenDefinition(membership)).toThrow();
   expect(parseScreenDefinition({ ...membership, criteria: [{ field: "dowMember", op: "eq", value: 1 }] }).criteria).toHaveLength(1);
+});
+
+test("grades print as letters and the composite with its label, in one sign colour scale, and work as criteria", () => {
+  expect([1, 4, 5, 7, 8, 10, 13].map((value) => formatScreenValue("valueGrade", value))).toEqual(["F", "D+", "C-", "C+", "B-", "B+", "A+"]);
+  // A value off the scale is not a grade.
+  expect([formatScreenValue("growthGrade", 0), formatScreenValue("growthGrade", 7.5), formatScreenValue("momentumGrade", null)]).toEqual(["--", "--", "--"]);
+  expect([4.72, 4.5, 3.5, 3.49, 2.5, 1.5, 1.49, 1].map((value) => formatScreenValue("gradeComposite", value)))
+    .toEqual(["4.72 Top", "4.50 Top", "3.50 Strong", "3.49 Neutral", "2.50 Neutral", "1.50 Weak", "1.49 Bottom", "1.00 Bottom"]);
+  expect(screenDetailValue("profitabilityGrade", { value: 12, unit: "1-13" })).toBe("A");
+  expect(screenDetailValue("gradeComposite", { value: 2.79, unit: "1-5" })).toBe("2.79 Neutral");
+  expect(screenDetailValue("revenueRevision30dPercent", { value: 1.24, unit: "%" })).toBe("+1.2 %");
+  expect(gradeRankText({ source: "B+: percentile 82.4 among 412 Technology listings, from P/E 61.0 and P/B 70.2" }))
+    .toBe("percentile 82.4 among 412 Technology listings, from P/E 61.0 and P/B 70.2");
+  expect(gradeRankText({ source: "Neutral: the mean of the five grades' percentiles, 51.0, ranks 49.8 among 4,079 listings" }))
+    .toBe("the mean of the five grades' percentiles, 51.0, ranks 49.8 among 4,079 listings");
+  // B- and up read positive, D+ and down negative, the C band neutral; the composite by its label.
+  expect([1, 4, 5, 7, 8, 13].map((value) => screenSignValue("revisionsGrade", value))).toEqual([-1, -1, 0, 0, 1, 1]);
+  expect([4.8, 3.5, 3, 2.49, 1].map((value) => screenSignValue("gradeComposite", value))).toEqual([1, 1, 0, -1, -1]);
+  expect([screenSignValue("changePercent", -2), screenSignValue("changePercent", 0.01), screenSignValue("trailingPE", 20)]).toEqual([-2, 0, null]);
+  for (const field of ["nextYearEpsRevision30dPercent", "revenueRevision30dPercent"] as const) expect(SIGN_COLORED.has(field)).toBe(true);
+  for (const field of GRADE_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+  expect(columnWidth("gradeComposite")).toBeGreaterThanOrEqual("4.72 Neutral".length);
+
+  // A grade is typed and read as its letter; a number still works.
+  const grade: ScreenFieldDefinition = { id: "valueGrade", label: "Value grade", kind: "number", unit: "1-13", description: "", operators: ["gte", "between", "present"] };
+  expect(parseCriterion(grade, "gte", "b+")).toEqual({ field: "valueGrade", op: "gte", value: 10 });
+  expect(parseCriterion(grade, "between", "B, A+")).toEqual({ field: "valueGrade", op: "between", value: [9, 13] });
+  expect(parseCriterion(grade, "gte", "11")).toEqual({ field: "valueGrade", op: "gte", value: 11 });
+  expect(() => parseCriterion(grade, "gte", "E")).toThrow("Enter a grade from F to A+, such as B+.");
+  expect(criterionText({ field: "valueGrade", op: "gte", value: 10 })).toBe("Value grade >= B+");
+  expect(criterionText({ field: "momentumGrade", op: "between", value: [9, 13] })).toBe("Momentum grade between B, A+");
+  expect(criterionInputText({ field: "valueGrade", op: "between", value: [9, 13] })).toBe("B, A+");
+  expect(criterionValueLabel(grade)).toBe("Value (F to A+)");
+  // The composite takes a score or its label, and names the label a threshold starts.
+  const composite: ScreenFieldDefinition = { ...grade, id: "gradeComposite", label: "Grade composite", unit: "1-5" };
+  expect(parseCriterion(composite, "gte", "Strong")).toEqual({ field: "gradeComposite", op: "gte", value: 3.5 });
+  expect(parseCriterion(composite, "gte", "4.2")).toEqual({ field: "gradeComposite", op: "gte", value: 4.2 });
+  expect(criterionText({ field: "gradeComposite", op: "gte", value: 4.5 })).toBe("Grade composite >= 4.5 (Top)");
+  expect(criterionText({ field: "gradeComposite", op: "gte", value: 4.2 })).toBe("Grade composite >= 4.2");
+  expect(criterionValueLabel(composite)).toBe("Value (1-5)");
+  // An older server's rows, without the grades, still load with them unavailable.
+  const older = payload();
+  for (const row of older.rows) for (const field of GRADE_FIELDS) delete (row.metrics as Partial<typeof row.metrics>)[field];
+  const loaded = validateScreenPayload(older);
+  for (const field of [...LETTER_GRADE_FIELDS, "gradeComposite"] as const) expect(loaded.rows[0]!.metrics[field]).toMatchObject({ value: null, state: "unavailable" });
 });

@@ -632,7 +632,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `FUT` | Futures quote aliases across index, equity sectors, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
-| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, returns on capital and leverage, classic value and quality scores, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical, fundamental and score screens, saved screens, export and save to a watchlist |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, returns on capital and leverage, classic value and quality scores, sector-relative grades, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical, fundamental, score and grade screens, saved screens, export and save to a watchlist |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
@@ -2530,10 +2530,19 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
   - **1Y TR%** (`totalReturn1YPercent`): the 1Y return with the year's dividends added. **RS RATING** (`rsRating`, 1 to 99): where it ranks among the covered US listings, 99 the top 1%.
   - **PROFIT YRS**, **REV GR YRS** and **DIV GR YRS** (`profitableYears`, `revenueGrowthYears`, `dividendGrowthYears`): years in a row, back from the latest, with a profit, with revenue above the year before, and with a higher trailing twelve-month dividend. A streak that reaches the first stored year is a lower bound and says so: the SEC filings go back to about 2008 and the distribution history about ten years.
   - **S&P 500** and **DOW** (`sp500Member`, `dowMember`): Yes for a member of the index as the IVV and DIA holdings `MEMB` reads list it, No for another US listing. `sp500Member eq 1` keeps the index. The Nasdaq-100 is not offered: no Nasdaq-100 fund's holdings are stored.
+- **Grades**, F to A+, each ranking a few of the fields above within the company's sector. Every listing the screen covers is ranked, whatever its currency, since only each field's percentile counts:
+  - **VALUE** (`valueGrade`): P/E, forward P/E, P/B, EV/EBITDA and EV/revenue (lower is better) and FCF yield.
+  - **GROWTH** (`growthGrade`): revenue and EPS CAGR 3Y and consensus revenue and EPS growth for the year in progress.
+  - **PROFIT** (`profitabilityGrade`): gross, operating and net margin, ROE, ROIC and return on capital. Margins and ROE come from SEC filings, so a listing outside the US is graded on ROIC and return on capital.
+  - **MOMENTUM** (`momentumGrade`): the 3M return, the 1Y total return and the distance from the 52-week high.
+  - **REVISIONS** (`revisionsGrade`): the 30-day change in consensus EPS for this fiscal year and the next (**NXT EPS REV%**, `nextYearEpsRevision30dPercent`) and in consensus revenue for this year (**REVENUE REV%**, `revenueRevision30dPercent`).
+
+  Each field is ranked among the companies in the same sector that have it, and a grade averages those percentiles, ranks the average within the sector again and cuts it into thirteen equal bands, so A+ is a sector's top 7.7%. A sector with fewer than 20 companies that have a field ranks it against every listing, and the observation's reason says so. A grade needs two of its fields; with fewer it is unavailable and says which it has. Grades are stored as 1 (F) to 13 (A+): type the letter in the criterion editor (`Value grade >= B+`), or the number in a definition (`{"field":"valueGrade","op":"gte","value":10}`).
+- **COMPOSITE** (`gradeComposite`, 1 to 5): the five grades' percentiles averaged with equal weights, 20% each (three grades at least, the weights of those present summing to 1), ranked across every graded listing and scaled to 1 + 4 x percentile / 100. Its label is the nearest whole number: **Top** from 4.5, **Strong** from 3.5, **Neutral** from 2.5, **Weak** from 1.5 and **Bottom** below. By construction an eighth of the listings are Top and an eighth Bottom. The labels rank companies against each other on these numbers; they are not advice to buy or sell. Every grade and the composite is dated by the snapshot that ranked it and is stale when a field it read is.
 - **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal year over net income attributable to the parent, from SEC filings, so US filers only; unavailable when the income is zero or negative.
 - **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`, `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that stopped reads -100%; a company with too short a history or none paid in the base year has none. Distribution history is stored for most large USD payers and fewer elsewhere.
 
-Returns, EPS revisions, upside (the analysts', the Graham number's and Lynch's), dividend growth and the distances from the moving averages take the sign colour.
+Returns, EPS and revenue revisions, upside (the analysts', the Graham number's and Lynch's), dividend growth and the distances from the moving averages take the sign colour. Grades take it too, wherever EQS shows them: B- and up as a gain, D+ and down as a loss, the C grades plain; Strong and Top as a gain, Weak and Bottom as a loss.
 
 ### Results
 
@@ -2543,7 +2552,7 @@ Results lead with the chosen metric and its covered-universe percentile, then on
 - Click a metric header to sort by it and make it the focus, again to reverse. The footer shows matches, covered listings, currency and the snapshot time.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 
-**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Then eight screens on the classic scores:
+**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Then eight screens on the classic scores and one on the grades:
 
 - **Piotroski 8-9**: F-score at least 8 at a P/B of at most 2x, as Piotroski scored the cheaper companies, highest score first.
 - **Magic Formula top**: Magic Formula rank at most 100, best first.
@@ -2553,6 +2562,7 @@ Results lead with the chosen metric and its covered-universe percentile, then on
 - **Dividend growers**: five or more years of dividend growth, a yield of at least 2% and a payout of at most 75%, fastest 3-year dividend growth first.
 - **RS leaders**: RS rating at least 90 and within 15% of the 52-week high, highest rating first.
 - **Steady compounders**: ten profitable years, five or more years of revenue growth and ROIC of at least 15%, longest revenue streak first.
+- **Top grades**: a grade composite of at least 4.5, its Top label, highest first, with the five grades beside it.
 
 Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
 
@@ -2587,13 +2597,14 @@ gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria"
 gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
 ```
 
-`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`, `value`, `quality`, `garp`, `piotroski`, `magic-formula`, `altman-safe-value`, `graham-number`, `lynch-value`, `dividend-growers`, `rs-leaders`, `compounders`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
+`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`, `value`, `quality`, `garp`, `piotroski`, `magic-formula`, `altman-safe-value`, `graham-number`, `lynch-value`, `dividend-growers`, `rs-leaders`, `compounders`, `top-grades`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
 
 ```sh
 gloom fn EQS --preset golden-cross
 gloom fn EQS --preset oversold-uptrend --metric priceVsSma200Percent --csv
 gloom fn EQS --preset quality --metric netDebtToEbitda
 gloom fn EQS --preset magic-formula --metric earningsYieldPercent,returnOnCapitalPercent
+gloom fn EQS --preset top-grades
 ```
 
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app attention are Pro. On Free their rows read `locked` and the report says so once (`The free screener shows no KPI values; Gloom Pro shows each company's Backlog`). With Pro, a KPI column with gaps says how many rows have none, and missing data is not zero.

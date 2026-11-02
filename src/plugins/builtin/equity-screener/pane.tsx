@@ -56,7 +56,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
-import { SCREEN_IDEAS, screenIdea } from "./ideas";
+import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
 import { ScreenTickerCheck } from "./ticker-check";
 import {
   fetchSavedScreens,
@@ -71,17 +71,20 @@ import {
   dividendYieldBasis,
   formatScreenMetric,
   formatScreenValue,
+  GRADE_DISPLAY_FIELDS,
+  gradeRankText,
   metricDate,
   parseScreenDefinition,
   pickerFields,
   resultFields,
   screenMetricSetting,
-  SIGN_COLORED,
   screenColumnLabel,
   screenCurrencyEmpty,
   screenDefinitionKey,
+  screenDetailValue,
   screenLabel,
   screenRowId,
+  screenSignValue,
   screenYtdBase,
 } from "./model";
 import { useScreenResults } from "./results";
@@ -193,17 +196,19 @@ function ScreenDetail({
           const stamp = metricDate(metric);
           const extended = field === "changePercent" ? row.extended : undefined;
           const basis = field === "dividendYieldPercent" ? dividendYieldBasis(metric) : null;
+          // A grade's rank in its sector and the inputs it read, and why its peers are every listing when they are.
+          const graded = GRADE_DISPLAY_FIELDS.has(field) && metric.value !== null ? gradeRankText(metric) : null;
           return (
             <Fragment key={field}>
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
-                value={metric.value == null && metric.notMeaningful ? formatScreenMetric(field, metric) : `${formatScreenValue(field, metric.value)} ${metric.unit}`}
+                value={screenDetailValue(field, metric)}
                 detail={
                   metric.value === null
                     ? (metric.reason ?? "unavailable")
                     : [
-                        metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
+                        graded ? metric.reason : metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                         stamp.collected ? `collected ${stamp.text}` : stamp.text,
                         metric.state === "available" ? null : metric.state,
                       ].filter(Boolean).join(" \u00b7 ")
@@ -219,6 +224,7 @@ function ScreenDetail({
                 />
               ) : null}
               {basis ? <KeyValueRow label="Yield basis" labelWidth={24} value={basis} /> : null}
+              {graded ? <KeyValueRow label="Ranked" labelWidth={24} value={graded} emphasis={false} /> : null}
             </Fragment>
           );
         })}
@@ -249,6 +255,7 @@ export function EquityScreenerPane(props: PaneProps) {
       {...props}
       initial={initial}
       initialMetric={preset?.metric ?? "marketCap"}
+      initialMetricSetting={preset ? ideaMetricSetting(preset) : undefined}
     />
   );
 }
@@ -258,7 +265,8 @@ function EquityScreenView({
   focused,
   initial,
   initialMetric,
-}: PaneProps & { initial: ScreenDefinition; initialMetric: NumericField }) {
+  initialMetricSetting,
+}: PaneProps & { initial: ScreenDefinition; initialMetric: NumericField; initialMetricSetting?: string }) {
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
@@ -270,7 +278,7 @@ function EquityScreenView({
   const [definition, setDefinition] = usePluginPaneState("definition", initial);
   const [metricSetting, setMetric] = usePaneSettingValue<string>(
     "metric",
-    initialMetric,
+    initialMetricSetting ?? initialMetric,
   );
   // `--metric trailingPE,dividendYieldPercent` leads with the first and adds the others as columns.
   const [metric, ...otherMetrics] = screenMetricSetting(metricSetting, initialMetric);
@@ -922,7 +930,7 @@ function EquityScreenView({
           onChange: setIdeaSelectedId,
         }}
         onActivate={(row) => {
-          setMetric(row.metric);
+          setMetric(ideaMetricSetting(row));
           apply(row.definition);
           setCurrentSavedId(null);
           setMode("results");
@@ -1065,10 +1073,9 @@ function EquityScreenView({
                 : null;
               if (field) {
                 const observation = row.metrics[field];
-                const change = SIGN_COLORED.has(field) && observation.value != null
-                  // A move that prints 0.0 stays neutral.
-                  ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
-                  : undefined;
+                // A move by its sign (one that prints 0.0 stays neutral), a grade by its side of the middle.
+                const sign = screenSignValue(field, observation.value);
+                const change = sign == null ? undefined : priceColor(sign, colors);
                 return {
                   text: formatScreenMetric(field, observation),
                   color: observation.state === "stale" ? colors.warning : change,

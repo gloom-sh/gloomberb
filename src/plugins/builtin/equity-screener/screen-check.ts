@@ -1,6 +1,6 @@
-import type { ScreenCheckPayload, ScreenCriterion, ScreenDefinition } from "../../../api-client/equity-screener";
+import type { NumericField, ScreenCheckPayload, ScreenCriterion, ScreenDefinition } from "../../../api-client/equity-screener";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
-import { criterionText, parseScreenDefinition, screenDefinitionKey, screenLabel } from "./model";
+import { criterionText, formatScreenValue, GRADE_DISPLAY_FIELDS, parseScreenDefinition, screenDefinitionKey, screenLabel } from "./model";
 
 /** One listing, with the same exchange aliases the rest of the app accepts. */
 export function screenCheckTicker(text: string): { symbol: string; exchange?: string } {
@@ -64,7 +64,8 @@ export function validateScreenCheck(
 
 const number = (value: number) => value.toLocaleString("en-US", { maximumSignificantDigits: 21 });
 function checkCriterionText(criterion: ScreenCriterion): string {
-  if (!("value" in criterion) || criterion.op === "in") return criterionText(criterion);
+  // A grade compares letters (`Value grade >= B+`), and the composite reads as the screen writes it.
+  if (!("value" in criterion) || criterion.op === "in" || GRADE_DISPLAY_FIELDS.has(criterion.field)) return criterionText(criterion);
   const operators = { gte: ">=", lte: "<=", gt: ">", lt: "<", eq: "=", between: "between" };
   const threshold = Array.isArray(criterion.value) ? criterion.value.map(number).join(", ") : number(criterion.value);
   return `${screenLabel(criterion.field)} ${operators[criterion.op]} ${threshold}`;
@@ -102,7 +103,9 @@ export function checkRows(data: ScreenCheckPayload) {
     id: String(index),
     criterion: checkCriterionText(entry.criterion),
     value: entry.state === "not-covered" ? "Not covered" : entry.value === null ? "Missing" : typeof entry.value === "number"
-      ? checkValueText(entry.value, entry.unit, entry.criterion) : entry.value,
+      ? GRADE_DISPLAY_FIELDS.has(entry.criterion.field) ? formatScreenValue(entry.criterion.field as NumericField, entry.value)
+        : checkValueText(entry.value, entry.unit, entry.criterion)
+      : entry.value,
     result: entry.passes === null ? "Not evaluated" : entry.passes ? "Pass" : "Fail",
     asOf: entry.asOf?.slice(0, 10) ?? (entry.observedAt ? `${entry.observedAt.slice(0, 10)} (collected)` : "--"),
     state: entry.state,

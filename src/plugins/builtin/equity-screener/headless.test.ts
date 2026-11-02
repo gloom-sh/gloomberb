@@ -123,6 +123,30 @@ test("--preset golden-cross runs the Ideas screen on days since the cross, and a
   for (const idea of SCREEN_IDEAS) expect(parseScreenDefinition(idea.definition)).toEqual(idea.definition);
 });
 
+test("--preset top-grades leads with the composite and its label, with the five grades as letters beside it", async () => {
+  const data = screenFixture();
+  data.definition = structuredClone(SCREEN_IDEAS.find((idea) => idea.id === "top-grades")!.definition);
+  const derived = { asOf: "2026-11-02", state: "available" as const, scope: "derived" as const };
+  const metrics = data.rows[0]!.metrics;
+  metrics.gradeComposite = { ...metrics.gradeComposite, ...derived, value: 4.74, unit: "1-5" };
+  for (const [field, value] of [["valueGrade", 5], ["growthGrade", 13], ["profitabilityGrade", 13], ["momentumGrade", 10], ["revisionsGrade", 12]] as const)
+    metrics[field] = { ...metrics[field], ...derived, value, unit: "1-13" };
+  const queried: unknown[] = [];
+  const apiClient = { equityScreener: async (_path: string, init?: { body?: string }) => {
+    const { criteria, sort } = JSON.parse(init!.body!);
+    queried.push({ criteria, sort });
+    return structuredClone(data);
+  } };
+  const result = await equityScreenerHeadless.load({ argument: undefined, options: { preset: "top-grades" } } as never, { apiClient } as never);
+  expect(queried[0]).toEqual({
+    criteria: [{ field: "gradeComposite", op: "gte", value: 4.5 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
+    sort: { field: "gradeComposite", direction: "desc" },
+  });
+  const section = result.sections![0]!;
+  expect(section.columns!.map((column) => column.header)).toEqual(expect.arrayContaining(["COMPOSITE", "VALUE", "GROWTH", "PROFIT", "MOMENTUM", "REVISIONS"]));
+  expect(section.rows![0]).toMatchObject({ value: "4.74 Top", valueGrade: "C-", growthGrade: "A+", profitabilityGrade: "A+", momentumGrade: "B+", revisionsGrade: "A" });
+});
+
 test("--limit pages to its rows; the sort field and every --metric get a column, and the states shown are explained", async () => {
   const data = screenFixture();
   data.definition = { ...data.definition, sort: { field: "dividendYieldPercent", direction: "desc" } };

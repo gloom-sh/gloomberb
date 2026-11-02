@@ -1496,6 +1496,28 @@ distribution history, about ten years. A count that reaches the first stored yea
 a lower bound and is marked partial. Index membership reads the IVV (S&P 500) and DIA
 (Dow) holdings `MEMB` reads; the Nasdaq-100 is not covered.
 
+The grades rank screen fields already described here within each sector, in the
+same daily pass as the Magic Formula rank, so they add no source. Value reads P/E,
+forward P/E, P/B, EV/EBITDA, EV/revenue and FCF yield; Growth the 3-year revenue and
+EPS CAGRs and the consensus growth for the year in progress; Profitability gross,
+operating and net margin, ROE, ROIC and return on capital; Momentum the 3M return,
+the 1Y total return and the distance from the 52-week high; Revisions the 30-day
+change in consensus EPS for this fiscal year and the next and in consensus revenue
+for this year, read from the same stored consensus snapshots as `EE`. Each field
+is a midrank percentile among the sector's listings that have it, every currency
+together; a grade is the mean of those percentiles ranked within the sector again
+and cut into thirteen equal bands, F to A+. A sector with fewer than 20 listings
+with a field, or with a grade, ranks against every listing instead, and a listing
+without a sector always does; the reason says which. A grade needs two of its
+fields, and an N/M field is missing, not the worst value. The composite weights the
+five grade percentiles equally, needs three of them, ranks the weighted mean across
+every graded listing and scales it to 1 to 5, so its labels split the universe in
+fixed shares: an eighth Top, a quarter each Strong, Neutral and Weak, an eighth
+Bottom. Margins and ROE are filed with the SEC, so outside the US Profitability
+rests on ROIC and return on capital; revenue revisions need 30 days of stored
+consensus, which began in mid-September 2026. Each value is dated by the snapshot
+that ranked it and is stale when a field it read is.
+
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last
 one. RSI 14 and the distance from the 20, 50 and 200-session simple averages are the

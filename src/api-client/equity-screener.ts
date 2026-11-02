@@ -45,6 +45,14 @@ export const SCORE_FIELDS = [
 ] as const;
 /** Index membership, 1 for a member and 0 for a US listing that is not one. */
 export const MEMBERSHIP_FIELDS = ["sp500Member", "dowMember"] as const;
+/** The factor grades, each ranked within the company's sector: 1 is F and 13 is A+. */
+export const LETTER_GRADE_FIELDS = ["valueGrade", "growthGrade", "profitabilityGrade", "momentumGrade", "revisionsGrade"] as const;
+/**
+ * The factor grades, their 1-5 composite, and the next fiscal year's EPS and the current year's revenue revisions the
+ * Revisions grade reads beside EPS revision 30D; listed only when asked (`include=grades`), and omitted by a server
+ * from before them.
+ */
+export const GRADE_FIELDS = [...LETTER_GRADE_FIELDS, "gradeComposite", "nextYearEpsRevision30dPercent", "revenueRevision30dPercent"] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -97,6 +105,7 @@ export const NUMERIC_FIELDS = [
   ...OWNERSHIP_FIELDS,
   ...QUALITY_FIELDS,
   ...SCORE_FIELDS,
+  ...GRADE_FIELDS,
   "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
   "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;
