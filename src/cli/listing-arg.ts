@@ -182,7 +182,8 @@ function parseCleanListingArg(
   if (index && !index.bare) return { symbol: index.symbol, exchange: "", key: index.symbol, readAs: brokerIndexReadAs(index) };
   // VX=F, the continuous symbol VIX futures do not have, is the front generic VX1.
   const generic = option ? null : continuousAliasGeneric(raw);
-  if (generic) return { symbol: generic, exchange: "", key: generic, readAs: `Read ${raw.trim().toUpperCase()} as ${generic}, the front VIX future.` };
+  // It says so, as a name read as a bare symbol does: VX1 is not what was typed.
+  if (generic) return { symbol: generic, exchange: "", key: generic, readAs: `Read ${raw.trim().toUpperCase()} as ${generic}, the front VIX future.`, readFromName: true };
   // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
   let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.

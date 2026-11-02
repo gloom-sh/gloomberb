@@ -113,7 +113,9 @@ export class ProviderRouterFinancialRoutes {
     // An index files no statements, so its financials come back without a
     // quote: the quote is asked beside them, not a round trip after.
     const indexQuote = ticker.startsWith("^") ? this.getQuote(ticker, exchange, context) : null;
-    indexQuote?.catch(() => {});
+    indexQuote?.catch(() => {
+      // Intentional ignore: the quote is awaited below when the financials lack one, and its failure handled there.
+    });
     const financials = await this.loadTickerFinancials(ticker, exchange, context);
     if (financials.quote) return financials;
     // Statement depth does not establish quote freshness. Use the same quote
