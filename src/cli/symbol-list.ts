@@ -3,6 +3,7 @@ import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 import { foldTypedText } from "../utils/typed-text";
 import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -144,6 +145,30 @@ function looksLikeSymbol(cell: string): boolean {
   return SYMBOL_TOKEN.test(cell) && !isNumberCell(cell);
 }
 
+/** A cell that is a terminal's code for one listing, spaces and all: `CZR US Equity`, `1128 HK Equity`, `VOD LN`. */
+function isTerminalCodeCell(cell: string): boolean {
+  return /\s/.test(cell.trim()) && (readTerminalListingCode(cell) != null || unknownBloombergMarket(cell) != null);
+}
+
+/** A numeric exchange code as a grid holds one (`2007`, `0700`, `600519`): Hong Kong, Tokyo, Shanghai. */
+const NUMERIC_CODE = /^\d{3,6}$/;
+
+/**
+ * The columns after the first that hold a symbol with a letter in it (or a
+ * terminal's code): a whole number there is a numeric exchange code among
+ * tickers (`2007` beside `AAL`), not a value beside its symbol, whose column
+ * holds numbers alone (`ED 2582`).
+ */
+function symbolColumns(rows: readonly string[][]): Set<number> {
+  const columns = new Set<number>();
+  for (const cells of rows) {
+    cells.forEach((cell, index) => {
+      if (index > 0 && cell && (isTerminalCodeCell(cell) || (looksLikeSymbol(cell) && /\p{L}/u.test(cell)))) columns.add(index);
+    });
+  }
+  return columns;
+}
+
 /** How many cells a table's ignored-cells note names before it counts the rest. */
 const IGNORED_PREVIEW = 8;
 
@@ -198,8 +223,11 @@ export function parseSymbolText(text: string): SymbolText {
   const figures = cleaned.some((cells) => cells.some((cell, index) => index > 0 && isFigure(cell)));
   // Lines split by spaces alone are entries, unless figures sit beside the symbols.
   if (!delimited && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true };
+  // A grid of symbols: a terminal's code is one cell (`CZR US Equity`), and so is a numeric code among tickers (`2007`).
+  const codes = symbolColumns(cleaned);
   const grid = cleaned.every((cells) => cells.every((cell, index) => (
-    !cell || isJunkCell(cell) || (looksLikeSymbol(cell) && (index === 0 || !isFigure(cell)))
+    !cell || isJunkCell(cell) || isTerminalCodeCell(cell)
+    || (looksLikeSymbol(cell) && (index === 0 || !isFigure(cell) || (NUMERIC_CODE.test(cell) && codes.has(index))))
   )));
   if (grid) return { symbols: records.flat().filter(Boolean), ignored: [] };
   // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left

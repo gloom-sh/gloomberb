@@ -144,3 +144,14 @@ test("a comma between plain digits splits codes, unless the line or the sheet's 
     symbols: ["ED", "CNX"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 number cells beside it: 2.582,52; 1,899.21."],
   });
 });
+
+test("a pasted grid keeps every cell when some are a terminal's codes or numeric exchange codes, which the lookup reads", () => {
+  const grid = (cell: string) => `${cell}\tAAL\tUAL\nDAL\tJBLU\tULCC\nHTZ\tCAR\tCCL\n`;
+  for (const cell of ["czr us equity", "1128 HK Equity", "2007"]) {
+    expect(parseSymbolText(grid(cell))).toEqual({ symbols: [cell, "AAL", "UAL", "DAL", "JBLU", "ULCC", "HTZ", "CAR", "CCL"], ignored: [] });
+  }
+  // A code in a later column too.
+  expect(parseSymbolText("AAL\tczr us equity\tUAL\nDAL\t2007\tULCC\n").ignored).toEqual([]);
+  // A column of whole numbers alone is still each symbol's value.
+  expect(parseSymbolText("ED\t2582\nCNX\t1200\n")).toEqual({ symbols: ["ED", "CNX"], ignored: ["2582", "1200"] });
+});
