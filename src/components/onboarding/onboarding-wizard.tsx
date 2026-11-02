@@ -49,6 +49,7 @@ import {
   CONNECT_BROKER_KEY,
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
+  SKIP_PORTFOLIO_KEY,
 } from "./onboarding-keyboard";
 import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
 import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
@@ -155,7 +156,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   }, [portfolioSub, stage]);
   const {
     chosenDesks, setChosenDesks, deskCursor, setDeskCursor, buildingDesks, continueFromPositions,
-    finishDesks, handleBrokerSynced,
+    skipPositions, finishDesks, handleBrokerSynced,
   } = useOnboardingWorkspace({
     stateRef, pluginRegistry, dispatch, positions, setEditingField, saveProgressInBackground,
     setPersistenceError, finishingRef, brokerOptions, selectedBrokerId, setPortfolioSub,
@@ -306,7 +307,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   useOnboardingKeyboard({
     stage, progress, account, helpFocused, editingField, isBrokerCommitting, planAccess, continueFree,
     finish, sectionAvailability, goToSection, portfolioSub, positions, setEditingField, positionCount,
-    continueFromPositions, openBrokerConnect, movePositionCursor, removePositionAtCursor, submitBrokerField,
+    continueFromPositions, skipPositions, openBrokerConnect, movePositionCursor, removePositionAtCursor, submitBrokerField,
     submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
     brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
     setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
@@ -320,7 +321,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
     chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
     setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
-    openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
+    openBrokerConnect, continueFromPositions, skipPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
     goBack, rerun,
@@ -335,7 +336,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
     chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
     setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
-    openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
+    openBrokerConnect, continueFromPositions, skipPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
     goBack, rerun,
@@ -461,6 +462,16 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (
                 <OnboardingButton label="Connect a broker" variant="ghost" shortcut={CONNECT_BROKER_KEY} onPress={openBrokerConnect} />
+              ) : null}
+              {/* Holding nothing yet, the step can be left as the Desks step can. */}
+              {positionCount === 0 ? (
+                <OnboardingButton
+                  label="Skip"
+                  variant="ghost"
+                  shortcut={SKIP_PORTFOLIO_KEY}
+                  disabled={positions.submitting}
+                  onPress={skipPositions}
+                />
               ) : null}
               <OnboardingButton
                 label="Continue"

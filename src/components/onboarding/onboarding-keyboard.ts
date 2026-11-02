@@ -27,6 +27,7 @@ export const KEEP_FREE_KEY = "f";
 export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
+export const SKIP_PORTFOLIO_KEY = "s";
 
 /** Digits jump straight to a section the header would let you click. */
 const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", "2": "cloud", "3": "pro" };
@@ -54,7 +55,7 @@ export function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: 
 export function useOnboardingKeyboard({
   stage, progress, account, helpFocused, editingField, isBrokerCommitting, planAccess, continueFree, finish,
   sectionAvailability, goToSection, portfolioSub, positions, setEditingField, positionCount,
-  continueFromPositions, openBrokerConnect, movePositionCursor, removePositionAtCursor, submitBrokerField,
+  continueFromPositions, skipPositions, openBrokerConnect, movePositionCursor, removePositionAtCursor, submitBrokerField,
   submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
   brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
   setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
@@ -76,6 +77,7 @@ export function useOnboardingKeyboard({
   setEditingField: Dispatch<SetStateAction<boolean>>;
   positionCount: number;
   continueFromPositions: () => void;
+  skipPositions: () => void;
   openBrokerConnect: () => void;
   movePositionCursor: (delta: number) => void;
   removePositionAtCursor: () => void;
@@ -165,6 +167,8 @@ export function useOnboardingKeyboard({
           positions.focusField(tab && event.shift ? POSITION_FIELDS.length - 1 : 0);
         } else if (letter(CONNECT_BROKER_KEY) && positionCount > 0) {
           openBrokerConnect();
+        } else if (letter(SKIP_PORTFOLIO_KEY) && positionCount === 0) {
+          skipPositions();
         } else if (!chord && (name === "up" || name === "k")) {
           movePositionCursor(-1);
         } else if (!chord && (name === "down" || name === "j")) {

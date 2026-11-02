@@ -79,13 +79,23 @@ function contractCode(symbol: string): string {
 }
 
 /**
+ * A listed contract as `CTM` names it: its quote symbol without the venue,
+ * GCZ26 for GCZ26.CMX and Cboe's VX/X6 for VIX November, so `quote` and the
+ * curve write one contract alike. Its archive code where it has no symbol.
+ */
+export function futuresContractCode(contract: { contract: string | null; contractSymbol?: string | null }): string {
+  return contract.contractSymbol ? contract.contractSymbol.replace(/\.[A-Z]+$/, "") : contract.contract ?? "";
+}
+
+/**
  * The Contract block: the contract an alias or a generic prices, its terms and
  * the dates a long faces delivery. A line with nothing to say is left out, so
  * a cash-settled root has no first notice and a listed contract no Contract line.
  */
 export function futuresContractLines(terms: FuturesContractTermsPayload, symbol: string): FuturesContractLine[] {
   const lines: FuturesContractLine[] = [];
-  if (terms.contract && terms.contract !== contractCode(symbol)) lines.push({ key: "contract", label: "Contract", value: terms.contract });
+  const code = terms.contract ? futuresContractCode(terms) : null;
+  if (code && code !== contractCode(symbol)) lines.push({ key: "contract", label: "Contract", value: code });
   if (terms.spec) lines.push(...futuresSpecLines(terms.spec));
   else {
     // A root the server sends no terms for still says what its price counts: Dutch TTF gas is EUR / MWh.
@@ -297,9 +307,10 @@ export function futuresChangeBasis(
 }
 
 /** A listed contract as code and month: "NGX26 (Nov 2026)". */
-function contractWithMonth(contract: { contract: string; deliveryMonth: string }): string {
+function contractWithMonth(contract: { contract: string; contractSymbol: string; deliveryMonth: string }): string {
   const month = deliveryMonthLabel(contract.deliveryMonth);
-  return month ? `${contract.contract} (${month})` : contract.contract;
+  const code = futuresContractCode(contract);
+  return month ? `${code} (${month})` : code;
 }
 
 /**

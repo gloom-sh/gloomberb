@@ -2,6 +2,8 @@ import { expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { centralBankRatesModule } from "../../plugins/builtin/central-bank-rates";
+import { futuresCurveModule } from "../../plugins/builtin/futures-curve";
+import { volatilityModule } from "../../plugins/builtin/volatility";
 import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
 import { ivHistoryModule } from "../../plugins/builtin/iv-history";
@@ -241,6 +243,26 @@ test("an implied-vol word that is no code (IVOL, OVOL, IV) names HIVG and OVDV a
   }
   // With no argument, the one each takes.
   expect((await unknown(["IVOL"]))?.details).toBe("Run: gloom fn HIVG <ticker>\n     gloom fn OVDV <ticker>");
+});
+
+test("VX and vix futures open CTM VIX, and VVIX, a keyword of VIX's, says it opened VIX", async () => {
+  const modules = [futuresCurveModule, volatilityModule];
+  const vol: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  for (const word of ["VX", "vx", "vix futures"]) {
+    const parsed = parsePaneFunctionArgsFor(vol, [word]);
+    expect(parsed).toMatchObject({ target: "CTM", arg: "VIX", listingNotes: [`${word} opened CTM VIX, Futures Curve.`] });
+    expect((await resolvePaneFunction(vol, context, parsed)).token).toBe("CTM");
+  }
+  // A root typed after it is kept.
+  expect(parsePaneFunctionArgsFor(vol, ["VX", "CL"])).toMatchObject({ target: "CTM", arg: "CL" });
+  expect(parsePaneFunctionArgsFor(vol, ["VVIX"])).toMatchObject({ target: "VVIX", listingNotes: ["VVIX opened VIX, VIX Curve."] });
+  expect((await resolvePaneFunction(vol, context, parsePaneFunctionArgsFor(vol, ["VVIX"]))).token).toBe("VIX");
+  // A function's own code or name says nothing.
+  for (const word of ["VIX", "CTM", "VOLS", "Futures Curve"]) expect(parsePaneFunctionArgsFor(vol, [word]).listingNotes).toBeUndefined();
 });
 
 test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {

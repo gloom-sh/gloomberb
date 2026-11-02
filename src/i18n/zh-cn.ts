@@ -679,6 +679,7 @@ export const zhCN: Record<string, string> = {
   "Pro trial {days}d": "Pro 试用 {days} 天",
   "Pro trial — ends {date}": "Pro 试用 — {date} 结束",
   "delayed data · upgrade": "数据延迟 · 升级",
+  "upgrade": "升级",
   "real-time news": "实时新闻",
   "AI command bar": "AI 命令栏",
   "{amount}/mo": "{amount}/月",

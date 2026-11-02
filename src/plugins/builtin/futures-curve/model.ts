@@ -4,6 +4,7 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
 import { formatThirtySeconds } from "../../../market-data/market/format";
@@ -143,7 +144,7 @@ export function curveUnitLabel(data: Pick<FuturesCurvePayload, "root" | "spec" |
 
 /** A contract as traders write it: GCZ26.CMX is GCZ26; a VX symbol stays as Cboe lists it. */
 export function curveContractCode(symbol: string): string {
-  return symbol.replace(/\.[A-Z]+$/, "");
+  return futuresContractCode({ contract: null, contractSymbol: symbol });
 }
 
 /**
@@ -425,6 +426,56 @@ export function spotBarsFromHistory(points: readonly { date: Date | string | num
     if (Number.isFinite(time) && positive(point.close)) byMinute.set(minuteOf(time), point.close);
   }
   return [...byMinute].sort((a, b) => a[0] - b[0]).map(([minute, price]) => ({ minute, price }));
+}
+
+/**
+ * The cash index a settlement-only root's front contract is read against: VX
+ * against spot VIX. A root missing here shows no spot.
+ */
+const SPOT_INDEX_SYMBOLS: ReadonlyMap<string, { symbol: string; label: string }> = new Map([
+  ["VX", { symbol: "^VIX", label: "Spot VIX" }],
+]);
+
+export function spotIndexSymbol(root: string): string | null {
+  return SPOT_INDEX_SYMBOLS.get(root)?.symbol ?? null;
+}
+
+/**
+ * Spot against the front contract: the index's close on the curve's
+ * settlement session and the front settlement's premium to it, so both are
+ * marks of one session and a live index is never read against an older
+ * settlement. `reason` says why a figure is blank.
+ */
+export interface CurveSpotPremium {
+  symbol: string;
+  label: string;
+  close: number | null;
+  /** The session of `close`, the curve's settlement date. */
+  date: string | null;
+  frontSymbol: string | null;
+  /** The front settlement less `close`, at the root's precision. */
+  premium: number | null;
+  reason: string | null;
+}
+
+/** The front contract's settlement less the index's close on the curve's settlement session. */
+export function curveSpotPremium(data: Pick<FuturesCurvePayload, "root" | "contracts" | "slope" | "settlementDate">,
+  closes: readonly { date: Date | string | number; close: number }[]): CurveSpotPremium | null {
+  const index = SPOT_INDEX_SYMBOLS.get(data.root);
+  if (!index) return null;
+  const front = data.contracts.find((row) => row.symbol === data.slope.frontSymbol)
+    ?? [...data.contracts].filter((row) => row.settlement != null).sort((a, b) => a.expiration.localeCompare(b.expiration))[0];
+  const date = data.settlementDate ?? null;
+  const bar = date ? closes.find((point) => {
+    const time = new Date(point.date).getTime();
+    return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === date && positive(point.close);
+  }) : undefined;
+  const close = bar ? bar.close : null;
+  const settle = front ? front.settlement ?? front.price : null;
+  const premium = close != null && positive(settle) ? curveRoundedPrice(settle - close, data.root) : null;
+  const reason = !date ? "the curve has no settlement date" : close == null ? `no ${index.symbol} close on ${date}`
+    : premium == null ? "no front settlement" : null;
+  return { symbol: index.symbol, label: index.label, close, date, frontSymbol: front?.symbol ?? null, premium, reason };
 }
 
 /** The bar in `minute`, else the one nearest it; null when there are none. */
