@@ -202,7 +202,7 @@ const LETTER_GRADES = new Set<NumericField>(LETTER_GRADE_FIELDS);
 /** Fields that print as a grade, a letter or the composite with its label, never as a number and a unit. */
 export const GRADE_DISPLAY_FIELDS: ReadonlySet<string> = new Set<string>([...LETTER_GRADE_FIELDS, "gradeComposite"]);
 /** A grade's letter by its value: 1 is F, 13 is A+. */
-export const GRADE_LETTERS = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"] as const;
+const GRADE_LETTERS = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"] as const;
 /** The composite's labels from the score each starts at: its nearest whole number. */
 const COMPOSITE_BANDS = [
   { from: 4.5, label: "Top" },
@@ -211,9 +211,9 @@ const COMPOSITE_BANDS = [
   { from: 1.5, label: "Weak" },
   { from: 1, label: "Bottom" },
 ] as const;
-export const gradeLetter = (value: number): string | null =>
+const gradeLetter = (value: number): string | null =>
   Number.isInteger(value) ? GRADE_LETTERS[value - 1] ?? null : null;
-export const compositeLabel = (score: number): string =>
+const compositeLabel = (score: number): string =>
   (COMPOSITE_BANDS.find((band) => score >= band.from) ?? COMPOSITE_BANDS.at(-1)!).label;
 /**
  * The number a cell's sign colour reads, or null for a field without one: a move is its own sign, and a grade the side
