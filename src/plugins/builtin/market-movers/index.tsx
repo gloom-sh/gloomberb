@@ -114,12 +114,13 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
       .filter((quote): quote is MarketSummaryQuote => !!quote)
   ), [summaryBoard, summarySymbols]);
 
-  const tabItems = tabs.map((tab) => ({ label: tab.label, value: tab.id }));
-  const selectTab = (value: string) => {
+  // Kept between quotes, so the tab strip skips the renders a board update gives the pane.
+  const tabItems = useMemo(() => tabs.map((tab) => ({ label: tab.label, value: tab.id })), [tabs]);
+  const selectTab = useCallback((value: string) => {
     setSavedTab(value as TabId);
     setPickedIn(session.key);
     if (requestedTab) setRequestedTab(null);
-  };
+  }, [requestedTab, session.key, setPickedIn, setRequestedTab, setSavedTab]);
   const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   return (
