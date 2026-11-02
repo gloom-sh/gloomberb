@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePaneMenuItems, usePaneTabStripKeys } from "../layout/pane/footer/registration";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { useShortcut } from "../../react/input";
@@ -66,7 +66,10 @@ export interface TabsProps {
 
 const WHEEL_DELTA_PER_CELL = 8;
 
-export function Tabs({
+/** A pane re-renders on each quote; its tab strip only when the tabs or their state change. */
+export const Tabs = memo(TabsView);
+
+function TabsView({
   tabs: rawTabs,
   activeValue,
   onSelect,

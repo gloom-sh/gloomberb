@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   Box,
   ChartSurface,
@@ -7,6 +7,7 @@ import {
   useUiCapabilities,
 } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
+import { markPure } from "../../ui/same-props";
 import type { PricePoint } from "../../types/financials";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../chart/native/bitmap-support";
 import { renderSparklineBitmap } from "./bitmap";
@@ -135,7 +136,9 @@ function TerminalPriceSparkline({
   );
 }
 
-export function PriceSparkline({
+export const PriceSparkline = markPure(memo(PriceSparklineView));
+
+function PriceSparklineView({
   priceHistory,
   width,
   trend,
