@@ -193,6 +193,12 @@ const EXACT_MATCH_SECTION_PRIORITY = -150;
  */
 const DID_YOU_MEAN_SECTION_PRIORITY = -120;
 /**
+ * The offer to add a list pasted into the bar (`Add 12 symbols to a
+ * watchlist`): what the user put in, so it sits above the AI's reading of it.
+ */
+export const PASTED_LIST_CATEGORY = "Pasted list";
+const PASTED_LIST_SECTION_PRIORITY = -110;
+/**
  * The AI leads the rest even though it is the slowest source (~600ms+): it
  * translates the sentence the user typed into commands, which is the answer to
  * what they asked when no symbol matched outright. Its Thinking placeholder
@@ -219,6 +225,7 @@ function getCategoryPriority(category: string, options?: CommandBarSectionOption
   if (normalized === "exact match") return EXACT_MATCH_SECTION_PRIORITY;
   if (normalized === "did you mean") return DID_YOU_MEAN_SECTION_PRIORITY;
   if (category === PLUGIN_INSTALL_CATEGORY) return PLUGIN_INSTALL_SECTION_PRIORITY;
+  if (category === PASTED_LIST_CATEGORY) return PASTED_LIST_SECTION_PRIORITY;
   if (normalized === "instruments") return INSTRUMENTS_SECTION_PRIORITY;
   if (normalized === "suggested") return SUGGESTED_SECTION_PRIORITY;
   if (sectionOrder === "app-first") {

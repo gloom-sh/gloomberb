@@ -383,6 +383,11 @@ const LEGAL_FORMS: ReadonlySet<string> = new Set([
   "GMBH", "KGAA", "BHD", "TBK", "PCL",
 ]);
 
+/** Whether a word is a company's legal form (`INC`, `AG`, `PLC`), the last word of a name. */
+export function isLegalForm(word: string): boolean {
+  return LEGAL_FORMS.has(word.toUpperCase());
+}
+
 /** Two words, the second a company's legal form (`SAP SE`, `VOLVO AB`): a name to look up before reading it as a code. */
 export function endsInLegalForm(raw: string): boolean {
   const words = normalizeTyped(raw).split(" ");

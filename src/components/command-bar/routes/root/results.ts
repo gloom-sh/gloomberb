@@ -16,7 +16,7 @@ import { matchPrefix, type Command } from "../../commands/registry";
 import { pastedRootList } from "../../commands/collection-list";
 import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
 import { recentPaneTemplateArg } from "../../pane-templates/items";
-import { dedupeById } from "../../view-model";
+import { dedupeById, PASTED_LIST_CATEGORY } from "../../view-model";
 import type { ResultItem } from "../../list/model";
 import { shortcutArgument, type parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
@@ -138,7 +138,7 @@ function pastedListItem(
     id: `pasted-list:${symbols.length}:${symbols[0]}`,
     label: `Add ${symbols.length} symbols to a watchlist`,
     detail: symbols.length > 6 ? `${shown} and ${symbols.length - 6} more` : shown,
-    category: "Portfolio",
+    category: PASTED_LIST_CATEGORY,
     kind: "action",
     action: () => { void executeCollectionCommand("add-watchlist", symbols.join(", ")); },
   };
@@ -294,7 +294,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
 
   const items: ResultItem[] = [];
   const match = matchPrefix(rootQuery, availableCommands);
-  // A pasted list, which the bar flattens into one line, leads with adding its symbols, and asks the AI nothing.
+  // A pasted list, which the bar flattens into one line, leads with adding its symbols. The AI is still offered.
   const pastedList = rootShortcutIntent.kind === "none" && !match && rootQuery ? pastedRootList(rootQuery) : null;
   let initialIdx = 0;
   // Off when the code's own rows only say why the argument opens nothing (`PF Nope`).
@@ -446,7 +446,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       assist,
       rootQuery,
       matchCount,
-      shortcutClaimedQuery || !!pastedList,
+      shortcutClaimedQuery,
       leadingShortcutCode,
     )
     ? buildAssistResultItems({ ...assist, query: rootQuery })
