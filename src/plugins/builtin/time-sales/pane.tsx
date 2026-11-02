@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { createDataTableCsv } from "../../../components/data-table/export";
@@ -124,7 +124,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const quoteColumns = useMemo(() => dropColumnsToFit(QUOTES, width - 1, QUOTE_DROP_ORDER), [width]);
   const columns = tab === "quotes" ? quoteColumns : TRADES;
-  const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
+  // Kept between prints, so the tab strip skips the renders the tape gives the pane.
+  const selectTab = useCallback((value: string) => { setTab(value); setDetail(null); setSelected(null); }, [setTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail, dense: true });
   const renderCell = (row: TapeRow, column: DataTableColumn): DataTableCell => {
     if (row.trade) {
