@@ -44,9 +44,7 @@ async function open(tab?: string) {
   await tui.waitForFrameToContain("Try These");
   if (tab) {
     await act(async () => { await tui.clickFrameText(tab); });
-    // The table lays its rows out once it has measured its viewport, which can
-    // be a frame after its first heading shows; a later heading means it has.
-    await tui.waitForFrameToContain("Navigation (");
+    await tui.waitForFrameToContain("Command Bar (");
   }
   return tui.frame();
 }
