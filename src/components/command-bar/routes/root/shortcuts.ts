@@ -1,5 +1,5 @@
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
-import { readTerminalListingCode } from "../../../../tickers/terminal-codes";
+import { tickerFirstQuery } from "./ticker-first";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { getPaneTemplateDisplayLabel, paneTemplateShortcutPrefixes } from "../../pane-templates/items";
 
@@ -81,21 +81,6 @@ function inferShortcutArg(argKind: RootShortcutArgKind | null, activeTicker: str
     return activeTicker;
   }
   return null;
-}
-
-/** A plain ticker, as one word: NFE, BRK.B, 0700, VOD:LSE. */
-const TICKER_WORD = /^\$?[A-Za-z0-9][A-Za-z0-9.\-]{0,11}(?::[A-Za-z0-9]{1,8})?$/;
-
-/**
- * The ticker a query names before a function code, Bloomberg's word order:
- * `NFE CDS` and `NFE US Equity CDS` are `CDS NFE`. The ticker is one word or
- * a terminal code (`NFE US Equity`, `VOD LN`), read as its listing. Null for
- * anything else, so a company's name stays a search.
- */
-function tickerBeforeCode(text: string): string | null {
-  const words = text.trim().split(/\s+/);
-  if (words.length === 1) return TICKER_WORD.test(words[0]!) ? words[0]!.replace(/^\$/, "").toUpperCase() : null;
-  return readTerminalListingCode(text)?.key ?? null;
 }
 
 function buildShortcutCandidates(
@@ -201,14 +186,11 @@ export function parseRootShortcutIntent({
   let match = leading(trimmed);
   if (!match) {
     // Bloomberg's order, the ticker first: `NFE CDS`, `NFE US Equity CDS`.
-    const words = typed.split(/\s+/);
-    const code = words.length > 1 ? words.at(-1)!.toUpperCase() : "";
-    const trailing = candidates.find((candidate) => candidate.prefix === code && candidate.argKind
-      && (candidate.argKind !== "text" || takesIssuer(candidate.template)));
-    const ticker = trailing ? tickerBeforeCode(words.slice(0, -1).join(" ")) : null;
-    if (!trailing || !ticker) return { kind: "none" };
-    trimmed = `${trailing.prefix} ${ticker}`;
-    match = trailing;
+    const reordered = tickerFirstQuery(typed, (code) => candidates.some((candidate) => candidate.prefix === code && candidate.argKind
+      && (candidate.argKind !== "text" || takesIssuer(candidate.template))));
+    match = reordered ? leading(reordered) : undefined;
+    if (!reordered || !match) return { kind: "none" };
+    trimmed = reordered;
   }
 
   const argText = trimmed.slice(match.prefix.length).trim();

@@ -8,6 +8,7 @@ import type {
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { summarizeError } from "../helpers";
 import type { ResultItem } from "../list/model";
+import { tickerFirstQuery } from "../routes/root/ticker-first";
 
 type LogErrorFn = (message: string, details: Record<string, unknown>) => void;
 
@@ -129,13 +130,28 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
   query: string;
   logError?: LogErrorFn;
 }): PaneTemplateDef[] {
-  const trimmed = options.query.trim();
-  const upper = trimmed.toUpperCase();
   const disabledPluginIds = new Set(options.disabledPlugins);
   const enabled = [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
     const pluginId = options.pluginRegistry.getPaneTemplatePluginId(template.id);
     return !pluginId || !disabledPluginIds.has(pluginId);
   });
+  const typed = matchingShortcutTemplates(options, enabled, options.query.trim());
+  if (typed.length > 0) return typed;
+  // Bloomberg's order, the ticker first (`NFE CDS`), is the code's with that ticker.
+  const reordered = tickerFirstQuery(options.query, (code) => enabled.some((template) => {
+    const argKind = getPaneTemplateArgKind(template);
+    return (argKind === "ticker" || argKind === "ticker-list" || (argKind === "text" && template.shortcut?.focusedIssuer === true))
+      && paneTemplateShortcutPrefixes(template).some((prefix) => prefix.toUpperCase() === code);
+  }));
+  return reordered ? matchingShortcutTemplates(options, enabled, reordered) : [];
+}
+
+function matchingShortcutTemplates(
+  options: { context: PaneTemplateContext; query: string; logError?: LogErrorFn },
+  enabled: readonly PaneTemplateDef[],
+  trimmed: string,
+): PaneTemplateDef[] {
+  const upper = trimmed.toUpperCase();
   return enabled.filter((template) => {
     const argKind = getPaneTemplateArgKind(template);
     // The longest matching mnemonic wins, so an alias sharing a stem cannot shadow the typed one.
@@ -157,7 +173,7 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
     } catch (error) {
       options.logError?.("Pane shortcut canCreate failed", {
         templateId: template.id,
-        query: options.query,
+        query: trimmed,
         error: summarizeError(error),
       });
       return false;
