@@ -253,6 +253,20 @@ export async function marksAnotherListing(dataProvider: Partial<Pick<DataProvide
     result.symbol.toUpperCase() !== word.trim().toUpperCase() && namedByService(word, result));
 }
 
+/**
+ * The listing of `symbol` the service marks with `word` (`^VIX` on CXI for
+ * "VIX"), as `marksAnotherListing` reads the same search; null when search
+ * marks no listing of it, cannot search or is too busy to say.
+ */
+export async function serviceMarkedListing(dataProvider: Partial<Pick<DataProvider, "search">>, word: string,
+  symbol: string): Promise<{ symbol: string; exchange: string; name: string } | null> {
+  if (typeof dataProvider.search !== "function") return null;
+  const answer = await searchListings(dataProvider as Pick<DataProvider, "search">, word.trim());
+  const marked = Array.isArray(answer) ? answer.find((result) => result.symbol.toUpperCase() === symbol.toUpperCase()
+    && namedByService(word, result)) : undefined;
+  return marked ? { symbol: marked.symbol.toUpperCase(), exchange: listedExchange(marked), name: marked.name } : null;
+}
+
 function searchListings(dataProvider: Pick<DataProvider, "search">, query: string): Promise<InstrumentSearchResult[] | ProviderBusyError> {
   return dataProvider.search(query, { limit: LISTING_SEARCH_LIMIT })
     .catch((error: unknown): InstrumentSearchResult[] | ProviderBusyError => {

@@ -110,12 +110,16 @@ export class ProviderRouterFinancialRoutes {
     exchange?: string,
     context?: MarketDataRequestContext,
   ): Promise<TickerFinancials> {
+    // An index files no statements, so its financials come back without a
+    // quote: the quote is asked beside them, not a round trip after.
+    const indexQuote = ticker.startsWith("^") ? this.getQuote(ticker, exchange, context) : null;
+    indexQuote?.catch(() => {});
     const financials = await this.loadTickerFinancials(ticker, exchange, context);
     if (financials.quote) return financials;
     // Statement depth does not establish quote freshness. Use the same quote
     // fallback route as QQ, including its cache and broker/listing context.
     try {
-      const quote = await this.getQuote(ticker, exchange, context);
+      const quote = await (indexQuote ?? this.getQuote(ticker, exchange, context));
       return resolveTickerFinancialsQuoteState(financials, quote) ?? financials;
     } catch {
       // Delisted or temporarily unquoted issuers can still have valid accounts.
