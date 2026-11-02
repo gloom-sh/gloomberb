@@ -16,7 +16,12 @@ import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { savedCopyAt } from "../../../data/saved-copies";
 
-const VOLATILITY_LOAD_CONCURRENCY = 4;
+/**
+ * Source reads in flight at once: the board's 23 closes and series in three
+ * rounds, not six. Each round is a request's wait, which a shot of the board
+ * and `fn VIX` sit through in turn.
+ */
+const VOLATILITY_LOAD_CONCURRENCY = 8;
 const VOLATILITY_HISTORY_LIMIT = 400;
 export interface VolatilityLoadResult {
   data: VolatilityData;

@@ -14,6 +14,10 @@ afterEach(() => {
   for (const persistence of persistences.splice(0)) persistence.close();
 });
 
+test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {
+  expect(parseListingArg("vx=f")).toEqual({ symbol: "VX1", exchange: "", key: "VX1", readAs: "Read VX=F as VX1, the front VIX future.", readFromName: true });
+});
+
 test("SYM:EXCH and --exchange name the same listing through the exchange aliases, and must agree", () => {
   for (const [raw, option] of [["san:xpar", undefined], ["SAN", "XPAR"], ["SAN:EPA", "epa"], ["SAN:", "EPA"], [" $San:Par ", "EPA"]] as const) {
     expect(parseListingArg(raw, option)).toEqual({ symbol: "SAN", exchange: "EPA", key: "SAN:EPA" });

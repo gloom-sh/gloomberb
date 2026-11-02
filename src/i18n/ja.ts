@@ -679,6 +679,7 @@ export const ja: Record<string, string> = {
   "Pro trial {days}d": "Pro トライアル{days}日",
   "Pro trial — ends {date}": "Pro トライアル — {date} まで",
   "delayed data · upgrade": "データ遅延 · アップグレード",
+  "upgrade": "アップグレード",
   "real-time news": "リアルタイムニュース",
   "AI command bar": "AI コマンドバー",
   "{amount}/mo": "{amount}/月",

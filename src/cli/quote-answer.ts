@@ -10,6 +10,7 @@ import { currencyCodeNote } from "./currency-hints";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "./listing-suggestion";
 import { indexRootAlsoLine, indexRootTryLine } from "./index-roots";
 import { indexRootFor } from "../tickers/index-roots";
+import { serviceMarkedListing } from "../tickers/company-name-listing";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { knownGapForTicker } from "./known-gaps";
 import {
@@ -21,6 +22,7 @@ import {
   loadBareVenues,
   notTradedMessage,
   oneWordCompanyName,
+  parseListingArg,
   quoteBareListing,
   serviceNamedCompany,
   type ListingArg,
@@ -106,6 +108,13 @@ export async function answerQuote(
   // HCI.L is HCI on LSE written with a vendor's suffix: one that does not trade there says so as HCI:LSE does.
   const suffixed = await notTradedOnSuffixVenue(listing, market);
   if (suffixed) return { result, listing, failure: { message: suffixed, oneLine: suffixed }, notes: [] };
+  // A bare index root the service marks its index with (VIX, ^VIX on CXI) is that index, read at once: the company
+  // name search below would quote it, read the crypto board and come to the same listing a second later.
+  const marked = root && !listing.exchange && listing.typed ? await serviceMarkedListing(market.dataProvider, listing.typed, root.symbol) : null;
+  const key = marked ? marked.exchange ? `${marked.symbol}:${marked.exchange}` : marked.symbol : null;
+  const index = key ? await answerNamedListing({ ...parseListingArg(key),
+    readAs: `Read "${listing.typed!.trim()}" as ${key} (${marked!.name}).`, readFromName: true }, market, request, refresh, datesChangeBasis) : null;
+  if (index) return index;
   // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;

@@ -677,6 +677,7 @@ export const ko: Record<string, string> = {
   "Pro trial {days}d": "Pro 체험 {days}일",
   "Pro trial — ends {date}": "Pro 체험 — {date} 종료",
   "delayed data · upgrade": "지연 데이터 · 업그레이드",
+  "upgrade": "업그레이드",
   "real-time news": "실시간 뉴스",
   "AI command bar": "AI 명령 바",
   "{amount}/mo": "{amount}/월",

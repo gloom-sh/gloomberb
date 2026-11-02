@@ -403,6 +403,7 @@ function nameAndDescriptionFields(entry: PaneCatalogEntry): string[] {
     ...entry.keywords,
     ...entry.capability.aliases,
     ...entry.capability.intents,
+    ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
   ].filter((value): value is string => !!value).map((value) => value.toLowerCase());
 }
 
@@ -450,6 +451,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
     entry.shortcut,
     ...entry.aliases,
     ...entry.capability.suggestFor ?? [],
+    ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
     entry.templateId,
     entry.paneId,
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
@@ -459,7 +461,9 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   const flags = flagText(entry);
   const wholeQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
   const called = identityFields(entry);
-  const codes = [entry.token, entry.shortcut, ...entry.aliases].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
+  // A word that opens one case of the function (CTM's `VX`) is typed as its code is.
+  const codes = [entry.token, entry.shortcut, ...entry.aliases, ...entry.capability.opens?.flatMap((opening) => opening.words) ?? []]
+    .filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
 
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
   // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a

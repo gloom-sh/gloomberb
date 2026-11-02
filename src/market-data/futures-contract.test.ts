@@ -168,6 +168,9 @@ test("quote's roll lines: the roll date, the front with its own price, the month
   expect(text(futuresRollLines({ roll: { label: "open interest switch", date: null },
     nearest: { contract: "CLX26", contractSymbol: "CLX26.NYM", deliveryMonth: "2026-11", lastTrade: "2026-10-20" } })))
     .toEqual(["Rolls: open interest switch", "Nearest: CLX26 (Nov 2026), last trade 2026-10-20"]);
+  // VX1 names its contract as CTM VIX does, by Cboe's code, not the archive's VXX26.
+  expect(text(futuresRollLines({ mostActive: { contract: "VXX26", contractSymbol: "VX/X6", deliveryMonth: "2026-11", volume: 99_166,
+    date: "2026-10-29" } }))).toEqual(["Most Active: VX/X6 (Nov 2026), 99,166 contracts on 2026-10-29"]);
   // Servers that send none of them add no lines; a malformed one is dropped and the terms stand.
   expect(futuresRollLines(gold)).toEqual([]);
   const odd = validateFuturesContractTerms({ ...gold, roll: { label: "", date: "2026-10-27" }, front: { contract: "GCZ26" } as never,

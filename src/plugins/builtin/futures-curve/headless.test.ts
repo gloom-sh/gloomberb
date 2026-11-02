@@ -225,7 +225,36 @@ describe("CTM change", () => {
     const cboe = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VX", argument: "VX", symbols: [], options: {} }),
       createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => vix } as never })) as HeadlessBundleResult;
     expect(cboe.sections[0]!.rows![0]).toMatchObject({ change: 1.1408, noTradeSince: null });
-    expect(cboe.notes).toBeUndefined();
+    // No change is blanked; the front premium is, with no VIX close to read it against.
+    expect(cboe.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-22."]);
+  });
+
+  test("VX reads its front settlement against spot VIX's close on the settlement session, never a later close", async () => {
+    const vx = (symbol: string, expiration: string, settlement: number): FuturesContract => ({ ...contract("VX", "X26", 30, settlement, false, "2026-10-30"),
+      symbol, expiration, settlement });
+    const payload = { ...curve("VX", [vx("VX/Z6", "2026-12-16", 19.7888), vx("VX/X6", "2026-11-18", 20.3603)]), source: "cboe" as const,
+      settlementDate: "2026-10-30" };
+    payload.slope = { ...payload.slope, frontSymbol: "VX/X6", nextSymbol: "VX/Z6" };
+    const reads: string[] = [];
+    // Monday's VIX close is in, but Monday's settlement is not yet: the premium stays on Friday's pair.
+    const closes = [["2026-10-29", 17.2], ["2026-10-30", 19.42], ["2026-11-02", 21.05]] as const;
+    const load = (points: typeof closes | []) => futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VIX", argument: "VIX", symbols: [], options: {} }),
+      createTestHeadlessContext({ apiClient: { getCloudFuturesCurve: async () => payload } as never, marketData: createTestDataProvider({
+        getPriceHistoryForResolutionWithMetadata: async (symbol, _exchange, range, resolution) => {
+          reads.push(`${symbol} ${range} ${resolution}`);
+          return { points: points.map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close })), resolution: "1d" };
+        } }) })) as Promise<HeadlessBundleResult>;
+    const result = await load(closes);
+    expect(reads).toEqual(["^VIX 1M 1d"]);
+    expect(result.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => [entry.key, entry.value])).toEqual([
+      ["spot", 19.42], ["frontPremium", 0.9403]]);
+    expect(result.notes).toBeUndefined();
+    const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+    expect(text).toContain("Spot VIX       19.42, 2026-10-30 close\nFront premium  +0.9403, VX/X6 settle less spot");
+    // Without that session's close the premium is blank and says why, never read against another day's close.
+    const missing = await load([]);
+    expect(missing.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => entry.value)).toEqual([null, null]);
+    expect(missing.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-30."]);
   });
 });
 

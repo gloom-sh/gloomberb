@@ -662,6 +662,20 @@ describe("OnboardingWizard", () => {
     expect(tui.frame()).toContain("What do you hold?");
   });
 
+  test("holding nothing, Skip (s) leaves the portfolio step at 80x24 as the Desks step's does, and the workspace is built around SPY", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-skip-portfolio-"));
+    await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 24 });
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toMatch(/Skip\s+s/);
+    // The ticker field has the keyboard, so s types; Esc lets it go first.
+    await pressEscape();
+    await emitKeypress({ name: "s", sequence: "s" });
+    await skipDesks();
+    await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ path: "manual", tickerSymbol: "SPY", positionsImported: 0, desks: [] });
+    expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "SPY" });
+  });
+
   test("imports a broker portfolio after the first manual position and opens its largest holding", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-"));
     const tickerRepository = new JsonTickerRepository();
