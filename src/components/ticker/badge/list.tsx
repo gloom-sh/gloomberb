@@ -28,6 +28,16 @@ export interface TickerBadgeListProps {
    * column of looked-up symbols can mix chips and bare words.
    */
   listed?: boolean;
+  /**
+   * The listing a symbol stands for when its own spelling names none: a
+   * number-only Asian listing (`2330`) reads as money, so the source's venue
+   * makes it `2330:TWSE`. The chip keeps the symbol as written and looks up,
+   * prices and opens the listing, as it does for any other ticker. `null`
+   * says the source names no listing the app can read: that symbol prints as
+   * plain text, as one whose lookup fails does, never as a chip of another
+   * look beside resolved ones. Symbols not listed here stand for themselves.
+   */
+  listings?: Readonly<Record<string, string | null>>;
   /** Opens a badge; by default the symbol is resolved and opened as a ticker link would be. */
   onOpen?: (symbol: string) => void;
 }
@@ -44,6 +54,7 @@ export function TickerBadgeList({
   fallbackColor = colors.textBright,
   liveQuote = true,
   listed = false,
+  listings,
   onOpen,
 }: TickerBadgeListProps) {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
@@ -61,9 +72,11 @@ export function TickerBadgeList({
     )),
     [symbols],
   );
+  /** What a symbol is looked up and opened by: its listing, else itself. */
+  const keyOf = (symbol: string): string => listings?.[symbol] ?? symbol;
   const tickerTexts = useMemo(
-    () => (listed ? [] : named.map((symbol) => `$${symbol}`)),
-    [listed, named],
+    () => (listed ? [] : named.filter((symbol) => listings?.[symbol] !== null).map((symbol) => `$${listings?.[symbol] ?? symbol}`)),
+    [listed, listings, named],
   );
   /**
    * Quotes are only worth fetching where they can be read. A column with no
@@ -99,23 +112,25 @@ export function TickerBadgeList({
     return named.map((symbol) => {
       const base = displayWidth(symbol);
       const budget = base + Math.max(0, remaining);
+      const entry = catalog[listings?.[symbol] ?? symbol];
       const chosen = getTickerBadgeText({
         symbol,
-        status: badgeStatus(catalog[symbol]),
-        quote: catalog[symbol]?.quote ?? null,
+        status: badgeStatus(entry),
+        quote: entry?.quote ?? null,
         liveQuote: liveQuotes,
         maxTextWidth: budget,
       });
       remaining -= displayWidth(chosen) - base;
       return budget;
     });
-  }, [catalog, liveQuotes, named, slack]);
+  }, [catalog, listings, liveQuotes, named, slack]);
 
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">
       {named.map((symbol, index) => {
-        const entry = catalog[symbol];
-        if (entry?.status === "missing") {
+        const key = keyOf(symbol);
+        const entry = catalog[key];
+        if (entry?.status === "missing" || (!listed && listings?.[symbol] === null)) {
           return (
             <Box key={symbol} paddingRight={1} flexShrink={0}>
               <Text fg={fallbackColor} attributes={TextAttributes.BOLD}>{symbol}</Text>
@@ -127,6 +142,7 @@ export function TickerBadgeList({
           <TickerBadge
             key={symbol}
             symbol={symbol}
+            listing={listings?.[symbol] ?? undefined}
             status={badgeStatus(entry)}
             quote={liveQuotes ? entry?.quote ?? null : null}
             liveQuote={liveQuotes}

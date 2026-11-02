@@ -1,4 +1,4 @@
-import { Section, TickerBadgeList } from "../../../../components";
+import { Section } from "../../../../components";
 import { ClippedText } from "../../../../components/ui/display";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { useInlineTickerQuote } from "../../../../state/hooks/inline-tickers";
@@ -11,7 +11,7 @@ import { formatCompact } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, textOrNull, tickerSymbol } from "../format";
 import type { BuildoutCompany } from "../model/types";
-import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, type DetailSpec, type InlineTickerCatalog } from "./ui";
+import { DetailListLine, DetailSpecGrid, ListingBadges, MarkdownBlock, RelatedCompaniesLine, type DetailSpec, type InlineTickerCatalog } from "./ui";
 import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
 import { regularSessionValuationPrice } from "../../../../market-data/quotes/regular-session-valuation";
 
@@ -116,7 +116,7 @@ export function CompanyDetail({
     <>
       {company.ticker ? (
         <Box flexDirection="row" height={1}>
-          <TickerBadgeList symbols={[company.ticker]} width={Math.min(bodyWidth, 16)} />
+          <ListingBadges tickers={[company]} width={Math.min(bodyWidth, 16)} />
         </Box>
       ) : null}
       <CompanyOverviewGrid

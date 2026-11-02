@@ -1,10 +1,10 @@
-import { Badge, TickerBadgeList } from "../../../../components";
+import { Badge } from "../../../../components";
 import { RemoteImage } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
-import { dateDetail, intelSourceDomains, tickerSymbol } from "../format";
+import { dateDetail, intelSourceDomains } from "../format";
 import type { BuildoutRow } from "../model/types";
-import { InlineSources, MarkdownBlock, type InlineTickerCatalog } from "./ui";
+import { InlineSources, ListingBadges, MarkdownBlock, type InlineTickerCatalog } from "./ui";
 
 type BuildoutIntel = Extract<BuildoutRow, { kind: "intel" }>["item"];
 
@@ -29,10 +29,7 @@ export function IntelDetail({
       </Box>
       {(item.companies?.length ?? 0) > 0 && (
         <Box marginTop={1} height={1}>
-          <TickerBadgeList
-            symbols={item.companies!.map((company) => tickerSymbol(company.ticker) ?? "")}
-            width={Math.min(bodyWidth, 56)}
-          />
+          <ListingBadges tickers={item.companies!} width={Math.min(bodyWidth, 56)} />
         </Box>
       )}
       {item.imageUrl ? (
