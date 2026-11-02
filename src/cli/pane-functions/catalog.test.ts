@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
+import { chatController } from "../../plugins/builtin/chat/controller";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
@@ -42,6 +43,9 @@ test("a function's code or alias is found in any case, with what it takes; a key
 });
 
 test("built-in catalog discovery stays offline while opening chat and chokepoint panes still resolves live arguments", async () => {
+  // Opening a chat pane fills the shared controller's channel list. Put it
+  // back, so a Chat pane in a later test file is not moved to this channel.
+  const chatChannels = (chatController as any).channelCatalog.channels;
   const channels = spyOn(apiClient, "getChannels").mockResolvedValue([
     { id: "startup-test-channel", name: "Startup test", created_at: "2026-01-01" },
   ]);
@@ -67,6 +71,7 @@ test("built-in catalog discovery stays offline while opening chat and chokepoint
     expect(openedChart?.settings).toHaveProperty("chartSpec");
     expect(geo).toHaveBeenCalledTimes(1);
   } finally {
+    (chatController as any).channelCatalog.channels = chatChannels;
     registry.destroy();
     channels.mockRestore();
     geo.mockRestore();
