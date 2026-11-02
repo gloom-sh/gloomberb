@@ -23,6 +23,7 @@ import {
   screenSignValue,
   screenYtdBase,
   SHORT_LABELS,
+  splitGradeReason,
   SIGN_COLORED,
   validateScreenPayload,
   criterionInputText,
@@ -295,6 +296,20 @@ test("grades print as letters and the composite with its label, in one sign colo
   expect(screenDetailValue("profitabilityGrade", { value: 12, unit: "1-13" })).toBe("A");
   expect(screenDetailValue("gradeComposite", { value: 2.79, unit: "1-5" })).toBe("2.79 Neutral");
   expect(screenDetailValue("revenueRevision30dPercent", { value: 1.24, unit: "%" })).toBe("+1.2 %");
+  // A missing value is just "--"; N/M says so; a count of one is singular.
+  expect(screenDetailValue("returnOnCapitalPercent", { value: null, unit: "%" })).toBe("--");
+  expect(screenDetailValue("magicFormulaRank", { value: null, unit: "rank" })).toBe("--");
+  expect(screenDetailValue("altmanZScore", { value: null, unit: "", notMeaningful: true })).toBe("N/M");
+  expect([1, 2].map((value) => screenDetailValue("dividendGrowthYears", { value, unit: "years" }))).toEqual(["1 year", "2 years"]);
+  // The note on another line of the company is split from what is the grade's own.
+  const note = "One company with GOOGL:NASDAQ, its primary line: graded once, on that line's figures.";
+  expect(splitGradeReason(`${note} Revenue revision 30D ranked against every company: Communication Services has under 20 with it.`)).toEqual({
+    company: note,
+    own: "Revenue revision 30D ranked against every company: Communication Services has under 20 with it.",
+  });
+  expect(splitGradeReason(note)).toEqual({ company: note, own: null });
+  expect(splitGradeReason("Reads stale figures: 3M return as of 2026-10-31.")).toEqual({ company: null, own: "Reads stale figures: 3M return as of 2026-10-31." });
+  expect(splitGradeReason(null)).toEqual({ company: null, own: null });
   expect(gradeRankText({ source: "B+: 82nd percentile among 412 Technology companies, from P/E 18.4 (61st pctl) and P/B 2.1 (70th pctl)" }))
     .toBe("82nd percentile among 412 Technology companies, from P/E 18.4 (61st pctl) and P/B 2.1 (70th pctl)");
   expect(gradeRankText({ source: "Neutral: 46th percentile among 4,007 companies, from the mean of the five grades' percentiles, 49" }))

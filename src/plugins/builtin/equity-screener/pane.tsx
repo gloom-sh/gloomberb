@@ -39,6 +39,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { priceColor, shownPriceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
 import {
+  LETTER_GRADE_FIELDS,
   NUMERIC_FIELDS,
   type NumericField,
   type ScreenDefinition,
@@ -87,6 +88,7 @@ import {
   screenRowId,
   screenSignValue,
   screenYtdBase,
+  splitGradeReason,
 } from "./model";
 import { useScreenResults } from "./results";
 import { screenWatchlistList } from "./watchlist";
@@ -208,19 +210,23 @@ function ScreenDetail({
         {NUMERIC_FIELDS.map((field) => {
           const metric = row.metrics[field];
           const stamp = metricDate(metric);
+          // A grade's company note (graded on another line of the company) is said once, above the grades.
+          const reason = GRADE_DISPLAY_FIELDS.has(field) ? splitGradeReason(metric.reason).own : metric.reason;
+          const company = field === LETTER_GRADE_FIELDS[0] ? splitGradeReason(metric.reason).company : null;
           const extended = field === "changePercent" ? row.extended : undefined;
           const basis = field === "dividendYieldPercent" ? dividendYieldBasis(metric) : null;
           // A grade's rank in its sector and the inputs it read, and its notes: peers, N/M or stale inputs, its company.
           const graded = GRADE_DISPLAY_FIELDS.has(field) && metric.value !== null ? gradeRankText(metric) : null;
           return (
             <Fragment key={field}>
+              {company ? <WrappedDetailRows label="Grades" text={company} width={width} /> : null}
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
                 value={screenDetailValue(field, metric)}
                 detail={
                   metric.value === null
-                    ? (metric.reason ?? "unavailable")
+                    ? (reason ?? "unavailable")
                     : [
                         graded || metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                         stamp.collected ? `collected ${stamp.text}` : stamp.text,
@@ -239,7 +245,7 @@ function ScreenDetail({
               ) : null}
               {basis ? <KeyValueRow label="Yield basis" labelWidth={24} value={basis} /> : null}
               {graded ? <WrappedDetailRows label="Ranked" text={graded} width={width} /> : null}
-              {graded && metric.reason ? <WrappedDetailRows label="Note" text={metric.reason} width={width} /> : null}
+              {graded && reason ? <WrappedDetailRows label="Note" text={reason} width={width} /> : null}
             </Fragment>
           );
         })}

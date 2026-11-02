@@ -260,9 +260,26 @@ export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetri
 
 /** A metric as a company's detail prints it: with its unit, but a grade or the composite reads as itself (B+, 4.72 Top). */
 export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit">): string {
-  if (metric.value == null && metric.notMeaningful) return formatScreenMetric(field, metric);
+  // A missing value is just "--", without the unit it would have had; N/M says so.
+  if (metric.value == null) return metric.notMeaningful ? formatScreenMetric(field, metric) : formatScreenValue(field, null);
   const text = formatScreenValue(field, metric.value);
-  return GRADE_DISPLAY_FIELDS.has(field) ? text : `${text} ${metric.unit}`;
+  if (GRADE_DISPLAY_FIELDS.has(field)) return text;
+  // A count of one is singular: 1 year, 1 day.
+  const unit = metric.value === 1 && COUNT_UNITS.has(metric.unit) ? metric.unit.slice(0, -1) : metric.unit;
+  return unit ? `${text} ${unit}` : text;
+}
+const COUNT_UNITS: ReadonlySet<string> = new Set(["years", "days", "sessions", "weeks", "months"]);
+
+/** The note a grade on a company's other line leads with, naming the line it was graded on (the server's text). */
+const COMPANY_NOTE = /^One company with \S+, its primary line: graded once, on that line's figures\.\s*/;
+/**
+ * A grade's reason split into the company note, which every grade of the line repeats and the detail says once, and
+ * what is this grade's own (its peers, an N/M or stale input), null when nothing is left.
+ */
+export function splitGradeReason(reason: string | null): { company: string | null; own: string | null } {
+  const match = reason == null ? null : COMPANY_NOTE.exec(reason);
+  if (!match) return { company: null, own: reason };
+  return { company: match[0].trim(), own: reason!.slice(match[0].length).trim() || null };
 }
 
 /** Where a grade ranks, from its source without the letter it leads with: `percentile 82.4 among 412 Technology listings, from ...`. */
