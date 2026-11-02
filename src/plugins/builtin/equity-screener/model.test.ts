@@ -295,10 +295,10 @@ test("grades print as letters and the composite with its label, in one sign colo
   expect(screenDetailValue("profitabilityGrade", { value: 12, unit: "1-13" })).toBe("A");
   expect(screenDetailValue("gradeComposite", { value: 2.79, unit: "1-5" })).toBe("2.79 Neutral");
   expect(screenDetailValue("revenueRevision30dPercent", { value: 1.24, unit: "%" })).toBe("+1.2 %");
-  expect(gradeRankText({ source: "B+: percentile 82.4 among 412 Technology listings, from P/E 61.0 and P/B 70.2" }))
-    .toBe("percentile 82.4 among 412 Technology listings, from P/E 61.0 and P/B 70.2");
-  expect(gradeRankText({ source: "Neutral: the mean of the five grades' percentiles, 51.0, ranks 49.8 among 4,079 listings" }))
-    .toBe("the mean of the five grades' percentiles, 51.0, ranks 49.8 among 4,079 listings");
+  expect(gradeRankText({ source: "B+: 82nd percentile among 412 Technology companies, from P/E 18.4 (61st pctl) and P/B 2.1 (70th pctl)" }))
+    .toBe("82nd percentile among 412 Technology companies, from P/E 18.4 (61st pctl) and P/B 2.1 (70th pctl)");
+  expect(gradeRankText({ source: "Neutral: 46th percentile among 4,007 companies, from the mean of the five grades' percentiles, 49" }))
+    .toBe("46th percentile among 4,007 companies, from the mean of the five grades' percentiles, 49");
   // B- and up read positive, D+ and down negative, the C band neutral; the composite by its label.
   expect([1, 4, 5, 7, 8, 13].map((value) => screenSignValue("revisionsGrade", value))).toEqual([-1, -1, 0, 0, 1, 1]);
   expect([4.8, 3.5, 3, 2.49, 1].map((value) => screenSignValue("gradeComposite", value))).toEqual([1, 1, 0, -1, -1]);

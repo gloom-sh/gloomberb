@@ -46,6 +46,7 @@ import {
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { useOpenDescription } from "../shared/open-description";
 import { useMembersMenu } from "../shared/members-menu";
@@ -174,6 +175,19 @@ export function resultColumns(
   return fits(named) ? named : build(compact.slice(0, shown), exchange, sector, "compact");
 }
 const loadFields = () => fetchScreenFields();
+const DETAIL_LABEL_WIDTH = 24;
+/** A long note under a value, wrapped to the detail's width rather than cut: one row per line, the label on the first. */
+function WrappedDetailRows({ label, text, width }: { label: string; text: string; width: number }) {
+  // The detail's padding, the label column and the gap after it.
+  const lines = wrapTextLines(text, Math.max(16, width - 2 - DETAIL_LABEL_WIDTH - 1));
+  return (
+    <>
+      {lines.map((line, index) => (
+        <KeyValueRow key={index} label={index === 0 ? label : ""} labelWidth={DETAIL_LABEL_WIDTH} value={line} emphasis={false} />
+      ))}
+    </>
+  );
+}
 function ScreenDetail({
   row,
   width,
@@ -196,7 +210,7 @@ function ScreenDetail({
           const stamp = metricDate(metric);
           const extended = field === "changePercent" ? row.extended : undefined;
           const basis = field === "dividendYieldPercent" ? dividendYieldBasis(metric) : null;
-          // A grade's rank in its sector and the inputs it read, and why its peers are every listing when they are.
+          // A grade's rank in its sector and the inputs it read, and its notes: peers, N/M or stale inputs, its company.
           const graded = GRADE_DISPLAY_FIELDS.has(field) && metric.value !== null ? gradeRankText(metric) : null;
           return (
             <Fragment key={field}>
@@ -208,7 +222,7 @@ function ScreenDetail({
                   metric.value === null
                     ? (metric.reason ?? "unavailable")
                     : [
-                        graded ? metric.reason : metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
+                        graded || metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                         stamp.collected ? `collected ${stamp.text}` : stamp.text,
                         metric.state === "available" ? null : metric.state,
                       ].filter(Boolean).join(" \u00b7 ")
@@ -224,7 +238,8 @@ function ScreenDetail({
                 />
               ) : null}
               {basis ? <KeyValueRow label="Yield basis" labelWidth={24} value={basis} /> : null}
-              {graded ? <KeyValueRow label="Ranked" labelWidth={24} value={graded} emphasis={false} /> : null}
+              {graded ? <WrappedDetailRows label="Ranked" text={graded} width={width} /> : null}
+              {graded && metric.reason ? <WrappedDetailRows label="Note" text={metric.reason} width={width} /> : null}
             </Fragment>
           );
         })}

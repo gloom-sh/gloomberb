@@ -1503,20 +1503,24 @@ EPS CAGRs and the consensus growth for the year in progress; Profitability gross
 operating and net margin, ROE, ROIC and return on capital; Momentum the 3M return,
 the 1Y total return and the distance from the 52-week high; Revisions the 30-day
 change in consensus EPS for this fiscal year and the next and in consensus revenue
-for this year, read from the same stored consensus snapshots as `EE`. Each field
-is a midrank percentile among the sector's listings that have it, every currency
-together; a grade is the mean of those percentiles ranked within the sector again
-and cut into thirteen equal bands, F to A+. A sector with fewer than 20 listings
-with a field, or with a grade, ranks against every listing instead, and a listing
-without a sector always does; the reason says which. A grade needs two of its
-fields, and an N/M field is missing, not the worst value. The composite weights the
-five grade percentiles equally, needs three of them, ranks the weighted mean across
-every graded listing and scales it to 1 to 5, so its labels split the universe in
-fixed shares: an eighth Top, a quarter each Strong, Neutral and Weak, an eighth
-Bottom. Margins and ROE are filed with the SEC, so outside the US Profitability
-rests on ROIC and return on capital; revenue revisions need 30 days of stored
-consensus, which began in mid-September 2026. Each value is dated by the snapshot
-that ranked it and is stale when a field it read is.
+for this year, read from the same stored consensus snapshots as `EE`. Grades belong
+to the company: lines with one issuer name whose symbols can be classes of one
+another (GOOGL and GOOG, BRK.A and BRK.B, a CEDEAR of a US company) are ranked once,
+on the most traded line, and all carry the result. Each field is a midrank
+percentile among the sector's companies that have it, every currency together; a
+grade is the mean of those percentiles ranked within the sector again and cut into
+thirteen equal bands, F to A+. A sector with fewer than 20 companies with a field,
+or with a grade, ranks against every company instead, and a company without a
+sector always does; the note says which. A grade needs two of its fields, and an
+N/M field is left out, not ranked as the worst value, which the note names. The
+composite weights the five grade percentiles equally, needs three of them, ranks
+the weighted mean across every graded company and scales it to 1 to 5, so its
+labels split the universe in fixed shares: an eighth Top, a quarter each Strong,
+Neutral and Weak, an eighth Bottom. Margins and ROE are filed with the SEC, so
+outside the US Profitability rests on ROIC and return on capital; revenue revisions
+need 30 days of stored consensus, which began in mid-September 2026. Each value is
+dated by the snapshot that ranked it, or, when a field it read is stale, by that
+field, and is then stale too.
 
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last
