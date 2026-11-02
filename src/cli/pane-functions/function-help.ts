@@ -239,8 +239,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
       + "Technical fields read the last completed session: RSI 14, price vs SMA 20, 50 and 200, trading days since a MACD or golden cross and since a new 20-day or 52-week high or low, and Bollinger width percentile (0 is a six-month squeeze). "
       + "ROIC, FCF yield, net debt / EBITDA, debt / equity and the revenue and EPS CAGRs read FA's bases, and forward growth EE's consensus; N/M where FA prints it. "
       + "Classic scores: Piotroski F, Altman Z, the Graham number and Lynch fair value with their upside, Greenblatt's Magic Formula rank, the RS rating, years of profit, revenue and dividend growth, and S&P 500 and Dow membership. "
-      + "Ideas holds ready technical screens, Value, Quality and GARP, and screens on the classic scores. The pane menu saves the matches to a watchlist.",
-    usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality", "gloom fn EQS --preset magic-formula"],
+      + "Grades: Value, Growth, Profitability, Momentum and Revisions, F to A+, each ranked within the sector, and their equal-weighted 1-5 composite labelled Top, Strong, Neutral, Weak or Bottom. "
+      + "Ideas holds ready technical screens, Value, Quality and GARP, screens on the classic scores and Top grades. The pane menu saves the matches to a watchlist.",
+    usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality", "gloom fn EQS --preset magic-formula", "gloom fn EQS --preset top-grades"],
     keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],

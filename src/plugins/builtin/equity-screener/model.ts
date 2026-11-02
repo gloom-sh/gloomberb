@@ -3,6 +3,8 @@ import {
   DIVIDEND_FIELDS,
   HIRING_APP_FIELDS,
   CATEGORY_FIELDS,
+  GRADE_FIELDS,
+  LETTER_GRADE_FIELDS,
   NUMERIC_FIELDS,
   OPTION_VOLATILITY_FIELDS,
   OWNERSHIP_FIELDS,
@@ -155,6 +157,15 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   dividendGrowthYears: "DIV GR YRS",
   sp500Member: "S&P 500",
   dowMember: "DOW",
+  // Letter grades, F to A+, and the composite with its label.
+  valueGrade: "VALUE",
+  growthGrade: "GROWTH",
+  profitabilityGrade: "PROFIT",
+  momentumGrade: "MOMENTUM",
+  revisionsGrade: "REVISIONS",
+  gradeComposite: "COMPOSITE",
+  nextYearEpsRevision30dPercent: "NXT EPS REV%",
+  revenueRevision30dPercent: "REVENUE REV%",
   hiringOpenRoles: "OPEN ROLES",
   hiringNetAddsWeek: "NET ROLES/WK",
   hiringRemotePercent: "REMOTE%",
@@ -180,11 +191,42 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
   "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
   "totalReturn1YPercent", "grahamUpsidePercent", "lynchUpsidePercent",
+  "nextYearEpsRevision30dPercent", "revenueRevision30dPercent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. A fair value's upside reads as the analysts' does. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent",
   "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
-  "totalReturn1YPercent", "grahamUpsidePercent", "lynchUpsidePercent"]);
+  "totalReturn1YPercent", "grahamUpsidePercent", "lynchUpsidePercent",
+  "nextYearEpsRevision30dPercent", "revenueRevision30dPercent"]);
+const LETTER_GRADES = new Set<NumericField>(LETTER_GRADE_FIELDS);
+/** Fields that print as a grade, a letter or the composite with its label, never as a number and a unit. */
+export const GRADE_DISPLAY_FIELDS: ReadonlySet<string> = new Set<string>([...LETTER_GRADE_FIELDS, "gradeComposite"]);
+/** A grade's letter by its value: 1 is F, 13 is A+. */
+const GRADE_LETTERS = ["F", "D-", "D", "D+", "C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+"] as const;
+/** The composite's labels from the score each starts at: its nearest whole number. */
+const COMPOSITE_BANDS = [
+  { from: 4.5, label: "Top" },
+  { from: 3.5, label: "Strong" },
+  { from: 2.5, label: "Neutral" },
+  { from: 1.5, label: "Weak" },
+  { from: 1, label: "Bottom" },
+] as const;
+const gradeLetter = (value: number): string | null =>
+  Number.isInteger(value) ? GRADE_LETTERS[value - 1] ?? null : null;
+const compositeLabel = (score: number): string =>
+  (COMPOSITE_BANDS.find((band) => score >= band.from) ?? COMPOSITE_BANDS.at(-1)!).label;
+/**
+ * The number a cell's sign colour reads, or null for a field without one: a move is its own sign, and a grade the side
+ * of the middle it falls on, B- and up above it and D+ and down below, Strong and Top above the composite's middle and
+ * Weak and Bottom below. So every grade reads in the colours a move does, in every view that shows it.
+ */
+export function screenSignValue(field: NumericField, value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (SIGN_COLORED.has(field)) return Math.abs(value) < 0.05 ? 0 : value;
+  if (LETTER_GRADES.has(field)) return value >= 8 ? 1 : value <= 4 ? -1 : 0;
+  if (field === "gradeComposite") return value >= 3.5 ? 1 : value < 2.5 ? -1 : 0;
+  return null;
+}
 const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank", "ivPercentile", "hvRank",
   "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
   "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile",
@@ -203,6 +245,8 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
   if (COUNTS.has(field)) return formatNumber(value, 0);
   if (MEMBERSHIP.has(field)) return value === 1 ? "Yes" : "No";
+  if (LETTER_GRADES.has(field)) return gradeLetter(value) ?? "--";
+  if (field === "gradeComposite") return `${formatNumber(value, 2)} ${compositeLabel(value)}`;
   if (HUNDREDTHS.has(field)) return formatNumber(value, 2);
   // A value that rounds to zero prints 0.0, never -0.0.
   const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
@@ -212,6 +256,36 @@ export function formatScreenValue(field: NumericField, value: number | null): st
 /** A row's metric as a cell prints it: N/M for a multiple that is not meaningful, as RV and `valuation` print it. */
 export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful">): string {
   return metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value);
+}
+
+/** A metric as a company's detail prints it: with its unit, but a grade or the composite reads as itself (B+, 4.72 Top). */
+export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit">): string {
+  // A missing value is just "--", without the unit it would have had; N/M says so.
+  if (metric.value == null) return metric.notMeaningful ? formatScreenMetric(field, metric) : formatScreenValue(field, null);
+  const text = formatScreenValue(field, metric.value);
+  if (GRADE_DISPLAY_FIELDS.has(field)) return text;
+  // A count of one is singular: 1 year, 1 day.
+  const unit = metric.value === 1 && COUNT_UNITS.has(metric.unit) ? metric.unit.slice(0, -1) : metric.unit;
+  return unit ? `${text} ${unit}` : text;
+}
+const COUNT_UNITS: ReadonlySet<string> = new Set(["years", "days", "sessions", "weeks", "months"]);
+
+/** The note a grade on a company's other line leads with, naming the line it was graded on (the server's text). */
+const COMPANY_NOTE = /^One company with \S+, its primary line: graded once, on that line's figures\.\s*/;
+/**
+ * A grade's reason split into the company note, which every grade of the line repeats and the detail says once, and
+ * what is this grade's own (its peers, an N/M or stale input), null when nothing is left.
+ */
+export function splitGradeReason(reason: string | null): { company: string | null; own: string | null } {
+  const match = reason == null ? null : COMPANY_NOTE.exec(reason);
+  if (!match) return { company: null, own: reason };
+  return { company: match[0].trim(), own: reason!.slice(match[0].length).trim() || null };
+}
+
+/** Where a grade ranks, from its source without the letter it leads with: `percentile 82.4 among 412 Technology listings, from ...`. */
+export function gradeRankText(metric: Pick<ScreenMetric, "source">): string | null {
+  const text = metric.source?.replace(/^[^:]{1,12}:\s*/, "").trim();
+  return text ? text : null;
 }
 
 /**
@@ -279,8 +353,9 @@ export function screenColumnLabel(field: NumericField, ytdBase: string | null, f
   return form === "compact" ? `YTD% ${ytdBase}` : `YTD% vs ${ytdBase}${form === "report" ? " close" : ""}`;
 }
 
-/** Prices get room for a separated six-figure quote (757,398.00). */
-export const columnWidth = (field: NumericField, label = SHORT_LABELS[field]) => Math.max(field === "price" ? 10 : 8, label.length);
+/** Prices get room for a separated six-figure quote (757,398.00), the composite for its label (3.36 Neutral). */
+export const columnWidth = (field: NumericField, label = SHORT_LABELS[field]) =>
+  Math.max(field === "price" ? 10 : field === "gradeComposite" ? 12 : 8, label.length);
 
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,
@@ -434,6 +509,14 @@ export const screenLabel = (field: string) =>
     dividendGrowthYears: "Dividend growth years",
     sp500Member: "S&P 500 member",
     dowMember: "Dow member",
+    valueGrade: "Value grade",
+    growthGrade: "Growth grade",
+    profitabilityGrade: "Profitability grade",
+    momentumGrade: "Momentum grade",
+    revisionsGrade: "Revisions grade",
+    gradeComposite: "Grade composite",
+    nextYearEpsRevision30dPercent: "Next FY EPS revision 30D %",
+    revenueRevision30dPercent: "Revenue revision 30D %",
     hiringOpenRoles: "Hiring open roles",
     hiringNetAddsWeek: "Net open roles per week",
     hiringRemotePercent: "Remote roles %",
@@ -472,9 +555,11 @@ export function parseCriterion(
       value: values,
     };
   }
-  const values = text.split(",").map(parseThreshold);
+  const values = text.split(",").map((part) => parseGradeThreshold(field.id, part) ?? parseThreshold(part));
   if (values.some((value) => value === null))
-    throw new Error("Enter a finite numeric threshold, such as 25 or 10B.");
+    throw new Error(LETTER_GRADES.has(field.id as NumericField)
+      ? "Enter a grade from F to A+, such as B+."
+      : "Enter a finite numeric threshold, such as 25 or 10B.");
   if (operator === "between") {
     if (values.length !== 2 || Number(values[0]) > Number(values[1]))
       throw new Error("Enter minimum, maximum in ascending order.");
@@ -494,6 +579,34 @@ export function parseCriterion(
     op: operator as "gte",
     value: Number(values[0]),
   };
+}
+/** A grade typed as its letter (`b+`, `A`), or the composite as its label (`Strong` is 3.5); null for anything else. */
+function parseGradeThreshold(field: string, text: string): number | null {
+  const typed = text.trim().toUpperCase();
+  if (LETTER_GRADES.has(field as NumericField)) {
+    const index = (GRADE_LETTERS as readonly string[]).indexOf(typed);
+    return index >= 0 ? index + 1 : null;
+  }
+  if (field === "gradeComposite") return COMPOSITE_BANDS.find((band) => band.label.toUpperCase() === typed)?.from ?? null;
+  return null;
+}
+/** A criterion's value as the editor shows it: a grade as its letter, a range as `min, max`. */
+export function criterionInputText(criterion: ScreenCriterion | null): string {
+  if (!criterion || !("value" in criterion)) return "";
+  const shown = (value: string | number) => typeof value === "number" && LETTER_GRADES.has(criterion.field as NumericField)
+    ? gradeLetter(value) ?? String(value) : String(value);
+  return Array.isArray(criterion.value) ? criterion.value.map(shown).join(", ") : shown(criterion.value);
+}
+/** What the value field asks for: the grade's range for a grade, else the field's unit. */
+export function criterionValueLabel(field: Pick<ScreenFieldDefinition, "id" | "unit">): string {
+  const unit = LETTER_GRADES.has(field.id as NumericField) ? "F to A+" : field.unit;
+  return `Value${unit ? ` (${unit})` : ""}`;
+}
+/** An example value: a letter for a grade, a score or label for the composite. */
+export function criterionValueHint(field: Pick<ScreenFieldDefinition, "id">, operator: ScreenOperator): string {
+  if (LETTER_GRADES.has(field.id as NumericField)) return operator === "between" ? "lowest, highest grade, e.g. B, A+" : "grade, e.g. B+";
+  if (field.id === "gradeComposite") return operator === "between" ? "minimum, maximum, e.g. 3.5, 5" : "score or label, e.g. 3.5 or Strong";
+  return operator === "between" ? "minimum, maximum" : operator === "in" ? "comma-separated values" : "threshold, e.g. 25 or 10B";
 }
 const SCALE: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
 /** A plain number or one with a k/M/B/T scale suffix: 25, -0.5, 1e6, 10B. */
@@ -523,6 +636,12 @@ export function criterionText(criterion: ScreenCriterion): string {
     // Membership is 1 or 0: `S&P 500 member = yes`.
     : MEMBERSHIP.has(criterion.field as NumericField) && typeof criterion.value === "number" && [0, 1].includes(criterion.value)
       ? ` ${criterion.value === 1 ? "yes" : "no"}`
+    // A grade reads as its letter: `Value grade >= B+`.
+    : LETTER_GRADES.has(criterion.field as NumericField)
+      ? ` ${criterionInputText(criterion)}`
+    // The composite names the label a threshold starts: `Grade composite >= 4.5 (Top)`.
+    : criterion.field === "gradeComposite" && typeof criterion.value === "number"
+      ? ` ${thresholdText(criterion.value)}${COMPOSITE_BANDS.some((band) => band.from === criterion.value && band.from > 1) ? ` (${compositeLabel(criterion.value)})` : ""}`
     : Array.isArray(criterion.value)
       ? ` ${criterion.value.map((item) => (typeof item === "number" ? thresholdText(item) : item)).join(", ")}`
       : ` ${thresholdText(criterion.value)}`;
@@ -578,6 +697,7 @@ export function screenDefinitionSyntax(): string {
     "between with [min, max], present and missing with no value;",
     `${OBSERVED_SUBSET_FIELDS.join(" and ")} take only ${OBSERVED_SUBSET_OPERATORS.join(", ")};`,
     `${MEMBERSHIP_FIELDS.join(" and ")} take only ${MEMBERSHIP_OPERATORS.join(", ")}, eq with 1 for a member or 0;`,
+    `the grades (${LETTER_GRADE_FIELDS.join(", ")}) are numbers from 1 (F) to 13 (A+), so B+ or better is gte 10, and gradeComposite runs from 1 to 5 (4.5 and up is Top);`,
     `category fields (${CATEGORY_FIELDS.join(", ")}) take in with an array of 1-25 names, present, missing.`,
   ].join(" ");
 }
@@ -754,9 +874,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility, dividend, technical, option volatility, ownership, quality or
-      // score fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research, volatility, dividend, technical, option volatility, ownership, quality,
+      // score or grade fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...GRADE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

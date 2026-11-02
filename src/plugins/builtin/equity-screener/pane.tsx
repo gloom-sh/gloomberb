@@ -39,6 +39,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { priceColor, shownPriceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
 import {
+  LETTER_GRADE_FIELDS,
   NUMERIC_FIELDS,
   type NumericField,
   type ScreenDefinition,
@@ -46,6 +47,7 @@ import {
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { useOpenDescription } from "../shared/open-description";
 import { useMembersMenu } from "../shared/members-menu";
@@ -56,7 +58,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
-import { SCREEN_IDEAS, screenIdea } from "./ideas";
+import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
 import { ScreenTickerCheck } from "./ticker-check";
 import {
   fetchSavedScreens,
@@ -71,18 +73,22 @@ import {
   dividendYieldBasis,
   formatScreenMetric,
   formatScreenValue,
+  GRADE_DISPLAY_FIELDS,
+  gradeRankText,
   metricDate,
   parseScreenDefinition,
   pickerFields,
   resultFields,
   screenMetricSetting,
-  SIGN_COLORED,
   screenColumnLabel,
   screenCurrencyEmpty,
   screenDefinitionKey,
+  screenDetailValue,
   screenLabel,
   screenRowId,
+  screenSignValue,
   screenYtdBase,
+  splitGradeReason,
 } from "./model";
 import { useScreenResults } from "./results";
 import { screenWatchlistList } from "./watchlist";
@@ -171,6 +177,19 @@ export function resultColumns(
   return fits(named) ? named : build(compact.slice(0, shown), exchange, sector, "compact");
 }
 const loadFields = () => fetchScreenFields();
+const DETAIL_LABEL_WIDTH = 24;
+/** A long note under a value, wrapped to the detail's width rather than cut: one row per line, the label on the first. */
+function WrappedDetailRows({ label, text, width }: { label: string; text: string; width: number }) {
+  // The detail's padding, the label column and the gap after it.
+  const lines = wrapTextLines(text, Math.max(16, width - 2 - DETAIL_LABEL_WIDTH - 1));
+  return (
+    <>
+      {lines.map((line, index) => (
+        <KeyValueRow key={index} label={index === 0 ? label : ""} labelWidth={DETAIL_LABEL_WIDTH} value={line} emphasis={false} />
+      ))}
+    </>
+  );
+}
 function ScreenDetail({
   row,
   width,
@@ -191,19 +210,25 @@ function ScreenDetail({
         {NUMERIC_FIELDS.map((field) => {
           const metric = row.metrics[field];
           const stamp = metricDate(metric);
+          // A grade's company note (graded on another line of the company) is said once, above the grades.
+          const reason = GRADE_DISPLAY_FIELDS.has(field) ? splitGradeReason(metric.reason).own : metric.reason;
+          const company = field === LETTER_GRADE_FIELDS[0] ? splitGradeReason(metric.reason).company : null;
           const extended = field === "changePercent" ? row.extended : undefined;
           const basis = field === "dividendYieldPercent" ? dividendYieldBasis(metric) : null;
+          // A grade's rank in its sector and the inputs it read, and its notes: peers, N/M or stale inputs, its company.
+          const graded = GRADE_DISPLAY_FIELDS.has(field) && metric.value !== null ? gradeRankText(metric) : null;
           return (
             <Fragment key={field}>
+              {company ? <WrappedDetailRows label="Grades" text={company} width={width} /> : null}
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
-                value={metric.value == null && metric.notMeaningful ? formatScreenMetric(field, metric) : `${formatScreenValue(field, metric.value)} ${metric.unit}`}
+                value={screenDetailValue(field, metric)}
                 detail={
                   metric.value === null
-                    ? (metric.reason ?? "unavailable")
+                    ? (reason ?? "unavailable")
                     : [
-                        metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
+                        graded || metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                         stamp.collected ? `collected ${stamp.text}` : stamp.text,
                         metric.state === "available" ? null : metric.state,
                       ].filter(Boolean).join(" \u00b7 ")
@@ -219,6 +244,8 @@ function ScreenDetail({
                 />
               ) : null}
               {basis ? <KeyValueRow label="Yield basis" labelWidth={24} value={basis} /> : null}
+              {graded ? <WrappedDetailRows label="Ranked" text={graded} width={width} /> : null}
+              {graded && reason ? <WrappedDetailRows label="Note" text={reason} width={width} /> : null}
             </Fragment>
           );
         })}
@@ -249,6 +276,7 @@ export function EquityScreenerPane(props: PaneProps) {
       {...props}
       initial={initial}
       initialMetric={preset?.metric ?? "marketCap"}
+      initialMetricSetting={preset ? ideaMetricSetting(preset) : undefined}
     />
   );
 }
@@ -258,7 +286,8 @@ function EquityScreenView({
   focused,
   initial,
   initialMetric,
-}: PaneProps & { initial: ScreenDefinition; initialMetric: NumericField }) {
+  initialMetricSetting,
+}: PaneProps & { initial: ScreenDefinition; initialMetric: NumericField; initialMetricSetting?: string }) {
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
@@ -270,7 +299,7 @@ function EquityScreenView({
   const [definition, setDefinition] = usePluginPaneState("definition", initial);
   const [metricSetting, setMetric] = usePaneSettingValue<string>(
     "metric",
-    initialMetric,
+    initialMetricSetting ?? initialMetric,
   );
   // `--metric trailingPE,dividendYieldPercent` leads with the first and adds the others as columns.
   const [metric, ...otherMetrics] = screenMetricSetting(metricSetting, initialMetric);
@@ -922,7 +951,7 @@ function EquityScreenView({
           onChange: setIdeaSelectedId,
         }}
         onActivate={(row) => {
-          setMetric(row.metric);
+          setMetric(ideaMetricSetting(row));
           apply(row.definition);
           setCurrentSavedId(null);
           setMode("results");
@@ -1065,10 +1094,9 @@ function EquityScreenView({
                 : null;
               if (field) {
                 const observation = row.metrics[field];
-                const change = SIGN_COLORED.has(field) && observation.value != null
-                  // A move that prints 0.0 stays neutral.
-                  ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
-                  : undefined;
+                // A move by its sign (one that prints 0.0 stays neutral), a grade by its side of the middle.
+                const sign = screenSignValue(field, observation.value);
+                const change = sign == null ? undefined : priceColor(sign, colors);
                 return {
                   text: formatScreenMetric(field, observation),
                   color: observation.state === "stale" ? colors.warning : change,

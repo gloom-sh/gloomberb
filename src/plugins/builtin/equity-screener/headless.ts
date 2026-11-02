@@ -14,7 +14,7 @@ import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
-import { SCREEN_IDEAS, screenIdea } from "./ideas";
+import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
 import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
@@ -253,6 +253,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Shares outstanding, float, short % of float and institutional ownership cover US filers: the 10-K or 10-Q cover count, the stored statistics float, the FINRA settlement, the 13F quarter. The source does not say when it measured the float, so float and short % of float are partial, dated by when the statistics were retrieved (within 30 days) and never above the dated shares outstanding. A stale or inconsistent input leaves a field unavailable with its reason. Institutional ownership is over the balance-sheet count at the 13F quarter end; over 100% is partial with its reason.",
       "ROIC, FCF yield, net debt / EBITDA and debt / equity read FA's latest annual column: the trailing four quarters, or the fiscal year when those quarters are it. Revenue and EPS CAGRs run from the latest fiscal year back 3 or 5 years, both years from the stored statements or both from the SEC filings (US filers), never one of each. Forward growth is the consensus EE shows for the fiscal year in progress. N/M where FA prints it: EBITDA, equity, invested capital or a base year at or below zero.",
       "Piotroski F-score compares the latest two fiscal years; Altman Z, the Graham number, Lynch fair value, earnings yield and return on capital read FA's latest annual column at today's price and market cap, each dated by its period end. N/M where the score is not defined: Altman Z, the Magic Formula and an unclassified balance sheet's F-score for banks and insurers, the Graham number and Lynch value over a loss. Magic Formula rank and RS rating rank the covered US listings, not the whole market. Streak years run to the first stored year at most, read as at least that many; the distribution history covers about ten years. S&P 500 and Dow membership read the IVV and DIA holdings MEMB reads, 1 for a member.",
+      "Value, Growth, Profitability, Momentum and Revisions grades rank a few of these fields within the company's sector, every currency together, and print F to A+ (stored 1 to 13, so B+ or better is gte 10); a company's share classes and lines are graded once, on its most traded line, and a sector with fewer than 20 companies that have them ranks against every company, and the Reason says so. A grade needs two of its inputs; an N/M input is left out. The composite averages the grades' percentiles with equal weights (three grades or more), ranks the averages across every company and prints 1 to 5 with its label: Top, Strong, Neutral, Weak or Bottom, its nearest whole number.",
     ],
   },
   async load(args, ctx) {
@@ -304,7 +305,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const limit = typeof args.options.limit === "number" ? args.options.limit : SCREEN_PAGE_ROWS;
     const data = await fetchScreenRows(definition, limit, ctx);
-    const metrics = readMetrics(args.options.metric == null ? preset?.metric ?? "marketCap" : String(args.options.metric));
+    const metrics = readMetrics(args.options.metric == null ? preset ? ideaMetricSetting(preset) : "marketCap" : String(args.options.metric));
     const metric = metrics[0]!;
     // Last, Chg% and market cap are the regular session, as `quote` and the
     // pane read each row's quote; an extended print is a column of its own.
