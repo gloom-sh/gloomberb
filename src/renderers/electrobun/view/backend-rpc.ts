@@ -129,7 +129,7 @@ const BRIDGE_READY_LIMIT_MS = 5_000;
 async function waitForBridgeReady(): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < BRIDGE_READY_LIMIT_MS) {
-    if (electroview.bunSocket?.readyState === WebSocket.OPEN) {
+    if (electroview.hostSocket?.readyState === WebSocket.OPEN) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));

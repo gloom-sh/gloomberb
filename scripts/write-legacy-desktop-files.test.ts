@@ -2,9 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-// The functions Electrobun's updater builds its download names with (dist/api/bun/core/Updater.ts).
-import { getAppFileName, getPlatformPrefix, getTarballFileName } from "../node_modules/electrobun/dist/api/shared/naming";
 import { legacyDesktopFiles, writeLegacyDesktopFiles } from "./write-legacy-desktop-files";
+
+// How the updater in an installed Electrobun 1.x app names what it downloads
+// (electrobun 1.18, dist/api/shared/naming.ts). Those installs keep it as it is.
+const getAppFileName = (appName: string) => appName.replace(/ /g, "");
+const getPlatformPrefix = (channel: string, os: string, arch: string) => `${channel}-${os}-${arch}`;
+const getTarballFileName = (appFileName: string, os: string) => os === "macos" ? `${appFileName}.app.tar.zst` : `${appFileName}.tar.zst`;
 
 // A release built as Gloom has to update installs built as Gloomberb, whose
 // updater asks for files by that name and opens the Windows archive at a
@@ -68,7 +72,7 @@ function newRelease(channel = "stable"): void {
  */
 async function update(appName: string, os: "macos" | "win", channel = "stable"): Promise<string> {
   // version.json's `name`: Electrobun builds both channels with its stable environment.
-  const localName = getAppFileName(appName, "stable");
+  const localName = getAppFileName(appName);
   const archive = join(artifacts, `${getPlatformPrefix(channel, os, os === "win" ? "x64" : "arm64")}-${getTarballFileName(localName, os)}`);
   if (!existsSync(archive)) throw new Error(`not in the release: ${archive.slice(artifacts.length + 1)}`);
   const extracted = mkdtempSync(join(root, "self-extraction-"));

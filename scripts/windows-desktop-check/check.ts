@@ -66,16 +66,15 @@ async function install(installer: string, dir: string): Promise<void> {
 /**
  * A release opens no DevTools port; the check drives the page through one,
  * so it opens it again in its own install, after `ports` has looked at the
- * build as shipped.
+ * build as shipped. Electrobun 2 opens one only when a build asks for it.
  */
 async function enableDevtools(dir: string): Promise<void> {
   const buildPath = join(dir, "Resources", "build.json");
   const build = JSON.parse((await readFile(buildPath, "utf8")).replace(/^\uFEFF/, "")) as { chromiumFlags?: Record<string, unknown> };
   const flags = { ...build.chromiumFlags };
-  delete flags["remote-debugging-port"];
   delete flags["remote-allow-origins"];
-  if (Object.keys(flags).length) build.chromiumFlags = flags;
-  else delete build.chromiumFlags;
+  flags["remote-debugging-port"] = "9222";
+  build.chromiumFlags = flags;
   await writeFile(buildPath, JSON.stringify(build));
   console.log(`DevTools port open for the check (Chromium flags now ${JSON.stringify(build.chromiumFlags ?? {})})`);
 }
