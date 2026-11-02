@@ -29,6 +29,7 @@ import {
   datedBucketScale,
   debtCostProxy,
   debtCostProxyNote,
+  debtHistoryRows,
   historyAxis,
   historyBars,
   fiscalYearOf,
@@ -521,10 +522,15 @@ test("a year with no debt-only proxy reads interest over its average scheduled p
   ];
   const proxies = history.map((point) => debtCostProxy(history, point));
   expect(proxies.map((proxy) => proxy.value === null ? null : Number(proxy.value.toFixed(2)))).toEqual([null, 5.59, null, null, 8.96]);
-  expect(proxies[4]!.basis).toBe("Interest over average principal since 2024-12-31");
+  expect(proxies[4]).toMatchObject({ kind: "average-principal", basis: "Interest over average principal since 2024-12-31" });
   expect(debtCostProxyNote(history)).toBe("Cost proxy %: none for 2024-12-31 (partial principal schedule at 2023-12-31), "
     + "2023-12-31 (partial principal schedule), 2021-12-31 (no schedule a year earlier to average).");
   // The filing's own debt-only proxy stands when it has one.
   const own = { ...history[4]!, borrowingCostPercent: 7.5, borrowingCostDebtTags: "LongTermDebt+ShortTermBorrowings" };
-  expect(debtCostProxy(history, own)).toEqual({ value: 7.5, basis: "LongTermDebt+ShortTermBorrowings", reason: null });
+  expect(debtCostProxy(history, own)).toEqual({ value: 7.5, kind: "filed", basis: "LongTermDebt+ShortTermBorrowings", reason: null });
+
+  // `--json` and `--csv` name each year's basis, so a computed proxy is never read as a filed one.
+  expect(debtHistoryRows([...history.slice(0, 4), own]).map((row) => [row.asOf, row.borrowingCostBasis])).toEqual([
+    ["2025-12-31", "filed"], ["2024-12-31", null], ["2023-12-31", null], ["2022-12-31", "average-principal"], ["2021-12-31", null],
+  ]);
 });

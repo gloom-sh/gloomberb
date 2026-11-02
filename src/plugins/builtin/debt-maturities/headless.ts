@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtCostProxy, debtCostProxyNote, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
+import { bucketShare, debtAmount, debtCostProxyNote, debtHistoryRows, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -112,10 +112,17 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
               align: "right",
               textFormat: percent,
             },
+            {
+              // What the proxy divides: exports keep `filed` or `average-principal`, the text says it in words.
+              key: "borrowingCostBasis",
+              header: "Cost basis",
+              optional: true,
+              textFormat: (value) => value === "filed" ? "Filed" : value === "average-principal" ? "Avg principal" : "",
+            },
             { key: "currency", header: "Currency" },
             { key: "filed", header: "Filed" },
           ],
-          rows: data.history.toReversed().map((point) => ({ ...point, borrowingCostPercent: debtCostProxy(data.history, point).value })),
+          rows: debtHistoryRows(data.history).map((row) => ({ ...row })),
         },
       ],
       ...(costNote ? { notes: [costNote] } : {}),

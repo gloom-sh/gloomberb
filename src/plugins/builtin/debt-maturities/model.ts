@@ -200,9 +200,17 @@ export function sortedDebtHistory(
       b.asOf.localeCompare(a.asOf),
   );
 }
+/**
+ * What a year's cost proxy divides: `filed`, the filing's debt-only interest
+ * over the debt balances it reports; `average-principal`, the year's interest
+ * expense over its average scheduled principal.
+ */
+export type DebtCostProxyKind = "filed" | "average-principal";
+
 /** A year's cost proxy: the value, what it divides when there is one, and why not when there is none. */
 export interface DebtCostProxy {
   value: number | null;
+  kind: DebtCostProxyKind | null;
   basis: string | null;
   reason: string | null;
 }
@@ -215,8 +223,10 @@ export interface DebtCostProxy {
  * earlier in `history`. With neither, null and the reason.
  */
 export function debtCostProxy(history: readonly DebtHistoryPoint[], point: DebtHistoryPoint): DebtCostProxy {
-  if (point.borrowingCostPercent !== null) return { value: point.borrowingCostPercent, basis: point.borrowingCostDebtTags, reason: null };
-  const none = (reason: string): DebtCostProxy => ({ value: null, basis: null, reason });
+  if (point.borrowingCostPercent !== null) {
+    return { value: point.borrowingCostPercent, kind: "filed", basis: point.borrowingCostDebtTags, reason: null };
+  }
+  const none = (reason: string): DebtCostProxy => ({ value: null, kind: null, basis: null, reason });
   if (point.interestExpense === null) return none("no annual interest expense reported");
   if (point.totalPrincipal === null) return none("partial principal schedule");
   const opening = history.find((row) => {
@@ -227,7 +237,24 @@ export function debtCostProxy(history: readonly DebtHistoryPoint[], point: DebtH
   if (opening.totalPrincipal === null) return none(`partial principal schedule at ${opening.asOf}`);
   const average = (opening.totalPrincipal + point.totalPrincipal) / 2;
   if (average <= 0) return none("no principal to average");
-  return { value: (100 * point.interestExpense) / average, basis: `Interest over average principal since ${opening.asOf}`, reason: null };
+  return {
+    value: (100 * point.interestExpense) / average,
+    kind: "average-principal",
+    basis: `Interest over average principal since ${opening.asOf}`,
+    reason: null,
+  };
+}
+
+/**
+ * The annual history as DDIS prints and exports it, newest first: each year's
+ * cost proxy as `debtCostProxy` reads it, and `borrowingCostBasis` naming what
+ * it divides (`filed` or `average-principal`; null with no proxy).
+ */
+export function debtHistoryRows(history: readonly DebtHistoryPoint[]): Array<DebtHistoryPoint & { borrowingCostBasis: DebtCostProxyKind | null }> {
+  return history.toReversed().map((point) => {
+    const cost = debtCostProxy(history, point);
+    return { ...point, borrowingCostPercent: cost.value, borrowingCostBasis: cost.kind };
+  });
 }
 
 /** The note for the years a cost proxy cannot be read for: "Cost proxy %: none for 2021-12-31 (no schedule a year earlier to average)." */
