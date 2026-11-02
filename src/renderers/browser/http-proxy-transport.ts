@@ -6,6 +6,28 @@ import {
 import type { HttpFetchTransport } from "../../utils/http-transport";
 import { HTTP_PROXY_PATH, isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
 
+/** Thrown when the worker refuses or cannot complete a proxied request. */
+class ProxyRefusedError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ProxyRefusedError";
+  }
+}
+
+/**
+ * The sentence a pane shows for a refusal. The worker answers with
+ * `{ error }` in plain words; anything else (an edge error page, a body cut
+ * short) gets a sentence for its status, never the raw body.
+ */
+async function refusalMessage(response: Response): Promise<string> {
+  const body = await response.json().catch(() => null) as { error?: unknown } | null;
+  const error = typeof body?.error === "string" ? body.error.trim() : "";
+  if (error && !/[{}<>]/.test(error)) return error;
+  if (response.status === 429) return "Too many requests right now. Try again in a minute.";
+  if (response.status >= 500) return "The data source could not be reached. Try again shortly.";
+  return "This request could not be completed.";
+}
+
 function needsProxy(url: string, hosts: readonly string[]): boolean {
   try {
     const target = new URL(url, typeof location === "undefined" ? undefined : location.href);
@@ -46,10 +68,7 @@ export function createBrowserHttpProxyTransport(
       body: JSON.stringify(await toRequestEnvelope(url, init)),
     });
 
-    if (!proxied.ok) {
-      const detail = await proxied.text().catch(() => "");
-      throw new Error(`Plugin request was refused (${proxied.status}). ${detail}`.trim());
-    }
+    if (!proxied.ok) throw new ProxyRefusedError(await refusalMessage(proxied), proxied.status);
     return createProxyResponse(await proxied.json() as HttpProxyResponseEnvelope);
   };
 }

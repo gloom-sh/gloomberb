@@ -18,6 +18,19 @@ import allowed from "./plugin-proxy-hosts.json";
  */
 export const PROXY_ALLOWED_HOSTS: readonly string[] = allowed.hosts;
 
+/**
+ * Declared hosts the browser calls directly instead of through the proxy,
+ * because they answer the terminal's origin with CORS headers and need no
+ * header a browser cannot set. The worker lists them in `connect-src`, and
+ * the generator leaves them off the proxy list, so a request to one never
+ * costs a worker round trip or a slot in anyone's rate limit.
+ *
+ * Add a host here only after checking that it sends
+ * `access-control-allow-origin` for https://term.gloom.sh, preflight
+ * included when the plugin sends `Authorization`.
+ */
+export const WEB_DIRECT_HOSTS: readonly string[] = ["api.fiscaldata.treasury.gov", "api.thebuildout.ai"];
+
 /** The worker route the browser posts proxied requests to. */
 export const HTTP_PROXY_PATH = "/http-proxy";
 

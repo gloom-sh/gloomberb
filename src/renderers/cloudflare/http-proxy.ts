@@ -74,13 +74,14 @@ function proxyError(message: string, status: number, headers: Record<string, str
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store", ...headers } });
 }
 
+/** The pane shows `error` as is, so it says what happened in plain words. */
 function upstreamFailure(error: unknown): Response {
   const timedOut = error instanceof Error && error.name === "TimeoutError";
-  return proxyError(timedOut ? "The upstream request timed out." : "The upstream request failed.", 504);
+  return proxyError(timedOut ? "The data source timed out. Try again shortly." : "The data source could not be reached. Try again shortly.", 504);
 }
 
 export interface HttpProxyOptions {
-  /** Confirms the caller is signed in. One per isolate, so its cache is shared. */
+  /** Rate limits the caller, by user when signed in. One per isolate, so its cache is shared. */
   sessions: ProxySessionGate;
   /** Reaches the Gloomberb API for that check. */
   fetchApi: (request: Request) => Promise<Response>;

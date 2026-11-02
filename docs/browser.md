@@ -8,6 +8,7 @@ Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a s
 
 - The workspace opens without signing in. Some panes, including filings and insider transactions, require a free, verified Gloom Cloud account; others require Pro.
 - 13F funds (`13F`), earnings history and calendar (`ERN`, `EVTS`), and institutional holders (`HDS`) open without an account, including from a saved layout.
+- Functions that read public sources, such as Treasury auctions (`AUCT`), the bond tape (`TRACE`), trading halts (`HALT`), Fear & Greed (`FNG`), comment letters (`CLTR`), prediction markets (`PM`) and polls (`POLL`), also work without an account. The browser app reaches the sources that refuse a browser through its own server, with a per-visitor rate limit that is higher when signed in.
 - Free access has rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Pro provides real-time data and more datasets.
 - Chat is read-only until the account's email is verified.
 - Configuration, tickers, layouts, session state, and plugin state are stored in the browser.

@@ -87,12 +87,18 @@ describe("browser plugin transport", () => {
     ]);
   });
 
-  test("surfaces a refusal from the proxy instead of returning it as a response", async () => {
-    const transport = createBrowserHttpProxyTransport((async () => Response.json(
-      { error: "Sign in to use plugin requests." },
-      { status: 401 },
-    )) as unknown as typeof fetch, HOSTS);
+  // Panes print the error message as is, so a refusal has to arrive as a
+  // sentence: never the worker's JSON, an edge HTML page or a status code.
+  test.each([
+    ["the worker's error", () => Response.json({ error: "The data source timed out. Try again shortly." }, { status: 504 }), "The data source timed out. Try again shortly."],
+    ["an edge HTML page", () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502 }), "The data source could not be reached. Try again shortly."],
+    ["an error that is itself JSON", () => Response.json({ error: "{\"code\":1}" }, { status: 429 }), "Too many requests right now. Try again in a minute."],
+    ["an empty body", () => new Response(null, { status: 403 }), "This request could not be completed."],
+  ])("turns a refusal with %s into a plain sentence", async (_label, refusal, message) => {
+    const transport = createBrowserHttpProxyTransport((async () => refusal()) as unknown as typeof fetch, HOSTS);
+    const error = await transport("https://substack.com/api/v1/reader/feed").then(() => null, (thrown: unknown) => thrown);
 
-    await expect(transport("https://substack.com/api/v1/reader/feed")).rejects.toThrow("refused (401)");
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(message);
   });
 });

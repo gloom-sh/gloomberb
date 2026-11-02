@@ -188,6 +188,8 @@ export function createGloomberbCloudPlugin(): GloomPlugin {
     description: "Free market, macro, and chat services. Chat requires signup.",
     toggleable: true,
     order: 10,
+    // TheBuildout's panes read its API directly.
+    hosts: ["api.thebuildout.ai"],
     modules: [
       createCloudDataModule(),
       chatModule,
