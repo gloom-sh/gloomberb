@@ -2,13 +2,18 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$BundleDir = Join-Path $Root "build\stable-win-x64\Gloom-inno-source\Gloom"
-$CoreDir = Join-Path $BundleDir "Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64"
-$InstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomSetup.exe"
+# Electrobun builds for the machine it runs on: win-x64, or win-arm64 on Windows on Arm.
+$BuiltManifest = Get-ChildItem -LiteralPath (Join-Path $Root "artifacts") -Filter "stable-win-*-update.json" -ErrorAction SilentlyContinue | Select-Object -First 1
+$Platform = if ($BuiltManifest -and $BuiltManifest.Name -match '^stable-(win-(x64|arm64))-update\.json$') { $Matches[1] } else { "win-x64" }
+$BundleDir = Join-Path $Root "build\stable-$Platform\Gloom-inno-source\Gloom"
+$CoreDir = Join-Path $BundleDir "Resources\gloomberb-tui\node_modules\@opentui\core-win32-$($Platform.Substring(4))"
+$InstallerPath = Join-Path $Root "artifacts\stable-$Platform-GloomSetup.exe"
 # What installs from before the rename update from, and the installer under its old name.
-$LegacyUpdateArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloomberb.tar.zst"
-$LegacyInstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomberbSetup.exe"
-$UpdateManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
+$LegacyUpdateArchivePath = Join-Path $Root "artifacts\stable-$Platform-Gloomberb.tar.zst"
+$LegacyInstallerPath = Join-Path $Root "artifacts\stable-$Platform-GloomberbSetup.exe"
+$UpdateManifestPath = Join-Path $Root "artifacts\stable-$Platform-update.json"
+# Electrobun's folder for the app, where the installer installs (windows-installer.iss).
+$ManagedAppDir = Join-Path $env:LOCALAPPDATA "com.vincelwt.gloomberb\stable\app"
 $GuiArtifactDir = Join-Path $Root "artifacts\windows-gui-verification"
 $BundleAppIconPath = Join-Path $BundleDir "Resources\app.ico"
 $BundleLogoIconPath = Join-Path $BundleDir "Resources\gloomberb-logo.ico"
@@ -991,8 +996,10 @@ function Assert-UpdaterToolsWork {
       Write-Host "zig-zstd.exe compressed and decompressed a file"
     }
     $BundledBspatch = Join-Path $BundleDir "bin\bspatch.exe"
-    $Bsdiff = Join-Path $Root "node_modules\electrobun\dist-win-x64\bsdiff.exe"
-    if ((Test-Path -LiteralPath $BundledBspatch) -and (Test-Path -LiteralPath $Bsdiff)) {
+    # Electrobun 2 keeps bsdiff with its release, in Hutch's store.
+    $Bsdiff = @(Get-ChildItem -Path (Join-Path $env:USERPROFILE ".hutch\releases") -Recurse -Filter "bsdiff.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
+    $Bsdiff = if ($Bsdiff.Count -gt 0) { $Bsdiff[0] } else { "" }
+    if ((Test-Path -LiteralPath $BundledBspatch) -and $Bsdiff) {
       # As Electrobun makes an update's patch and the app applies it.
       $PatchFile = Join-Path $ToolCheckDir "update.patch"
       & $Bsdiff $OldFile $NewFile $PatchFile --use-zstd
@@ -1004,7 +1011,8 @@ function Assert-UpdaterToolsWork {
       }
       Write-Host "bspatch.exe applied a patch"
     } elseif (Test-Path -LiteralPath $BundledBspatch) {
-      throw "No bsdiff.exe at $Bsdiff to make a patch for the bundled bspatch.exe"
+      # Windows releases ship no patches (electrobun.config.ts), so nothing runs it.
+      Write-Host "No bsdiff.exe in Hutch's store to make a patch for the bundled bspatch.exe; not checked"
     }
   } finally {
     Remove-Item -LiteralPath $ToolCheckDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -1135,11 +1143,16 @@ function Assert-WindowsUpdateManifest {
   if ($Manifest.platform -ne "win") {
     throw "Windows update manifest platform mismatch: expected win, got $($Manifest.platform)"
   }
-  if ($Manifest.arch -ne "x64") {
-    throw "Windows update manifest arch mismatch: expected x64, got $($Manifest.arch)"
+  if ($Manifest.arch -ne $Platform.Substring(4)) {
+    throw "Windows update manifest arch mismatch: expected $($Platform.Substring(4)), got $($Manifest.arch)"
   }
   if ([string]::IsNullOrWhiteSpace([string]$Manifest.hash)) {
     throw "Windows update manifest is missing the bundle hash."
+  }
+  # Electrobun 2 reads the archive's name from the manifest; Electrobun 1
+  # builds still updating from it ask for the same name.
+  if ($Manifest.artifact.file -ne "stable-$Platform-Gloom.tar.zst") {
+    throw "Windows update manifest names the archive '$($Manifest.artifact.file)', not stable-$Platform-Gloom.tar.zst"
   }
 }
 
@@ -1149,7 +1162,7 @@ function Assert-WindowsUpdateManifest {
 function Assert-LegacyUpdateArchive {
   param([string]$Path)
 
-  $Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
+  $Zstd = Join-Path $BundleDir "bin\zig-zstd.exe"
   $CheckDir = Join-Path $SmokeRoot "legacy-update"
   if (Test-Path $CheckDir) {
     Remove-Item -Recurse -Force $CheckDir
@@ -1183,76 +1196,79 @@ function Get-NormalizedPathEntries {
   return @($PathValue -split ";" | ForEach-Object { $_.Trim().Trim('"').TrimEnd("\").ToLowerInvariant() } | Where-Object { $_ })
 }
 
-# An installer from before the rename put the app in Programs\Gloomberb, with
-# that folder's bin on the user's PATH. The new installer, run over it with no
-# /DIR, installs into Programs\Gloom and removes the old folder and PATH entry.
+# An earlier installer put the app in its own folder, Programs\Gloom (or
+# Programs\Gloomberb before the rename), with that folder's bin on the user's
+# PATH. This one, run over it, installs into Electrobun's folder and removes
+# the earlier install: its record, its PATH entry, and its default folder.
+# The earlier install here has no uninstaller of its own, so the installer
+# removes it by hand (scripts/verify-windows-update.ps1 checks one that has).
 # It writes the user's install record and PATH, so it runs only on a CI
 # machine with no install of its own.
-function Assert-InstallerMovesLegacyInstall {
+function Assert-InstallerReplacesEarlierInstall {
   $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
-  $LegacyDir = Join-Path $env:LOCALAPPDATA "Programs\Gloomberb"
-  $NewDir = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
   if ($env:GITHUB_ACTIONS -ne "true") {
-    Write-Host "Skipping the move from Programs\Gloomberb outside CI."
+    Write-Host "Skipping the install over an earlier one outside CI."
     return
   }
-  # The smoke install's uninstaller finishes in the background, removing the
-  # same record and then its PATH entry.
-  for ($Attempt = 0; ($Attempt -lt 120) -and (Test-Path $UninstallKey); $Attempt += 1) {
-    Start-Sleep -Seconds 1
-  }
-  Start-Sleep -Seconds 5
-  if ((Test-Path $UninstallKey) -or (Test-Path $LegacyDir) -or (Test-Path $NewDir)) {
-    throw "An install is already recorded on this machine; cannot check the move from Programs\Gloomberb."
+  if ((Test-Path $UninstallKey) -or (Test-Path $ManagedAppDir)) {
+    throw "An install is already recorded on this machine; cannot check the install over an earlier one."
   }
 
   $PreviousUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  $LegacyBin = Join-Path $LegacyDir "bin"
-  $Log = Join-Path $SmokeRoot "move-install.log"
-  try {
-    New-Item -ItemType Directory -Force -Path $LegacyBin | Out-Null
-    Set-Content -Path (Join-Path $LegacyBin "gloomberb.cmd") -Value "@echo the install from before the rename"
-    New-Item -Path $UninstallKey -Force | Out-Null
-    New-ItemProperty -Path $UninstallKey -Name "Inno Setup: App Path" -Value $LegacyDir -PropertyType String -Force | Out-Null
-    [Environment]::SetEnvironmentVariable("Path", ((@($PreviousUserPath, $LegacyBin) | Where-Object { $_ }) -join ";"), "User")
+  foreach ($EarlierDir in @((Join-Path $env:LOCALAPPDATA "Programs\Gloomberb"), (Join-Path $env:LOCALAPPDATA "Programs\Gloom"))) {
+    $EarlierBin = Join-Path $EarlierDir "bin"
+    $Log = Join-Path $SmokeRoot "install-over-$(Split-Path -Leaf $EarlierDir).log"
+    try {
+      if (Test-Path $EarlierDir) { throw "$EarlierDir already exists on this machine" }
+      New-Item -ItemType Directory -Force -Path $EarlierBin | Out-Null
+      Set-Content -Path (Join-Path $EarlierBin "gloomberb.cmd") -Value "@echo the earlier install"
+      New-Item -Path $UninstallKey -Force | Out-Null
+      New-ItemProperty -Path $UninstallKey -Name "Inno Setup: App Path" -Value $EarlierDir -PropertyType String -Force | Out-Null
+      [Environment]::SetEnvironmentVariable("Path", ((@($PreviousUserPath, $EarlierBin) | Where-Object { $_ }) -join ";"), "User")
 
-    $Process = Start-Process `
-      -FilePath $InstallerPath `
-      -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$Log`"") `
-      -Wait `
-      -PassThru
-    if ($Process.ExitCode -ne 0) {
-      Get-Content $Log -ErrorAction SilentlyContinue
-      throw "The installer failed over an install in Programs\Gloomberb: $($Process.ExitCode)"
-    }
-
-    foreach ($Required in @("bin\launcher.exe", "bin\gloom.cmd", "bin\gloomberb.cmd")) {
-      if (-not (Test-Path (Join-Path $NewDir $Required))) {
+      $Process = Start-Process `
+        -FilePath $InstallerPath `
+        -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$Log`"") `
+        -Wait `
+        -PassThru
+      if ($Process.ExitCode -ne 0) {
         Get-Content $Log -ErrorAction SilentlyContinue
-        throw "The installer did not install $Required into $NewDir"
+        throw "The installer failed over an install in ${EarlierDir}: $($Process.ExitCode)"
       }
+
+      foreach ($Required in @("bin\launcher.exe", "bin\gloom.cmd", "bin\gloomberb.cmd")) {
+        if (-not (Test-Path (Join-Path $ManagedAppDir $Required))) {
+          Get-Content $Log -ErrorAction SilentlyContinue
+          throw "The installer did not install $Required into $ManagedAppDir"
+        }
+      }
+      if (Test-Path $EarlierDir) {
+        Get-Content $Log -ErrorAction SilentlyContinue
+        throw "The installer left the earlier folder $EarlierDir"
+      }
+      $Entries = Get-NormalizedPathEntries ([Environment]::GetEnvironmentVariable("Path", "User"))
+      if ($Entries -contains $EarlierBin.TrimEnd("\").ToLowerInvariant()) {
+        throw "The installer left $EarlierBin on the user's PATH"
+      }
+      if (-not ($Entries -contains (Join-Path $ManagedAppDir "bin").ToLowerInvariant())) {
+        throw "The installer did not put $ManagedAppDir\bin on the user's PATH"
+      }
+      if (Test-Path $UninstallKey) {
+        throw "The installer left the earlier install's record"
+      }
+      $Shortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk"
+      $Target = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut).TargetPath
+      if ($Target -ne (Join-Path $ManagedAppDir "bin\launcher.exe")) {
+        throw "The Start menu shortcut opens '$Target', not the app in $ManagedAppDir"
+      }
+      Write-Host "The installer replaced an install in $EarlierDir with one in $ManagedAppDir."
+    } finally {
+      Remove-Item -Recurse -Force $EarlierDir -ErrorAction SilentlyContinue
+      Remove-Item -Recurse -Force (Split-Path -Parent $ManagedAppDir) -ErrorAction SilentlyContinue
+      Remove-Item -Path $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+      Remove-Item -Force (Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk") -ErrorAction SilentlyContinue
+      [Environment]::SetEnvironmentVariable("Path", $PreviousUserPath, "User")
     }
-    if (Test-Path $LegacyDir) {
-      Get-Content $Log -ErrorAction SilentlyContinue
-      throw "The installer left the old folder $LegacyDir"
-    }
-    $Entries = Get-NormalizedPathEntries ([Environment]::GetEnvironmentVariable("Path", "User"))
-    if ($Entries -contains $LegacyBin.TrimEnd("\").ToLowerInvariant()) {
-      throw "The installer left $LegacyBin on the user's PATH"
-    }
-    if (-not ($Entries -contains (Join-Path $NewDir "bin").ToLowerInvariant())) {
-      throw "The installer did not put $NewDir\bin on the user's PATH"
-    }
-    $Recorded = (Get-ItemProperty -Path $UninstallKey)."Inno Setup: App Path"
-    if ($Recorded.TrimEnd("\") -ne $NewDir) {
-      throw "The install record still names $Recorded"
-    }
-    Write-Host "The installer moved an install from $LegacyDir to $NewDir."
-  } finally {
-    Remove-Item -Recurse -Force $LegacyDir, $NewDir -ErrorAction SilentlyContinue
-    Remove-Item -Path $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -Force (Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk") -ErrorAction SilentlyContinue
-    [Environment]::SetEnvironmentVariable("Path", $PreviousUserPath, "User")
   }
 }
 
@@ -1719,8 +1735,7 @@ $RequiredPaths = @(
   (Join-Path $BundleDir "Resources\gloomberb-tui\tui-entry.js"),
   (Join-Path $BundleDir "Resources\gloomberb-tui\shot-view.json.gz"),
   (Join-Path $CoreDir "index.js"),
-  (Join-Path $Root "artifacts\stable-win-x64-Gloom-Setup.zip"),
-  (Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"),
+  (Join-Path $Root "artifacts\stable-$Platform-Gloom.tar.zst"),
   $UpdateManifestPath,
   $InstallerPath,
   $LegacyUpdateArchivePath,
@@ -2009,10 +2024,14 @@ try {
 
   Restore-EnvironmentVariable "GLOOMBERB_HOME" $PreviousGloomberbHome
 
-  $Uninstaller = Get-ChildItem -Path $InstallDir -Filter "unins*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($Uninstaller) {
-    & $Uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$UninstallLog"
-  }
+  # The installer leaves no uninstaller (windows-installer.iss): the app's
+  # first start in Electrobun's folder writes Electrobun's, and this install
+  # is elsewhere. What it added goes by hand.
+  Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+  $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $InstallBin = (Join-Path $InstallDir "bin").ToLowerInvariant()
+  [Environment]::SetEnvironmentVariable("Path", ((@($UserPath -split ";") | Where-Object { $_ -and ($_.Trim().TrimEnd("\").ToLowerInvariant() -ne $InstallBin) }) -join ";"), "User")
+  Remove-Item -Force (Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk") -ErrorAction SilentlyContinue
 }
 
-Assert-InstallerMovesLegacyInstall
+Assert-InstallerReplacesEarlierInstall

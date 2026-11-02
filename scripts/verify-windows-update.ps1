@@ -1,33 +1,50 @@
+param(
+  # An installer from an earlier release, built with Electrobun 1: the check
+  # starts from its install and updates it to this build. Without one it
+  # starts from this build's own installer.
+  [string]$EarlierInstaller = "",
+  # The zig-zstd to unpack and pack the release with: by default the one the
+  # build ships, in the copy the installer was made from.
+  [string]$Zstd = ""
+)
+
 $ErrorActionPreference = "Stop"
 
-# An install the Windows installer made, updated in the app the way a user
-# updates it: the app finds the update in a copy of the release served from
-# this machine, downloads it, and the user presses U to restart into it.
-# Afterwards the installer's Start menu and Desktop shortcuts must open the
-# new build, from the installer's folder, and its uninstall entry must remove
-# it with nothing left: no second copy in Electrobun's own app folder. The
-# same goes for a build an updater put in that folder under the app's other
-# bundle identifier. Files of the user's in the app's folder (one picked can
-# be C:\Tools, with a bin of its own) stay through updates and uninstalling.
-# On another drive than the updater's folder, a copy that fails partway
-# leaves the installed build as it was and the app where it ran, the app
-# does not quit for a move while the gloom command runs from the folder, and
-# a move cut short is put right by the next one. It
-# installs into Programs\Gloom and a folder on another drive, and writes the
-# user's shortcuts, uninstall entries and PATH, so it runs only on a CI
-# machine.
+# An installed app updated in the app the way a user updates it: the app
+# finds the update in a copy of the release served from this machine,
+# downloads it, and the user presses U to restart into it.
+#
+# 1. From an earlier release's install in the installer's folder
+#    (Programs\Gloom), built with Electrobun 1: its updater puts this build
+#    in Electrobun's folder, <local app data>\com.vincelwt.gloomberb\stable\app,
+#    and opens it there. This build then retires the installer's folder (its
+#    uninstaller runs), and the Start menu and Desktop shortcuts, the `gloom`
+#    command on PATH and the Apps & features entry all lead to Electrobun's
+#    folder.
+# 2. From this build to a newer one, in Electrobun's folder, with Electrobun
+#    2's own update manager.
+# 3. Electrobun's uninstall entry removes the app, its shortcuts and its entry.
+#
+# It installs and uninstalls, and writes the user's shortcuts, uninstall
+# entries and PATH, so it runs only on a CI machine.
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$InstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomSetup.exe"
-$ArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"
-$ManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
-$Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
+$BuiltManifest = Get-ChildItem -LiteralPath (Join-Path $Root "artifacts") -Filter "stable-win-*-update.json" -ErrorAction SilentlyContinue | Select-Object -First 1
+$Platform = if ($BuiltManifest -and $BuiltManifest.Name -match '^stable-(win-(x64|arm64))-update\.json$') { $Matches[1] } else { "win-x64" }
+$InstallerPath = Join-Path $Root "artifacts\stable-$Platform-GloomSetup.exe"
+$ArchivePath = Join-Path $Root "artifacts\stable-$Platform-Gloom.tar.zst"
+$ManifestPath = Join-Path $Root "artifacts\stable-$Platform-update.json"
+if (-not $Zstd) { $Zstd = Join-Path $Root "build\stable-$Platform\Gloom-inno-source\Gloom\bin\zig-zstd.exe" }
 $EvidenceDir = Join-Path $Root "artifacts\windows-update-verification"
 $WorkRoot = Join-Path $env:USERPROFILE ".cache\gloom-smoke\desktop-update\windows-$PID"
 # The app's data folder, seeded below: its freeze log and pending crash reports land there.
 $DataDir = Join-Path $WorkRoot "data"
-$InstallDir = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
-$UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
+$Identifier = "com.vincelwt.gloomberb"
+$ChannelRoot = Join-Path $env:LOCALAPPDATA "$Identifier\stable"
+$AppDir = Join-Path $ChannelRoot "app"
+$EarlierDir = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
+$InstallerKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
+$ElectrobunKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$Identifier.stable"
 $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom.lnk"
 # Where the app looks for its config: the shortcuts, and the scheduled tasks
@@ -35,12 +52,7 @@ $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom.ln
 $ConfigHome = Join-Path $env:USERPROFILE ".gloomberb"
 $Port = 47821
 $BaseUrl = "http://127.0.0.1:$Port"
-$InstalledHash = "verify-installed-build"
-$UpdateHash = "verify-update-build"
-$OtherIdentifierHash = "verify-other-identifier-build"
-# The user's, in the app's folder.
-$UserFiles = @("bin\verify-user-tool.cmd", "bin\verify-user\notes.txt", "Resources\verify-user-notes.txt")
-$InstallDirs = @($InstallDir)
+$UpdateHash = "verifyupdate2"
 
 if ($env:GITHUB_ACTIONS -ne "true") {
   Write-Host "Skipping the in-app update of an installed app outside CI."
@@ -67,23 +79,52 @@ function Stop-ProcessesUnder {
   }
 }
 
-function Get-BuildHash {
+function Get-BuildInfo {
   param([string]$AppFolder)
 
   $Path = Join-Path $AppFolder "Resources\version.json"
   if (-not (Test-Path -LiteralPath $Path)) { return $null }
-  try { return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json).hash } catch { return $null }
+  try { return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json) } catch { return $null }
 }
 
-# The build's id, and the release it asks for updates: the copy served here.
-function Set-BuildHash {
+function Get-BuildHash {
+  param([string]$AppFolder)
+
+  $Info = Get-BuildInfo $AppFolder
+  if ($Info) { return [string]$Info.hash }
+  $null
+}
+
+# The release the build asks for updates: the copy served here. And, for a
+# build in a release, the build's id.
+function Set-BuildSource {
   param([string]$AppFolder, [string]$Hash)
 
   $Path = Join-Path $AppFolder "Resources\version.json"
   $Info = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-  $Info.hash = $Hash
   $Info.baseUrl = $BaseUrl
-  $Info | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
+  if ($Hash) { $Info.hash = $Hash }
+  [IO.File]::WriteAllText($Path, ($Info | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding $false))
+}
+
+# A release build keeps Chromium's DevTools port closed. This check finds the
+# app's page and presses U through that port, so it opens it on the builds it
+# runs: Chromium's flags in Resources\build.json name the port.
+function Open-DevToolsPort {
+  param([string]$AppFolder)
+
+  $Path = Join-Path $AppFolder "Resources\build.json"
+  $Build = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+  $Flags = [ordered]@{}
+  if ($Build.chromiumFlags) {
+    foreach ($Flag in $Build.chromiumFlags.PSObject.Properties) {
+      if ($Flag.Name -ne "remote-allow-origins") { $Flags[$Flag.Name] = $Flag.Value }
+    }
+  }
+  $Flags["remote-debugging-port"] = "9222"
+  $Build | Add-Member -NotePropertyName chromiumFlags -NotePropertyValue ([pscustomobject]$Flags) -Force
+  [IO.File]::WriteAllText($Path, ($Build | ConvertTo-Json -Depth 10 -Compress), (New-Object System.Text.UTF8Encoding $false))
+  Write-Host "DevTools port open in $AppFolder for this check"
 }
 
 function Get-ShortcutTarget {
@@ -91,6 +132,10 @@ function Get-ShortcutTarget {
 
   if (-not (Test-Path -LiteralPath $Path)) { return $null }
   (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+}
+
+function Get-UserPathEntries {
+  @(([string][Environment]::GetEnvironmentVariable("Path", "User")) -split ";" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim().Trim('"').TrimEnd("\").ToLowerInvariant() })
 }
 
 function Wait-Until {
@@ -104,20 +149,24 @@ function Wait-Until {
   return [bool](& $Condition)
 }
 
-# Where every copy of the app is and runs from, for the evidence and for a
-# failure's message.
+# Where every copy of the app is and runs from, and what leads to it, for the
+# evidence and for a failure's message.
 function Save-InstallState {
   param([string]$Label)
 
   $State = [ordered]@{
     label = $Label
     runningFrom = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-      try { $_.Path -and (($_.Path -like "$env:LOCALAPPDATA\*") -or ($_.Path -like "$InstallDir\*")) -and ($_.ProcessName -match '^(launcher|bun|bun Helper.*)$') } catch { $false }
+      try { $_.Path -and (($_.Path -like "$env:LOCALAPPDATA\*")) -and ($_.ProcessName -match '^(launcher|bun|bun Helper.*)$') } catch { $false }
     } | ForEach-Object { $_.Path } | Sort-Object -Unique)
-    installerFolder = [ordered]@{ path = $InstallDir; build = (Get-BuildHash $InstallDir) }
-    updaterFolders = @($script:UpdaterApps | ForEach-Object { [ordered]@{ path = $_; build = (Get-BuildHash $_) } })
+    electrobunFolder = [ordered]@{ path = $AppDir; build = (Get-BuildHash $AppDir); electrobun = $(try { (Get-Content -LiteralPath (Join-Path $AppDir "Resources\build.json") -Raw | ConvertFrom-Json).electrobunVersion } catch { $null }) }
+    installerFolder = [ordered]@{ path = $EarlierDir; exists = (Test-Path -LiteralPath $EarlierDir); build = (Get-BuildHash $EarlierDir) }
+    installerEntry = (Test-Path $InstallerKey)
+    electrobunEntry = $(if (Test-Path $ElectrobunKey) { (Get-ItemProperty -Path $ElectrobunKey).QuietUninstallString } else { $null })
     startMenuShortcut = (Get-ShortcutTarget $StartMenuShortcut)
     desktopShortcut = (Get-ShortcutTarget $DesktopShortcut)
+    userPath = @(Get-UserPathEntries | Where-Object { $_ -like "*gloom*" })
+    channelRoot = @(Get-ChildItem -LiteralPath $ChannelRoot -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
   }
   $Json = $State | ConvertTo-Json -Depth 6
   Set-Content -Path (Join-Path $EvidenceDir "$Label.json") -Value $Json -Encoding UTF8
@@ -233,16 +282,54 @@ function Open-Shortcut {
   }
 }
 
-# The app is up once its main page is.
-function Wait-AppOpen {
-  param([int]$Seconds)
+# Opens the app from $Shortcut until its main page is up from $Folder; a first
+# start on a fresh machine can stall before its window.
+function Open-App {
+  param([string]$Shortcut, [string]$Folder, [string]$Label)
 
-  Wait-Until $Seconds { ((Get-ProcessesUnder $InstallDir).Count -gt 0) -and (@(Get-MainPages).Count -gt 0) }
+  foreach ($Attempt in 1..2) {
+    Open-Shortcut $Shortcut "$Label-$Attempt"
+    if (Wait-Until 90 { ((Get-ProcessesUnder $Folder).Count -gt 0) -and (@(Get-MainPages).Count -gt 0) }) { return }
+    Write-Host "The app did not open its window from $Folder. It runs: $((Get-ProcessesUnder $Folder | ForEach-Object { $_.Path }) -join ', ')"
+    Stop-ProcessesUnder @($Folder)
+  }
+  throw "$Shortcut did not open the app from $Folder"
+}
+
+# Waits for the app in $Folder to download the build $Hash, then presses U
+# until the app that ran before quits for the restart.
+function Restart-IntoUpdate {
+  param([string]$Folder, [string]$Hash, [string]$Label)
+
+  $Downloaded = Join-Path $ChannelRoot "self-extraction\$Hash.tar"
+  if (-not (Wait-Until 300 { Test-Path -LiteralPath $Downloaded })) {
+    Save-InstallState "$Label-no-download" | Out-Null
+    Write-Host "The release copy was asked for:"
+    Get-Content (Join-Path $EvidenceDir "release-server.err.log") -ErrorAction SilentlyContinue | Select-Object -Last 30
+    Write-Host "The page shows: $(Get-PageText)"
+    throw "${Label}: the app did not download the update into $Downloaded"
+  }
+  # The restart is seen by the app processes that ran before U all ending.
+  # Its WebView helpers come and go on their own, so the quit starts when bun
+  # or the launcher ends.
+  $BeforeProcesses = @(Get-ProcessesUnder $Folder)
+  $Before = @($BeforeProcesses | ForEach-Object { $_.Id })
+  $BeforeMain = @($BeforeProcesses | Where-Object { $_.ProcessName -in @("bun", "launcher") } | ForEach-Object { $_.Id })
+  if ($BeforeMain.Count -eq 0) { throw "${Label}: neither bun nor the launcher runs from $Folder before U" }
+  $Quitting = $false
+  for ($Attempt = 0; $Attempt -lt 30 -and -not $Quitting; $Attempt += 1) {
+    $Pressed = Get-Date
+    Send-RestartKey
+    $Quitting = Wait-Until 5 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count }
+  }
+  if (-not $Quitting) { throw "${Label}: U did not restart the app into the downloaded update. The page shows: $(Get-PageText)" }
+  if (-not (Wait-Until 90 { @(Get-Process -Id $Before -ErrorAction SilentlyContinue).Count -eq 0 })) {
+    throw "${Label}: U started a restart, but the app still runs 90 s later: $((@(Get-Process -Id $Before -ErrorAction SilentlyContinue) | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
+  }
+  Write-Host ("{0}: the app quit {1:N1} s after the last U." -f $Label, ((Get-Date) - $Pressed).TotalSeconds)
 }
 
 function Write-SeededConfig {
-  param([string]$DataDir)
-
   $Layout = @{
     dockRoot = @{ kind = "pane"; instanceId = "portfolio-list:main" }
     instances = @(
@@ -270,536 +357,163 @@ function Write-SeededConfig {
   } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $DataDir "config.json") -Encoding UTF8
 }
 
-# The release as the app reads it: its manifest, naming a build other than the
-# installed one, and that build's archive.
-# A release build keeps Chromium's DevTools port closed (its Chromium flags in
-# Resources\build.json set remote-debugging-port to -1). This check finds the
-# app's page and presses U through that port, so it opens it on the builds it
-# runs, as a dev build has it.
-function Open-DevToolsPort {
-  param([string]$AppFolder)
-
-  $Path = Join-Path $AppFolder "Resources\build.json"
-  $Build = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-  $Flags = $Build.chromiumFlags
-  if (-not $Flags) { return }
-  $Flags.PSObject.Properties.Remove("remote-debugging-port")
-  $Flags.PSObject.Properties.Remove("remote-allow-origins")
-  if (@($Flags.PSObject.Properties).Count -eq 0) { $Build.PSObject.Properties.Remove("chromiumFlags") }
-  [IO.File]::WriteAllText($Path, ($Build | ConvertTo-Json -Depth 10 -Compress), (New-Object System.Text.UTF8Encoding $false))
-  Write-Host "DevTools port open in $AppFolder for this check"
-}
-
+# The release as the app reads it: this build, asking this machine for its
+# next update, with the DevTools port open; under $Hash when given, a build
+# other than this one, with a file of its own in it.
 function Write-Release {
-  param([string]$ReleaseDir, [string]$Prefix, [string]$AppName)
+  param([string]$ReleaseDir, [string]$Hash)
 
-  $Unpacked = Join-Path $WorkRoot "update-build"
+  $Unpacked = Join-Path $WorkRoot "release-build"
+  Remove-Item -Recurse -Force $Unpacked -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $Unpacked, $ReleaseDir | Out-Null
-  $Tar = Join-Path $WorkRoot "update.tar"
+  $Tar = Join-Path $WorkRoot "release.tar"
   & $Zstd decompress -i $ArchivePath -o $Tar --no-timing
   if ($LASTEXITCODE -ne 0) { throw "zig-zstd could not unpack $ArchivePath" }
   tar -xf $Tar -C $Unpacked
   if ($LASTEXITCODE -ne 0) { throw "tar could not unpack $Tar" }
   Remove-Item -Force $Tar
+  $Top = @(Get-ChildItem -LiteralPath $Unpacked -Directory)
+  if ($Top.Count -ne 1) { throw "$ArchivePath should hold one folder; it holds $($Top.Name -join ', ')" }
+  $Build = $Top[0].FullName
 
-  $UpdateApp = Join-Path $Unpacked $AppName
-  Set-BuildHash $UpdateApp $UpdateHash
-  Open-DevToolsPort $UpdateApp
-  # A file the installer never installed: its uninstall entry must remove it too.
-  Set-Content -Path (Join-Path $UpdateApp "Resources\verify-added-by-update.txt") -Value "added by the update"
-  Set-Content -Path (Join-Path $UpdateApp "bin\verify-added-by-update.txt") -Value "added by the update"
+  Set-BuildSource $Build $Hash
+  Open-DevToolsPort $Build
+  if ($Hash) {
+    Set-Content -Path (Join-Path $Build "Resources\verify-added-by-update.txt") -Value "added by the update"
+  }
 
-  tar -cf $Tar -C $Unpacked $AppName
-  if ($LASTEXITCODE -ne 0) { throw "tar could not pack $UpdateApp" }
+  tar -cf $Tar -C $Unpacked $Top[0].Name
+  if ($LASTEXITCODE -ne 0) { throw "tar could not pack $Build" }
   # Level 3: the default, 19, takes minutes on a build this size.
-  & $Zstd compress -i $Tar -o (Join-Path $ReleaseDir "$Prefix-$AppName.tar.zst") -l 3 --threads max
+  & $Zstd compress -i $Tar -o (Join-Path $ReleaseDir "stable-$Platform-Gloom.tar.zst") -l 3 --threads max
   if ($LASTEXITCODE -ne 0) { throw "zig-zstd could not pack $Tar" }
   Remove-Item -Force $Tar
 
   $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-  $Manifest.hash = $UpdateHash
-  $Manifest | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $ReleaseDir "$Prefix-update.json") -Encoding UTF8
-  $UpdateApp
+  if ($Hash) { $Manifest.hash = $Hash }
+  [IO.File]::WriteAllText((Join-Path $ReleaseDir "stable-$Platform-update.json"), ($Manifest | ConvertTo-Json -Depth 8 -Compress), (New-Object System.Text.UTF8Encoding $false))
+  [string]$Manifest.hash
 }
 
-function Assert-OpensFromInstallerFolder {
-  param([string]$Label, [string]$Build, [string]$Gone)
+function Assert-LeadsToElectrobunFolder {
+  param([string]$Label, [bool]$Desktop)
 
+  $Launcher = Join-Path $AppDir "bin\launcher.exe"
+  $Shortcuts = @($StartMenuShortcut) + $(if ($Desktop) { @($DesktopShortcut) } else { @() })
   $Done = Wait-Until 180 {
-    ((Get-ProcessesUnder $InstallDir).Count -gt 0) -and
-      ((Get-BuildHash $InstallDir) -eq $Build) -and
-      (-not (Test-Path -LiteralPath $Gone)) -and
-      (@($script:UpdaterApps | ForEach-Object { Get-ProcessesUnder $_ }).Count -eq 0)
+    (-not (Test-Path $InstallerKey)) -and (-not (Test-Path -LiteralPath $EarlierDir)) -and (Test-Path $ElectrobunKey) -and
+      (@($Shortcuts | Where-Object { (Get-ShortcutTarget $_) -ne $Launcher }).Count -eq 0) -and
+      ((Get-UserPathEntries) -contains (Join-Path $AppDir "bin").ToLowerInvariant()) -and
+      (-not ((Get-UserPathEntries) -contains (Join-Path $EarlierDir "bin").ToLowerInvariant()))
   }
   $State = Save-InstallState $Label
+  $Log = Join-Path $ChannelRoot "installer-folder.log"
+  if (Test-Path -LiteralPath $Log) { Copy-Item -LiteralPath $Log -Destination (Join-Path $EvidenceDir "$Label.installer-folder.log") }
   if (-not $Done) {
-    $script:UpdaterApps | ForEach-Object { Get-ChildItem -Path (Join-Path (Split-Path -Parent $_) "*.log") -ErrorAction SilentlyContinue } | ForEach-Object {
-      Write-Host "--- $($_.FullName)"
-      Get-Content -LiteralPath $_.FullName -Tail 40
-    }
-    $Fate = if ($script:Launches.ContainsKey($Label)) { " $(Get-LaunchReport $Label)" } else { "" }
-    throw "${Label}: the new build ($Build) should run from $InstallDir with nothing left in $Gone. It runs from $($State.runningFrom -join ', '); $InstallDir holds build $($State.installerFolder.build), and the Start menu shortcut opens $($State.startMenuShortcut).$Fate"
+    Write-Host "The retirement's log:"
+    Get-Content -LiteralPath $Log -ErrorAction SilentlyContinue
+    throw "${Label}: the installer's folder, entry and PATH entry should be gone, and the shortcuts, PATH and Electrobun's entry should lead to $AppDir. State: $($State | ConvertTo-Json -Depth 4 -Compress)"
   }
-}
-
-function Install-App {
-  param([string]$Label, [string]$Folder)
-
-  $Arguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/MERGETASKS=desktopicon", "/LOG=`"$(Join-Path $EvidenceDir "$Label.log")`"")
-  if ($Folder) { $Arguments += "/DIR=`"$Folder`"" }
-  $Install = Start-Process -FilePath $InstallerPath -Wait -PassThru -ArgumentList $Arguments
-  if ($Install.ExitCode -ne 0) {
-    throw "The installer failed: $($Install.ExitCode)"
-  }
-  Open-DevToolsPort $InstallDir
-  foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
-    if ((Get-ShortcutTarget $Shortcut) -ne (Join-Path $InstallDir "bin\launcher.exe")) {
-      throw "The installer's shortcut $Shortcut opens $(Get-ShortcutTarget $Shortcut)"
-    }
-  }
-}
-
-# Runs the installer's uninstaller; done once its entry is gone and $Done holds.
-function Uninstall-App {
-  param([string]$Label, [scriptblock]$Done)
-
-  Stop-ProcessesUnder @($InstallDir)
-  Start-Process -FilePath ((Get-ItemProperty -Path $UninstallKey).UninstallString.Trim('"')) -Wait `
-    -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=`"$(Join-Path $EvidenceDir "$Label.log")`"")
-  Wait-Until 120 { -not (Test-Path $UninstallKey) -and (& $Done) }
-}
-
-function Get-FilesLeft {
-  @(Get-ChildItem -LiteralPath $InstallDir -Recurse -Force -File -ErrorAction SilentlyContinue |
-    ForEach-Object { $_.FullName.Substring($InstallDir.Length + 1) } | Sort-Object)
-}
-
-# What a move into the installer's folder left there while it ran.
-function Get-MoveLeftovers {
-  @(Get-ChildItem -LiteralPath $InstallDir -Directory -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like ".gloom-*" } | ForEach-Object { $_.FullName })
-}
-
-function Get-MoveLog {
-  try { [string](Get-Content -LiteralPath $MoveLog -Raw -ErrorAction Stop) } catch { "" }
-}
-
-function Assert-MoveLog {
-  param([string]$Label, [string]$Says)
-
-  $Text = Get-MoveLog
-  Set-Content -Path (Join-Path $EvidenceDir "$Label.installer-folder.log") -Value $Text -Encoding UTF8
-  if (-not $Text.Contains($Says)) {
-    throw "${Label}: the move's log should say '$Says'. It says: $Text"
-  }
-}
-
-# The app keeps its tries at moving a build, ten minutes apart; a step here
-# starts over as if they were long past.
-function Clear-MoveTries {
-  Remove-Item -LiteralPath $MoveTries -Force -ErrorAction SilentlyContinue
-}
-
-function Write-UserFiles {
-  foreach ($File in $UserFiles) {
-    $Path = Join-Path $InstallDir $File
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
-    Set-Content -LiteralPath $Path -Value "the user's $File"
-  }
-}
-
-function Assert-UserFilesKept {
-  param([string]$Label)
-
-  foreach ($File in $UserFiles) {
-    $Path = Join-Path $InstallDir $File
-    if (-not (Test-Path -LiteralPath $Path) -or ((Get-Content -LiteralPath $Path -Raw).Trim() -ne "the user's $File")) {
-      throw "${Label}: the user's file $Path is gone or changed"
-    }
-  }
-}
-
-# Every launch a step makes, by the step's label, for a failure to say what became of it.
-$script:Launches = @{}
-
-# Opens $Program (a shortcut, or the launcher) as a user would, and keeps
-# its process: a failure then says whether the app quit, when and how,
-# where it could only say that nothing runs.
-function Start-Launch {
-  param([string]$Label, [string]$Program, [string]$WorkingDirectory)
-
-  $Options = @{ FilePath = $Program; PassThru = $true }
-  if ($WorkingDirectory) { $Options.WorkingDirectory = $WorkingDirectory }
-  $StartedAt = Get-Date
-  $Process = Start-Process @Options
-  # Asked for its handle now: a process object first asked after the process
-  # ended has no exit code or time.
-  if ($Process) { try { $null = $Process.Handle } catch { Write-Host "The $Label launch cannot be followed: $($_.Exception.Message)" } }
-  $script:Launches[$Label] = [ordered]@{ Process = $Process; StartedAt = $StartedAt }
-}
-
-# What became of the launch $Label: whether its launcher still runs, or when
-# it quit and with what code; what Windows recorded of a crash or hang of
-# the app since; and the app's own freeze log and pending crash reports.
-# Printed, with the first fact returned for the failure's message.
-function Get-LaunchReport {
-  param([string]$Label)
-
-  $Launch = $script:Launches[$Label]
-  if (-not $Launch) { return "Nothing was launched as $Label." }
-  $Process = $Launch.Process
-  # The report never throws: it would replace the failure it explains.
-  $Fate = try {
-    if (-not $Process) {
-      "The $Label launch gave no process to follow."
-    } elseif ($Process.HasExited) {
-      "Its launcher (pid $($Process.Id)) quit $([math]::Round(($Process.ExitTime - $Launch.StartedAt).TotalSeconds, 1)) s after it started, with exit code $($Process.ExitCode)."
-    } else {
-      "Its launcher (pid $($Process.Id)) still runs."
-    }
-  } catch {
-    "The $Label launch cannot say how it ended: $($_.Exception.Message)"
-  }
-  Write-Host "--- ${Label}: $Fate"
-  try {
-    Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = $Launch.StartedAt } -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProviderName -in @("Application Error", "Application Hang", "Windows Error Reporting") -and $_.Message -match "bun|launcher" } |
-      Select-Object -First 5 |
-      ForEach-Object { Write-Host "--- $($_.TimeCreated.ToString('o')) $($_.ProviderName): $($_.Message)" }
-  } catch {
-    Write-Host "--- what Windows recorded cannot be read: $($_.Exception.Message)"
-  }
-  foreach ($File in @("stall-log.txt", "crash-reports.json")) {
-    $Path = Join-Path $DataDir $File
-    try {
-      if (Test-Path -LiteralPath $Path) {
-        Write-Host "--- $File"
-        Get-Content -LiteralPath $Path -Tail 40 | ForEach-Object { Write-Host "  $_" }
-      }
-    } catch {
-      Write-Host "--- $File cannot be read: $($_.Exception.Message)"
-    }
-  }
-  $Fate
-}
-
-function Start-UpdaterCopy {
-  param([string]$Label)
-
-  Start-Launch $Label (Join-Path $UpdaterApp "bin\launcher.exe") (Join-Path $UpdaterApp "bin")
 }
 
 $Server = $null
-$UpdaterShortcut = $null
-$UpdaterUninstallKey = $null
 $PreviousUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $HadConfigHome = Test-Path $ConfigHome
-$script:UpdaterApps = @()
-$AppDataFolders = @()
 New-Item -ItemType Directory -Force -Path $WorkRoot, $EvidenceDir | Out-Null
 
 try {
-  if ((Test-Path $UninstallKey) -or (Test-Path $InstallDir)) {
-    throw "An install is already recorded on this machine; cannot check its update."
+  foreach ($Taken in @($InstallerKey, $ElectrobunKey, $ChannelRoot, $EarlierDir)) {
+    if (Test-Path $Taken) { throw "$Taken already exists on this machine; cannot check the update." }
   }
   if ($HadConfigHome) {
     throw "Refusing to overwrite the config in $ConfigHome."
   }
-  Write-SeededConfig $DataDir
-
-  Install-App "install"
-  Write-UserFiles
-
-  $Info = Get-Content -LiteralPath (Join-Path $InstallDir "Resources\version.json") -Raw | ConvertFrom-Json
-  $Identifiers = @((& bun -e 'import { DESKTOP_APP_IDENTIFIERS } from "./src/renderers/electrobun/shared/app-name"; console.log(JSON.stringify(DESKTOP_APP_IDENTIFIERS))') | ConvertFrom-Json)
-  if (-not ($Identifiers -contains $Info.identifier)) {
-    throw "The installed build's identifier $($Info.identifier) is not one of $($Identifiers -join ', ')"
-  }
-  # The move's log and its tries, in the app data folder of the identifier
-  # this build carries.
-  $ScriptIdentifier = (& bun -e 'import { DESKTOP_APP_IDENTIFIER } from "./src/renderers/electrobun/shared/app-name"; console.log(DESKTOP_APP_IDENTIFIER)').Trim()
-  $MoveLog = Join-Path $env:LOCALAPPDATA "$ScriptIdentifier\$($Info.channel)\installer-folder.log"
-  $MoveTries = Join-Path $env:LOCALAPPDATA "$ScriptIdentifier\$($Info.channel)\installer-folder-tries.json"
-  # Electrobun's updater installs into <app data>\<identifier>\<channel>\app.
-  $UpdaterApp = Join-Path $env:LOCALAPPDATA "$($Info.identifier)\$($Info.channel)\app"
-  $OtherApp = Join-Path $env:LOCALAPPDATA "$(@($Identifiers | Where-Object { $_ -ne $Info.identifier })[0])\$($Info.channel)\app"
-  $script:UpdaterApps = @($UpdaterApp, $OtherApp)
-  # What Electrobun's own setup makes for its folder: an uninstall entry
-  # named after the identifier, and shortcuts.
-  $UpdaterUninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($Info.identifier)"
-  $UpdaterShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom updater copy.lnk"
-  if (Test-Path $UpdaterUninstallKey) { throw "An uninstall entry for $($Info.identifier) is already recorded" }
-  foreach ($Folder in $script:UpdaterApps) {
-    if (Test-Path $Folder) { throw "A copy of the app is already in $Folder" }
-    $AppData = Split-Path -Parent $Folder
-    if (-not (Test-Path $AppData)) { $AppDataFolders += $AppData }
-  }
+  Write-SeededConfig
 
   $ReleaseDir = Join-Path $WorkRoot "release"
-  $Prefix = "$($Info.channel)-win-x64"
-  $UpdateApp = Write-Release -ReleaseDir $ReleaseDir -Prefix $Prefix -AppName $Info.name
-  Set-BuildHash $InstallDir $InstalledHash
-
+  New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
   $Python = (Get-Command python -ErrorAction Stop).Source
   $Server = Start-Process -FilePath $Python -PassThru -NoNewWindow `
     -ArgumentList @("-m", "http.server", "$Port", "--bind", "127.0.0.1", "--directory", "`"$ReleaseDir`"") `
     -RedirectStandardOutput (Join-Path $EvidenceDir "release-server.out.log") `
     -RedirectStandardError (Join-Path $EvidenceDir "release-server.err.log")
-  $Serving = Wait-Until 30 {
-    try { (Invoke-WebRequest -Uri "$BaseUrl/$Prefix-update.json" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false }
+  if (-not (Wait-Until 30 { try { (Invoke-WebRequest -Uri "$BaseUrl/" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { $false } })) {
+    throw "Nothing is served at $BaseUrl"
   }
-  if (-not $Serving) { throw "The release copy is not served at $BaseUrl" }
 
-  # 1. Opened from the Start menu, the app finds the update and downloads it;
-  #    U restarts into it.
-  Save-InstallState "before-update" | Out-Null
-  $Stray = @(Get-Process -Name "launcher", "bun", "bun Helper*" -ErrorAction SilentlyContinue)
-  if ($Stray.Count -gt 0) {
-    Write-Host "Stopping app processes left from earlier steps: $(($Stray | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
-    $Stray | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-  }
-  Open-Shortcut $StartMenuShortcut "first-start"
-  if (-not (Wait-AppOpen 90)) {
-    # A first start on a fresh machine can stall before its window; once more.
-    Write-Host "The app did not open its window from $InstallDir; opening it again. It runs: $((Get-ProcessesUnder $InstallDir | ForEach-Object { $_.Path }) -join ', ')"
-    Stop-ProcessesUnder @($InstallDir)
-    Open-Shortcut $StartMenuShortcut "second-start"
-    if (-not (Wait-AppOpen 90)) {
-      throw "The Start menu shortcut did not open the app from $InstallDir"
+  if ($EarlierInstaller) {
+    # 1. An earlier release's install, in the installer's folder, updates to this build.
+    $Arguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/MERGETASKS=desktopicon", "/LOG=`"$(Join-Path $EvidenceDir "earlier-install.log")`"")
+    $Install = Start-Process -FilePath $EarlierInstaller -Wait -PassThru -ArgumentList $Arguments
+    if ($Install.ExitCode -ne 0) { throw "The earlier installer failed: $($Install.ExitCode)" }
+    if (-not (Test-Path -LiteralPath (Join-Path $EarlierDir "bin\launcher.exe")) -or -not (Test-Path $InstallerKey)) {
+      throw "The earlier installer did not install into $EarlierDir"
     }
-  }
-  $Downloaded = Join-Path $env:LOCALAPPDATA "$($Info.identifier)\$($Info.channel)\self-extraction\$UpdateHash.tar"
-  if (-not (Wait-Until 240 { Test-Path $Downloaded })) {
-    Save-InstallState "no-download" | Out-Null
-    Write-Host "The release copy was asked for:"
-    Get-Content (Join-Path $EvidenceDir "release-server.err.log") -ErrorAction SilentlyContinue
-    Write-Host "The page shows: $(Get-PageText)"
-    throw "The app did not download the update into $Downloaded"
-  }
-  # The restart is seen by the app processes that ran before U all ending: a
-  # press can still be waiting on the page while they quit and the updated
-  # app opens in the same folder. Its WebView helpers come and go on their
-  # own, so the quit starts when bun or the launcher ends.
-  $BeforeProcesses = @(Get-ProcessesUnder $InstallDir)
-  $Before = @($BeforeProcesses | ForEach-Object { $_.Id })
-  $BeforeMain = @($BeforeProcesses | Where-Object { $_.ProcessName -in @("bun", "launcher") } | ForEach-Object { $_.Id })
-  if ($BeforeMain.Count -eq 0) { throw "Neither bun nor the launcher runs from $InstallDir before U" }
-  $Quitting = $false
-  for ($Attempt = 0; $Attempt -lt 30 -and -not $Quitting; $Attempt += 1) {
-    $Pressed = Get-Date
-    Send-RestartKey
-    $Quitting = Wait-Until 5 { @(Get-Process -Id $BeforeMain -ErrorAction SilentlyContinue).Count -lt $BeforeMain.Count }
-  }
-  if (-not $Quitting) {
-    throw "U did not restart the app into the downloaded update"
-  }
-  if (-not (Wait-Until 60 { @(Get-Process -Id $Before -ErrorAction SilentlyContinue).Count -eq 0 })) {
-    throw "U started a restart, but the app still runs 60 s later: $((@(Get-Process -Id $Before -ErrorAction SilentlyContinue) | ForEach-Object { "$($_.Id) $($_.Path)" }) -join ', ')"
-  }
-  Write-Host ("The app quit {0:N1} s after the last U." -f ((Get-Date) - $Pressed).TotalSeconds)
-  Assert-OpensFromInstallerFolder -Label "after-update" -Build $UpdateHash -Gone $UpdaterApp
+    $Earlier = Get-BuildInfo $EarlierDir
+    Write-Host "Installed the earlier release, $($Earlier.version) ($($Earlier.hash)), into $EarlierDir"
+    Set-BuildSource $EarlierDir ""
+    Open-DevToolsPort $EarlierDir
+    $BridgeHash = Write-Release -ReleaseDir $ReleaseDir -Hash ""
+    if ($BridgeHash -eq $Earlier.hash) { throw "The earlier release and this build have the same hash, $BridgeHash" }
+    Save-InstallState "earlier" | Out-Null
 
-  foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
-    if ((Get-ShortcutTarget $Shortcut) -ne (Join-Path $InstallDir "bin\launcher.exe")) {
-      throw "$Shortcut opens $(Get-ShortcutTarget $Shortcut) after the update"
+    Open-App $StartMenuShortcut $EarlierDir "earlier-start"
+    Restart-IntoUpdate -Folder $EarlierDir -Hash $BridgeHash -Label "bridge"
+    if (-not (Wait-Until 240 { ((Get-ProcessesUnder $AppDir).Count -gt 0) -and ((Get-BuildHash $AppDir) -eq $BridgeHash) })) {
+      $State = Save-InstallState "bridge-failed"
+      throw "The earlier release's update should open this build ($BridgeHash) from $AppDir; it runs from $($State.runningFrom -join ', ')"
     }
-  }
-  $Entry = Get-ItemProperty -Path $UninstallKey
-  if (-not $Entry.UninstallString -or -not (Test-Path -LiteralPath ($Entry.UninstallString.Trim('"')))) {
-    throw "The uninstall entry runs $($Entry.UninstallString), which is not there after the update"
-  }
-  if (-not (Wait-Until 60 { (Get-MoveLeftovers).Count -eq 0 })) {
-    throw "The update left $((Get-MoveLeftovers) -join ', ')"
-  }
-  # The user's files in bin and Resources stay, and only the app's beside them are replaced.
-  Assert-UserFilesKept "after-update"
-  Assert-MoveLog "after-update" "kept 2 file(s) in $InstallDir\bin that are not the app's"
-  if (-not (Test-Path -LiteralPath (Join-Path $InstallDir "bin\verify-added-by-update.txt"))) {
-    throw "The update's own file is not in $InstallDir\bin"
-  }
-
-  # 2. Opened again from the Desktop shortcut, it is the new build, and it stays where it is.
-  Stop-ProcessesUnder @($InstallDir)
-  Start-Launch "desktop-shortcut" $DesktopShortcut
-  if (-not (Wait-Until 60 { (Get-ProcessesUnder $InstallDir).Count -gt 0 })) {
-    throw "The Desktop shortcut did not open the app from $InstallDir"
-  }
-  Start-Sleep -Seconds 15
-  $State = Save-InstallState "desktop-shortcut"
-  if ((Get-ProcessesUnder $InstallDir).Count -eq 0 -or (Get-BuildHash $InstallDir) -ne $UpdateHash -or (Test-Path $UpdaterApp)) {
-    throw "Opened from the Desktop shortcut, the app should keep running the new build from $InstallDir; it runs from $($State.runningFrom -join ', '). $(Get-LaunchReport 'desktop-shortcut')"
-  }
-
-  # 3. Opened from the installer's folder beside a copy an earlier update
-  #    left in the updater's folder, with the shortcut and uninstall entry
-  #    Electrobun's own setup makes for it, the app removes the copy and
-  #    points the shortcut at its own folder.
-  Stop-ProcessesUnder @($InstallDir)
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $UpdaterApp) | Out-Null
-  Copy-Item -Recurse -Path $UpdateApp -Destination $UpdaterApp
-  $Shell = New-Object -ComObject WScript.Shell
-  $Link = $Shell.CreateShortcut($UpdaterShortcut)
-  $Link.TargetPath = Join-Path $UpdaterApp "bin\launcher.exe"
-  $Link.WorkingDirectory = Join-Path $UpdaterApp "bin"
-  $Link.Save()
-  New-Item -Path $UpdaterUninstallKey -Force | Out-Null
-  New-ItemProperty -Path $UpdaterUninstallKey -Name "InstallLocation" -Value $UpdaterApp -PropertyType String -Force | Out-Null
-  New-ItemProperty -Path $UpdaterUninstallKey -Name "UninstallString" -Value "cmd.exe /c rmdir /s /q `"$UpdaterApp`"" -PropertyType String -Force | Out-Null
-  Start-Launch "updater-copy-removed" $StartMenuShortcut
-  $Removed = Wait-Until 120 {
-    -not (Test-Path $UpdaterApp) -and -not (Test-Path $UpdaterUninstallKey) -and
-      ((Get-ShortcutTarget $UpdaterShortcut) -eq (Join-Path $InstallDir "bin\launcher.exe"))
-  }
-  $State = Save-InstallState "updater-copy-removed"
-  if (-not $Removed) {
-    throw "Opened from $InstallDir, the app should remove the copy in $UpdaterApp ($(Test-Path $UpdaterApp)), its uninstall entry ($(Test-Path $UpdaterUninstallKey)) and point $UpdaterShortcut at its own folder (it opens $(Get-ShortcutTarget $UpdaterShortcut)). $(Get-LaunchReport 'updater-copy-removed')"
-  }
-  if ((Get-ProcessesUnder $InstallDir).Count -eq 0) {
-    throw "The app stopped running from $InstallDir while it removed the copy in $UpdaterApp. $(Get-LaunchReport 'updater-copy-removed')"
-  }
-  Remove-Item -Force $UpdaterShortcut
-
-  # 4. A build an updater put in its folder under the app's other identifier
-  #    moves into the installer's folder too.
-  Stop-ProcessesUnder @($InstallDir)
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OtherApp) | Out-Null
-  Copy-Item -Recurse -Path $UpdateApp -Destination $OtherApp
-  Set-BuildHash $OtherApp $OtherIdentifierHash
-  Start-Launch "other-identifier" (Join-Path $OtherApp "bin\launcher.exe") (Join-Path $OtherApp "bin")
-  Assert-OpensFromInstallerFolder -Label "other-identifier" -Build $OtherIdentifierHash -Gone $OtherApp
-  Assert-UserFilesKept "other-identifier"
-
-  # 5. The uninstall entry removes all of the app, what updates added
-  #    included, and leaves the user's files.
-  $Expected = @($UserFiles | Sort-Object) -join ", "
-  if (-not (Uninstall-App "uninstall" { ((Get-FilesLeft) -join ", ") -eq $Expected })) {
-    $Left = Get-FilesLeft
-    throw "Uninstalling should leave only the user's files in ${InstallDir}; it left $($Left.Count) file(s): $(($Left | Select-Object -First 20) -join ', ')"
-  }
-  foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
-    if (Test-Path $Shortcut) { throw "Uninstalling left $Shortcut" }
-  }
-  foreach ($Folder in $script:UpdaterApps) {
-    if (Test-Path $Folder) { throw "A copy of the app is left in $Folder" }
-  }
-  Save-InstallState "after-uninstall" | Out-Null
-  Remove-Item -LiteralPath $InstallDir -Recurse -Force
-  Write-Host "An installed app updated in place: its shortcuts opened the new build from $InstallDir, and uninstalling removed it and left the user's files."
-
-  # 6. An install on another drive than the updater's folder.
-  $UpdaterDrive = Split-Path -Qualifier $env:LOCALAPPDATA
-  $OtherDrive = Split-Path -Qualifier "$Root"
-  if ($OtherDrive -eq $UpdaterDrive) {
-    Write-Host "Skipping the install on another drive: the checkout is on $UpdaterDrive too."
+    Assert-LeadsToElectrobunFolder "bridged" $true
+    Write-Host "The earlier release updated to this build in $AppDir and its installer's folder is gone."
   } else {
-    $InstallDir = "$OtherDrive\gloom update check\Gloom"
-    $InstallDirs += $InstallDir
-    if (Test-Path $InstallDir) { throw "$InstallDir is already there" }
-    Install-App "install-other-drive" $InstallDir
-    Set-BuildHash $InstallDir $InstalledHash
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $UpdaterApp) | Out-Null
-    Copy-Item -Recurse -Path $UpdateApp -Destination $UpdaterApp
-    Clear-MoveTries
-
-    # 6a. While the gloom command runs from the installer's folder, the app
-    #     does not quit for a move it cannot make, and runs where it is.
-    $BusyScript = Join-Path $WorkRoot "busy.js"
-    Set-Content -LiteralPath $BusyScript -Value "setTimeout(() => {}, 600000);"
-    $Busy = Start-Process -FilePath (Join-Path $InstallDir "bin\bun.exe") -ArgumentList "`"$BusyScript`"" -WindowStyle Hidden -PassThru
-    if (-not (Wait-Until 30 { (Get-ProcessesUnder $InstallDir).Count -gt 0 })) { throw "bun did not start from $InstallDir" }
-    Start-UpdaterCopy "busy"
-    $Said = Wait-Until 90 { (Get-MoveLog).Contains(" busy: ") }
-    Start-Sleep -Seconds 10
-    $State = Save-InstallState "busy"
-    Assert-MoveLog "busy" " busy: "
-    if (-not $Said -or (Get-ProcessesUnder $UpdaterApp).Count -eq 0 -or (Get-BuildHash $InstallDir) -ne $InstalledHash) {
-      throw "With bun running from $InstallDir, the app should keep running from $UpdaterApp and leave $InstallDir as it was. It runs from $($State.runningFrom -join ', '), and $InstallDir holds build $($State.installerFolder.build). $(Get-LaunchReport 'busy')"
-    }
-    Stop-Process -Id $Busy.Id -Force -ErrorAction SilentlyContinue
-    Stop-ProcessesUnder @($UpdaterApp, $InstallDir)
-    Clear-MoveTries
-
-    # 6b. A copy across drives that fails partway, here on a file it cannot
-    #     read (for a user, a full disk): the installed build stays whole,
-    #     the app opens again where it ran, and it does not quit to try
-    #     again at once.
-    $LockedPath = Join-Path $UpdaterApp "bin\verify-locked.bin"
-    Set-Content -LiteralPath $LockedPath -Value "locked"
-    $Lock = [IO.File]::Open($LockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
-    try {
-      Start-UpdaterCopy "copy-failed"
-      $Reopened = Wait-Until 180 {
-        (Get-MoveLog).Contains("opened $UpdaterApp\bin\launcher.exe") -and ((Get-ProcessesUnder $UpdaterApp).Count -gt 0)
-      }
-      if ($Reopened) { Start-Sleep -Seconds 25 }
-      $State = Save-InstallState "copy-failed"
-      Assert-MoveLog "copy-failed" "move failed: could not copy the build into $InstallDir"
-      $Log = Get-MoveLog
-      $Tries = ([regex]::Matches($Log, " started ")).Count
-      if (-not $Reopened -or (Get-ProcessesUnder $UpdaterApp).Count -eq 0 -or $Tries -ne 1) {
-        throw "After the copy failed, the app should run again from $UpdaterApp without trying again; it runs from $($State.runningFrom -join ', '), and the log shows $Tries tries: $Log $(Get-LaunchReport 'copy-failed')"
-      }
-      if ((Get-BuildHash $InstallDir) -ne $InstalledHash -or -not (Test-Path -LiteralPath (Join-Path $InstallDir "bin\launcher.exe")) -or
-        (Test-Path -LiteralPath (Join-Path $InstallDir "bin\bin")) -or (Get-MoveLeftovers).Count -gt 0) {
-        throw "After the copy failed, $InstallDir should hold the installed build as it was. It holds build $(Get-BuildHash $InstallDir), and: $((Get-ChildItem -LiteralPath $InstallDir -Force | ForEach-Object { $_.Name }) -join ', '); bin: $((Get-ChildItem -LiteralPath (Join-Path $InstallDir 'bin') -Force -Directory | ForEach-Object { $_.Name }) -join ', ')"
-      }
-    } finally {
-      $Lock.Dispose()
-    }
-    Stop-ProcessesUnder @($UpdaterApp)
-    Remove-Item -LiteralPath $LockedPath -Force
-    Clear-MoveTries
-
-    # 6c. A move cut short by a power cut between the two renames of bin left
-    #     the folder without it, set aside. The next move puts it back first;
-    #     once the copy can be made, the build replaces the app's folders,
-    #     which hold nothing else, whole.
-    $CutShort = Join-Path $InstallDir ".gloom-previous-20260101000000-cutshort"
-    New-Item -ItemType Directory -Path $CutShort | Out-Null
-    Move-Item -LiteralPath (Join-Path $InstallDir "bin") -Destination (Join-Path $CutShort "bin")
-    Start-UpdaterCopy "other-drive"
-    Assert-OpensFromInstallerFolder -Label "other-drive" -Build $UpdateHash -Gone $UpdaterApp
-    Assert-MoveLog "other-drive" "put back $InstallDir\bin"
-    Assert-MoveLog "other-drive" "replaced $InstallDir\bin"
-    if (-not (Wait-Until 60 { (Get-MoveLeftovers).Count -eq 0 })) {
-      throw "The move left $((Get-MoveLeftovers) -join ', ')"
-    }
-    foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) {
-      if ((Get-ShortcutTarget $Shortcut) -ne (Join-Path $InstallDir "bin\launcher.exe")) {
-        throw "$Shortcut opens $(Get-ShortcutTarget $Shortcut) after the move"
-      }
-    }
-
-    # 6d. And uninstalling removes it all.
-    if (-not (Uninstall-App "uninstall-other-drive" { -not (Test-Path $InstallDir) })) {
-      $Left = Get-FilesLeft
-      throw "Uninstalling left $($Left.Count) file(s) in ${InstallDir}: $(($Left | Select-Object -First 20) -join ', ')"
-    }
-    Save-InstallState "other-drive-uninstalled" | Out-Null
-    Write-Host "On another drive, a failed copy left the installed app whole, and the next try moved the update in."
+    # 1. This build's installer installs into Electrobun's folder; the first
+    #    start writes Electrobun's records.
+    $Install = Start-Process -FilePath $InstallerPath -Wait -PassThru -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$(Join-Path $EvidenceDir "install.log")`"")
+    if ($Install.ExitCode -ne 0) { throw "The installer failed: $($Install.ExitCode)" }
+    Set-BuildSource $AppDir ""
+    Open-DevToolsPort $AppDir
+    $null = Write-Release -ReleaseDir $ReleaseDir -Hash ""
+    Open-App $StartMenuShortcut $AppDir "first-start"
+    Assert-LeadsToElectrobunFolder "installed" $false
   }
+
+  # 2. This build updates to a newer one in place, with Electrobun 2's own
+  #    update manager. The release changes under the running app, which
+  #    checks again when it opens.
+  Stop-ProcessesUnder @($AppDir)
+  $null = Write-Release -ReleaseDir $ReleaseDir -Hash $UpdateHash
+  Open-App $StartMenuShortcut $AppDir "update-start"
+  Restart-IntoUpdate -Folder $AppDir -Hash $UpdateHash -Label "update"
+  $Updated = Wait-Until 240 {
+    ((Get-ProcessesUnder $AppDir).Count -gt 0) -and ((Get-BuildHash $AppDir) -eq $UpdateHash) -and
+      (Test-Path -LiteralPath (Join-Path $AppDir "Resources\verify-added-by-update.txt")) -and
+      (-not (Test-Path -LiteralPath "$AppDir.previous"))
+  }
+  $State = Save-InstallState "updated"
+  if (-not $Updated) {
+    throw "The update should open the new build ($UpdateHash) from $AppDir with nothing set aside; it runs from $($State.runningFrom -join ', ') and $AppDir holds $($State.electrobunFolder.build)"
+  }
+  Write-Host "This build updated itself in place in $AppDir."
+
+  # 3. Electrobun's uninstall entry removes the app, its shortcuts and its entry.
+  Stop-ProcessesUnder @($AppDir)
+  $Quiet = [string](Get-ItemProperty -Path $ElectrobunKey).QuietUninstallString
+  if ($Quiet -notmatch '^"([^"]+)"\s*(.*)$') { throw "Electrobun's entry uninstalls with '$Quiet'" }
+  $Uninstall = Start-Process -FilePath $Matches[1] -ArgumentList $Matches[2] -Wait -PassThru
+  $Gone = Wait-Until 120 {
+    (-not (Test-Path $ElectrobunKey)) -and (-not (Test-Path -LiteralPath $AppDir)) -and
+      (-not (Test-Path -LiteralPath $StartMenuShortcut)) -and (-not (Test-Path -LiteralPath $DesktopShortcut))
+  }
+  $State = Save-InstallState "uninstalled"
+  if (-not $Gone) { throw "Uninstalling (exit $($Uninstall.ExitCode)) should remove $AppDir, its entry and its shortcuts" }
+  Write-Host "Electrobun's uninstaller removed the app."
 } finally {
-  Stop-ProcessesUnder ($InstallDirs + $script:UpdaterApps)
+  Stop-ProcessesUnder @($AppDir, $EarlierDir)
   if ($Server) { Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue }
-  foreach ($AppData in @($script:UpdaterApps | ForEach-Object { Split-Path -Parent $_ })) {
-    Get-ChildItem -Path $AppData -Filter "*.log" -File -ErrorAction SilentlyContinue |
-      Copy-Item -Destination $EvidenceDir -ErrorAction SilentlyContinue
-  }
-  if (Test-Path $UninstallKey) {
-    $Uninstaller = (Get-ItemProperty -Path $UninstallKey).UninstallString
-    if ($Uninstaller -and (Test-Path -LiteralPath $Uninstaller.Trim('"'))) {
-      Start-Process -FilePath $Uninstaller.Trim('"') -Wait -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds 10
-    }
-    Remove-Item -Path $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue
-  }
-  Remove-Item -Recurse -Force ($InstallDirs + $script:UpdaterApps) -ErrorAction SilentlyContinue
-  if ($InstallDirs.Count -gt 1) { Remove-Item -Recurse -Force (Split-Path -Parent $InstallDirs[1]) -ErrorAction SilentlyContinue }
+  Get-ChildItem -Path $ChannelRoot -Filter "*.log" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $EvidenceDir -ErrorAction SilentlyContinue
+  foreach ($Key in @($InstallerKey, $ElectrobunKey)) { Remove-Item -Path $Key -Recurse -Force -ErrorAction SilentlyContinue }
+  Remove-Item -Recurse -Force $ChannelRoot, $EarlierDir -ErrorAction SilentlyContinue
   Remove-Item -Force $StartMenuShortcut, $DesktopShortcut -ErrorAction SilentlyContinue
-  if ($UpdaterShortcut) { Remove-Item -Force $UpdaterShortcut -ErrorAction SilentlyContinue }
-  if ($UpdaterUninstallKey) { Remove-Item -Path $UpdaterUninstallKey -Recurse -Force -ErrorAction SilentlyContinue }
-  Remove-Item -Recurse -Force $AppDataFolders -ErrorAction SilentlyContinue
   if (-not $HadConfigHome) { Remove-Item -Recurse -Force $ConfigHome -ErrorAction SilentlyContinue }
   Remove-Item -Recurse -Force $WorkRoot -ErrorAction SilentlyContinue
   [Environment]::SetEnvironmentVariable("Path", $PreviousUserPath, "User")

@@ -2,12 +2,22 @@
 #define AppVersion "0.0.0"
 #endif
 
+#ifndef Arch
+#define Arch "x64"
+#endif
+
 #ifndef OutputDir
 #define OutputDir "..\artifacts"
 #endif
 
 #ifndef SourceDir
-#define SourceDir "..\build\stable-win-x64\Gloom-inno-source\Gloom"
+#define SourceDir "..\build\stable-win-" + Arch + "\Gloom-inno-source\Gloom"
+#endif
+
+#if Arch == "arm64"
+#define Architectures "arm64"
+#else
+#define Architectures "x64compatible"
 #endif
 
 [Setup]
@@ -18,16 +28,21 @@ AppPublisher=Gloom
 AppPublisherURL=https://gloom.sh
 AppSupportURL=https://github.com/gloom-sh/gloomberb/issues
 AppUpdatesURL=https://github.com/gloom-sh/gloomberb/releases
-; Programs\Gloom. An install in Programs\Gloomberb, the folder before the
-; rename, moves there and its old folder and PATH entry go; one the user put
-; anywhere else stays where it is. See DefaultInstallDir.
-DefaultDirName={code:DefaultInstallDir}
+; Electrobun's folder for the app, the only one its updater updates. The app's
+; first start there writes Electrobun's uninstaller, its Apps & features entry
+; and its Start menu and Desktop shortcuts, so this setup leaves no uninstaller
+; of its own: one in the app's folder would be gone after the first update.
+; An install from an earlier setup, in Programs\Gloom or a folder the user
+; picked, is uninstalled first. See PrepareToInstall.
+DefaultDirName={localappdata}\com.vincelwt.gloomberb\stable\app
+DisableDirPage=yes
 UsePreviousAppDir=no
+Uninstallable=no
 DefaultGroupName=Gloom
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#Architectures}
+ArchitecturesInstallIn64BitMode={#Architectures}
 AppendDefaultDirName=no
 OutputDir={#OutputDir}
 OutputBaseFilename=GloomSetup
@@ -35,24 +50,23 @@ Compression=lzma2
 SolidCompression=yes
 SetupLogging=yes
 SetupIconFile={#SourceDir}\Resources\gloomberb-logo.ico
-UninstallDisplayIcon={app}\Resources\gloomberb-logo.ico
 WizardStyle=modern
 ChangesEnvironment=yes
-
-[Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
+; The app's folders hold one build, whole, as the updater leaves them.
+Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\Resources"
 ; Shortcuts an install from before the rename made under the old name.
 Type: files; Name: "{autoprograms}\Gloomberb.lnk"
 Type: files; Name: "{autodesktop}\Gloomberb.lnk"
 
+; The app's first start makes Electrobun's shortcuts under the same name.
 [Icons]
 Name: "{autoprograms}\Gloom"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"
-Name: "{autodesktop}\Gloom"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\bin\launcher.exe"; Description: "Launch Gloom"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}\bin"
@@ -61,12 +75,8 @@ Filename: "{app}\bin\launcher.exe"; Description: "Launch Gloom"; Flags: nowait p
 const
   EnvironmentKey = 'Environment';
   PathValueName = 'Path';
-  // Where Setup records this app's install, under its AppId.
+  // Where an earlier setup recorded its install, under this AppId.
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1';
-
-var
-  // The folder of the install this one replaces, read before Setup records the new one.
-  PreviousInstallDir: string;
 
 function PathEntry(): string;
 begin
@@ -179,147 +189,61 @@ begin
   RegWriteStringValue(HKCU, EnvironmentKey, PathValueName, NextPath);
 end;
 
-procedure RemovePathEntry();
-begin
-  RemovePathEntryFor(PathEntry());
-end;
-
 function SamePath(Left: string; Right: string): Boolean;
 begin
   Result := (Left <> '') and (NormalizePathValue(Left) = NormalizePathValue(Right));
 end;
 
-// The default folder before the rename.
-function LegacyInstallDir(): string;
+// The folders an earlier setup installed into by default: they hold nothing of the user's.
+function IsDefaultInstallDir(Dir: string): Boolean;
 begin
-  Result := ExpandConstant('{localappdata}\Programs\Gloomberb');
+  Result := SamePath(Dir, ExpandConstant('{localappdata}\Programs\Gloom')) or
+    SamePath(Dir, ExpandConstant('{localappdata}\Programs\Gloomberb'));
 end;
 
-function RecordedInstallDir(): string;
-begin
-  if not RegQueryStringValue(HKCU, UninstallKey, 'Inno Setup: App Path', Result) then
-    Result := '';
-end;
-
-function DefaultInstallDir(Param: string): string;
+// An install from an earlier setup is uninstalled with its own uninstaller,
+// which removes what it installed, its PATH entry and its shortcuts and keeps
+// the user's own files in a folder they picked. Without one, its record and
+// PATH entry go here, and its folder when it is a default one.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Previous: string;
+  PreviousDir: string;
+  Uninstaller: string;
+  ResultCode: Integer;
+  Attempt: Integer;
 begin
-  Previous := RecordedInstallDir();
-  if (Previous <> '') and not SamePath(Previous, LegacyInstallDir()) then
-    Result := Previous
-  else
-    Result := ExpandConstant('{localappdata}\Programs\Gloom');
-end;
-
-function MovesFromLegacyInstallDir(): Boolean;
-begin
-  Result := SamePath(PreviousInstallDir, LegacyInstallDir()) and not SamePath(ExpandConstant('{app}'), LegacyInstallDir());
-end;
-
-function InitializeSetup(): Boolean;
-begin
-  PreviousInstallDir := RecordedInstallDir();
-  Result := True;
-end;
-
-// The app running from the old folder is closed like one running from {app}.
-procedure RegisterExtraCloseApplicationsResources();
-begin
-  if not MovesFromLegacyInstallDir() then
+  Result := '';
+  if not RegQueryStringValue(HKCU, UninstallKey, 'Inno Setup: App Path', PreviousDir) then
     Exit;
-  if FileExists(LegacyInstallDir() + '\bin\launcher.exe') then
-    RegisterExtraCloseApplicationsResource(False, LegacyInstallDir() + '\bin\launcher.exe');
-  if FileExists(LegacyInstallDir() + '\bin\bun.exe') then
-    RegisterExtraCloseApplicationsResource(False, LegacyInstallDir() + '\bin\bun.exe');
-end;
-
-// After the app is in its new folder: the old folder and its PATH entry go.
-procedure RemoveLegacyInstall();
-begin
-  if not MovesFromLegacyInstallDir() then
-    Exit;
-  RemovePathEntryFor(LegacyInstallDir() + '\bin');
-  if DirExists(LegacyInstallDir()) and not DelTree(LegacyInstallDir(), True, True, True) then
-    Log('Could not remove the previous install folder ' + LegacyInstallDir());
+  if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', Uninstaller) then
+  begin
+    Uninstaller := RemoveQuotes(Uninstaller);
+    if FileExists(Uninstaller) then
+    begin
+      Log('Uninstalling the earlier install in ' + PreviousDir);
+      if not Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        Log('Could not run ' + Uninstaller);
+      // It hands over to a copy of itself, which removes its record last.
+      Attempt := 0;
+      while RegKeyExists(HKCU, UninstallKey) and (Attempt < 240) do
+      begin
+        Sleep(500);
+        Attempt := Attempt + 1;
+      end;
+    end;
+  end;
+  if RegKeyExists(HKCU, UninstallKey) then
+  begin
+    Log('Removing the record of the earlier install in ' + PreviousDir);
+    RegDeleteKeyIncludingSubkeys(HKCU, UninstallKey);
+    RemovePathEntryFor(AddBackslash(PreviousDir) + 'bin');
+    if IsDefaultInstallDir(PreviousDir) and DirExists(PreviousDir) and not DelTree(PreviousDir, True, True, True) then
+      Log('Could not remove the earlier install folder ' + PreviousDir);
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-  begin
     AddPathEntry();
-    RemoveLegacyInstall();
-  end;
-end;
-
-// The list in which updates from inside the app name every file they put in
-// its folder (installer-folder.ts): this uninstaller removes only the files it
-// installed itself.
-function UpdateFileList(): string;
-begin
-  Result := ExpandConstant('{app}\Resources\update-files.txt');
-end;
-
-// A path from that list: relative, and inside the app's folder.
-function IsInsideApp(Path: string): Boolean;
-begin
-  if Path = '' then
-    Result := False
-  else
-    Result := (Pos(':', Path) = 0) and (Pos('..', Path) = 0) and (Path[1] <> '\') and (Path[1] <> '/');
-end;
-
-// The folders above Path, inside the app's folder, that it leaves empty.
-procedure RemoveEmptyFoldersAbove(Path: string);
-var
-  Folder: string;
-begin
-  Folder := ExtractFileDir(Path);
-  while Length(Folder) > Length(ExpandConstant('{app}')) do
-  begin
-    if not RemoveDir(Folder) then
-      Exit;
-    Folder := ExtractFileDir(Folder);
-  end;
-end;
-
-// What updates added: the files they list, and what a move into this folder
-// that did not finish left (.gloom-next-*, .gloom-previous-*). A file they do
-// not list stays, and so does the folder holding it: one the user picked can
-// hold their own files, in its bin as well.
-procedure RemoveFilesAddedByUpdates();
-var
-  Files: TArrayOfString;
-  Path: string;
-  I: Integer;
-begin
-  if not DirExists(ExpandConstant('{app}')) then
-    Exit;
-  if LoadStringsFromFile(UpdateFileList(), Files) then
-  begin
-    for I := 0 to GetArrayLength(Files) - 1 do
-    begin
-      Path := Trim(Files[I]);
-      if IsInsideApp(Path) then
-      begin
-        DeleteFile(ExpandConstant('{app}\') + Path);
-        RemoveEmptyFoldersAbove(ExpandConstant('{app}\') + Path);
-      end;
-    end;
-    DeleteFile(UpdateFileList());
-    RemoveEmptyFoldersAbove(UpdateFileList());
-  end;
-  DelTree(ExpandConstant('{app}\.gloom-next-*'), False, True, True);
-  DelTree(ExpandConstant('{app}\.gloom-previous-*'), False, True, True);
-  RemoveDir(ExpandConstant('{app}'));
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if CurUninstallStep = usPostUninstall then
-  begin
-    RemovePathEntry();
-    RemoveFilesAddedByUpdates();
-  end;
 end;
