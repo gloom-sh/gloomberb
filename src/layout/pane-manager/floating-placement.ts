@@ -1,6 +1,6 @@
 import type { LayoutConfig } from "../../types/config";
 import { getDockLeafLayouts, type LayoutBounds } from "./dock-tree";
-import { clampFloatingRect, MIN_FLOAT_HEIGHT, MIN_FLOAT_WIDTH, type FloatingRect } from "./floating";
+import { clampFloatingRect, MIN_FLOAT_HEIGHT, MIN_FLOAT_WIDTH, NARROW_FLOAT_AREA_WIDTH, type FloatingRect } from "./floating";
 
 /** What a new floating pane keeps clear of beyond the other floating panes. */
 export interface FloatingPlacementOptions {
@@ -63,7 +63,9 @@ function screenRect(layout: LayoutConfig, instanceId: string, area: LayoutBounds
  * and of the focused pane, shrunk to it when it is a little small, and centred
  * in it; otherwise one step down and right of the frontmost window, a cascade.
  * It never lands exactly on another window, and never covers all of the
- * focused pane when there is any other way.
+ * focused pane when there is any other way. An area narrower than
+ * NARROW_FLOAT_AREA_WIDTH is never searched for a narrower spot: the window
+ * spans it and cascades down.
  */
 export function placeFloatingRect(
   layout: LayoutConfig,
@@ -79,10 +81,11 @@ export function placeFloatingRect(
   const focused = focusedId ? screenRect(layout, focusedId, area) : null;
   const obstacles: LayoutBounds[] = [...others];
   if (focused && !others.some((entry) => entry.instanceId === focusedId)) obstacles.push(focused);
-  const width = Math.min(size.width, area.width);
+  const narrow = area.width < NARROW_FLOAT_AREA_WIDTH;
+  const width = narrow ? area.width : Math.min(size.width, area.width);
   const height = Math.min(size.height, area.height);
 
-  if (obstacles.length <= MAX_FREE_SEARCH_OBSTACLES) {
+  if (!narrow && obstacles.length <= MAX_FREE_SEARCH_OBSTACLES) {
     const spot = bestFreeSpot(area, obstacles, width, height);
     if (spot) return clampFloatingRect(spot, termWidth, termHeight);
   }

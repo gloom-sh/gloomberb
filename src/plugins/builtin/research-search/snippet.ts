@@ -35,6 +35,7 @@ function codePoint(value: number): string | null {
   try {
     return String.fromCodePoint(value);
   } catch {
+    // Intentional ignore: a code point the runtime refuses leaves the entity as written.
     return null;
   }
 }

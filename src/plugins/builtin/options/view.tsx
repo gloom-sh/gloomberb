@@ -97,6 +97,7 @@ import {
   strikeWindowShortLabel,
   strikeWindowValue,
 } from "./strike-window";
+import { logFailure } from "../../../utils/log-failure";
 
 /** The summary strip and analytics recompute from live quotes at most this often. */
 const OPTIONS_SUMMARY_THROTTLE_MS = 1_000;
@@ -675,7 +676,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     void dialog.alert({
       closeOnClickOutside: true,
       content: (ctx: AlertContext) => <AnalyticsAsOfDialog {...ctx} rows={rows} />,
-    }).catch(() => {});
+    }).catch(logFailure("options.view", "Open analytics as-of dialog failed"));
   }, [dialog, enrichment]);
   usePaneFooter("options-enrichment", () => ({ info: [
     ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),

@@ -157,12 +157,12 @@ test("ticker's recent filings say what each form is and who filed an insider for
   const section = text.slice(text.indexOf("Recent SEC Filings"));
   expect(section).not.toContain("Primary Document");
   expect(section).not.toContain("ownership.xml");
-  expect(section).toContain("Insider Transaction\nKhan Salman Hassan: SELL 16k Common Stock @ $7.88");
+  expect(section).toContain("Insider Transaction\nSalman Hassan Khan: SELL 16k Common Stock @ $7.88");
   // A 144 that could not be read still says what it is; a 10-Q is not read.
   expect(section).toContain("Notice of proposed sale of securities");
   expect(section).toContain("Quarterly Report");
   expect(read).toEqual(["xslF345X06/ownership.xml", "primary_doc.xml"]);
   expect(data).toBeUndefined();
   const json = await report({ filings: mara, content });
-  expect(json.data.recentSecFilings[0].summary).toStartWith("Khan Salman Hassan: SELL 16k Common Stock");
+  expect(json.data.recentSecFilings[0].summary).toStartWith("Salman Hassan Khan: SELL 16k Common Stock");
 });

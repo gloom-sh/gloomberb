@@ -122,7 +122,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     [{ label: "Clean price", value: fixed(result.analytics.cleanPrice) }, { label: "Yield", value: `${fixed(result.analytics.yieldPercent)}%` }],
     [{ label: "Dirty price", value: fixed(result.analytics.dirtyPrice) }, { label: "Accrued", value: fixed(result.analytics.accruedInterest) }],
     [{ label: "Macaulay", value: `${fixed(result.analytics.macaulayDuration)} yr` }, { label: "Modified", value: `${fixed(result.analytics.modifiedDuration)} yr` }],
-    [{ label: "Convexity", value: `${fixed(result.analytics.convexity)} yr²` }, { label: "DV01 / 100", value: fixed(result.analytics.dv01, 6) }],
+    [{ label: "Convexity", value: `${fixed(result.analytics.convexity)} yr²` }, { label: "DV01", value: `${fixed(result.analytics.dv01, 6)} per 100 face` }],
   ] : [];
   return <Box flexDirection="column" width={width} height={height}>
     {tabStrip}

@@ -7,7 +7,7 @@ import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fxPairObservation, fxRateObservations } from "../shared/fx-rate-freshness";
 import { loadFxBoard, type FxLegReading } from "./client";
 import { crossMovePercent } from "./direction";
-import { formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
+import { FX_CURRENCY_KEYWORDS, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { FX_MATRIX_REPORT_OPTIONS, fxMatrixReportNotices } from "./settings";
 
 const iso = (time: number | null | undefined) => time != null && Number.isFinite(time) ? new Date(time).toISOString() : null;
@@ -143,7 +143,9 @@ export const fxMatrixHeadless: HeadlessPaneDefinition<"rows"> = {
   freshness: { source: "Gloom Cloud" },
   describe: (args) => `FX Cross Rates | ${resolveCurrencies(args.options.currencies).join(" ")}`,
   discovery: {
-    intents: ["fx", "forex", "currency", "cross rates", "exchange rates"],
+    // A currency's code or name finds the board (`catalog yen`, `catalog chf`), and so do the safe havens it
+    // carries, the yen and the franc. Searched, never listed: the catalog's Keywords line stays short.
+    intents: ["fx", "forex", "currency", "cross rates", "exchange rates", "safe haven", ...FX_CURRENCY_KEYWORDS],
     limitations: ["Indicative crosses through USD legs, whose observation times can differ."],
     screenshotReadiness: "live-dom",
   },

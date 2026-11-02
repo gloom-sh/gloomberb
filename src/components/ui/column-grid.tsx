@@ -1,9 +1,11 @@
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities } from "../../ui";
+import { markPure } from "../../ui/same-props";
 import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { displayWidth, padTo, truncateToDisplayWidth } from "../../utils/format";
 import { ExternalLinkText, usePaneLinkMenuEntry } from "./external-link";
+import { useAppLanguage } from "../../i18n/react";
 
 /** One column of a ColumnGrid. */
 export interface ColumnGridColumn {
@@ -209,7 +211,11 @@ export interface ColumnGridPairProps {
  * the value right-aligned in the rest and cut from its end when it is too
  * long, and its muted detail after it. The detail gives way before the value.
  */
-export function ColumnGridPair({ label, labelWidth, width, value, valueColor, detail, url }: ColumnGridPairProps) {
+export const ColumnGridPair = markPure(memo(ColumnGridPairView));
+
+function ColumnGridPairView({ label, labelWidth, width, value, valueColor, detail, url }: ColumnGridPairProps) {
+  // A link's menu entry is worded in the app's language.
+  useAppLanguage();
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const color = valueColor ?? colors.text;

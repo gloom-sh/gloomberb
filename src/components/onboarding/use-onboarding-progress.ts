@@ -13,6 +13,7 @@ import type { useOnboardingPositions } from "./wizard-positions";
 import {
   applyFirstRunLayout,
   buildFirstRunLayout,
+  FIRST_RUN_WATCHLIST,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
   setupDeskPicks,
@@ -203,6 +204,24 @@ export function useOnboardingWorkspace({
   }, [positions, saveProgressInBackground]);
 
   /**
+   * Leaves "What do you hold?" holding nothing, as the Desks step can be left
+   * picking nothing: the workspace is built around the first name on the
+   * first-run watchlist, and holdings can be added once it is open.
+   */
+  const skipPositions = useCallback(() => {
+    if (positions.positions.length > 0) return;
+    setEditingField(false);
+    saveProgressInBackground({
+      stage: "desks",
+      path: "manual",
+      portfolioId: positions.portfolioId,
+      tickerSymbol: FIRST_RUN_WATCHLIST[0]!.ticker,
+      positionsImported: 0,
+      brokerName: undefined,
+    });
+  }, [positions, saveProgressInBackground]);
+
+  /**
    * Leaves "What do you trade most?": builds the workspace with the picked desks as
    * tabs (none when skipped, which is today's workspace) and moves on.
    */
@@ -261,7 +280,7 @@ export function useOnboardingWorkspace({
 
   return {
     chosenDesks, setChosenDesks, deskCursor, setDeskCursor, buildingDesks, continueFromPositions,
-    finishDesks, handleBrokerSynced,
+    skipPositions, finishDesks, handleBrokerSynced,
   };
 }
 

@@ -229,3 +229,38 @@ test("--preset value, quality and garp run on the fundamental fields, leading wi
     sort: { field: "forwardEpsGrowthPercent", direction: "desc" },
   });
 });
+
+test("--preset on the classic scores: Graham and Altman print N/M where the score is undefined, membership Yes or No", async () => {
+  const queried: { criteria: unknown; sort: unknown }[] = [];
+  const data = screenFixture();
+  const metrics = data.rows[0]!.metrics;
+  metrics.magicFormulaRank = { ...metrics.magicFormulaRank, value: 22, unit: "rank", asOf: "2026-06-27", state: "available", scope: "derived" };
+  metrics.grahamUpsidePercent = { ...metrics.grahamUpsidePercent, value: null, unit: "%", state: "unavailable", notMeaningful: true, reason: "Trailing EPS is not positive" };
+  metrics.altmanZScore = { ...metrics.altmanZScore, value: 13.784, unit: "", asOf: "2026-06-27", state: "available", scope: "derived" };
+  metrics.sp500Member = { ...metrics.sp500Member, value: 1, unit: "0/1", asOf: "2026-10-29", state: "available", scope: "derived" };
+  const apiClient = { equityScreener: async (_path: string, init?: { body?: string }) => {
+    const { criteria, sort } = JSON.parse(init!.body!);
+    queried.push({ criteria, sort });
+    return { ...structuredClone(data), definition: { version: 1, currency: "USD", criteria, sort } };
+  } };
+  const load = (options: Record<string, string>) => equityScreenerHeadless.load({ argument: undefined, options } as never, { apiClient } as never);
+  const magic = await load({ preset: "magic-formula", metric: "magicFormulaRank,altmanZScore,sp500Member" });
+  expect(queried[0]).toEqual({
+    criteria: [{ field: "magicFormulaRank", op: "lte", value: 100 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
+    sort: { field: "magicFormulaRank", direction: "asc" },
+  });
+  const section = magic.sections![0]!;
+  expect(section.columns!.find((column) => column.key === "value")!.header).toBe("MAGIC RANK");
+  expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "22" });
+  expect(Object.values(section.rows![0]!)).toEqual(expect.arrayContaining(["13.78", "Yes"]));
+  const graham = await load({ preset: "graham-number" });
+  expect(graham.sections![0]!.rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
+  expect(queried[1]).toEqual({
+    criteria: [
+      { field: "grahamUpsidePercent", op: "gte", value: 0 },
+      { field: "profitableYears", op: "gte", value: 10 },
+      { field: "marketCap", op: "gte", value: 2_000_000_000 },
+    ],
+    sort: { field: "grahamUpsidePercent", direction: "desc" },
+  });
+});

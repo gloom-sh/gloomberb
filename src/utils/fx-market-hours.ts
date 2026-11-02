@@ -86,6 +86,49 @@ export function latestFxWeekOpen(time: number): number | null {
 }
 
 /**
+ * How close to the FX week's close a print is its close: Gloom Cloud dates the
+ * week's close by its last minute (20:59Z, or 21:59Z in winter).
+ */
+const FX_CLOSE_PRINT_MS = 60_000;
+
+/** Whether a print made at `time` is the close of the FX week that closed at `weekClose`. */
+export function isFxWeekClosePrint(time: number, weekClose: number): boolean {
+  return time <= weekClose && time >= weekClose - FX_CLOSE_PRINT_MS;
+}
+
+/**
+ * When a rate fetched at `fetchedAt` must be read again because it may stand
+ * in for a close it is not: once the close of its FX week is out (the
+ * week's close, `delayMs` later for a delayed feed). A rate fetched at 20:39Z
+ * on a Friday is no close, yet the hours the market is shut do not age it
+ * (fxFreshUntil), so until Sunday's open it stood in for Friday's close. The
+ * week is the one `fetchedAt` falls in, not the one it is now, so the time is
+ * the same whether it is asked on Friday or on Sunday. Infinity for a rate
+ * that is that close (isFxWeekClosePrint).
+ */
+export function fxPreCloseRefetchAt(fetchedAt: number | undefined, observedAt: number | undefined, delayMs: number): number {
+  if (fetchedAt == null || !Number.isFinite(fetchedAt)) return Infinity;
+  const close = fxWeekCloseOf(fetchedAt, delayMs);
+  if (close == null || (observedAt != null && isFxWeekClosePrint(observedAt, close))) return Infinity;
+  return close + delayMs;
+}
+
+/**
+ * The close of the FX week a rate fetched at `time` belongs to: the latest
+ * one while its print may still be on its way (`delayMs`), else the next one.
+ * The next close is a week on, give or take the hour a clock change moves it.
+ */
+function fxWeekCloseOf(time: number, delayMs: number): number | null {
+  const latest = latestFxWeekClose(time);
+  if (latest != null && time < latest + delayMs) return latest;
+  for (const ahead of [7 * DAY_MS, 7 * DAY_MS + 2 * HOUR_MS]) {
+    const close = latestFxWeekClose(time + ahead);
+    if (close != null && close > time) return close;
+  }
+  return null;
+}
+
+/**
  * When the closure the market is in began (Friday 17:00 New York time); null
  * while it trades. That is `latestFxWeekClose` for every moment the week is
  * shut, since a closure never lasts to the next Friday, daylight saving weeks

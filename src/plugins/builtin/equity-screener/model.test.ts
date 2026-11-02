@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, SCORE_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -90,7 +90,7 @@ test("query boundary rejects valid rows from different criteria", async () => {
 test("a field typed without its unit or in part names the screen fields it means", () => {
   const criterion = (field: string) => () => parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field, op: "lte", value: 60 }] });
   expect(criterion("payoutRatio")).toThrow('"payoutRatio" is not a screen field (did you mean payoutRatioPercent?)');
-  expect(criterion("dividendGrowth")).toThrow("did you mean dividendGrowth1YPercent or dividendGrowth3YPercent?");
+  expect(criterion("dividendGrowth")).toThrow("did you mean dividendGrowth1YPercent or dividendGrowth3YPercent or dividendGrowthYears?");
   expect(criterion("bogus")).toThrow('"bogus" is not a screen field: use a numeric field');
 });
 
@@ -153,7 +153,7 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
@@ -161,6 +161,7 @@ test("social and research fields format by kind, and an older server's rows stil
   expect(loaded.rows[0]!.metrics.ivPercentile).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.floatShares).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roicPercent).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.piotroskiFScore).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
@@ -262,4 +263,20 @@ test("quality fields: leverage as multiples, growth signed like the growth field
     expect(SIGN_COLORED.has(field)).toBe(false);
     expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
   }
+});
+
+test("score fields: whole scores and ranks, Z and fair values to the cent, upside signed and coloured, membership Yes or No", () => {
+  expect([formatScreenValue("piotroskiFScore", 8), formatScreenValue("magicFormulaRank", 1234), formatScreenValue("rsRating", 99),
+    formatScreenValue("altmanZScore", 13.784), formatScreenValue("grahamNumber", 37.9), formatScreenValue("grahamUpsidePercent", -89.18),
+    formatScreenValue("lynchUpsidePercent", 20.04), formatScreenValue("earningsYieldPercent", 2.954), formatScreenValue("totalReturn1YPercent", 29.9),
+    formatScreenValue("profitableYears", 19), formatScreenValue("sp500Member", 1), formatScreenValue("dowMember", 0)])
+    .toEqual(["8", "1,234", "99", "13.78", "37.90", "-89.2", "+20.0", "3.0", "+29.9", "19", "Yes", "No"]);
+  expect(formatScreenMetric("altmanZScore", { value: null, notMeaningful: true })).toBe("N/M");
+  for (const field of ["grahamUpsidePercent", "lynchUpsidePercent", "totalReturn1YPercent"] as const) expect(SIGN_COLORED.has(field)).toBe(true);
+  for (const field of SCORE_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+  // Membership is 1 or 0: equal, there or not.
+  expect(criterionText({ field: "sp500Member", op: "eq", value: 1 })).toBe("S&P 500 member = yes");
+  const membership = { version: 1, currency: "USD", criteria: [{ field: "dowMember", op: "gte", value: 1 }], sort: { field: "marketCap", direction: "desc" } };
+  expect(() => parseScreenDefinition(membership)).toThrow();
+  expect(parseScreenDefinition({ ...membership, criteria: [{ field: "dowMember", op: "eq", value: 1 }] }).criteria).toHaveLength(1);
 });

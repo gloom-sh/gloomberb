@@ -36,6 +36,11 @@ export interface CompositeAxisDomain {
   seriesIds: string[];
   /** Most labeled ticks the axis shows, sized to the panel height. */
   maxTicks?: number;
+  /**
+   * The grid its ticks fall on, for prices quoted in fractions of a point: a
+   * Treasury future's 32nds (`ResolvedSeries.tickGrid`). Unset on a decimal axis.
+   */
+  tickGrid?: number;
   /** Rows the labels snap to, one per row, in the terminal. Unset where labels
    * sit at their exact heights. */
   tickRows?: number;
@@ -276,7 +281,12 @@ export interface CompositeChartProps {
   interactive?: boolean;
   /** False keeps the hover and keyboard cursor but removes pan, zoom, tools, and their keys. */
   navigable?: boolean;
-  /** Overrides the unit-derived tick and cursor labels on both value axes. */
+  /**
+   * Overrides the unit-derived tick and cursor labels on both value axes. It
+   * reads only the value and the axis: what it labels is kept per formatter
+   * and axis, so one that reads anything else (a currency, a setting) is a new
+   * function whenever that changes.
+   */
   formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
   xAxis?: CompositeChartXAxis;
   /** Tagged onto the plot's semantic node so remote clients can find this chart. */

@@ -60,6 +60,25 @@ export function bondFigures(bond: FundBondFacts): BondFigure[] {
   return figures;
 }
 
+/** How a fund's DV01 is derived, said beside it: the sponsor publishes a duration, not a DV01. */
+export const DV01_FROM_DURATION = "price × duration ÷ 10,000";
+
+/**
+ * A bond fund's dollar value of a basis point per share, derived from its
+ * duration: price × duration ÷ 10,000 (IEF at $91.76 and 6.82 yrs: $0.0626),
+ * what a curve trade is sized by. Null without a positive price and duration.
+ */
+export function durationDv01PerShare(price: number | null | undefined, bond: FundBondFacts | null | undefined): number | null {
+  const duration = bond?.duration?.value;
+  if (price == null || !Number.isFinite(price) || price <= 0 || duration == null || !Number.isFinite(duration) || duration <= 0) return null;
+  return price * duration / 10_000;
+}
+
+/** A DV01 per share in dollars: `$0.0626 per share`. */
+export function formatDv01PerShare(value: number): string {
+  return `$${value.toFixed(4)} per share`;
+}
+
 /** `Municipal, CA (single-state)`, `Municipal, national` or `Taxable`: what a bond fund is for tax. */
 export function bondClassText(bond: FundBondFacts): string {
   if (bond.kind === "taxable") return "Taxable";

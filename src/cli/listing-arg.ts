@@ -45,6 +45,7 @@ import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-b
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
+import { continuousAliasGeneric } from "../utils/futures-generic";
 import {
   bloombergCodeOf,
   bloombergMarketHint,
@@ -62,6 +63,7 @@ import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
+import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -178,6 +180,10 @@ function parseCleanListingArg(
   // VIX.X and $VIX.X, a broker's code for an index, are its own symbol ^VIX; $VIX is read in `resolveCliListing`.
   const index = option ? null : brokerIndexCode(raw);
   if (index && !index.bare) return { symbol: index.symbol, exchange: "", key: index.symbol, readAs: brokerIndexReadAs(index) };
+  // VX=F, the continuous symbol VIX futures do not have, is the front generic VX1.
+  const generic = option ? null : continuousAliasGeneric(raw);
+  // It says so, as a name read as a bare symbol does: VX1 is not what was typed.
+  if (generic) return { symbol: generic, exchange: "", key: generic, readAs: `Read ${raw.trim().toUpperCase()} as ${generic}, the front VIX future.`, readFromName: true };
   // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
   let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.
@@ -1208,6 +1214,12 @@ export async function resolveCliListing(
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
   const typed = stripStrayEdges(raw).text || raw;
+  // FRED:T10Y2Y is the series the catalog prints, never the symbol FRED on a venue called T10Y2Y.
+  const fred = exchangeOption?.trim() ? null : fredSeriesArgument(typed);
+  if (fred) {
+    const { message, details } = fredSeriesNotListing(fred);
+    throw new ListingArgError(message, details);
+  }
   const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.

@@ -170,6 +170,7 @@ export const researchModule: PluginModule = {
             ? options.symbols
             : parseTickerListInput(options?.arg ?? context.activeTicker ?? "", MAX_RELATIVE_VALUATION_TICKERS);
         } catch {
+          // Intentional ignore: a ticker list the parser rejects creates no pane.
           return null;
         }
         return {

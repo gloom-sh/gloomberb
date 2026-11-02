@@ -5,7 +5,10 @@ import { readFile, writeFile } from "fs/promises";
  * it runs: its own files are locked until it quits.
  */
 
-/** How long a script has to answer before the app stops waiting and keeps running. */
+/**
+ * How long a script has, by default, to answer before the app stops waiting
+ * and keeps running. The app may still be opening: no window shows until then.
+ */
 const SCRIPT_START_TIMEOUT_MS = 20_000;
 
 /**
@@ -62,16 +65,16 @@ function schtasks(...args: string[]): void {
  * Runs `script` from the scheduled task `taskName`, which outlives the app (a
  * child of its process dies with it), and resolves to the answer it writes to
  * `log`: only on `started` may the app quit for it. The script removes the
- * task. When it does not answer in time, the app writes `cancel`, which keeps
- * a script that starts late from doing anything, and this throws with the
- * task gone, as it does when the task could not be made.
+ * task. When it does not answer within `timeoutMs`, the app writes `cancel`,
+ * which keeps a script that starts late from doing anything, and this throws
+ * with the task gone, as it does when the task could not be made.
  */
-export async function runScriptAfterExit(script: string, log: string, cancel: string, taskName: string): Promise<ScriptAnswer> {
+export async function runScriptAfterExit(script: string, log: string, cancel: string, taskName: string, timeoutMs = SCRIPT_START_TIMEOUT_MS): Promise<ScriptAnswer> {
   const command = powershellCommand(script).map((part) => (part === script ? `"${part}"` : part)).join(" ");
   try {
     schtasks("/create", "/tn", taskName, "/tr", command, "/sc", "once", "/st", "00:00", "/f");
     schtasks("/run", "/tn", taskName);
-    const deadline = Date.now() + SCRIPT_START_TIMEOUT_MS;
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const answer = scriptAnswer(await readFile(log, "utf8").catch(() => ""));
       if (answer) return answer;

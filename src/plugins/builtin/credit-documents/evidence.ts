@@ -45,7 +45,7 @@ export const creditScreenshotEvidence: PaneScreenshotEvidenceHook<CreditEvidence
       const eligible = new Set(value.tab === "capital" ? payload.instruments.map((row) => row.id) : value.tab === "covenants" ? payload.covenants.map((row) => row.id) : value.tab === "screen" ? (screen?.rows ?? []).map(screenRowId) : payload.maturities.flatMap((row) => row.instruments.map((instrument) => `${row.year}:${instrument.id}`)));
       if (new Set(value.rowIds).size !== value.rowIds.length || value.rowIds.some((id) => !eligible.has(id as string))) return null;
       return value as unknown as CreditEvidence;
-    } catch { return null; }
+    } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
   },
   mismatches(evidence, { resolved, payload }) {
     const settings = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings;

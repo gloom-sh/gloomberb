@@ -22,6 +22,7 @@ import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
+import { logFailure } from "../../../utils/log-failure";
 
 const FOOTER_ID = "equity-diagnostic";
 /** Width of the "Observed"/"Reading" label column before the layout stacks. */
@@ -519,7 +520,7 @@ export function EquityDiagnosticView({ focused, width, height }: {
     }).then((sourceId) => {
       const source = sources.find((entry) => entry.id === sourceId);
       if (source) void rendererHost.openExternal(source.url);
-    }).catch(() => {});
+    }).catch(logFailure("research.equity-diagnostic-pane", "Open diagnostic source choices failed"));
   }, [dialog, rendererHost, sources]);
 
   // The preview's pitch sits in the body, not an empty state, so its buttons

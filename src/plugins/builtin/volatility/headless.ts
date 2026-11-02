@@ -56,7 +56,6 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
     discovery: { screenshotReadiness: "live-dom", limitations: [
       "Daily histories may contain isolated index observations; sparse coverage has no daily change or annual percentile.",
       "Thin histories do not support daily changes or one-year percentiles.",
-      "The existing sources do not supply a VIX futures curve.",
     ] },
     async load(args, context) {
       const result = await dependencies.load(args, context);

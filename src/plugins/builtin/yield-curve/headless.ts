@@ -3,7 +3,7 @@ import type {
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
 import {
-  compareDate, curveCutoff, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
+  compareDate, curveCutoff, curveIdOf, curveOption, curveSpreadFigures, curveSpreadText, curveTenorMove, loadComparePoints,
   parseCompareInput, parseCurveArgument, unknownCurveMessage, type CurveData, type CurveId,
 } from "./curves";
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
@@ -16,6 +16,7 @@ import { SWAP_TENORS, type SwapCurvePayload, type SwapTenor } from "../../../api
 import { fetchSwapCurve, loadSavedCurve, loadSavedWorldRows } from "./client";
 import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
+import { logFailure } from "../../../utils/log-failure";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
@@ -164,6 +165,7 @@ export function createYieldCurveHeadless(
         const curve = curveIdOf(args.options.curve) ?? parseCurveArgument(args.argument).curve ?? "us";
         return `Yield Curves | ${curveOption(curve).label}`;
       } catch {
+        // Intentional ignore: the load reports a curve it cannot read, so the title stays generic.
         return "Yield Curves";
       }
     },
@@ -206,7 +208,7 @@ export function createYieldCurveHeadless(
       const compareAsOf = comparePoints ? curveAsOf(comparePoints) : null;
       const compareAt = (maturity: string) => comparePoints?.find((point) => point.maturity === maturity)?.yield ?? null;
       // The stored curve brings its look-backs; the FRED fallback's load after it, and a failure leaves the move blank.
-      const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
+      const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(logFailure("yield-curve.headless", "Load yield curve lookbacks failed", {})) : {});
       const tenorRows = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row]));
       const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
       const missing = points.filter((point) => point.yield == null);
@@ -239,6 +241,11 @@ export function createYieldCurveHeadless(
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: compareColumns(compareAsOf) } : ranked ? { columns: RANKED_COLUMNS } : {}),
         ...(ranked ? { notes: [RANK_NOTE] } : {}),
+        // The spreads the pane shows over its table, each with its day move and where it sits in the last year.
+        ...(spreads.length ? { textSections: [{ title: "Spreads", entries: spreads.map((figure) => {
+          const text = curveSpreadText(figure);
+          return { key: figure.id, label: figure.id, value: bp(figure.value), formatted: `${text.value}  ${text.detail}` };
+        }) }] } : {}),
         rows: rows.map((point) => {
           const compare = compareAt(point.maturity);
           const change = tenorRows.get(point.maturity)?.change1d ?? null;

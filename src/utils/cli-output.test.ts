@@ -5,6 +5,7 @@ import {
   cliTerminalWidth,
   plainWords,
   renderDefinitions,
+  renderStats,
   renderTable,
   setCliAsciiLocaleOverride,
   setCliColorEnabledOverride,
@@ -13,6 +14,32 @@ import {
   truncateDisplay,
   visibleLength,
 } from "./cli-output";
+
+describe("renderStats", () => {
+  test("a narrow width puts a label too long to leave its value room above the value, and no line passes the width", () => {
+    setCliColorEnabledOverride(false);
+    try {
+      const entries: Array<[string, string]> = [
+        ["Distribution Yield (forward)", "4.01% (not SEC yield; latest distribution annualized, as of 2026-10-01)"],
+        ["30-Day SEC Yield", "4.94% (as of 2026-10-29)"],
+        ["DV01", "$0.0626 per share (from duration)"],
+      ];
+      const text = renderStats(entries, { width: 46 });
+      expect(text.split("\n")).toEqual([
+        "Distribution Yield (forward)",
+        "  4.01% (not SEC yield; latest distribution",
+        "  annualized, as of 2026-10-01)",
+        "30-Day SEC Yield  4.94% (as of 2026-10-29)",
+        "DV01              $0.0626 per share (from",
+        "                  duration)",
+      ]);
+      // A width that fits every label keeps one column, as before.
+      expect(renderStats(entries, { width: 120 }).split("\n")[1]).toBe("30-Day SEC Yield              4.94% (as of 2026-10-29)");
+    } finally {
+      setCliColorEnabledOverride(null);
+    }
+  });
+});
 
 describe("renderTable", () => {
   const plain = (render: () => string) => {

@@ -68,6 +68,18 @@ const STANDARD_ROLL_DAYS: Readonly<Record<string, number>> = {
   VX: 0,
 };
 
+/**
+ * Continuous symbols written as other roots' are (`CL=F`) for a root that has
+ * none, Cboe's VIX futures: `VX=F` is the front generic VX1, which follows
+ * the same front contract.
+ */
+const GENERIC_FOR_ALIAS: Readonly<Record<string, string>> = { "VX=F": "VX1" };
+
+/** The front generic a continuous symbol the root does not list stands for (VX=F: VX1), or null. */
+export function continuousAliasGeneric(symbol: string): string | null {
+  return GENERIC_FOR_ALIAS[symbol.trim().toUpperCase()] ?? null;
+}
+
 /** A root's standard roll: what a bare generic (NG1) and the continuous alias (NG=F) follow. */
 export function standardFuturesGenericRoll(root: string): FuturesGenericRoll {
   return { rule: "first-notice", days: STANDARD_ROLL_DAYS[root] ?? 1, standard: true };

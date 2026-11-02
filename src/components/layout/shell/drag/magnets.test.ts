@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { magnetDistancesFor, NO_LATCH, snapMovedRect, snapResizedRect, type MagnetLatch } from "./magnets";
+import {
+  createMagnetPace,
+  MAGNET_REST_MS,
+  magnetDistancesFor,
+  NO_LATCH,
+  snapMovedRect,
+  snapResizedRect,
+  type MagnetLatch,
+} from "./magnets";
 
 const AREA = { x: 0, y: 0, width: 200, height: 50 };
 // The desktop's 8px catch and 12px release over 8 by 18 px cells.
@@ -52,6 +60,46 @@ describe("magnets", () => {
     // Pulling the right edge onto the area's would leave it under the minimum width: it stays.
     const narrow = { x: 0.6, y: 12, width: 15, height: 12 };
     expect(snapResizedRect(narrow, { x: 1, y: 0 }, { width: 15, height: 6 }, [], { ...AREA, width: 15.5 }, DESKTOP, NO_LATCH).rect.width).toBe(15);
+  });
+
+  test("a moving pane's magnets wait while the pointer travels, and catch once it slows down or rests", () => {
+    const pace = createMagnetPace();
+    // The first move of a drag leaves the spot the pane sits flush in.
+    expect(pace.travelling({ t: 0, x: 10, y: 5 }, DESKTOP)).toBe(true);
+    // Two cells (16px) a frame: 1,000 px/s.
+    for (let frame = 1; frame <= 5; frame += 1) expect(pace.travelling({ t: frame * 16, x: 10 + frame * 2, y: 5 }, DESKTOP)).toBe(true);
+    // Slowing to a quarter cell (2px) a frame, 125 px/s, as it nears where it goes.
+    let travelling = true;
+    for (let frame = 6; frame <= 12; frame += 1) travelling = pace.travelling({ t: frame * 16, x: 20 + (frame - 5) * 0.25, y: 5 }, DESKTOP);
+    expect(travelling).toBe(false);
+    // Off again, then still: the check after a rest (the same place, later) finds it placed.
+    expect(pace.travelling({ t: 208, x: 26, y: 5 }, DESKTOP)).toBe(true);
+    expect(pace.travelling({ t: 208 + MAGNET_REST_MS, x: 26, y: 5 }, DESKTOP)).toBe(false);
+  });
+
+  test("the rest check of a fast move never runs once a slower move has followed it", async () => {
+    // A 60 Hz frame clock of its own: the check runs on the frame after the rest.
+    const frames = { request: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame };
+    globalThis.requestAnimationFrame = ((run: FrameRequestCallback) => setTimeout(() => run(performance.now()), 16)) as unknown as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as unknown as typeof cancelAnimationFrame;
+    try {
+      const pace = createMagnetPace();
+      const rests: string[] = [];
+      expect(pace.travelling({ t: 0, x: 10, y: 5 }, DESKTOP, () => rests.push("fast"))).toBe(true);
+      // A cell in 64 ms is slow: the magnets act here, and nothing is left to run.
+      expect(pace.travelling({ t: 64, x: 11, y: 5 }, DESKTOP, () => rests.push("slow"))).toBe(false);
+      await Bun.sleep(MAGNET_REST_MS * 2);
+      // Run, it would have put the pane back where the fast move left the pointer.
+      expect(rests).toEqual([]);
+
+      // Travelling, then still: it runs once.
+      expect(pace.travelling({ t: 200, x: 30, y: 5 }, DESKTOP, () => rests.push("travel"))).toBe(true);
+      await Bun.sleep(MAGNET_REST_MS * 2);
+      expect(rests).toEqual(["travel"]);
+    } finally {
+      globalThis.requestAnimationFrame = frames.request;
+      globalThis.cancelAnimationFrame = frames.cancel;
+    }
   });
 
   test("the terminal catches at the next cell", () => {

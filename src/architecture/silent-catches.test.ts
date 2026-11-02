@@ -161,18 +161,11 @@ test("ignore reasons need four words and cannot share their handler with logging
   ]);
 });
 
-test("built-in plugins stay excluded except the folders brought into scope", () => {
+test("built-in plugins are in scope except chat", () => {
   const scope = (file: string) => scanSilentCatches(file, "job.catch(() => {});").sites[0]!.scope;
   expect(scope("src/plugins/builtin/cloud/askg/pane.tsx")).toBe("in");
-  expect(scope("src/plugins/builtin/notes/files.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/news/wire/feed-config.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/custom-view/loader.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/thirteenf/data.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/buildout/model/index.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/dividend-yield/headless.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/exposure/holdings.ts")).toBe("in");
-  expect(scope("src/plugins/builtin/trace-bonds/client.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/broker-manager/footer.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/plugin-module.ts")).toBe("in");
   expect(scope("src/plugins/builtin/chat/controller/index.ts")).toBe("out");
-  expect(scope("src/plugins/builtin/cloudflare/index.ts")).toBe("out");
-  expect(scope("src/plugins/builtin/newsletter/index.ts")).toBe("out");
+  expect(scope("src/plugins/builtin/chatter/index.ts")).toBe("in");
 });

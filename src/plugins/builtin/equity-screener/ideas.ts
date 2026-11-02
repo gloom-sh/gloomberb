@@ -25,7 +25,8 @@ const idea = (
 
 /**
  * Technical ideas, read at the last completed session, then fundamental ones, read on `FA`'s bases (the trailing four
- * quarters, or the latest fiscal year when those quarters are that year) and `EE`'s consensus.
+ * quarters, or the latest fiscal year when those quarters are that year) and `EE`'s consensus, then the classic
+ * scores. Each keeps to companies above $2B.
  */
 export const SCREEN_IDEAS: ScreenIdea[] = [
   idea("oversold-uptrend", "Oversold in an uptrend", [
@@ -72,6 +73,57 @@ export const SCREEN_IDEAS: ScreenIdea[] = [
     { field: "forwardPE", op: "lte", value: 20 },
     { field: "roicPercent", op: "gte", value: 10 },
   ], { field: "forwardEpsGrowthPercent", direction: "desc" }),
+  // Classic scores. Piotroski's F-score of 8 or 9, his high group, among cheaper companies: he scored the cheapest
+  // fifth by book to market, and a P/B of 2x or less keeps to cheaper names. Highest score first.
+  idea("piotroski", "Piotroski 8-9", [
+    { field: "piotroskiFScore", op: "gte", value: 8 },
+    { field: "priceToBook", op: "lte", value: 2 },
+  ], { field: "piotroskiFScore", direction: "desc" }),
+  // Greenblatt's Magic Formula: earnings yield and return on capital ranked over the covered US listings, the two
+  // ranks summed and ranked again. The top 100 hold about 50 companies above $2B; banks, insurers and utilities are
+  // left out, as he left them out. Best rank first.
+  idea("magic-formula", "Magic Formula top", [
+    { field: "magicFormulaRank", op: "lte", value: 100 },
+  ], { field: "magicFormulaRank", direction: "asc" }),
+  // An Altman Z of 3 or more, above his 2.99 safe zone, at a trailing P/E of 15x or less, about the market's long-run
+  // multiple. Cheapest first.
+  idea("altman-safe-value", "Altman safe and cheap", [
+    { field: "altmanZScore", op: "gte", value: 3 },
+    { field: "trailingPE", op: "lte", value: 15 },
+  ], { field: "trailingPE", direction: "asc" }),
+  // A price at or below the Graham number, sqrt(22.5 x EPS x book value per share), with ten profitable years in a
+  // row, Graham's test of earnings stability for the defensive investor. Furthest below first.
+  idea("graham-number", "Below the Graham number", [
+    { field: "grahamUpsidePercent", op: "gte", value: 0 },
+    { field: "profitableYears", op: "gte", value: 10 },
+  ], { field: "grahamUpsidePercent", direction: "desc" }),
+  // A price at or below Lynch's fair value, EPS times its five-year growth rate, so a PEG of 1 or less, with debt no
+  // larger than equity, as Lynch preferred. Most upside first.
+  idea("lynch-value", "Below Lynch fair value", [
+    { field: "lynchUpsidePercent", op: "gte", value: 0 },
+    { field: "debtToEquity", op: "lte", value: 1 },
+  ], { field: "lynchUpsidePercent", direction: "desc" }),
+  // Five years or more of higher trailing dividends, a yield of 2% or more and a payout of 75% or less of earnings,
+  // room to keep raising. The stored distribution history runs about ten years, so a longer record reads as at
+  // least that. Fastest 3-year dividend growth first.
+  idea("dividend-growers", "Dividend growers", [
+    { field: "dividendGrowthYears", op: "gte", value: 5 },
+    { field: "dividendYieldPercent", op: "gte", value: 2 },
+    { field: "payoutRatioPercent", op: "lte", value: 75 },
+  ], { field: "dividendGrowth3YPercent", direction: "desc" }),
+  // An RS rating of 90 or more, a 1Y total return in the top tenth of US listings, within 15% of the 52-week high, as
+  // IBD looks for leaders near their highs. Highest rating first.
+  idea("rs-leaders", "RS leaders", [
+    { field: "rsRating", op: "gte", value: 90 },
+    { field: "fromHigh52WPercent", op: "gte", value: -15 },
+  ], { field: "rsRating", direction: "desc" }),
+  // Ten profitable fiscal years in a row, five years or more of higher revenue, and ROIC of 15% or more. Longest
+  // revenue growth first.
+  idea("compounders", "Steady compounders", [
+    { field: "profitableYears", op: "gte", value: 10 },
+    { field: "revenueGrowthYears", op: "gte", value: 5 },
+    { field: "roicPercent", op: "gte", value: 15 },
+  ], { field: "revenueGrowthYears", direction: "desc" }),
 ];
 
 export const screenIdea = (id: string | undefined): ScreenIdea | undefined =>

@@ -43,6 +43,7 @@ import {
   renderBrokerCell,
   type BrokerColumn,
 } from "./table";
+import { logFailure } from "../../../utils/log-failure";
 
 export function BrokersPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
@@ -275,7 +276,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const saveCurrentEdit = useCallback(() => {
-    saveEdit().catch(() => {});
+    saveEdit().catch(logFailure("broker-manager", "Save broker profile edit failed"));
   }, [saveEdit]);
 
   // The detail insets one cell each side like the table cells.

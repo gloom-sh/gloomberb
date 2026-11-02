@@ -14,6 +14,10 @@ afterEach(() => {
   for (const persistence of persistences.splice(0)) persistence.close();
 });
 
+test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {
+  expect(parseListingArg("vx=f")).toEqual({ symbol: "VX1", exchange: "", key: "VX1", readAs: "Read VX=F as VX1, the front VIX future.", readFromName: true });
+});
+
 test("SYM:EXCH and --exchange name the same listing through the exchange aliases, and must agree", () => {
   for (const [raw, option] of [["san:xpar", undefined], ["SAN", "XPAR"], ["SAN:EPA", "epa"], ["SAN:", "EPA"], [" $San:Par ", "EPA"]] as const) {
     expect(parseListingArg(raw, option)).toEqual({ symbol: "SAN", exchange: "EPA", key: "SAN:EPA" });
@@ -92,6 +96,27 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect(bare.request).toEqual({ symbol: "SAN", exchange: "" });
   expect((await resolveCliListing("SAN:XPAR", undefined, deps)).saved?.metadata.name).toBe("Sanofi");
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
+});
+
+test("FRED:T10Y2Y is the series the catalog prints, never FRED on an exchange called T10Y2Y; FRED on a known venue is a listing", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const searched: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      return [{ providerId: "test", symbol: "FRED", name: "Fredonia Mining Inc.", exchange: "TSXV", type: "Common Stock", currency: "CAD" }];
+    },
+  });
+  const deps = { store: new TickerRepository(persistence.tickers), dataProvider };
+  const refused = await resolveCliListing("FRED:T10Y2Y", undefined, deps).catch((error: unknown) => error);
+  expect(refused).toBeInstanceOf(ListingArgError);
+  expect((refused as ListingArgError).message).toBe("FRED:T10Y2Y is a FRED series, not a listing.");
+  expect((refused as ListingArgError).details).toBe("Chart it with gloom fn G FRED:T10Y2Y, or read it with gloom fred T10Y2Y.");
+  // Said before any lookup, and the same however it is cased.
+  expect(searched).toEqual([]);
+  expect(((await resolveCliListing("fred:dgs10", undefined, deps).catch((error: unknown) => error)) as Error).message).toBe("FRED:DGS10 is a FRED series, not a listing.");
+  expect((await resolveCliListing("FRED:TSXV", undefined, deps)).request).toEqual({ symbol: "FRED:TSXV", exchange: "TSXV" });
 });
 
 test("an index typed with the venue search files it under resolves as the bare symbol does", async () => {

@@ -49,7 +49,7 @@ export function AdrPairResearchTab({ width, height, focused }: TickerResearchTab
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const stats: StatItem[] = comparison ? adrPairFigures(comparison) : [];
-  const rows = comparison ? adrPairInputRows(comparison) : [];
+  const rows = comparison ? adrPairInputRows(comparison, { receipt: receiptQuote, home: homeQuote }) : [];
 
   if (!legs) return <EmptyState title="No ADR pair for this listing." />;
   const pending = (entry: typeof receiptEntry) => !entry || entry.phase === "loading" || entry.phase === "idle";

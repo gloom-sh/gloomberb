@@ -25,7 +25,7 @@ export function optionMarketReference(value: unknown): OptionMarketReference | u
 
 export function parseOptionMarketReference(value: string | undefined): OptionMarketReference | undefined {
   if (!value) return undefined;
-  try { return optionMarketReference(JSON.parse(value)); } catch { return undefined; }
+  try { return optionMarketReference(JSON.parse(value)); } catch { /* Intentional ignore: a market reference that does not parse opens the contract without one. */ return undefined; }
 }
 
 function timestamp(milliseconds: number | undefined): string | null {

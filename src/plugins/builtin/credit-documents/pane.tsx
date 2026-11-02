@@ -20,6 +20,7 @@ import { CreditInstrumentDetail } from "./detail";
 import { useCreditEvidence } from "./evidence";
 import { HeadroomGauge } from "./gauge";
 import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantReason, covenantUsage, CREDIT_EMPTY_TITLE, creditEmptyCause, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean; closed?: boolean };
 const rowId = (row: Row) => row.id;
@@ -54,7 +55,7 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const [snapshotSetting] = usePaneSettingValue<CreditDocumentsPayload | null>("creditSnapshot", null);
   const [screenSnapshot] = usePaneSettingValue<CreditScreenPayload | null>("creditScreenSnapshot", null);
   const [instrumentSnapshot] = usePaneSettingValue<CreditInstrument | null>("creditInstrumentSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCreditDocuments(snapshotSetting, symbol ? creditIssuerSymbol(symbol) : undefined) : null; } catch { return null; } }, [snapshotSetting, symbol]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateCreditDocuments(snapshotSetting, symbol ? creditIssuerSymbol(symbol) : undefined) : null; } catch (error) { return logFailure("credit-documents.pane", "Validate credit documents snapshot failed", null)(error); } }, [snapshotSetting, symbol]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadCredit(symbol!, accessKey, force), [symbol, accessKey, snapshot]);
   const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCredit(symbol, accessKey) : null, clearOnError: isAccessDenied });
   const data = resource.data?.payload ?? null;

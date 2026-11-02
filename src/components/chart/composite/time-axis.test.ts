@@ -154,7 +154,7 @@ describe("adaptive composite time axis", () => {
     expect(wide.ticks.length).toBeGreaterThanOrEqual(8);
     expect(wide.ticks.length).toBeGreaterThan(narrow.ticks.length);
     expect(wide.text).toContain("Oct 21 2024");
-    expect(wide.text).toContain("Jan 2025");
+    expect(wide.text).toContain("Mar 2025");
     expect(wide.text).toContain("Jan 2026");
     expect(wide.text).toContain("Jul 29 2026");
     expectValidLayout(narrow, 40);
@@ -251,6 +251,33 @@ describe("adaptive composite time axis", () => {
     expect(layout.ticks.at(-1)!.ratio).toBeCloseTo(1 / 1.06, 9);
     expect(layout.ticks.at(-1)!.end).toBeLessThan(159);
     expectValidLayout(layout, 160);
+  });
+
+  test("drops a regular tick that would sit against the start or end label", () => {
+    // DTS Cash 1Y and a 5Y stock chart at 1280 px, with the right offset the plot reserves.
+    const layoutOf = (from: string, to: string) => {
+      const startTime = Date.parse(from);
+      const endTime = Date.parse(to);
+      const scene: CompositeChartScene = {
+        ...marketScene([from, to], [0, 1]),
+        startTime,
+        endTime,
+        timeScale: { kind: "calendar", startTime, endTime, rightOffsetRatio: 0.06 },
+      };
+      return buildCompositeTimeAxisLayout(scene, 153);
+    };
+    const year = layoutOf("2025-10-29", "2026-10-29");
+    const fiveYears = layoutOf("2021-10-26", "2026-10-26");
+
+    // "Oct" and "Jul" were four and two cells from the end label.
+    expect(year.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Aug", "Sep", "Oct 29 2026"]);
+    expect(fiveYears.ticks.map((tick) => tick.label).slice(-3)).toEqual(["Jul", "Jan 2026", "Oct 26 2026"]);
+    for (const layout of [year, fiveYears]) {
+      const { ticks } = layout;
+      expect(ticks[1]!.start - ticks[0]!.end - 1).toBeGreaterThanOrEqual(5);
+      expect(ticks.at(-1)!.start - ticks.at(-2)!.end - 1).toBeGreaterThanOrEqual(5);
+      expectValidLayout(layout, 153);
+    }
   });
 
   test("compacts cross-year endpoints before dropping either side", () => {

@@ -1110,7 +1110,8 @@ export const alertsCliCommand: CliCommandDef = {
         });
         return;
       }
-      if (action === "delete" || action === "rm") {
+      // `remove`, as the command's own description says it does, and `rm` delete as `delete` does.
+      if (action === "delete" || action === "remove" || action === "rm") {
         const id = requireArg(args[1], "Usage: gloom alerts delete <id>", ctx);
         const level = alerts.find((alert) => alert.id === id) ?? null;
         const rule = level ? null : events.rules.find((entry) => entry.id === id) ?? null;

@@ -11,7 +11,7 @@ import { fail, isCliFailure, printCliError } from "../errors";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { captureConsole } from "../../test-support/console";
 import { serializeCliResult } from "../result";
-import { marketDataCliCommands } from "./market";
+import { marketDataCliCommands, readHistoryRange } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
@@ -290,7 +290,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const csv = await run("csv", { points: [...old, ...shekels] });
     expect(csv.result.warnings).toEqual(warnings);
     // Dated by the January bar's last session, not the day it opens.
-    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,,USDILS=X,ILS per USD,1mo,Gloom Cloud,1993-01-29"]);
     const text = await run("text", { points: [...old, ...shekels] });
     expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
     // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
@@ -450,7 +450,8 @@ test("history of several symbols is one long table with the single-symbol header
 });
 
 /** A history run of `args` against a source whose bars are `bars(symbol)`; a symbol it throws for is not a ticker. */
-async function runList(args: string[], bars: (symbol: string) => Promise<PriceHistoryResult["points"]>, format: "csv" | "json" = "csv") {
+async function runList(args: string[], bars: (symbol: string) => Promise<PriceHistoryResult["points"]>, format: "csv" | "json" = "csv",
+  resolutionOf: (symbol: string) => PriceHistoryResult["resolution"] = () => "1d") {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
     dataProvider: createTestDataProvider({
@@ -458,7 +459,8 @@ async function runList(args: string[], bars: (symbol: string) => Promise<PriceHi
         await bars(symbol);
         return createTestQuote({ symbol, currency: "USD", marketState: "CLOSED" });
       },
-      getPriceHistoryWithMetadata: async (symbol) => ({ resolution: "1d", points: await bars(symbol) }),
+      getPriceHistoryWithMetadata: async (symbol) => ({ resolution: resolutionOf(symbol), points: await bars(symbol) }),
+      getPriceHistoryForResolutionWithMetadata: async (symbol) => ({ resolution: resolutionOf(symbol), points: await bars(symbol) }),
     }),
   }, { format });
   await history.execute(args, cli.context);
@@ -470,6 +472,86 @@ async function runList(args: string[], bars: (symbol: string) => Promise<PriceHi
 
 const dailyBar = (close: number) => [{ date: new Date("2026-10-16"), open: close, high: close, low: close, close, volume: 1000 }];
 const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+
+test("history --wide sets several pairs side by side: a row a date, a close column a symbol headed with its unit", async () => {
+  const bars: Record<string, Array<[string, number]>> = {
+    "USDJPY=X": [["2026-10-29", 157.68921], ["2026-10-30", 157.58847]],
+    "USDCHF=X": [["2026-10-29", 0.82431], ["2026-10-30", 0.82503]],
+    // A day one series has no bar for stays blank in its column.
+    "EURCHF=X": [["2026-10-30", 0.92074]],
+  };
+  const { csv, result } = await runList(["USDJPY=X", "USDCHF=X", "EURCHF=X", "--wide"], async (symbol) =>
+    bars[symbol]!.map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close })));
+  expect(csv).toEqual([
+    "Date,USDJPY=X close (JPY per USD),USDCHF=X close (CHF per USD),EURCHF=X close (CHF per EUR),symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-29,157.68921,0.82431,,,,1d,Gloom Cloud,2026-10-30",
+    "2026-10-30,157.58847,0.82503,0.92074,,,1d,Gloom Cloud,2026-10-30",
+  ]);
+  expect(result.failure).toBeUndefined();
+});
+
+/** Bars from `start`, one every `minutes`, each closing at the next of `closes`. */
+const intradayBars = (start: string, minutes: number, closes: number[]) => closes.map((close, index) =>
+  ({ date: new Date(Date.parse(start) + index * minutes * 60_000), open: close, high: close, low: close, close }));
+
+test("history --wide sets intraday bars that do not line up under the bar they start in, and leaves aligned ones as they come", async () => {
+  // ^VIX's hourly bars start on the hour, ^VIX9D's on the half hour: side by side, every row was half empty.
+  const vix: Record<string, PriceHistoryResult["points"]> = {
+    "^VIX": intradayBars("2026-10-29T13:00:00Z", 60, [17.1, 17.3, 17.2]),
+    "^VIX9D": intradayBars("2026-10-29T13:30:00Z", 60, [16.4, 16.6, 16.5]),
+  };
+  const crossed = await runList(["^VIX", "^VIX9D", "--range", "1W", "--wide"], async (symbol) => vix[symbol]!, "csv", () => "1h");
+  expect(crossed.csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+    "2026-10-29T13:00:00Z,17.1,16.4", "2026-10-29T14:00:00Z,17.3,16.6", "2026-10-29T15:00:00Z,17.2,16.5"]);
+  expect(crossed.result.warnings).toContain("^VIX9D bars are listed under the ^VIX 1h bar they start in.");
+  // Two US stocks' hours both start at :30: each bar keeps its own start, never one before the open, and nothing is said.
+  const stocks = await runList(["AAPL", "MSFT", "--range", "1W", "--wide"], async (symbol) =>
+    intradayBars("2026-10-29T13:30:00Z", 60, symbol === "AAPL" ? [270.1, 270.5] : [520.2, 521.4]), "csv", () => "1h");
+  expect(stocks.csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+    "2026-10-29T13:30:00Z,270.1,520.2", "2026-10-29T14:30:00Z,270.5,521.4"]);
+  expect(stocks.result.warnings?.some((warning) => warning.includes("bar they start in")) ?? false).toBe(false);
+});
+
+test("history --wide merges 30m bars beside 1h ones into the hour they start in, its close the last bar's, and says so", async () => {
+  const bars: Record<string, PriceHistoryResult["points"]> = {
+    AAPL: intradayBars("2026-10-29T13:30:00Z", 60, [270.1, 270.5]),
+    MSFT: intradayBars("2026-10-29T13:30:00Z", 30, [520.2, 520.9, 521.4, 521.1]),
+  };
+  const { csv, result } = await runList(["AAPL", "MSFT", "--range", "1W", "--wide"], async (symbol) => bars[symbol]!, "csv",
+    (symbol) => symbol === "MSFT" ? "30m" : "1h");
+  // The 14:00 bar is not dropped for the 14:30 one: the hour's close is its second half hour's.
+  expect(csv.slice(1).map((line) => line.split(",").slice(0, 3).join(","))).toEqual([
+    "2026-10-29T13:30:00Z,270.1,520.9", "2026-10-29T14:30:00Z,270.5,521.1"]);
+  expect(result.warnings).toContain("MSFT's 30m bars are merged under the AAPL 1h bar they start in, 4 bars into 2 rows: a row's close is its last bar's.");
+});
+
+test("a currency's name is its pair: history swiss franc and history yen name fx and the pair, and one word is a ticker first", async () => {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, name: "The RealReal, Inc.", listingExchangeName: "NASDAQ" });
+    },
+    getPriceHistoryWithMetadata: async (symbol) => {
+      if (symbol === "YEN") throw new Error("No history provider available for YEN");
+      return { resolution: "1d", points: dailyBar(11.96) };
+    },
+  });
+  const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider });
+  cli.context.fail = fail;
+  const failure = (args: string[]) => history.execute(args, cli.context).then(() => null, (error: unknown) => error);
+  // Before: SWISS read as a Copenhagen listing and FRANC as "Not a ticker".
+  expect(await failure(["swiss", "franc"])).toMatchObject({
+    message: "swiss franc is a currency (CHF), not a ticker.", details: "Its rate: gloom fx CHF\nIts pair: gloom history USDCHF=X",
+  });
+  expect(asked).toEqual([]);
+  expect(await failure(["yen"])).toMatchObject({
+    message: "yen is a currency (JPY), not a ticker.", details: "Its rate: gloom fx JPY\nIts pair: gloom history USDJPY=X",
+  });
+  // REAL is The RealReal before it is the Brazilian real.
+  await history.execute(["real"], cli.context);
+  expect(cli.printed.at(-1)!.result.data).toHaveLength(1);
+});
 
 test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
   const { result, csv } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);
@@ -779,4 +861,10 @@ test("a continuous future's history is headed as the front month, flags the roll
   } finally {
     setSystemTime();
   }
+});
+
+test("a range is read in any case and as other tools spell it", () => {
+  for (const [typed, range] of [["1mo", "1M"], ["1m", "1M"], ["1 month", "1M"], ["3MO", "3M"], ["1wk", "1W"], ["5yr", "5Y"], ["ytd", "YTD"],
+    ["max", "ALL"], ["all", "ALL"]] as const) expect(readHistoryRange(typed), typed).toBe(range);
+  for (const typed of ["2mo", "1h", "month"]) expect(readHistoryRange(typed), typed).toBeNull();
 });

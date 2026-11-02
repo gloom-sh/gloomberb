@@ -78,7 +78,7 @@ export const adrPairHeadless: HeadlessPaneDefinition<"bundle"> = {
       return { sections: [], empty: `No price for ${missing}, so the pair cannot be compared.`, unavailableSymbols: [missing], errors };
     }
     const figures = adrPairFigures(comparison);
-    const rows = adrPairInputRows(comparison);
+    const rows = adrPairInputRows(comparison, quotes);
     const kind = spotRateKind(homeCurrency);
     return {
       sections: [

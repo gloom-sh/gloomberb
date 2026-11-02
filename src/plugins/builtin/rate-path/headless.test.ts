@@ -24,12 +24,21 @@ test("text names the policy rates and says whether data is stale, while JSON kee
   expect(text).not.toMatch(/\b(effr|targetLower|targetUpper)\b/);
   // Raw feed names stay out of the text; the staleness reads as words.
   expect(text).not.toMatch(/\b(fred|nyfed)\b/);
-  expect(text).toContain("Data stale");
-  expect(text).not.toMatch(/\b(true|false)\b/);
+  // Staleness is said once, under the tables, naming the stale rows; no row reads "no".
+  expect(text).not.toContain("Data stale");
+  expect(text).toContain("Notes: Stale: ZQV26.CBT.");
+  expect(text).not.toMatch(/\b(true|false|yes|no)\b/);
   const policy = result.sections[0] as { rows: Array<Record<string, unknown>> };
   expect(policy.rows.map((row) => [row.name, row.stale, row.source])).toEqual([["effr", false, "fred"], ["targetLower", false, "fred"], ["targetUpper", false, "nyfed"]]);
   const contract = text.split("\n").find((line) => line.startsWith("ZQV26.CBT"))!;
-  expect(contract.trim().endsWith("available  yes")).toBe(true);
+  expect(contract.trim().endsWith("available")).toBe(true);
+  // Nothing stale, nothing said; a stale policy rate is named as the text names it.
+  const fresh = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => ({
+    ...payload, fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never }));
+  expect(fresh.notes).toBeUndefined();
+  const policyStale = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => ({
+    ...payload, current: { ...payload.current, effr: { ...metric, stale: true } } }) } as never }));
+  expect(policyStale.notes).toEqual(["Stale: Effective fed funds rate, ZQV26.CBT."]);
 });
 
 test("the status line describes the CME futures alone: their newest quote, delay and stale count", async () => {

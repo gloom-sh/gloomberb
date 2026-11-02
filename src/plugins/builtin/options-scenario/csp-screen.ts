@@ -9,7 +9,7 @@ import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { ivRankReason, loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { quoteObservation } from "../shared/report-freshness";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioSpotBasis, type ScenarioLoaderDependencies, type ScenarioMarketSnapshot } from "./client";
-import { cashSecuredPut, loadNextEarningsDates, type CashSecuredPut } from "./csp";
+import { cashSecuredPut, EARNINGS_CALENDAR_UNAVAILABLE, loadNextEarningsDates, type CashSecuredPut } from "./csp";
 import { seededLegQuotes } from "./hedge";
 import { scenarioValue } from "./model";
 
@@ -252,7 +252,7 @@ export async function screenNames<T>(
     const rank = ivRow?.iv30?.rank;
     const ivRank = rank != null && Number.isFinite(rank) ? rank : null;
     try {
-      const screened = await screen(instrument, earnings.get(symbol) ?? null, scenario);
+      const screened = await screen(instrument, earnings === EARNINGS_CALENDAR_UNAVAILABLE ? earnings : earnings.get(symbol) ?? null, scenario);
       markets.push(screened.market);
       if (ivRank == null && !ivRanks.error) {
         const reason = ivRankReason(ivRow);
@@ -289,10 +289,14 @@ export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number):
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
 }
 
-/** `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg) expires, and its date. */
+/**
+ * `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg)
+ * expires, and its date; `unavailable` when the earnings calendar could not be read.
+ */
 export function cspEarningsText(csp: Pick<CashSecuredPut, "earnings"> | null): string {
   if (!csp) return "--";
-  const { beforeExpiry, date } = csp.earnings;
+  const { beforeExpiry, date, unavailable } = csp.earnings;
+  if (unavailable) return "unavailable";
   return beforeExpiry == null ? "unknown" : `${beforeExpiry ? "before" : "after"} ${date}`;
 }
 

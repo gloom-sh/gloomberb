@@ -10,6 +10,7 @@ import { notATickerSymbol } from "../../../sources/provider-errors";
 import { fetchScreen } from "../equity-screener/client";
 import { loadHeadlessFinancials } from "../shared/headless-market-data";
 import { loadFxLegs } from "./relative-valuation-currency";
+import { logFailure } from "../../../utils/log-failure";
 
 /** The pane setting holding the peers chosen for its subject (`PeerSelection`), which the report reads back too. */
 export const PEER_SELECTION_SETTING = "peerSelection";
@@ -438,7 +439,7 @@ export async function pickPeers(symbol: string, financials: TickerFinancials | n
   let failure: string | null = null;
   try {
     const [capUsd, industryRows, coreRows] = await Promise.all([
-      subjectCapUsd(financials, ctx).catch(() => null),
+      subjectCapUsd(financials, ctx).catch(logFailure("research.relative-valuation-peers", "Read subject market cap for peers failed", null)),
       screenRows([{ field: "industry", op: "in", value: [group.industry] }], ctx),
       group.related ? screenRows([{ field: "symbol", op: "in", value: [...group.related.core] }], ctx) : Promise.resolve([]),
     ]);

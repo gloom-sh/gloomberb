@@ -255,10 +255,10 @@ function windowsVersionStrings(version: string): string[] {
 const VERSION_LANGUAGE = { lang: 1033, codepage: 1200 };
 
 /**
- * Electrobun's launcher and Chromium helpers ship with no version details at
- * all, and rcedit only edits details a file has, so Windows showed them by
- * file name. Each gets empty ones here, with the app's version, for rcedit to
- * fill in.
+ * Electrobun's launcher, Chromium helpers and updater tools ship with no
+ * version details at all, and rcedit only edits details a file has, so
+ * Windows showed them by file name. Each gets empty ones here, with the app's
+ * version, for rcedit to fill in.
  */
 function addVersionDetails(exePath: string, version: string): void {
   const exe = ResEdit.NtExecutable.from(readFileSync(exePath), { ignoreCert: true });
@@ -277,8 +277,9 @@ function addVersionDetails(exePath: string, version: string): void {
 }
 
 /**
- * The app's programs: the launcher its shortcuts open, the runtime, and the
- * Chromium helpers Electrobun copies once for each kind of process.
+ * The app's programs: the launcher its shortcuts open, the runtime, the
+ * Chromium helpers Electrobun copies once for each kind of process, and the
+ * two tools its updater runs to apply an update.
  */
 const WINDOWS_EXECUTABLES = [
   "launcher.exe",
@@ -288,6 +289,8 @@ const WINDOWS_EXECUTABLES = [
   "bun Helper (GPU).exe",
   "bun Helper (Plugin).exe",
   "bun Helper (Renderer).exe",
+  "bspatch.exe",
+  "zig-zstd.exe",
 ];
 
 function embedWindowsIcons(runtimePath: string, resourcesPath: string): void {

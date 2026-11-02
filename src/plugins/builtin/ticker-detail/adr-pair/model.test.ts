@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { adrPairLegs } from "./model";
+import { adrPairComparison, adrPairInputRows, adrPairLegs } from "./model";
 
 const GSK = { receipt: "GSK", ratio: 2, ordinary: ["GSK.L"] };
 
@@ -24,4 +24,25 @@ test("a home line finds itself among the pair's lines however its listing is key
   const bhp = { receipt: "BHP", ratio: 2, ordinary: ["BHP.AX", "BHP.L"] };
   expect(adrPairLegs(records(false, bhp), saved("BHP", "LSE"), "BHP")?.homeKey).toBe("BHP.L");
   expect(adrPairLegs({ quote: {} as Quote }, null, "AAPL")).toBeNull();
+});
+
+test("both legs' prices keep their instrument's decimals, as the quote monitor writes them", () => {
+  const FRI_CLOSE = Date.UTC(2026, 9, 23, 20, 0);
+  const quote = (fields: Partial<Quote>) => ({ symbol: "X", change: 0, changePercent: 0, lastUpdated: FRI_CLOSE, marketState: "CLOSED", ...fields }) as Quote;
+  const prices = (receipt: Quote, home: Quote, pair = { receipt: "TSM", ratio: 5, ordinary: ["2330.TW"] }) => {
+    const legs = adrPairLegs(records(true, pair), null, "TSM")!;
+    const comparison = adrPairComparison(legs, { receipt, home }, null)!;
+    return adrPairInputRows(comparison, { receipt, home }).map((row) => row.price);
+  };
+  // $419.5 is $419.50, as QQ and the Overview write it; a whole-number home price keeps its cents too.
+  expect(prices(
+    quote({ price: 419.5, currency: "USD", previousClose: 418.51 }),
+    quote({ price: 2370, currency: "TWD", previousClose: 2385 }),
+  )).toEqual(["2,370.00 TWD", "$419.50"]);
+  // A London line in pence is read in pounds, with the pounds' decimals: 16.5 is 16.50.
+  expect(prices(
+    quote({ price: 48.1, currency: "USD", previousClose: 47.9 }),
+    quote({ price: 1650, currency: "GBp", previousClose: 1648.5 }),
+    { receipt: "GSK", ratio: 2, ordinary: ["GSK.L"] },
+  )).toEqual(["16.50 GBP", "$48.10"]);
 });

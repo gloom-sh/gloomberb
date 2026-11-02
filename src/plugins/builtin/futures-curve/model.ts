@@ -4,8 +4,10 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
+import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
 import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
@@ -88,12 +90,16 @@ export function curveRootForTicker(ticker: unknown): string | null {
 
 /**
  * Treasury futures trade in fractions of a 32nd (ZT to 1/256, ZF 1/128, ZN
- * 1/64, ZB and UB 1/32), so the catalogue leaves their tick unset. A root
- * shows every price at the decimals its tick needs to stay exact (ZT 8, ZN 6),
- * so a column and the M2-M1 spread keep one width: 103.50000000 next to
- * 103.51562500, never 103.50 next to 103.515625.
+ * 1/64, ZB and UB 1/32), so the catalogue leaves their tick unset. Their
+ * prices read in 32nds (106-20\u00bd); a report's numbers keep the decimals the
+ * tick needs to stay exact (ZT 8, ZN 6), never float noise.
  */
 const RATE_TICKS: Readonly<Record<string, number>> = { ZT: 1 / 256, ZF: 1 / 128, ZN: 1 / 64, ZB: 1 / 32, UB: 1 / 32 };
+
+/** Whether a root's prices read in 32nds of par (the Treasury futures), not decimals. */
+export function curveReadsThirtySeconds(root: string): boolean {
+  return RATE_TICKS[root] != null;
+}
 
 function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
@@ -105,6 +111,8 @@ function curvePriceDecimals(root: string): number {
 
 export function curvePrice(value: number | null, root: string): string {
   if (value == null) return "--";
+  // A Treasury future reads in 32nds, as `quote` and FUT write it: 106-20\u00bd, never 106.640625.
+  if (RATE_TICKS[root] != null) return formatThirtySeconds(Math.abs(value) < 1e-9 ? 0 : value);
   const text = value.toFixed(curvePriceDecimals(root));
   // A spread that rounds to zero is unsigned: 0.00, never -0.00.
   return /[1-9]/.test(text) ? text : text.replace("-", "");
@@ -136,7 +144,7 @@ export function curveUnitLabel(data: Pick<FuturesCurvePayload, "root" | "spec" |
 
 /** A contract as traders write it: GCZ26.CMX is GCZ26; a VX symbol stays as Cboe lists it. */
 export function curveContractCode(symbol: string): string {
-  return symbol.replace(/\.[A-Z]+$/, "");
+  return futuresContractCode({ contract: null, contractSymbol: symbol });
 }
 
 /**
@@ -185,12 +193,25 @@ export function thinSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "cont
 }
 
 /**
+ * The grid a Treasury root's chart axis ticks on, in points: its own fraction
+ * of a 32nd, no finer than a quarter (ZT and ZF quarter 32nds, ZN half, ZB and
+ * UB whole 32nds), so a tick reads 104-25½, never 104-25.60. Undefined for a
+ * root quoted in decimals, whose axis steps 1, 2, 5.
+ */
+export function curveAxisGrid(root: string): number | undefined {
+  const tick = RATE_TICKS[root];
+  return tick == null ? undefined : Math.max(tick, 1 / 128);
+}
+
+/**
  * Axis gridlines sit on round values, so they need no tick precision: one
  * decimal count across the gutter, as many as the plotted range asks for and
  * enough to keep every tick within a percent of that range. A span of hundreds
- * of index points reads 7800, a VIX strip 18.5, a Treasury 1/64 grid 112.25.
+ * of index points reads 7800, a VIX strip 18.5. A Treasury axis reads in 32nds,
+ * its ticks on the root's grid (`curveAxisGrid`).
  */
 export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root: string): string {
+  if (RATE_TICKS[root] != null) return formatThirtySeconds(value);
   const cap = curvePriceDecimals(root);
   const tolerance = Math.abs(domain.max - domain.min) / 100;
   const needed = (tick: number) => {
@@ -405,6 +426,56 @@ export function spotBarsFromHistory(points: readonly { date: Date | string | num
     if (Number.isFinite(time) && positive(point.close)) byMinute.set(minuteOf(time), point.close);
   }
   return [...byMinute].sort((a, b) => a[0] - b[0]).map(([minute, price]) => ({ minute, price }));
+}
+
+/**
+ * The cash index a settlement-only root's front contract is read against: VX
+ * against spot VIX. A root missing here shows no spot.
+ */
+const SPOT_INDEX_SYMBOLS: ReadonlyMap<string, { symbol: string; label: string }> = new Map([
+  ["VX", { symbol: "^VIX", label: "Spot VIX" }],
+]);
+
+export function spotIndexSymbol(root: string): string | null {
+  return SPOT_INDEX_SYMBOLS.get(root)?.symbol ?? null;
+}
+
+/**
+ * Spot against the front contract: the index's close on the curve's
+ * settlement session and the front settlement's premium to it, so both are
+ * marks of one session and a live index is never read against an older
+ * settlement. `reason` says why a figure is blank.
+ */
+export interface CurveSpotPremium {
+  symbol: string;
+  label: string;
+  close: number | null;
+  /** The session of `close`, the curve's settlement date. */
+  date: string | null;
+  frontSymbol: string | null;
+  /** The front settlement less `close`, at the root's precision. */
+  premium: number | null;
+  reason: string | null;
+}
+
+/** The front contract's settlement less the index's close on the curve's settlement session. */
+export function curveSpotPremium(data: Pick<FuturesCurvePayload, "root" | "contracts" | "slope" | "settlementDate">,
+  closes: readonly { date: Date | string | number; close: number }[]): CurveSpotPremium | null {
+  const index = SPOT_INDEX_SYMBOLS.get(data.root);
+  if (!index) return null;
+  const front = data.contracts.find((row) => row.symbol === data.slope.frontSymbol)
+    ?? [...data.contracts].filter((row) => row.settlement != null).sort((a, b) => a.expiration.localeCompare(b.expiration))[0];
+  const date = data.settlementDate ?? null;
+  const bar = date ? closes.find((point) => {
+    const time = new Date(point.date).getTime();
+    return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === date && positive(point.close);
+  }) : undefined;
+  const close = bar ? bar.close : null;
+  const settle = front ? front.settlement ?? front.price : null;
+  const premium = close != null && positive(settle) ? curveRoundedPrice(settle - close, data.root) : null;
+  const reason = !date ? "the curve has no settlement date" : close == null ? `no ${index.symbol} close on ${date}`
+    : premium == null ? "no front settlement" : null;
+  return { symbol: index.symbol, label: index.label, close, date, frontSymbol: front?.symbol ?? null, premium, reason };
 }
 
 /** The bar in `minute`, else the one nearest it; null when there are none. */

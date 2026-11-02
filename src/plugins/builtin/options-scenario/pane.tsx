@@ -41,6 +41,7 @@ import { useScenarioEvidence } from "./evidence";
 import { hedgeStatItems, scenarioHedgeBudget, seededLegQuotes, type HedgeQuote } from "./hedge";
 import { isLiveOptionExpiry, readOptionExpiration } from "../../../utils/option-expiry";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { logFailure } from "../../../utils/log-failure";
 
 const EMPTY_ERRORS: string[] = [];
 const TABS = [{ value: "payoff", label: "Payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs", label: "Legs" }];
@@ -225,7 +226,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     const choices = saved.filter((entry) => entry.position.symbol === underlying && (!exchange || entry.position.exchange === exchange));
     if (!choices.length) { notify({ body: "No saved strategies for this ticker." }); return; }
     const id = await dialog.prompt<string>({ content: (ctx: PromptContext<string>) => <ChoiceDialog {...ctx} title="Load strategy"
-      choices={choices.map((entry) => ({ id: entry.id, label: entry.name, detail: dateLabel(entry.position.asOf) }))} /> }).catch(() => "");
+      choices={choices.map((entry) => ({ id: entry.id, label: entry.name, detail: dateLabel(entry.position.asOf) }))} /> }).catch(logFailure("options-scenario.pane", "Open saved strategy choices failed", ""));
     const selected = choices.find((entry) => entry.id === id);
     // A saved strategy opens at its saved spot, date and vols; following the market is an explicit choice.
     if (selected) { setPosition(selected.position); setControls(selected.controls); setFollow(false); setLocalError(null); }

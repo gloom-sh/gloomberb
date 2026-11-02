@@ -126,6 +126,17 @@ export function perTonneUnit(unit: string): string {
 }
 
 /**
+ * A rate of one currency in another as reports and exports name it: `JPY /
+ * USD`, the chart's unit for USDJPY=X, is `JPY per USD`, as `history` says,
+ * and a currency future's `USD / CHF` is `USD per CHF`. Any other unit
+ * (`USD / barrel`, `USD`) is returned as it is.
+ */
+export function currencyRateUnitText(unit: string): string {
+  const match = /^([A-Z]{3})\s*\/\s*([A-Z]{3})$/.exec(unit.trim());
+  return match ? `${match[1]} per ${match[2]}` : unit;
+}
+
+/**
  * What a currency pair's price counts: the quote currency one unit of the
  * base buys, so EURUSD=X is USD / EUR and USDJPY=X JPY / USD. Null for a
  * listing that is not a pair, or whose quote is in another currency.

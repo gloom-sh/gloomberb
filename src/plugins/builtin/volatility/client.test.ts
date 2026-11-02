@@ -28,7 +28,7 @@ beforeEach(resetFredSeriesPersistence);
 afterEach(() => { resetFredSeriesPersistence(); setSharedMarketDataCoordinator(null); });
 
 describe("volatility source loader", () => {
-  test("limits all source work to four jobs while publishing independent immutable partial results", async () => {
+  test("limits all source work to eight jobs while publishing independent immutable partial results", async () => {
     let active = 0, peak = 0;
     const pending: Array<() => void> = [];
     const snapshots: VolatilityLoadResult[] = [];
@@ -45,7 +45,7 @@ describe("volatility source loader", () => {
       loadFred: (id, options) => { fredRequests.push([id, options]); return delayed(fred(id)); },
     }, { onSnapshot: (snapshot) => snapshots.push(snapshot) });
     await settle();
-    expect(active).toBe(4);
+    expect(active).toBe(8);
     expect(snapshots[0]?.phase).toBe("loading");
     // The core VIX history can become usable before either FRED call returns.
     pending.splice(1, 1)[0]!();
@@ -56,7 +56,7 @@ describe("volatility source loader", () => {
     expect(snapshots[0]?.data.board.every((row) => row.value == null)).toBe(true);
     while (pending.length) { pending.splice(0).forEach((resolve) => resolve()); await settle(); }
     const result = await loading;
-    expect(peak).toBe(4);
+    expect(peak).toBe(8);
     expect(result.loaded).toBe(23);
     expect(snapshots.at(-1)?.loaded).toBe(23);
     expect(seen).toHaveLength(21);
@@ -199,15 +199,15 @@ describe("volatility source loader", () => {
     };
     const loading = loadVolatilityData(false, dependencies, { signal: controller.signal, onSnapshot: (snapshot) => snapshots.push(snapshot) });
     await settle();
-    expect(calls).toBe(4);
+    expect(calls).toBe(8);
     controller.abort();
     await expect(loading).rejects.toMatchObject({ name: "AbortError" });
     gate.resolve();
     await settle();
-    expect(calls).toBe(4);
+    expect(calls).toBe(8);
     expect(snapshots).toHaveLength(1);
     await expect(loadVolatilityData(false, dependencies, { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
-    expect(calls).toBe(4);
+    expect(calls).toBe(8);
     // Completed shared FRED requests remain cached for the next consumer.
     expect(getCachedVolatilityData(dependencies)?.data.fred.termDate).toBe("2026-09-18");
   });

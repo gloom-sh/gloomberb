@@ -111,6 +111,25 @@ export async function loadCurveSpot(symbol: string, provider: Pick<DataProvider,
   return curveSpot(symbol, await provider.getQuote(symbol, "").catch(logFailure("futures-curve.client", "Load curve spot quote failed", null)), now);
 }
 
+/**
+ * A month of the spot index's daily closes, read through the same history path
+ * the charts use, which the front premium takes its settlement session's close
+ * from. A failed read has none: the curve stands, its premium saying why.
+ */
+export async function loadCurveSpotCloses(symbol: string,
+  provider: Pick<AssetDataProvider, "getPriceHistoryForResolutionWithMetadata" | "getPriceHistoryForResolution">, force = false): Promise<{ date: Date; close: number }[]> {
+  const context = force ? { cacheMode: "refresh" as const } : undefined;
+  try {
+    if (provider.getPriceHistoryForResolutionWithMetadata) {
+      const history = await provider.getPriceHistoryForResolutionWithMetadata(symbol, "", "1M", "1d", context);
+      return history.resolution && history.resolution !== "1d" ? [] : history.points;
+    }
+    return provider.getPriceHistoryForResolution ? await provider.getPriceHistoryForResolution(symbol, "", "1M", "1d", context) : [];
+  } catch (error) {
+    return logFailure("futures-curve.client", "Load curve spot closes failed", [] as { date: Date; close: number }[])(error);
+  }
+}
+
 /** The last day of one-minute bars: the reach of a curve's trades a basis is read for, the far months' older ones aside. */
 const SPOT_BAR_RANGE: TimeRange = "1D";
 

@@ -142,12 +142,13 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "LE=F", code: "LE", name: "Live Cattle", sector: "livestock", venue: "CME", tick: 0.025, unit: "US cents / lb" },
   { symbol: "HE=F", code: "HE", name: "Lean Hogs", sector: "livestock", venue: "CME", tick: 0.025, unit: "US cents / lb" },
 
-  { symbol: "6E=F", code: "6E", name: "Euro FX", sector: "currencies", venue: "CME", tick: 0.00005, bareCode: true },
-  { symbol: "6J=F", code: "6J", name: "Japanese Yen", sector: "currencies", venue: "CME", tick: 0.0000005, bareCode: true },
-  { symbol: "6B=F", code: "6B", name: "British Pound", sector: "currencies", venue: "CME", tick: 0.0001, bareCode: true },
-  { symbol: "6A=F", code: "6A", name: "Australian Dollar", sector: "currencies", venue: "CME", tick: 0.00005, bareCode: true },
-  { symbol: "6C=F", code: "6C", name: "Canadian Dollar", sector: "currencies", venue: "CME", tick: 0.00005, bareCode: true },
-  { symbol: "6S=F", code: "6S", name: "Swiss Franc", sector: "currencies", venue: "CME", tick: 0.00005, bareCode: true },
+  // Quoted in US dollars per unit of the foreign currency, as the server's terms state for most of them.
+  { symbol: "6E=F", code: "6E", name: "Euro FX", sector: "currencies", venue: "CME", tick: 0.00005, unit: "USD / EUR", bareCode: true },
+  { symbol: "6J=F", code: "6J", name: "Japanese Yen", sector: "currencies", venue: "CME", tick: 0.0000005, unit: "USD / JPY", bareCode: true },
+  { symbol: "6B=F", code: "6B", name: "British Pound", sector: "currencies", venue: "CME", tick: 0.0001, unit: "USD / GBP", bareCode: true },
+  { symbol: "6A=F", code: "6A", name: "Australian Dollar", sector: "currencies", venue: "CME", tick: 0.00005, unit: "USD / AUD", bareCode: true },
+  { symbol: "6C=F", code: "6C", name: "Canadian Dollar", sector: "currencies", venue: "CME", tick: 0.00005, unit: "USD / CAD", bareCode: true },
+  { symbol: "6S=F", code: "6S", name: "Swiss Franc", sector: "currencies", venue: "CME", tick: 0.00005, unit: "USD / CHF", bareCode: true },
 ];
 
 export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {

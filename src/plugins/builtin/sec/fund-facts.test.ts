@@ -168,6 +168,8 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
     ["SEC yield", "4.04%", "2026-10-15"],
     ["Yield to worst", "4.16%", "2026-10-15"],
     ["Effective duration", "7.13 yrs", "2026-10-15"],
+    // Derived for sizing a trade: the closing price times the duration, per basis point.
+    ["DV01", "$0.5464 per share", "price × duration ÷ 10,000"],
     ["Sponsor", "BlackRock (iShares)", undefined],
     ["Inception", "2000-05-15", undefined],
   ]);
@@ -177,6 +179,7 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
     secYieldPercent: [4.0418, "4.04% · 2026-10-15 · iShares", "%"],
     yieldToWorstPercent: [4.16, "4.16% · 2026-10-15 · iShares", "%"],
     durationYears: [7.12591, "7.13 yrs · 2026-10-15 · iShares", "years"],
+    dv01PerShare: [766.8 * 7.12591 / 10_000, "$0.5464 per share · price × duration ÷ 10,000 · closing price 2026-10-16", "USD per bp"],
   });
   // Vanguard's average duration is a month end's; a single-state fund names its state.
   const vtec: FundFactsPayload = { ...MUB, bond: { kind: "municipal", state: "CA", secYield: null, yieldToWorst: null,

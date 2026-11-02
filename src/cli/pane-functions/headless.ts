@@ -1,3 +1,4 @@
+import { currencyRateUnitText } from "../../time-series/price-units";
 import { getSharedRegistry } from "../../plugins/registry";
 import { seriesExpression, seriesNamedBy } from "../../series/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
@@ -378,7 +379,9 @@ export function serializeHeadlessPaneResult(
     case "series": {
       const series = result as HeadlessSeriesResult;
       // `textDecimals` and `textCompact` only shape the text report; JSON keeps every digit and does not carry them.
-      return { ...common, series: series.series.map(({ textDecimals: _decimals, textCompact: _compact, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
+      return { ...common, series: series.series.map(({ textDecimals: _decimals, textCompact: _compact, ...kept }) => (
+        kept.unit ? { ...kept, unit: currencyRateUnitText(kept.unit) } : kept
+      )), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -572,10 +575,10 @@ function statisticsEntries(stats: NonNullable<HeadlessSeriesResult["stats"]>): H
 
 function renderBundle(
   definition: HeadlessPaneDefinition,
-  result: HeadlessBundleResult,
+  sections: readonly HeadlessBundleSection[],
 ): string[] {
   // A locked table is named once, on the Pro line, not under each heading.
-  return result.sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
+  return sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
     ...(section.title ? [renderSection(section.textTitle ?? section.title)] : []),
@@ -600,7 +603,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       name: series.name?.trim() || null,
       latest: latest ? seriesLatestDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
-      unit: series.unit?.trim() || null,
+      unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       points: observationCount(series),
     };
   });
@@ -646,7 +649,8 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
     title: series.label,
     identity: {
       ...(series.symbol?.trim() ? { symbolOrSeries: series.symbol.trim() } : {}),
-      ...(series.unit?.trim() ? { currencyOrUnit: series.unit.trim() } : {}),
+      // A rate reads `JPY per USD` here as in every other export.
+      ...(series.unit?.trim() ? { currencyOrUnit: currencyRateUnitText(series.unit.trim()) } : {}),
       ...(series.interval?.trim() ? { interval: series.interval.trim() } : {}),
     },
     columns: [dates.every((date) => date.length <= 10) ? "Date" : "Time", ...fields.map(header)],
@@ -916,10 +920,11 @@ export function renderHeadlessPaneText(
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
       lines.push(renderRows(rowsResult.textRows ?? rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
+      if (rowsResult.textSections?.length) lines.push("", ...renderBundle(definition, rowsResult.textSections));
       break;
     }
     case "bundle":
-      lines.push(...renderBundle(definition, result as HeadlessBundleResult));
+      lines.push(...renderBundle(definition, (result as HeadlessBundleResult).sections));
       break;
     case "series":
       lines.push(...renderSeries(result as HeadlessSeriesResult));

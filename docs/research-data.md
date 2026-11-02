@@ -673,7 +673,7 @@ Symbol publication and app routing are separate: a published index can still lac
 | Public FRED publication | These series are still published except [EVZCLS](https://fred.stlouisfed.org/series/EVZCLS), explicitly discontinued on March 11, 2025. Cboe stopped publishing EVZ itself that day, and its own history ends there too, so the board no longer lists EVZ. An unsupported Cloud route does not imply a discontinued series. Actual observation dates take precedence over lagging series metadata. |
 | Options chains | Delayed chain snapshots can carry zero bids and asks on every front-expiry contract and lack usable near-ATM markets on later expiries. Availability is time-dependent: later snapshots of the same chains can carry usable two-sided markets, so zero-quote responses are partial or empty-state cases. Nonzero last trades and provider IV placeholders cannot replace a missing midpoint surface. |
 | Treasury curve | Ten nodes from 1M through 30Y, in percentage units. Divide yields by 100 for decimal rate inputs; short option tenors have no separate 1W Treasury node. |
-| VIX futures | `FUT` has no VX alias or monthly VX catalogue, and `VX=F` does not resolve. The cash volatility tenor curve is not a futures curve. |
+| VIX futures | `fn CTM VIX` (or `fn VX`) serves the listed VX contracts from Cboe's daily settlement files, with spot VIX and the front contract's premium to it. `VX1` is the front generic at its latest settlement, and `VX=F` reads as `VX1`. The cash volatility tenor curve is not a futures curve. |
 
 Dated daily-close histories can support a volatility board without bypassing quote freshness. Missing chain quotes remain unavailable in both recomputed and provider-IV comparison modes. Source coverage can change; the app reports what each request actually returns. Implied-volatility and surface history come from the stored daily snapshots described under [Implied volatility history](#implied-volatility-history), not from these live sources.
 
@@ -891,7 +891,7 @@ The other figures `--columns` adds read from the same sources as the panes:
 
 ### VIX curve and cross-asset volatility board
 
-`VIX` combines three views: a dated cash-index tenor curve, VIX and VIX 3M history with their ratio, and the cross-asset board. `VOLS` opens the board directly. The views persist independently per pane. These are published index levels and daily closes; the cash-tenor curve is not a VIX futures curve.
+`VIX` combines three views: a dated cash-index tenor curve, VIX and VIX 3M history with their ratio, and the cross-asset board. `VOLS` opens the board directly. The views persist independently per pane. These are published index levels and daily closes; the cash-tenor curve is not a VIX futures curve. The futures curve is `fn CTM VIX`, which `fn VX` and `fn "vix futures"` open.
 
 The history router supplies the cash curve at 9, 30, 93, 184 and 366 calendar days, following [CBOE's constant-maturity definitions](https://cdn-api.cboe.com/api/global/us_indices/governance/Volatility_Index_Methodology_Selected_SPX_Target_Expected_Volatility_Term_Indices.pdf). Histories are requested at daily resolution with bounded concurrency and shared coordinator caching. Source clocks are normalized to their UTC observation date, duplicate dates retain the last correction, and invalid dates or nonpositive levels are excluded. The latest common VIX/3M date anchors the curve. Other tenors must have an observation on that date; missing nodes remain gaps. An old single-observation 1Y index cannot pull the entire curve back in time. If the primary market history is unavailable, the existing aligned two-node FRED curve can appear as an explicitly named fallback. FRED and market-history nodes are never spliced into a single curve.
 
@@ -901,7 +901,7 @@ The board displays each index's own latest level and observation date. The S&P 5
 
 While visible, the curve and the board stream their index levels, and the History view streams VIX and VIX 3M. A streamed level becomes that index's observation for today, so the level, the change against the previous close, the curve ratio and the one-year percentile follow it, rebuilt at most once a second and labelled intraday with its time. Cboe settles a day's levels at 16:15 New York, 15 minutes after the equity close (13:15 after an early close), because SPX options trade until then; only from that time does the footer call the day's level a close, with its date. Before it, a daily bar of the session still trading, such as one read with streaming off, is labelled today so far. Indices that do not stream are re-read every 15 seconds in the regular session. The correlation rows keep their published daily closes.
 
-Daily histories are available for VIX9D, VIX, VIX3M, VIX6M, VVIX, SKEW, MOVE, VXN, OVX and GVZ. Exact daily-resolution routes return no data for VIX1Y, VXEEM, VXEWZ and the Apple, Amazon, Google, Goldman Sachs and IBM indices; RVX and EVZ have no route. With the backend fallback available, VIX1Y, VXEEM, VXEWZ and the five single-name indices resolve to isolated intraday observations, while RVX and EVZ remain unavailable. These sparse values cannot establish daily changes or annual percentiles and do not fill the prior-day cash curve. FRED still publishes VXNCLS, RVXCLS, OVXCLS, GVZCLS, VXDCLS, VXEEMCLS, VXEWZCLS and all five single-name series, but the Cloud FRED allowlist supports only VIXCLS and VXVCLS. These are app-route coverage gaps, not discontinued publications. EVZ is the exception: Cboe stopped publishing it after March 11, 2025, where both its Cboe history and FRED EVZCLS end, so it is no longer on the board. MOVE's provider name metadata is inconsistent with its symbol and is flagged. There is no VX futures alias, monthly contract catalogue or valid VX=F route. The pane does not substitute a cash-index curve or fabricate missing histories.
+Daily histories are available for VIX9D, VIX, VIX3M, VIX6M, VVIX, SKEW, MOVE, VXN, OVX and GVZ. Exact daily-resolution routes return no data for VIX1Y, VXEEM, VXEWZ and the Apple, Amazon, Google, Goldman Sachs and IBM indices; RVX and EVZ have no route. With the backend fallback available, VIX1Y, VXEEM, VXEWZ and the five single-name indices resolve to isolated intraday observations, while RVX and EVZ remain unavailable. These sparse values cannot establish daily changes or annual percentiles and do not fill the prior-day cash curve. FRED still publishes VXNCLS, RVXCLS, OVXCLS, GVZCLS, VXDCLS, VXEEMCLS, VXEWZCLS and all five single-name series, but the Cloud FRED allowlist supports only VIXCLS and VXVCLS. These are app-route coverage gaps, not discontinued publications. EVZ is the exception: Cboe stopped publishing it after March 11, 2025, where both its Cboe history and FRED EVZCLS end, so it is no longer on the board. MOVE's provider name metadata is inconsistent with its symbol and is flagged. The pane does not substitute a cash-index curve or fabricate missing histories.
 
 ### Implied volatility history
 
@@ -1094,7 +1094,7 @@ The floor and cap are shown with how far each is from the scenario's spot, and o
 | Out of the money | (spot - strike) / spot, against the scenario's spot, which the report names (`implied by option quotes`, `typed`, the last price) |
 | Break-even | strike - entry price, per share |
 | Days to expiry | calendar days from the valuation date in New York to the expiry date |
-| Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date |
+| Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date, and `unknown (earnings calendar unavailable)` when the calendar could not be read |
 
 KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 85 x 100 = 8,500.00, premium 0.695 x 100 = 69.50, yield on cash 69.50 / 8,500 = 0.82%, annualised 0.8176% x 365 / 38 = 7.85%, at the bid 67.00 / 8,500 x 365 / 38 = 7.57%, spread 0.05 (7.2% of the mid), break-even 85 - 0.695 = 84.305, and the October 27 report falls before expiry. GS's November 820 put at 5.40/6.75, valued on 2026-10-21, 30 days out: 607.50 / 82,000 x 365 / 30 = 9.01% at the mid, 540.00 / 82,000 x 365 / 30 = 8.01% at the bid, with a spread of 1.35 (22.2% of the mid). Assignment, margin and the interest the cash earns are not modelled.
 
@@ -1110,7 +1110,7 @@ KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 8
 | Mid yield/yr, Bid yield/yr | the annualised yield at the quote midpoint and at the bid |
 | Spread | (ask - bid) / mid; over `--max-spread` (10%) it is marked `wide` |
 | IVR | the 30-day IV rank against the prior 52 weeks of stored closes, as VCA and HIVG read it; `--` with the reason in the notes when IV history has none |
-| Earnings | `before` or `after` with the date of the calendar's next report, `unknown` without one |
+| Earnings | `before` or `after` with the date of the calendar's next report, `unknown` without one, `unavailable` when the calendar could not be read |
 
 Names are ranked by annualised yield at the bid, highest first: a wide spread costs a seller the difference between the mid and the bid, so a name priced rich only at the mid does not rank first. A wide put is ranked with the rest and flagged; a name with no chain, no quoted put or no rate to value it by is listed after the ranked ones with the reason. Up to 20 names; `--csv` writes the percents as numbers with `wide spread` and `earnings before expiry` as yes/no columns. The screen reads the chains, quotes and rates OSA reads, and its closing line dates it by the underlying quotes.
 
@@ -1477,6 +1477,24 @@ growth `EE` shows for the fiscal year in progress: a fiscal year that has ended
 unreported gives way to the next. A field is N/M where `FA` prints N/M: EBITDA, equity
 or average invested capital at or below zero, or a base year at or below zero. A
 missing line is never read as zero.
+
+The classic scores read the same statements, and the screen's own price and market
+cap. Piotroski's F-score compares the latest fiscal year with the one before (and the
+year before that for opening assets); Altman's Z, the Graham number, Lynch's fair value
+and Greenblatt's earnings yield and return on capital read `FA`'s leading annual
+column, so each is as of that period's end. Altman's Z is N/M for banks, insurers and
+other financial companies, the Magic Formula's inputs for those and utilities, an
+F-score for a balance sheet without current assets, and the Graham number and Lynch's
+value over a loss. A trailing EPS more than three times the one the quote states is
+not used: a quarter left on the share count before a split reads as one. The Magic
+Formula rank and the RS rating rank every covered US listing in dollars, so they move
+as listings enter and leave the screen. The 1Y total return adds the dividends that
+went ex in the year from the stored distribution history. Profitable years and revenue
+growth years read one series, the SEC filings (back to about 2008) when they hold the
+latest fiscal year, otherwise the stored statements; dividend growth years read the
+distribution history, about ten years. A count that reaches the first stored year is
+a lower bound and is marked partial. Index membership reads the IVV (S&P 500) and DIA
+(Dow) holdings `MEMB` reads; the Nasdaq-100 is not covered.
 
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last

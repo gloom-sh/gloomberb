@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * Pages appended past what the first response carried. Keyed on the first
@@ -35,10 +36,9 @@ export function useAppendedPages<T>(
           return { key, items: [...base, ...items], nextOffset: offset + items.length, exhausted: items.length === 0 };
         });
       })
-      .catch(() => {
-        // The rows already loaded stay; only the next page failed, and a
-        // later scroll asks again.
-      })
+      // The rows already loaded stay; only the next page failed, and a
+      // later scroll asks again.
+      .catch(logFailure("jobs.pages", "Load more job postings failed"))
       .finally(() => {
         if (inFlight.current === key) inFlight.current = null;
         setLoadingMore(false);

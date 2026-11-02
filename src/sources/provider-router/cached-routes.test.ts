@@ -119,6 +119,63 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
 
+  test("a rate read before the FX week closed is read again once the close is out, the close itself is kept", async () => {
+    // A profile that last asked on Friday 30 Oct 2026 at 20:54Z, a delayed 20:39Z print, run again on Sunday while FX is shut.
+    setSystemTime(new Date("2026-11-01T16:30:00Z"));
+    const persistence = new AppPersistence(":memory:");
+    let calls = 0;
+    const close = { fromCurrency: "EUR", toCurrency: "USD" as const, rate: 1.11601, source: "gloom", asOf: "2026-10-30T20:59:00.000Z",
+      fetchedAt: "2026-11-01T16:30:00.000Z", stale: false, delayMinutes: 15 };
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: async () => close.rate,
+      getExchangeRateSnapshot: async () => { calls++; return close; } });
+    const cache = (fetchedAt: string, asOf: string, rate: number) => persistence.resources.set(
+      { namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" },
+      { fromCurrency: "EUR", toCurrency: "USD", rate, source: "gloom", asOf, fetchedAt, stale: false, delayMinutes: 15 },
+      { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, fetchedAt: Date.parse(fetchedAt), cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 } });
+    const load = async () => {
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      router.setBackgroundRevalidation(false);
+      return router.getCachedQuery("getExchangeRate", ["EUR"]).load();
+    };
+    try {
+      cache("2026-10-30T20:54:00.000Z", "2026-10-30T20:39:00.000Z", 1.1168193);
+      expect(await load()).toMatchObject({ value: 1.11601, asOf: Date.parse("2026-10-30T20:59:00Z") });
+      expect(calls).toBe(1);
+      // The close, read after it was out, stands until the market reopens.
+      expect(await load()).toMatchObject({ value: 1.11601 });
+      expect(calls).toBe(1);
+      // A delayed print read before the close was out, though after 17:00 New York, is read again too.
+      cache("2026-10-30T21:05:00.000Z", "2026-10-30T20:50:00.000Z", 1.1165);
+      expect(await load()).toMatchObject({ value: 1.11601 });
+      expect(calls).toBe(2);
+      // The app reads in the background, and its desktop window holds what getExchangeRate returns as read now: it waits
+      // for the close instead of returning the 20:39Z print while it reads again.
+      cache("2026-10-30T20:54:00.000Z", "2026-10-30T20:39:00.000Z", 1.1168193);
+      const app = new AssetDataRouter(provider, [], persistence.resources);
+      app.setBackgroundRevalidation(true);
+      expect(await app.getExchangeRate("EUR")).toBe(1.11601);
+      expect(calls).toBe(3);
+    } finally { persistence.close(); setSystemTime(); }
+  });
+
+  test("an app open across the FX week's close reads its pre-close rate again once the close is out", async () => {
+    setSystemTime(new Date("2026-10-30T20:54:00Z"));
+    const persistence = new AppPersistence(":memory:");
+    const snapshot = (rate: number, asOf: string) => ({ fromCurrency: "EUR", toCurrency: "USD" as const, rate, source: "gloom", asOf,
+      fetchedAt: new Date().toISOString(), stale: false, delayMinutes: 15 });
+    let served = snapshot(1.1168193, "2026-10-30T20:39:00.000Z");
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: async () => served.rate,
+      getExchangeRateSnapshot: async () => served });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    router.setBackgroundRevalidation(true);
+    try {
+      expect(await router.getExchangeRate("EUR")).toBe(1.1168193);
+      setSystemTime(new Date("2026-10-30T21:15:00Z"));
+      served = snapshot(1.11601, "2026-10-30T20:59:00.000Z");
+      expect(await router.getExchangeRate("EUR")).toBe(1.11601);
+    } finally { persistence.close(); setSystemTime(); }
+  });
+
   test("shares cold loads with direct provider calls and keeps errors attached to stale fallback", async () => {
     let calls = 0;
     const pending = Promise.withResolvers<number>();

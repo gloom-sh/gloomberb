@@ -210,6 +210,12 @@ export interface ResolvedSeries {
    * over an FX rate) prints at: the most its legs print, from two to four.
    */
   valueDecimals?: number;
+  /**
+   * The grid a price quoted in fractions of a point moves on (a Treasury
+   * future's half or quarter 32nd): its axis ticks fall on multiples of it,
+   * never on decimal steps that read 104-25.60. Unset for decimal prices.
+   */
+  tickGrid?: number;
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;

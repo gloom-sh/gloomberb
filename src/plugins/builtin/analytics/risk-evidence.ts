@@ -480,6 +480,7 @@ export function brokerPerformanceEvidence(
       performance: { flowTiming: "end-of-day", externalFlowsComplete: true, observations },
     }), now);
   } catch {
+    // Intentional ignore: account history that fails evidence validation does not qualify as evidence.
     return null;
   }
 }

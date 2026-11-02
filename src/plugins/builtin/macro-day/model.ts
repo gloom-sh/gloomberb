@@ -164,6 +164,8 @@ const US_KINDS: ReadonlySet<MacroEventKind> = new Set(US_MACRO_EVENT_KINDS);
  */
 export function projectMacroDays(history: readonly PricePoint[], options: {
   symbol: string;
+  /** How a move is measured when the symbol does not say: a FRED rate or spread moves by its level, in bp. */
+  basis?: MacroDayMoveBasis;
   lookbackYears: number;
   releases: readonly MacroRelease[];
   /** The release list's last covered day. */
@@ -172,7 +174,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   earnings?: readonly MacroDayEarningsReport[];
 }): MacroDayModel {
   const { coveredThrough } = options;
-  const basis = macroDayMoveBasis(options.symbol);
+  const basis = options.basis ?? macroDayMoveBasis(options.symbol);
   const byDate = new Map<string, number>();
   for (const point of history) {
     const time = new Date(point.date).getTime();

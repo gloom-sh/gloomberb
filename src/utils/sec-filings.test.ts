@@ -72,6 +72,21 @@ test("the hidden filings read as one note", () => {
   expect(hiddenFilingsNote({ pricingSupplements: 28, ownershipReportsAboutOthers: 22 }))
     .toBe("28 pricing supplements and 22 ownership reports about other companies hidden, --all to show");
   expect(hiddenFilingsNote({ pricingSupplements: 0, ownershipReportsAboutOthers: 0 })).toBeNull();
+  expect(hiddenFilingsNote({ pricingSupplements: 0, ownershipReportsAboutOthers: 0, otherFunds: 14 })).toBe("14 filings for the trust's other funds hidden, --all to show");
+});
+
+test("a fund's list keeps its own series' filings, not the NPORT-P its trust filed for each other fund the same day", async () => {
+  const filing = (form: string, index: number, fundSeries?: boolean): SecFilingItem =>
+    ({ form, accessionNumber: String(index), filingDate: new Date(0), cik: "1021882", filingUrl: "", ...fundSeries === undefined ? {} : { fundSeries } });
+  const trust = [...Array.from({ length: 14 }, (_, index) => filing("NPORT-P", index, false)), filing("NPORT-P", 20, true), filing("497K", 21, true), filing("N-CEN", 22, false)];
+  expect(await loadLatestFilings(async (count) => trust.slice(0, count), 2)).toMatchObject({
+    hidden: { otherFunds: 14 }, filings: [{ accessionNumber: "20" }, { accessionNumber: "21" }],
+  });
+  // A list the service did not mark, or marked none of as the fund's own, stays whole.
+  const unmarked = trust.map(({ fundSeries: _series, ...rest }) => rest);
+  expect((await loadLatestFilings(async (count) => unmarked.slice(0, count), 2)).filings.map((row) => row.accessionNumber)).toEqual(["0", "1"]);
+  const none = trust.map((row) => ({ ...row, fundSeries: false }));
+  expect((await loadLatestFilings(async (count) => none.slice(0, count), 2)).filings.map((row) => row.accessionNumber)).toEqual(["0", "1"]);
 });
 
 test("a read that leaves the list short is followed by a larger one, up to the issuer in full; a short list is all there is", async () => {

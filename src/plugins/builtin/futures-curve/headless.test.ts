@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
@@ -77,6 +77,19 @@ describe("CTM report units", () => {
     expect(result.metadata).toMatchObject({ currency: "EUR", quoteUnit: "EUR / MWh" });
     // A root with neither server terms nor a catalogue unit adds no terms section.
     expect((await run("ES")).result.sections.some((section) => section.title === "Contract terms")).toBe(false);
+  });
+
+  test("a Treasury contract's terms say how to size its DV01, which no conversion factor is sourced for; other roots' terms do not", async () => {
+    const terms = async (root: string, unit: string) => {
+      const payload = { ...curve(root, [contract(root, "Z26", 50, 106.640625)]),
+        spec: { unit, size: "$100,000 face value", pointValue: 1000, tick: 1 / 64, tickValue: 15.625, settlement: "physical" as const } };
+      const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never });
+      const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: root, argument: root, symbols: [], options: {} }), ctx) as HeadlessBundleResult;
+      return result.sections.find((section) => section.title === "Contract terms")?.entries ?? [];
+    };
+    expect((await terms("ZN", "% of par")).at(-1)).toEqual({ key: "dv01", label: "DV01", value: null,
+      formatted: "not published here; price the cheapest-to-deliver in fn YAS and divide its DV01 by its CME conversion factor" });
+    expect((await terms("GC", "USD / troy oz")).some((entry) => entry.key === "dv01")).toBe(false);
   });
 });
 
@@ -212,30 +225,68 @@ describe("CTM change", () => {
     const cboe = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VX", argument: "VX", symbols: [], options: {} }),
       createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => vix } as never })) as HeadlessBundleResult;
     expect(cboe.sections[0]!.rows![0]).toMatchObject({ change: 1.1408, noTradeSince: null });
-    expect(cboe.notes).toBeUndefined();
+    // No change is blanked; the front premium is, with no VIX close to read it against.
+    expect(cboe.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-22."]);
+  });
+
+  test("VX reads its front settlement against spot VIX's close on the settlement session, never a later close", async () => {
+    const vx = (symbol: string, expiration: string, settlement: number): FuturesContract => ({ ...contract("VX", "X26", 30, settlement, false, "2026-10-30"),
+      symbol, expiration, settlement });
+    const payload = { ...curve("VX", [vx("VX/Z6", "2026-12-16", 19.7888), vx("VX/X6", "2026-11-18", 20.3603)]), source: "cboe" as const,
+      settlementDate: "2026-10-30" };
+    payload.slope = { ...payload.slope, frontSymbol: "VX/X6", nextSymbol: "VX/Z6" };
+    const reads: string[] = [];
+    // Monday's VIX close is in, but Monday's settlement is not yet: the premium stays on Friday's pair.
+    const closes = [["2026-10-29", 17.2], ["2026-10-30", 19.42], ["2026-11-02", 21.05]] as const;
+    const load = (points: typeof closes | []) => futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VIX", argument: "VIX", symbols: [], options: {} }),
+      createTestHeadlessContext({ apiClient: { getCloudFuturesCurve: async () => payload } as never, marketData: createTestDataProvider({
+        getPriceHistoryForResolutionWithMetadata: async (symbol, _exchange, range, resolution) => {
+          reads.push(`${symbol} ${range} ${resolution}`);
+          return { points: points.map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close })), resolution: "1d" };
+        } }) })) as Promise<HeadlessBundleResult>;
+    const result = await load(closes);
+    expect(reads).toEqual(["^VIX 1M 1d"]);
+    expect(result.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => [entry.key, entry.value])).toEqual([
+      ["spot", 19.42], ["frontPremium", 0.9403]]);
+    expect(result.notes).toBeUndefined();
+    const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+    expect(text).toContain("Spot VIX       19.42, 2026-10-30 close\nFront premium  +0.9403, VX/X6 settle less spot");
+    // Without that session's close the premium is blank and says why, never read against another day's close.
+    const missing = await load([]);
+    expect(missing.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => entry.value)).toEqual([null, null]);
+    expect(missing.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-30."]);
   });
 });
 
 describe("CTM expiry", () => {
   test("a Brent contract expires on its last trading day everywhere, and the roll yield counts to it and reads as a percent", async () => {
-    // The source lists BZZ26 for Nov 2 and BZF27 for Dec 1; they stop trading Oct 30 and Nov 30.
-    const bz = (code: string, listed: string, lastTrade: string, price: number): FuturesContract =>
-      ({ ...contract("BZ", code, 30, price), symbol: `BZ${code}.NYM`, expiration: listed, lastTrade });
-    const contracts = [bz("Z26", "2026-11-02", "2026-10-30", 98), bz("F27", "2026-12-01", "2026-11-30", 97)];
-    const listedRoll = (98 / 97 - 1) * 365 / 29 * 100;
-    const payload: FuturesCurvePayload = { ...curve("BZ", contracts),
-      ghosts: [{ label: "1W", requestedDate: expiry(-7), asOf: null, points: contracts.map((row) => ({ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: null })) }],
-      slope: { ...curve("BZ", []).slope, frontSymbol: "BZZ26.NYM", nextSymbol: "BZF27.NYM", value: -1, annualizedRollYield: listedRoll, state: "backwardation" } };
-    const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never });
-    const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "BZ", argument: "BZ", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
-    const section = (title: string) => result.sections.find((entry) => entry.title === title)!;
-    expect(section("Contracts").rows!.map((row) => [row.expiration, row.lastTrade])).toEqual([["2026-10-30", "2026-10-30"], ["2026-11-30", "2026-11-30"]]);
-    expect(section("1W same-contract history").rows!.map((row) => row.expiration)).toEqual(["2026-10-30", "2026-11-30"]);
-    // 31 days between the last trades, not the 29 between the listed dates; JSON keeps the number.
-    const roll = (98 / 97 - 1) * 365 / 31 * 100;
-    expect(section("Front spread").rows![0]!.annualizedRollYield).toBe(Number(roll.toFixed(2)));
-    const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
-    expect(text).toContain(`+${roll.toFixed(2)}%`);
-    expect(text).not.toContain("2026-11-02");
+    // A fixed clock, with the quotes and the curve stamped at it: the listed 2 Nov date must not appear in the text,
+    // which an As Of column dated the day the suite runs would print on 2 Nov.
+    const at = "2026-10-29T15:00:00.000Z";
+    setSystemTime(new Date(at));
+    try {
+      // The source lists BZZ26 for Nov 2 and BZF27 for Dec 1; they stop trading Oct 30 and Nov 30.
+      const bz = (code: string, listed: string, lastTrade: string, price: number): FuturesContract =>
+        ({ ...contract("BZ", code, 30, price, false, at), symbol: `BZ${code}.NYM`, expiration: listed, lastTrade });
+      const contracts = [bz("Z26", "2026-11-02", "2026-10-30", 98), bz("F27", "2026-12-01", "2026-11-30", 97)];
+      const listedRoll = (98 / 97 - 1) * 365 / 29 * 100;
+      const payload: FuturesCurvePayload = { ...curve("BZ", contracts), asOf: at, fetchedAt: at,
+        ghosts: [{ label: "1W", requestedDate: "2026-10-22", asOf: null, points: contracts.map((row) => ({ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: null })) }],
+        slope: { ...curve("BZ", []).slope, frontSymbol: "BZZ26.NYM", nextSymbol: "BZF27.NYM", value: -1, annualizedRollYield: listedRoll, state: "backwardation" } };
+      const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never });
+      const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "BZ", argument: "BZ", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
+      const section = (title: string) => result.sections.find((entry) => entry.title === title)!;
+      expect(section("Contracts").rows!.map((row) => [row.expiration, row.lastTrade])).toEqual([["2026-10-30", "2026-10-30"], ["2026-11-30", "2026-11-30"]]);
+      expect(section("1W same-contract history").rows!.map((row) => row.expiration)).toEqual(["2026-10-30", "2026-11-30"]);
+      // 31 days between the last trades, not the 29 between the listed dates; JSON keeps the number.
+      const roll = (98 / 97 - 1) * 365 / 31 * 100;
+      expect(section("Front spread").rows![0]!.annualizedRollYield).toBe(Number(roll.toFixed(2)));
+      const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+      expect(text).toContain(`+${roll.toFixed(2)}%`);
+      expect(text).toContain("2026-10-29 15:00");
+      expect(text).not.toContain("2026-11-02");
+    } finally {
+      setSystemTime();
+    }
   });
 });

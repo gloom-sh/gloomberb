@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatNumber, formatSignificant } from "../../../utils/format";
+import { formatNumber, formatSignificant, significantDecimals } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
@@ -124,7 +124,8 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     return {
       symbols,
       series: [
-        { id: "ratio", label: `${symbols[0]}/${symbols[1]}`, points: analysis.ratioPoints.map(({ date, close }) => ({ date: date.toISOString(), value: close })) },
+        // The latest ratio reads as Statistics reads it, to four significant digits (1.123, 0.8904), not every float digit.
+        { id: "ratio", label: `${symbols[0]}/${symbols[1]}`, ...analysis.latestRatio != null ? { textDecimals: significantDecimals(analysis.latestRatio) } : {}, points: analysis.ratioPoints.map(({ date, close }) => ({ date: date.toISOString(), value: close })) },
         { id: "correlation", label: `Rolling correlation (${correlationWindow})`, textDecimals: 3, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
       ],
       stats: [

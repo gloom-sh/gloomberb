@@ -22,7 +22,7 @@ const currency = (value: unknown) => value === null || (text(value) && /^[A-Z]{3
 const day = (value: unknown): value is string => text(value) && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const nullableDay = (value: unknown) => value === null || day(value);
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(text);
-const url = (value: unknown) => { try { return text(value) && ["https:", "http:"].includes(new URL(value).protocol); } catch { return false; } };
+const url = (value: unknown) => { try { return text(value) && ["https:", "http:"].includes(new URL(value).protocol); } catch { /* Intentional ignore: malformed URLs fail this web link field validator. */ return false; } };
 const unique = (rows: readonly { id: string }[]) => new Set(rows.map((row) => row.id)).size === rows.length;
 function fact(row: CreditFact): boolean {
   return !!row && [row.id, row.instrumentId, row.documentId, row.field, row.instrumentName, row.factKey, row.form, row.language].every(text)

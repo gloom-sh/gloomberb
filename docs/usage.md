@@ -632,7 +632,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `FUT` | Futures quote aliases across index, equity sectors, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
-| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, returns on capital and leverage, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical and fundamental screens, saved screens and export |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, returns on capital and leverage, classic value and quality scores, technicals, option volatility, float and ownership, short interest, insider and 13F criteria, ready technical, fundamental and score screens, saved screens, export and save to a watchlist |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
@@ -705,7 +705,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 - A name without a position, quote, market cap or exchange rate gets the smallest tile and no figure, and past 160 names the smallest tiles are left out (the footer says so).
 - **Link to portfolio** in its settings switches the heatmap to that tab whenever the portfolio pane changes list. `3` opens the tab, and `[` / `]` step through all three.
 
-An open theme in `THEM` and the Members tab of `MEMB` add two entries to the pane menu (`.`): **Open Members In…** opens the members in `RRG` (up to 24), `CORR` (2 to 10), `SIW` (up to 60) or `RIPL` (up to 10), and **Save as Watchlist…** saves the first 100 members to a new watchlist. A `MEMB` search narrows both to the holdings it matches.
+An open theme in `THEM` and the Members tab of `MEMB` add two entries to the pane menu (`.`): **Open Members In…** opens the members in `RRG` (up to 24), `CORR` (2 to 10), `SIW` (up to 60) or `RIPL` (up to 10), and **Save to Watchlist…** saves the first 100 members to a new watchlist or adds them to one you have. A `MEMB` search narrows both to the holdings it matches.
 
 #### News, Congress and bond tools
 
@@ -1245,7 +1245,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 `gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
-- The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
+- The `--csv` header is a single symbol's. Each row names its symbol, its unit and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
 - A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved copy from <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
 - `--tail` and `--limit` apply per symbol. `--json` has the bars as one list, each with its `symbol`, and `metadata.symbols` describes each symbol or gives its `error`.
 
@@ -1441,7 +1441,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 **`quote` and `compare`** exit 1 when none of the symbols given has a quote and 0 when at least one does. The others are named in the table, on standard error and in `--json`'s `warnings`: a symbol with no quote, one that names no listing (`EQT:NYSE:US`), and an entry that is not a symbol (`N/A`, `$$$`).
 
-- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
+- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`). `Cur` is the currency and `currency_or_unit` the unit: the currency, a pair's quote currency per base (`JPY per USD` for `USDJPY=X`), `index points`, or `pct` for a yield. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
 **`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
 
@@ -1710,7 +1710,7 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | Column | What it holds |
 | --- | --- |
 | `symbol_or_series` | The symbol or series ID asked for: `USDZAR=X`, `SAN:EPA`, `DEXSFUS`; each row's own ticker in a table of several (`fn DVD MUB VTEB`); blank for a report about no one symbol |
-| `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
+| `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `JPY per USD` (a pair's quote currency per base), `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
 | `source` | The source the `# Source:` line names: `Gloom Cloud`, `FRED` |
 | `as_of` | The `# Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
@@ -2522,10 +2522,18 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
   - **FWD REV GR%** and **FWD EPS GR%** (`forwardRevenueGrowthPercent`, `forwardEpsGrowthPercent`): the consensus growth `EE` shows for the fiscal year in progress, as of when the consensus was read.
 
   N/M marks a value `FA` would print N/M (EBITDA, equity or invested capital at or below zero, a base year at or below zero), kept apart from a missing one; both fail a comparison. `roicPercent gte 15` with `netDebtToEbitda lte 2` finds high returns on a light balance sheet.
+- **Classic scores**, on `FA`'s statements and the screen's price, each dated by the period it describes:
+  - **F-SCORE** (`piotroskiFScore`, 0 to 9): Piotroski's nine tests of the latest fiscal year against the one before, a point each for profit, operating cash flow, a higher return on assets, cash flow above profit, lower long-term debt, a better current ratio, no new shares, a wider gross margin and faster asset turnover. N/M for a bank's or insurer's balance sheet, which has no current assets.
+  - **ALTMAN Z** (`altmanZScore`): Altman's 1968 Z on `FA`'s leading annual column, from working capital, retained earnings, EBIT, market cap over liabilities and sales. Above 2.99 is his safe zone, below 1.81 distress. N/M for banks, insurers and other financial companies.
+  - **GRAHAM #** and **GRAHAM UPS%** (`grahamNumber`, `grahamUpsidePercent`): sqrt(22.5 x trailing diluted EPS x book value per share), in the quote's currency, and how far it is above the price. **LYNCH FV** and **LYNCH UPS%** (`lynchFairValue`, `lynchUpsidePercent`): trailing EPS times the 5-year EPS growth rate, held to 25, the price at a PEG of 1. Both are N/M over a loss; Lynch's is N/M under 5% growth too. A trailing EPS more than three times the quote's own is left out as a quarter on another share basis.
+  - **EBIT/EV%** and **ROC%** (`earningsYieldPercent`, `returnOnCapitalPercent`): Greenblatt's earnings yield (EBIT over market cap plus net debt) and return on capital (EBIT over net working capital, none when negative, plus fixed assets). **MAGIC RANK** (`magicFormulaRank`) ranks the covered US listings on each, sums the two ranks and ranks the sums, 1 the best. N/M for financial companies and utilities, which his formula leaves out.
+  - **1Y TR%** (`totalReturn1YPercent`): the 1Y return with the year's dividends added. **RS RATING** (`rsRating`, 1 to 99): where it ranks among the covered US listings, 99 the top 1%.
+  - **PROFIT YRS**, **REV GR YRS** and **DIV GR YRS** (`profitableYears`, `revenueGrowthYears`, `dividendGrowthYears`): years in a row, back from the latest, with a profit, with revenue above the year before, and with a higher trailing twelve-month dividend. A streak that reaches the first stored year is a lower bound and says so: the SEC filings go back to about 2008 and the distribution history about ten years.
+  - **S&P 500** and **DOW** (`sp500Member`, `dowMember`): Yes for a member of the index as the IVV and DIA holdings `MEMB` reads list it, No for another US listing. `sp500Member eq 1` keeps the index. The Nasdaq-100 is not offered: no Nasdaq-100 fund's holdings are stored.
 - **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal year over net income attributable to the parent, from SEC filings, so US filers only; unavailable when the income is zero or negative.
 - **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`, `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that stopped reads -100%; a company with too short a history or none paid in the base year has none. Distribution history is stored for most large USD payers and fewer elsewhere.
 
-Returns, EPS revisions, upside, dividend growth and the distances from the moving averages take the sign colour.
+Returns, EPS revisions, upside (the analysts', the Graham number's and Lynch's), dividend growth and the distances from the moving averages take the sign colour.
 
 ### Results
 
@@ -2535,9 +2543,22 @@ Results lead with the chosen metric and its covered-universe percentile, then on
 - Click a metric header to sort by it and make it the focus, again to reverse. The footer shows matches, covered listings, currency and the snapshot time.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 
-**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
+**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Then eight screens on the classic scores:
+
+- **Piotroski 8-9**: F-score at least 8 at a P/B of at most 2x, as Piotroski scored the cheaper companies, highest score first.
+- **Magic Formula top**: Magic Formula rank at most 100, best first.
+- **Altman safe and cheap**: Altman Z at least 3 (the safe zone starts at 2.99) and trailing P/E at most 15x, cheapest first.
+- **Below the Graham number**: a price at or below the Graham number and ten profitable years in a row, furthest below first.
+- **Below Lynch fair value**: a price at or below Lynch's fair value (a PEG of 1 or less) and debt at most equal to equity, most upside first.
+- **Dividend growers**: five or more years of dividend growth, a yield of at least 2% and a payout of at most 75%, fastest 3-year dividend growth first.
+- **RS leaders**: RS rating at least 90 and within 15% of the 52-week high, highest rating first.
+- **Steady compounders**: ten profitable years, five or more years of revenue growth and ROIC of at least 15%, longest revenue streak first.
+
+Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
 
 `s` saves a named screen to your Cloud account, **Saved** restores one, and **Save copy** creates another (saving an existing screen updates its revision). Conflicting edits from another device are reported. `x` exports all matches from the displayed snapshot, up to 5,000 rows, and the pane CSV menu exports the loaded rows. Expired snapshots ask for a refresh first.
+
+**Save to Watchlist…** in the pane menu (`.`) saves the first 100 matches, in the order shown, to a new watchlist named after the screen or to one you already have.
 
 ### Why a ticker is missing
 
@@ -2566,12 +2587,13 @@ gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria"
 gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
 ```
 
-`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`, `value`, `quality`, `garp`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
+`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`, `value`, `quality`, `garp`, `piotroski`, `magic-formula`, `altman-safe-value`, `graham-number`, `lynch-value`, `dividend-growers`, `rs-leaders`, `compounders`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
 
 ```sh
 gloom fn EQS --preset golden-cross
 gloom fn EQS --preset oversold-uptrend --metric priceVsSma200Percent --csv
 gloom fn EQS --preset quality --metric netDebtToEbitda
+gloom fn EQS --preset magic-formula --metric earningsYieldPercent,returnOnCapitalPercent
 ```
 
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app attention are Pro. On Free their rows read `locked` and the report says so once (`The free screener shows no KPI values; Gloom Pro shows each company's Backlog`). With Pro, a KPI column with gaps says how many rows have none, and missing data is not zero.

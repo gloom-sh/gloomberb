@@ -53,12 +53,15 @@ export function clampFloatingRectWithinBounds(rect: FloatingRect, bounds: Layout
   };
 }
 
-/** A new floating pane's size: its own default, or 60% of the area each way. */
+/** An area narrower than this opens a new floating pane across its full width: 60% of it is too narrow to read a pane in. */
+export const NARROW_FLOAT_AREA_WIDTH = 60;
+
+/** A new floating pane's size: its own default, or 60% of the area each way; the full width of a narrow area. */
 export function defaultFloatingSize(termWidth: number, termHeight: number, def?: PaneDef): { width: number; height: number } {
   const { width, height } = clampFloatingRect({
     x: 0,
     y: 0,
-    width: def?.defaultFloatingSize?.width ?? Math.floor(termWidth * 0.6),
+    width: termWidth < NARROW_FLOAT_AREA_WIDTH ? termWidth : def?.defaultFloatingSize?.width ?? Math.floor(termWidth * 0.6),
     height: def?.defaultFloatingSize?.height ?? Math.floor(termHeight * 0.6),
   }, termWidth, termHeight);
   return { width, height };

@@ -45,7 +45,7 @@ function installCoordinator(quotes: Record<string, Partial<Quote>> = {}, snapsho
   } as unknown as MarketDataCoordinator);
 }
 
-function Pane({ currencies }: { currencies?: string[] } = {}) {
+function Pane({ currencies, width = 100 }: { currencies?: string[]; width?: number } = {}) {
   const ui = useUiHost();
   const renderer = useRendererHost();
   const state = createInitialState(currencies
@@ -58,7 +58,7 @@ function Pane({ currencies }: { currencies?: string[] } = {}) {
     <UiHostProvider ui={{ ...ui, DataTable: WebDataTable }} renderer={renderer}>
       <WebInputHostProvider>
         <TestPaneProvider state={state} paneId="fx-matrix" runtime={runtime} pluginId="market-overview">
-          <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={100} height={14} />
+          <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={width} height={14} />
         </TestPaneProvider>
       </WebInputHostProvider>
     </UiHostProvider>
@@ -108,7 +108,8 @@ test("the desktop and web draw a flag beside each currency code in the row label
 test("every currency the settings offer draws its flag in the rows and the headers, in the saved order", async () => {
   installCoordinator();
   const saved = [...FX_CURRENCIES].reverse();
-  const container = await desktop.render(<Pane currencies={saved} />);
+  // Wide enough for every column: a narrower board drops the ones that do not fit.
+  const container = await desktop.render(<Pane currencies={saved} width={520} />);
   const rows = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')];
   expect(rows.map((row) => row.querySelector('[data-gloom-role="data-table-cell"]')!.textContent)).toEqual(saved);
   // A currency added without artwork would draw a bare code.

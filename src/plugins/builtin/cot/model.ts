@@ -6,6 +6,7 @@ import { formatMarketPriceWithCurrency, formatPriceObservation } from "../../../
 import { futuresPricePer } from "../../../market-data/futures-contract";
 import { unitCurrencyToken } from "../../../time-series/price-units";
 import { cleanFloat32Price } from "../../../cli/history-rows";
+import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import {
   bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByCode, futuresContractByName, type FuturesContract,
@@ -139,6 +140,14 @@ export type CotScope = typeof COT_SCOPES[number]["value"];
 export function cotScope(value: unknown): CotScope { return value === "all" ? "all" : "major"; }
 
 const rootAlias = (input: string) => ROOTS[input === "VIX" ? "VX" : input]?.code ?? null;
+/** The CME currency futures by their currency's ISO code, as a reader of FX types them: JPY is 6J, the yen. */
+const CURRENCY_FUTURES: Readonly<Record<string, string>> = {
+  EUR: "6E=F", JPY: "6J=F", GBP: "6B=F", CAD: "6C=F", AUD: "6A=F", CHF: "6S=F", MXN: "6M=F",
+};
+const currencyFuture = (input: string) => {
+  const symbol = CURRENCY_FUTURES[input];
+  return symbol ? Object.entries(PRICE_OVERLAYS).find(([, row]) => row.priceSymbol === symbol)?.[0] ?? null : null;
+};
 const marketCode = (input: string) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null;
 /**
  * The FUT board row a typed argument names, by code, symbol or commodity name
@@ -154,7 +163,8 @@ function typedMarket(value: string): { board: FuturesContract } | { root: string
 /**
  * A CFTC code, root or commodity name typed as an argument or stored in a
  * pane: every alias, crypto included, every FUT board root the CFTC reports,
- * and the names FUT finds them by (cocoa, coffee, sugar, gold, crude). A typed
+ * the names FUT finds them by (cocoa, coffee, sugar, gold, crude), and a
+ * currency's ISO code for its CME future (JPY, CHF, EUR). A typed
  * root is always the future, so ZM here is soybean meal, never Zoom. A CFTC
  * code is tried after the names, as one could be spelled with six letters
  * (COFFEE, COPPER).
@@ -162,7 +172,7 @@ function typedMarket(value: string): { board: FuturesContract } | { root: string
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
-  const alias = rootAlias(input);
+  const alias = rootAlias(input) ?? currencyFuture(input);
   if (alias) return alias;
   const market = typedMarket(value);
   if (market && "root" in market) return ROOTS[market.root]!.code;
@@ -199,7 +209,7 @@ export function cotProxyNote(proxy: { subject: string; root: string }): string {
 /** The markets the unknown-market hint names, by the code and the word a newcomer knows them by. */
 const SUGGESTED_MARKETS: ReadonlyArray<readonly [string, string]> = [
   ["ES", "S&P 500"], ["CL", "crude oil"], ["NG", "natural gas"], ["GC", "gold"], ["HG", "copper"],
-  ["ZC", "corn"], ["CC", "cocoa"], ["KC", "coffee"], ["SB", "sugar"], ["ZN", "10-year note"],
+  ["ZC", "corn"], ["CC", "cocoa"], ["KC", "coffee"], ["SB", "sugar"], ["ZN", "10-year note"], ["JPY", "yen"],
 ];
 /**
  * What a market `cotContractCode` does not know is told: a FUT board row the
@@ -230,6 +240,37 @@ export function cotContractCodeForTicker(ticker: unknown): string | null {
   const board = futuresBoardContractForTicker(ticker);
   return rootAlias(input) ?? (board ? boardMarketCode(board) : null) ?? marketCode(input);
 }
+/**
+ * The CFTC's published release schedule (cftc.gov, Commitments of Traders,
+ * Release Schedule, read 2026-11-01): 3:30 p.m. Eastern on the Friday after
+ * the Tuesday the positions are as of, or the day a federal holiday moved that
+ * Friday's release to. Years it has not published, and 2027 with its move to
+ * two releases a week, are left out rather than guessed.
+ */
+const COT_SCHEDULED_YEARS: ReadonlySet<number> = new Set([2026]);
+const COT_DELAYED_RELEASES: Readonly<Record<string, string>> = {
+  "2026-01-02": "2026-01-05", "2026-06-19": "2026-06-22", "2026-07-03": "2026-07-06",
+  "2026-11-13": "2026-11-16", "2026-11-27": "2026-11-30", "2026-12-25": "2026-12-28",
+};
+const DAY_MS = 86_400_000;
+/**
+ * When the CFTC released the report of positions as of `reportDate`, an ISO
+ * instant, by its schedule (`COT_SCHEDULED_YEARS`). Null for a date that is
+ * no Tuesday or a release outside the schedule, which an export then says was
+ * not published.
+ */
+export function cotReleaseTime(reportDate: string | null | undefined): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(reportDate ?? "");
+  if (!match) return null;
+  const tuesday = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (new Date(tuesday).getUTCDay() !== 2) return null;
+  const friday = new Date(tuesday + 3 * DAY_MS).toISOString().slice(0, 10);
+  const day = COT_DELAYED_RELEASES[friday] ?? friday;
+  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+  if (!COT_SCHEDULED_YEARS.has(year)) return null;
+  return new Date(zonedWallClockToUtcMs("America/New_York", year, month, date, 15, 30, 0)).toISOString();
+}
+
 /** The futures root a CFTC code belongs to, for titles readers recognize: a verified alias, else its FUT board root. */
 export function cotRoot(code: string): string | null {
   return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0]

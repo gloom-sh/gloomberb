@@ -61,14 +61,17 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
   const headline = getRegularSessionDisplay(preview.quote);
   const price = headline?.price;
   const change = headline?.changePercent;
+  // Only the name gives way to a narrow row, clipped on its right: the symbol, price and move keep every cell.
   return (
     <Box flexDirection="row" alignItems="center" minWidth={0} overflow="hidden">
-      <Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text>
-      {preview.name ? <Text fg={colors.textDim}>{`  ${preview.name}`}</Text> : null}
-      {price != null ? <Text fg={colors.text}>{`  ${formatMarketPrice(price, { maxWidth: 12 })}`}</Text> : null}
-      {change != null ? <Text fg={shownPriceColor(change, 2, colors)}>{` ${formatPercentRaw(change)}`}</Text> : null}
+      <Box flexShrink={0}><Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text></Box>
+      {preview.name ? (
+        <Box flexShrink={1} minWidth={0} overflow="hidden" paddingLeft={2}><Text fg={colors.textDim}>{preview.name}</Text></Box>
+      ) : null}
+      {price != null ? <Box flexShrink={0} paddingLeft={2}><Text fg={colors.text}>{formatMarketPrice(price, { maxWidth: 12 })}</Text></Box> : null}
+      {change != null ? <Box flexShrink={0} paddingLeft={1}><Text fg={shownPriceColor(change, 2, colors)}>{formatPercentRaw(change)}</Text></Box> : null}
       {price != null && delay != null ? <Box flexShrink={0} paddingLeft={1}><DelayedMark minutes={delay} /></Box> : null}
-      {preview.duplicate ? <Text fg={colors.textMuted}>{t("  already added")}</Text> : null}
+      {preview.duplicate ? <Box flexShrink={0}><Text fg={colors.textMuted}>{t("  already added")}</Text></Box> : null}
     </Box>
   );
 }

@@ -51,17 +51,40 @@ function normalizePricePointUncached(point: PricePoint, providerId?: string): Ti
   };
 }
 
+/** The points one per instant in time order, the later of two at one instant kept. */
+function uniqueTimeOrderedPoints(points: readonly PricePoint[], providerId: string | undefined): TimeSeriesPoint[] {
+  // A history comes in time order: kept as it is, it needs no keyed sort.
+  const ordered: TimeSeriesPoint[] = [];
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const normalized = normalizePricePoint(point, providerId);
+    if (!normalized) continue;
+    const time = normalized.date.getTime();
+    if (time <= previous) return keyedTimeOrderedPoints(points, providerId);
+    previous = time;
+    ordered.push(normalized);
+  }
+  return ordered;
+}
+
+function keyedTimeOrderedPoints(points: readonly PricePoint[], providerId: string | undefined): TimeSeriesPoint[] {
+  const byTimestamp = new Map<number, TimeSeriesPoint>();
+  for (const point of points) {
+    const normalized = normalizePricePoint(point, providerId);
+    if (!normalized) continue;
+    byTimestamp.set(normalized.date.getTime(), normalized);
+  }
+  return [...byTimestamp.values()].sort((left, right) => left.date.getTime() - right.date.getTime());
+}
+
 /** Converts the app's canonical price history into the generic chart-series boundary. */
 export function pricePointsToResolvedSeries(
   points: readonly PricePoint[],
   options: PricePointsToResolvedSeriesOptions,
 ): ResolvedSeries {
-  const byTimestamp = new Map<number, TimeSeriesPoint>();
-  for (const point of points) {
-    const normalized = normalizePricePoint(point, options.providerId);
-    if (!normalized) continue;
-    byTimestamp.set(normalized.date.getTime(), normalized);
-  }
+  const resolved = uniqueTimeOrderedPoints(points, options.providerId);
+  let rejected = 0;
+  for (const point of resolved) if (point.provenance?.priceHistoryIntegrity) rejected += 1;
 
   return {
     id: options.id,
@@ -77,7 +100,7 @@ export function pricePointsToResolvedSeries(
     panelId: options.panelId ?? "main",
     interpolation: "none",
     timeBasis: options.timeBasis,
-    points: [...byTimestamp.values()].sort((left, right) => left.date.getTime() - right.date.getTime()),
-    warning: [options.warning, priceHistoryIntegrityNotice([...byTimestamp.values()].filter((point) => point.provenance?.priceHistoryIntegrity).length)].filter(Boolean).join(" ") || undefined,
+    points: resolved,
+    warning: [options.warning, priceHistoryIntegrityNotice(rejected)].filter(Boolean).join(" ") || undefined,
   };
 }

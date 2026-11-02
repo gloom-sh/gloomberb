@@ -32,7 +32,7 @@ function screenshotEvidence(paneId: string): PaneScreenshotEvidenceHook<Catalyst
         const payload = validateCatalysts(value.payload as unknown as CatalystResponse);
         if (value.rowIds.some((id) => !payload.events.some((event) => event.id === id)) || value.plottedValueCount !== value.rowIds.length) return null;
         return value as unknown as CatalystEvidence;
-      } catch { return null; }
+      } catch { /* Intentional ignore: invalid captured observations are rejected as evidence by returning null. */ return null; }
     },
     mismatches(evidence, { resolved, payload }) {
       const snapshot = payload.config.layout.instances.find((pane) => pane.instanceId === payload.paneId)?.settings?.catalystSnapshot;

@@ -191,13 +191,27 @@ function ticksFitRows(domain: CompositeAxisDomain, values: number[]): boolean {
   return true;
 }
 
+// Every label on an axis reads its ticks again (see `compactAxisNumber`).
+const tickValues = new WeakMap<CompositeAxisDomain, readonly number[]>();
+
 /** Round values inside a linear domain, so every gridline carries a readable
  * value. A log axis, or a short terminal panel no round step fits, keeps its
  * top, middle and bottom values. */
-function axisTickValues(domain: CompositeAxisDomain): number[] {
+function axisTickValues(domain: CompositeAxisDomain): readonly number[] {
+  let values = tickValues.get(domain);
+  if (!values) {
+    values = computeAxisTickValues(domain);
+    tickValues.set(domain, values);
+  }
+  return values;
+}
+
+function computeAxisTickValues(domain: CompositeAxisDomain): number[] {
   const span = domain.max - domain.min;
   if (domain.scale === "log" || !Number.isFinite(span) || span <= 0) return edgeTickValues(domain);
   const maxTicks = Math.max(2, domain.maxTicks ?? DEFAULT_AXIS_MAX_TICKS);
+  const grid = axisTickGrid(domain);
+  if (grid) return gridAxisTickValues(domain, grid, span, maxTicks);
   // Walk the 1-2-5 ladder around the target spacing and keep the step whose
   // tick count lands nearest the target, one extra tick allowed.
   let step = adjacentNiceStep(adjacentNiceStep(niceCeilStep(span / (maxTicks - 1)), -1), -1);
@@ -214,6 +228,66 @@ function axisTickValues(domain: CompositeAxisDomain): number[] {
   // Round labels win only where they are at least as many as the exact ones.
   const edges = edgeTickValues(domain);
   return best.length >= Math.max(2, edges.length) ? best : edges;
+}
+
+// Half a 32nd: the finest step a 32nds axis ticks on when its series name no grid of their own.
+const HALF_THIRTY_SECOND = 1 / 64;
+
+/**
+ * The grid a linear axis's ticks fall on: its series' own (a Treasury
+ * future's fraction of a 32nd), else half a 32nd on an axis quoted in 32nds.
+ * None on a decimal axis.
+ */
+function axisTickGrid(domain: CompositeAxisDomain): number | undefined {
+  if (domain.scale === "log") return undefined;
+  const grid = domain.tickGrid ?? (domain.unit.trim() === "32nds" ? HALF_THIRTY_SECOND : undefined);
+  return grid !== undefined && Number.isFinite(grid) && grid > 0 ? grid : undefined;
+}
+
+// Steps a 32nds axis takes, in 32nds, between its finest grid and a whole point.
+const THIRTY_SECONDS_STEPS = [1, 2, 3, 4, 6, 8, 12, 16];
+
+/**
+ * Steps on a fractional grid, as a Treasury price reads: the grid doubled up
+ * to a 32nd, then 1, 2, 3, 4, 6, 8, 12 and 16 32nds, then whole points on the
+ * 1-2-5 ladder. Each is a multiple of the grid and no wider than the axis.
+ */
+function gridSteps(grid: number, span: number): number[] {
+  const steps: number[] = [];
+  for (let step = grid; step < 1 / 32 - 1e-12; step *= 2) steps.push(step);
+  steps.push(...THIRTY_SECONDS_STEPS.map((count) => count / 32));
+  for (let step = 1; step <= span * (1 + 1e-9); step = adjacentNiceStep(step, 1)) steps.push(step);
+  return steps.filter((step) => step >= grid * (1 - 1e-9) && step <= span * (1 + 1e-9)
+    && Math.abs(step / grid - Math.round(step / grid)) < 1e-9);
+}
+
+/**
+ * Ticks on a fractional grid (`gridSteps`), keeping the step whose count
+ * lands nearest the target, as the decimal ladder does. Where no step gives
+ * as many as the top, middle and bottom, those are kept instead, each moved
+ * onto the grid: no label reads 104-25.60.
+ */
+function gridAxisTickValues(domain: CompositeAxisDomain, grid: number, span: number, maxTicks: number): number[] {
+  let best: number[] = [];
+  for (const step of gridSteps(grid, span)) {
+    const values = stepMultiples(domain.min, domain.max, step);
+    if (values.length >= 2 && values.length <= maxTicks + 1
+      && (best.length === 0 || Math.abs(values.length - maxTicks) < Math.abs(best.length - maxTicks))
+      && ticksFitRows(domain, values)) {
+      best = values;
+    }
+  }
+  const edges = edgeTickValues(domain);
+  if (best.length >= Math.max(2, edges.length)) return best;
+  const onGrid = edges.map((value, index) => {
+    // The top rounds down and the bottom up, so neither leaves the axis.
+    const units = value / grid;
+    const whole = index === 0 ? Math.floor(units + 1e-9) : index === edges.length - 1 ? Math.ceil(units - 1e-9) : Math.round(units);
+    return Number((whole * grid).toPrecision(12));
+  }).filter((value) => value >= domain.min - grid * 1e-9 && value <= domain.max + grid * 1e-9);
+  const snapped = [...new Set(onGrid)];
+  return snapped.length >= best.length && snapped.length > 0 ? snapped
+    : best.length > 0 ? best : [Number((Math.round((domain.min + domain.max) / 2 / grid) * grid).toPrecision(12))];
 }
 
 /** The narrowest distance between neighbouring ticks. A log axis bunches its
@@ -397,6 +471,12 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   return formatCompositeAxisValue(value, domain);
 }
 
+/**
+ * An axis label for a value. It must read only the value and the axis: the
+ * ticks and gutter widths it labels are kept per formatter and axis (see
+ * `axisResultCache`), so one that reads anything else (a currency, a setting)
+ * is a new function whenever that changes.
+ */
 export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
 
 type LabeledTick = { value: number; label: string };
@@ -409,10 +489,11 @@ function repeatsLabel(ticks: LabeledTick[]): boolean {
  * (2k 2k 1.9k). The axis then climbs the 1-2-5 ladder until its labels
  * differ, and failing that keeps its top and bottom, or the top alone. */
 function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisValueFormatter): LabeledTick[] {
-  const label = (values: number[]) => values.map((value) => ({ value, label: format(value, domain) }));
+  const label = (values: readonly number[]) => values.map((value) => ({ value, label: format(value, domain) }));
   const ticks = label(axisTickValues(domain));
   if (ticks.length < 2 || !repeatsLabel(ticks)) return ticks;
-  if (domain.scale !== "log") {
+  // A grid's ticks are already its coarsest that fit; a coarser decimal step would leave the grid.
+  if (domain.scale !== "log" && !axisTickGrid(domain)) {
     const gap = Math.abs(ticks[0]!.value - ticks[1]!.value);
     let step = niceCeilStep(gap);
     if (step <= gap * (1 + 1e-9)) step = adjacentNiceStep(step, 1);
@@ -429,15 +510,96 @@ function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisVal
   return top.label !== bottom.label ? [top, bottom] : [top];
 }
 
+/** Whether two records hold equal values under every key either has; a key set to undefined reads as absent. */
+function sameFields(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+  same: (left: unknown, right: unknown) => boolean,
+): boolean {
+  for (const key of Object.keys(left)) {
+    if (!same(left[key], right[key])) return false;
+  }
+  for (const key of Object.keys(right)) {
+    if (!Object.hasOwn(left, key) && !same(undefined, right[key])) return false;
+  }
+  return true;
+}
+
+function sameAxisDomainValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) return false;
+  return sameFields(left as Record<string, unknown>, right as Record<string, unknown>, Object.is);
+}
+
+/**
+ * Whether two axes read the same: every field either has equal, its lists
+ * and records one level down. A chart builds its axes again on every tick,
+ * and they come out the same until the price leaves the range.
+ */
+export function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
+  if (left === right) return true;
+  return sameFields(
+    left as unknown as Record<string, unknown>,
+    right as unknown as Record<string, unknown>,
+    sameAxisDomainValue,
+  );
+}
+
+export type CompositeAxisTick = { ratio: number; value: number; label: string };
+
+/**
+ * The last results worked out for an axis under each formatter, kept for the
+ * next scene's equal axes. They hold while the formatter reads only the value
+ * and the axis (see `CompositeAxisValueFormatter`). Each hit labels the axis's
+ * top once more and works the result out again when that label changed, so a
+ * formatter that reads something else and kept its identity cannot keep
+ * stale labels past a change that moves its top label.
+ */
+export function axisResultCache<Value>(size = 8): (
+  domain: CompositeAxisDomain,
+  format: CompositeAxisValueFormatter,
+  key: string,
+  compute: () => Value,
+) => Value {
+  type Entry = { domain: CompositeAxisDomain; key: string; probe: string; value: Value };
+  const byFormat = new WeakMap<CompositeAxisValueFormatter, Entry[]>();
+  return (domain, format, key, compute) => {
+    let entries = byFormat.get(format);
+    if (!entries) {
+      entries = [];
+      byFormat.set(format, entries);
+    }
+    const probe = format(domain.max, domain);
+    const index = entries.findIndex((entry) => entry.key === key && sameCompositeAxisDomain(entry.domain, domain));
+    if (index >= 0) {
+      const [entry] = entries.splice(index, 1);
+      if (entry!.probe === probe) {
+        entries.unshift(entry!);
+        return entry!.value;
+      }
+    }
+    const value = compute();
+    entries.unshift({ domain, key, probe, value });
+    if (entries.length > size) entries.length = size;
+    return value;
+  };
+}
+
+const cachedAxisTicks = axisResultCache<readonly CompositeAxisTick[]>();
+
 export function compositeAxisTicks(
   domain: CompositeAxisDomain,
   format: CompositeAxisValueFormatter = formatCompositeAxisValue,
-): Array<{ ratio: number; value: number; label: string }> {
-  return distinctAxisTicks(domain, format).map(({ value, label }) => ({
+): readonly CompositeAxisTick[] {
+  return cachedAxisTicks(domain, format, "", () => distinctAxisTicks(domain, format).map(({ value, label }) => ({
     ratio: axisTickRatio(domain, value),
     value,
     label,
-  }));
+  })));
 }
 
 /** Gridlines follow the ticks of the panel's labeled axis, left first. The

@@ -1,5 +1,5 @@
 diff --git a/index-218h9p3f.js b/index-218h9p3f.js
-index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac6c440d3c 100644
+index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed018629f3ca17 100644
 --- a/index-218h9p3f.js
 +++ b/index-218h9p3f.js
 @@ -6487,17 +6487,27 @@ class MouseParser {
@@ -166,8 +166,55 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      this.events.push({
        type: "mouse",
        raw: decodeLatin1(rawBytes),
-@@ -17995,6 +18029,8 @@ function isGapType(value) {
+@@ -15733,6 +15767,9 @@ var yogaConfig = src_default.Config.create();
+ yogaConfig.setUseWebDefaults(false);
+ yogaConfig.setPointScaleFactor(1);
  
++/** Counts layout reads that found a node's layout changed (Renderable.updateFromLayout). */
++var layoutClock = 0;
++
+ class Renderable extends BaseRenderable {
+   static renderablesByNumber = new Map;
+   _isDestroyed = false;
+@@ -15778,6 +15815,9 @@ class Renderable extends BaseRenderable {
+   childrenSortedByPrimaryAxis = [];
+   _shouldUpdateBefore = new Set;
+   _lastLayoutFrame = -1;
++  _seenLayout = null;
++  _layoutCheckedAt = -1;
++  _layoutChangedAt = -1;
+   onLifecyclePass = null;
+   renderBefore;
+   renderAfter;
+@@ -16452,7 +16492,21 @@ class Renderable extends BaseRenderable {
+     if (this._lastLayoutFrame === frameId)
+       return;
+     this._lastLayoutFrame = frameId;
+-    const layout = this.yogaNode.getComputedLayout();
++    // Yoga flags each node whose layout it computed, and computes a node's
++    // layout only while computing its parent's. So once its parent was read
++    // in this frame, a node asks for its flag only if the parent was found
++    // flagged since it last asked, and reads its layout only when its own
++    // flag is set; any other node kept its box.
++    const parent = this.parent;
++    if (this._seenLayout === null || !parent || parent._lastLayoutFrame !== frameId || parent._layoutChangedAt > this._layoutCheckedAt) {
++      this._layoutCheckedAt = layoutClock;
++      if (this._seenLayout === null || this.yogaNode.hasNewLayout()) {
++        this._seenLayout = this.yogaNode.getComputedLayout();
++        this.yogaNode.markLayoutSeen();
++        this._layoutChangedAt = this._layoutCheckedAt = ++layoutClock;
++      }
++    }
++    const layout = this._seenLayout;
+     const oldX = this._x;
+     const oldY = this._y;
+     const oldWidth = this._widthValue;
+@@ -17993,8 +18047,12 @@ function isGapType(value) {
+   return isValidPercentage(value);
+ }
+ 
++var hoveredFillBoxes = new Set;
++
  class BoxRenderable extends Renderable {
    _backgroundColor;
 +  _hoverBackgroundColor;
@@ -175,7 +222,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    _border;
    _borderStyle;
    _borderColor;
-@@ -18023,6 +18059,7 @@ class BoxRenderable extends Renderable {
+@@ -18023,6 +18081,7 @@ class BoxRenderable extends Renderable {
        this._focusable = true;
      }
      this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor);
@@ -183,7 +230,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      this._border = options.border ?? this._defaultOptions.border;
      if (!options.border && (options.borderStyle || options.borderColor || options.focusedBorderColor || options.customBorderChars)) {
        this._border = true;
-@@ -18064,11 +18101,26 @@ class BoxRenderable extends Renderable {
+@@ -18064,11 +18123,26 @@ class BoxRenderable extends Renderable {
    }
    set backgroundColor(value) {
      const newColor = parseColor(value ?? this._defaultOptions.backgroundColor);
@@ -211,27 +258,41 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    get border() {
      return this._border;
    }
-@@ -18152,9 +18204,39 @@ class BoxRenderable extends Renderable {
+@@ -18152,9 +18226,53 @@ class BoxRenderable extends Renderable {
        this.requestRender();
      }
    }
 +  onMouseEvent(event) {
 +    if (!this._hoverBackgroundColor) {
 +      if (this._isHovered) {
-+        this._isHovered = false;
++        this.setHovered(false);
 +        this.requestRender();
 +      }
 +      return;
 +    }
 +    if (event.type === "over" && !this._isHovered) {
-+      this._isHovered = true;
++      this.setHovered(true);
 +      this.requestRender();
 +    } else if (event.type === "out" && this._isHovered) {
-+      this._isHovered = false;
++      this.setHovered(false);
 +      this.requestRender();
 +    }
 +  }
++  setHovered(hovered) {
++    this._isHovered = hovered;
++    if (hovered)
++      hoveredFillBoxes.add(this);
++    else
++      hoveredFillBoxes.delete(this);
++  }
++  destroySelf() {
++    hoveredFillBoxes.delete(this);
++    super.destroySelf();
++  }
 +  getActiveHoverBackgroundColor() {
++    // Every box asks on every frame; with none hovered there is nothing to find.
++    if (hoveredFillBoxes.size === 0)
++      return undefined;
 +    if (this._isHovered && this._hoverBackgroundColor) {
 +      return this._hoverBackgroundColor;
 +    }
@@ -252,7 +313,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      if (!hasBorder && !hasVisibleFill) {
        return;
      }
-@@ -18171,7 +18253,7 @@ class BoxRenderable extends Renderable {
+@@ -18171,7 +18289,7 @@ class BoxRenderable extends Renderable {
        customBorderChars: this._customBorderChars,
        border: this._border,
        borderColor: currentBorderColor,
@@ -261,7 +322,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
        shouldFill: this.shouldFill,
        title: this._title,
        titleAlignment: this._titleAlignment,
-@@ -22288,6 +22370,8 @@ class MouseEvent {
+@@ -22288,6 +22406,8 @@ class MouseEvent {
    button;
    x;
    y;
@@ -270,7 +331,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    source;
    modifiers;
    scroll;
-@@ -22307,6 +22391,8 @@ class MouseEvent {
+@@ -22307,6 +22427,8 @@ class MouseEvent {
      this.button = attributes.button;
      this.x = attributes.x;
      this.y = attributes.y;
@@ -279,7 +340,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      this.modifiers = attributes.modifiers;
      this.scroll = attributes.scroll;
      this.source = attributes.source;
-@@ -22457,6 +22543,10 @@ class CliRenderer extends EventEmitter9 {
+@@ -22457,6 +22579,10 @@ class CliRenderer extends EventEmitter9 {
    resizeDebounceDelay = 100;
    enableMouseMovement = false;
    _useMouse = true;
@@ -290,7 +351,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    autoFocus = true;
    _screenMode = "alternate-screen";
    _footerHeight = DEFAULT_FOOTER_HEIGHT;
-@@ -22491,7 +22581,7 @@ class CliRenderer extends EventEmitter9 {
+@@ -22491,7 +22617,7 @@ class CliRenderer extends EventEmitter9 {
      this.handleResize(width, height);
    }).bind(this);
    _capabilities = null;
@@ -299,7 +360,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    _hasPointer = false;
    _lastPointerModifiers = {
      shift: false,
-@@ -22738,7 +22828,13 @@ Captured external output:
+@@ -22738,7 +22864,13 @@ Captured external output:
          privateCapabilityRepliesActive: false,
          pixelResolutionQueryActive: false,
          explicitWidthCprActive: false,
@@ -314,7 +375,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
        },
        clock: this.clock
      });
-@@ -24021,12 +24117,14 @@ Captured external output:
+@@ -24021,12 +24153,14 @@ Captured external output:
    enableMouse() {
      this._useMouse = true;
      this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement);
@@ -329,7 +390,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    }
    enableKittyKeyboard(flags = 3) {
      this.lib.enableKittyKeyboard(this.rendererPtr, flags);
-@@ -24036,6 +24134,52 @@ Captured external output:
+@@ -24036,6 +24170,52 @@ Captured external output:
      this.lib.disableKittyKeyboard(this.rendererPtr);
      this.updateStdinParserProtocolContext({ kittyKeyboardEnabled: false }, true);
    }
@@ -382,7 +443,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
    set useThread(useThread) {
      this._useThread = useThread;
      this.lib.setUseThread(this.rendererPtr, useThread);
-@@ -24141,6 +24285,7 @@ Captured external output:
+@@ -24141,6 +24321,7 @@ Captured external output:
      }
      this.lib.processCapabilityResponse(this.rendererPtr, sequence);
      this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr);
@@ -390,7 +451,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      if (this._capabilities?.terminal?.from_xtversion) {
        this.resolveXtVersionWaiters();
      }
-@@ -24170,6 +24315,7 @@ Captured external output:
+@@ -24170,6 +24351,7 @@ Captured external output:
      if (sequence === "\x1B[I") {
        if (this.shouldRestoreModesOnNextFocus) {
          this.lib.restoreTerminalModes(this.rendererPtr);
@@ -398,7 +459,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
          this.shouldRestoreModesOnNextFocus = false;
        }
        if (this._terminalFocusState !== true) {
-@@ -24218,7 +24364,7 @@ Captured external output:
+@@ -24218,7 +24400,7 @@ Captured external output:
          this._keyHandler.processParsedKey(event.key);
          return;
        case "mouse":
@@ -407,7 +468,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
            return;
          }
          this.dispatchSequenceHandlers(event.raw);
-@@ -24264,6 +24410,7 @@ Captured external output:
+@@ -24264,6 +24446,7 @@ Captured external output:
          }
          this.waitingForPixelResolution = false;
          this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true);
@@ -415,7 +476,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
          return true;
        }
        return false;
-@@ -24292,15 +24439,62 @@ Captured external output:
+@@ -24292,15 +24475,62 @@ Captured external output:
      }
      return event;
    }
@@ -478,7 +539,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      this._hasPointer = true;
      this._lastPointerModifiers = mouseEvent.modifiers;
      if (this._console.visible) {
-@@ -24437,6 +24631,8 @@ Captured external output:
+@@ -24437,6 +24667,8 @@ Captured external output:
        return;
      }
      const baseEvent = {
@@ -487,7 +548,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
        type: "move",
        button: 0,
        x: this._latestPointer.x,
-@@ -24527,6 +24723,7 @@ Captured external output:
+@@ -24527,6 +24759,7 @@ Captured external output:
      const pendingSplitFooterTransition = this.pendingSplitFooterTransition;
      const previousGeometry = calculateRenderGeometry(this._screenMode, this._terminalWidth, this._terminalHeight, this._footerHeight);
      const prevWidth = this._terminalWidth;
@@ -495,7 +556,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      const previousTerminalHeight = this._terminalHeight;
      const visiblePreviousSplitHeight = pendingSplitFooterTransition?.sourceHeight ?? previousGeometry.effectiveFooterHeight;
      this._terminalWidth = width;
-@@ -24832,6 +25029,11 @@ Captured external output:
+@@ -24832,6 +25065,11 @@ Captured external output:
        this.clock.clearTimeout(this.resizeTimeoutId);
        this.resizeTimeoutId = null;
      }
@@ -507,7 +568,7 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..8734376ebd706056791f8b59ad0992ac
      if (this.capabilityTimeoutId !== null) {
        this.clock.clearTimeout(this.capabilityTimeoutId);
        this.capabilityTimeoutId = null;
-@@ -24847,6 +25049,7 @@ Captured external output:
+@@ -24847,6 +25085,7 @@ Captured external output:
      }
      this.themeModeState.cancelRefresh();
      this._isRunning = false;

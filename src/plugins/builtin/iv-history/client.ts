@@ -7,6 +7,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../shared/volatility";
 import { NO_FATE, type ListingFate } from "../../../tickers/listing-fate";
+import { logFailure } from "../../../utils/log-failure";
 
 export type IvMethod = "quote-mid" | "trade-close";
 /**
@@ -244,7 +245,7 @@ async function loadRealizedVolatilities(
       try {
         const entry = await dependencies.loadChart({ instrument, bufferRange: "1Y", granularity: "resolution", resolution: "1d" });
         value = screenHv(resolveEntryValue(entry) ?? [], window);
-      } catch { value = null; }
+      } catch (error) { value = logFailure("iv-history.client", "Load screen price history failed", null)(error); }
       result.set(instrument.symbol, value);
       options.onValue?.(instrument.symbol, value);
     }

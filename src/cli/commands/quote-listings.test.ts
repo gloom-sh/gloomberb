@@ -286,6 +286,31 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 
+test("a bare index root the service marks its index with is that index at once, without a company quote or the crypto board", async () => {
+  // VIX was read as ^VIX:CXI after search weighed the word as a company's name: a quote of the index, the crypto
+  // board, the listing's exchange and the quote again, one after another, seconds that name the same row.
+  const vix = createTestQuote({ symbol: "^VIX", name: "CBOE Volatility Index", instrumentType: "INDEX", listingExchangeName: "CXI" });
+  const quoted: string[] = [];
+  const cryptoBoard = spyOn(apiClient, "getCloudCryptoMarkets").mockResolvedValue({ assets: [] } as never);
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query.replace("^", "").toUpperCase() === "VIX"
+      ? [{ providerId: "test", symbol: "^VIX", name: "Cboe Volatility Index", exchange: "CXI", type: "INDEX", currency: "USD", searchAliases: ["VIX"] }]
+      : [],
+    getQuote: async (symbol, exchange) => {
+      quoted.push(`${symbol}:${exchange ?? ""}`);
+      if (!symbol.startsWith("^VIX")) throw new Error(`No quote provider available for ${symbol}`);
+      return vix;
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol.startsWith("^VIX")
+      ? { target, quote: vix } : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+  });
+  const answer = await runQuote(["VIX"], { dataProvider, batches: [], searches: () => 0 });
+  expect(answer.rows.map((row) => row.target.symbol)).toEqual(["^VIX:CXI"]);
+  expect(answer.warnings).toEqual(['Read "VIX" as ^VIX:CXI (Cboe Volatility Index).']);
+  expect(quoted.filter((target) => target.startsWith("^VIX"))).toEqual([]);
+  expect(cryptoBoard).not.toHaveBeenCalled();
+});
+
 test("a quote that stopped years ago says since when, keeps its last price, and takes the saved name when it has none", async () => {
   const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
   const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true });

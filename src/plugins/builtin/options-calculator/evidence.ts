@@ -153,7 +153,7 @@ export function readCalculatorEvidence(value: unknown): CalculatorEvidence | nul
       expected = valueOption(draft);
       implied = solveImpliedVolatility(draft, draft.marketPrice);
     }
-  } catch { return null; }
+  } catch { /* Intentional ignore: inputs the valuation rejects cannot prove the captured values, so the evidence is rejected. */ return null; }
   if (!validValuation(expected) || metrics.some((key) => !sameNumber(evidence.valuation![key], expected[key]))
     || evidence.implied.note !== implied.note || (implied.volatility === null ? evidence.implied.volatility !== null
       : evidence.implied.volatility === null || !sameNumber(evidence.implied.volatility, implied.volatility))

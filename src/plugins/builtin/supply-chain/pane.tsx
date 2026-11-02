@@ -36,6 +36,7 @@ import {
 } from "./model";
 import { RowEvidence } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
+import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "edge"; row: SupplyRow } | { kind: "locked"; id: string };
 const itemId = (item: Item) => item.kind === "edge" ? item.row.id : item.id;
@@ -183,7 +184,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const openUpgrade = useCloudUpgradeAction("splc");
   const [snapshotSetting] = usePaneSettingValue<SupplyChainPayload | null>("supplySnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting]);
   const [openingTab] = usePaneSettingValue("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>("supply:tab", openingTab);
   const graphTab = savedTab === "graph" || savedTab === "path";

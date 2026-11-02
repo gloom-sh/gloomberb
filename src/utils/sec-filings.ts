@@ -179,6 +179,8 @@ export interface HiddenFilings {
   pricingSupplements: number;
   /** The 13D/13G the company filed as a holder of other companies. */
   ownershipReportsAboutOthers: number;
+  /** A fund's trust filed these for its other funds (the sibling series' NPORT-P on the same day). */
+  otherFunds?: number;
 }
 
 /**
@@ -194,9 +196,12 @@ function keptFilings(
   const kept: SecFilingItem[] = [];
   const hidden: HiddenFilings = { pricingSupplements: 0, ownershipReportsAboutOthers: 0 };
   const isSupplement = pricingSupplementTest(filings);
+  // A fund's trust lists every fund it runs; where the service marks the fund's own series, the others' are left out.
+  const ownSeries = filings.some((filing) => filing.fundSeries === true);
   for (const filing of filings) {
     if (kept.length >= limit) break;
-    if (isSupplement(filing)) hidden.pricingSupplements += 1;
+    if (ownSeries && filing.fundSeries === false) hidden.otherFunds = (hidden.otherFunds ?? 0) + 1;
+    else if (isSupplement(filing)) hidden.pricingSupplements += 1;
     else if (schedulesAboutOthers && isScheduleAboutAnotherCompany(filing)) hidden.ownershipReportsAboutOthers += 1;
     else kept.push(filing);
   }
@@ -213,6 +218,7 @@ export function hiddenFilingsNote(hidden: HiddenFilings): string | null {
   const parts = [
     count(hidden.pricingSupplements, "pricing supplement", "pricing supplements"),
     count(hidden.ownershipReportsAboutOthers, "ownership report about another company", "ownership reports about other companies"),
+    count(hidden.otherFunds ?? 0, "filing for the trust's other funds", "filings for the trust's other funds"),
   ].filter((part): part is string => part != null);
   return parts.length > 0 ? `${parts.join(" and ")} hidden, --all to show` : null;
 }

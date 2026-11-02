@@ -204,9 +204,14 @@ export function formatNumber(value: number | undefined, decimals = 2): string {
 export function formatSignificant(value: number | undefined, digits = 4): string {
   if (value == null || !Number.isFinite(value)) return formatNumber(undefined);
   if (value === 0) return getNumberFormatter(0).format(0);
+  return getNumberFormatter(significantDecimals(value, digits)).format(Number(value.toPrecision(digits)));
+}
+
+/** The decimals `formatSignificant` writes a value to: 0.8904 has 4, 1.123 has 3, 0 none. */
+export function significantDecimals(value: number, digits = 4): number {
+  if (value === 0 || !Number.isFinite(value)) return 0;
   const rounded = Number(value.toPrecision(digits));
-  const decimals = Math.min(12, Math.max(0, digits - 1 - Math.floor(Math.log10(Math.abs(rounded)))));
-  return getNumberFormatter(decimals).format(rounded);
+  return Math.min(12, Math.max(0, digits - 1 - Math.floor(Math.log10(Math.abs(rounded)))));
 }
 
 /** A percentile rank with its window: "73 pctl 1Y", "-- pctl 1Y" when unranked, "73 pctl" without a window. */

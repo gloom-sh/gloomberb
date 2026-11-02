@@ -166,7 +166,7 @@ export async function routeDirectReads(cdp: Cdp, replay: Replay): Promise<void> 
 export interface SeedOptions { theme?: string; onboardingComplete?: boolean }
 
 /** A fresh workspace each load: one layout, onboarding done, usage and crash reports off, and the sweep's clock. */
-function seedScript(layout: object, clockMs: number, focused?: string, options: SeedOptions = {}): string {
+export function seedScript(layout: object, clockMs: number, focused?: string, options: SeedOptions = {}): string {
   const config = {
     layouts: [{ name: "Sweep", layout, ...(focused ? { focusedPaneId: focused } : {}) }],
     activeLayoutIndex: 0,

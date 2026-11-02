@@ -41,6 +41,8 @@ export interface CurveSurfaceProps {
   formatChange?: (change: number) => string;
   /** Gridline labels; defaults to formatValue. */
   formatAxisValue?: CompositeAxisValueFormatter;
+  /** The grid the value axis ticks on, for prices quoted in fractions of a point: a Treasury future's 32nds. */
+  valueGrid?: number;
   /** @deprecated The cursor badge shows the row label. */
   formatX?: (value: number) => string;
   valueLabel?: string;
@@ -65,7 +67,7 @@ function isConstant(entry: CurveSeries): boolean {
  * Each ghost owns its coordinates and nulls, so missing months stay gaps. */
 export function CurveSurface({ series, width, height, focused = false, primarySeriesId, selectedPointId,
   onSelectedPointChange, display = "auto", caption, xScale, formatValue = formatNumber, formatChange, formatAxisValue,
-  slope }: CurveSurfaceProps) {
+  valueGrid, slope }: CurveSurfaceProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const [localSelection, setLocalSelection] = useState<string | null>(null);
@@ -76,7 +78,8 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const totalHeight = Math.max(1, Math.floor(height));
   const primary = curvePrimarySeries(series, primarySeriesId);
   const palette = useMemo(() => [colors.positive, colors.textMuted, colors.warning, colors.textDim], [colors]);
-  const chart = useMemo(() => buildCurveChart(series, totalWidth, palette, { xScale }), [series, totalWidth, palette, xScale]);
+  const chart = useMemo(() => buildCurveChart(series, totalWidth, palette, { xScale, valueGrid }),
+    [series, totalWidth, palette, xScale, valueGrid]);
   const rows = useMemo(() => curveTableRows(series), [series]);
   const activeId = selectedPointId === undefined ? localSelection : selectedPointId;
   const selected = rows.find((row) => row.id === activeId);

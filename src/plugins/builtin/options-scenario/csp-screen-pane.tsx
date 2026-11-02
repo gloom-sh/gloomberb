@@ -135,7 +135,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const { createPaneFromTemplate } = usePluginAppActions();
   const assetData = useAssetData();
   const strategy = useMemo((): StrategyFamily => {
-    try { return readStrategyFamily(strategySetting); } catch { return "csp"; }
+    try { return readStrategyFamily(strategySetting); } catch { /* Intentional ignore: an unknown saved strategy opens the cash-secured put screen. */ return "csp"; }
   }, [strategySetting]);
   const family = strategyFamilyDef(strategy);
   // Each strategy opens at its own deltas; the names and the expiry carry over.

@@ -389,21 +389,50 @@ export interface CliStatsOptions {
   width?: number | null;
 }
 
+/** The fewest cells a stat's value is given beside its label; a longer label goes on a line of its own. */
+const MIN_STAT_VALUE_WIDTH = 20;
+
+/**
+ * The label column of a stats block: its longest label, unless that leaves
+ * the values fewer than MIN_STAT_VALUE_WIDTH cells of `width`. Then it is the
+ * longest label that leaves them that many, and longer ones go above their values.
+ */
+function statLabelWidth(entries: readonly CliStatEntry[], width: number | null, indent: number): number {
+  const widths = entries.map(([label]) => visibleLength(label));
+  const longest = Math.max(0, ...widths);
+  if (width == null) return longest;
+  const fits = width - indent - COLUMN_GAP - MIN_STAT_VALUE_WIDTH;
+  return longest <= fits ? longest : Math.max(0, ...widths.filter((labelWidth) => labelWidth <= fits));
+}
+
 /** Cells left for values after a block's labels, for callers that build nested values. */
 export function statValueWidth(entries: readonly CliStatEntry[], options: CliStatsOptions = {}): number | null {
   const width = options.width === undefined ? cliTerminalWidth() : options.width;
   if (width == null) return null;
-  const labelWidth = Math.max(0, ...entries.map(([label]) => visibleLength(label)));
-  return Math.max(20, width - (options.indent ?? 0) - labelWidth - COLUMN_GAP);
+  const indent = options.indent ?? 0;
+  return Math.max(MIN_STAT_VALUE_WIDTH, width - indent - statLabelWidth(entries, width, indent) - COLUMN_GAP);
 }
 
-/** A block of label/value lines aligned on the longest label. Values wrap under themselves. */
+/**
+ * A block of label/value lines aligned on the longest label. Values wrap under
+ * themselves; in a narrow width a label too long to leave its value room is
+ * on its own line, its value indented under it.
+ */
 export function renderStats(entries: readonly CliStatEntry[], options: CliStatsOptions = {}): string {
   const indent = " ".repeat(options.indent ?? 0);
-  const labelWidth = Math.max(0, ...entries.map(([label]) => visibleLength(label)));
+  const width = options.width === undefined ? cliTerminalWidth() : options.width;
+  const labelWidth = statLabelWidth(entries, width, indent.length);
   const valueIndent = `${indent}${" ".repeat(labelWidth + COLUMN_GAP)}`;
   const valueWidth = statValueWidth(entries, options);
   return entries.map(([label, value]) => {
+    if (width != null && visibleLength(label) > labelWidth) {
+      // Above its value, which is indented under it across the width.
+      const under = `${indent}${" ".repeat(COLUMN_GAP)}`;
+      return [
+        ...wrapText(label, Math.max(1, width - indent.length)).map((line) => `${indent}${cliStyles.muted(line)}`),
+        ...wrapText(value, Math.max(1, width - under.length)).map((line) => `${under}${line}`.trimEnd()),
+      ].join("\n");
+    }
     const valueLines = valueWidth == null ? value.split("\n") : wrapText(value, valueWidth);
     const [first = "", ...rest] = valueLines;
     return [

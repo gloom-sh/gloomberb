@@ -1,8 +1,9 @@
-import { createElement, forwardRef, useCallback, useRef, type ComponentProps } from "react";
+import { createElement, forwardRef, memo, useCallback, useRef, type ComponentProps } from "react";
 import { useForwardedScrollBoxRef, useRegisterPaneScrollBox } from "../state/pane-scroll-registry";
 import { useUiHost, type UiHost } from "./host";
 import { scrollBoxScrollsVertically } from "./scroll-box-axis";
 import { useRemoteUiNode } from "../remote/semantic-tree";
+import { markPure, samePureProps } from "./same-props";
 import { assignRef } from "../react/assign-ref";
 import {
   remoteChartEvent,
@@ -60,7 +61,7 @@ export type {
   TextareaRenderable,
 } from "./host";
 
-export const Box = forwardRef<any, ComponentProps<UiHost["Box"]>>((props, ref) => {
+export const Box = markPure(memo(forwardRef<any, ComponentProps<UiHost["Box"]>>((props, ref) => {
   const { Box: HostBox } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;
@@ -84,10 +85,10 @@ export const Box = forwardRef<any, ComponentProps<UiHost["Box"]>>((props, ref) =
       : null,
   );
   return createElement(HostBox as any, { ...props, ref, "data-gloom-remote-node-id": remoteNodeId ?? undefined });
-});
+}), samePureProps));
 Box.displayName = "Box";
 
-export const Text = forwardRef<any, ComponentProps<UiHost["Text"]>>((props, ref) => {
+export const Text = markPure(memo(forwardRef<any, ComponentProps<UiHost["Text"]>>((props, ref) => {
   const { Text: HostText } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;
@@ -105,25 +106,25 @@ export const Text = forwardRef<any, ComponentProps<UiHost["Text"]>>((props, ref)
       : null,
   );
   return createElement(HostText as any, { ...props, ref, "data-gloom-remote-node-id": remoteNodeId ?? undefined });
-});
+}), samePureProps));
 Text.displayName = "Text";
 
-export const Span = forwardRef<any, ComponentProps<UiHost["Span"]>>((props, ref) => {
+export const Span = markPure(memo(forwardRef<any, ComponentProps<UiHost["Span"]>>((props, ref) => {
   const { Span: HostSpan } = useUiHost();
   return createElement(HostSpan as any, { ...props, ref });
-});
+}), samePureProps));
 Span.displayName = "Span";
 
-export const Strong = forwardRef<any, ComponentProps<UiHost["Strong"]>>((props, ref) => {
+export const Strong = markPure(memo(forwardRef<any, ComponentProps<UiHost["Strong"]>>((props, ref) => {
   const { Strong: HostStrong } = useUiHost();
   return createElement(HostStrong as any, { ...props, ref });
-});
+}), samePureProps));
 Strong.displayName = "Strong";
 
-export const Underline = forwardRef<any, ComponentProps<UiHost["Underline"]>>((props, ref) => {
+export const Underline = markPure(memo(forwardRef<any, ComponentProps<UiHost["Underline"]>>((props, ref) => {
   const { Underline: HostUnderline } = useUiHost();
   return createElement(HostUnderline as any, { ...props, ref });
-});
+}), samePureProps));
 Underline.displayName = "Underline";
 
 export const ScrollBox = forwardRef<any, ComponentProps<UiHost["ScrollBox"]>>((props, ref) => {
@@ -242,7 +243,7 @@ export const Textarea = forwardRef<any, ComponentProps<UiHost["Textarea"]>>(({
 });
 Textarea.displayName = "Textarea";
 
-export const ChartSurface = forwardRef<any, ComponentProps<UiHost["ChartSurface"]>>((props, ref) => {
+export const ChartSurface = markPure(memo(forwardRef<any, ComponentProps<UiHost["ChartSurface"]>>((props, ref) => {
   const { ChartSurface: HostChartSurface } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const localRef = useRef<any>(null);
@@ -285,7 +286,7 @@ export const ChartSurface = forwardRef<any, ComponentProps<UiHost["ChartSurface"
     },
   });
   return createElement(HostChartSurface as any, { ...props, ref: setSurfaceRef, "data-gloom-remote-node-id": remoteNodeId ?? undefined });
-});
+}), samePureProps));
 ChartSurface.displayName = "ChartSurface";
 
 export const ImageSurface = forwardRef<any, ComponentProps<UiHost["ImageSurface"]>>((props, ref) => {

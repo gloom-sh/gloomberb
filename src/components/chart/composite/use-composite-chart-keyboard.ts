@@ -35,6 +35,7 @@ import {
 import { projectCompositeTimestamp } from "./time-scale";
 import { projectCompositeValue, resolveAdjacentCompositeCursorDate, unprojectCompositeValue } from "./scene";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
+import type { CompositeCursorSource } from "./cursor-source";
 
 /**
  * A tool placed from the keyboard: Enter anchors it at the cursor, the arrows
@@ -97,6 +98,7 @@ export function useCompositeChartKeyboard({
   navigable,
   showLegend,
   scene,
+  cursor,
   cursorDate,
   updateCursor,
   pin,
@@ -128,7 +130,10 @@ export function useCompositeChartKeyboard({
   interactive: boolean;
   navigable: boolean;
   showLegend: boolean;
+  /** The chart's scene, without its cursor. */
   scene: CompositeChartScene | null;
+  /** Where the crosshair is, which moves without rendering the chart. */
+  cursor: CompositeCursorSource | null;
   cursorDate: CompositeChartProps["cursorDate"];
   updateCursor: (date: Date | null) => void;
   /** The tab's crosshair pin, when there is a cursor to pin or a pin to lift. */
@@ -162,7 +167,14 @@ export function useCompositeChartKeyboard({
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
   const [keyboardPlacement, setKeyboardPlacement] = useState<KeyboardToolPlacement | null>(null);
   // Whether the user moved into the chart from the pane's tab strip; see `inside`.
-  const [entered, setEntered] = useState(false);
+  const [entered, setEnteredState] = useState(false);
+  // Follows every change as it is made, not the next render: a step out (Esc,
+  // Up, focus leaving) and a wheel step in one batch must still enter again.
+  const enteredRef = useRef(entered);
+  const setEntered = useCallback((next: boolean) => {
+    enteredRef.current = next;
+    setEnteredState(next);
+  }, []);
   const keyboardId = `composite-chart:${useId()}`;
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
   useEffect(() => {
@@ -181,13 +193,16 @@ export function useCompositeChartKeyboard({
     setKeyboardPlacement(null);
     if (tool === null) setSelectedDrawingId(null);
     if (tool !== "level") setSelectedLevelId(null);
-  }, []);
+  }, [setEntered]);
   const cancelKeyboardPlacement = useCallback(() => setKeyboardPlacement(null), []);
   // A press, drag or wheel on the chart moves into it, as Down or Enter do.
+  // Once inside, a wheel step sets nothing: setting the same state right
+  // after the chart rendered still costs React a render of the chart that
+  // bails out, and a pan or zoom renders it on every step.
   const activateFromPointer = useCallback(() => {
-    setEntered(true);
+    if (!enteredRef.current) setEntered(true);
     onActivate?.();
-  }, [onActivate]);
+  }, [onActivate, setEntered]);
   const levelHost = useMemo(
     () => scene && levels ? levelPanel(scene, levels.seriesId) : null,
     [levels, scene],
@@ -198,8 +213,13 @@ export function useCompositeChartKeyboard({
   useEffect(() => {
     if (selectedLevelId && !selectedLevel) setSelectedLevelId(null);
   }, [selectedLevel, selectedLevelId]);
-  const keyboardCursorDateRef = useRef<Date | null>(scene?.cursorDate ?? null);
-  keyboardCursorDateRef.current = scene?.cursorDate ?? null;
+  // The keys step on from the crosshair wherever the pointer or another chart
+  // left it, read as it moves: a move does not render the chart.
+  const keyboardCursorDateRef = useRef<Date | null>(null);
+  keyboardCursorDateRef.current = cursor?.scene().cursorDate ?? null;
+  useEffect(() => cursor?.subscribe(() => {
+    keyboardCursorDateRef.current = cursor.scene().cursorDate;
+  }), [cursor]);
 
   // The cursor keys belong to every focused chart; pan, zoom, the tools and
   // their keys only to one that navigates.
@@ -219,12 +239,12 @@ export function useCompositeChartKeyboard({
   useEffect(() => {
     if (wasFocusedRef.current && !focused) setEntered(false);
     wasFocusedRef.current = focused;
-  }, [focused]);
+  }, [focused, setEntered]);
   // A time or a price is picked with the arrows and Enter.
   const picking = !!timePick || !!pricePick;
   useEffect(() => {
     if (picking) setEntered(true);
-  }, [picking]);
+  }, [picking, setEntered]);
   useEffect(() => {
     if (!toolsActive) setKeyboardPlacement(null);
   }, [toolsActive]);
@@ -240,7 +260,7 @@ export function useCompositeChartKeyboard({
   // pane's back key.
   const canDeleteDrawing = toolsActive && drawings.length > 0 && (!!selectedDrawingId || isDrawingTool(armedTool));
   // An owner that holds the cursor decides when it goes, so Esc stays the pane's.
-  const clearableCursor = !!scene?.cursorDate && cursorDate === undefined;
+  const clearableCursor = () => !!cursor?.scene().cursorDate && cursorDate === undefined;
 
   const enterChart = () => {
     setEntered(true);
@@ -254,7 +274,7 @@ export function useCompositeChartKeyboard({
     setEntered(false);
     setLegendKeyboardIndex(null);
     // Stepping out to the strip leaves a pinned crosshair where it is.
-    if (!clearableCursor || pin?.pinned) return;
+    if (!clearableCursor() || pin?.pinned) return;
     keyboardCursorDateRef.current = null;
     updateCursor(null);
   };
@@ -535,7 +555,7 @@ export function useCompositeChartKeyboard({
       setSelectedLevelId(null);
       return;
     }
-    if (isPlainKey(event, "escape") && legendKeysActive && legendKeyboardIndex !== null && !clearableCursor) {
+    if (isPlainKey(event, "escape") && legendKeysActive && legendKeyboardIndex !== null && !clearableCursor()) {
       consume();
       setLegendKeyboardIndex(null);
       return;
@@ -563,7 +583,7 @@ export function useCompositeChartKeyboard({
       || interaction === "clear-cursor";
     if (!cursorInteraction && !toolsActive) return;
     if (
-      (interaction === "clear-cursor" && !clearableCursor)
+      (interaction === "clear-cursor" && !clearableCursor())
       || ((interaction === "arm-measure"
         || interaction === "arm-zoom"
         || interaction === "arm-line"

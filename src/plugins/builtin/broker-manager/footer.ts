@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "../../../components";
 import { enableBrokerHint } from "../shared/broker-reconnect";
 import type { BrokerManagerMessage } from "./pane-actions";
+import { logFailure } from "../../../utils/log-failure";
 
 interface BrokerManagerFooterActions {
   connectSelected: () => Promise<void>;
@@ -58,8 +59,8 @@ export function useBrokerManagerFooter({
       hints.push({ id: "edit", key: "e", label: "dit", onPress: () => actionsRef.current.startEdit() });
       if (disabledSelected === null) {
         hints.push(
-          { id: "connect", key: "c", label: "onnect", onPress: () => actionsRef.current.connectSelected().catch(() => {}) },
-          { id: "sync", key: "s", label: "ync", onPress: () => actionsRef.current.syncSelected().catch(() => {}) },
+          { id: "connect", key: "c", label: "onnect", onPress: () => actionsRef.current.connectSelected().catch(logFailure("broker-manager.footer", "Connect selected broker profile failed")) },
+          { id: "sync", key: "s", label: "ync", onPress: () => actionsRef.current.syncSelected().catch(logFailure("broker-manager.footer", "Sync selected broker profile failed")) },
         );
       }
     }

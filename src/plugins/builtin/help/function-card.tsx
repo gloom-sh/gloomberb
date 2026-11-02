@@ -27,6 +27,7 @@ import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
 import { useDialog, useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
 import type { HelpFunction } from "./function-index";
+import { logFailure } from "../../../utils/log-failure";
 
 export type FunctionHelpRequest =
   /** `inAppDocs: false` where DOCS cannot open (a popped-out window). */
@@ -209,7 +210,7 @@ export function useFunctionHelpHost({ closeCommandBar }: { closeCommandBar: () =
         content: (context: AlertContext) => (
           <FunctionHelpCard {...context} fn={request.fn} width={width} compact={compact} inAppDocs={request.inAppDocs !== false} />
         ),
-      }).catch(() => {}).finally(() => {
+      }).catch(logFailure("help.function-card", "Open function help card failed")).finally(() => {
         openRef.current = false;
       });
     };

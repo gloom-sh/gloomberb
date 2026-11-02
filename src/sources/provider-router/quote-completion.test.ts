@@ -62,3 +62,33 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
     persistence.close();
   }
 });
+
+test("an index's quote is asked beside its financials, which carry none, not a round trip after them", async () => {
+  const persistence = new AppPersistence(createTempDbPath("index-quote-beside"));
+  const asked: string[] = [];
+  let release!: () => void;
+  const statements = new Promise<void>((resolve) => { release = resolve; });
+  const cloud: DataProvider = {
+    ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
+    async getTickerFinancials(symbol) {
+      asked.push(`financials ${symbol}`);
+      await statements;
+      return createTestFinancials({ quote: undefined });
+    },
+    async getQuote(symbol) {
+      asked.push(`quote ${symbol}`);
+      return createTestQuote({ symbol, price: 106.43, instrumentType: "INDEX" });
+    },
+  };
+  try {
+    const router = new AssetDataRouter(cloud, [], persistence.resources);
+    const loading = router.getTickerFinancials("^VVIX");
+    await Bun.sleep(5);
+    // Both are out before the financials answer.
+    expect(asked.sort()).toEqual(["financials ^VVIX", "quote ^VVIX"]);
+    release();
+    expect((await loading).quote?.price).toBe(106.43);
+  } finally {
+    persistence.close();
+  }
+});

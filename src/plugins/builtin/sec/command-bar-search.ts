@@ -9,6 +9,7 @@ import type {
 import { formatShortDate } from "../../../utils/datetime-format";
 import { secFilingItemCodes } from "../../../utils/sec";
 import { getFilingColumnText } from "./model";
+import { logFailure } from "../../../utils/log-failure";
 
 const SEC_TEMPLATE_ID = "sec-pane";
 const FILING_ROW_LIMIT = 4;
@@ -216,8 +217,8 @@ export function createSecFilingSearchProvider(
           count: RECENT_FILING_COUNT,
         });
         filings = entry.data ?? entry.lastGoodData ?? [];
-      } catch {
-        return [];
+      } catch (error) {
+        return logFailure("sec.command-bar-search", "Load SEC filings for command bar search failed", [])(error);
       }
       if (signal.aborted) return [];
       const now = deps.now();

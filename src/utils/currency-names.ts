@@ -126,3 +126,23 @@ export function currenciesNamed(text: string): readonly NamedCurrency[] {
   if (!key) return [];
   return names.get(key) ?? (key.endsWith("s") ? names.get(key.slice(0, -1)) : undefined) ?? [];
 }
+
+/** Codes that are also English words, read as a currency only when typed in capitals: "try" is a verb before it is the lira. */
+export const WORD_CURRENCY_CODES: ReadonlySet<string> = new Set(["TRY", "PEN", "COP", "MAD", "RUB", "CAD"]);
+
+let namedCodes: ReadonlySet<string> | undefined;
+
+/**
+ * The currency a three-letter code names, as a query types it: `jpy` and
+ * `JPY` are JPY, `TRY` the lira but `try` nothing (`WORD_CURRENCY_CODES`).
+ * Only the currencies named here count, so `all` is no Albanian lek. Null for
+ * any other text.
+ */
+export function currencyCodeTyped(text: string): string | null {
+  const typed = text.trim();
+  if (!/^[A-Za-z]{3}$/.test(typed)) return null;
+  namedCodes ??= new Set(CURRENCY_NAMES.map(([code]) => code));
+  const code = typed.toUpperCase();
+  if (!namedCodes.has(code)) return null;
+  return typed === code || !WORD_CURRENCY_CODES.has(code) ? code : null;
+}

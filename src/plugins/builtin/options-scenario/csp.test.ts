@@ -6,7 +6,8 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
-import { cashSecuredPut, cspReportEntries, earningsBeforeExpiry } from "./csp";
+import { cashSecuredPut, cspReportEntries, cspStatItems, earningsBeforeExpiry, loadNextEarningsDate } from "./csp";
+import { cspEarningsText } from "./csp-screen";
 import { optionsScenarioHeadless } from "./headless";
 import type { ScenarioPosition } from "./model";
 
@@ -100,6 +101,20 @@ test("days to expiry count from the valuation date in New York, and earnings are
   // On the expiry day there is nothing left to annualise.
   const lastDay = cashSecuredPut({ ...position, asOf: Date.parse("2026-11-20T15:00:00Z") }, "typed", null)!;
   expect([lastDay.daysToExpiry, lastDay.annualizedYield]).toEqual([0, null]);
+});
+
+test("an earnings calendar that cannot be read is reported unavailable, and one with no date keeps saying none is published", async () => {
+  const unreadable = { getEarningsCalendar: async () => { throw new Error("Fixture calendar unavailable"); } } as unknown as DataProvider;
+  const empty = { getEarningsCalendar: async () => [] } as unknown as DataProvider;
+  const flag = (earningsDate: string | null) => {
+    const csp = cashSecuredPut(position, "typed", earningsDate)!;
+    const stat = cspStatItems(csp).find((item) => item.id === "csp-earnings")!;
+    return [cspReportEntries(csp).find((entry) => entry.key === "earningsBeforeExpiry")?.formatted, stat.value, stat.detail, stat.tone ?? null, cspEarningsText(csp)];
+  };
+  expect(flag(await loadNextEarningsDate(empty, "CSPNONE", "2026-10-13")))
+    .toEqual(["unknown (no upcoming date published)", "unknown", "no date", null, "unknown"]);
+  expect(flag(await loadNextEarningsDate(unreadable, "CSPFAIL", "2026-10-13")))
+    .toEqual(["unknown (earnings calendar unavailable)", "unknown", "calendar unavailable", "warning", "unavailable"]);
 });
 
 test("--strategy csp sells the put at its midpoint and reports it, with earnings unknown when the calendar has no date", async () => {

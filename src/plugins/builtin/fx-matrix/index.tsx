@@ -9,6 +9,8 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { createDataTableCsv } from "../../../components/data-table/export";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { ageFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -45,6 +47,31 @@ const CURRENCY_FLAGS = new Map<string, ReactNode>(
 const RATE_COLUMN_WIDTH = 10;
 /** Snapshot rates reload at this pace while the feed is not carrying every leg. */
 const FX_FALLBACK_REFRESH_MS = 60_000;
+
+/**
+ * The board's columns for a pane `width` cells wide: whole currency columns
+ * give way from the right until the rest fit (`dropColumnsToFit`), the first
+ * currency always kept. A board with more rows than `height` holds keeps a
+ * cell for its scrollbar.
+ */
+function fxMatrixColumnsToFit<C extends DataTableColumn>(
+  columns: readonly C[], currencies: readonly string[], width: number, height: number,
+): C[] {
+  const scrollbar = currencies.length + 1 > height ? 1 : 0;
+  return dropColumnsToFit(columns, Math.floor(width) - scrollbar, currencies.slice(1).reverse());
+}
+
+/** "1 column hidden" in the footer, the codes in its title, for a pane too narrow for every currency. */
+export function fxHiddenColumnsSegment(hidden: readonly string[]): PaneFooterSegment {
+  const count = hidden.length;
+  return {
+    id: "hidden-columns",
+    // A capture keeps it, as a picture cannot scroll to the columns it left out.
+    capture: true,
+    title: `${hidden.join(", ")} ${count === 1 ? "is" : "are"} not shown as ${count === 1 ? "a column" : "columns"}: widen the pane`,
+    parts: [{ text: `${count} ${count === 1 ? "column" : "columns"} hidden`, tone: "muted" }],
+  };
+}
 
 function FxMatrixPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
@@ -181,7 +208,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     intervalMs: allLegsLive ? null : FX_FALLBACK_REFRESH_MS,
   });
 
-  const columns = useMemo<DataTableColumn[]>(() => [
+  const allColumns = useMemo<DataTableColumn[]>(() => [
     { id: "base", label: "", width: flagged ? FLAGGED_BASE_COLUMN_WIDTH : BASE_COLUMN_WIDTH, align: "left" },
     ...currencies.map((currency) => ({
       id: currency,
@@ -191,6 +218,10 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       headerLeading: flagged ? CURRENCY_FLAGS.get(currency) : undefined,
     })),
   ], [currencies, flagged]);
+  // A pane too narrow for every currency drops whole columns from the right, never cutting a rate at its edge, and
+  // the footer says how many (a capture keeps it): each one's rates still read along its row. The first stays.
+  const columns = useMemo(() => fxMatrixColumnsToFit(allColumns, currencies, width, height), [allColumns, currencies, height, width]);
+  const hiddenCurrencies = currencies.length - (columns.length - 1);
 
   const renderCell = useCallback((
     row: FxCurrency,
@@ -240,13 +271,13 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const updatedAgo = useUpdatedAgo(status.latestFetchedAt || null);
 
   usePaneFooter(FX_MATRIX_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
+    const info: PaneFooterSegment[] = hiddenCurrencies > 0 ? [fxHiddenColumnsSegment(currencies.slice(columns.length - 1))] : [];
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
     if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
     else if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
     return { info };
-  }, [savedAt, status.loading, statusText, updatedAgo]);
+  }, [columns.length, currencies, hiddenCurrencies, savedAt, status.loading, statusText, updatedAgo]);
 
   return (
     <DataTableView<FxCurrency>
@@ -263,6 +294,9 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       freezeFirstColumn
       getExportMetadata={() => createFxExportMetadata(currencies, rates,
         (currency) => rateEntries.get(currency))}
+      // An export carries every currency, the columns a narrow pane leaves out too.
+      exportCsv={() => createDataTableCsv({ columns: allColumns, items: dataProvider ? currencies : [], renderCell,
+        getExportMetadata: () => createFxExportMetadata(currencies, rates, (currency) => rateEntries.get(currency)) })}
       items={dataProvider ? currencies : []}
       sortColumnId={null}
       sortDirection="asc"

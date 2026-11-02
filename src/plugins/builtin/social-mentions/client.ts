@@ -5,6 +5,7 @@ import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, S
 import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { unavailableOnServer } from "../shared/cloud-resource";
+import { logFailure } from "../../../utils/log-failure";
 
 export const socialMentionsCache = createPluginCache<SocialMentionsPayload>({
   kind: "social-mentions", source: "gloom-cloud", schemaVersion: 1,
@@ -71,7 +72,7 @@ export function cachedSocialMentions(symbol: string, range: SocialMentionsRange)
   const cached = socialMentionsCache.get(cacheKey(symbol, range), { allowExpired: true });
   if (!cached) return null;
   try { return { payload: validateSocialMentions(cached.data, symbol, range), stale: false, refreshError: null }; }
-  catch { return null; }
+  catch (error) { return logFailure("social-mentions.client", "Validate cached social mentions failed", null)(error); }
 }
 export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
   // A refusal (a signed-out session, any other 4xx but 408 and 429) or a reply that fails validation shows as itself.

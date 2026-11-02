@@ -82,27 +82,26 @@ function shellArgument(expression: string): string {
 
 /**
  * The series part of `catalog` or `search`: a table of the first `limit`
- * matches with the expression `fn G` charts, and how to see the rest.
+ * matches with the expression `fn G` charts, and how to see the rest:
+ * `catalog <words> --all`, which lists every one.
  */
 export function renderSeriesMatches(
   query: string,
   matches: readonly SeriesMatch[],
   limit: number,
   width: number,
-  /** Where the rest are listed: `shot CAT` from the catalog, the catalog from a search. */
-  rest: "catalog" | "data-catalog" = "data-catalog",
 ): string {
   if (matches.length === 0) return "";
   const shown = matches.slice(0, limit);
   const count = shown.length < matches.length ? `${shown.length} of ${matches.length}` : String(matches.length);
-  const quoted = `"${query.replace(/"/g, "")}"`;
+  const words = query.replace(/"/g, "").trim();
   // A FRED series named by its id is also one `gloom fred` prints.
   const asked = query.trim().toUpperCase().replace(/^FRED:/, "");
   const fred = matches.find((match) => match.exact && fredSeriesIdOf(match.expression) === asked);
   const hint = fred
     ? `Print it with gloom fred ${asked}; chart it with gloom fn G ${fred.expression}.`
     : shown.length < matches.length
-    ? `Chart one with gloom fn G <chart>; gloom ${rest === "catalog" ? `catalog ${quoted}` : `shot CAT ${quoted}`} lists all ${matches.length}.`
+    ? `Chart one with gloom fn G <chart>; gloom catalog ${shellArgument(words)} --all lists all ${matches.length}.`
     : "Chart one with gloom fn G <chart>.";
   return [
     `${renderSection(`Series for "${query}"`)} ${cliStyles.muted(`(${count})`)}`,

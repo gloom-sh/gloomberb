@@ -32,6 +32,19 @@ export const QUALITY_FIELDS = [
   "revenueCagr3YPercent", "revenueCagr5YPercent", "epsCagr3YPercent", "epsCagr5YPercent",
   "forwardRevenueGrowthPercent", "forwardEpsGrowthPercent",
 ] as const;
+/**
+ * Classic scores: Piotroski F, Altman Z, the Graham number and Lynch fair value with their upside, Greenblatt's
+ * earnings yield, return on capital and Magic Formula rank, the 1Y total return and its RS rating, years of profit,
+ * revenue growth and dividend growth, and S&P 500 and Dow membership; listed only when asked (`include=scores`), and
+ * omitted by a server from before them.
+ */
+export const SCORE_FIELDS = [
+  "piotroskiFScore", "altmanZScore", "grahamNumber", "grahamUpsidePercent", "lynchFairValue", "lynchUpsidePercent",
+  "earningsYieldPercent", "returnOnCapitalPercent", "magicFormulaRank", "totalReturn1YPercent", "rsRating",
+  "profitableYears", "revenueGrowthYears", "dividendGrowthYears", "sp500Member", "dowMember",
+] as const;
+/** Index membership, 1 for a member and 0 for a US listing that is not one. */
+export const MEMBERSHIP_FIELDS = ["sp500Member", "dowMember"] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -83,6 +96,7 @@ export const NUMERIC_FIELDS = [
   ...OPTION_VOLATILITY_FIELDS,
   ...OWNERSHIP_FIELDS,
   ...QUALITY_FIELDS,
+  ...SCORE_FIELDS,
   "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
   "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;

@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useCompositeChartKeyboard } from "./use-composite-chart-keyboard";
 import { useCompositeViewport } from "./use-composite-viewport";
 import { CompositePanelSurface } from "./panel-surface";
@@ -41,6 +51,12 @@ import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import { StaticXAxisLabels, StaticXMarkerLabels, StaticXMarkerOverlay } from "./axis-overlays";
 import { formatCompositeCursorAxisDate } from "./format";
 import {
+  createCompositeCursorSource,
+  createValueStore,
+  useCursorScene,
+  type CompositeCursorSource,
+} from "./cursor-source";
+import {
   resolveCompositeWheelPan,
   resolveCompositeWheelZoom,
   type CompositeNavigationFrame,
@@ -51,10 +67,8 @@ import { useCompositeValueScales } from "./use-composite-value-scales";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 import {
   allocateCompositePanelHeights,
-  applyCompositeChartCursor,
   buildCompositeChartScene,
   compositeCursorAsOf,
-  compositeLinkedCursorTime,
   resizeCompositePanel,
   resolveAdjacentCompositeCursorDate,
 } from "./scene";
@@ -92,6 +106,11 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
 const subscribeToNothing = () => () => {};
 const holdsNothing = () => false;
+
+function finiteTimestampOrNull(date: Date | null | undefined): number | null {
+  const timestamp = date?.getTime() ?? null;
+  return timestamp !== null && Number.isFinite(timestamp) ? timestamp : null;
+}
 
 /**
  * Desktop: the rows below the plot span the chart's box and their labels the
@@ -215,7 +234,9 @@ function ThemedCompositeChart({
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const showTextFallback = useShowChartTextFallback();
-  const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
+  // The chart's own cursor, in epoch ms. A pointer move sets it without
+  // rendering the chart: only what draws the crosshair renders (see `cursorSource`).
+  const [ownCursor] = useState(() => createValueStore<number | null>(null));
   const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [pointerDragging, setPointerDragging] = useState(false);
   const paneFocused = usePaneFocused();
@@ -255,8 +276,7 @@ function ThemedCompositeChart({
   // pointer moves it as on any chart, and the pointer leaving returns it.
   const restingCursor = cursorDate !== undefined && !onCursorDateChange;
   const ownsCursor = cursorDate === undefined || restingCursor;
-  const resolvedCursorDate = cursorDate === undefined ? internalCursorDate
-    : restingCursor ? internalCursorDate ?? cursorDate : cursorDate;
+  const ownerCursorTimestamp = finiteTimestampOrNull(cursorDate);
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
   const seriesIdentityRef = useRef<ResolvedSeries[]>([]);
@@ -483,10 +503,12 @@ function ThemedCompositeChart({
     };
     return downsampleCompositeChartScene(laidOut, downsampleWidth);
   }, [downsampleWidth, layoutPanels, maximizedPanelId, plotWidth, projectedScene]);
-  const resolvedCursorTimestamp = resolvedCursorDate?.getTime() ?? null;
-  const normalizedCursorTimestamp = resolvedCursorTimestamp !== null && Number.isFinite(resolvedCursorTimestamp)
-    ? resolvedCursorTimestamp
-    : null;
+  // The cursor shown: the chart's own, or else the owner's.
+  const currentCursorTimestamp = useCallback(
+    () => (ownsCursor ? ownCursor.get() : null) ?? ownerCursorTimestamp,
+    [ownCursor, ownerCursorTimestamp, ownsCursor],
+  );
+  const normalizedCursorTimestamp = currentCursorTimestamp();
   // A custom x axis is not time, so there is no time to share. Otherwise an
   // interactive chart in a pane shares its crosshair with every chart in the
   // pane's layout tab, its siblings in the pane included: each chart is its
@@ -506,43 +528,40 @@ function ThemedCompositeChart({
   const sharedTime = link?.time;
   // Charts sharing a cursor show one: another chart's while it holds it, in
   // place of this one's own. An owner's resting cursor, such as a table's
-  // selected row, comes back when it clears. A chart renders again when the
-  // bar the shared cursor lands on here changes, not on every move: a daily
-  // chart under a 30-minute one's cursor moves once a session.
+  // selected row, comes back when it clears. Whether one shows renders the
+  // chart; where it is renders only what draws it (see `cursorSource`).
   const showsSharedCursor = useSyncExternalStore(subscribeToLink, useCallback(() => sharedTime?.() != null, [sharedTime]));
-  const sharedCursorBar = useSyncExternalStore(subscribeToLink, useCallback(() => {
-    const time = sharedTime?.() ?? null;
-    return time === null || !baseScene ? null : compositeLinkedCursorTime(baseScene, time);
-  }, [baseScene, sharedTime]));
   const holdsSharedCursor = useSyncExternalStore(subscribeToLink, link?.held ?? holdsNothing);
   const pinnedCursor = useSyncExternalStore(subscribeToLink, link?.pinned ?? holdsNothing);
   const publishCursor = link?.publish;
-  const scene = useMemo(() => {
-    if (!baseScene) return null;
-    if (showsSharedCursor) {
-      return applyCompositeChartCursor(baseScene, sharedCursorBar === null ? null : new Date(sharedCursorBar), "linked");
-    }
-    return applyCompositeChartCursor(
-      baseScene,
-      normalizedCursorTimestamp === null ? null : new Date(normalizedCursorTimestamp),
-    );
-  }, [baseScene, normalizedCursorTimestamp, sharedCursorBar, showsSharedCursor]);
+  const cursorSource = useMemo<CompositeCursorSource | null>(() => baseScene ? createCompositeCursorSource({
+    baseScene,
+    own: ownsCursor ? ownCursor : null,
+    fallback: ownerCursorTimestamp,
+    link,
+  }) : null, [baseScene, link, ownCursor, ownerCursorTimestamp, ownsCursor]);
   const lastCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
   const renderedCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
-  if (renderedCursorTimestampRef.current !== normalizedCursorTimestamp) {
-    renderedCursorTimestampRef.current = normalizedCursorTimestamp;
-    lastCursorTimestampRef.current = normalizedCursorTimestamp;
-  }
+  // The cursor last shown, which a move to the same time does not report
+  // again. It follows the chart's own cursor as it moves, between renders.
+  const syncShownCursor = useCallback(() => {
+    const shown = currentCursorTimestamp();
+    if (renderedCursorTimestampRef.current === shown) return;
+    renderedCursorTimestampRef.current = shown;
+    lastCursorTimestampRef.current = shown;
+  }, [currentCursorTimestamp]);
+  syncShownCursor();
+  useEffect(() => ownCursor.subscribe(syncShownCursor), [ownCursor, syncShownCursor]);
 
   const updateCursor = useCallback((date: Date | null) => {
     const timestamp = date?.getTime() ?? null;
     const nextTimestamp = timestamp !== null && Number.isFinite(timestamp) ? timestamp : null;
     if (lastCursorTimestampRef.current === nextTimestamp) return;
     lastCursorTimestampRef.current = nextTimestamp;
-    if (ownsCursor) setInternalCursorDate(date);
+    if (ownsCursor) ownCursor.set(nextTimestamp);
     onCursorDateChange?.(date);
     publishCursor?.(date && baseScene && nextTimestamp !== null ? compositeCursorAsOf(baseScene, date) : null);
-  }, [baseScene, onCursorDateChange, ownsCursor, publishCursor]);
+  }, [baseScene, onCursorDateChange, ownCursor, ownsCursor, publishCursor]);
   // Another chart taking the cursor, or clearing it, takes it from this one,
   // so it does not come back here later. Read live: a move since the render
   // makes this chart's cursor the shared one again.
@@ -570,12 +589,15 @@ function ThemedCompositeChart({
   // The last time sits in a ref, so a moving crosshair costs no extra render,
   // and the footer's pin is there from the start: a hint appearing mid-hover
   // would move the plot under the pointer.
-  const cursorAt = scene?.cursorDate?.getTime() ?? null;
   const lastCursorAtRef = useRef<{ time: number; shared: boolean } | null>(null);
-  if (cursorAt !== null) {
-    const shared = showsSharedCursor ? sharedTime?.() ?? null : null;
+  const noteShownCursor = useCallback(() => {
+    const cursorAt = cursorSource?.scene().cursorDate?.getTime() ?? null;
+    if (cursorAt === null) return;
+    const shared = sharedTime?.() ?? null;
     lastCursorAtRef.current = shared !== null ? { time: shared, shared: true } : { time: cursorAt, shared: false };
-  }
+  }, [cursorSource, sharedTime]);
+  noteShownCursor();
+  useEffect(() => cursorSource?.subscribe(noteShownCursor), [cursorSource, noteShownCursor]);
   const pinnable = !!link?.pin;
   const togglePin = useCallback(() => {
     if (!link?.pin) return;
@@ -702,7 +724,8 @@ function ThemedCompositeChart({
     interactive,
     navigable,
     showLegend,
-    scene,
+    scene: baseScene,
+    cursor: cursorSource,
     cursorDate,
     updateCursor: updateKeyboardCursor,
     pin: pinnable ? { pinned: pinnedCursor, toggle: togglePin } : null,
@@ -882,7 +905,7 @@ function ThemedCompositeChart({
     () => baseScene && showTimeAxis ? buildCompositeTimeAxisLayout(baseScene, plotWidth) : null,
     [baseScene, plotWidth, showTimeAxis],
   );
-  const emptyTimeAxisLayout = !scene && showTimeAxis && effectiveViewport
+  const emptyTimeAxisLayout = !baseScene && showTimeAxis && effectiveViewport
     ? buildCompositeViewportTimeAxisLayout(effectiveViewport, plotWidth)
     : null;
 
@@ -898,7 +921,7 @@ function ThemedCompositeChart({
     ? { width: "auto", height: "auto", right: `calc(${rightPadding} * var(--cell-w))`, bottom: `calc(${timeAxisRows + xMarkerRows} * var(--cell-h))` }
     : undefined;
 
-  if (!scene) {
+  if (!baseScene || !cursorSource) {
     const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows - xMarkerRows);
     return (
       <Box
@@ -985,29 +1008,18 @@ function ThemedCompositeChart({
   // while a tool picked from the keys is in hand, so the plot says which one.
   const toolbarFolded = showToolbar && chartLayout.toolbarHidden === true && armedTool === null;
   // Bars shorter than a day carry a time of day the cursor reads out.
-  const intradayBars = scene.timeZone !== undefined || visibleSeries.some((entry) => (
+  const intradayBars = baseScene.timeZone !== undefined || visibleSeries.some((entry) => (
     !!entry.historyResolution && isIntradayResolution(entry.historyResolution)
   ));
-  const timeAxisCursorColumn = scene.cursorXRatio === null
-    ? null
-    : scene.cursorXRatio * Math.max(plotWidth - 1, 0);
-  const timeAxisCursorPixelX = timeAxisCursorColumn === null
-    ? null
-    : timeAxisCursorColumn * cellWidthPx;
-  const timeAxisCursorLabel = xAxis?.formatCursor && scene.cursorXRatio !== null
-    ? xAxis.formatCursor(scene.cursorXRatio)
-    : scene.cursorDate
-      ? formatCompositeCursorAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone, intradayBars)
-      : null;
   // The crosshair labels the moving end, so the axis only adds the anchor.
   const timeAxisMarkers = toolSpan
     ? [{
       ratio: toolSpan.startXRatio,
       label: formatCompositeCursorAxisDate(
         new Date(toolSpan.startTime),
-        scene.startTime,
-        scene.endTime,
-        scene.timeZone,
+        baseScene.startTime,
+        baseScene.endTime,
+        baseScene.timeZone,
         intradayBars,
       ),
       color: toolSpan.color,
@@ -1028,10 +1040,10 @@ function ThemedCompositeChart({
       data-gloom-data={navigationFrame ? `${navigationFrame.dataStart}:${navigationFrame.dataEnd}` : undefined}
     >
       {showLegend ? (
-        <CompositeLegend
+        <CursorLegend
           // Every series' value at the crosshair, the latest ones when the
           // pointer leaves; the price and the time under it sit on the axes.
-          scene={scene}
+          cursor={cursorSource}
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           lineCues={lineCues}
@@ -1122,11 +1134,12 @@ function ThemedCompositeChart({
           onRestore={setDrawings}
         />
       ) : null}
-      {scene.panels.map((panel, index) => (
+      {baseScene.panels.map((panel, index) => (
         <CompositePanelSurface
           key={panel.id}
           panel={panel}
-          scene={scene}
+          scene={baseScene}
+          cursor={cursorSource}
           plotWidth={plotWidth}
           leftAxisWidth={leftAxisWidth}
           rightAxisWidth={rightAxisWidth}
@@ -1217,14 +1230,15 @@ function ThemedCompositeChart({
           data-gloom-role="composite-chart-time-scale"
         >
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
-          <StaticXAxisLabels
+          <CursorTimeAxis
+            cursor={cursorSource}
+            formatCursor={xAxis?.formatCursor}
+            intradayBars={intradayBars}
+            cellWidthPx={cellWidthPx}
             labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
             positionedLabels={xAxis?.ticks ?? (xAxis?.labels ? undefined : timeAxisLayout.ticks)}
             width={plotWidth}
             color={resolvedColors.textDim}
-            cursorColumn={timeAxisCursorColumn}
-            cursorPixelX={timeAxisCursorPixelX}
-            cursorLabel={timeAxisCursorLabel}
             cursorColor={resolvedColors.crosshair}
             cursorBackgroundColor={resolvedColors.background}
             extraMarkers={timeAxisMarkers}
@@ -1244,5 +1258,46 @@ function ThemedCompositeChart({
         </Box>
       ) : null}
     </Box>
+  );
+}
+
+/** The legend, rendering with the crosshair: its values are the series' at the cursor. */
+function CursorLegend({ cursor, ...props }: Omit<ComponentProps<typeof CompositeLegend>, "scene"> & {
+  cursor: CompositeCursorSource;
+}) {
+  return <CompositeLegend {...props} scene={useCursorScene(cursor)} />;
+}
+
+/** The time axis, rendering with the crosshair: its label sits at the cursor, and the ticks under it step aside. */
+function CursorTimeAxis({
+  cursor,
+  formatCursor,
+  intradayBars,
+  cellWidthPx,
+  width,
+  ...props
+}: Omit<ComponentProps<typeof StaticXAxisLabels>, "cursorColumn" | "cursorPixelX" | "cursorLabel"> & {
+  cursor: CompositeCursorSource;
+  formatCursor?: (ratio: number) => string;
+  intradayBars: boolean;
+  cellWidthPx: number;
+}) {
+  const scene = useCursorScene(cursor);
+  const cursorColumn = scene.cursorXRatio === null
+    ? null
+    : scene.cursorXRatio * Math.max(width - 1, 0);
+  const cursorLabel = formatCursor && scene.cursorXRatio !== null
+    ? formatCursor(scene.cursorXRatio)
+    : scene.cursorDate
+      ? formatCompositeCursorAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone, intradayBars)
+      : null;
+  return (
+    <StaticXAxisLabels
+      {...props}
+      width={width}
+      cursorColumn={cursorColumn}
+      cursorPixelX={cursorColumn === null ? null : cursorColumn * cellWidthPx}
+      cursorLabel={cursorLabel}
+    />
   );
 }

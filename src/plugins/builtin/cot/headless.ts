@@ -1,7 +1,7 @@
 import type { CotClass, CotClassSummary, CotContractPayload, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { REPORT_ROWS } from "../shared/headless-options";
 
@@ -11,6 +11,12 @@ const count = (value: unknown) => cotInteger(typeof value === "number" ? value :
 const signed = (value: unknown) => cotInteger(typeof value === "number" ? value : null, true);
 const percent = (value: unknown) => typeof value === "number" ? `${value > 0 ? "+" : ""}${value.toFixed(1)}%` : "--";
 const rank = (value: unknown) => typeof value === "number" ? value.toFixed(0) : "--";
+
+/** The report's release, by the CFTC's schedule, for an export's publication time; nothing outside the schedule. */
+function cotReleased(asOf: string | null) {
+  const publishedAt = cotReleaseTime(asOf);
+  return publishedAt ? { freshness: { publishedAt } } : {};
+}
 
 /** The pane's columns: percentiles as their rank value, net share of open interest to one decimal. */
 function cotPositionRow(row: CotClassSummary) {
@@ -83,7 +89,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...Object.fromEntries(row.positions.map((position) => [`${camelClass(position.id)}Net`, position.net])) })) }],
       // "jet fuel" reads heating oil's positions, and says so.
       ...(proxy ? { notes: [cotProxyNote(proxy)] } : {}),
-      errors: data.gaps, metadata: { ...data, complete: data.status === "available" } };
+      errors: data.gaps, metadata: { ...data, complete: data.status === "available" }, ...cotReleased(data.asOf) };
     }
     const traderClass = cotClass(family, args.options.traderClass);
     if (args.options.traderClass && traderClass !== args.options.traderClass) throw new Error("Trader class does not belong to this report family");
@@ -94,6 +100,6 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
       columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" }, ...POSITION_COLUMNS,
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
-    errors: data.gaps, metadata: { ...data, scope, complete: data.status === "available" } };
+    errors: data.gaps, metadata: { ...data, scope, complete: data.status === "available" }, ...cotReleased(data.asOf) };
   },
 };

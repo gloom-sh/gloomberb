@@ -55,6 +55,7 @@ function venueToday(timeZone: string, now = new Date()): string {
     try {
       format = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
     } catch {
+      // Intentional ignore: a zone this runtime does not know reads the board at the local date.
       format = null;
     }
     venueDays.set(timeZone, format);
@@ -145,6 +146,7 @@ function countryName(code: string): string {
       regionNames ??= new Intl.DisplayNames(["en"], { type: "region" });
       name = regionNames.of(code) ?? "";
     } catch {
+      // Intentional ignore: a region the runtime cannot name leaves the search without a country name.
       name = "";
     }
     countryNames.set(code, name);

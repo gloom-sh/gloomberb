@@ -2,8 +2,13 @@ import type { PluginModule } from "../plugin-module";
 import { formatTickerListInput, parseTickerListInput } from "../../../tickers/list";
 import { earningsRippleHeadless } from "./headless";
 
+/**
+ * The tickers a typed argument names. A list the command bar refuses (more than
+ * ten) throws its message rather than opening the pane on the person's holdings.
+ * `fn` and `shot` pass their own list as `symbols` and never get here.
+ */
 function namedSymbols(arg: string | undefined): string[] {
-  try { return arg?.trim() ? parseTickerListInput(arg) : []; } catch { return []; }
+  return arg?.trim() ? parseTickerListInput(arg) : [];
 }
 
 export const earningsRippleModule: PluginModule = {

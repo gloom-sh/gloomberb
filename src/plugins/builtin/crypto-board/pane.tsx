@@ -295,15 +295,16 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   }, [stablecoins, supply]);
   const supplyError = !supply && supplyResource.error ? supplyResource.error : null;
 
-  const tabItems = CRYPTO_TABS.map((tab) => ({
+  // Kept between quotes, so the tab strip skips the renders a board update gives the pane.
+  const tabItems = useMemo(() => CRYPTO_TABS.map((tab) => ({
     label: tab.label,
     value: tab.value,
-  }));
-  const selectTab = (value: string) => {
+  })), []);
+  const selectTab = useCallback((value: string) => {
     setActiveTab(value as CryptoTab);
     setSelectedId(null);
     setVisibleRange(INITIAL_STREAM_RANGE);
-  };
+  }, [setActiveTab, setSelectedId]);
   const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   usePaneNoticeFooter({
