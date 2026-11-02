@@ -45,6 +45,7 @@ import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-b
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
+import { continuousAliasGeneric } from "../utils/futures-generic";
 import {
   bloombergCodeOf,
   bloombergMarketHint,
@@ -179,6 +180,9 @@ function parseCleanListingArg(
   // VIX.X and $VIX.X, a broker's code for an index, are its own symbol ^VIX; $VIX is read in `resolveCliListing`.
   const index = option ? null : brokerIndexCode(raw);
   if (index && !index.bare) return { symbol: index.symbol, exchange: "", key: index.symbol, readAs: brokerIndexReadAs(index) };
+  // VX=F, the continuous symbol VIX futures do not have, is the front generic VX1.
+  const generic = option ? null : continuousAliasGeneric(raw);
+  if (generic) return { symbol: generic, exchange: "", key: generic, readAs: `Read ${raw.trim().toUpperCase()} as ${generic}, the front VIX future.` };
   // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
   let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.

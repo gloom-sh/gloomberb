@@ -16,8 +16,8 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
-import { getCachedFuturesCurve, loadCurveSpotBars, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
+import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -140,6 +140,12 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     ? (force: boolean) => loadCurveSpotBars(spotSymbol, assetData, force) : null,
   [assetData, basisActive, spotSymbol, resource.updatedAt]);
   const spotBars = useAsyncResource(barsLoader, { keepPreviousData: true });
+  // VX reads its front settlement against spot VIX's close on the same session, re-read whenever the curve is.
+  const indexSymbol = requestedDate ? null : spotIndexSymbol(root);
+  const closesLoader = useMemo(() => indexSymbol && assetData
+    ? (force: boolean) => loadCurveSpotCloses(indexSymbol, assetData, force) : null,
+  [assetData, indexSymbol, resource.updatedAt]);
+  const spotCloses = useAsyncResource(closesLoader, { keepPreviousData: true });
   // Until the first answer there is nothing to say: no reason, only blank cells.
   const spot = useMemo(() => !basisActive || !spotSymbol || !spotState || spotState.loading && !spotState.quote ? null
     : curveSpot(spotSymbol, spotState.quote, clock), [basisActive, clock, spotState, spotSymbol]);
@@ -171,6 +177,9 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const thin = data?.slope.state === "thin";
   const spreadRank = data && !thin ? curveRank(data.slope.percentile, data.slope.samples) : null;
   const thinSpread = data ? thinSpreadNotice(data) : null;
+  // Until the closes first answer there is nothing to say.
+  const spotPremium = useMemo(() => data && indexSymbol && spotCloses.data ? curveSpotPremium(data, spotCloses.data) : null,
+    [data, indexSymbol, spotCloses.data]);
   const statItems: StatItem[] = data ? [
     { id: "roll", label: "Ann. roll yield", value: signedPercent(data.slope.annualizedRollYield),
       ...thin ? { tone: "warning" as const } : { detail: curveRank(data.slope.rollPercentile, data.slope.samples) } },
@@ -178,6 +187,13 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
       ...thin ? { tone: "warning" as const } : {},
       detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
+    ...spotPremium ? [
+      { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? "--" : spotPremium.close.toFixed(2),
+        detail: spotPremium.date ? `${spotPremium.date.slice(5)} close` : undefined },
+      { id: "premium", label: "Front premium", value: curveChangeText(spotPremium.premium, root),
+        ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ?? undefined }
+          : { detail: spotPremium.frontSymbol ? `${curveContractCode(spotPremium.frontSymbol)} settle` : undefined } },
+    ] : [],
     ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
   ] : [];
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true, queryBarWidth: width });

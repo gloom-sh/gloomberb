@@ -702,6 +702,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
      * means and the commands that run them, and `catalog ivol` lists them first.
      */
     suggestFor?: string[];
+    /**
+     * Words that name one case of the function, each with the argument it
+     * takes for it: CTM opens the VIX futures curve for `VX` and `vix
+     * futures`. `fn VX` runs `CTM VIX` and says so, and `catalog vx` lists
+     * the function first.
+     */
+    opens?: ReadonlyArray<{ words: readonly string[]; argument: string }>;
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];

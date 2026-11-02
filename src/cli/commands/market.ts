@@ -389,10 +389,22 @@ type FinancialsCliData = TickerFinancials & {
   providerId: string | null;
 };
 
+/**
+ * A range as typed, in any case and as other tools spell it: `1mo`, `1m` and
+ * `1 month` are 1M, `1wk` 1W, `5yr` 5Y, `max` ALL.
+ */
+export function readHistoryRange(value: string): HistoryRange | null {
+  const typed = value.trim().toUpperCase().replace(/\s+/g, "");
+  if (typed === "MAX") return "ALL";
+  const spelled = /^(\d+)(D|DAYS?|W|WKS?|WEEKS?|M|MOS?|MONTHS?|Y|YRS?|YEARS?)$/.exec(typed);
+  const range = (spelled ? `${spelled[1]}${spelled[2]![0]}` : typed) as HistoryRange;
+  return VALID_RANGES.has(range) ? range : null;
+}
+
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
-  const range = (value ?? "1Y").toUpperCase() as HistoryRange;
-  if (!VALID_RANGES.has(range)) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
-  return range;
+  const range = readHistoryRange(value ?? "1Y");
+  if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
+  return range!;
 }
 
 function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined {
@@ -1727,27 +1739,59 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 /** A symbol of a list: its bars, or why it has none. */
 type ListedHistory = { symbol: string; history: ListingHistory } | { symbol: string; error: string };
 
+/** Minutes in an intraday bar size; null for daily and longer bars. */
+const INTRADAY_BAR_MINUTES: Partial<Record<NonNullable<HistoryRow["interval"]>, number>> = {
+  "1m": 1, "5m": 5, "15m": 15, "30m": 30, "45m": 45, "1h": 60,
+};
+
+/**
+ * The time each intraday bar is set under in `--wide`: the start of the slot
+ * of the coarsest bar size among the symbols it falls in, so bars one source
+ * stamps on the hour and another on the half hour share a row. Null when
+ * some symbol's bars are daily or longer, whose dates already line up.
+ */
+function wideBarSlot(histories: readonly ListingHistory[]): { size: string; slot: (date: string) => string } | null {
+  const minutes = histories.map((history) => history.interval ? INTRADAY_BAR_MINUTES[history.interval] : undefined);
+  if (!histories.length || minutes.some((value) => value == null)) return null;
+  const coarsest = Math.max(...minutes as number[]);
+  const size = coarsest * 60_000;
+  return {
+    size: histories[minutes.indexOf(coarsest)]!.interval!,
+    slot: (date) => {
+      const time = Date.parse(date);
+      return Number.isFinite(time) ? new Date(Math.floor(time / size) * size).toISOString().replace(".000Z", "Z") : date;
+    },
+  };
+}
+
 /**
  * `history USDJPY=X USDCHF=X EURCHF=X --wide`: one row a date and one close
  * column a symbol, its unit in the header (`USDJPY=X close (JPY per USD)`),
  * as a spreadsheet sets several series side by side. A symbol with no bar on
- * a date (another market's holiday) leaves its cell blank. `interval` is the
- * bars' size when every symbol came in one, else null.
+ * a date (another market's holiday) leaves its cell blank. Intraday bars are
+ * set under the slot they start in, the newest bar's close where a symbol has
+ * several in one, and `notes` names the symbols whose bars moved. `interval`
+ * is the bars' size when every symbol came in one, else null.
  */
 function wideHistoryTable(served: readonly ListingHistory[]): {
   rows: Array<Record<string, string | number | null>>;
   columns: CliResultColumn[];
   interval: string | null;
+  notes: string[];
 } {
   const histories = served.filter((history, index) => served.findIndex((other) => other.listing.key === history.listing.key) === index);
   const key = (history: ListingHistory) => `close:${history.listing.key}`;
-  const dates = [...new Set(histories.flatMap((history) => history.data.map((row) => row.date)))].sort();
-  const closes = histories.map((history) => new Map(history.data.map((row) => [row.date, row.close] as const)));
+  const grid = wideBarSlot(histories);
+  const slot = grid?.slot ?? ((date: string) => date);
+  const closes = histories.map((history) => new Map(history.data.map((row) => [slot(row.date), row.close] as const)));
+  const dates = [...new Set(closes.flatMap((bySlot) => [...bySlot.keys()]))].sort();
   const rows = dates.map((date) => Object.fromEntries([
     ["date", date],
     ...histories.map((history, index) => [key(history), closes[index]!.get(date) ?? null] as const),
   ]));
   const intervals = new Set(histories.map((history) => history.interval));
+  // The last bar can be stamped at the latest trade inside its slot; the others say where a symbol's bars start.
+  const moved = histories.filter((history) => history.data.slice(0, -1).some((row) => slot(row.date) !== row.date));
   return {
     rows,
     columns: [
@@ -1762,6 +1806,8 @@ function wideHistoryTable(served: readonly ListingHistory[]): {
       }),
     ],
     interval: intervals.size === 1 ? [...intervals][0] ?? null : null,
+    notes: grid && moved.length
+      ? [`Bars off the ${grid.size} grid (${moved.map((history) => history.listing.key).join(", ")}) are listed under the ${grid.size} they start in.`] : [],
   };
 }
 
@@ -1838,6 +1884,7 @@ async function runHistoryList(
     } : { symbol: entry.symbol, error: entry.error });
     if (wide) {
       const table = wideHistoryTable(served);
+      notes.push(...table.notes);
       ctx.printResult({
         data: table.rows,
         metadata: {

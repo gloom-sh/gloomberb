@@ -1259,6 +1259,7 @@ export const es: Record<string, string> = {
   "{count}m": "{count} min",
   "{count}h": "{count} h",
   "delayed data · upgrade": "datos diferidos · mejorar",
+  "upgrade": "mejorar",
   "real-time news": "noticias en tiempo real",
   "Pro trial · {days}d left": "Prueba Pro · quedan {days} d",
   "{delay} delayed": "{delay} de retraso",

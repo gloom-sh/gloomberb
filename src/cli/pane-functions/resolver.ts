@@ -142,13 +142,54 @@ export function parsePaneFunctionArgsFor(
   args: string[],
   globalOptions: { limit?: number; tail?: number } = {},
 ): ParsedPaneFunctionArgs {
-  const parsed = parsePaneFunctionArgs(args, globalOptions);
+  const parsed = withOpeningWord(registry, withKeywordNote(registry, parsePaneFunctionArgs(args, globalOptions)));
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
   if (!found?.pane) return parsed;
   const capability = getPaneFunctionCapability(found.template, found.pane);
   if (!capability.options.some((option) => (option.valueWords ?? 1) > 1 || option.list)) return parsed;
-  return parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1,
+  const reparsed = parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1,
     (key) => findCapabilityOption(capability, key)?.list === true);
+  return { ...reparsed, target: parsed.target, arg: reparsed.target === parsed.target ? reparsed.arg : parsed.arg,
+    ...(parsed.listingNotes ? { listingNotes: parsed.listingNotes } : {}) };
+}
+
+/**
+ * A word that opens no function by its code but names one case of a function
+ * (`discovery.opens`: `VX`, `vix futures`) runs that function on the case's
+ * argument, and says so: `fn VX` is `fn CTM VIX`. A word typed with an
+ * argument of its own keeps it.
+ */
+function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
+  if (!parsed.target || findPaneFunction(registry, parsed.target)) return parsed;
+  const wanted = normalizeLookupToken(parsed.target);
+  for (const template of registry.paneTemplates.values()) {
+    const pane = registry.panes.get(template.paneId);
+    const opens = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.opens : undefined;
+    const opening = opens?.find((entry) => entry.words.some((word) => normalizeLookupToken(word) === wanted));
+    if (!pane || !opening) continue;
+    const code = paneFunctionCode(template, pane);
+    const arg = parsed.arg.trim() || opening.argument;
+    return { ...parsed, target: code, arg, listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${code} ${arg}, ${template.label}.`] };
+  }
+  return parsed;
+}
+
+/**
+ * A word that opens a function as one of its keywords rather than its code or
+ * name (`fn VVIX` opens VIX, whose board lists VVIX) says which function it
+ * opened, so the report is never read as one of its own.
+ */
+function withKeywordNote(registry: PaneFunctionCatalog, parsed: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
+  const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
+  if (!found?.pane || !found.template) return parsed;
+  const { template, pane } = found;
+  const wanted = normalizeLookupToken(parsed.target);
+  const headless = getHeadlessPaneDefinition(template, pane);
+  const names = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? [], template.id, template.label, pane.id, pane.name,
+    headless?.discovery?.id, ...headless?.discovery?.aliases ?? []];
+  if (names.some((name) => name && normalizeLookupToken(name) === wanted)) return parsed;
+  const code = paneFunctionCode(template, pane);
+  return { ...parsed, listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${code}, ${template.label}.`] };
 }
 
 /**
