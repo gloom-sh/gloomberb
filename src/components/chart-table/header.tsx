@@ -37,10 +37,10 @@ export interface ChartTableChart {
   /** Content with a natural height (a few bars): the band never takes more, the table gets the rest. */
   maxRows?: number;
   /**
-   * The most of the height the chart may take, as a share (a third), for a
-   * board whose rows are the point and whose chart is context: it goes in the
-   * table's `rootAfter`, under the rows, and gives way to a strip below its
-   * readable rows.
+   * The most of the height the zone may take, query bar, figures and chart
+   * together, as a share (a third), for a board whose rows are the point and
+   * whose chart is context: it goes in the table's `rootAfter`, under the
+   * rows, and the chart gives way to a strip below its readable rows.
    */
   maxShare?: number;
   /** The strip for a custom chart; kit series derive their own. Null keeps no strip. */

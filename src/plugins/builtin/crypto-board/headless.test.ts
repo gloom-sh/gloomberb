@@ -109,13 +109,13 @@ test("--sort offpeg lists the stablecoins furthest off their peg first, a bond t
   const apiClient = { getCloudCryptoMarkets: async () => board, getCloudStablecoinSupply: async () => stablecoinSupplyFixture() };
   const ctx = { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext;
   const args = { ...ARGS, options: { list: "stablecoin", sort: "offpeg" } };
-  const result = await cryptoBoardHeadless.load(args, ctx) as LoadedHeadlessPaneModel;
-  expect(result.rows!.map((row) => [row.code, row.offPegBp ?? null, row.pegText])).toEqual([
+  const result = await cryptoBoardHeadless.load(args, ctx);
+  expect(result.rows.map((row) => [row.code, row.offPegBp ?? null, row.pegText])).toEqual([
     ["FDUSD", -45, "USD"], ["USDE", 21, "USD"], ["USDT", -2, "USD"], ["BUSD0", null, "USD bond"],
   ]);
   expect(result.metadata).toMatchObject({ sort: "offpeg" });
-  const byCap = await cryptoBoardHeadless.load(ARGS, ctx) as LoadedHeadlessPaneModel;
-  expect(byCap.rows!.map((row) => row.code)).toEqual(["USDT", "BUSD0", "USDE", "FDUSD"]);
+  const byCap = await cryptoBoardHeadless.load(ARGS, ctx);
+  expect(byCap.rows.map((row) => row.code)).toEqual(["USDT", "BUSD0", "USDE", "FDUSD"]);
   // The pane opens on the order asked for, which it reads back as its header's sort.
   expect(cryptoBoardHeadless.shotState!(args as never, null as never, new Set(["list", "sort"])))
     .toEqual({ pluginState: { "market-overview": { sort: { columnId: "offPegBp", direction: "desc" } } } });

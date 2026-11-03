@@ -69,11 +69,15 @@ describe("chartTableLayout", () => {
   });
 
   // The stablecoin board's supply chart took about half the pane above the pegs it is read for.
-  test("a chart capped at a share of the height never takes more, and gives way to a strip below what it draws in", () => {
+  test("a zone capped at a share of the height never takes more, its figures one row and then its chart a strip when short", () => {
     const third = { ...CHART, maxShare: 1 / 3 };
-    // A short table would leave the chart 31 rows; a third of 40 is 13.
-    expect(chartTableLayout({ width: 90, height: 40, figures: FIGURES, tableRows: 6, chart: third })).toMatchObject({ mode: "full", chartRows: 13 });
-    expect(chartTableLayout({ width: 90, height: 60, figures: FIGURES, tableRows: 250, chart: third }).chartRows).toBe(20);
+    // A short table would leave the chart 31 rows; a third of 40 is 13, the query bar and two figure rows among them.
+    expect(chartTableLayout({ width: 90, height: 40, queryRows: 1, figures: FIGURES, tableRows: 6, chart: third }))
+      .toMatchObject({ mode: "full", figureRows: 2, chartRows: 10 });
+    expect(chartTableLayout({ width: 90, height: 60, figures: FIGURES, tableRows: 250, chart: third })).toMatchObject({ figureRows: 2, chartRows: 18 });
+    // A third of 24 is 8: two figure rows would leave the chart less than it draws in, so the figures keep one.
+    expect(chartTableLayout({ width: 90, height: 24, queryRows: 1, figures: FIGURES, tableRows: 250, chart: third }))
+      .toMatchObject({ mode: "full", figureRows: 1, chartRows: CHART_MIN_ROWS });
     // A third of 15 is less than the six rows a chart draws in: a strip, and the table keeps the rest.
     expect(chartTableLayout({ width: 90, height: 15, tableRows: 250, chart: third })).toMatchObject({ mode: "strip", chartRows: 1 });
   });
