@@ -2483,7 +2483,7 @@ Below half of the holdings' value, cash aside, the views say so instead of estim
 
 ## Equity criteria screener
 
-`EQS` screens the stored Cloud equity universe, starting with USD companies above $10 billion in market capitalization. **Criteria** edits typed numeric ranges, category lists and available/unavailable data conditions, all ANDed. Thresholds accept `k`, `M`, `B` and `T` (`10B` is ten billion). The currency selector is required for price and market-cap comparisons.
+`EQS` screens the stored Cloud equity universe, starting with USD companies above $10 billion in market capitalization. **Criteria** edits typed numeric ranges, category lists and available/unavailable data conditions, all ANDed. Thresholds accept `k`, `M`, `B` and `T` (`10B` is ten billion). The currency selector is required for price and market-cap comparisons. A category list takes up to 25 names. **Symbol** takes up to 500, or one watchlist's name, which reads as its symbols without their venues (`HY3`; the note says `Read HY3 as watchlist HY3 (70 symbols).`). `fn EQS --definition` reads it the same way: `{"field": "symbol", "op": "in", "value": ["HY3"]}`.
 
 Besides valuation, growth, margins, short interest, insider and 13F activity and social attention, fields cover:
 

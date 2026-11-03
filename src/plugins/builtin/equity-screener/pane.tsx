@@ -21,12 +21,14 @@ import {
   usePaneFooter,
   usePaneNoticeFooter,
   usePaneTabs,
+  useRowNotes,
   useTableLoadMore,
   type DataTableColumn,
   type DataTableVisibleRange,
   type SelectControl,
 } from "../../../components";
 import {
+  useAppSelector,
   useAsyncResource,
   useAutoRefresh,
   usePaneSettingValue,
@@ -42,6 +44,7 @@ import {
   LETTER_GRADE_FIELDS,
   NUMERIC_FIELDS,
   type NumericField,
+  type ScreenCriterion,
   type ScreenDefinition,
   type ScreenField,
 } from "../../../api-client/equity-screener";
@@ -74,6 +77,7 @@ import {
   formatScreenMetric,
   formatScreenValue,
   GRADE_DISPLAY_FIELDS,
+  MAX_SYMBOL_VALUES,
   gradeRankText,
   metricDate,
   parseScreenDefinition,
@@ -87,9 +91,11 @@ import {
   screenLabel,
   screenRowId,
   screenSignValue,
+  screenSymbols,
   screenYtdBase,
   splitGradeReason,
 } from "./model";
+import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import { useScreenResults } from "./results";
 import { screenWatchlistList } from "./watchlist";
 import { unmatchedCategoryText, unmatchedCategoryValues } from "./categories";
@@ -177,6 +183,8 @@ export function resultColumns(
   return fits(named) ? named : build(compact.slice(0, shown), exchange, sector, "compact");
 }
 const loadFields = () => fetchScreenFields();
+const criterionRowId = (row: { id: string }) => row.id;
+const criterionSignature = (row: { criterion: ScreenCriterion }) => JSON.stringify(row.criterion);
 const DETAIL_LABEL_WIDTH = 24;
 /** A long note under a value, wrapped to the detail's width rather than cut: one row per line, the label on the first. */
 function WrappedDetailRows({ label, text, width }: { label: string; text: string; width: number }) {
@@ -389,6 +397,26 @@ function EquityScreenView({
     [currentSaved?.name, data, definition, mode, openId, shownOrder], // eslint-disable-line react-hooks/exhaustive-deps
   );
   useMembersMenu("equity-screener:watchlist", watchlistList);
+  // A watchlist's name typed for the symbol field reads as its symbols, as `fn EQS` reads it.
+  const watchlists = useAppSelector((state) => state.config.watchlists);
+  const tickers = useAppSelector((state) => state.tickers);
+  const readWatchlist = useCallback((typed: string) => {
+    const watchlist = findNamedCollection(watchlists, typed);
+    if (!watchlist) return null;
+    const members = screenSymbols([...tickers.values()]
+      .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
+      .map((ticker) => ticker.metadata.ticker));
+    return members.length ? readWatchlistArgument(typed, watchlist, members, MAX_SYMBOL_VALUES) : null;
+  }, [tickers, watchlists]);
+  // How a saved criterion read a watchlist's name stays on its row until the criterion changes.
+  const criterionRows = useMemo(
+    () => definition.criteria.map((criterion, index) => ({ id: String(index), criterion })),
+    [definition.criteria],
+  );
+  const criterionNotes = useRowNotes<(typeof criterionRows)[number], string>(criterionRows, {
+    key: criterionRowId,
+    signature: criterionSignature,
+  });
   const selectedSaved =
     saved.data?.find((row) => row.id === savedSelectedId) ?? saved.data?.[0];
   useEffect(() => {
@@ -857,12 +885,14 @@ function EquityScreenView({
                   value={editingCriterion ?? null}
                   focused={focused}
                   width={width}
+                  readWatchlist={readWatchlist}
                   onCancel={() => setEditing(null)}
-                  onSave={(criterion) => {
+                  onSave={(criterion, note) => {
                     const criteria = [...definition.criteria];
                     if (editing < 0) criteria.push(criterion);
                     else criteria[editing] = criterion;
                     apply({ ...definition, criteria });
+                    criterionNotes.setNote(String(editing < 0 ? criteria.length - 1 : editing), note);
                     setEditing(null);
                   }}
                 />
@@ -908,10 +938,7 @@ function EquityScreenView({
                       align: "left",
                     },
                   ]}
-                  items={definition.criteria.map((criterion, index) => ({
-                    id: String(index),
-                    criterion,
-                  }))}
+                  items={criterionRows}
                   focused={focused && editing === null && !saveForm}
                   rootWidth={width}
                   rootHeight={bodyHeight - 1}
@@ -923,7 +950,10 @@ function EquityScreenView({
                     onChange: setSelectedCriterion,
                   }}
                   onActivate={(row) => setEditing(Number(row.id))}
-                  renderCell={(row) => ({ text: criterionText(row.criterion) })}
+                  renderCell={(row) => {
+                    const note = criterionNotes.noteFor(row);
+                    return { text: criterionText(row.criterion), ...(note ? { note } : {}) };
+                  }}
                   sortColumnId={null}
                   sortDirection="asc"
                   emptyStateTitle="No criteria. All covered equities match."

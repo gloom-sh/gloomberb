@@ -25,17 +25,21 @@ import {
   unmatchedCategoryValues,
 } from "./categories";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import {
   appendScreenPage,
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
   formatScreenMetric,
+  WATCHLIST_SCREEN_DEFINITION,
+  MAX_SYMBOL_VALUES,
   metricDate,
   parseScreenDefinition,
   screenColumnLabel,
   screenDefinitionSyntax,
   screenCurrencyEmpty,
   screenLabel,
+  screenSymbols,
   screenYtdBase,
   withheldMetricNote,
 } from "./model";
@@ -44,6 +48,30 @@ import type { ScreenDefinition } from "../../../api-client/equity-screener";
 /** JSON with a space after each comma and colon, so a wrapped command line breaks between tokens and still pastes. */
 const spacedJson = (definition: ScreenDefinition) =>
   JSON.stringify(definition).replace(/([,:])(?=["{[\d-])/g, "$1 ");
+
+/**
+ * A symbol criterion whose one value names a watchlist (`"value": ["HY3"]`)
+ * reads as the watchlist's symbols, at most a screen's 500, with the note
+ * that says so; any other criterion is left as it is.
+ */
+async function withWatchlistSymbols(
+  definition: ScreenDefinition,
+  ctx: Pick<HeadlessPaneContext, "config" | "resolveWatchlist">,
+): Promise<{ definition: ScreenDefinition; notes: string[] }> {
+  const notes: string[] = [];
+  const criteria = await Promise.all(definition.criteria.map(async (criterion) => {
+    if (criterion.field !== "symbol" || criterion.op !== "in" || criterion.value.length !== 1) return criterion;
+    const typed = criterion.value[0]!;
+    const watchlist = findNamedCollection(ctx.config.watchlists, typed);
+    if (!watchlist || !ctx.resolveWatchlist) return criterion;
+    const members = screenSymbols(((await ctx.resolveWatchlist(typed)) ?? []).map((ticker) => ticker.metadata.ticker));
+    if (members.length === 0) return criterion;
+    const read = readWatchlistArgument(typed, watchlist, members, MAX_SYMBOL_VALUES);
+    notes.push(read.note);
+    return { ...criterion, value: read.symbols };
+  }));
+  return notes.length ? { definition: { ...definition, criteria }, notes } : { definition, notes };
+}
 
 /** The `--definition` value of the catalog's worked example, quoted for a shell. */
 const EXAMPLE_DEFINITION_OPTION = `--definition '${spacedJson(EXAMPLE_SCREEN_DEFINITION)}'`;
@@ -207,6 +235,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       placeholder: "json",
       description: screenDefinitionSyntax(),
       example: EXAMPLE_DEFINITION_OPTION,
+      examples: [`--definition '${spacedJson(WATCHLIST_SCREEN_DEFINITION)}'`],
       normalize: (value) => {
         readDefinition(value);
         return value;
@@ -275,12 +304,15 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       definition = matches[0]!.definition;
       savedName = matches[0]!.name;
     }
+    const watchlistRead = await withWatchlistSymbols(definition, ctx);
+    definition = watchlistRead.definition;
     if (args.options.check) {
       const data = await fetchScreenCheck(definition, String(args.options.check), undefined, ctx.signal, ctx.apiClient);
       return {
         freshness: { asOf: data.snapshot.assembledAt },
         complete: data.status === "available" && data.warnings.length === 0,
         errors: data.warnings,
+        ...(watchlistRead.notes.length ? { notes: watchlistRead.notes } : {}),
         sections: data.criteria.length === 0 ? [{
           title: data.row ? `${data.row.symbol}:${data.row.exchange}` : data.symbol,
           entries: [{ label: "Result", value: screenCheckSummary(data) }],
@@ -338,7 +370,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const extra = extraScreenColumns(metrics, data.definition.sort.field);
     const states = new Set(rows.map((row) => row.metrics[metric].state));
     const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
-    const notes = [...kpiGaps, ...legend];
+    const notes = [...watchlistRead.notes, ...kpiGaps, ...legend];
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {

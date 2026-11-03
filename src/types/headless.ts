@@ -93,6 +93,8 @@ export interface HeadlessPaneOptionDef {
   list?: boolean;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
   example?: string;
+  /** Other uses the catalog shows after `example`: a form of the value the first does not show. */
+  examples?: readonly string[];
   /** The example runs without the function's optional argument, as an option that works only then does (`fn INS --side sell`). */
   exampleWithoutArgument?: boolean;
   /**
