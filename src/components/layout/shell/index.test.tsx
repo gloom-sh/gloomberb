@@ -1467,6 +1467,26 @@ describe("Shell", () => {
     expect(updateLayout?.layout.dockRoot).toBeNull();
   });
 
+  test("double Escape closes the focused floating pane and focuses the next floating one", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const layout = floatingOverDockLayout(config, [
+      { instanceId: "ticker-detail:main", x: 4, y: 2 },
+      { instanceId: "ticker-detail:secondary", x: 8, y: 3 },
+    ]);
+    // Focus came from the docked pane, where Ctrl+W would hand it back.
+    const { actions } = await renderShell(
+      { ...createShellStateWithLayout(config, layout, "ticker-detail:secondary"), previousFocusedPaneId: "portfolio-list:main" },
+      { width: 40, height: 12 },
+    );
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+
+    const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");
+    expect(updateLayout?.layout.floating.map((entry: { instanceId: string }) => entry.instanceId)).toEqual(["ticker-detail:main"]);
+    expect(updateLayout?.focusedPaneId).toBe("ticker-detail:main");
+  });
+
   test("closes the focused floating pane with Ctrl+W", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);

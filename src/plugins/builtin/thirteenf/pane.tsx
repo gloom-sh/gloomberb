@@ -16,6 +16,7 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
+import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -493,6 +494,8 @@ export function FundDetailView({
   useShortcut((event) => {
     if (!focused || !openFiling || event.targetEditable) return;
     if (!isDetailBackNavigationKey(event)) return;
+    // Ahead of the shell's own Esc handler when restored with it, so it counts the Esc itself.
+    countEscapeTowardClose(event);
     event.preventDefault?.();
     event.stopPropagation?.();
     closeOpenFiling();
