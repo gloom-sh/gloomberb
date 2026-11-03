@@ -125,7 +125,7 @@ test("a delayed list shows locked rows for the newest deals, terms, private targ
   expect(frame).toContain("0.38%");
   expect(frame).toContain("Tender offer");
   expect(frame).toContain("COL Group");
-  expect(frame).toContain("€810M");
+  expect(frame).toContain("€810.00M");
   expect(frame).toContain("Q1 27");
   expect(frame).toContain("[$]upgrade");
 });

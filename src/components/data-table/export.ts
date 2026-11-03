@@ -1,5 +1,6 @@
 import type { DataTableCell, DataTableColumn, DataTableProps } from "../ui";
 import { serializeCsv } from "../../utils/csv";
+import { figureColumnCells } from "../ui/data-table/render-cell";
 import {
   BLANK_DISPLAY as BLANK,
   DISPLAY_PLACEHOLDER as PLACEHOLDER,
@@ -56,9 +57,11 @@ export function createDataTableCsv<
   renderSectionHeader,
   getExportMetadata,
 }: Pick<DataTableProps<T, C>, "columns" | "items" | "renderCell" | "renderSectionHeader" | "getExportMetadata">): string {
+  // A pane that exports a table it does not draw (all its columns) reads the figures as the table draws them.
+  const cell = figureColumnCells(renderCell);
   const cells = items.flatMap((item, index) => {
     if (renderSectionHeader?.(item, index)) return [];
-    return [columns.map((column) => renderCell(item, column, index, { selected: false }))];
+    return [columns.map((column) => cell(item, column, index, { selected: false }))];
   });
   // A column drawn only as graphics (a bar, a sparkline) has no value to export.
   const exported = columns.flatMap((column, index) => (

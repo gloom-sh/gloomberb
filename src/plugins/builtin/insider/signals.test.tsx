@@ -123,7 +123,7 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   // A server from before the structured facts: the lead's role and how many others, the rest dashes.
   expect(frame).toMatch(/SCORE ▼\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+--\s+--\s+--\s+3\s+\$1\.15M/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610k/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610\.0k/);
   expect(frame).toContain("as of Oct 14, 2026");
   // Footers follow the conventions: no generic key hints for Enter or Esc, and no second way into the same INS.
   expect(frame).not.toContain("[Enter]");
@@ -138,7 +138,7 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   expect(frame).toMatch(/Window\s+7D\s+30D\s+90D.*Trades\s+Insiders/);
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
   // The same facts the ranking gives its lead insider: an older server's from the why facts.
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+10\/14\/26/);
   expect(frame).not.toContain("Northwind Biologics");
   expect(asked.filter((params) => params.ticker)).toEqual([{ window: 30, ticker: "CTSO" }, { side: "sell", window: 30, ticker: "CTSO" }]);
   // The pane stays the ranking: no ticker, no new title.
@@ -177,7 +177,7 @@ test("Enter on an insider shows their trades as filed; Esc closes an open trade 
   await settle();
   let frame = tui.frame();
   expect(frame).toMatch(/Insider\s+Ana Rivera/);
-  expect(frame).toMatch(/Ana Rivera\s+BUY\s+4k\s+\$10\.00\s+\$40k/);
+  expect(frame).toMatch(/Ana Rivera\s+BUY\s+4\.0k\s+\$10\.00\s+\$40\.0k/);
   expect(frame).not.toContain("$90k");
   // The view is the ranking's to keep; the filter is the open company's own and goes with it.
   const kept = state!.paneState[PANE_ID]?.pluginState?.insider ?? {};
@@ -438,8 +438,8 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   await mount(sided, 140, 24);
   let frame = tui.frame();
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610k/);
-  expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720k/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610\.0k/);
+  expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720\.0k/);
   // No why column: its facts are the columns. No strip under the table: the insiders are the opened company.
   expect(frame).not.toMatch(/\bWHY\b/);
   expect(frame).not.toContain("Ana Rivera");
@@ -448,8 +448,8 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   frame = tui.frame();
   // Its insiders in the ranking's columns, the buyers' dollars first.
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496k\s+--\s+10\/1\/26/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+--\s+10\/9\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496\.0k\s+--\s+10\/1\/26/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354\.0k\s+--\s+10\/9\/26/);
   expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+--\s+10\/14\/26/);
   // The headers sort, as the ranking's do: stake largest first puts NEW on top.
   await tui.clickFrameText("STAKE");
@@ -465,7 +465,7 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   expect(asked.at(-1)).toEqual({ side: "sell", window: 30, limit: 100 });
   frame = tui.frame();
   expect(frame).toMatch(/ROLE\s+NTH\s+VS USUAL\s+STAKE\s+SELLERS\s+SOLD\s+LAST SALE/);
-  expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director\s+2nd\s+100x\+\s+EXITED\s+1\s+\$4\.2M/);
+  expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director\s+2nd\s+100x\+\s+EXITED\s+1\s+\$4\.20M/);
   // Bought and sold: counted on the net, marked, with no nth sale or size against usual.
   expect(frame).toMatch(/WWIM\s+Wide World Importers\s+40\s+CFO \+1\s+--\s+--\s+-22% \u00b1\s+2\s+\$900k/);
   // The position filter says what it does on this side.
@@ -521,7 +521,7 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+10\/14\/26/);
 });
 
 test("the insiders' columns drop the size against usual, then the nth trade and the last day, as the ranking's do, then the role", () => {

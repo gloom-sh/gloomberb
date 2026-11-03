@@ -55,7 +55,7 @@ export function PortfolioCashMarginDrawer({
               <Text fg={colors.textDim}>{" qty "}</Text>
               <Text fg={colors.text}>{padTo(formatMarketQuantity(balance.quantity, { isCashBalance: true, maxWidth: 14 }), 14, "right")}</Text>
               <Text fg={colors.textDim}>{"  value "}</Text>
-              <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue) : "—", 10, "right")}</Text>
+              <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue, { fixedDecimals: true }) : "—", 10, "right")}</Text>
             </Box>
           ))
         )}

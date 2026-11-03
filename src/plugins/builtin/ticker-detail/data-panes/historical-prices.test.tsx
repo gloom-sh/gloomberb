@@ -138,7 +138,7 @@ test("with no current quote the session's snapshot is left out, and a closed ses
   setSystemTime(new Date("2026-10-17T15:00:00Z"));
   const closed = await mountHistory(snapshot, undefined, sessionQuote({ marketState: "CLOSED", lastUpdated: Date.parse("2026-10-16T20:00:00Z") }));
   expect(closed.frame).toContain("2026-10-16");
-  expect(closed.frame).toContain("1.1M");
+  expect(closed.frame).toContain("1.10M");
   expect(closed.frame).not.toContain("DTD");
   // Its move from Thursday, a half cent down, reads 0.00: unsigned, as every other change that rounds to nothing.
   expect(closed.frame).not.toContain("-0.00");

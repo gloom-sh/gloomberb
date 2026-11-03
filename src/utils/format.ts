@@ -132,11 +132,31 @@ export function formatPercentRaw(value: number | undefined): string {
   return `${signedFixed(value, 2)}%`;
 }
 
+let figureColumnCells = 0;
+
 /**
- * Format large numbers compactly (e.g., 1.5T, 234B, 12.3M, 5k). Table columns
- * pass `fixedDecimals` so 1.70T lines up with 1.33T.
+ * Formats one cell of a right-aligned table column. Inside it `formatCompact`
+ * keeps its decimals unless the caller passes `fixedDecimals: false`, so a
+ * column of compact figures lines up: 12.00M over 10.73M, 10.0k over 12.5k.
+ * The table kit draws, reports and exports every right-aligned cell through
+ * this, so a pane's cell keeps the short 12M wherever else it says it (a
+ * figure, a sentence, a label).
  */
-export function formatCompact(value: number | undefined, { fixedDecimals = false }: { fixedDecimals?: boolean } = {}): string {
+export function inFigureColumn<T>(format: () => T): T {
+  figureColumnCells += 1;
+  try {
+    return format();
+  } finally {
+    figureColumnCells -= 1;
+  }
+}
+
+/**
+ * Format large numbers compactly (e.g., 1.5T, 234B, 12.3M, 5k). In a table
+ * column (`inFigureColumn`), or with `fixedDecimals`, the decimals stay so
+ * 1.70T lines up with 1.33T.
+ */
+export function formatCompact(value: number | undefined, { fixedDecimals = figureColumnCells > 0 }: { fixedDecimals?: boolean } = {}): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const { fixed, suffix } = compactParts(Math.abs(value));
   // Strip unnecessary trailing zeros after decimal point

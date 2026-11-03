@@ -116,7 +116,7 @@ function renderOfficerCell(row: CloudExecutiveRowPayload, column: OfficerColumn)
     case "name": return { text: row.name, color: colors.textBright };
     case "title": return { text: row.title.replace(/\s+/g, " ").trim(), color: colors.textDim };
     case "equity": return { text: equityShare(row), color: colors.textDim };
-    case "total": return { text: formatPay(row.total), color: colors.text, attributes: TextAttributes.BOLD };
+    case "total": return { text: formatPay(row.total, { fixedDecimals: true }), color: colors.text, attributes: TextAttributes.BOLD };
   }
 }
 
