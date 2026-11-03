@@ -5,7 +5,9 @@ name: Desktop shell check
 # - updates an install of that release to this build in place, then this
 #   build to a newer one, from a copy of the release served on the runner
 #   (never the live update channel);
-# - measures the startup and memory of both with scripts/desktop-measure.
+# - measures the startup and memory of both with scripts/desktop-measure;
+# - on macOS and Linux, drags the window of both far past its minimum size
+#   (Windows does in the Windows desktop check).
 # Windows on x64 also builds with the system's WebView2 instead of the
 # Chromium the app ships, for its sizes and measurements. Publishes nothing.
 on:
@@ -17,6 +19,7 @@ on:
       - "patches/electrobun-devkit@*.patch"
       - "scripts/patch-electrobun-devkit.ts"
       - "scripts/desktop-measure/**"
+      - "src/renderers/electrobun/bun/window/**"
 
 concurrency:
   group: desktop-shell-check-${{ github.ref }}
@@ -68,6 +71,13 @@ jobs:
             --launch "$app/Contents/MacOS/launcher" --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
             --app-root "$app" --out measure/before --skip window
 
+      # The earlier release only puts the window back once a resize ends under its minimum.
+      - name: Drag the earlier release's window past its minimum size
+        run: |
+          mkdir -p min-size
+          swiftc -O scripts/desktop-measure/min-size-drag.swift -o "$RUNNER_TEMP/min-size-drag"
+          "$RUNNER_TEMP/min-size-drag" --app /Applications/Gloom.app --min 640x400 --out min-size/before.json
+
       - name: Update it in place to this build, and on
         run: bun scripts/desktop-measure/update-in-place.ts --app /Applications/Gloom.app --release artifacts --out update-in-place
 
@@ -77,6 +87,11 @@ jobs:
           bun scripts/desktop-measure/measure.ts --shell "Electrobun 2 (this commit)" --platform-label macos-arm64 \
             --launch "$app/Contents/MacOS/launcher" --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
             --app-root "$app" --out measure/after --skip window
+
+      - name: Drag this build's window past its minimum size
+        run: |
+          mkdir -p min-size
+          "$RUNNER_TEMP/min-size-drag" --app /Applications/Gloom.app --min 640x400 --out min-size/after.json --require
 
       - name: Sizes
         if: always()
@@ -95,6 +110,7 @@ jobs:
           name: desktop-shell-macos-arm64
           path: |
             measure
+            min-size
             update-in-place
             sizes.md
             artifacts/*.json
@@ -152,6 +168,10 @@ jobs:
             --launch "$app/bin/launcher" --view-html "$app/Resources/app/views/mainview/index.html" \
             --app-root "$app" --out measure/before --skip window
 
+      # The earlier release only puts the window back once a resize ends under its minimum.
+      - name: Resize the earlier release's window past its minimum size
+        run: bun scripts/desktop-measure/min-size-drag-linux.ts --launch "$HOME/.local/share/com.vincelwt.gloomberb/stable/app/bin/launcher" --min 640x400 --out min-size/before.json
+
       - name: Update it in place to this build, and on
         run: bun scripts/desktop-measure/update-in-place.ts --app "$HOME/.local/share/com.vincelwt.gloomberb/stable/app" --release artifacts --out update-in-place
 
@@ -161,6 +181,9 @@ jobs:
           bun scripts/desktop-measure/measure.ts --shell "Electrobun 2 (this commit)" --platform-label linux-x64 \
             --launch "$app/bin/launcher" --view-html "$app/Resources/app/views/mainview/index.html" \
             --app-root "$app" --out measure/after --skip window
+
+      - name: Resize this build's window past its minimum size
+        run: bun scripts/desktop-measure/min-size-drag-linux.ts --launch "$HOME/.local/share/com.vincelwt.gloomberb/stable/app/bin/launcher" --min 640x400 --out min-size/after.json --require
 
       - name: Sizes
         if: always()
@@ -178,6 +201,7 @@ jobs:
           name: desktop-shell-linux-x64
           path: |
             measure
+            min-size
             update-in-place
             sizes.md
             artifacts/*.json

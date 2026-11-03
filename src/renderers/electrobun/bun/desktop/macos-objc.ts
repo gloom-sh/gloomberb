@@ -24,6 +24,8 @@ function loadObjc() {
   const runtime = dlopen(LIBOBJC, {
     objc_getClass: { args: [FFIType.ptr], returns: ID },
     sel_registerName: { args: [FFIType.ptr], returns: FFIType.ptr },
+    objc_autoreleasePoolPush: { args: [], returns: FFIType.ptr },
+    objc_autoreleasePoolPop: { args: [FFIType.ptr], returns: FFIType.void },
   }).symbols;
   const msgSend = <const Args extends FFIType[], Returns extends FFIType>(args: Args, returns: Returns) =>
     dlopen(LIBOBJC, { objc_msgSend: { args: [ID, FFIType.ptr, ...args], returns } }).symbols.objc_msgSend;
@@ -31,11 +33,23 @@ function loadObjc() {
   return {
     getClass: (name: string) => runtime.objc_getClass(cString(name)),
     selector: (name: string) => runtime.sel_registerName(cString(name)),
+    /** Runs `run` in an autorelease pool of its own, for the objects class methods return: Bun's thread may have none. */
+    withAutoreleasePool: <T>(run: () => T): T => {
+      const pool = runtime.objc_autoreleasePoolPush();
+      try {
+        return run();
+      } finally {
+        runtime.objc_autoreleasePoolPop(pool);
+      }
+    },
     send: msgSend([], ID),
     sendVoid: msgSend([], FFIType.void),
     sendObject: msgSend([ID], ID),
     sendCString: msgSend([FFIType.ptr], ID),
     sendBytes: msgSend([FFIType.ptr, FFIType.u64], ID),
+    /** A message taking an NSSize or NSPoint: two doubles, passed as two on arm64 and x86-64 alike. */
+    sendDoubles: msgSend([FFIType.f64, FFIType.f64], ID),
+    sendObjects: msgSend([ID, ID], ID),
     sendOnMainThread: msgSend([FFIType.ptr, ID, FFIType.bool], FFIType.void),
   };
 }

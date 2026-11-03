@@ -12,7 +12,8 @@ export interface WindowMinimumSize {
 
 export const DEFAULT_WINDOW_FRAME: WindowFrame = { x: 64, y: 48, width: 1440, height: 920 };
 const DEFAULT_WINDOWS_WINDOW_FRAME: WindowFrame = { x: 32, y: 32, width: 960, height: 680 };
-// Emergency fallback until Electrobun exposes stable native minimum-size handling:
+// Held by the system while a window is resized (native-min-size.ts), and by
+// the resize handlers where that does not apply: Electrobun has no minimum size,
 // https://github.com/blackboardsh/electrobun/issues/188
 export const MAIN_WINDOW_MIN_SIZE: WindowMinimumSize = { width: 640, height: 400 };
 export const DETACHED_WINDOW_MIN_SIZE: WindowMinimumSize = { width: 360, height: 240 };
