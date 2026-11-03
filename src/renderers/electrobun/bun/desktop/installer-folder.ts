@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from "fs/promises";
+import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { win32 } from "path";
 import { logFailure } from "../../../../utils/log-failure";
@@ -22,8 +22,11 @@ import { psString, runScriptInBackground, writePowerShellScript } from "./window
  * the shortcuts it made, which the launcher had just pointed at this folder
  * and which come back here. What it leaves in a folder the installer picked
  * (files the app wrote there) goes too; one the user picked keeps them.
- * It runs in the background, once the window is up, and again at the next
- * start if it did not finish.
+ * It runs in the background, once the window is up. Until it finishes,
+ * a file beside the app's folder names the installer's folder, and the next
+ * start runs it again: after the old build was still open, its uninstaller
+ * failed (its entry stays, for the next try), or a shortcut or PATH could
+ * not be written.
  */
 
 /** The installer's AppId, which names its uninstall entry (windows-installer.iss). */
@@ -48,6 +51,9 @@ export type InstallerFolderRetirement =
 
 /** How long after the start the script runs, out of the launch's way. */
 const RETIRE_DELAY_MS = 10_000;
+
+/** Beside the app's folder: the installer's folder, while its retirement has not finished. */
+const PENDING_FILE = "installer-folder.pending";
 
 function samePath(left: string, right: string): boolean {
   return win32.resolve(left).toLowerCase() === win32.resolve(right).toLowerCase();
@@ -103,9 +109,13 @@ async function readInstallerFolderFromRegistry(): Promise<string | null> {
 // PowerShell 5.1. The installer's uninstaller removes exactly what it
 // installed and what earlier builds' moves listed in Resources\update-files.txt,
 // with its PATH entry and its shortcuts. Without one (deleted by hand), its
-// entry and PATH entry go here, and the folder only when it is the
-// installer's default, which holds nothing of the user's. The Start menu
-// shortcut, and the Desktop one when there was one, then lead to this folder.
+// entry goes here. While the old build runs from the folder, or when its
+// uninstaller fails, the entry stays and the next start tries again. The
+// Start menu shortcut, and the Desktop one when there was one, then lead to
+// this folder; next, what is left in the installer's default folder, which
+// holds nothing of the user's, goes; the PATH entry moves last. Each of those
+// steps fails on its own, and the script finishes (removing $Pending) only
+// once all of them worked.
 const SCRIPT_BODY = String.raw`
 $UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\' + $InstallerEntry
 $LogEncoding = New-Object System.Text.UTF8Encoding $false
@@ -119,6 +129,14 @@ function Write-Log([string]$Message) {
 function Get-NormalPath([string]$Path) {
   if (-not $Path) { return '' }
   $Path.Trim().Trim('"').TrimEnd('\', '/').ToLowerInvariant()
+}
+
+# The programs running from a file in $Folder.
+function Get-RunningFrom([string]$Folder) {
+  $Prefix = (Get-NormalPath $Folder) + '\'
+  @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Path -and (Get-NormalPath $_.Path).StartsWith($Prefix) } catch { $false }
+  })
 }
 
 # The user's PATH as written, %VARIABLES% unexpanded, and its kind: an
@@ -136,12 +154,11 @@ function Get-UserPath {
 function Set-UserPath([string[]]$Entries, $Kind) {
   $Key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
   try { $Key.SetValue('Path', ($Entries -join ';'), $Kind) } finally { $Key.Close() }
-  # Explorer reads the new PATH for what it opens next once it is told.
-  if (-not ('GloomEnvironment' -as [type])) {
-    Add-Type -Namespace '' -Name GloomEnvironment -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
-  }
-  $Result = [UIntPtr]::Zero
-  [void][GloomEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$Result)
+  # Explorer reads the new PATH for what it opens next once it is told. A
+  # user variable set through .NET tells it (WM_SETTINGCHANGE); clearing one
+  # that is not there tells it and changes nothing, with no code compiled
+  # here for the message.
+  [Environment]::SetEnvironmentVariable('GloomPathChanged', $null, 'User')
 }
 
 function Update-UserPath([string]$Remove, [string]$Add) {
@@ -158,50 +175,8 @@ function Update-UserPath([string]$Remove, [string]$Add) {
   }
 }
 
-$Mutex = New-Object System.Threading.Mutex($false, 'Local\GloomInstallerFolder')
-$Locked = $false
-try {
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Log) | Out-Null
-  try { $Locked = $Mutex.WaitOne(0) } catch { $Locked = ($_.Exception.GetBaseException() -is [System.Threading.AbandonedMutexException]) }
-  if (-not $Locked) { Write-Log 'busy: another start retires the folder'; return }
-  Write-Log ('started: retiring ' + $Folder)
-
+function Set-Shortcuts($Wanted) {
   $Shell = New-Object -ComObject WScript.Shell
-  $Shortcuts = @(
-    @{ Path = (Join-Path ([Environment]::GetFolderPath('Programs')) 'Gloom.lnk'); Always = $true },
-    @{ Path = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Gloom.lnk'); Always = $false }
-  )
-  $Wanted = @($Shortcuts | Where-Object { $_.Always -or (Test-Path -LiteralPath $_.Path) })
-
-  $Uninstaller = ''
-  try { $Uninstaller = ([string](Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction Stop).UninstallString).Trim().Trim('"') } catch { }
-  if ($Uninstaller -and (Test-Path -LiteralPath $Uninstaller)) {
-    $Process = Start-Process -FilePath $Uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
-    Write-Log ("the installer's uninstaller exited with " + $Process.ExitCode)
-    # It hands over to a copy of itself in the temp folder, which removes the entry last.
-    for ($Wait = 0; ($Wait -lt 240) -and (Test-Path -LiteralPath $UninstallKey); $Wait += 1) { Start-Sleep -Milliseconds 500 }
-  }
-  if (Test-Path -LiteralPath $UninstallKey) {
-    Write-Log "the installer's entry is still there; removing it here"
-    Remove-Item -LiteralPath $UninstallKey -Recurse -Force
-  }
-  # The uninstaller leaves what the app wrote there after the install. That
-  # goes too, from a folder the installer picked itself only.
-  $DefaultFolders = @('Programs\Gloom', 'Programs\Gloomberb') | ForEach-Object { Get-NormalPath (Join-Path $env:LOCALAPPDATA $_) }
-  if ($DefaultFolders -contains (Get-NormalPath $Folder)) {
-    for ($Wait = 0; ($Wait -lt 20) -and (Test-Path -LiteralPath $Folder); $Wait += 1) { Start-Sleep -Milliseconds 500 }
-    if (Test-Path -LiteralPath $Folder) {
-      $Left = @(Get-ChildItem -LiteralPath $Folder -Recurse -Force -File -ErrorAction SilentlyContinue | Select-Object -First 5 | ForEach-Object { $_.FullName.Substring($Folder.Length) })
-      try {
-        Remove-Item -LiteralPath $Folder -Recurse -Force
-        Write-Log ('removed ' + $Folder + ', which still held ' + ($Left -join ', '))
-      } catch {
-        Write-Log ('could not remove ' + $Folder + ': ' + $_.Exception.Message)
-      }
-    }
-  }
-  Update-UserPath (Join-Path $Folder 'bin') (Join-Path $App 'bin')
-
   $Launcher = Join-Path $App 'bin\launcher.exe'
   foreach ($Shortcut in $Wanted) {
     if (Test-Path -LiteralPath $Shortcut.Path) {
@@ -214,6 +189,96 @@ try {
     $Link.Save()
     Write-Log ('pointed ' + $Shortcut.Path + ' at ' + $Launcher)
   }
+}
+
+$Mutex = New-Object System.Threading.Mutex($false, 'Local\GloomInstallerFolder')
+$Locked = $false
+try {
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Log) | Out-Null
+  try { $Locked = $Mutex.WaitOne(0) } catch { $Locked = ($_.Exception.GetBaseException() -is [System.Threading.AbandonedMutexException]) }
+  if (-not $Locked) { Write-Log 'busy: another start retires the folder'; return }
+  Write-Log ('started: retiring ' + $Folder)
+  $Unfinished = @()
+
+  $Shortcuts = @(
+    @{ Path = (Join-Path ([Environment]::GetFolderPath('Programs')) 'Gloom.lnk'); Always = $true },
+    @{ Path = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Gloom.lnk'); Always = $false }
+  )
+  $Wanted = @($Shortcuts | Where-Object { $_.Always -or (Test-Path -LiteralPath $_.Path) })
+
+  $Uninstaller = ''
+  try { $Uninstaller = ([string](Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction Stop).UninstallString).Trim().Trim('"') } catch { }
+  $Running = @()
+  if (Test-Path -LiteralPath $UninstallKey) {
+    # While the earlier build runs from there its files are locked, and its
+    # uninstaller would leave half an install. One that just handed over to
+    # this build may still be on its way out.
+    for ($Wait = 0; $Wait -lt 60; $Wait += 1) {
+      $Running = @(Get-RunningFrom $Folder)
+      if (-not $Running.Count) { break }
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  if ($Running.Count) {
+    $Names = ($Running | ForEach-Object { $_.ProcessName } | Sort-Object -Unique) -join ', '
+    Write-Log ('the earlier build still runs from ' + $Folder + ' (' + $Names + '); its uninstall waits for the next start')
+    $Unfinished += 'uninstall'
+  } elseif ($Uninstaller -and (Test-Path -LiteralPath $Uninstaller)) {
+    $Code = $null
+    try {
+      $Process = Start-Process -FilePath $Uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
+      $Code = $Process.ExitCode
+      Write-Log ("the installer's uninstaller exited with " + $Code)
+    } catch {
+      Write-Log ("could not run the installer's uninstaller: " + $_.Exception.Message)
+    }
+    # It hands over to a copy of itself in the temp folder, which removes the
+    # entry last. One that failed has little left to do.
+    $Waits = if ($Code -eq 0) { 240 } else { 10 }
+    for ($Wait = 0; ($Wait -lt $Waits) -and (Test-Path -LiteralPath $UninstallKey); $Wait += 1) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path -LiteralPath $UninstallKey) {
+      Write-Log "the installer's uninstaller did not finish; its entry stays for the next start to try again"
+      $Unfinished += 'uninstall'
+    }
+  } elseif (Test-Path -LiteralPath $UninstallKey) {
+    Write-Log "the installer's uninstaller is gone; removing its entry here"
+    Remove-Item -LiteralPath $UninstallKey -Recurse -Force
+  }
+
+  # The uninstaller removed the shortcuts it made, which led there.
+  try { Set-Shortcuts $Wanted } catch {
+    Write-Log ('could not write the shortcuts: ' + $_.Exception.Message)
+    $Unfinished += 'shortcuts'
+  }
+
+  # The uninstaller leaves what the app wrote there after the install. That
+  # goes too, from a folder the installer picked itself only, and only once
+  # the uninstaller is done with it.
+  $DefaultFolders = @('Programs\Gloom', 'Programs\Gloomberb') | ForEach-Object { Get-NormalPath (Join-Path $env:LOCALAPPDATA $_) }
+  if (($Unfinished -notcontains 'uninstall') -and ($DefaultFolders -contains (Get-NormalPath $Folder))) {
+    for ($Wait = 0; ($Wait -lt 20) -and (Test-Path -LiteralPath $Folder); $Wait += 1) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path -LiteralPath $Folder) {
+      $Left = @(Get-ChildItem -LiteralPath $Folder -Recurse -Force -File -ErrorAction SilentlyContinue | Select-Object -First 5 | ForEach-Object { $_.FullName.Substring($Folder.Length) })
+      try {
+        Remove-Item -LiteralPath $Folder -Recurse -Force
+        Write-Log ('removed ' + $Folder + ', which still held ' + ($Left -join ', '))
+      } catch {
+        Write-Log ('could not remove ' + $Folder + ': ' + $_.Exception.Message)
+        $Unfinished += 'folder'
+      }
+    }
+  }
+
+  try { Update-UserPath (Join-Path $Folder 'bin') (Join-Path $App 'bin') } catch {
+    Write-Log ('could not move the PATH entry: ' + $_.Exception.Message)
+    $Unfinished += 'PATH'
+  }
+
+  if ($Unfinished.Count) {
+    Write-Log ('unfinished (' + ($Unfinished -join ', ') + '): the next start tries again')
+    exit 2
+  }
+  Remove-Item -LiteralPath $Pending -Force -ErrorAction SilentlyContinue
   Write-Log 'done'
 } catch {
   Write-Log ('failed: ' + $_.Exception.Message)
@@ -225,38 +290,52 @@ try {
 }
 `;
 
-/** The script that retires the installer's folder `folder` for the app in `app`, with its paths written in. */
-export function installerFolderScript({ folder, app, log }: { folder: string; app: string; log: string }): string {
+/**
+ * The script that retires the installer's folder `folder` for the app in
+ * `app`, with its paths written in. It removes `pending` once it finished.
+ */
+export function installerFolderScript({ folder, app, log, pending }: { folder: string; app: string; log: string; pending: string }): string {
   const header = [
     "$ErrorActionPreference = 'Stop'",
     `$Folder = ${psString(folder)}`,
     `$App = ${psString(app)}`,
     `$Log = ${psString(log)}`,
+    `$Pending = ${psString(pending)}`,
     `$InstallerEntry = ${psString(INSTALLER_ENTRY)}`,
   ];
   return `${header.join("\n")}\n${SCRIPT_BODY}`;
 }
 
+/** The installer's folder a retirement that did not finish left in `path`; null without one. */
+async function readPendingFolder(path: string): Promise<string | null> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  const folder = text.replace(/^\uFEFF/, "").trim();
+  return folder && win32.isAbsolute(folder) ? folder : null;
+}
+
 /**
  * Retires an installer install's folder once the app runs from Electrobun's.
- * Anywhere else, and without such an install, it returns without writing
- * anything.
+ * Anywhere else, and without such an install or a retirement left
+ * unfinished, it returns without writing anything.
  */
 export async function settleInstallerFolder(context: InstallerFolderContext): Promise<InstallerFolderRetirement> {
   if (context.platform !== "win32") return { kind: "none" };
   const localAppData = context.localAppData || win32.join(context.homeDir, "AppData", "Local");
   const running = updaterAppFolder(context.execPath, localAppData);
   if (!running) return { kind: "none" };
-  const recorded = await (context.readInstallerFolder ?? readInstallerFolderFromRegistry)().catch(() => null);
+  const channelRoot = win32.dirname(running.folder);
+  const pending = win32.join(channelRoot, PENDING_FILE);
+  const recorded = await (context.readInstallerFolder ?? readInstallerFolderFromRegistry)().catch(() => null)
+    ?? await readPendingFolder(pending);
   if (!recorded || samePath(recorded, running.folder)) return { kind: "none" };
   const folder = win32.resolve(recorded);
 
-  const channelRoot = win32.dirname(running.folder);
   const timer = setTimeout(() => {
     const script = win32.join(channelRoot, "installer-folder-retire.ps1");
     const log = win32.join(channelRoot, "installer-folder.log");
     void mkdir(channelRoot, { recursive: true })
-      .then(() => writePowerShellScript(script, installerFolderScript({ folder, app: running.folder, log })))
+      .then(() => writeFile(pending, folder, "utf8"))
+      .then(() => writePowerShellScript(script, installerFolderScript({ folder, app: running.folder, log, pending })))
       .then(() => runScriptInBackground(script))
       .then((code) => {
         if (code !== 0) throw new Error(`the script exited with ${code}`);

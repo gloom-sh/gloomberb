@@ -5,7 +5,8 @@ import { installerFolderScript, regExportValue, updaterAppFolder, WINDOWS_INSTAL
 
 // What these decide is whether the app retires an installer's folder at its
 // start, and which. The script runs on a real install updated from an
-// installer's folder in scripts/verify-windows-update.ps1.
+// installer's folder in scripts/verify-windows-update.ps1, and on made-up
+// ones, its failures included, in scripts/verify-windows-installer-folder.test.ps1.
 describe("the Windows installer's folder", () => {
   const local = "C:\\Users\\O'Brien\\AppData\\Local";
 
@@ -45,6 +46,7 @@ describe("the Windows installer's folder", () => {
       folder: `${local}\\Programs\\Gloom`,
       app: `${local}\\com.vincelwt.gloomberb\\stable\\app`,
       log: `${local}\\com.vincelwt.gloomberb\\stable\\installer-folder.log`,
+      pending: `${local}\\com.vincelwt.gloomberb\\stable\\installer-folder.pending`,
     });
     expect(script).toContain("$Folder = 'C:\\Users\\O''Brien\\AppData\\Local\\Programs\\Gloom'\n");
     expect(script).toContain("$App = 'C:\\Users\\O''Brien\\AppData\\Local\\com.vincelwt.gloomberb\\stable\\app'\n");

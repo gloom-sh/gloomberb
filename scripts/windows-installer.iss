@@ -203,44 +203,67 @@ end;
 
 // An install from an earlier setup is uninstalled with its own uninstaller,
 // which removes what it installed, its PATH entry and its shortcuts and keeps
-// the user's own files in a folder they picked. Without one, its record and
-// PATH entry go here. What is left in a folder the setup picked goes too.
+// the user's own files in a folder they picked. Without one, its record goes
+// here. One that fails (a file in use, the earlier build still open) keeps
+// its record: the app tries again at its next start, from the record (see
+// src/renderers/electrobun/bun/desktop/installer-folder.ts). What is left in
+// a folder the setup picked goes once the uninstaller is done with it.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   PreviousDir: string;
   Uninstaller: string;
   ResultCode: Integer;
   Attempt: Integer;
+  Waits: Integer;
+  HasUninstaller: Boolean;
+  Kept: Boolean;
 begin
   Result := '';
   if not RegQueryStringValue(HKCU, UninstallKey, 'Inno Setup: App Path', PreviousDir) then
     Exit;
+  HasUninstaller := False;
   if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', Uninstaller) then
   begin
     Uninstaller := RemoveQuotes(Uninstaller);
-    if FileExists(Uninstaller) then
-    begin
-      Log('Uninstalling the earlier install in ' + PreviousDir);
-      if not Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-        Log('Could not run ' + Uninstaller);
-      // It hands over to a copy of itself, which removes its record last.
-      Attempt := 0;
-      while RegKeyExists(HKCU, UninstallKey) and (Attempt < 240) do
-      begin
-        Sleep(500);
-        Attempt := Attempt + 1;
-      end;
-    end;
+    HasUninstaller := FileExists(Uninstaller);
   end;
-  if RegKeyExists(HKCU, UninstallKey) then
+  Kept := False;
+  if HasUninstaller then
+  begin
+    Log('Uninstalling the earlier install in ' + PreviousDir);
+    // It hands over to a copy of itself, which removes its record last. One
+    // that failed has little left to do.
+    Waits := 240;
+    if not Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Log('Could not run ' + Uninstaller);
+      Waits := 0;
+    end
+    else if ResultCode <> 0 then
+    begin
+      Log('The earlier uninstaller exited with ' + IntToStr(ResultCode));
+      Waits := 10;
+    end;
+    Attempt := 0;
+    while RegKeyExists(HKCU, UninstallKey) and (Attempt < Waits) do
+    begin
+      Sleep(500);
+      Attempt := Attempt + 1;
+    end;
+    Kept := RegKeyExists(HKCU, UninstallKey);
+    if Kept then
+      Log('The earlier install in ' + PreviousDir + ' did not uninstall; its record stays for the app to try again');
+  end
+  else if RegKeyExists(HKCU, UninstallKey) then
   begin
     Log('Removing the record of the earlier install in ' + PreviousDir);
     RegDeleteKeyIncludingSubkeys(HKCU, UninstallKey);
   end;
+  // This install's PATH entry takes over the `gloom` command either way.
   RemovePathEntryFor(AddBackslash(PreviousDir) + 'bin');
   // The uninstaller leaves what the app wrote there after the install. That
   // goes too, from a folder the installer picked itself only.
-  if IsDefaultInstallDir(PreviousDir) then
+  if (not Kept) and IsDefaultInstallDir(PreviousDir) then
   begin
     Attempt := 0;
     while DirExists(PreviousDir) and (Attempt < 20) do
