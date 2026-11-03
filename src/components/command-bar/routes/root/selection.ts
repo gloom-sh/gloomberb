@@ -14,7 +14,7 @@ import {
 } from "../../helpers";
 import type { ResultItem } from "../../list/model";
 import { getPaneTemplateArgKind } from "../../pane-templates/items";
-import { parseRootShortcutIntent } from "./shortcuts";
+import { parseRootShortcutIntent, shortcutArgument } from "./shortcuts";
 import { buildHelpArgumentItems } from "./help-items";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
@@ -109,9 +109,11 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     promptTicker: options.promptTickerSymbol,
   });
   if (intent.kind !== "none" && intent.source === "pane-template") {
+    // An issuer's function opens on the ticker in focus it was given, as if typed.
+    const arg = shortcutArgument(intent);
     return options.createPaneTemplateItem(intent.template, {
       category: "Panes",
-      createOptions: intent.argText ? { arg: intent.argText } : undefined,
+      createOptions: arg ? { arg } : undefined,
       showShortcut: true,
       shortcutExecution: true,
     });

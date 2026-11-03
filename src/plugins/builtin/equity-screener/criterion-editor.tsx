@@ -13,7 +13,7 @@ import type {
   ScreenFieldDefinition,
   ScreenOperator,
 } from "../../../api-client/equity-screener";
-import { parseCriterion } from "./model";
+import { criterionInputText, criterionValueHint, criterionValueLabel, parseCriterion } from "./model";
 
 export function CriterionEditor({
   fields,
@@ -40,13 +40,7 @@ export function CriterionEditor({
   const [operator, setOperator] = useState<ScreenOperator>(
     value?.op ?? field.operators[0]!,
   );
-  const [text, setText] = useState(
-    value && "value" in value
-      ? Array.isArray(value.value)
-        ? value.value.join(", ")
-        : String(value.value)
-      : "",
-  );
+  const [text, setText] = useState(criterionInputText(value));
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState("field");
   const fieldControl = useRef<SelectControl>(null),
@@ -138,16 +132,10 @@ export function CriterionEditor({
       />
       {!["present", "missing"].includes(operator) ? (
         <TextField
-          label={`Value${field.unit ? ` (${field.unit})` : ""}`}
+          label={criterionValueLabel(field)}
           value={text}
           onChange={setText}
-          placeholder={
-            operator === "between"
-              ? "minimum, maximum"
-              : operator === "in"
-                ? "comma-separated values"
-                : "threshold, e.g. 25 or 10B"
-          }
+          placeholder={criterionValueHint(field, operator)}
           width={Math.min(45, width - 4)}
           focused={focused && active === "value"}
           onMouseDown={() => setActive("value")}

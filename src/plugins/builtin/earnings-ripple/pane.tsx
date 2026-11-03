@@ -23,7 +23,7 @@ const TABS = [{ value: "direct", label: "1 hop" }, { value: "two-hop", label: "2
 const COLUMNS: DataTableColumn[] = [
   { id: "date", label: "Date", width: 11, align: "left" },
   { id: "timing", label: "Time", width: 5, align: "left" },
-  { id: "company", label: "Reports", width: 24, align: "left" },
+  { id: "company", label: "Reports", width: 24, flexGrow: 1, align: "left" },
   { id: "link", label: "Link", width: 13, align: "left" },
   { id: "holding", label: "Holding", width: 9, align: "left" },
   { id: "pct", label: "Revenue share", width: 15, align: "right" },

@@ -13,11 +13,12 @@ import {
   type AssistRowHandlers,
 } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
+import { pastedRootList } from "../../commands/collection-list";
 import { isCollectionCommand, SECURITY_DESCRIPTION_SEARCH } from "../../helpers";
 import { recentPaneTemplateArg } from "../../pane-templates/items";
-import { dedupeById } from "../../view-model";
+import { dedupeById, PASTED_LIST_CATEGORY } from "../../view-model";
 import type { ResultItem } from "../../list/model";
-import type { parseRootShortcutIntent } from "./shortcuts";
+import { shortcutArgument, type parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
 import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
@@ -125,6 +126,22 @@ function isAssistSectionVisible(
     return shouldShowAssistRow({ query, resultCount });
   }
   return assist.auto;
+}
+
+/** "Add 4 symbols to a watchlist", which runs AW on the list as its entries, Bloomberg's codes kept whole. */
+function pastedListItem(
+  symbols: readonly string[],
+  executeCollectionCommand: RootResultModelOptions["executeCollectionCommand"],
+): ResultItem {
+  const shown = symbols.slice(0, 6).join(", ");
+  return {
+    id: `pasted-list:${symbols.length}:${symbols[0]}`,
+    label: `Add ${symbols.length} symbols to a watchlist`,
+    detail: symbols.length > 6 ? `${shown} and ${symbols.length - 6} more` : shown,
+    category: PASTED_LIST_CATEGORY,
+    kind: "action",
+    action: () => { void executeCollectionCommand("add-watchlist", symbols.join(", ")); },
+  };
 }
 
 /**
@@ -277,6 +294,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
 
   const items: ResultItem[] = [];
   const match = matchPrefix(rootQuery, availableCommands);
+  // A pasted list, which the bar flattens into one line, leads with adding its symbols. The AI is still offered.
+  const pastedList = rootShortcutIntent.kind === "none" && !match && rootQuery ? pastedRootList(rootQuery) : null;
   let initialIdx = 0;
   // Off when the code's own rows only say why the argument opens nothing (`PF Nope`).
   let shortcutRuns = true;
@@ -296,7 +315,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     const templateItems = matchingTemplates.length > 0
       ? matchingTemplates.map((template) => createPaneTemplateItem(template, {
         category: "Panes",
-        createOptions: rootShortcutIntent.argText ? { arg: rootShortcutIntent.argText } : undefined,
+        createOptions: shortcutArgument(rootShortcutIntent) ? { arg: shortcutArgument(rootShortcutIntent) } : undefined,
         showShortcut: true,
         shortcutExecution: true,
       }))
@@ -396,6 +415,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...tickerActionItems(),
       ...pluginCommandItems(),
     ];
+    if (pastedList) items.push(pastedListItem(pastedList, executeCollectionCommand));
     items.push(...rankMatchBlock(allItems, providerMatchItems, rootQuery));
   }
 

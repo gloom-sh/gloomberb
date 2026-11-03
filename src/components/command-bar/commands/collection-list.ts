@@ -3,6 +3,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { splitSymbolArgs, splitSymbolWords, symbolInputKey, uniqueSymbols } from "../../../cli/symbol-args";
 import { protectFigureCommas } from "../../../cli/symbol-cells";
 import { readSymbolList } from "../../../cli/symbol-list";
+import { endsInLegalForm, isLegalForm, readTerminalListingCode } from "../../../tickers/terminal-codes";
 import { readNameEntries } from "../../../cli/name-entries";
 import {
   addSymbols,
@@ -41,6 +42,86 @@ export interface PastedSymbolList {
   repeated: number;
   /** Whether the text separates its symbols with commas, semicolons, tabs or lines, rather than spaces alone. */
   separated: boolean;
+}
+
+/** A symbol as one word, in capitals: NFE, BRK.B, 0700, VOD:LSE. */
+const CAPITAL_SYMBOL = /^\$?[A-Z0-9][A-Z0-9.\-]{0,11}(?::[A-Z0-9]{1,8})?$/;
+
+/**
+ * A ticker among words split by spaces alone: up to five letters, with a share
+ * class (BRK.B) or a venue (VOD:LSE), or a numeric code (0700). A longer word
+ * in capitals is a name's (FORTRESS, AMERICA).
+ */
+const SPACED_TICKER = /^\$?(?:[A-Z]{1,5}(?:[.\-][A-Z]{1,2})?|\d{4,6})(?::[A-Z]{1,8})?$/;
+
+/** Words that join a name's other words (BANK OF AMERICA, PROCTER & GAMBLE), never a symbol of a list. */
+const JOINING_WORDS: ReadonlySet<string> = new Set(["OF", "AND", "&", "THE", "FOR", "DE", "DU", "DES", "DEL", "LA", "LE"]);
+
+/** A terminal code with spaces (`NFE US Equity`, `VOD LN`), never a name before its legal form (`SAP SE`). */
+function isSpacedCode(entry: string): boolean {
+  return entry.includes(" ") && !endsInLegalForm(entry) && readTerminalListingCode(entry) != null;
+}
+
+/**
+ * A company's name as a list holds one: up to five words, the first and each
+ * but a joining word capitalized (`Apple Inc`, `Bank of America`, `NEW
+ * FORTRESS ENERGY INC`). A sentence is none: `how did NVDA do today`, `and why?`.
+ */
+function isShortName(entry: string): boolean {
+  const words = entry.split(/\s+/);
+  return words.length <= 5 && !/[?!]/.test(entry) && /^\p{Lu}/u.test(words[0]!)
+    && words.every((word) => /^[\p{Lu}\d&]/u.test(word) || JOINING_WORDS.has(word.toUpperCase()));
+}
+
+/**
+ * The entries of a list split by commas, semicolons, tabs or lines, when every
+ * one is a symbol, a terminal code or a short name, and two or more hold a
+ * symbol or there are three or more: `NFE, RAD`, `Apple, Microsoft, Nvidia`.
+ * Null for a sentence with a comma (`how did NVDA do today, and why?`).
+ */
+function separatedList(query: string): string[] | null {
+  const entries = uniqueSymbols(splitSymbolArgs([query])).symbols;
+  if (entries.length < 2) return null;
+  let symbols = 0;
+  for (const entry of entries) {
+    const symbol = isSpacedCode(entry) || (CAPITAL_SYMBOL.test(entry) && !JOINING_WORDS.has(entry));
+    if (!symbol && !isShortName(entry)) return null;
+    if (symbol) symbols += 1;
+  }
+  return symbols >= 1 || entries.length >= 3 ? entries : null;
+}
+
+/**
+ * The symbols of a list pasted into the bare command bar, which flattens its
+ * lines into spaces: entries split by commas, semicolons, tabs or lines
+ * (`separatedList`), or by spaces alone three or more tickers in capitals,
+ * where Bloomberg's cells keep their words (`NFE US Equity RAD US Equity`).
+ * Null for anything else, which stays a search: a name in capitals (`BANK OF
+ * AMERICA`, `NEW FORTRESS ENERGY INC`), a sentence, one code.
+ */
+export function pastedRootList(query: string): string[] | null {
+  const text = protectFigureCommas(query.trim());
+  if (/[,;\t\r\n]/.test(text)) return separatedList(query);
+  const words = text.split(/\s+/).filter(Boolean);
+  const entries: string[] = [];
+  let codes = 0;
+  for (let index = 0; index < words.length;) {
+    // A terminal code's words read as one: `NFE US Equity`, `1128 HK Equity`, `VOD LN`.
+    const code = [3, 2].map((size) => words.slice(index, index + size).join(" "))
+      .find((candidate) => candidate.split(" ").length > 1 && isSpacedCode(candidate));
+    if (code) {
+      entries.push(code);
+      index += code.split(" ").length;
+      codes += 1;
+      continue;
+    }
+    const word = words[index]!;
+    if (!SPACED_TICKER.test(word) || JOINING_WORDS.has(word) || isLegalForm(word)) return null;
+    entries.push(word.replace(/^\$/, ""));
+    index += 1;
+  }
+  const unique = [...new Set(entries)];
+  return unique.length >= 3 || (codes > 0 && unique.length >= 2) ? unique : null;
 }
 
 /**

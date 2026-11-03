@@ -88,4 +88,34 @@ describe("TickerBadgeList", () => {
     expect(hovered).not.toContain("NFLX");
     expect(hovered.indexOf("TSLA -5.0%")).toBe(resting.indexOf("TSLA -5.0%"));
   });
+
+  test("a symbol the source names a listing for opens that listing, and one it names none for prints as plain text", async () => {
+    const opened: string[] = [];
+    const state = createState();
+    state.tickers.set("2330:TWSE", createTestTicker("2330", "TSMC", { exchange: "TWSE", broker_contracts: [] }));
+    state.financials.set("2330:TWSE", {
+      annualStatements: [],
+      quarterlyStatements: [],
+      priceHistory: [],
+      quote: { symbol: "2330", price: 2330, currency: "TWD", change: -40, changePercent: -1.7, lastUpdated: Date.now() },
+    });
+    setSharedRegistryForTests({ pinTicker: (symbol: string) => { opened.push(symbol); } } as unknown as PluginRegistry);
+    await act(async () => {
+      await tui.render(
+        <AppContext value={createStaticAppStore(state)}>
+          <TickerBadgeList symbols={["NFLX", "2330", "981"]} width={40} listings={{ "2330": "2330:TWSE", "981": null }} />
+        </AppContext>,
+        { width: 44, height: 1 },
+      );
+    });
+    await act(async () => { await tui.setup().renderOnce(); });
+    const line = tui.frame().split("\n")[0]!;
+    // The listing is priced like the others: its chip spends spare columns on the day's change.
+    expect(line).toContain("NFLX +1.2%");
+    expect(line).toContain("2330 -1.7%");
+    for (const symbol of ["NFLX", "2330", "981"]) {
+      await act(async () => { await tui.setup().mockMouse.click(line.indexOf(symbol) + 1, 0); await tui.setup().renderOnce(); });
+    }
+    expect(opened).toEqual(["NFLX", "2330:TWSE"]);
+  });
 });

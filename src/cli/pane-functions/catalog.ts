@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { commands as builtInCommands, getCommandPrefixes } from "../../components/command-bar/commands/registry";
-import type { PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
+import type { HeadlessPaneDefinition, PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import {
   buildCreateOptions,
@@ -289,13 +289,27 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: argument.kind,
     argPlaceholder: argument.placeholder,
-    ...(headless?.argument.examples?.length ? { argExamples: headless.argument.examples } : {}),
+    ...argExamples(headless, context),
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
     defaultSettings,
     capability: getPaneFunctionCapability(template, pane),
   };
+}
+
+/**
+ * The arguments a function's examples show past its placeholder: its own, and
+ * for a list of more than two symbols, a watchlist's name, which stands for
+ * its symbols (the reader's first watchlist).
+ */
+function argExamples(headless: HeadlessPaneDefinition | undefined, context: MarketContext): { argExamples: readonly string[] } | null {
+  const own = headless?.argument.examples ?? [];
+  const argument = headless?.argument;
+  const list = (argument?.kind === "symbol-list" || argument?.kind === "tickers") && (argument.maximum == null || argument.maximum > 2);
+  const name = context.config.watchlists[0]?.name ?? "Watchlist";
+  const examples = list ? [...own, /^[\w.-]+$/.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`] : own;
+  return examples.length > 0 ? { argExamples: examples } : null;
 }
 
 /**
@@ -333,7 +347,7 @@ export async function buildPaneCatalogEntries(
       aliases,
       argKind: argument.kind,
       argPlaceholder: argument.placeholder,
-      ...(pane.headless?.argument.examples?.length ? { argExamples: pane.headless.argument.examples } : {}),
+      ...argExamples(pane.headless, context),
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),

@@ -1,11 +1,15 @@
 /**
- * Who may use the plugin HTTP proxy: a signed-in Gloomberb session, confirmed
- * by the API rather than by the cookie merely being present.
+ * How much of the plugin HTTP proxy a caller gets. Everyone may use it, since
+ * the functions behind it show free public data that works signed out on the
+ * desktop too; what differs is the rate limit. A signed-in Gloomberb session,
+ * confirmed by the API rather than by the cookie merely being present, is
+ * counted per user. Everyone else, including a session the API rejects or
+ * cannot confirm right now, is counted per IP address against a smaller
+ * window, so a failed check never grants more than signing out would.
  *
  * Plugin panes fire requests in bursts, so a confirmed session is remembered
  * for a minute per isolate and concurrent requests share one check. A session
- * the API rejects is not remembered, so signing in again works at once. When
- * the API cannot answer, the proxy refuses rather than guessing.
+ * the API rejects is not remembered, so signing in again works at once.
  *
  * The cache is keyed by the exact cookies that were confirmed, but the rate
  * limit is keyed by the user the API named. The API reads only part of those
@@ -42,6 +46,12 @@ const SHARED_CHECK_GRACE_MS = 500;
  * stopping a script from turning one account into a free proxy.
  */
 const DEFAULT_REQUESTS_PER_WINDOW = 300;
+/**
+ * Per IP address, per isolate, for callers without a confirmed session. A
+ * signed-out layout of the heaviest proxied panes (prediction markets, bond
+ * tape, Treasury, halts) stays well under this; a script does not.
+ */
+const DEFAULT_ANONYMOUS_REQUESTS_PER_WINDOW = 240;
 const DEFAULT_WINDOW_MS = 60_000;
 /**
  * Confirmed cookie variants one user may hold in the cache at once. A user
@@ -69,7 +79,8 @@ interface RateWindow {
 }
 
 type ProxyAdmission =
-  | { ok: true }
+  /** `signedIn` is true only for a session the API confirmed. */
+  | { ok: true; signedIn: boolean }
   | { ok: false; status: number; error: string; retryAfterSeconds?: number };
 
 export interface ProxySessionGate {
@@ -84,16 +95,26 @@ export interface ProxySessionGateOptions {
   maxEntries?: number;
   maxEntriesPerUser?: number;
   requestsPerWindow?: number;
+  anonymousRequestsPerWindow?: number;
   windowMs?: number;
   checkTimeoutMs?: number;
 }
 
-const SIGN_IN: ProxyAdmission = { ok: false, status: 401, error: "Sign in to use plugin requests." };
-const UNAVAILABLE: ProxyAdmission = {
-  ok: false,
-  status: 503,
-  error: "Could not confirm your session right now. Try again shortly.",
-};
+/**
+ * The window an anonymous caller is counted in. Cloudflare sets
+ * `cf-connecting-ip` on every request that reaches the worker. An IPv6 caller
+ * is counted by its /64, the block one subscriber is usually handed, so
+ * rotating through it does not open fresh windows.
+ */
+function anonymousRateKey(request: Request): string {
+  const ip = request.headers.get("cf-connecting-ip")?.trim().toLowerCase() ?? "";
+  if (!ip.includes(":")) return `ip:${ip || "unknown"}`;
+  const [head = "", tail] = ip.split("::", 2);
+  const front = head ? head.split(":") : [];
+  const back = tail === undefined ? [] : tail ? tail.split(":") : [];
+  const groups = tail === undefined ? front : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
+  return `ip6:${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, "")).join(":")}`;
+}
 
 /** The session cookies (and `dont_remember`) from a Cookie header, in order. */
 function forwardedCookies(header: string | null): string | null {
@@ -186,13 +207,18 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxEntriesPerUser = Math.max(1, options.maxEntriesPerUser ?? DEFAULT_MAX_ENTRIES_PER_USER);
   const requestsPerWindow = options.requestsPerWindow ?? DEFAULT_REQUESTS_PER_WINDOW;
+  const anonymousRequestsPerWindow = options.anonymousRequestsPerWindow ?? DEFAULT_ANONYMOUS_REQUESTS_PER_WINDOW;
   const windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
   const checkTimeoutMs = options.checkTimeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
   const sharedWaitMs = checkTimeoutMs + SHARED_CHECK_GRACE_MS;
   /** Cookie key to whose session it is and when that stops being trusted. */
   const confirmed = new Map<string, Confirmation>();
   const pending = new Map<string, PendingCheck>();
-  /** Keyed by user id, not cookie, so every variant of a session shares one window. */
+  /**
+   * Keyed by user id, not cookie, so every variant of a session shares one
+   * window, or by address for anonymous callers. The prefixes keep the two
+   * apart.
+   */
   const windows = new Map<string, RateWindow>();
 
   /** Remembers `key` for `userId`, first dropping that user's oldest variants past the per-user cap. */
@@ -237,21 +263,21 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
     return verdict;
   }
 
-  function withinRate(userId: string): ProxyAdmission {
+  function withinRate(windowKey: string, limit: number, signedIn: boolean): ProxyAdmission {
     const at = now();
-    let window = windows.get(userId);
+    let window = windows.get(windowKey);
     if (!window || at - window.startedAt >= windowMs) {
-      windows.delete(userId);
+      windows.delete(windowKey);
       makeRoom(windows, maxEntries, (entry) => at - entry.startedAt >= windowMs);
       window = { startedAt: at, count: 0 };
-      windows.set(userId, window);
+      windows.set(windowKey, window);
     }
     window.count += 1;
-    if (window.count <= requestsPerWindow) return { ok: true };
+    if (window.count <= limit) return { ok: true, signedIn };
     return {
       ok: false,
       status: 429,
-      error: "Too many plugin requests. Try again in a minute.",
+      error: "Too many requests right now. Try again in a minute.",
       retryAfterSeconds: Math.max(1, Math.ceil((window.startedAt + windowMs - at) / 1_000)),
     };
   }
@@ -259,12 +285,9 @@ export function createProxySessionGate(options: ProxySessionGateOptions): ProxyS
   return {
     async admit(request, fetchApi) {
       const cookie = forwardedCookies(request.headers.get("cookie"));
-      if (!cookie) return SIGN_IN;
-      const key = await cacheKey(cookie);
-      const verdict = await verdictFor(key, cookie, request, fetchApi);
-      if (verdict === "invalid") return SIGN_IN;
-      if (verdict === "unavailable") return UNAVAILABLE;
-      return withinRate(verdict.userId);
+      const verdict = cookie ? await verdictFor(await cacheKey(cookie), cookie, request, fetchApi) : "invalid";
+      if (typeof verdict === "object") return withinRate(`user:${verdict.userId}`, requestsPerWindow, true);
+      return withinRate(anonymousRateKey(request), anonymousRequestsPerWindow, false);
     },
   };
 }

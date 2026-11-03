@@ -1,10 +1,12 @@
-import type { NumericField, ScreenCriterion, ScreenDefinition } from "../../../api-client/equity-screener";
+import { LETTER_GRADE_FIELDS, type NumericField, type ScreenCriterion, type ScreenDefinition } from "../../../api-client/equity-screener";
 
-/** A ready screen in the Ideas tab and `--preset`: its definition and the metric it leads with. */
+/** A ready screen in the Ideas tab and `--preset`: its definition, the metric it leads with and any it shows beside. */
 export interface ScreenIdea {
   id: string;
   name: string;
   metric: NumericField;
+  /** Columns after the metric, as `--metric` adds them. */
+  others?: readonly NumericField[];
   definition: ScreenDefinition;
 }
 
@@ -16,17 +18,19 @@ const idea = (
   name: string,
   criteria: ScreenCriterion[],
   sort: ScreenDefinition["sort"] & { field: NumericField },
+  others?: readonly NumericField[],
 ): ScreenIdea => ({
   id,
   name,
   metric: sort.field,
+  ...(others ? { others } : {}),
   definition: { version: 1, currency: "USD", criteria: [...criteria, TRADED], sort },
 });
 
 /**
  * Technical ideas, read at the last completed session, then fundamental ones, read on `FA`'s bases (the trailing four
  * quarters, or the latest fiscal year when those quarters are that year) and `EE`'s consensus, then the classic
- * scores. Each keeps to companies above $2B.
+ * scores and the grades. Each keeps to companies above $2B.
  */
 export const SCREEN_IDEAS: ScreenIdea[] = [
   idea("oversold-uptrend", "Oversold in an uptrend", [
@@ -124,7 +128,15 @@ export const SCREEN_IDEAS: ScreenIdea[] = [
     { field: "revenueGrowthYears", op: "gte", value: 5 },
     { field: "roicPercent", op: "gte", value: 15 },
   ], { field: "revenueGrowthYears", direction: "desc" }),
+  // Grades: the composite of the five sector-relative grades at 4.5 or more, its Top label, which the ranking keeps
+  // to an eighth of the graded listings, with the five grades beside it. Highest composite first.
+  idea("top-grades", "Top grades", [
+    { field: "gradeComposite", op: "gte", value: 4.5 },
+  ], { field: "gradeComposite", direction: "desc" }, LETTER_GRADE_FIELDS),
 ];
+
+/** The metric setting an idea opens with: its metric, then the columns it shows beside it (`--metric` form). */
+export const ideaMetricSetting = (entry: ScreenIdea): string => [entry.metric, ...(entry.others ?? [])].join(",");
 
 export const screenIdea = (id: string | undefined): ScreenIdea | undefined =>
   SCREEN_IDEAS.find((entry) => entry.id === id);

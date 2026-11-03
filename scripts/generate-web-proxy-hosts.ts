@@ -4,13 +4,15 @@ import { join } from "path";
 
 import { browserBuiltinPlugins } from "../src/plugins/catalog-browser";
 import type { GloomPlugin } from "../src/types/plugin";
+import { isProxiedHost, WEB_DIRECT_HOSTS } from "../src/utils/plugin-proxy-hosts";
 import { compileWebBundledPlugins } from "./web-plugins";
 
 /**
  * Writes `src/utils/plugin-proxy-hosts.json`: the hosts the web worker will
  * proxy for plugins, derived from what the plugins in the web build declare:
  * the browser catalog's built-ins, and the plugins compiled in from their own
- * repositories (`plugins/web-bundled.ts`).
+ * repositories (`plugins/web-bundled.ts`). Hosts the browser calls directly
+ * (`WEB_DIRECT_HOSTS`, allowed by the worker's CSP) are left off.
  *
  * The worker cannot import the catalog (it would pull the whole app into the
  * worker bundle), so the list is generated and committed. Run with --check in
@@ -45,11 +47,25 @@ async function webBundledPlugins(): Promise<GloomPlugin[]> {
 }
 
 const byHost = new Map<string, string[]>();
+const declared: string[] = [];
 for (const plugin of [...browserBuiltinPlugins, ...await webBundledPlugins()]) {
   for (const host of plugin.hosts ?? []) {
     const normalized = normalizeHost(host, plugin.id);
+    declared.push(normalized);
+    if (isProxiedHost(normalized, WEB_DIRECT_HOSTS)) continue;
     byHost.set(normalized, [...(byHost.get(normalized) ?? []), plugin.id]);
   }
+}
+
+// A direct host is a hole in the page's CSP, so one no plugin declares any
+// more is removed rather than left open.
+const undeclaredDirect = WEB_DIRECT_HOSTS.filter((direct) => !declared.some((host) => isProxiedHost(host, [direct])));
+if (undeclaredDirect.length) {
+  console.error(
+    `WEB_DIRECT_HOSTS lists hosts no plugin in the web build declares: ${undeclaredDirect.join(", ")}.\n`
+      + "Remove them from src/utils/plugin-proxy-hosts.ts, or declare them in the plugin that fetches them.",
+  );
+  process.exit(1);
 }
 
 const hosts = [...byHost.keys()].sort();

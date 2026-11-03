@@ -6,6 +6,9 @@ import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { mergePlainRootTickerResults } from "../ticker-search/results";
 import { buildRootResultModel, type RootResultModelOptions } from "./results";
 
+/** The AI's rows, as the assist model files them. */
+const ASSIST_CATEGORY = "Ask AI";
+
 function rootOptions(overrides: Partial<RootResultModelOptions>): RootResultModelOptions {
   const empty = () => [] as ResultItem[];
   return {
@@ -463,5 +466,40 @@ describe("Start Here in the empty bar", () => {
     // Everything the bar listed before is still listed after the group.
     for (const entry of templates) expect(ordered.some((item) => item.id === `pane-template:${entry.id}:`)).toBe(true);
     expect(ordered.some((item) => item.id === "security-description")).toBe(true);
+  });
+});
+
+describe("a pasted list in the root result model", () => {
+  const assist = { enabled: true, auto: true, state: { status: "idle" as const }, onAsk: () => {}, onSignUp: () => {}, onRunCandidate: () => {} };
+
+  test("a list the bar flattened leads with adding its symbols, Bloomberg's cells whole, and the AI is still offered", () => {
+    // 2 Nov 2026: a pasted list offered Ask AI only.
+    const added: Array<[string, string | undefined]> = [];
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "NFE US Equity RAD US Equity TUP US Equity CZR",
+      assist,
+      executeCollectionCommand: (commandId, rawInput) => { added.push([commandId, rawInput]); },
+    }));
+    const ordered = orderListResults(items);
+    expect([ordered[0]?.label, ordered[0]?.detail]).toEqual(["Add 4 symbols to a watchlist", "NFE US Equity, RAD US Equity, TUP US Equity, CZR"]);
+    expect(ordered.some((item) => item.category === ASSIST_CATEGORY)).toBe(true);
+    ordered[0]!.action();
+    expect(added).toEqual([["add-watchlist", "NFE US Equity, RAD US Equity, TUP US Equity, CZR"]]);
+    for (const rootQuery of ["NFE, RAD", "Apple, Microsoft, Nvidia", "NFE RAD TUP", "0700 9988 1810"]) {
+      const { items: rows } = buildRootResultModel(rootOptions({ rootQuery }));
+      expect(rows.some((item) => item.id.startsWith("pasted-list:")), rootQuery).toBe(true);
+    }
+  });
+
+  test("a sentence with a comma or a name in capitals is no list, and the AI keeps its rows", () => {
+    // Review of the first cut: these led with "Add N symbols" and the AI's rows were gone.
+    for (const rootQuery of [
+      "how did NVDA do today, and why?", "NEW FORTRESS ENERGY INC", "BANK OF AMERICA", "Hello, world",
+      "palo alto networks", "AAPL MSFT", "what is NFE", "NFE US Equity", "SAP SE SIEMENS AG",
+    ]) {
+      const { items: rows } = buildRootResultModel(rootOptions({ rootQuery, assist }));
+      expect(rows.some((item) => item.id.startsWith("pasted-list:")), rootQuery).toBe(false);
+      expect(rows.some((item) => item.category === ASSIST_CATEGORY), rootQuery).toBe(true);
+    }
   });
 });

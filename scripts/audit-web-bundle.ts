@@ -3,7 +3,8 @@ import { dirname, join, relative } from "path";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
 import { WORLD_MAP_DATA_SPECIFIER } from "../src/renderers/dom/build-assets";
 import { isProxiedHost } from "../src/utils/plugin-proxy-hosts";
-import { IMMUTABLE_ASSET_PATH } from "../src/renderers/cloudflare/worker";
+import { IMMUTABLE_ASSET_PATH, SECURITY_HEADERS } from "../src/renderers/cloudflare/worker";
+import { WEB_LINK_ONLY_HOSTS } from "./web-link-hosts";
 
 const root = join(process.cwd(), "dist", "web");
 
@@ -126,6 +127,35 @@ for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
 }
 if (!appBundle.includes(`import(${JSON.stringify(WORLD_MAP_DATA_SPECIFIER)})`)) {
   failures.push(`${appBundleName}: the world map's land data is not wired in`);
+}
+
+/**
+ * Every host the shipped JavaScript names is one the page can fetch (in the
+ * worker's `connect-src`, or on the plugin proxy's allowlist), or one it only
+ * links to (`scripts/web-link-hosts.ts`). A fetch to any other host fails in
+ * the browser with nothing but "Failed to fetch", while the same function
+ * works on the desktop, so it is caught here instead.
+ */
+const connectSrcHosts = new Set((SECURITY_HEADERS["content-security-policy"]
+  .split(";")
+  .map((directive) => directive.trim().split(/\s+/))
+  .find(([name]) => name === "connect-src") ?? [])
+  .filter((source) => source.startsWith("https://"))
+  .map((source) => new URL(source).hostname));
+const unreachableHosts = new Map<string, string>();
+for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
+  const content = await readFile(path, "utf8");
+  for (const [, raw] of content.matchAll(/https:\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/gi)) {
+    const host = raw!.toLowerCase();
+    if (connectSrcHosts.has(host) || isProxiedHost(host) || WEB_LINK_ONLY_HOSTS.has(host) || unreachableHosts.has(host)) continue;
+    unreachableHosts.set(host, relative(root, path));
+  }
+}
+for (const [host, name] of unreachableHosts) {
+  failures.push(
+    `${name}: names https://${host}, which the page cannot fetch. If the web build fetches it, declare it in the plugin's hosts `
+      + "and run bun run web:proxy-hosts (or list it in WEB_DIRECT_HOSTS when it sends CORS); if it is only a link, add it to scripts/web-link-hosts.ts.",
+  );
 }
 
 const shareScripts = outputFiles.filter((path) => /assets\/share\/.*\.js$/.test(path));

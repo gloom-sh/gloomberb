@@ -293,6 +293,7 @@ export type BuildoutColumnId =
   | "avgSectorGrowth"
   | "avgReturn1y"
   | "avgMargin"
+  | "ticker"
   | "company"
   | "description"
   | "sectorTech"

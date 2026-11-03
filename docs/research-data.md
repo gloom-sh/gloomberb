@@ -469,7 +469,7 @@ Principal total requires all six buckets. Reported zero amounts are retained; ab
 
 Headline ranks use a ten-year window ending on the latest source period, with at least five comparable annual cohorts and at most one cohort per period end. Interest expense ranks require the same interest concept; cost ranks also require the same debt concepts. History displays this bounded window, while the headless response retains all source history. Each value's as-of is the fiscal period end. The filing date identifies when that observation became public; later collection does not make it current. Amendments can change historical facts, so this is not a point-in-time trading dataset.
 
-Annual interest expense can include non-debt expenses depending on the reported concept, which the Filing tab exposes. A borrowing-cost accounting proxy is shown only when debt-only annual interest and explicit, matching opening and closing long-term and short-term balances are available. It is annual debt interest divided by average reported debt, multiplied by 100. It is not a weighted coupon, yield to maturity or a current refinancing rate. A missing proxy remains unavailable even when general annual interest expense exists; it is not a warning.
+Annual interest expense can include non-debt expenses depending on the reported concept, which the Filing tab exposes. A borrowing-cost accounting proxy is shown only when debt-only annual interest and explicit, matching opening and closing long-term and short-term balances are available. It is annual debt interest divided by average reported debt, multiplied by 100. It is not a weighted coupon, yield to maturity or a current refinancing rate. When the filing has no such proxy, the cost proxy is the year's annual interest expense divided by the average of its opening and closing scheduled principal (the schedule a year earlier and the year's own), multiplied by 100; the filing detail says which of the two it is, and `--json` and `--csv` name it in each year's `borrowingCostBasis` (`filed` or `average-principal`). A year with neither (no interest expense, a partial schedule, or no schedule a year earlier) shows none, and the report's note says why.
 
 Quarterly reports rarely repeat the maturity schedule, so DDIS adds the latest 10-Q's balance-sheet debt when that 10-Q ends after the annual schedule: current debt (due within a year) and non-current debt, with the period end and filing date. A 10-Q restates the prior year-end beside its own balance, so the filing's latest period end is the one read, and both amounts come from that filing and date. Current debt is `LongTermDebtCurrent`, else `DebtCurrent`, else `LongTermDebtAndCapitalLeaseObligationsCurrent`; non-current debt is `LongTermDebtNoncurrent`, else `LongTermDebtAndCapitalLeaseObligations`. A concept filed twice with different values is unavailable. These are carrying amounts, not principal, so they are never added to the maturity buckets, the total or the ranks. The 10-Q must be in the schedule's currency. An issuer whose newest filing is its 10-K or 20-F shows no 10-Q row. The report's as-of is the newer of the two period ends.
 
@@ -617,7 +617,7 @@ FINRA strikes positions twice a month, on the 15th (the business day before when
 - **SI Chg%** is the change in shares short from the settlement before. A split between the two settlements is not adjusted.
 - **1M%** is the latest daily close against the last close on or before the same day a month earlier (the month's last day when it is shorter), from daily closes, price only. A gap of more than four days before that day, or bars that are not daily, leave it blank.
 
-A name is **Crowded** when at least 10% of its float is short, or when it would take five or more days of average volume to cover and at least 5% of the float is short; days to cover alone flags thinly traded large caps whose shorts are a sliver of the float. With no float, days to cover decides alone. **Crowded, rising** adds a positive 1M%. The default order puts crowded names that are rising first, then other crowded names, then the rest, each from the highest percent of float down, and names with no settlement last. It is a fixed screen, not a squeeze forecast. The settlement and close dates sit in the query bar when every row shares them, and in columns when they differ. Enter opens the name's `SI` history.
+A name is **Crowded** when at least 10% of its float is short, or when it would take five or more days of average volume to cover and at least 5% of the float is short; days to cover alone flags thinly traded large caps whose shorts are a sliver of the float. With no float, days to cover decides alone. **Crowded, px up** adds a positive 1M%: the share price rose over the month, whatever the short interest did. The default order puts crowded names that are rising first, then other crowded names, then the rest, each from the highest percent of float down, and names with no settlement last. It is a fixed screen, not a squeeze forecast. The settlement and close dates sit in the query bar when every row shares them, and in columns when they differ. Enter opens the name's `SI` history.
 
 ## Credit spreads
 
@@ -1495,6 +1495,32 @@ latest fiscal year, otherwise the stored statements; dividend growth years read 
 distribution history, about ten years. A count that reaches the first stored year is
 a lower bound and is marked partial. Index membership reads the IVV (S&P 500) and DIA
 (Dow) holdings `MEMB` reads; the Nasdaq-100 is not covered.
+
+The grades rank screen fields already described here within each sector, in the
+same daily pass as the Magic Formula rank, so they add no source. Value reads P/E,
+forward P/E, P/B, EV/EBITDA, EV/revenue and FCF yield; Growth the 3-year revenue and
+EPS CAGRs and the consensus growth for the year in progress; Profitability gross,
+operating and net margin, ROE, ROIC and return on capital; Momentum the 3M return,
+the 1Y total return and the distance from the 52-week high; Revisions the 30-day
+change in consensus EPS for this fiscal year and the next and in consensus revenue
+for this year, read from the same stored consensus snapshots as `EE`. Grades belong
+to the company: lines with one issuer name whose symbols can be classes of one
+another (GOOGL and GOOG, BRK.A and BRK.B, a CEDEAR of a US company) are ranked once,
+on the most traded line, and all carry the result. Each field is a midrank
+percentile among the sector's companies that have it, every currency together; a
+grade is the mean of those percentiles ranked within the sector again and cut into
+thirteen equal bands, F to A+. A sector with fewer than 20 companies with a field,
+or with a grade, ranks against every company instead, and a company without a
+sector always does; the note says which. A grade needs two of its fields, and an
+N/M field is left out, not ranked as the worst value, which the note names. The
+composite weights the five grade percentiles equally, needs three of them, ranks
+the weighted mean across every graded company and scales it to 1 to 5, so its
+labels split the universe in fixed shares: an eighth Top, a quarter each Strong,
+Neutral and Weak, an eighth Bottom. Margins and ROE are filed with the SEC, so
+outside the US Profitability rests on ROIC and return on capital; revenue revisions
+need 30 days of stored consensus, which began in mid-September 2026. Each value is
+dated by the snapshot that ranked it, or, when a field it read is stale, by that
+field, and is then stale too.
 
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last

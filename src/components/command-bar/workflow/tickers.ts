@@ -4,6 +4,7 @@ import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { isManualPortfolio } from "../../../portfolio/mutations";
+import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
@@ -260,12 +261,31 @@ export async function applyCollectionMembershipChange(
   return result;
 }
 
+/** How a function reads a list argument that names a watchlist: at most `maximum` symbols, its note pushed to `notes`. */
+export interface TickerListReading {
+  maximum?: number;
+  notes?: string[];
+}
+
 export async function resolveTickerListInput(
   rawInput: string,
   collectionId: string | null,
   deps: SharedWorkflowDeps,
   keepToken?: (token: string) => boolean,
+  reading?: TickerListReading,
 ): Promise<string[]> {
+  // A watchlist's name stands for its symbols, as `fn` reads it (`SIW HY3`), with the note saying so.
+  const state = deps.getState();
+  const watchlist = /[,;\n]/.test(rawInput) ? null : findNamedCollection(state.config.watchlists, rawInput);
+  const members = watchlist
+    ? [...state.tickers.values()].filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id)).map((ticker) => ticker.metadata.ticker)
+    : [];
+  if (watchlist && members.length > 0) {
+    const read = readWatchlistArgument(rawInput, watchlist, members, reading?.maximum);
+    reading?.notes?.push(read.note);
+    return read.symbols;
+  }
+
   const tokens = parseTickerListInput(rawInput);
   const symbols: string[] = [];
   const seen = new Set<string>();

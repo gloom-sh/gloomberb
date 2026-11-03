@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
@@ -6,6 +6,10 @@ import { formatFreshnessLine } from "../pane-functions/freshness";
 import { marketDataCliCommands } from "./market";
 
 const events = marketDataCliCommands.find((command) => command.name === "events")!;
+
+// The next report below is on 2 Nov 2026: read it on a fixed day before that, so it stays upcoming.
+beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
+afterAll(() => { setSystemTime(); });
 
 async function eventRows(earnings: unknown[]) {
   const run = createTestCliContext({

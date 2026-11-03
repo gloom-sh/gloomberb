@@ -132,6 +132,19 @@ test("an issuer's matured bonds stay out, its perpetuals stay in, and a CUSIP sh
   expect((await fetchBondTape("963320AT3", { today: TODAY })).bonds.map((row) => row.lastSaleYield)).toEqual([42.56]);
 });
 
+test("a zero price is no last sale: its price, yield, change and date show as none, and it does not date the tape", async () => {
+  // New Fortress Energy's notes on 2 Nov 2026: one printed 0.000 at -15.900 on 2026-09-15.
+  const zero = bond("U6422PAD0", "NFE4797181", "NEW FORTRESS ENERGY INC", "2026-10-30", { lastSalePrice: 0, lastSaleYield: null, priceChangeNumber: -15.9 });
+  const sold = bond("644393AC4", "NFE4797180", "NEW FORTRESS ENERGY INC", "2026-09-04", { lastSalePrice: 16.25, lastSaleYield: 118.36, priceChangeNumber: 0 });
+  fakeTape(() => [zero, sold]);
+  const tape = await fetchBondTape("new fortress", { today: TODAY });
+  expect(tape.tradeDate).toBe("2026-09-04");
+  expect(tape.bonds.map((row) => [row.cusip, row.lastSalePrice, row.lastSaleYield, row.priceChangeNumber, row.lastTradeDate])).toEqual([
+    ["644393AC4", 16.25, 118.36, 0, "2026-09-04"],
+    ["U6422PAD0", null, null, null, null],
+  ]);
+});
+
 test("one request failing leaves the others' rows, and a 204 with no body is no rows", async () => {
   fakeTape((request) => filterOn(request, "issuerName")
     ? new Response("upstream down", { status: 502 })

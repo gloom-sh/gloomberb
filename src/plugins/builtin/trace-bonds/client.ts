@@ -257,6 +257,9 @@ function bondId(raw: Record<string, unknown>, index: number): string {
 function parseBond(raw: unknown, index: number): CorporateBond | null {
   const record = recordOrNull(raw);
   if (!record) return null;
+  // A price of zero is no sale (a cancelled or defaulted print): the bond is listed with no last sale, never one at 0.
+  const price = numericOrNull(record.lastSalePrice);
+  const sold = price == null || price > 0;
   return {
     id: bondId(record, index),
     issuerName: textOrNull(record.issuerName) ?? "",
@@ -264,10 +267,10 @@ function parseBond(raw: unknown, index: number): CorporateBond | null {
     symbol: textOrNull(record.issueSymbolIdentifier),
     couponRate: numericOrNull(record.couponRate),
     maturityDate: saleDate(record.maturityDate),
-    lastSalePrice: numericOrNull(record.lastSalePrice),
-    lastSaleYield: numericOrNull(record.lastSaleYield),
-    priceChangeNumber: saleChange(numericOrNull(record.priceChangeNumber), numericOrNull(record.lastSalePrice)),
-    lastTradeDate: saleDate(record.lastTradeDate),
+    lastSalePrice: sold ? price : null,
+    lastSaleYield: sold ? numericOrNull(record.lastSaleYield) : null,
+    priceChangeNumber: sold ? saleChange(numericOrNull(record.priceChangeNumber), price) : null,
+    lastTradeDate: sold ? saleDate(record.lastTradeDate) : null,
     traceGradeCode: textOrNull(record.traceGradeCode),
   };
 }

@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
+import { bucketShare, debtAmount, debtCostProxyNote, debtHistoryRows, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -46,6 +46,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const symbol = args.symbols[0]!;
     const data = await fetchDebtMaturities(symbol, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
     const quarter = newerQuarter(data);
+    const costNote = debtCostProxyNote(data.history);
     return {
       complete: data.status === "available",
       errors: debtNotices(data),
@@ -111,12 +112,20 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
               align: "right",
               textFormat: percent,
             },
+            {
+              // What the proxy divides: exports keep `filed` or `average-principal`, the text says it in words.
+              key: "borrowingCostBasis",
+              header: "Cost basis",
+              optional: true,
+              textFormat: (value) => value === "filed" ? "Filed" : value === "average-principal" ? "Avg principal" : "",
+            },
             { key: "currency", header: "Currency" },
             { key: "filed", header: "Filed" },
           ],
-          rows: data.history.toReversed().map((point) => ({ ...point })),
+          rows: debtHistoryRows(data.history).map((row) => ({ ...row })),
         },
       ],
+      ...(costNote ? { notes: [costNote] } : {}),
       metadata: { ...data },
       // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
       // not read as the schedule's; the history rows are past years, not stale data.

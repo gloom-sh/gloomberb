@@ -10,7 +10,7 @@ import type {
 } from "./model/types";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { SortDirection } from "../../../utils/sort-values";
-import { LIST_TIER_ORDER, metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
+import { LIST_TIER_ORDER, listingKey, metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
 
 export const tabs: Array<{ label: string; value: BuildoutTabId }> = [
   { label: "Themes", value: "themes" },
@@ -31,8 +31,12 @@ const listColumns: BuildoutColumn[] = [
 
 const favoriteColumn: BuildoutColumn = { id: "favorite", label: "", width: 2, align: "left" };
 
+/** A ticker chip takes its own column, as in every ticker and name table; the name takes the spare width. */
+const tickerColumn: BuildoutColumn = { id: "ticker", label: "Ticker", width: 12, align: "left" };
+
 const companyColumns: BuildoutColumn[] = [
-  { id: "company", label: "Company", width: 26, align: "left", flexGrow: 2 },
+  tickerColumn,
+  { id: "company", label: "Company", width: 16, align: "left", flexGrow: 2 },
   { id: "description", label: "Description", width: 34, align: "left", flexGrow: 2 },
   { id: "sectorTech", label: "Sector & Tech", width: 26, align: "left", flexGrow: 1 },
   { id: "criticality", label: "Criticality", width: 12, align: "left" },
@@ -49,7 +53,8 @@ const companyColumns: BuildoutColumn[] = [
 
 /** A theme's companies under its board: what each does in the theme, then the figures. */
 const themeCompanyColumns: BuildoutColumn[] = [
-  { id: "company", label: "Company", width: 26, align: "left", flexGrow: 2 },
+  tickerColumn,
+  { id: "company", label: "Company", width: 16, align: "left", flexGrow: 2 },
   { id: "listRole", label: "Role", width: 15, align: "left" },
   { id: "listTier", label: "Tier", width: 9, align: "left" },
   { id: "marketCap", label: "Mkt Cap", width: 10, align: "right" },
@@ -280,6 +285,8 @@ function sortValue(row: BuildoutRow, columnId: BuildoutColumnId): SortComparable
     switch (columnId) {
       case "favorite":
         return numberSort(company.starred ? 1 : 0);
+      case "ticker":
+        return stringSort(listingKey(company.ticker, company.exchange) ?? tickerSymbol(company.ticker));
       case "company":
         return stringSort(company.name);
       case "description":
@@ -397,7 +404,8 @@ export function defaultSortDirection(columnId: BuildoutColumnId | null): SortDir
 export function rowTickerSymbols(row: BuildoutRow): string[] {
   switch (row.kind) {
     case "company":
-      return [tickerSymbol(row.item.ticker)].filter((symbol): symbol is string => symbol != null);
+      return [listingKey(row.item.ticker, row.item.exchange) ?? tickerSymbol(row.item.ticker)]
+        .filter((symbol): symbol is string => symbol != null);
     case "site":
       return [
         tickerSymbol(row.item.ownerTicker),
