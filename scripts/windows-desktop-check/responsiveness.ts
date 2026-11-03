@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { Jimp } from "jimp";
 import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import * as win from "./win32";
@@ -104,6 +105,22 @@ interface ScenarioResult {
 }
 
 // --- The app ---------------------------------------------------------------
+
+let shotDir = "";
+let shotCount = 0;
+
+/** The whole screen as a PNG under the output folder, named in order. */
+async function shot(label: string): Promise<void> {
+  if (!shotDir) return;
+  try {
+    const bitmap = win.captureScreen(win.screenRect());
+    shotCount += 1;
+    const image = new Jimp({ width: bitmap.width, height: bitmap.height, data: bitmap.data });
+    await writeFile(join(shotDir, `${String(shotCount).padStart(2, "0")}-${label}.png`), await image.getBuffer("image/png"));
+  } catch (error) {
+    console.error(`Could not picture ${label}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 interface Frame { x: number; y: number; width: number; height: number }
 
@@ -284,14 +301,20 @@ function summarize(id: string, title: string, holds: Hold[], probe: Probe, stall
 
 // --- Scenarios -------------------------------------------------------------
 
-/** A ticker's cell in the watchlist, where a right click opens the ticker's menu. */
-const TICKER_CELL = String.raw`(() => {
-  const cells = [...document.querySelectorAll("[data-gloom-role=pane-window] *")]
-    .filter((el) => el.childElementCount === 0 && /^(AAPL|AMZN|MSFT|NVDA|TSLA|GOOGL|META|JPM)$/.test((el.textContent || "").trim()));
-  const cell = cells[1] || cells[0];
-  if (!cell) return null;
-  const r = cell.getBoundingClientRect();
-  return { x: r.left + Math.min(r.width / 2, 20), y: r.top + r.height / 2 };
+/**
+ * A point in the pane's body with no field under it: a right click anywhere
+ * on the page outside a field opens the app's menu.
+ */
+const MENU_POINT = String.raw`(() => {
+  const pane = document.querySelector("[data-gloom-role=pane-window]");
+  const r = (pane || document.body).getBoundingClientRect();
+  for (const share of [0.6, 0.75, 0.45, 0.9]) {
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height * share;
+    const hit = document.elementFromPoint(x, y);
+    if (hit && !hit.closest("input, textarea, [contenteditable=true], select")) return { x, y };
+  }
+  return null;
 })()`;
 
 /** A point on the top bar with nothing pressable under it. */
@@ -322,20 +345,26 @@ async function holdContextMenus(running: Running, count: number): Promise<Hold[]
   const holds: Hold[] = [];
   for (let index = 1; index <= count; index += 1) {
     await focusApp(running);
-    const cell = await evaluate<{ x: number; y: number } | null>(running.cdp, TICKER_CELL, 5_000);
-    if (!cell) {
-      holds.push({ scenario: "menu", index, from: Date.now(), to: Date.now(), note: "no ticker to right-click" });
+    const point = await evaluate<{ x: number; y: number } | null>(running.cdp, MENU_POINT, 5_000);
+    if (!point) {
+      await shot(`menu-${index}-no-point`);
+      holds.push({ scenario: "menu", index, from: Date.now(), to: Date.now(), note: "no point in the pane to right-click" });
       continue;
     }
-    await win.rightClick(await toScreen(running, cell));
+    const screenPoint = await toScreen(running, point);
+    await win.rightClick(screenPoint);
     const opened = await waitUntil(5_000, menuOpen);
     const from = Date.now();
     if (!opened) {
-      holds.push({ scenario: "menu", index, from, to: from, note: "the menu did not open" });
+      await shot(`menu-${index}-not-open`);
+      const hit = win.hitTest(screenPoint);
+      holds.push({ scenario: "menu", index, from, to: from, note: `the menu did not open (right-clicked ${screenPoint.x},${screenPoint.y}: ${hit.code} of "${hit.window?.title ?? "nothing"}", foreground ${win.foregroundWindow() === running.hwnd ? "the app" : "another window"})` });
       await win.pressKeys(win.VK.escape);
       continue;
     }
-    await sleep(HOLD_MS);
+    await sleep(HOLD_MS / 2);
+    if (index === 1) await shot("menu-held");
+    await sleep(HOLD_MS / 2);
     await win.pressKeys(win.VK.escape);
     const closed = await waitUntil(5_000, () => !menuOpen());
     holds.push({ scenario: "menu", index, from, to: Date.now(), ...(closed ? {} : { note: "the menu stayed open after Escape" }) });
@@ -363,6 +392,7 @@ async function holdWindow(running: Running, how: "move" | "resize", count: numbe
       }
       from = await toScreen(running, point);
     } else {
+      if (win.isMaximized(running.hwnd)) win.showWindow(running.hwnd, "restore");
       const rect = win.visibleRect(running.hwnd);
       const y = Math.round((rect.top + rect.bottom) / 2);
       from = { x: rect.right - 2, y };
@@ -372,21 +402,32 @@ async function holdWindow(running: Running, how: "move" | "resize", count: numbe
       }
     }
     const to = { x: from.x + 80, y: from.y + (how === "move" ? 40 : 0) };
+    const hit = win.hitTest(from);
     let heldFrom = 0;
     let heldTo = 0;
+    let during = before;
     await win.drag(from, to, {
       whileHeld: async () => {
         heldFrom = Date.now();
         for (let step = 0; Date.now() - heldFrom < HOLD_MS; step += 1) {
           win.moveMouse({ x: to.x + (step % 2 ? 6 : -6), y: to.y });
           await sleep(250);
+          if (step === 8) {
+            during = win.windowRect(running.hwnd);
+            if (index === 1) await shot(`${how}-held`);
+          }
         }
         heldTo = Date.now();
       },
     });
-    const after = win.windowRect(running.hwnd);
-    const moved = how === "move" ? after.left !== before.left || after.top !== before.top : win.rectWidth(after) !== win.rectWidth(before);
-    holds.push({ scenario: how, index, from: heldFrom, to: heldTo, ...(moved ? {} : { note: `the window did not ${how}` }) });
+    const fmt = (rect: win.Rect) => `${rect.left},${rect.top} ${win.rectWidth(rect)}x${rect.bottom - rect.top}`;
+    const moved = how === "move"
+      ? during.left !== before.left || during.top !== before.top
+      : win.rectWidth(during) !== win.rectWidth(before);
+    holds.push({
+      scenario: how, index, from: heldFrom, to: heldTo,
+      ...(moved ? {} : { note: `the window did not ${how}: pressed ${from.x},${from.y} (${hit.code} of "${hit.window?.title ?? "nothing"}"${win.isMaximized(running.hwnd) ? ", maximized" : ""}), held at ${to.x},${to.y}; ${fmt(before)} before, ${fmt(during)} while held` }),
+    });
     await sleep(500);
     win.placeWindow(running.hwnd, before);
     await sleep(1_500);
@@ -480,7 +521,8 @@ async function run(): Promise<void> {
   const strict = ARGS.includes("--strict");
   if (!option("app") || !option("out")) throw new Error("--app and --out are required");
   await rm(out, { recursive: true, force: true });
-  await mkdir(out, { recursive: true });
+  shotDir = join(out, "shots");
+  await mkdir(shotDir, { recursive: true });
   const session = new Session(app, out);
   const results: ScenarioResult[] = [];
   let fatal: string | null = null;
@@ -488,6 +530,8 @@ async function run(): Promise<void> {
   try {
     results.push(await updateAtLaunch(session, app, out));
     const running = await session.launch("held");
+    await focusApp(running);
+    await shot("held-launch");
     const menus = await holdContextMenus(running, 3);
     results.push(summarize("menu", "A context menu held open", menus, running.probe, await stallsBetween(running.dataDir, menus[0]?.from ?? 0, Date.now())));
     const moves = await holdWindow(running, "move", 2);
@@ -497,6 +541,7 @@ async function run(): Promise<void> {
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);
     console.error(fatal);
+    await shot("stopped");
   } finally {
     await session.close();
   }
@@ -515,10 +560,8 @@ async function run(): Promise<void> {
     ...results.filter((result) => (result.id === "menu" || result.id === "update") && result.longestWaitMs >= STRICT_LIMIT_MS)
       .map((result) => `${result.title}: the app's thread waited ${result.longestWaitMs} ms`),
   ];
-  if (strict && failures.length) {
-    console.error(failures.join("\n"));
-    process.exit(1);
-  }
+  if (failures.length) console.error(`${strict ? "Failed" : "Would fail with --strict"}:\n${failures.join("\n")}`);
+  if (strict && failures.length) process.exit(1);
 }
 
 if (ARGS[0] === "run") {

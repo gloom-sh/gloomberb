@@ -257,8 +257,9 @@ jobs:
         shell: pwsh
         run: |
           $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
-          $Strict = if ("${{ matrix.build }}" -eq "head") { @("--strict") } else { @() }
-          & $Bun scripts/windows-desktop-check/responsiveness.ts run --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-responsiveness" --label $env:LABEL @Strict
+          $RunArgs = @("scripts/windows-desktop-check/responsiveness.ts", "run", "--app", "$env:RUNNER_TEMP\Gloom check", "--out", "windows-desktop-check\$env:LABEL-responsiveness", "--label", $env:LABEL)
+          if ("${{ matrix.build }}" -eq "head") { $RunArgs += "--strict" }
+          & $Bun @RunArgs
           exit $LASTEXITCODE
 
       - uses: actions/upload-artifact@v4
