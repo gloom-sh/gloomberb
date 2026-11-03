@@ -375,14 +375,17 @@ async function holdContextMenus(running: Running, count: number): Promise<Hold[]
 
 /**
  * Holds the window with the pointer down and still moving: by its top bar
- * (Windows' move loop), or by its right edge (its size loop). The window
- * goes back where it was after each hold.
+ * (Windows' move loop), or by its right edge (its size loop). Where Windows
+ * draws an outline while dragging instead of the window's contents (the CI
+ * runners do), the window takes its new frame on release; either way the
+ * loop runs for the whole hold. The window goes back where it was after
+ * each hold.
  */
 async function holdWindow(running: Running, how: "move" | "resize", count: number): Promise<Hold[]> {
   const holds: Hold[] = [];
   for (let index = 1; index <= count; index += 1) {
     await focusApp(running);
-    const before = win.windowRect(running.hwnd);
+    const before = win.visibleRect(running.hwnd);
     let from: win.Point;
     if (how === "move") {
       const point = await evaluate<{ x: number; y: number } | null>(running.cdp, TITLE_BAR_POINT, 5_000);
@@ -405,30 +408,27 @@ async function holdWindow(running: Running, how: "move" | "resize", count: numbe
     const hit = win.hitTest(from);
     let heldFrom = 0;
     let heldTo = 0;
-    let during = before;
     await win.drag(from, to, {
       whileHeld: async () => {
         heldFrom = Date.now();
         for (let step = 0; Date.now() - heldFrom < HOLD_MS; step += 1) {
           win.moveMouse({ x: to.x + (step % 2 ? 6 : -6), y: to.y });
           await sleep(250);
-          if (step === 8) {
-            during = win.windowRect(running.hwnd);
-            if (index === 1) await shot(`${how}-held`);
-          }
+          if (step === 8 && index === 1) await shot(`${how}-held`);
         }
         heldTo = Date.now();
       },
     });
+    await sleep(500);
+    const after = win.visibleRect(running.hwnd);
     const fmt = (rect: win.Rect) => `${rect.left},${rect.top} ${win.rectWidth(rect)}x${rect.bottom - rect.top}`;
     const moved = how === "move"
-      ? during.left !== before.left || during.top !== before.top
-      : win.rectWidth(during) !== win.rectWidth(before);
+      ? after.left !== before.left || after.top !== before.top
+      : win.rectWidth(after) !== win.rectWidth(before);
     holds.push({
       scenario: how, index, from: heldFrom, to: heldTo,
-      ...(moved ? {} : { note: `the window did not ${how}: pressed ${from.x},${from.y} (${hit.code} of "${hit.window?.title ?? "nothing"}"${win.isMaximized(running.hwnd) ? ", maximized" : ""}), held at ${to.x},${to.y}; ${fmt(before)} before, ${fmt(during)} while held` }),
+      ...(moved ? {} : { note: `the window did not ${how}: pressed ${from.x},${from.y} (${hit.code} of "${hit.window?.title ?? "nothing"}"${win.isMaximized(running.hwnd) ? ", maximized" : ""}), held at ${to.x},${to.y}; ${fmt(before)} before, ${fmt(after)} after` }),
     });
-    await sleep(500);
     win.placeWindow(running.hwnd, before);
     await sleep(1_500);
   }
