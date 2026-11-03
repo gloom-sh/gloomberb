@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
@@ -77,6 +77,10 @@ function args(view: string, limit = 50): HeadlessPaneLoadArgs {
 }
 
 describe("13F headless model", () => {
+  // The funds below are on Q2 2026: read them on a fixed day before Q3's 13Fs fall due (16 Nov), which would add a notice.
+  beforeEach(() => { setSystemTime(new Date("2026-10-18T12:00:00Z")); });
+  afterEach(() => { setSystemTime(); });
+
   test("retains prior-quarter positions omitted from the current disclosed report", async () => {
     const headless = createThirteenFHeadless({
       loadBrowser: async () => ({ rows: [] }),

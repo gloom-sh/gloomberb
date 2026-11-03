@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -18,6 +18,10 @@ async function loadBrowserRows(...args: Parameters<typeof loadRankedRows>) {
   await result.reportsLoaded;
   return result;
 }
+
+// The newest filings below are for Q2 2026: read them on a fixed day before Q3's 13Fs fall due (16 Nov), which would look for more.
+beforeAll(() => { setSystemTime(new Date("2026-10-18T12:00:00Z")); });
+afterAll(() => { setSystemTime(); });
 
 afterEach(() => {
   setHttpFetchTransport(null);

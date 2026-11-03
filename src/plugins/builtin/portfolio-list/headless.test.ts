@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createDefaultConfig } from "../../../types/config";
@@ -9,6 +9,8 @@ import { createTestTicker } from "../../../test-support/ticker";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { loadFuturesContractTermsCached } from "../../../market-data/futures-contract";
 import { collectionHoldingsHeadless } from "./headless";
+
+afterEach(() => { setSystemTime(); });
 
 const BROKER = { id: "broker:ibkr-main:U1234567", name: "U1234567", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-main", brokerAccountId: "U1234567" };
 const MANUAL = { id: "main", name: "Main", currency: "USD" };
@@ -220,6 +222,8 @@ test("a ticker held in several lots weighs each lot by its own value and gives i
 });
 
 test("--close values a future at its exchange settlement, dated by its session, with the day's move from the settlement before", async () => {
+  // The Monday after the settlement: a date in another year would carry its year.
+  setSystemTime(new Date("2026-10-19T14:00:00Z"));
   // Short four platinum contracts of 50 oz, beside ten shares.
   const platinum = createTestTicker("PL=F", "Platinum Jan 27", { exchange: "NYM", assetCategory: "FUTURE", portfolios: [MANUAL.id],
     positions: [{ portfolio: MANUAL.id, shares: -4, avgCost: 1_620, currency: "USD", broker: "manual", multiplier: 50 }] });

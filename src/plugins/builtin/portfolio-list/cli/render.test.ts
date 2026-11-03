@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { serializeCliResult, type CliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { createDefaultConfig } from "../../../../types/config";
@@ -17,6 +17,8 @@ import { MemoryResourceStore } from "../../../../data/memory-resource-store";
 import { persistBrokerAccounts } from "../../../../brokers/account-cache";
 import type { BrokerAdapter } from "../../../../types/broker";
 import type { BrokerAccount } from "../../../../types/trading";
+
+afterEach(() => { setSystemTime(); });
 
 const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
   portfolios: ["main"],
@@ -404,6 +406,8 @@ describe("a portfolio holding a hedge", () => {
   });
 
   test("--close values a future at its settlement and dates it by the session, never at the Globex print", async () => {
+    // The Monday after the settlement: a date in another year would carry its year.
+    setSystemTime(new Date("2026-10-19T14:00:00Z"));
     const { data, metadata } = await exported([spy, gold()], { basis: "regular-close" });
     const future = data.find((row) => row.symbol === "GC=F")!;
     expect(future).toMatchObject({ quotePrice: 4181.10, valuationPrice: 4181.10, valuationAsOf: "2026-10-16", valuationPriceKind: "settle" });
