@@ -34,7 +34,18 @@ test("QR on a listing abroad says where the finest bars are instead of loading a
   const us = await report("AAPL");
   expect(us.asked).toEqual(["AAPL"]);
   expect(us.result.errors).toEqual(["Observed window only"]);
-  expect(us.result.sections.map(({ title }) => title)).toEqual(["Observed window", "Regular session", "Trades", "NBBO"]);
+  // QR leads with the NBBO under its own heading; TAS with the trades, the quotes last.
+  expect(us.result.sections.map(({ title }) => title)).toEqual(["NBBO", "Observed window", "Regular session", "Trades"]);
+  const args = createTestHeadlessArgs({ argument: "AAPL", symbols: ["AAPL"] });
+  expect(typeof timeSalesHeadless.describe === "function" && timeSalesHeadless.describe(args, us.result)).toBe("Quote recap AAPL");
+  const tas = await timeSalesHeadless.load(args, createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "AAPL" }),
+    apiClient: { getCloudTape: async () => ({ ...tapeFixture(), symbol: "AAPL", exchange: "" }) } as unknown as HeadlessPaneContext["apiClient"],
+  })) as HeadlessBundleResult;
+  expect(tas.sections.map(({ title }) => title)).toEqual(["Observed window", "Regular session", "Trades", "NBBO"]);
+  expect(typeof timeSalesHeadless.describe === "function" && timeSalesHeadless.describe(args, tas)).toBe("Time and sales AAPL");
+  // Each low says what it is taken over.
+  expect(tas.notes?.at(-1)).toStartWith("Observed window low and high: every print listed, odd lots included. Regular session low and high:");
 });
 
 /** A closed session on Fri 16 Oct 2026, served by the latest tape and, when the server reads windows, by the window asked for. */
@@ -70,10 +81,11 @@ test("--from and --to read that window of the served session, oldest first, sayi
   expect(asked).toEqual([undefined, { from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z" }]);
   expect(result.sections[0]!.title).toBe("Window");
   expect(tradeTimes(result)).toEqual(["2026-10-16T14:30:05.000000001Z", "2026-10-16T14:31:00.000000001Z"]);
-  expect(result.notes).toEqual([
+  expect(result.notes?.slice(0, -1)).toEqual([
     "Window: Fri 16 Oct 2026, 10:30:00 ET (14:30:00 UTC) to 10:35:00 ET (14:35:00 UTC).",
     "The window holds more than 1000 trades: these are the first, through 10:31:00 ET (14:31:00 UTC); start --from there to read on.",
   ]);
+  expect(result.notes?.at(-1)).toStartWith("Window low and high: every print listed");
   expect(result.metadata).toMatchObject({ window: { from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z" } });
 
   await expect(timeSalesHeadless.load(windowArgs("03:00"), context)).rejects.toThrow(
