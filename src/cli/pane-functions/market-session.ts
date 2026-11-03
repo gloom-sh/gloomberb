@@ -82,7 +82,7 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
   }
   // A futures venue's weekend gap closes every contract, so it outranks the state a quote stamped before the Friday close.
   const weekend = futuresWeekendClosure(exchange, now);
-  if (weekend) return { state: "closed", timeZone: weekend.timeZone, ...(weekend.reopensAt != null && weekend.reopensOn ? { next: { date: weekend.reopensOn, open: weekend.reopensAt, firstTrade: true as const } } : {}) };
+  if (weekend) return { state: "closed", ...(weekend.reopensAt != null && weekend.reopensOn ? { timeZone: weekend.timeZone, next: { date: weekend.reopensOn, open: weekend.reopensAt, firstTrade: true as const } } : {}) };
   if (marketState === "REGULAR") return { state: "open" };
   const stated = marketState === "PRE" ? "pre-market" : marketState === "POST" ? "after-hours" : marketState && CLOSED_STATES.has(marketState) ? "closed" : null;
   if (!calendar) return stated ? { state: stated } : null;
