@@ -17,6 +17,7 @@ import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { BankFiguresPayload } from "./bank-figures";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
+import type { StoredBondPayload, StoredIssuerBondsPayload } from "./bond-trades";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
 import {
@@ -1116,6 +1117,26 @@ export class CloudDataApi {
 
   async getCloudDebtMaturities(symbol: string, listing?: IssuerListingParams): Promise<DebtMaturitiesPayload> {
     return this.request<DebtMaturitiesPayload>(cloudDebtMaturitiesPath(symbol, listing), { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** One bond's kept prints and daily closes over `from` to `to` (at most 1,100 days); reading it keeps the bond from now on. */
+  async getCloudStoredBond(
+    cusip: string,
+    params: { from: string; to: string; limit?: number },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<StoredBondPayload> {
+    const query = new URLSearchParams({ from: params.from, to: params.to, ...(params.limit ? { limit: String(params.limit) } : {}) });
+    return this.request<StoredBondPayload>(`/cloud/bond-trades/bond/${encodeURIComponent(cusip)}?${query}`, {
+      signal: options.signal ?? AbortSignal.timeout(20_000),
+    });
+  }
+
+  /** A company's bonds as kept; reading it keeps them from now on. Only the first page of bonds and prints is asked. */
+  async getCloudStoredIssuerBonds(symbol: string, options: { signal?: AbortSignal } = {}): Promise<StoredIssuerBondsPayload> {
+    const query = new URLSearchParams({ symbol, limit: "1", bondsLimit: "1" });
+    return this.request<StoredIssuerBondsPayload>(`/cloud/bond-trades/issuer?${query}`, {
+      signal: options.signal ?? AbortSignal.timeout(20_000),
+    });
   }
 
   async getCloudBankFigures(symbol: string): Promise<BankFiguresPayload> {
