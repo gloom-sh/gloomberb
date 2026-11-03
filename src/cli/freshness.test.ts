@@ -34,31 +34,34 @@ describe("quote status line", () => {
 
   test("a delayed US quote over the weekend is Friday's close, reopening Monday", () => {
     const freshness = quotesFreshness([cloudQuote({ lastUpdated: fridayClose })], undefined, Date.parse("2026-10-10T13:00:00Z"))!;
-    expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon");
+    expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     expect(freshness).toMatchObject({ delayMinutes: 15, asOfClose: "2026-10-09", tradingDayMarket: "US", market: { state: "closed", reopensAt: "2026-10-12T13:30:00.000Z", reopensOn: "2026-10-12" } });
   });
 
   test("an exchange holiday is not a session", () => {
     // Good Friday 2026: Thursday's close is still the latest on Saturday.
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-04-02T20:00:00Z") })], "2026-04-04T15:00:00Z"))
-      .toBe("US trading day Thu 2 Apr 2026 close · 15 min delayed · markets closed until Mon");
+      .toBe("US trading day Thu 2 Apr 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     // Thanksgiving 2026: closed Thursday, open Friday.
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-11-25T21:00:00Z") })], "2026-11-26T03:00:00Z"))
-      .toBe("US trading day Wed 25 Nov 2026 close · 15 min delayed · markets closed until Fri");
+      .toBe("US trading day Wed 25 Nov 2026 close · 15 min delayed · markets closed · regular session opens Fri 14:30 UTC, 09:30 ET");
   });
 
   test("on a weeknight the reopen is a UTC time, and in session the as-of is the print's time", () => {
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-10-12T23:59:00Z") })], "2026-10-13T02:00:00Z"))
-      .toBe("US trading day Mon 12 Oct 2026 close · 15 min delayed · markets closed · regular session opens 13:30 UTC");
+      .toBe("US trading day Mon 12 Oct 2026 close · 15 min delayed · markets closed · regular session opens 13:30 UTC, 09:30 ET");
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-10-12T14:45:00Z"), marketState: "REGULAR" })], "2026-10-12T15:00:00Z"))
       .toBe("Mon 12 Oct 2026 14:45 UTC · 15 min delayed · markets open");
   });
 
   test("a foreign listing takes its venue's lag and calendar", () => {
+    // The open on both clocks, the venue's own as Singapore keeps it.
+    const dbs = cloudQuote({ symbol: "D05", listingExchangeName: "SGX", lastUpdated: Date.parse("2026-11-03T09:15:00Z") });
+    expect(status([dbs], "2026-11-03T18:30:00Z")).toBe("SGX trading day Tue 3 Nov 2026 close · 20 min delayed · markets closed · regular session opens Wed 01:00 UTC, 09:00 SGT");
     const bhp = cloudQuote({ symbol: "BHP", listingExchangeName: "ASX", lastUpdated: Date.parse("2026-10-09T05:20:00Z") });
-    expect(status([bhp], "2026-10-10T13:00:00Z")).toBe("ASX trading day Fri 9 Oct 2026 close · 20 min delayed · markets closed until Mon");
+    expect(status([bhp], "2026-10-10T13:00:00Z")).toBe("ASX trading day Fri 9 Oct 2026 close · 20 min delayed · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET");
     expect(status([bhp, cloudQuote({ lastUpdated: fridayClose })], "2026-10-10T13:00:00Z"))
-      .toBe("US trading day Fri 9 Oct 2026 close · 15-20 min delayed · markets closed until Mon");
+      .toBe("US trading day Fri 9 Oct 2026 close · 15-20 min delayed · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET");
   });
 
   test("crypto trades around the clock, so it is never closed", () => {
@@ -80,10 +83,10 @@ describe("quote status line", () => {
     const freshness = quotesFreshness([waiting], undefined, Date.parse("2026-10-16T08:14:00Z"))!;
     expect(freshness.asOf).toBe("2026-10-15T20:00:00.000Z");
     expect(formatFreshnessLine(freshness))
-      .toBe("Source: Gloom Cloud · US trading day Thu 15 Oct 2026 close · 15 min delayed · pre-market open · regular session opens 13:30 UTC");
+      .toBe("Source: Gloom Cloud · US trading day Thu 15 Oct 2026 close · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
     // A pre-market trade dates the line by its own time.
     const printed = { ...waiting, preMarketPrice: 201.29, extendedSessionPrint: true, lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
     expect(status([printed], "2026-10-16T08:14:00Z"))
-      .toBe("Fri 16 Oct 2026 08:03 UTC · 15 min delayed · pre-market open · regular session opens 13:30 UTC");
+      .toBe("Fri 16 Oct 2026 08:03 UTC · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
   });
 });

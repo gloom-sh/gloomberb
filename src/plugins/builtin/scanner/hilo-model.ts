@@ -98,8 +98,9 @@ export function filterHiloRows(
 
 /**
  * What an empty table says. The price filter when rows came in and it hid them all, or when the market is open and
- * nothing has printed a new extreme yet. A closed market says so and when it reopens, in the status line's words
- * (`Markets closed until Mon.`), as SCAN says its own close: its session has no new highs or lows to count.
+ * nothing has printed a new extreme yet. A closed market says so and when it reopens, on the status line's clocks
+ * (`Markets closed until Mon 13:30 UTC, 09:30 ET.`), as SCAN says its own close: its session has no new highs or lows
+ * to count.
  */
 export function hiloEmptyState(
   { filtered, status, now }: { filtered: boolean; status: ScannerStatus | undefined; now: number },
@@ -107,7 +108,7 @@ export function hiloEmptyState(
   if (filtered || status !== "closed") return { title: "Nothing above the price filter yet." };
   const line = venueMarketLine("NYSE", now);
   return {
-    title: line?.state === "closed" ? `${line.text[0]!.toUpperCase()}${line.text.slice(1)}.` : "Market closed.",
+    title: line?.state !== "closed" ? "Market closed." : line.reopens ? `Markets closed until ${line.reopens}.` : "Markets closed.",
     hint: "New highs and lows resume at the open.",
   };
 }

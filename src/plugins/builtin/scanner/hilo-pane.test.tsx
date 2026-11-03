@@ -106,7 +106,7 @@ test("a closed weekend names the closed market in both tables, an open market wi
   await renderPane(100);
   await deliver({ ...empty, status: "closed" });
   let frame = tui.frame();
-  expect(frame.match(/Markets closed until Mon\./g)).toHaveLength(2);
+  expect(frame.match(/Markets closed until Mon 14:30 UTC, 09:30 ET\./g)).toHaveLength(2);
   expect(frame.match(/New highs and lows resume at the open\./g)).toHaveLength(2);
   expect(frame).not.toContain("price filter");
 

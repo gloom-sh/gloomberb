@@ -135,7 +135,7 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
 /**
  * Static captures retain warnings, what a filter leaves out (`capture`) and
  * optional source status without action shortcuts. With `statusLine` the footer also carries the capture's dated
- * status line (`Fri 9 Oct close · 15 min delayed · markets closed until Mon`),
+ * status line (`Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET`),
  * inside the requested size: the body gives up the footer row for it. The
  * pane's own text that says the same goes, so the date is said once: its `as
  * of` (a footer segment or a query bar's) when the line dates the pane's data,

@@ -51,7 +51,7 @@ describe("hilo empty tables", () => {
 
   test("a closed market says so and when the highs and lows resume, in the status line's words", () => {
     expect(hiloEmptyState({ filtered: false, status: "closed", now: saturday })).toEqual({
-      title: "Markets closed until Mon.", hint: "New highs and lows resume at the open.",
+      title: "Markets closed until Mon 14:30 UTC, 09:30 ET.", hint: "New highs and lows resume at the open.",
     });
   });
 
