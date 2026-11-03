@@ -15,6 +15,12 @@ import { logFailure } from "../utils/log-failure";
  * where other accounts could read it. Bun cannot hand a browser those pipes
  * on Windows yet, so there the browser listens on a local port for its
  * DevTools, as before, and is still told the page over the protocol.
+ *
+ * Chrome keeps its sandbox, which holds a page that goes wrong inside its
+ * renderer. It runs without one only where Chrome cannot have it: as root
+ * on Linux, which Chrome refuses, or on a Linux machine whose kernel does not
+ * let it build one (some containers), where Chrome says so as it fails to
+ * start and the capture starts it again without.
  */
 
 /** A DevTools command sent to the capture's page, and its result. */
@@ -142,7 +148,6 @@ const CHROME_ARGS = [
   // Software WebGL for GPU-drawn panes (the 3D volatility surface).
   "--use-angle=swiftshader",
   "--enable-unsafe-swiftshader",
-  "--no-sandbox",
   "--disable-dev-shm-usage",
   "--disable-background-networking",
   "--disable-default-apps",
@@ -154,15 +159,44 @@ const CHROME_ARGS = [
   "--allow-file-access-from-files",
 ];
 
+const NO_SANDBOX = "--no-sandbox";
+/** What Chrome prints when it cannot start with its sandbox: run as root, or no kernel support for one. */
+const SANDBOX_REFUSED = /No usable sandbox|Running as root without --no-sandbox/;
+/** How much of Chrome's stderr a failed start keeps to tell why. */
+const STDERR_KEPT_BYTES = 16_384;
+
+/** Whether Chrome starts without its sandbox from the outset: as root on Linux, where it refuses one. */
+export function startsWithoutSandbox(platform: NodeJS.Platform, uid: number | undefined): boolean {
+  return platform === "linux" && uid === 0;
+}
+
+/** Whether a Chrome that failed to start said it was for want of its sandbox. */
+export function chromeSandboxRefused(stderr: string): boolean {
+  return SANDBOX_REFUSED.test(stderr);
+}
+
 interface LaunchedChrome {
   connection: CdpConnection;
   stop(): Promise<void>;
+  /** The start of what the browser wrote to stderr, once it has exited. */
+  stderr(): Promise<string>;
 }
 
 /** Chrome with DevTools on fds 3 (to the browser) and 4 (from it): messages are JSON, each ended by a NUL. */
 function launchOverPipe(chrome: string, args: string[]): LaunchedChrome {
   const child = spawn(chrome, [...args, "--remote-debugging-pipe", "about:blank"], {
-    stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
+    stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
+  });
+  // Read to the end, so a chatty browser never blocks on a full pipe; only the start is kept.
+  let stderrText = "";
+  const fromStderr = child.stderr!;
+  fromStderr.setEncoding("utf8");
+  fromStderr.on("data", (chunk: string) => {
+    if (stderrText.length < STDERR_KEPT_BYTES) stderrText += chunk.slice(0, STDERR_KEPT_BYTES - stderrText.length);
+  });
+  const stderrDone = new Promise<void>((resolve) => {
+    fromStderr.once("close", () => resolve());
+    fromStderr.once("error", () => resolve());
   });
   const toChrome = child.stdio[3] as Writable;
   const fromChrome = child.stdio[4] as Readable;
@@ -197,6 +231,11 @@ function launchOverPipe(chrome: string, args: string[]): LaunchedChrome {
       await exited;
       clearTimeout(timer);
     },
+    stderr: async () => {
+      await exited;
+      await Promise.race([stderrDone, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+      return stderrText;
+    },
   };
 }
 
@@ -228,6 +267,8 @@ async function launchOverPort(chrome: string, args: string[], userDataDir: strin
         socket.close();
         await stop();
       },
+      // Windows gives Chrome its sandbox without kernel support to miss.
+      stderr: async () => "",
     };
   } catch (error) {
     await stop();
@@ -258,6 +299,8 @@ async function messageText(data: unknown): Promise<string> {
   return String(data);
 }
 
+class ChromeSandboxRefusedError extends Error {}
+
 /**
  * Starts the capture browser with one blank page of `widthPx` by `heightPx`,
  * its profile in `userDataDir`. Nothing is loaded until `open`.
@@ -268,13 +311,36 @@ export async function launchShotBrowser(
 ): Promise<ShotBrowser> {
   await mkdir(options.userDataDir, { recursive: true });
   const args = [...CHROME_ARGS, `--user-data-dir=${options.userDataDir}`, `--window-size=${options.widthPx},${options.heightPx}`];
+  if (startsWithoutSandbox(process.platform, process.getuid?.())) return startShotBrowser(chrome, [...args, NO_SANDBOX], options);
+  try {
+    return await startShotBrowser(chrome, args, options);
+  } catch (error) {
+    if (!(error instanceof ChromeSandboxRefusedError)) throw error;
+    logFailure("cli.screenshot", "Chrome has no sandbox on this machine; capturing without it")(error);
+    return startShotBrowser(chrome, [...args, NO_SANDBOX], options);
+  }
+}
+
+async function startShotBrowser(
+  chrome: string,
+  args: string[],
+  options: { userDataDir: string },
+): Promise<ShotBrowser> {
   const launched = process.platform === "win32"
     ? await launchOverPort(chrome, args, options.userDataDir)
     : launchOverPipe(chrome, args);
   const { connection } = launched;
   try {
     // The first answer waits for the browser to start.
-    await connection.send("Browser.getVersion", undefined, undefined, CHROME_START_TIMEOUT_MS);
+    try {
+      await connection.send("Browser.getVersion", undefined, undefined, CHROME_START_TIMEOUT_MS);
+    } catch (error) {
+      await launched.stop();
+      if (!args.includes(NO_SANDBOX) && chromeSandboxRefused(await launched.stderr())) {
+        throw new ChromeSandboxRefusedError("Chrome could not start with its sandbox.", { cause: error });
+      }
+      throw error;
+    }
     const { targetId } = await connection.send("Target.createTarget", { url: "about:blank" }) as { targetId: string };
     const { sessionId } = await connection.send("Target.attachToTarget", { targetId, flatten: true }) as { sessionId: string };
     const page: CdpPage = { send: (method, params) => connection.send(method, params, sessionId) };

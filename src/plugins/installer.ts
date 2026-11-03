@@ -45,6 +45,18 @@ function ensurePluginsDir() {
 
 const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?![\s\S])/;
 const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
+/**
+ * A tag or branch name as git spells one: never starting with a dash, which
+ * git would read as an option, and without `..`, `//`, `@{`, a trailing slash
+ * or dot, or `.lock` at the end.
+ */
+const PIN_REF_PATTERN = /^(?!.*\.\.)(?!.*\/\/)(?!.*@\{)(?!.*\.lock$)(?!.*[./]$)[A-Za-z0-9][A-Za-z0-9._/@+-]*$/;
+
+/** The registry pin's tag or branch, refused unless it is plainly one. */
+export function validatePinRef(ref: string): string {
+  if (ref.length > 200 || !PIN_REF_PATTERN.test(ref)) throw new Error(`Invalid ref in registry pin: ${JSON.stringify(ref)}.`);
+  return ref;
+}
 
 export function validatePluginDirectoryName(name: string): string {
   if (!GITHUB_SEGMENT_PATTERN.test(name)) {
@@ -203,8 +215,9 @@ function pinMatches(commit: string | null, expected: string | undefined): boolea
 async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): Promise<string> {
   const wanted = pin.ref ?? pin.commit;
   if (!wanted) throw new Error("The registry pin names no ref or commit.");
+  if (pin.ref) validatePinRef(pin.ref);
   if (pin.commit && !COMMIT_PATTERN.test(pin.commit)) throw new Error(`Invalid commit in registry pin: ${pin.commit}`);
-  await git(["fetch", "--depth", "1", "origin", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
+  await git(["fetch", "--depth", "1", "origin", "--", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
   const commit = await git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`);
   if (!pinMatches(commit, pin.commit)) {
     throw new Error(`${pin.ref ?? "The pinned ref"} now points at ${commit.slice(0, 7)}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
@@ -348,8 +361,8 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const pin = options.pin ?? {};
   try {
     const cloneArgs = ["clone", "--depth", "1"];
-    if (pin.ref) cloneArgs.push("--branch", pin.ref);
-    cloneArgs.push(url, targetDir);
+    if (pin.ref) cloneArgs.push(`--branch=${validatePinRef(pin.ref)}`);
+    cloneArgs.push("--", url, targetDir);
     await git(cloneArgs, PLUGINS_DIR, quiet, `Failed to clone ${url}`);
     if (pin.ref) {
       const commit = readPluginCommit(targetDir);

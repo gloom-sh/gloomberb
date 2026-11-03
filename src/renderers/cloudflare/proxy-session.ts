@@ -106,7 +106,7 @@ export interface ProxySessionGateOptions {
  * is counted by its /64, the block one subscriber is usually handed, so
  * rotating through it does not open fresh windows.
  */
-function anonymousRateKey(request: Request): string {
+export function anonymousRateKey(request: Request): string {
   const ip = request.headers.get("cf-connecting-ip")?.trim().toLowerCase() ?? "";
   if (!ip.includes(":")) return `ip:${ip || "unknown"}`;
   const [head = "", tail] = ip.split("::", 2);

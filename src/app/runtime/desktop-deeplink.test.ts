@@ -31,6 +31,46 @@ describe("desktop deeplinks", () => {
     expect(notices.at(-1)?.body).toBe("Ticker research is unavailable.");
   });
 
+  test("links that change something wait for a click on the toast that says what they ask", async () => {
+    const ran: Array<{ command: string; values: unknown }> = [];
+    const notices: Array<{ body: string; type: string; action?: { label: string; onClick: () => void } }> = [];
+    const commands = new Map(["set-alert", "direct-message"].map((id) => [id, {
+      execute: (values: unknown) => { ran.push({ command: id, values }); },
+    }]));
+    const dispatched: unknown[] = [];
+    const registry = {
+      commands,
+      notify: (notice: (typeof notices)[number]) => { notices.push(notice); },
+    } as unknown as PluginRegistry;
+    const options = { pluginRegistry: registry, dispatch: (action: unknown) => { dispatched.push(action); }, stateRef: { current: {} as AppState } };
+
+    handleDesktopDeepLink("gloomberb://alert/new?symbol=AAPL&condition=above&price=200", options);
+    handleDesktopDeepLink("gloomberb://chat/dm?users=alice,@bob", options);
+    handleDesktopDeepLink(`gloomberb://layout/${"a".repeat(32)}`, options);
+    handleDesktopDeepLink(`gloomberb://share/${"b".repeat(32)}`, options);
+    expect(ran).toEqual([]);
+    expect(dispatched).toEqual([]);
+    expect(notices.map(({ body, action }) => [body, action?.label])).toEqual([
+      ["Create an alert for AAPL above 200?", "Create alert"],
+      ["Open a conversation with @alice, @bob?", "Open"],
+      ["Add the shared layout this link points to?", "Add layout"],
+      ["Open the shared pane this link points to?", "Open"],
+    ]);
+
+    notices[0]!.action!.onClick();
+    notices[1]!.action!.onClick();
+    await Promise.resolve();
+    expect(ran).toEqual([
+      { command: "set-alert", values: { symbol: "AAPL", condition: "above", price: "200" } },
+      { command: "direct-message", values: { participants: "alice,@bob" } },
+    ]);
+
+    // Words that are not usernames are never put in the toast.
+    handleDesktopDeepLink("gloomberb://chat/dm?users=Your%20account%20is%20locked", options);
+    expect(notices.at(-1)).toMatchObject({ body: "DM links need usernames.", type: "error" });
+    expect(notices.at(-1)?.action).toBeUndefined();
+  });
+
   test.each([
     ["gloomberb://cloud/roundup?week=2026-07-03", { kind: "cloud-roundup", week: "2026-07-03" }],
     ["gloomberb://cloud/alerts", { kind: "cloud-alerts", week: null }],

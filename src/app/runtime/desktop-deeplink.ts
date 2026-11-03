@@ -13,6 +13,7 @@ import type { DesktopDeepLinkBridge } from "../../types/desktop-deeplink";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { requestAccountManagementTab } from "../../plugins/builtin/account-management/navigation";
 import { openTeamPane } from "../../team/pane-request";
+import { hasOnlyDmUsernameArgs, parseDmUsernames } from "../../plugins/builtin/chat/channels";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { getShare, type ShareRecord } from "../../shares/api";
 import { openShareLink, registerShareOpener } from "../../shares/open";
@@ -310,6 +311,23 @@ function notifySuccess(pluginRegistry: PluginRegistry, body: string): void {
   pluginRegistry.notify({ body, type: "success" });
 }
 
+/**
+ * A link that changes something (creates an alert, adds a layout or a pane,
+ * starts a conversation) waits for a click on a toast that says what it
+ * asks: any web page can open a gloomberb:// link, and a browser told to
+ * always allow them asks nothing more. Links that only show something run
+ * at once.
+ */
+function askBeforeRunning(pluginRegistry: PluginRegistry, body: string, label: string, run: () => void): void {
+  pluginRegistry.notify({
+    title: "Gloom link",
+    body,
+    type: "info",
+    persistent: true,
+    action: { label, onClick: run },
+  });
+}
+
 function requirePane(pluginRegistry: PluginRegistry, paneId: string, unavailableMessage: string): boolean {
   if (pluginRegistry.panes.has(paneId)) return true;
   notifyError(pluginRegistry, unavailableMessage);
@@ -585,24 +603,42 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
     case "open-collection":
       handleOpenCollection(action, options);
       return;
-    case "create-alert":
-      handleCreateAlert(action, options.pluginRegistry);
+    case "create-alert": {
+      const { symbol, condition, price } = action.values;
+      askBeforeRunning(options.pluginRegistry, `Create an alert for ${symbol} ${condition} ${price}?`, "Create alert", () => {
+        handleCreateAlert(action, options.pluginRegistry);
+      });
       return;
+    }
     case "open-chat-channel":
       handleOpenChatChannel(action, options.pluginRegistry);
       return;
-    case "open-chat-dm":
-      handleOpenChatDm(action, options.pluginRegistry);
+    case "open-chat-dm": {
+      // The toast names only what reads as usernames, never the link's own words.
+      const names = parseDmUsernames(action.participants);
+      if (names.length === 0 || !hasOnlyDmUsernameArgs(action.participants)) {
+        notifyError(options.pluginRegistry, "DM links need usernames.");
+        return;
+      }
+      askBeforeRunning(options.pluginRegistry, `Open a conversation with ${names.map((name) => `@${name}`).join(", ")}?`, "Open", () => {
+        handleOpenChatDm(action, options.pluginRegistry);
+      });
       return;
+    }
     case "open-news":
       handleOpenNews(action, options.pluginRegistry);
       return;
     case "open-share":
-      void openShareInApp(action.id, options.pluginRegistry, { retry: () => handleDesktopDeepLink(rawUrl, options) });
+      askBeforeRunning(options.pluginRegistry, "Open the shared pane this link points to?", "Open", () => {
+        const open = () => void openShareInApp(action.id, options.pluginRegistry, { retry: open });
+        open();
+      });
       return;
     case "open-layout":
-      void handleOpenLayout(action, options).catch((error) => {
-        notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared layout.");
+      askBeforeRunning(options.pluginRegistry, "Add the shared layout this link points to?", "Add layout", () => {
+        void handleOpenLayout(action, options).catch((error) => {
+          notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared layout.");
+        });
       });
       return;
   }
