@@ -96,9 +96,10 @@ export function formatLag(value: number | null): string {
   return value == null ? "--" : `${value}d`;
 }
 
+/** A disclosure bracket's bound, as the filing's range names it ($1k-15k): a label, short even in a table column. */
 function formatMoneyShort(value: number | null): string {
   if (value == null) return "--";
-  return `$${formatCompact(value)}`;
+  return `$${formatCompact(value, { fixedDecimals: false })}`;
 }
 
 export function formatAmountRange(low: number | null, high: number | null, raw?: string): string {

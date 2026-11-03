@@ -11,6 +11,7 @@ import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { createDataTableCsv } from "../../data-table/export";
 import { headerCase } from "../header-case";
+import { figureColumnCells } from "./render-cell";
 
 export type {
   DataTableCell,
@@ -21,8 +22,11 @@ export type {
 } from "./types";
 
 export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
-  props: DataTableProps<T, C>,
+  ownProps: DataTableProps<T, C>,
 ) {
+  // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
+  const renderCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  const props = { ...ownProps, renderCell };
   const paneId = useOptionalPaneInstanceId();
   const renderer = useRendererHost();
   const propsRef = useRef(props);

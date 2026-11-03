@@ -21,10 +21,10 @@ export function formatPerShare(amount: number, currency: string | null, maxDigit
   return sign ? `${sign}${fixed}` : `${code} ${fixed}`;
 }
 
-/** A headline amount: "$1.8B", "€420M", "GBP 1.2B". */
+/** A headline amount: "$1.8B", "€420M", "GBP 1.2B"; "$1.80B" in a table column. */
 export function formatDealValue(value: number | null, currency: string | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return MISSING;
-  const compact = formatCompact(value, { fixedDecimals: false });
+  const compact = formatCompact(value);
   const code = currency?.trim().toUpperCase() ?? "";
   if (!code) return compact;
   const sign = CURRENCY_SIGNS[code];

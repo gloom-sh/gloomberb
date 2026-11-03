@@ -141,15 +141,20 @@ export function matchEarningsSecFiling(row: { status: string; date: string; date
   return best?.filing ?? null;
 }
 
-/** Share the currency label; EE marks any unstated currencies separately. */
-function sharedMetricCurrency(rows: readonly EventRow[], allowUnstated = false): string | undefined {
-  const currencies = new Set<string | undefined>();
+/**
+ * The one currency every stated EPS and revenue amount is in, named once above
+ * the table (EVT and EE alike). An amount whose source stated no currency is
+ * marked `?` beside it rather than counted, so it never reads as that currency;
+ * amounts in several currencies keep their own codes.
+ */
+function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
+  const currencies = new Set<string>();
   for (const row of rows) {
     for (const [value, currency] of [
       [row.qEps, row.epsCurrency], [row.annualEps, row.epsCurrency],
       [row.qRevenue, row.revenueCurrency], [row.annualRevenue, row.revenueCurrency],
     ] as const) {
-      if (value != null && Number.isFinite(value) && (currency || !allowUnstated)) currencies.add(currency || undefined);
+      if (value != null && Number.isFinite(value) && currency) currencies.add(currency);
     }
   }
   const [only] = currencies;
@@ -169,15 +174,14 @@ export function buildEventColumns(width: number, unit?: string, variant: "corpor
       { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
     ], width, ["detail", "growth", "revenue"]);
   }
-  const withUnit = (label: string) => unit ? `${label} ${unit}` : label;
   const columns: EventColumn[] = [
     { id: "date", label: "DATE", width: 10, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
     { id: "period", label: "PERIOD", width: 12, align: "left" },
-    { id: "qEps", label: withUnit("Q EPS"), width: 12, align: "right" },
-    { id: "qRevenue", label: withUnit("Q REV"), width: 12, align: "right" },
-    { id: "annualEps", label: withUnit("ANN EPS"), width: 12, align: "right" },
-    { id: "annualRevenue", label: withUnit("ANN REV"), width: 12, align: "right" },
+    { id: "qEps", label: "Q EPS", width: 12, align: "right" },
+    { id: "qRevenue", label: "Q REV", width: 12, align: "right" },
+    { id: "annualEps", label: "ANN EPS", width: 12, align: "right" },
+    { id: "annualRevenue", label: "ANN REV", width: 12, align: "right" },
     { id: "value", label: "VALUE", width: 11, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
@@ -498,7 +502,7 @@ export function CorporateActionsView({
       ? allRows.filter((row) => EARNINGS_STATUSES.has(row.status))
       : allRows
   ), [allRows, variant]);
-  const unit = useMemo(() => sharedMetricCurrency(rows, variant === "earnings-estimates"), [rows, variant]);
+  const unit = useMemo(() => sharedMetricCurrency(rows), [rows]);
   const hasUnstatedCurrency = rows.some((row) =>
     ((row.qEps != null || row.annualEps != null) && !row.epsCurrency)
     || ((row.qRevenue != null || row.annualRevenue != null) && !row.revenueCurrency));
@@ -618,6 +622,11 @@ export function CorporateActionsView({
     row: EventRow,
     column: EventColumn,
   ): DataTableCell => {
+    // Bare under the currency named above the table, with its own code otherwise, `?` when its source stated none.
+    const metric = (value: number | undefined, currency: string | undefined, kind: "eps" | "revenue"): DataTableCell => {
+      const text = formatEventMetric(value, unit ? undefined : currency, kind);
+      return { text: value != null && !currency ? `${text} ?` : text, value: unit && currency ? value : undefined, color: colors.textDim };
+    };
     switch (column.id) {
       case "date":
         return { text: row.date, color: colors.textDim };
@@ -626,26 +635,21 @@ export function CorporateActionsView({
       case "period":
         return { text: row.period, color: colors.textDim };
       case "eps":
-      case "revenue": {
-        const eps = column.id === "eps";
-        const value = eps ? row.qEps ?? row.annualEps : row.qRevenue ?? row.annualRevenue;
-        const currency = eps ? row.epsCurrency : row.revenueCurrency;
-        const text = formatEventMetric(value, unit ? undefined : currency, eps ? "eps" : "revenue");
-        return { text: value != null && !currency ? `${text} ?` : text,
-          value: unit && currency ? value : undefined, color: colors.textDim };
-      }
+        return metric(row.qEps ?? row.annualEps, row.epsCurrency, "eps");
+      case "revenue":
+        return metric(row.qRevenue ?? row.annualRevenue, row.revenueCurrency, "revenue");
       case "surprise":
         return { text: row.status === "Earnings" ? row.value : "-", value: row.surprisePercent, color: row.status === "Earnings" ? toneColor(row.tone) : colors.textDim };
       case "growth":
         return { text: row.estimateGrowthMetric && row.value !== "-" ? `${row.value} ${row.estimateGrowthMetric === "eps" ? "EPS" : "rev"}` : "-", color: row.estimateGrowthMetric ? toneColor(row.tone) : colors.textDim };
       case "qEps":
-        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
+        return metric(row.qEps, row.epsCurrency, "eps");
       case "qRevenue":
-        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
+        return metric(row.qRevenue, row.revenueCurrency, "revenue");
       case "annualEps":
-        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
+        return metric(row.annualEps, row.epsCurrency, "eps");
       case "annualRevenue":
-        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
+        return metric(row.annualRevenue, row.revenueCurrency, "revenue");
       case "value":
         return { text: row.value, color: toneColor(row.tone) };
       case "detail":
@@ -694,7 +698,7 @@ export function CorporateActionsView({
       rootWidth={width}
       rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns}
-        query={variant === "earnings-estimates" && currencyMeta ? <QueryBar width={width} meta={currencyMeta} /> : undefined} />}
+        query={currencyMeta ? <QueryBar width={width} meta={currencyMeta} /> : undefined} />}
       onRootKeyDown={handleKeyDown}
       columns={columns}
       items={rows}
@@ -702,10 +706,10 @@ export function CorporateActionsView({
       sortDirection="desc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
-      getExportMetadata={variant === "earnings-estimates" ? () => [
+      getExportMetadata={() => [
         ...(unit ? [["Currency", unit]] : []),
         ...(hasUnstatedCurrency ? [["?", "Currency unstated"]] : []),
-      ] : undefined}
+      ]}
       selectedTextOverridesCellColor
       getRowBackgroundColor={rowBackground}
       emptyStateTitle={loading

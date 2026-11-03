@@ -23,7 +23,11 @@ export interface ShortInterestRow {
   settlementDate: string;
   /** When FINRA published the settlement, `YYYY-MM-DD`; `-` when the date is not one. */
   publishedDate: string;
-  /** The day of the share count the percent of float is read on; `-` when it is undated or there is none. */
+  /**
+   * The day of the share count the percent of float is read on; `current` for
+   * the newest settlement's, read on today's float when that float is undated,
+   * so the column never looks missing beside a percent; `-` when there is none.
+   */
   floatAsOf: string;
   sharesShort: string;
   shortRatio: string;
@@ -51,6 +55,9 @@ function formatDate(date: Date): string {
 export function formatMaybeCompact(value: number | null): string {
   return value == null ? "-" : formatCompact(value);
 }
+
+/** A table column's figure: its decimals kept, so 12.00M lines up under 10.73M. */
+const columnFigure = (value: number | null) => value == null ? "-" : formatCompact(value, { fixedDecimals: true });
 
 function formatRatio(value: number | null): string {
   return value == null ? "-" : formatNumber(value, 2);
@@ -133,7 +140,8 @@ export function withPercentFloat(
   return records.map((record) => {
     if (record === latest) {
       const percent = settlementPercentFloat(record, floatShares, current.statistics);
-      return { ...record, shortPercentFloat: percent, floatAsOf: percent != null ? current.floatAsOf ?? null : null };
+      return { ...record, shortPercentFloat: percent, floatAsOf: percent != null ? current.floatAsOf ?? null : null,
+        ...(percent != null ? { floatCurrent: true } : {}) };
     }
     if (record.shortPercentFloat != null || floating == null || !finiteNumber(record.sharesOutstanding)) return record;
     return {
@@ -150,10 +158,10 @@ export function buildRows(records: ShortInterestRecord[]): ShortInterestRow[] {
     record,
     settlementDate: formatDate(record.settlementDate),
     publishedDate: shortInterestPublished(formatDate(record.settlementDate)) ?? "-",
-    floatAsOf: record.shortPercentFloat != null && record.floatAsOf ? record.floatAsOf : "-",
-    sharesShort: formatMaybeCompact(record.sharesShort),
+    floatAsOf: record.shortPercentFloat == null ? "-" : record.floatAsOf || (record.floatCurrent ? "current" : "-"),
+    sharesShort: columnFigure(record.sharesShort),
     shortRatio: formatRatio(record.shortRatio),
-    averageDailyVolume: formatMaybeCompact(record.averageDailyVolume),
+    averageDailyVolume: columnFigure(record.averageDailyVolume),
     shortPercentFloat: formatPercent(record.shortPercentFloat),
   }));
 }
@@ -165,6 +173,7 @@ function sortValue(row: ShortInterestRow, columnId: ShortInterestColumnId): stri
     case "publishedDate":
       return row.publishedDate === "-" ? null : row.publishedDate;
     case "floatAsOf":
+      // `current` is today's float, so it sorts after every dated one.
       return row.floatAsOf === "-" ? null : row.floatAsOf;
     case "sharesShort":
       return row.record.sharesShort;
@@ -197,7 +206,7 @@ export function buildColumns(
   records: readonly ShortInterestRecord[] = [],
 ): ShortInterestColumn[] {
   const hasPercentFloat = records.some((record) => record.shortPercentFloat != null);
-  const hasFloatDate = records.some((record) => record.shortPercentFloat != null && !!record.floatAsOf);
+  const hasFloatDate = records.some((record) => record.shortPercentFloat != null && (!!record.floatAsOf || record.floatCurrent));
   const dateWidth = 11;
   const sharesWidth = 12;
   const ratioWidth = 12;

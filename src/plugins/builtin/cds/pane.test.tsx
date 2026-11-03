@@ -262,7 +262,7 @@ describe("CdsPane", () => {
     });
     const frame = tui.frame();
     expect(frame).toContain("5Y level not derivable: DTCC prints carry upfront without payer side");
-    expect(frame).toContain("5M+");
+    expect(frame).toContain("5.00M+");
   });
 
   test("opens the selected issuer's trades and shows -- for an unreported spread", async () => {
@@ -276,7 +276,7 @@ describe("CdsPane", () => {
     const frame = tui.frame();
     expect(frame).toContain("NOTIONAL");
     // Capped notional keeps its "+", and the coupon is shown instead of an implied spread.
-    expect(frame).toContain("5M+");
+    expect(frame).toContain("5.00M+");
     expect(frame).toContain("100bp");
     expect(frame).toContain("--");
     expect(frame).not.toContain("Ford Motor Company");
@@ -381,7 +381,7 @@ describe("CdsPane", () => {
     });
     const frame = tui.frame();
     expect(frame).toContain("Oracle Corporation");
-    expect(frame).toContain("5M+");
+    expect(frame).toContain("5.00M+");
     expect(frame).not.toContain("5Y spread");
   });
 

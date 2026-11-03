@@ -13,4 +13,6 @@ export interface ShortInterestRecord {
   sharesOutstandingAsOf?: string | null;
   /** YYYY-MM-DD of the share count `shortPercentFloat` is read on, when that count is dated. */
   floatAsOf?: string | null;
+  /** `shortPercentFloat` is read on today's float (the newest settlement's), dated or not. */
+  floatCurrent?: boolean;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseForm4Xml } from "./insider-data";
-import { buildInsiderRows, buildInsiderSummary, parseInsiderFiling } from "./model";
+import { buildInsiderRows, buildInsiderSummary, parseInsiderFiling, securityClassKey } from "./model";
 import type { SecFilingItem } from "../../../types/data-provider";
 
 const owner = `<reportingOwner><reportingOwnerId><rptOwnerName>OWNER &amp; CO</rptOwnerName><rptOwnerCik>123</rptOwnerCik></reportingOwnerId><reportingOwnerRelationship><officerTitle>CEO</officerTitle></reportingOwnerRelationship></reportingOwner>`;
@@ -66,5 +66,17 @@ describe("Form 4 transaction parsing", () => {
       </ownershipDocument>`;
     const summary = buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime());
     expect(summary).toBe("Loaded filings, last 90 days: Class A: Sold 125 shares (value unavailable) | Class B: Sold 50 shares ($1,000.00)");
+  });
+
+  test("summary totals every spelling of one class together, under the spelling most of its shares were filed as", () => {
+    const xml = `<ownershipDocument>${owner}
+      ${transaction("S", "Common Stock", "4000", "10")}${transaction("S", "Common", "300", "10")}
+      ${transaction("S", "COMMON STOCK, $0.001 PAR VALUE", "20", "10")}${transaction("S", "Common Stock, par value $.01 per share", "1", "10")}
+      </ownershipDocument>`;
+    expect(buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime()))
+      .toBe("Loaded filings, last 90 days: Common Stock: Sold 4.3k shares ($43,210.00)");
+    const keys = (titles: string[]) => new Set(titles.map(securityClassKey)).size;
+    expect(keys(["Class A Common Stock", "Common Stock, Class A", "class a common stock ($.0001 par value)"])).toBe(1);
+    expect(keys(["Class A Common Stock", "Class B Common Stock", "Common Stock", "Series A Preferred Stock", "Series B Preferred Stock"])).toBe(5);
   });
 });
