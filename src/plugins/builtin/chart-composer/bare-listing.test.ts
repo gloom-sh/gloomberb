@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { standaloneSeriesInvoker, standaloneSeriesNamed } from "../../../series/standalone";
 import { BITCOIN_NETWORK_CACHES } from "../crypto-board/bitcoin-network";
@@ -19,6 +19,10 @@ import { argumentWithListing } from "./headless";
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 const config = createDefaultConfig("/tmp/gloom-chart-bare-listing-fixture");
 
+// The bars below end on 9 Oct 2026 and the bitcoin network fixture on 30 Oct: read them on a fixed day after both and within
+// a month of the bars, so the bars are not read as a listing that stopped trading.
+beforeAll(() => { setSystemTime(new Date("2026-11-02T12:00:00Z")); });
+afterAll(() => { setSystemTime(); });
 afterEach(() => { process.exitCode = 0; });
 
 // 2222 is Kotobuki Spirits in Tokyo and Saudi Aramco in Riyadh; no source quotes the bare code.

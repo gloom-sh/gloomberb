@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { resetGeoCatalogCache } from "../../../api-client/geo";
 import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo";
 import { chokepointSeriesFor, chokepointSeriesIds, geoSeriesRange, resolveGeoChartSeries } from "./geo-series";
 
+// The fixture series end on 4 Oct 2026: read them on a fixed day, so the chart's one-month window still reaches them.
+beforeAll(() => { setSystemTime(new Date("2026-10-09T12:00:00Z")); });
+afterAll(() => { setSystemTime(); });
 afterEach(() => resetGeoCatalogCache());
 
 describe("map series in G", () => {

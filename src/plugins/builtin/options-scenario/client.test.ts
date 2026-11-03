@@ -1,4 +1,4 @@
-import { describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -24,6 +24,7 @@ const dependencies = (overrides: Partial<ScenarioLoaderDependencies> = {}): Scen
     { maturity: "1Y", maturityYears: 1, yield: 5, asOf: "2026-09-21" }], now: () => now, ...overrides,
 });
 const legs = "call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25";
+afterEach(() => { setSystemTime(); });
 
 describe("scenario market loader", () => {
   test("retains the chain when rate and dividend inputs fail without substituting assumptions", async () => {
@@ -298,6 +299,8 @@ describe("scenario headless inputs", () => {
   });
 
   test("a collar buys the put and sells the call nearest 10% out of the money on one expiry, with the shares they cover", async () => {
+    // The typed legs below expire on 18 Dec 2026: read them on the day the chain is from, so they stay live.
+    setSystemTime(now);
     const priced = (side: "call" | "put", strike: number) => {
       const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: (optionExpirationClose(expiration) - now) / 86_400_000,
         rate: 0.045, dividendYield: 0.005, volatility: 0.3 });

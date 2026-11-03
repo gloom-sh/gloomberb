@@ -1,4 +1,4 @@
-import { expect, setSystemTime, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { quoteChangeBasis } from "../../../market-data/market/change-basis";
@@ -18,6 +18,8 @@ import { FX_CURRENCIES, resolveCurrencies, type FxCurrency } from "./pairs";
 import { fxTradingDay } from "../../../utils/fx-market-hours";
 
 const at = (iso: string) => Date.parse(iso);
+
+afterEach(() => { setSystemTime(); });
 
 /** A rate as the shared FX cache loads it: dated, 15 minutes behind, current until its own schedule says not. */
 function loadedRate(currency: string, rate: number, asOf: string | null, overrides: Partial<QueryEntry<number>> = {}): FxLegReading {
@@ -276,6 +278,8 @@ test("while FX is shut the board is Friday's, and a pair quote dated by a weeken
 
 test("every cross moves from its legs' previous daily close, and the Move header names that close", () => {
   const now = at("2026-10-22T04:45:00Z");
+  // The close is dated without its year only in the year it is read.
+  setSystemTime(now);
   const eur = quotedRate("EUR", 1.1247, 1.1235, "2026-10-22T04:41:00Z");
   const result = projectFxCrosses(["USD", "EUR", "CHF"], readings(
     // A loaded rate a minute newer than its quote keeps the quote's close.

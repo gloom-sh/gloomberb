@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { statsCache } from "./cache";
 import { loadStatsBundle } from "./client";
@@ -11,7 +11,7 @@ import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-
 import { renderReportCsv, renderReportNdjson } from "../../../cli/report-tables";
 
 beforeEach(() => statsCache.reset());
-afterEach(() => statsCache.reset());
+afterEach(() => { statsCache.reset(); setSystemTime(); });
 
 function monthlyCpi() {
   return Array.from({ length: 25 }, (_, index) => {
@@ -69,6 +69,8 @@ describe("economic statistics headless model", () => {
   });
 
   test("a reading says when it was released, and the report is as of that release", async () => {
+    // Read on 23 Oct 2026, three days after the release, so the report does not age into stale.
+    setSystemTime(new Date("2026-10-23T15:00:00Z"));
     const permits = resolveStatArg("building-permits")!;
     const observations = ["2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"].map((date, index) => ({
       date, value: 1400 + index, ...(date === "2026-09-01" ? { releasedOn: "2026-10-20" } : {}),
