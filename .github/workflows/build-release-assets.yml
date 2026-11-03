@@ -78,6 +78,8 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
@@ -161,6 +163,8 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
