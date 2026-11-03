@@ -409,8 +409,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await mouse(cdp, "mouseMoved", start.x, start.y, false);
   await mouse(cdp, "mousePressed", start.x, start.y, true);
   // Each frame notes where the pointer was when it began, and once the frame
-  // has drawn (a task after it), where the tracked edges ended up, and where
-  // a moving pane is with the pointer then.
+  // has drawn (a task after it), where the tracked edges ended up.
   await evaluate(cdp, `(() => {
     window.__frameTimes = [];
     window.__lag = [];
@@ -426,12 +425,13 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     const tick = (now) => {
       window.__frameTimes.push(now - last);
       last = now;
-      // The pointer is read with the pane it moved: a move that comes in
-      // after the frame began moves both, not only the pane.
+      // The host applies the moves that came before the frame in it, and any
+      // later one in the next: the pane follows the pointer as the frame began.
       if (follower) {
+        const point = [window.__pointerX, window.__pointerY];
         setTimeout(() => {
           const box = document.querySelector(follower)?.getBoundingClientRect();
-          if (box && window.__recording) window.__follow.push([window.__pointerX, window.__pointerY, box.x, box.y]);
+          if (box && window.__recording) window.__follow.push([point[0], point[1], box.x, box.y]);
         }, 0);
       }
       if (track) {

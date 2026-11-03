@@ -630,9 +630,10 @@ async function measure(driver: Driver, scenario: Scenario, speed: Speed, traceFi
   const start = await pickUp(driver, scenario);
   const around = await driver.evaluate<Surroundings | null>(surroundings(scenario));
   if (!around) throw new Error(`${scenario.name}: ${scenario.follower} is not drawn once the drag began`);
-  // Each frame notes how long since the last and what came in it, and once it
-  // has drawn (a task after it), where the moving pane is with the pointer
-  // that put it there: a move that comes in after the frame began moves both.
+  // Each frame notes how long since the last, what came in it and where the
+  // pointer is (the host applies the moves that came before the frame in it,
+  // and any later one in the next), and once it has drawn (a task after it),
+  // where the moving pane is.
   await driver.evaluate(`(() => {
     window.__frames = []; window.__follow = []; window.__commits = 0; window.__moves = 0; window.__quotes = 0; window.__loaf = []; window.__predicted = [];
     if (window.__longTasks) window.__longTasks = [];
@@ -642,9 +643,10 @@ async function measure(driver: Driver, scenario: Scenario, speed: Speed, traceFi
     const tick = (now) => {
       window.__frames.push([now - last, window.__commits - commits, window.__quotes - quotes]);
       last = now; commits = window.__commits; quotes = window.__quotes;
+      const pointer = [window.__pointerX, window.__pointerY];
       setTimeout(() => {
         const box = document.querySelector(follower)?.getBoundingClientRect();
-        if (box && window.__recording) window.__follow.push([window.__pointerX, window.__pointerY, box.x, box.y]);
+        if (box && window.__recording) window.__follow.push([pointer[0], pointer[1], box.x, box.y]);
       }, 0);
       if (window.__recording) requestAnimationFrame(tick);
     };
