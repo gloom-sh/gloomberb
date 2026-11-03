@@ -19,6 +19,7 @@ import {
 import { pluginDirectoryNames } from "./plugin-names";
 import { gitInstallAdvice } from "./extracted-plugins";
 import { pluginFromModule } from "./plugin-export";
+import { trackInstallCommand } from "./running-installs";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
 import { compareSemver, requiredGloomberb } from "../utils/semver";
@@ -144,23 +145,6 @@ interface RunResult {
 /** How long a command stopped at its time limit has to exit before it is killed. */
 const KILL_GRACE_MS = 2_000;
 
-/**
- * Commands run with a time limit, which are installs nobody waits on: the
- * app quitting stops them rather than leave a download running after it.
- */
-const limitedCommands = new Set<() => void>();
-let stopsOnExit = false;
-
-function stopOnExit(stop: () => void): () => void {
-  if (!stopsOnExit) {
-    stopsOnExit = true;
-    process.once("exit", () => {
-      for (const command of limitedCommands) command();
-    });
-  }
-  limitedCommands.add(stop);
-  return () => { limitedCommands.delete(stop); };
-}
 
 function seconds(ms: number): string {
   return `${Math.round(ms / 1000)} s`;
@@ -211,7 +195,8 @@ function run(
         // Intentional ignore: it exited between the check and the signal.
       }
     };
-    const forget = timeoutMs === undefined ? null : stopOnExit(() => stop("SIGKILL"));
+    // An install with a limit is one nobody waits on: quitting stops it.
+    const forget = timeoutMs === undefined ? null : trackInstallCommand(() => stop("SIGKILL"));
     child.once("exit", () => forget?.());
     const timer = timeoutMs === undefined ? null : setTimeout(() => {
       if (settled) return;

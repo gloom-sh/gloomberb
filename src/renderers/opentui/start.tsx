@@ -12,6 +12,7 @@ import { startNodePluginAutoUpdates } from "../../plugins/auto-update-node";
 import { activateUpdatedPlugins } from "../../plugins/marketplace/activation";
 import { getMarketplaceHost, setPluginManager } from "../../plugins/marketplace/store";
 import { createNodePluginManager } from "../../plugins/manager-node";
+import { stopInstallCommands } from "../../plugins/running-installs";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { OpenTuiInputHostProvider } from "./input-host";
@@ -104,6 +105,8 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
   let exitTimer: ReturnType<typeof setTimeout> | null = null;
   const finishProcessExit = () => {
     if (exitTimer) return;
+    // Plugin installs still running in the background end with the app.
+    stopInstallCommands();
     exitTimer = setTimeout(() => {
       void Promise.allSettled([
         flushPendingPersistence(),
