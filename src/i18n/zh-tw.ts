@@ -852,7 +852,6 @@ export const zhTW: Record<string, string> = {
   "Start group chat": "開始群組聊天",
   "Use @username, or multiple usernames for a group chat": "使用 @username，或輸入多個使用者名稱開始群組聊天",
   "Type DM @username to start one": "輸入 DM @username 開始私訊",
-  "Read-only chat. Log in or sign up to send.": "聊天目前為唯讀模式。登入或註冊後即可傳送訊息。",
   "Saved login found. Log in again to send.": "發現已儲存的登入資訊。請重新登入後傳送訊息。",
   "Verify your email to send messages.": "驗證電子郵件後才能傳送訊息。",
   // The first-chat prompt for an account still on its signup handle.
@@ -876,7 +875,6 @@ export const zhTW: Record<string, string> = {
   "ask questions about anything on screen": "針對畫面上的任何內容提問",
   "Free with a verified Gloom account.": "使用已驗證的 Gloom 帳戶即可免費使用。",
   "search X": "搜尋 X",
-  "{shortcut}, then Resend Verification Email": "按 {shortcut}，然後選擇「重新發送驗證郵件」",
   "editing": "編輯中",
   "replying to": "回覆",
   "Reply": "回覆",
