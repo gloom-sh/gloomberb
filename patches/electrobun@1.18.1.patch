@@ -100,7 +100,7 @@ index 807fd20e2264616a9dd95ac909c2fe326932e7d1..1aeb3b3161febc2f74d78e6ab1fa549a
  	type?: "normal";
  	label?: string;
 diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
-index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd5785fb54 100644
+index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661d2dfe2fc 100644
 --- a/dist/api/bun/core/Socket.ts
 +++ b/dist/api/bun/core/Socket.ts
 @@ -3,13 +3,8 @@ import { BrowserView } from "./BrowserView";
@@ -119,11 +119,16 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd
  }
  
  // Encrypt function
-@@ -47,12 +42,48 @@ export const socketMap: {
+@@ -44,15 +39,53 @@ export const socketMap: {
+ 	[webviewId: string]: {
+ 		socket: null | ServerWebSocket<unknown>;
+ 		queue: string[];
++		/** Its socket has opened once: messages are no longer held for it. */
++		opened?: boolean;
  	};
  } = {};
  
-+/** Messages held for a webview whose socket has not opened; past this the oldest go. */
++/** Messages held for a webview whose socket has not opened yet; past this the oldest go. */
 +const MAX_QUEUED_MESSAGES = 1000;
 +const droppingFor = new Set<number>();
 +
@@ -168,7 +173,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd
  };
  
  const startRPCServer = () => {
-@@ -65,6 +96,8 @@ const startRPCServer = () => {
+@@ -65,6 +98,8 @@ const startRPCServer = () => {
  	while (port <= endPort) {
  		try {
  			server = Bun.serve<{ webviewId: number }>({
@@ -177,23 +182,30 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd
  				port,
  				fetch(req: Request, server: Server<{ webviewId: number }>) {
  					const url = new URL(req.url);
-@@ -103,6 +136,7 @@ const startRPCServer = () => {
+@@ -99,10 +134,12 @@ const startRPCServer = () => {
+ 						const { webviewId } = ws.data;
+ 
+ 						if (!socketMap[webviewId]) {
+-							socketMap[webviewId] = { socket: ws, queue: [] };
++							socketMap[webviewId] = { socket: ws, queue: [], opened: true };
  						} else {
  							socketMap[webviewId].socket = ws;
++							socketMap[webviewId].opened = true;
  						}
 +						flushQueuedMessages(webviewId);
  					},
  					close(ws: ServerWebSocket<{ webviewId: number }>, _code: number, _reason: string) {
  						if (!ws?.data) {
-@@ -168,11 +202,13 @@ const startRPCServer = () => {
+@@ -168,11 +205,14 @@ const startRPCServer = () => {
  
  export const { rpcServer, rpcPort } = startRPCServer();
  
 -// Will return true if message was sent over websocket
 -// false if it was not (caller should fallback to postMessage/evaluateJS rpc)
 +// Will return true if message was sent over websocket, or held for it with
-+// `queueUntilOpen` while it is not open yet; false if it was not (caller
-+// should fallback to postMessage/evaluateJS rpc)
++// `queueUntilOpen` until it first opens; false if it was not (caller should
++// fallback to postMessage/evaluateJS rpc). A socket that opened and closed
++// again is not held for: the webview does not reconnect.
  export const sendMessageToWebviewViaSocket = (
  	webviewId: number,
  	message: any,
@@ -201,7 +213,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd
  ): boolean => {
  	const rpc = socketMap[webviewId];
  	const browserView = BrowserView.getById(webviewId);
-@@ -181,25 +217,25 @@ export const sendMessageToWebviewViaSocket = (
+@@ -181,25 +221,25 @@ export const sendMessageToWebviewViaSocket = (
  
  	if (rpc?.socket?.readyState === WebSocket.OPEN) {
  		try {
@@ -226,7 +238,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd
  	}
  
 -	return false;
-+	if (!queueUntilOpen) return false;
++	if (!queueUntilOpen || rpc?.opened) return false;
 +	const held = (socketMap[webviewId] ??= { socket: null, queue: [] });
 +	held.queue.push(JSON.stringify(message));
 +	if (held.queue.length > MAX_QUEUED_MESSAGES) {
