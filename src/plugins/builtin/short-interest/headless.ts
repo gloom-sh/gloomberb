@@ -137,7 +137,7 @@ export function createShortInterestHeadless(
           daysToCover: row.record.shortRatio,
           averageDailyVolume: row.record.averageDailyVolume,
           shortPercentFloat: row.record.shortPercentFloat,
-          floatAsOf: row.floatAsOf === "-" ? null : row.floatAsOf,
+          floatAsOf: row.record.shortPercentFloat != null ? row.record.floatAsOf || null : null,
         }));
       const schedule = shortInterestFreshness(rows.map((row) => row.settlementDate).sort().at(-1));
       // A cut at a past date is as current as that date allowed, not stale by today's clock.
