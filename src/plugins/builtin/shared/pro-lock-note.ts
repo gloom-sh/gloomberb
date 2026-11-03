@@ -124,6 +124,9 @@ export async function proLockNote(
      * says when every route answered that the symbol has none. The note then
      * names no command for the symbol, which would read nothing once unlocked
      * either: IAG:LSE files neither form, and LHA:XETRA has no options served.
+     * A function that reads only the one ticker has nothing to unlock for it,
+     * so the note does not ask for an upgrade; a board (FLOW) still has the
+     * rest of the market.
      */
     noneFor?: (ticker: string) => string;
   },
@@ -146,10 +149,11 @@ export async function proLockNote(
   const uncovered = noneHasData && !!pane.noneFor;
   const bare = pane.argument === "none" || (pane.argument === "optional" && (!symbol || uncovered));
   const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${uncovered ? "<ticker>" : ticker}`;
+  const nothingToUnlock = uncovered && (pane.argument ?? "ticker") === "ticker";
   return [
     `${token} ${what}: ${pane.does}. ${without} it shows none of ${pane.shows}.`,
     ...free ? [`Free, with no sign-in: ${free.text(ticker, symbol ?? "the company")}`] : [],
     ...uncovered ? [pane.noneFor!(ticker)] : [],
-    `${unlock}; ${command} then reads with that session.`,
+    ...nothingToUnlock ? [] : [`${unlock}; ${command} then reads with that session.`],
   ].join("\n");
 }

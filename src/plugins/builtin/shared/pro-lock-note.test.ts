@@ -5,6 +5,7 @@ import { estimateRevisionsLockNote } from "../estimate-revisions/lock-note";
 import { explainRefusal, refusedLock } from "./cloud-denied";
 import { proLockNote, type FreeRoute } from "./pro-lock-note";
 import { flowLockNote } from "../scanner/lock-note";
+import { riskFactorsLockNote } from "../risk-factors/lock-note";
 
 const free: FreeRoute[] = [{ text: (ticker, company) => `gloom events ${ticker} lists ${company}'s earnings dates.` }];
 
@@ -156,13 +157,35 @@ test("a function whose free routes all answer that the listing has none says so,
   expect(failed).not.toContain("not available");
   expect(failed).toContain("gloom fn FLOW SAP:XETRA then reads");
 
-  // A ticker function says so too, and names its command only with a placeholder.
-  const pane = { token: "RISK", does: "it groups risk factors", shows: "it", free: [{ text: () => "gloom filings", answers: async () => false }],
-    noneFor: (ticker: string) => `${ticker}'s company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.` } as const;
-  const risk = await proLockNote({ gate: "sign-in", symbol: "IAG:LSE", context }, pane);
-  expect(risk).toContain("IAG:LSE's company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.");
-  expect(risk).toContain("gloom fn RISK <ticker> then reads");
-  expect(risk).not.toContain("gloom filings");
+});
+
+test("RISK names its page on gloom.sh, else the filings, and asks for no upgrade where the company files no 10-K or 20-F", async () => {
+  // AAPL has a report on gloom.sh and files 10-Ks; ASML files 20-Fs; ALL:ASX files neither.
+  const reports: Record<string, number> = { AAPL: 28 };
+  const forms: Record<string, string[]> = { AAPL: ["10-K"], ASML: ["20-F"], ALL: [] };
+  const context = {
+    marketData: { getQuote: async () => null },
+    apiClient: {
+      getCloudSecFilings: async ({ ticker, forms: [form] }: { ticker: string; forms: string[] }) =>
+        ({ filings: forms[ticker]!.includes(form!) ? [{ form }] : [] }),
+    },
+  } as unknown as HeadlessPaneContext;
+  const readSummary = async (wall: string, symbol: string, exchange?: string) => {
+    expect(wall).toBe("risk-wall");
+    const count = exchange ? undefined : reports[symbol];
+    return count ? { kind: "counts" as const, items: [{ label: "risk_count" as const, value: count }] } : null;
+  };
+  const note = (symbol: string) => riskFactorsLockNote({ gate: "sign-in", symbol, context }, readSummary);
+
+  const apple = (await note("AAPL")).split("\n");
+  expect(apple[1]).toBe("Free, with no sign-in: gloom.sh/stocks/aapl/risk-factors has AAPL's risk factors from each 10-K, with what was added, dropped or reworded since the year before.");
+  expect(apple[2]).toContain("then upgrade (Ctrl+P, UPGRADE); gloom fn RISK AAPL then reads");
+  expect(await note("ASML")).toContain("Free, with no sign-in: gloom filings ASML --form 20-F lists");
+
+  expect((await note("ALL:ASX")).split("\n")).toEqual([
+    "RISK is part of Gloom Cloud Pro: it groups a 10-K's risk factors by theme and shows what was added, dropped or reworded since the year before. Signed out it shows none of it.",
+    "ALL:ASX's company files no 10-K or 20-F with the SEC, so RISK has no risk factors for it.",
+  ]);
 });
 
 async function flushMicrotasks() {
