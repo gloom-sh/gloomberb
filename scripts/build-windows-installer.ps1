@@ -6,8 +6,13 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$ArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"
-$ExtractRoot = Join-Path $Root "build\stable-win-x64\Gloom-inno-source"
+# Electrobun builds for the machine it runs on: win-x64, or win-arm64 on
+# Windows on Arm. The build's update manifest says which it made.
+$Manifest = Get-ChildItem -LiteralPath (Join-Path $Root "artifacts") -Filter "stable-win-*-update.json" -ErrorAction SilentlyContinue | Select-Object -First 1
+$Platform = if ($Manifest -and $Manifest.Name -match '^stable-(win-(x64|arm64))-update\.json$') { $Matches[1] } elseif ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "win-arm64" } else { "win-x64" }
+$Arch = $Platform.Substring("win-".Length)
+$ArchivePath = Join-Path $Root "artifacts\stable-$Platform-Gloom.tar.zst"
+$ExtractRoot = Join-Path $Root "build\stable-$Platform\Gloom-inno-source"
 $SourceDir = Join-Path $ExtractRoot "Gloom"
 $OutputDir = Join-Path $Root "artifacts"
 $InstallerScript = Join-Path $Root "scripts\windows-installer.iss"
@@ -23,10 +28,19 @@ if (Test-Path $ExtractRoot) {
 }
 New-Item -ItemType Directory -Force -Path $ExtractRoot | Out-Null
 
-$Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
-if (-not (Test-Path $Zstd)) {
-  throw "zig-zstd.exe was not found: $Zstd"
+# The zig-zstd the build ships in the app: Electrobun 2 clears its build
+# folder once it has packed it, so it comes from where Hutch keeps Electrobun
+# for this machine.
+$Zstd = @(
+  @(Join-Path $Root "build\stable-$Platform\Gloom\bin\zig-zstd.exe") | Where-Object { Test-Path -LiteralPath $_ }
+  Get-ChildItem -Path (Join-Path $env:USERPROFILE ".hutch\releases\electrobun") -Recurse -Filter "zig-zstd.exe" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -like "*\$Platform\*" -or $_.FullName -like "*\windows-$Arch\*" } |
+    Select-Object -ExpandProperty FullName
+) | Select-Object -First 1
+if (-not $Zstd) {
+  throw "zig-zstd.exe was not found in the build or under ~\.hutch\releases\electrobun"
 }
+Write-Host "Unpacking with $Zstd"
 
 $TarPath = Join-Path $ExtractRoot "Gloom.tar"
 & $Zstd decompress -i $ArchivePath -o $TarPath
@@ -71,6 +85,7 @@ if (-not $Iscc) {
 
 & $Iscc `
   "/DAppVersion=$($PackageJson.version)" `
+  "/DArch=$Arch" `
   "/DSourceDir=$SourceDir" `
   "/DOutputDir=$OutputDir" `
   $InstallerScript
@@ -84,6 +99,6 @@ if (-not (Test-Path $InstallerPath)) {
   throw "Expected installer was not created: $InstallerPath"
 }
 
-$PrefixedInstallerPath = Join-Path $OutputDir "stable-win-x64-GloomSetup.exe"
+$PrefixedInstallerPath = Join-Path $OutputDir "stable-$Platform-GloomSetup.exe"
 Copy-Item -Force $InstallerPath $PrefixedInstallerPath
 Write-Host "Created installer: $PrefixedInstallerPath"

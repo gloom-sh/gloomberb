@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createMagnetGlide,
   createMagnetPace,
   MAGNET_REST_MS,
   magnetDistancesFor,
@@ -72,9 +73,59 @@ describe("magnets", () => {
     let travelling = true;
     for (let frame = 6; frame <= 12; frame += 1) travelling = pace.travelling({ t: frame * 16, x: 20 + (frame - 5) * 0.25, y: 5 }, DESKTOP);
     expect(travelling).toBe(false);
+    // Still faster than a hand placing the pane (60 px/s): its magnets are not drawn yet.
+    expect(pace.placing(192, DESKTOP)).toBe(false);
     // Off again, then still: the check after a rest (the same place, later) finds it placed.
     expect(pace.travelling({ t: 208, x: 26, y: 5 }, DESKTOP)).toBe(true);
+    expect(pace.placing(208, DESKTOP)).toBe(false);
     expect(pace.travelling({ t: 208 + MAGNET_REST_MS, x: 26, y: 5 }, DESKTOP)).toBe(false);
+    expect(pace.placing(208 + MAGNET_REST_MS, DESKTOP)).toBe(true);
+    // A tenth of a cell (0.8px) a frame, 50 px/s, places it.
+    for (let frame = 1; frame <= 6; frame += 1) pace.travelling({ t: 300 + frame * 16, x: 26 + frame * 0.1, y: 5 }, DESKTOP);
+    expect(pace.placing(396, DESKTOP)).toBe(true);
+  });
+
+  test("a catch or a release glides the drawn pane over a few frames and rests it exactly where the magnets put it", () => {
+    const glide = createMagnetGlide();
+    // The magnets hold the pane a catch's 8px (one cell) left of the pointer's place.
+    const target = { x: -1, y: 0 };
+    const drawn: number[] = [glide.step(0, target).x];
+    for (let frame = 1; frame <= 30; frame += 1) drawn.push(glide.step(frame * 16.7, target).x);
+    const steps = drawn.slice(1).map((x, index) => Math.abs(x - drawn[index]!) * 8);
+    // Never the whole 8px in one frame: under 2.5px a frame, over at least 4 frames.
+    expect(Math.max(...steps)).toBeLessThan(2.5);
+    expect(steps.filter((px) => px > 0.5).length).toBeGreaterThanOrEqual(4);
+    // At rest exactly on the magnets' place, as a jump would have put it.
+    expect(glide.settled(target)).toBe(true);
+    expect(glide.step(600, target)).toEqual(target);
+    // A frame drawn late (a quarter second) does not throw it past where it goes.
+    const back = createMagnetGlide();
+    back.step(0, { x: 0, y: 0 });
+    expect(back.step(250, { x: 0, y: 1.5 }).y).toBeLessThanOrEqual(1.5);
+  });
+
+  test("a glide draws on the frames after the pointer stops, until it rests, and a later draw takes over", async () => {
+    const frames = { request: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame };
+    globalThis.requestAnimationFrame = ((run: FrameRequestCallback) => setTimeout(() => run(performance.now()), 4)) as unknown as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as unknown as typeof cancelAnimationFrame;
+    try {
+      const glide = createMagnetGlide();
+      const draws: string[] = [];
+      let left = 3;
+      glide.follow(() => { draws.push("first"); return false; });
+      glide.follow(() => { draws.push("second"); left -= 1; return left === 0; });
+      await Bun.sleep(60);
+      // Drawn at once, then on frames until it rests; the first draw never again.
+      expect(draws).toEqual(["first", "second", "second", "second"]);
+      glide.follow(() => { draws.push("third"); return false; });
+      glide.reset();
+      await Bun.sleep(30);
+      // A drag that ends draws nothing after.
+      expect(draws.filter((draw) => draw === "third")).toHaveLength(1);
+    } finally {
+      globalThis.requestAnimationFrame = frames.request;
+      globalThis.cancelAnimationFrame = frames.cancel;
+    }
   });
 
   test("the rest check of a fast move never runs once a slower move has followed it", async () => {

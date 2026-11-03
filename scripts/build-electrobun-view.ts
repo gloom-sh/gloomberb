@@ -6,6 +6,12 @@ import {
 } from "../src/renderers/dom/build-assets";
 import { BOOT_FRAME_ELEMENT_ID } from "../src/renderers/dom/boot-frame-page";
 import { DESKTOP_BOOT_FRAME_GLOBAL } from "../src/renderers/electrobun/shared/boot-frame";
+import { patchElectrobunDevkit } from "./patch-electrobun-devkit";
+
+// The desktop build runs this first (electrobun.config.ts), before it bundles
+// the main process from the SDK: the SDK takes this app's changes here.
+const patched = await patchElectrobunDevkit();
+if (patched.length > 0) console.log(`Patched the Electrobun SDK: ${patched.join(", ")}`);
 
 const outdir = join(process.cwd(), "dist", "electrobun-view");
 

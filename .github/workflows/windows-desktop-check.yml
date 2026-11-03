@@ -53,7 +53,8 @@ on:
       - "src/renderers/dom/**"
       - "src/components/layout/**"
       - "electrobun.config.ts"
-      - "patches/electrobun@*.patch"
+      - "patches/electrobun-devkit@*.patch"
+      - "scripts/patch-electrobun-devkit.ts"
       - "scripts/build-windows-desktop-package.ps1"
       - "scripts/build-windows-installer.ps1"
       - "scripts/windows-installer.iss"
@@ -67,7 +68,8 @@ on:
       - "src/renderers/dom/**"
       - "src/components/layout/**"
       - "electrobun.config.ts"
-      - "patches/electrobun@*.patch"
+      - "patches/electrobun-devkit@*.patch"
+      - "scripts/patch-electrobun-devkit.ts"
       - "scripts/build-windows-desktop-package.ps1"
       - "scripts/build-windows-installer.ps1"
       - "scripts/windows-installer.iss"
@@ -92,6 +94,8 @@ jobs:
           ref: ${{ inputs.app_ref }}
 
       - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - name: Build the desktop package
         shell: pwsh

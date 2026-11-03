@@ -1,0 +1,283 @@
+name: Desktop shell check
+
+# Builds the desktop app from this commit on macOS, Windows (x64 and Arm) and
+# Linux, beside the last release built with Electrobun 1, and:
+# - updates an install of that release to this build in place, then this
+#   build to a newer one, from a copy of the release served on the runner
+#   (never the live update channel);
+# - measures the startup and memory of both with scripts/desktop-measure.
+# Windows on x64 also builds with the system's WebView2 instead of the
+# Chromium the app ships, for its sizes and measurements. Publishes nothing.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-shell-check.yml"
+      - "electrobun.config.ts"
+      - "patches/electrobun-devkit@*.patch"
+      - "scripts/patch-electrobun-devkit.ts"
+      - "scripts/desktop-measure/**"
+
+concurrency:
+  group: desktop-shell-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The last release built with Electrobun 1.
+  EARLIER_RELEASE: v0.19.5
+  GLOOM_DESKTOP_UNSIGNED: "1"
+  GLOOMBERB_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
+
+      - name: Build this commit's app (stable, unsigned)
+        run: bun run desktop:release
+
+      - name: Install the earlier release in Applications
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          command -v zstd || brew install zstd
+          gh release download "$EARLIER_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern stable-macos-arm64-Gloom.app.tar.zst --dir earlier
+          mkdir -p "$RUNNER_TEMP/earlier"
+          zstd -d -o "$RUNNER_TEMP/earlier.tar" earlier/stable-macos-arm64-Gloom.app.tar.zst
+          tar -xf "$RUNNER_TEMP/earlier.tar" -C "$RUNNER_TEMP/earlier"
+          rm -rf /Applications/Gloom.app
+          ditto "$RUNNER_TEMP/earlier/Gloom.app" /Applications/Gloom.app
+          # The measured launches check for updates on this machine, where nothing answers.
+          bun -e 'const p = "/Applications/Gloom.app/Contents/Resources/version.json"; const v = await Bun.file(p).json(); await Bun.write(p, JSON.stringify({ ...v, baseUrl: "http://127.0.0.1:9" }));'
+
+      - name: Measure the earlier release
+        run: |
+          app=/Applications/Gloom.app
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 1 ($EARLIER_RELEASE)" --platform-label macos-arm64 \
+            --launch "$app/Contents/MacOS/launcher" --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
+            --app-root "$app" --out measure/before --skip window
+
+      - name: Update it in place to this build, and on
+        run: bun scripts/desktop-measure/update-in-place.ts --app /Applications/Gloom.app --release artifacts --out update-in-place
+
+      - name: Measure this build
+        run: |
+          app=/Applications/Gloom.app
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 2 (this commit)" --platform-label macos-arm64 \
+            --launch "$app/Contents/MacOS/launcher" --view-html "$app/Contents/Resources/app/views/mainview/index.html" \
+            --app-root "$app" --out measure/after --skip window
+
+      - name: Sizes
+        if: always()
+        run: |
+          {
+            echo "| file | bytes |"
+            echo "|---|---|"
+            for file in artifacts/* earlier/*; do [ -f "$file" ] && echo "| $file | $(stat -f %z "$file") |"; done
+            echo "| installed earlier Gloom.app (du KiB) | $(du -sk "$RUNNER_TEMP/earlier/Gloom.app" | cut -f1) |"
+            echo "| installed Gloom.app after the updates (du KiB) | $(du -sk /Applications/Gloom.app | cut -f1) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-shell-macos-arm64
+          path: |
+            measure
+            update-in-place
+            sizes.md
+            artifacts/*.json
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: System libraries, a display and a window manager
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 xvfb openbox xdotool wmctrl x11-utils zstd
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp > /dev/null 2>&1 &
+          sleep 1
+          DISPLAY=:99 openbox > /dev/null 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
+
+      - name: Build this commit's app (stable)
+        run: bun run desktop:release
+
+      # No release carries a Linux desktop app: the earlier one is built from its tag.
+      - name: Build the earlier release
+        run: |
+          set -euo pipefail
+          git worktree add "$RUNNER_TEMP/earlier-src" "$EARLIER_RELEASE"
+          cd "$RUNNER_TEMP/earlier-src"
+          bun install --frozen-lockfile
+          bun node_modules/electrobun/bin/electrobun.cjs build --env=stable
+          ls -l artifacts
+
+      - name: Install the earlier release where its updater keeps it
+        run: |
+          set -euo pipefail
+          root="$HOME/.local/share/com.vincelwt.gloomberb/stable"
+          mkdir -p "$root" "$RUNNER_TEMP/earlier"
+          zstd -d -o "$RUNNER_TEMP/earlier.tar" "$RUNNER_TEMP/earlier-src/artifacts/stable-linux-x64-Gloom.tar.zst"
+          tar -xf "$RUNNER_TEMP/earlier.tar" -C "$RUNNER_TEMP/earlier"
+          top="$(ls "$RUNNER_TEMP/earlier")"
+          mv "$RUNNER_TEMP/earlier/$top" "$root/app"
+          ls "$root/app" "$root/app/bin"
+          bun -e 'const p = process.env.HOME + "/.local/share/com.vincelwt.gloomberb/stable/app/Resources/version.json"; const v = await Bun.file(p).json(); await Bun.write(p, JSON.stringify({ ...v, baseUrl: "http://127.0.0.1:9" }));'
+
+      - name: Measure the earlier release
+        run: |
+          app="$HOME/.local/share/com.vincelwt.gloomberb/stable/app"
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 1 ($EARLIER_RELEASE)" --platform-label linux-x64 \
+            --launch "$app/bin/launcher" --view-html "$app/Resources/app/views/mainview/index.html" \
+            --app-root "$app" --out measure/before --skip window
+
+      - name: Update it in place to this build, and on
+        run: bun scripts/desktop-measure/update-in-place.ts --app "$HOME/.local/share/com.vincelwt.gloomberb/stable/app" --release artifacts --out update-in-place
+
+      - name: Measure this build
+        run: |
+          app="$HOME/.local/share/com.vincelwt.gloomberb/stable/app"
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 2 (this commit)" --platform-label linux-x64 \
+            --launch "$app/bin/launcher" --view-html "$app/Resources/app/views/mainview/index.html" \
+            --app-root "$app" --out measure/after --skip window
+
+      - name: Sizes
+        if: always()
+        run: |
+          {
+            echo "| file | bytes |"
+            echo "|---|---|"
+            for file in artifacts/* "$RUNNER_TEMP"/earlier-src/artifacts/*; do [ -f "$file" ] && echo "| $(basename "$file") | $(stat -c %s "$file") |"; done
+            echo "| installed app after the updates | $(du -sb "$HOME/.local/share/com.vincelwt.gloomberb/stable/app" | cut -f1) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > sizes.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-shell-linux-x64
+          path: |
+            measure
+            update-in-place
+            sizes.md
+            artifacts/*.json
+
+  windows:
+    name: windows ${{ matrix.machine }} ${{ matrix.renderer }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine: x64
+            runner: windows-latest
+            renderer: chromium
+          - machine: x64
+            runner: windows-latest
+            renderer: webview2
+          # Built for Arm: it draws with WebView2 and ships no Chromium.
+          - machine: arm64
+            runner: windows-11-arm
+            renderer: webview2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
+
+      - name: Build this commit's app
+        shell: pwsh
+        run: |
+          if ("${{ matrix.renderer }}" -eq "webview2") { $env:GLOOM_WINDOWS_RENDERER = "native" }
+          ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+
+      - name: Clear the desktop
+        if: matrix.machine == 'arm64'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path measure | Out-Null
+          ./scripts/windows-desktop-check/clear-desktop.ps1 -Log "measure\desktop.log"
+
+      - name: Download the earlier release's installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download $env:EARLIER_RELEASE --repo $env:GITHUB_REPOSITORY --pattern stable-win-x64-GloomSetup.exe --dir earlier
+
+      - name: Install the earlier release
+        id: earlier
+        shell: pwsh
+        run: |
+          ./scripts/desktop-measure/win-install.ps1 -Installer earlier/stable-win-x64-GloomSetup.exe -Label "earlier ($env:EARLIER_RELEASE)"
+          ./scripts/desktop-measure/win-update-source.ps1 -Folder "$env:LOCALAPPDATA\Programs\Gloom"
+
+      - name: Measure the earlier release
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.earlier.outputs.folder }}"
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 1 ($env:EARLIER_RELEASE)" --platform-label "windows-${{ matrix.machine }}" `
+            --launch "$Folder\bin\launcher.exe" --view-html "$Folder\Resources\app\views\mainview\index.html" `
+            --app-root $Folder --out measure/before --skip window
+
+      # Over the earlier install, which it uninstalls first.
+      - name: Install this build
+        id: head
+        shell: pwsh
+        run: |
+          $Installer = (Get-ChildItem artifacts -Filter "stable-win-*-GloomSetup.exe" | Select-Object -First 1).FullName
+          ./scripts/desktop-measure/win-install.ps1 -Installer $Installer -Label "this build (${{ matrix.renderer }})"
+          if (Test-Path "$env:LOCALAPPDATA\Programs\Gloom") { throw "The earlier install is still in Programs\Gloom" }
+          ./scripts/desktop-measure/win-update-source.ps1 -Folder "$env:LOCALAPPDATA\com.vincelwt.gloomberb\stable\app"
+
+      - name: Measure this build
+        shell: pwsh
+        run: |
+          $Folder = "${{ steps.head.outputs.folder }}"
+          bun scripts/desktop-measure/measure.ts --shell "Electrobun 2 (this commit, ${{ matrix.renderer }})" --platform-label "windows-${{ matrix.machine }}" `
+            --launch "$Folder\bin\launcher.exe" --view-html "$Folder\Resources\app\views\mainview\index.html" `
+            --app-root $Folder --out measure/after --skip window
+
+      - name: Sizes
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path sizes.md) { Get-Content sizes.md | Add-Content $env:GITHUB_STEP_SUMMARY }
+          Get-ChildItem artifacts -File | ForEach-Object { "| $($_.Name) | $($_.Length) |" } | Add-Content sizes.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-shell-windows-${{ matrix.machine }}-${{ matrix.renderer }}
+          path: |
+            measure
+            sizes.md
+            artifacts/*.json

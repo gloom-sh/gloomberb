@@ -7,6 +7,7 @@ import { relativeValuationValues } from "../plugins/builtin/research/relative-va
 import { createTestTicker } from "../test-support/ticker";
 import { renderFundamentalsReport } from "../cli/commands/ticker";
 import { exportedFundamentals } from "./price-earnings";
+import { MISSING_VALUE } from "./format";
 
 const ticker: TickerRecord = createTestTicker("TEST", "Test");
 const context = { baseCurrency: "USD", exchangeRates: new Map<string, number>(), now: 1 };
@@ -58,4 +59,24 @@ test("a served positive P/E beside a trailing loss reads N/M everywhere and expo
   });
   // A forward estimate at a loss makes the forward multiple N/M too.
   expect(exportedFundamentals({ ...fundamentals, forwardEps: -1 })).toMatchObject({ forwardPE: null });
+});
+
+// NFE: the vendor's 1.6 was priced on an unlabelled estimate; next fiscal year's consensus is 2.08 at a loss today.
+test("forward P/E names the fiscal year of its consensus, N/M over a forecast loss and a dash when there is none", () => {
+  const consensus = { forwardPE: 2.43, forwardEps: 2.08, forwardEpsPeriodEnd: "2027-12-31", eps: -329, financialCurrency: "USD" };
+  const forwardLine = (fundamentals: TickerFinancials["fundamentals"]) =>
+    buildOverviewStats({ quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value })
+      .find(({ label }) => label.startsWith("Fwd P/E"));
+  expect(forwardLine(consensus)).toMatchObject({ label: "Fwd P/E FY27", value: "2.4" });
+  expect(forwardLine({ ...consensus, forwardPE: undefined, forwardEps: -1.2 })).toMatchObject({ label: "Fwd P/E FY27", value: "N/M" });
+  // The source was asked and had no consensus, or one from before the last split: the line stays, empty.
+  expect(forwardLine({ eps: -329, forwardEpsPeriodEnd: null })).toMatchObject({ label: "Fwd P/E", value: MISSING_VALUE });
+  expect(forwardLine({ forwardEpsPeriodEnd: null })).toBeUndefined();
+  // A server from before fiscal years were named serves the bare multiple as before.
+  expect(forwardLine({ forwardPE: 12.3, eps: 1 })).toMatchObject({ label: "Fwd P/E", value: "12.3" });
+  const data: TickerFinancials = { annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals: consensus };
+  const report = renderFundamentalsReport({ ...data, symbol: "NFE" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "");
+  expect(report).toMatch(/Forward P\/E FY27 +2\.43/);
+  expect(renderFundamentalsReport({ ...data, symbol: "NFE" }, "fundamentals").replace(/\u001b\[[0-9;]*m/g, ""))
+    .toMatch(/Forward P\/E FY27 +2\.43/);
 });

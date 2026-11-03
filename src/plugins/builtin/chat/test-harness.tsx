@@ -14,7 +14,7 @@ import { apiClient, type AccountProfile, type ChatChannel, type ChatMessage } fr
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
-import { ChatController } from "./controller";
+import { ChatController, chatController } from "./controller";
 import { chatSidebarStore } from "./sidebar-store";
 import { chatHandlePromptStore } from "./handle-prompt";
 
@@ -81,6 +81,16 @@ export function cleanupChatTest(): void {
   apiClient.setSessionToken(null);
   if (originalWebSocket) globalThis.WebSocket = originalWebSocket;
   originalWebSocket = undefined;
+}
+
+/**
+ * Signs the app's own chat controller in as ada, as a restored session does,
+ * for a test of the real Chat pane: signed out it shows the sign-in wall.
+ * Returns the sign-out.
+ */
+export function signInAppChat(): () => void {
+  chatController.adoptSession("token-123", { id: "u0", username: "ada", emailVerified: true });
+  return () => chatController.clearSession();
 }
 
 export function installServerChannels(controller: ChatController, channels = TEST_CHAT_CHANNELS): void {

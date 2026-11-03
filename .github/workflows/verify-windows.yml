@@ -13,6 +13,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The last release built with Electrobun 1: installs of it update to this build.
+  EARLIER_RELEASE: v0.19.5
+
 jobs:
   cli:
     runs-on: windows-latest
@@ -45,15 +49,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - name: Test Windows verification diagnostics
         shell: pwsh
         run: ./scripts/verify-windows-diagnostics.test.ps1
-
-      # Windows PowerShell 5.1, which the app runs the script with.
-      - name: Test the script that moves an update into the installer's folder
-        shell: pwsh
-        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/verify-windows-installer-folder.test.ps1
 
       - name: Build Windows desktop package
         shell: pwsh
@@ -66,6 +67,13 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
 
+      # Windows PowerShell 5.1, which the app runs the script with. Before
+      # anything installs or opens the app: it works on the user's own
+      # uninstall entries, shortcuts and PATH.
+      - name: Test retiring an earlier installer's folder, its failures included
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./scripts/verify-windows-installer-folder.test.ps1 -Installer (Get-ChildItem artifacts/stable-win-*-GloomSetup.exe | Select-Object -First 1).FullName
+
       - name: Write the desktop files under the app's old name
         shell: pwsh
         run: bun scripts/write-legacy-desktop-files.ts artifacts
@@ -74,9 +82,32 @@ jobs:
         shell: pwsh
         run: ./scripts/verify-windows-desktop.ps1
 
+      - name: Download the last release built with Electrobun 1
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download $env:EARLIER_RELEASE --repo $env:GITHUB_REPOSITORY --pattern stable-win-x64-GloomSetup.exe --dir earlier
+
+      # What the Windows on Arm job installs and updates to.
+      - name: Keep the release copy for Windows on Arm
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path update-release/artifacts, update-release/earlier | Out-Null
+          Copy-Item artifacts/stable-win-x64-Gloom.tar.zst, artifacts/stable-win-x64-update.json, artifacts/stable-win-x64-GloomSetup.exe -Destination update-release/artifacts
+          Copy-Item earlier/stable-win-x64-GloomSetup.exe -Destination update-release/earlier
+          Copy-Item build/stable-win-x64/Gloom-inno-source/Gloom/bin/zig-zstd.exe -Destination update-release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-update-release
+          path: update-release
+          retention-days: 7
+
+      # From that release's install in the installer's folder to this build in
+      # Electrobun's, and on to a newer build in place.
       - name: Verify an installed app updates in place
         shell: pwsh
-        run: ./scripts/verify-windows-update.ps1
+        run: ./scripts/verify-windows-update.ps1 -EarlierInstaller earlier/stable-win-x64-GloomSetup.exe
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -103,17 +134,34 @@ jobs:
           path: artifacts/*
 
   # Windows on Arm runs the x64 app under emulation, where a build can open its
-  # window and crash seconds later while it runs fine on x64.
+  # window and crash seconds later while it runs fine on x64. An install there
+  # from an earlier release updates the same way too.
   desktop-arm:
     needs: desktop
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
 
+      # Bun and the sources, for the script's seeded config.
+      - uses: ./.github/actions/setup-bun
+
       - uses: actions/download-artifact@v4
         with:
-          name: windows-x64-installer
-          path: installer
+          name: windows-x64-update-release
+          path: update-release
+
+      - name: Verify an installed app updates in place
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item update-release/artifacts/* artifacts/
+          ./scripts/verify-windows-update.ps1 -EarlierInstaller update-release/earlier/stable-win-x64-GloomSetup.exe -Zstd update-release/zig-zstd.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-desktop-update-verification
+          path: artifacts/windows-update-verification
 
       # Under emulation the app used to close some seconds after it opened on
       # most launches but not all, so one launch proves little.
@@ -123,7 +171,7 @@ jobs:
           $Failed = @()
           foreach ($Launch in 1..4) {
             try {
-              ./scripts/verify-windows-stays-up.ps1 -Installer installer/stable-win-x64-GloomSetup.exe -Label "arm64-$Launch" -Seconds 45 -Console
+              ./scripts/verify-windows-stays-up.ps1 -Installer update-release/artifacts/stable-win-x64-GloomSetup.exe -Label "arm64-$Launch" -Seconds 45 -Console
             } catch {
               $Failed += "launch ${Launch}: $($_.Exception.Message)"
             }

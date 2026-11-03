@@ -23,10 +23,11 @@ export function resetDoubleEscapeClose(state: DoubleEscapeCloseState) {
 }
 
 /**
- * Key handling for a double-Esc close: `take` runs before the pane and closes on the
- * second Esc of a pair, `arm` runs after it and only when nothing used the Esc.
- * So an Esc that backs out of a detail or closes a menu never counts as the
- * first half of a close.
+ * Key handling for a double-Esc close: `take` closes on the second Esc of a
+ * pair, before the pane sees it, and `arm` makes an Esc the first half. Every
+ * Esc arms, whatever the pane does with it (back out of a detail, clear a
+ * selection, leave a chart), except an Esc that leaves a draft or closes a
+ * menu: see `countEscapeTowardClose` and `keepEscapeFromClosing`.
  */
 export function takeDoubleEscapeClose(
   state: DoubleEscapeCloseState,
@@ -42,24 +43,45 @@ export function takeDoubleEscapeClose(
   return matched;
 }
 
-const escapeArmOffers = new WeakMap<object, () => void>();
-
-/**
- * Leaving an empty text field is the one Esc a pane uses that still counts as
- * the first half of a close, so Esc Esc from an idle composer closes the pane.
- * The shell offers every Esc in its `before` phase, focused field or not; a
- * pane handler that runs later takes the offer with `countEscapeTowardClose`
- * and consumes the Esc as usual. Anything the Esc backs out of (a draft, a
- * reply, a menu) keeps it from counting.
- */
-export function offerEscapeTowardClose(event: object, arm: () => void) {
-  escapeArmOffers.set(event, arm);
+interface EscapeOffer {
+  count(): void;
+  keep(): void;
+  kept: boolean;
 }
 
+const escapeOffers = new WeakMap<object, EscapeOffer>();
+
+/**
+ * The shell offers every Esc to the pane before any handler runs, so a
+ * handler in any phase can say what its Esc did to the close.
+ */
+export function offerEscapeTowardClose(event: object, offer: { count(): void; keep(): void }) {
+  escapeOffers.set(event, { ...offer, kept: false });
+}
+
+/**
+ * In a text field, or while a pane is editing, an Esc counts only when the
+ * pane says it left nothing typed behind: Esc Esc from an empty composer
+ * closes the pane, from a draft it never does.
+ */
 export function countEscapeTowardClose(event: object) {
-  const arm = escapeArmOffers.get(event);
-  escapeArmOffers.delete(event);
-  arm?.();
+  const offer = escapeOffers.get(event);
+  if (offer && !offer.kept) offer.count();
+}
+
+/**
+ * An Esc that closes a menu or popover of the pane's own, or backs out of a
+ * draft, is not the first half of a close.
+ */
+export function keepEscapeFromClosing(event: object) {
+  const offer = escapeOffers.get(event);
+  if (!offer) return;
+  offer.kept = true;
+  offer.keep();
+}
+
+export function isEscapeKeptFromClosing(event: object): boolean {
+  return escapeOffers.get(event)?.kept === true;
 }
 
 export function armDoubleEscapeClose(

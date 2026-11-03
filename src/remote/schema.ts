@@ -169,7 +169,8 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
       + "spec = { source: { pane: <function code>, argument?: <one string>, options?: { <flag>: <value> } }, projection: { columns?: [{ key, label?, transform? }], filters?: [{ key, op, value }], sort?: { by, direction }, limit? }, presentation?: { title?, symbolKey? } }. "
       + "pane is a function code (app://pane-templates says what each does), never an invented name; an unknown one is answered with the closest codes and the valid ones. "
       + "argument is always one string, several tickers separated by spaces: \"CME AAPL\". "
-      + "options sets the function's own flags; a wrong flag or value is answered with the ones it takes.",
+      + "options sets the function's own flags; a wrong flag or value is answered with the ones it takes. "
+      + "Column, filter and sort keys are keys the source's rows carry; one they do not is answered with the keys they do, and no pane opens.",
     "{ name?: string, spec: object }",
     "local-write",
     objectSchema({ name: stringSchema, spec: openObjectSchema }, ["spec"]),

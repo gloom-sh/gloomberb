@@ -2,6 +2,7 @@ import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Box, Text, TextAttributes, useUiHost, type HostMenuProps, type HostMenuItem } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { useShortcut } from "../../react/input";
+import { keepEscapeFromClosing } from "../../utils/double-escape-close";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { Popover } from "./popover";
 
@@ -59,7 +60,11 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
     else if (key === "home" || key === "pageup") setHighlighted(enabled[0]?.id ?? null);
     else if (key === "end" || key === "pagedown") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
     else if ((key === "return" || key === "enter" || key === "space") && highlighted) choose(highlighted);
-    else if (key === "escape") onClose?.();
+    else if (key === "escape") {
+      // Closing the menu is not half of closing the pane under it.
+      keepEscapeFromClosing(event);
+      onClose?.();
+    }
     else return;
     event.preventDefault();
     event.stopPropagation();

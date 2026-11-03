@@ -17,6 +17,7 @@ import {
   customViewInstanceSettings,
   parseViewSpecOr,
   trialLoadViewSource,
+  UnknownViewKeysError,
   type ViewSpec,
 } from "../plugins/builtin/custom-view";
 import { findPaneInstance, getPlacedPaneInstanceIds, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
@@ -409,13 +410,18 @@ export function createAppRemoteController({
   /**
    * A view's source loads once before the view is kept, so a function that
    * does not exist or cannot read answers with its own error instead of
-   * leaving a pane that never fills. What the load noted comes back as warnings.
+   * leaving a pane that never fills, and a column, filter or sort on a key its
+   * rows never carry is answered with the keys they do carry. What the load
+   * noted comes back as warnings.
    */
   const checkViewSource = async (spec: ViewSpec, action: "create" | "update", signal?: AbortSignal): Promise<string[]> => {
     try {
       return await trialLoadViewSource(spec, getState().config, { registry: pluginRegistry, signal });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      if (error instanceof UnknownViewKeysError) {
+        throw new Error(`${action === "create" ? "No view was created" : "The view was left as it was"}. ${reason}`);
+      }
       throw new Error(`The view's source did not load, so ${action === "create" ? "no view was created" : "the view was left as it was"}. ${reason}`);
     }
   };
@@ -497,7 +503,8 @@ export function createAppRemoteController({
         const name = optionalString(input, "name");
         if (name) layout = updatePaneInstance(layout, instanceId, (entry: PaneInstanceConfig) => ({ ...entry, title: name }));
         pluginRegistry.updateLayout(layout);
-        return getAfterMutationSummary({ affectedPaneIds: [instanceId], ...(loadWarnings.length ? { warnings: loadWarnings } : {}) });
+        const warnings = [...parsed.result.warnings.map((entry) => entry.message), ...loadWarnings];
+        return getAfterMutationSummary({ affectedPaneIds: [instanceId], ...(warnings.length ? { warnings } : {}) });
       }
       case "pane.setState":
         dispatch({

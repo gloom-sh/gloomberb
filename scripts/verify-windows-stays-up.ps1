@@ -52,6 +52,11 @@ function Get-AppProcesses {
 }
 
 function Get-InstallFolder {
+  # The installer installs into Electrobun's folder and leaves the uninstall
+  # entry to the app's first start (windows-installer.iss); one from an
+  # earlier release names its own folder in its entry.
+  $Managed = Join-Path $env:LOCALAPPDATA "com.vincelwt.gloomberb\stable\app"
+  if (Test-Path -LiteralPath (Join-Path $Managed "bin\launcher.exe")) { return $Managed }
   $Keys = @(Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
     ForEach-Object { Get-ItemProperty $_.PSPath } |
     Where-Object { $_.DisplayName -like "Gloom*" -and $_.InstallLocation })

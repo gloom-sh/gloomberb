@@ -1,4 +1,6 @@
 import { BrowserWindow } from "electrobun/bun";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { trackWindowAttention } from "./attention";
 import {
@@ -33,10 +35,24 @@ function desktopTitleBarStyle(): DesktopTitleBarStyle {
   return process.platform === "linux" ? "hidden" : "hiddenInset";
 }
 
+let chromiumShipped: boolean | undefined;
+
+/** Whether this build ships Chromium (Resources/build.json); a build that does not say is taken to. */
+function shipsChromium(): boolean {
+  if (chromiumShipped !== undefined) return chromiumShipped;
+  try {
+    const build = JSON.parse(readFileSync(resolve("../Resources/build.json"), "utf8")) as { availableRenderers?: unknown };
+    chromiumShipped = !Array.isArray(build.availableRenderers) || build.availableRenderers.includes("cef");
+  } catch {
+    chromiumShipped = true;
+  }
+  return chromiumShipped;
+}
+
 function desktopWindowRenderer(): DesktopWindowRenderer {
   if (process.platform === "win32") {
     const hostArchitecture = process.env.PROCESSOR_ARCHITEW6432 ?? process.env.PROCESSOR_ARCHITECTURE;
-    return hostArchitecture?.toLowerCase() === "arm64" ? "native" : "cef";
+    return hostArchitecture?.toLowerCase() === "arm64" || !shipsChromium() ? "native" : "cef";
   }
   return "native";
 }
@@ -104,7 +120,8 @@ export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, pre
     loadAgainWhenTakenForCtrlClick(window);
     // The page exists once it has loaded; until then there is nothing to fit.
     window.webview.on("dom-ready", () => {
-      fitPageToClientArea(window.ptr);
+      const handle = window.ptr;
+      if (handle) fitPageToClientArea(handle);
     });
   }
   updateWindowFrameCache(window, frame, minSize);

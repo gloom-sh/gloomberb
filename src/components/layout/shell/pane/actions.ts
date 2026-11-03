@@ -21,6 +21,7 @@ import {
   hasPaneTableExporter,
 } from "../../../../state/pane-table-export-registry";
 import { getDesktopWindows } from "../../../../state/desktop-windows";
+import { getTopFloatingPaneId } from "../../../../core/state/app/layout";
 
 function notifyPaneLocked(pluginRegistry: PluginRegistry): void {
   pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
@@ -125,7 +126,7 @@ export function useShellPaneActions({
     return true;
   }, [canExportPaneCsv, exportPaneCsv, focusedPaneId]);
 
-  const closeFocusedPane = useCallback(() => {
+  const closeFocusedPane = useCallback(({ focusNextFloating = false }: { focusNextFloating?: boolean } = {}) => {
     if (!focusedPaneId || !isPaneInLayout(visibleLayout, focusedPaneId)) return false;
     if (isPaneLockedInLayout(visibleLayout, focusedPaneId)) {
       notifyPaneLocked(pluginRegistry);
@@ -133,7 +134,10 @@ export function useShellPaneActions({
       return true;
     }
     const nextLayout = removePane(visibleLayout, focusedPaneId);
-    persistLayout(nextLayout, removedFocusRestoreOptions(nextLayout, focusedPaneId, previousFocusedPaneId));
+    const nextFloatingPaneId = focusNextFloating ? getTopFloatingPaneId(nextLayout) : null;
+    persistLayout(nextLayout, nextFloatingPaneId
+      ? { focusedPaneId: nextFloatingPaneId }
+      : removedFocusRestoreOptions(nextLayout, focusedPaneId, previousFocusedPaneId));
     return true;
   }, [focusedPaneId, persistLayout, pluginRegistry, previousFocusedPaneId, visibleLayout]);
 

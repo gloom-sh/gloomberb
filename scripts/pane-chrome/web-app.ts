@@ -1,3 +1,4 @@
+import { appendFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { evaluate, sleep, type Cdp } from "./browser";
@@ -97,15 +98,42 @@ export function createReplay(dir: string, { offline = false }: { offline?: boole
   };
 }
 
+/**
+ * What answers the page's live socket (`/api/cloud/ws`) when a run wants
+ * quotes streaming: Gloom Cloud's own, or frames kept from it. Without one
+ * the socket is refused.
+ */
+export interface SocketStandIn {
+  open(socket: PageSocket): void;
+  message(socket: PageSocket, text: string): void;
+  close(socket: PageSocket): void;
+}
+
+/** The page's end of the live socket, as a stand-in sees it. */
+interface PageSocket {
+  send(text: string): void;
+  close(): void;
+  data: Record<string, unknown>;
+}
+
 /** The web build in `dist`, with /api and the plugin proxy answered as the worker would for a signed-out visitor. */
-export function serveWebApp(dist: string, replay: Replay): { url: string; stop(): void } {
-  const server = Bun.serve({
+export function serveWebApp(dist: string, replay: Replay, { socket }: { socket?: SocketStandIn } = {}): { url: string; stop(): void } {
+  const server = Bun.serve<Record<string, unknown>, never>({
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 120,
-    async fetch(request) {
+    websocket: {
+      open: (ws) => socket?.open(ws as unknown as PageSocket),
+      message: (ws, message) => socket?.message(ws as unknown as PageSocket, typeof message === "string" ? message : new TextDecoder().decode(message)),
+      close: (ws) => socket?.close(ws as unknown as PageSocket),
+    },
+    async fetch(request, bun) {
       const url = new URL(request.url);
       const target = `${url.pathname}${url.search}`;
+      if (socket && url.pathname === "/api/cloud/ws") {
+        if (bun.upgrade(request, { data: {} })) return undefined;
+        return new Response("Expected a websocket", { status: 400 });
+      }
       if (url.pathname.startsWith("/api/")) {
         const body = request.method === "POST" ? await request.text() : "";
         const isRead = request.method === "GET" || (request.method === "POST" && READ_POSTS.test(url.pathname));
@@ -137,6 +165,83 @@ export function serveWebApp(dist: string, replay: Replay): { url: string; stop()
     },
   });
   return { url: `http://127.0.0.1:${server.port}/`, stop: () => server.stop(true) };
+}
+
+/**
+ * The page's live socket joined to Gloom Cloud's, signed out, as the web app
+ * has it: quotes stream at the market's pace. With `record`, every frame
+ * Gloom Cloud sends is kept there, one JSON line each with when it came, for
+ * `replaySocket`.
+ */
+export function liveSocket(record?: string): SocketStandIn {
+  const upstreams = new Map<PageSocket, { socket: WebSocket; pending: string[] }>();
+  return {
+    open(page) {
+      const socket = new WebSocket(`${UPSTREAM.replace(/^http/, "ws")}/cloud/ws`, { headers: { origin: "https://term.gloom.sh" } } as unknown as string[]);
+      const link = { socket, pending: [] as string[] };
+      upstreams.set(page, link);
+      socket.onopen = () => { for (const text of link.pending.splice(0)) socket.send(text); };
+      socket.onmessage = (event) => {
+        const text = String(event.data);
+        page.send(text);
+        if (record) appendFileSync(record, `${JSON.stringify({ t: Date.now(), frame: text })}\n`);
+      };
+      socket.onclose = () => page.close();
+    },
+    message(page, text) {
+      const link = upstreams.get(page);
+      if (!link) return;
+      if (link.socket.readyState === WebSocket.OPEN) link.socket.send(text);
+      else link.pending.push(text);
+    },
+    close(page) {
+      upstreams.get(page)?.socket.close();
+      upstreams.delete(page);
+    },
+  };
+}
+
+/**
+ * Plays frames `liveSocket` kept to each page that connects, at the pace they
+ * came, from the start and again once they run out: the market's flow, the
+ * same for every checkout. A ping is answered.
+ */
+export async function replaySocket(file: string): Promise<SocketStandIn> {
+  const kept = (await Bun.file(file).text()).trim().split("\n").map((line) => JSON.parse(line) as { t: number; frame: string });
+  const ready = kept.find((entry) => entry.frame.includes('"type":"ready"'));
+  const stream = kept.filter((entry) => /"type":"market\.quotes?"/.test(entry.frame));
+  if (!ready || stream.length === 0) throw new Error(`${file} has no ready frame or no quotes`);
+  const first = stream[0]!.t;
+  const span = stream[stream.length - 1]!.t - first + 1_000;
+  const timers = new Map<PageSocket, ReturnType<typeof setTimeout>>();
+  return {
+    open(page) {
+      page.send(ready.frame);
+      const began = performance.now();
+      let index = 0;
+      let loop = 0;
+      const next = () => {
+        const entry = stream[index]!;
+        timers.set(page, setTimeout(() => {
+          page.send(entry.frame);
+          index += 1;
+          if (index === stream.length) {
+            index = 0;
+            loop += 1;
+          }
+          next();
+        }, Math.max(0, began + loop * span + entry.t - first - performance.now())));
+      };
+      next();
+    },
+    message(page, text) {
+      if (text.includes('"type":"ping"')) page.send(JSON.stringify({ type: "pong" }));
+    },
+    close(page) {
+      clearTimeout(timers.get(page));
+      timers.delete(page);
+    },
+  };
 }
 
 /** Reads the web app makes straight from another site (the release feed) go through the same replay. */

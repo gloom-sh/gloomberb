@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ptr } from "bun:ffi";
 import { startNativeCallThread, type NativeCallThreadFailure, type UnstartedNativeCall } from "./native-call-thread";
 
 const LIBC = process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6";
@@ -45,6 +46,24 @@ test.skipIf(process.platform === "win32")("a call that blocks runs on its own th
 async function waitFor(condition: () => boolean, ms = 5_000): Promise<void> {
   for (let waited = 0; !condition() && waited < ms; waited += 20) await Bun.sleep(20);
 }
+
+// A window's scripts go with the pointer that names the window first, and
+// reach it in the order they were sent.
+test.skipIf(process.platform === "win32")("calls with the pointer first run in the order they were made", async () => {
+  const target = new Uint8Array(16);
+  let done = 0;
+  const thread = startNativeCallThread(LIBC, "strcat", { pointerFirst: true, onCallDone: () => { done += 1; } });
+  expect(thread).not.toBeNull();
+  try {
+    for (const part of ["a", "b", "c"]) {
+      expect(thread!.call(new TextEncoder().encode(`${part}\0`), Number(ptr(target)), () => {})).toBe(true);
+    }
+    await waitFor(() => done === 3);
+    expect(new TextDecoder().decode(target.subarray(0, 4))).toBe("abc\0");
+  } finally {
+    thread?.close();
+  }
+});
 
 // A menu asked for while the thread was still opening the library would be
 // lost when it fails to: it comes back for the caller to show itself.

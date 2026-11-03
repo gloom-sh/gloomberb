@@ -443,7 +443,15 @@ function mergeDefinedObject<T extends object>(preferred: T | null | undefined, f
   return Object.fromEntries(mergedEntries) as T;
 }
 
-function setOrDelete<K extends "dividendRate" | "forwardEps">(target: Fundamentals, key: K, value: Fundamentals[K]): void {
+/** Forward P/E, its consensus EPS and the year it is for: one observation, never pieced together from two. */
+const FORWARD_FIELDS = ["forwardPE", "forwardEps", "forwardEpsCurrency", "forwardEpsPeriodEnd", "forwardEpsObservedAt"] as const;
+
+/** A block that read next year's consensus says what it found, even none: its forward fields stand whole. */
+function readsConsensus(fundamentals: Fundamentals | undefined): boolean {
+  return fundamentals?.forwardEpsPeriodEnd !== undefined;
+}
+
+function setOrDelete<K extends "dividendRate" | (typeof FORWARD_FIELDS)[number]>(target: Fundamentals, key: K, value: Fundamentals[K]): void {
   if (value === undefined) delete target[key];
   else target[key] = value;
 }
@@ -483,10 +491,14 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
     merged.dividendYieldSource = dividend.dividendYieldSource;
     setOrDelete(merged, "dividendRate", dividend.dividendRate);
   }
-  const forward = primary?.forwardPE != null ? primary : fallback;
+  const forward = primary?.forwardPE != null || readsConsensus(primary) ? primary : fallback;
   // Forward EPS reprices the forward multiple, so it pairs with that multiple's
-  // observation; a withdrawn one never comes back from an older fallback.
-  if (merged && forward) setOrDelete(merged, "forwardEps", forward.forwardEps);
+  // observation; a withdrawn one never comes back from an older fallback, and
+  // a consensus that is a loss or none never takes an older multiple.
+  if (merged && forward) {
+    if (readsConsensus(forward)) for (const key of FORWARD_FIELDS) setOrDelete(merged, key, forward[key]);
+    else setOrDelete(merged, "forwardEps", forward.forwardEps);
+  }
   if (merged && primary && !primary.financialCurrency && [
     primary.revenue, primary.netIncome, primary.operatingCashFlow, primary.freeCashFlow, primary.eps,
   ].some((value) => value != null)) {
@@ -576,6 +588,8 @@ export function mergeRefreshedFinancials(cached: TickerFinancials, fresh: Ticker
     if (!currencyConflict && typeof statistics[field] === "number" && Number.isFinite(statistics[field])) update[field] = statistics[field];
   }
   if (!currencyConflict && statistics.enterpriseValueCheck) update.enterpriseValueCheck = statistics.enterpriseValueCheck;
+  // Fresh statistics that read next year's consensus replace the forward figures whole, a loss or none included.
+  if (readsConsensus(statistics)) for (const key of FORWARD_FIELDS) if (statistics[key] !== undefined) update[key] = statistics[key] as never;
   let fundamentals = mergeFundamentals(update, merged.fundamentals);
   // The source serving a multiple or yield without its per-share base has
   // withdrawn that base, so an older one must not keep repricing the figure.

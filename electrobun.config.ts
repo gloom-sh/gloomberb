@@ -3,28 +3,22 @@ import pkg from "./package.json";
 import { DESKTOP_APP_IDENTIFIER, DESKTOP_APP_NAME } from "./src/renderers/electrobun/shared/app-name";
 
 const RELEASE_BASE_URL = "https://github.com/gloom-sh/gloomberb/releases/latest/download";
-const GENERATE_RELEASE_PATCH = process.platform !== "win32";
-const RELEASE_BUILD = process.argv.some((arg) => arg === "--env=stable" || arg === "--env=canary");
+/** Patches from the previous release ship for macOS only: no release carries a Linux app, and Windows takes the whole archive. */
+const GENERATE_RELEASE_PATCH = process.platform === "darwin";
 /**
- * Electrobun gives every Windows build Chromium's DevTools port. A release
- * has none: `-1` is no port, so Chromium starts no debugging server. Dev
- * builds keep it.
+ * A macOS build for a check rather than for users, which has nothing to sign
+ * with: neither signed nor notarized. A release signs, and its checks fail on
+ * a disk image that is not.
  */
-const WINDOWS_RELEASE_CHROMIUM_FLAGS = {
-  "remote-debugging-port": "-1",
-  "remote-allow-origins": false,
-};
-
+const MAC_UNSIGNED = process.env.GLOOM_DESKTOP_UNSIGNED === "1";
 /**
- * The Bun that Windows builds ship, in place of the 1.3 Electrobun brings.
- * Bun 1.3 runs every bun:ffi call and callback through code it writes into
- * heap memory and marks executable. Windows' heap later commits that memory
- * again as read-write, and the app crashes the next time native code calls one
- * of Electrobun's callbacks (often the window's first event, seconds after it
- * opens). Bun 1.4 keeps that code in its own executable memory. Windows builds
- * run on Windows.
+ * Windows on x64 draws the app with the Chromium it ships. Windows on Arm
+ * draws it with the system's WebView2 (window/create.ts), so an Arm build
+ * ships no Chromium, and neither does a check of WebView2 on x64
+ * (GLOOM_WINDOWS_RENDERER=native).
  */
-const WINDOWS_BUN_VERSION = "1.4.4";
+const WINDOWS_NATIVE_RENDERER = process.env.GLOOM_WINDOWS_RENDERER === "native"
+  || (process.platform === "win32" && process.arch === "arm64");
 
 const config: ElectrobunConfig = {
   app: {
@@ -38,6 +32,7 @@ const config: ElectrobunConfig = {
     urlSchemes: ["gloomberb"],
   },
   build: {
+    mainProcess: "bun",
     bun: {
       entrypoint: "src/renderers/electrobun/bun/index.ts",
       sourcemap: "external",
@@ -45,7 +40,6 @@ const config: ElectrobunConfig = {
     copy: {
       "dist/electrobun-view": "views/mainview",
     },
-    ...(process.platform === "win32" ? { bunVersion: WINDOWS_BUN_VERSION } : {}),
     watch: [
       "src",
       "scripts/build-electrobun-view.ts",
@@ -61,17 +55,16 @@ const config: ElectrobunConfig = {
       "node_modules/**",
     ],
     mac: {
-      codesign: true,
+      codesign: !MAC_UNSIGNED,
       createDmg: true,
-      notarize: true,
+      notarize: !MAC_UNSIGNED,
       icons: "icon.iconset",
       defaultRenderer: "native",
     },
     win: {
-      bundleCEF: true,
-      defaultRenderer: "cef",
+      bundleCEF: !WINDOWS_NATIVE_RENDERER,
+      defaultRenderer: WINDOWS_NATIVE_RENDERER ? "native" : "cef",
       icon: "src/assets/gloomberb-logo-windows.ico",
-      ...(RELEASE_BUILD ? { chromiumFlags: WINDOWS_RELEASE_CHROMIUM_FLAGS } : {}),
     },
   },
   scripts: {

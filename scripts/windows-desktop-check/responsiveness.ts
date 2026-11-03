@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { Cdp, evaluate } from "../pane-chrome/browser";
@@ -17,10 +17,10 @@ import * as win from "./win32";
  * - the window held mid-move, and mid-resize, with the pointer still moving;
  * - last, a quit through the page's Close button with a menu open.
  *
- * A probe asks the app's own local server (the one its windows' sockets
- * connect to) for a page every 50 ms; how long each answer takes is how long
- * the thread could not run. The stalls the app logged meanwhile say what it
- * named. `--strict` fails when the thread waited a second or more through
+ * A probe asks the app's remote control (a local server the app's thread
+ * answers, on Electrobun 1 and 2 alike) whether it is up every 50 ms; how
+ * long each answer takes is how long the thread could not run. The stalls
+ * the app logged meanwhile say what it named. `--strict` fails when the thread waited a second or more through
  * the update or a menu, when a menu's window call or picked item did not
  * arrive, or when the app did not end with a menu open.
  *
@@ -40,7 +40,8 @@ const sleep = win.sleep;
 const HOLD_MS = 8_000;
 /** A wait this long through an update or a menu fails `--strict`. */
 const STRICT_LIMIT_MS = 1_000;
-const UPDATE_HASH = "responsiveness-update";
+/** Electrobun 2 takes a release hash of 13 letters and digits at most. */
+const UPDATE_HASH = "respupdate1";
 
 interface Sample { at: number; ms: number }
 
@@ -51,7 +52,7 @@ class Probe {
   private readonly done: Promise<void>;
 
   constructor(port: number) {
-    this.done = this.loop(`http://127.0.0.1:${port}/socket`);
+    this.done = this.loop(`http://127.0.0.1:${port}/health`);
   }
 
   private async loop(url: string): Promise<void> {
@@ -178,6 +179,8 @@ Get-Process -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -and $_
 }
 
 interface Running {
+  /** The app folder it runs from. */
+  app: string;
   launcher: ReturnType<typeof Bun.spawn>;
   cdp: Cdp;
   hwnd: number;
@@ -194,7 +197,7 @@ class Session {
 
   constructor(readonly app: string, readonly out: string) {}
 
-  async launch(label: string): Promise<Running> {
+  async launch(label: string, app: string = this.app): Promise<Running> {
     await this.close();
     this.launches += 1;
     for (const key of [win.VK.control, win.VK.shift, win.VK.alt]) win.keyUp(key);
@@ -206,7 +209,7 @@ class Session {
       x: Math.round((work.left + 80) / scale), y: Math.round((work.top + 80) / scale),
       width: Math.round(1100 / scale), height: Math.round(720 / scale),
     });
-    const bin = join(this.app, "bin");
+    const bin = join(app, "bin");
     const stdout = join(this.out, `app-stdout-${label}.log`);
     const launcher = Bun.spawn([join(bin, "launcher.exe")], {
       cwd: bin,
@@ -220,8 +223,9 @@ class Session {
     let hwnd = 0;
     while (Date.now() < deadline && launcher.exitCode === null) {
       if (!port) {
-        const text = await readFile(stdout, "utf8").catch(() => "");
-        port = Number(text.match(/Server started at http:\/\/127\.0\.0\.1:(\d+)/)?.[1] ?? 0);
+        // The app writes where its remote control listens into its data folder.
+        const endpoint = await readJson(join(dataDir, "remote-control.desktop.json")).catch(() => null);
+        port = Number(endpoint?.port ?? 0);
       }
       if (!cdp) {
         const page = await devtoolsPage();
@@ -239,7 +243,7 @@ class Session {
     if (!cdp || !port || !hwnd) {
       throw new Error(`The app did not open (${launcher.exitCode === null ? "still running" : `exited ${launcher.exitCode}`}; port ${port}, window ${hwnd}, page ${cdp ? "yes" : "no"})`);
     }
-    const running: Running = { launcher, cdp, hwnd, port, probe: new Probe(port), dataDir, readyAt: Date.now(), stdout };
+    const running: Running = { app, launcher, cdp, hwnd, port, probe: new Probe(port), dataDir, readyAt: Date.now(), stdout };
     this.running = running;
     // The panes load what they show.
     await sleep(8_000);
@@ -255,6 +259,7 @@ class Session {
       Bun.spawnSync(["taskkill", "/PID", String(running.launcher.pid), "/T", "/F"]);
       const log = await readFile(join(running.dataDir, "stall-log.txt"), "utf8").catch(() => "");
       await writeFile(join(this.out, `stall-log-${this.launches}.txt`), log);
+      if (running.app !== this.app) stopApp(running.app);
     }
     stopApp(this.app);
     await sleep(1_500);
@@ -551,15 +556,25 @@ async function serveUpdate(app: string, work: string): Promise<{ stop(): void; b
   await mkdir(release, { recursive: true });
   const info = await readJson(join(app, "Resources", "version.json"));
   const name = info.name ?? "Gloom";
+  const archive = `stable-win-x64-${name}.tar.zst`;
   const tar = join(work, "update.tar");
   const started = Date.now();
   let result = Bun.spawnSync(["tar", "-cf", tar, "-C", dirname(app), basename(app)], { stdout: "inherit", stderr: "inherit" });
   if (result.exitCode !== 0) throw new Error("tar could not pack the app");
   // Level 3: the default takes minutes on a build this size.
-  result = Bun.spawnSync([join(app, "bin", "zig-zstd.exe"), "compress", "-i", tar, "-o", join(release, `stable-win-x64-${name}.tar.zst`), "-l", "3", "--threads", "max"], { stdout: "inherit", stderr: "inherit" });
+  result = Bun.spawnSync([join(app, "bin", "zig-zstd.exe"), "compress", "-i", tar, "-o", join(release, archive), "-l", "3", "--threads", "max"], { stdout: "inherit", stderr: "inherit" });
   if (result.exitCode !== 0) throw new Error("zig-zstd could not pack the app");
   await rm(tar, { force: true });
-  await writeFile(join(release, "stable-win-x64-update.json"), JSON.stringify({ ...info, channel: "stable", hash: UPDATE_HASH }));
+  // Electrobun 1 reads version.json's fields, Electrobun 2 its own manifest's.
+  await writeFile(join(release, "stable-win-x64-update.json"), JSON.stringify({
+    ...info,
+    channel: "stable",
+    hash: UPDATE_HASH,
+    schemaVersion: 1,
+    platform: "win",
+    arch: "x64",
+    artifact: { file: archive },
+  }));
   console.log(`Packed an update of ${name} in ${Math.round((Date.now() - started) / 1000)} s`);
   let requestedAt = 0;
   const server = Bun.serve({
@@ -575,17 +590,29 @@ async function serveUpdate(app: string, work: string): Promise<{ stop(): void; b
   return { stop: () => server.stop(true), baseUrl: `http://127.0.0.1:${server.port}`, requestedAt: () => requestedAt };
 }
 
-async function updateAtLaunch(session: Session, app: string, out: string): Promise<ScenarioResult> {
-  const versionPath = join(app, "Resources", "version.json");
-  const original = await readFile(versionPath, "utf8");
-  const info = JSON.parse(original.replace(/^\uFEFF/, ""));
-  const extraction = join(process.env.LOCALAPPDATA ?? "", info.identifier, "stable", "self-extraction");
+/**
+ * Electrobun 2 updates an app only from its own folder,
+ * `<local app data>\<identifier>\<channel>\<folder>`, and Electrobun 1 from
+ * anywhere, both downloading into `<channel>\self-extraction`. The update
+ * runs on a copy of the install there. The copy's folder is not `app`: there
+ * the build would take the installer's install for an older one it replaced
+ * and retire it.
+ */
+async function updateAtLaunch(session: Session, installed: string, out: string): Promise<ScenarioResult> {
+  const installedInfo = await readJson(join(installed, "Resources", "version.json"));
+  const channelRoot = join(process.env.LOCALAPPDATA ?? "", installedInfo.identifier, "stable");
+  const app = join(channelRoot, "responsiveness");
+  const extraction = join(channelRoot, "self-extraction");
+  await rm(app, { recursive: true, force: true });
   await rm(extraction, { recursive: true, force: true });
+  await cp(installed, app, { recursive: true });
+  const versionPath = join(app, "Resources", "version.json");
+  const info = await readJson(versionPath);
   const server = await serveUpdate(app, join(out, "update"));
   const notes: string[] = [];
   try {
     await writeFile(versionPath, JSON.stringify({ ...info, channel: "stable", baseUrl: server.baseUrl }, null, 2));
-    const running = await session.launch("update");
+    const running = await session.launch("update", app);
     const downloaded = join(extraction, `${UPDATE_HASH}.tar`);
     const done = await waitUntil(240_000, () => existsSync(downloaded));
     if (!done) notes.push("the app did not download and unpack the update");
@@ -599,7 +626,7 @@ async function updateAtLaunch(session: Session, app: string, out: string): Promi
   } finally {
     await session.close();
     server.stop();
-    await writeFile(versionPath, original);
+    await rm(app, { recursive: true, force: true }).catch((error: unknown) => console.error(`Could not remove the update's copy of the app: ${String(error)}`));
     await rm(extraction, { recursive: true, force: true });
     await rm(join(out, "update"), { recursive: true, force: true });
   }

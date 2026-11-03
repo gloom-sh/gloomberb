@@ -1,6 +1,19 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { debugLog } from "../../../../utils/debug-log";
 
 const threadLog = debugLog.createLogger("native-call-thread");
+
+/**
+ * Electrobun's native library, where its SDK opens it for this process: the
+ * working folder, else beside the running Bun. Another thread opens the same
+ * one, already loaded.
+ */
+export function nativeWrapperLibraryPath(): string {
+  const name = `libNativeWrapper.${process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so"}`;
+  const candidates = [join(process.cwd(), name), join(dirname(process.argv0 || process.execPath), name), join(dirname(process.execPath), name)];
+  return candidates.find((path) => existsSync(path)) ?? candidates[0]!;
+}
 
 /**
  * Runs on a thread of its own: opens the library once, then makes each call
@@ -10,10 +23,12 @@ const threadLog = debugLog.createLogger("native-call-thread");
 const WORKER_SOURCE = `
 import { dlopen, ptr } from "bun:ffi";
 let call = null;
+let pointerFirst = false;
 self.onmessage = (event) => {
   const message = event.data;
   if (message.type === "open") {
     try {
+      pointerFirst = message.pointerFirst === true;
       call = dlopen(message.library, { [message.symbol]: { args: ["ptr", "ptr"], returns: "void" } }).symbols[message.symbol];
       postMessage({ type: "ready" });
     } catch (error) {
@@ -26,7 +41,8 @@ self.onmessage = (event) => {
     postMessage({ type: "started", id: message.id });
     const startedAt = performance.now();
     try {
-      call(ptr(message.bytes), message.pointer || null);
+      if (pointerFirst) call(message.pointer || null, ptr(message.bytes));
+      else call(ptr(message.bytes), message.pointer || null);
       postMessage({ type: "done", id: message.id, ms: performance.now() - startedAt });
     } catch (error) {
       postMessage({ type: "failed", id: message.id, message: String(error && error.message || error) });
@@ -61,11 +77,13 @@ export interface NativeCallThreadOptions {
   onFailure?(failure: NativeCallThreadFailure, unstarted: UnstartedNativeCall[]): void;
   /** A call running this long counts the thread as stuck. */
   callLimitMs?: number;
+  /** `symbol(pointer, bytes)` rather than `symbol(bytes, pointer)`. */
+  pointerFirst?: boolean;
 }
 
 export interface NativeCallThread {
   /**
-   * Queues `symbol(bytes, pointer)` and returns at once. False when the
+   * Queues `symbol(bytes, pointer)` (or `symbol(pointer, bytes)`) and returns at once. False when the
    * thread cannot take it, and the caller makes the call itself; `replay`
    * makes it another way if the thread stops before beginning it.
    */
@@ -85,15 +103,15 @@ interface OwedCall extends UnstartedNativeCall {
 }
 
 /**
- * A native call that can wait on another thread for as long as a person
- * takes, made from a thread of its own so this one keeps running. On
- * Windows, Electrobun's native calls wait for the thread that runs the
- * windows to answer them, and that thread answers a context menu's only
- * once the menu closes: made here, the app froze for as long as a menu
- * was open.
+ * A native call that waits on another thread, made from a thread of its own
+ * so this one keeps running. On Windows, Electrobun's native calls wait for
+ * the thread that runs the windows to answer them. That thread answers a
+ * context menu's only once the menu closes, and a script for a window (every
+ * message the app sends one) whenever it gets to it: made here, the app
+ * froze for as long as a menu was open or that thread was busy.
  *
- * `symbol` takes a pointer to the bytes and one pointer. Null where there is
- * no Worker to run it on.
+ * `symbol` takes a pointer to the bytes and one pointer, in either order.
+ * Null where there is no Worker to run it on.
  */
 export function startNativeCallThread(
   library: string,
@@ -177,7 +195,7 @@ export function startNativeCallThread(
   worker.addEventListener("close", () => fail("ended", "the thread ended"));
 
   try {
-    worker.postMessage({ type: "open", library, symbol });
+    worker.postMessage({ type: "open", library, symbol, pointerFirst: options.pointerFirst === true });
   } catch (error) {
     stop();
     threadLog.warn("Could not start a thread for native calls", { error: String(error) });

@@ -50,6 +50,29 @@ test("the catalog's example definition passes the real validator, and a bad one 
   expect(() => option.normalize!(JSON.stringify({ ...definition, criteria: [{ field: "industry", op: "eq", value: "Gold" }] })))
     .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloom catalog EQS/);
   expect(() => option.normalize!('{"version":1}')).toThrow(/criteria is missing.*sort is missing.*currency is missing/);
+  // The second example screens a watchlist by its name.
+  const watchlistJson = /^--definition '(.+)'$/.exec(option.examples![0]!)![1]!;
+  expect(parseScreenDefinition(JSON.parse(watchlistJson)).criteria).toEqual([{ field: "symbol", op: "in", value: ["Watchlist"] }]);
+});
+
+test("a symbol criterion naming a watchlist screens its bare symbols and says so", async () => {
+  const sent: unknown[] = [];
+  // The server answers with the definition it ran, as it does.
+  const apiClient = { equityScreener: async (_path: string, init: { body: string }) => {
+    const { limit: _limit, cursor: _cursor, ...definition } = JSON.parse(init.body);
+    sent.push(definition);
+    return { ...screenFixture(), definition };
+  } };
+  const members = ["NFE", "SAP:XETRA", "CZR"].map((ticker) => ({ metadata: { ticker } }));
+  const ctx = {
+    apiClient,
+    config: { watchlists: [{ id: "wl-hy3", name: "HY3" }] },
+    resolveWatchlist: async (name: string) => (name.toLowerCase() === "hy3" ? members : null),
+  };
+  const definition = JSON.stringify({ version: 1, currency: "USD", criteria: [{ field: "symbol", op: "in", value: ["hy3"] }], sort: { field: "marketCap", direction: "desc" } });
+  const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition } } as never, ctx as never);
+  expect(sent[0]).toMatchObject({ criteria: [{ field: "symbol", op: "in", value: ["NFE", "SAP", "CZR"] }] });
+  expect(result.notes?.[0]).toBe("Read hy3 as watchlist HY3 (3 symbols).");
 });
 
 test("a KPI the server holds back from Free says why once, in KPIS's words; a Pro KPI with gaps says what a gap is", async () => {

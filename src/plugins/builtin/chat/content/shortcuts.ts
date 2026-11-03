@@ -2,7 +2,7 @@ import { useState, type MutableRefObject } from "react";
 import { useShortcut } from "../../../../react/input";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
-import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
+import { countEscapeTowardClose, keepEscapeFromClosing } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { createOneShot } from "../../../../utils/one-shot";
 import { scrollToBottom } from "../layout";
@@ -290,11 +290,13 @@ export function useChatContentShortcuts({
       return;
     }
 
-    // An Esc with nothing to back out of is left to the pane's double-Esc close.
+    // Clearing a selection counts toward the pane's double-Esc close; closing
+    // the profile popover does not.
     if (event.name === "escape" && (profilePopoverOpen || selectedIdx >= 0)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       if (profilePopoverOpen) {
+        keepEscapeFromClosing(event);
         closeProfilePopover();
         return;
       }

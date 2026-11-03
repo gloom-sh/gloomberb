@@ -1,4 +1,4 @@
-import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
+import { forwardFiscalYear, forwardPEAsked, formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
@@ -235,9 +235,11 @@ export function buildOverviewStats({
   if (trailingPE != null) {
     stats.push({ label: "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
   }
+  // Next fiscal year's consensus, and the year it is for: N/M over a loss, a dash when there is none.
   const forwardPE = liveForwardPE(quote, fundamentals);
-  if (forwardPE != null) {
-    stats.push({ label: "Fwd P/E", value: formatPriceEarnings(forwardPE) });
+  if (forwardPE != null || forwardPEAsked(fundamentals)) {
+    const year = forwardFiscalYear(fundamentals?.forwardEpsPeriodEnd);
+    stats.push({ label: year ? `Fwd P/E ${year}` : "Fwd P/E", value: formatPriceEarnings(forwardPE) });
   }
   if (fundamentals?.eps != null) {
     stats.push({ label: "EPS", value: formatReportedMoney(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });

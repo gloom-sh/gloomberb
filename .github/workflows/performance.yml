@@ -164,6 +164,8 @@ jobs:
 
       - if: steps.scope.outputs.relevant == 'true'
         uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - if: steps.scope.outputs.relevant == 'true'
         name: Install the pinned WebKit build and system libraries

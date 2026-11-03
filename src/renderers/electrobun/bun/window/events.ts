@@ -52,10 +52,10 @@ type FramedWindow = Pick<BrowserWindow, "frame" | "getFrame" | "isMinimized" | "
 
 /**
  * Electrobun's Windows events do not carry the window's frame: a resize
- * reports the client area's size at 0,0, a move the client area's corner as
- * unsigned 16-bit values, and both come while the window is minimized. There
- * the frame is read from the window itself, and a minimized window keeps the
- * frame it had.
+ * reports the client area's size rather than the window's (2.0.5; 1.18 put it
+ * at 0,0 too, and a move gave the client area's corner as unsigned 16-bit
+ * values), and both come while the window is minimized. There the frame is
+ * read from the window itself, and a minimized window keeps the frame it had.
  */
 export function applyNativeWindowFrame(window: FramedWindow, minimumSize?: WindowMinimumSize): WindowFrame | null {
   if (window.isMinimized()) return null;

@@ -1,7 +1,7 @@
 import { ContextMenu } from "electrobun/bun";
 import { reportCrash } from "../../../../telemetry/crash-reports";
 import { debugLog } from "../../../../utils/debug-log";
-import { startNativeCallThread, type NativeCallThread, type NativeCallThreadFailure } from "./native-call-thread";
+import { nativeWrapperLibraryPath, startNativeCallThread, type NativeCallThread, type NativeCallThreadFailure } from "./native-call-thread";
 import { measureNativeCall } from "./native-timing";
 
 const menuLog = debugLog.createLogger("context-menu-thread");
@@ -46,7 +46,7 @@ export function runContextMenusOffThread(platform: string = process.platform): v
   const encoder = new TextEncoder();
 
   const start = (): NativeCallThread | null => {
-    const started = startNativeCallThread(ContextMenu.nativeWrapperLibraryPath(), "showContextMenu", {
+    const started = startNativeCallThread(nativeWrapperLibraryPath(), "showContextMenu", {
       callLimitMs: MENU_CALL_LIMIT_MS,
       onFailure: (failure, unstarted) => {
         reportMenuThreadFailure(failure);

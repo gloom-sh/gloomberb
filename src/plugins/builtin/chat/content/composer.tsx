@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Box, Text, TextAttributes, useCommandBarShortcut, type TextareaRenderable } from "../../../../ui";
+import { Box, Text, TextAttributes, type TextareaRenderable } from "../../../../ui";
 import { getMessageComposerBlockHeight, MessageComposer } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
-import { t, tf } from "../../../../i18n";
+import { t } from "../../../../i18n";
 import { truncateToDisplayWidth } from "../../../../utils/format";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
@@ -19,6 +19,14 @@ import type { ComposerShareLink } from "../pane-links/composer";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 
 const DESKTOP_CHAT_INPUT_TOP_MARGIN_PX = 6;
+/**
+ * The line saying why the composer is closed, a blank row, then its button,
+ * as a wall sets them. The desktop has no pane border under the button, so a
+ * row below keeps it off the pane's edge.
+ */
+function chatAuthPromptRows(nativePaneChrome: boolean | undefined): number {
+  return nativePaneChrome ? 4 : 3;
+}
 
 interface MutableRef<T> {
   current: T;
@@ -36,7 +44,6 @@ interface ChatComposerAreaProps {
   contentWidth: number;
   focused: boolean;
   focusComposer: () => void;
-  hasSavedSession: boolean;
   inputFocused: boolean;
   inputPlaceholder: string;
   inputRef: MutableRef<TextareaRenderable | null>;
@@ -115,7 +122,6 @@ export function ChatComposerArea({
   contentWidth,
   focused,
   focusComposer,
-  hasSavedSession,
   inputFocused,
   inputPlaceholder,
   inputRef,
@@ -141,31 +147,19 @@ export function ChatComposerArea({
   onRemoveDraftLink,
   attachPickerRef,
 }: ChatComposerAreaProps) {
-  const commandBarShortcut = useCommandBarShortcut();
   if (!canSend) {
-    const fitText = (value: string) => truncateToDisplayWidth(value, contentWidth);
-    const fitLine = (value: string) => fitText(t(value));
+    // Signed out the pane shows the sign-in wall instead; what reaches here is
+    // a saved login to finish or an address to confirm. The line and its
+    // button sit as a wall's do, a row apart.
     return (
       // Inset like the transcript above it, so the prompt lines up with the messages.
-      <Box width={contentWidth + 2} paddingX={1} height={2} flexDirection="column">
-        {!user && !hasSavedSession ? (
-          <>
-            <Text fg={colors.textDim}>{fitLine("Read-only chat. Log in or sign up to send.")}</Text>
-            <InlineAuthActions />
-          </>
-        ) : !user ? (
-          <>
-            <Text fg={colors.positive}>{fitLine("Saved login found. Log in again to send.")}</Text>
-            <InlineAuthActions showSignup={false} />
-          </>
-        ) : (
-          <>
-            <Text fg={colors.positive}>{fitLine("Verify your email to send messages.")}</Text>
-            <Text fg={colors.textDim}>
-              {fitText(tf("{shortcut}, then Resend Verification Email", { shortcut: commandBarShortcut }))}
-            </Text>
-          </>
-        )}
+      <Box width={contentWidth + 2} paddingX={1} height={chatAuthPromptRows(nativePaneChrome)} flexDirection="column">
+        <Text fg={colors.positive}>
+          {truncateToDisplayWidth(user ? t("Verify your email to send messages.") : t("Saved login found. Log in again to send."), contentWidth)}
+        </Text>
+        <Box marginTop={1}>
+          <InlineAuthActions showSignup={false} needsVerification={!!user} />
+        </Box>
       </Box>
     );
   }
@@ -301,7 +295,7 @@ export function getChatComposerAreaHeight({
   /** Terminal rows the handle prompt above the composer takes. */
   promptRows?: number;
 }) {
-  if (!canSend) return 2;
+  if (!canSend) return chatAuthPromptRows(nativePaneChrome);
   return promptRows + getMessageComposerBlockHeight({ height: composerHeight, nativePaneChrome })
     + (editingMessage || replyTo ? 1 : 0)
     + Math.max(0, mentionSuggestionCount ?? 0)

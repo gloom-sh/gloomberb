@@ -4,6 +4,7 @@ import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
+import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -106,6 +107,8 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const closeDetail = useCallback(() => { setTarget(null); setEtf(null); }, [setTarget, setEtf]);
   useShortcut(event => {
     if (!focused || !open || event.targetEditable || !isDetailBackNavigationKey(event)) return;
+    // Ahead of the shell's own Esc handler when restored with it, so it counts the Esc itself.
+    countEscapeTowardClose(event);
     event.preventDefault?.(); event.stopPropagation?.(); closeDetail();
   }, { phase: "before" });
   useShortcut(event => {

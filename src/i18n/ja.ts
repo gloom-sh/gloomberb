@@ -852,7 +852,6 @@ export const ja: Record<string, string> = {
   "Start group chat": "グループチャットを開始する",
   "Use @username, or multiple usernames for a group chat": "グループ チャットには @username または複数のユーザー名を使用してください",
   "Type DM @username to start one": "DM @username と入力して開始します",
-  "Read-only chat. Log in or sign up to send.": "読み取り専用チャット。送信するにはログインまたはサインアップしてください。",
   "Saved login found. Log in again to send.": "保存されたログインが見つかりました。送信するには再度ログインしてください。",
   "Verify your email to send messages.": "メッセージを送信するにはメールを確認してください。",
   // The first-chat prompt for an account still on its signup handle.
@@ -876,7 +875,6 @@ export const ja: Record<string, string> = {
   "ask questions about anything on screen": "画面上のあらゆる内容について質問",
   "Free with a verified Gloom account.": "認証済みの Gloom アカウントがあれば無料です。",
   "search X": "X を検索",
-  "{shortcut}, then Resend Verification Email": "{shortcut} から「確認メールを再送信」",
   "editing": "編集",
   "replying to": "返信先",
   "Reply": "返信",

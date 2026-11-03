@@ -804,11 +804,19 @@ header, with the detail's height.
   keys, `j`/`k`, `+`/`-`), and a footer hint repeats only for those; a pane
   key that opens a dialog, writes the clipboard, downloads or sends ignores
   `event.repeat` itself.
-- Esc Esc closes the focused pane, and only an Esc nobody consumed counts
-  as the first press. Consume Esc only when it backs out of something (a
-  detail, a menu, a selection, a draft); with nothing to back out of, let it
-  through. An Esc that only leaves an empty text field still counts: call
-  `countEscapeTowardClose(event)` and consume it.
+- Esc Esc closes the focused pane, and focus moves to the next floating
+  pane. Any Esc counts as the first press, whatever the pane did with it
+  (back out of a detail, clear a selection, leave a chart), so a quick
+  second Esc closes a pane that could still go back. Three never count: an
+  Esc in a text field or while the pane is editing, unless it leaves an
+  empty field (call `countEscapeTowardClose(event)`, as the chat composer
+  does) and so no typed draft is lost; an Esc while a menu, dialog or
+  overlay is open, and one that closes a menu or popover of the pane's own
+  (call `keepEscapeFromClosing(event)`); and a held Esc, which closes one
+  pane. A scoped `before` handler (a form, key capture) runs ahead of the
+  counting, so its Esc never counts. An unscoped `before` handler can run
+  ahead of it too (a pane restored at launch), so one that goes back calls
+  `countEscapeTowardClose(event)` itself.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state
