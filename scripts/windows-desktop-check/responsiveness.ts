@@ -241,7 +241,15 @@ class Session {
       await sleep(500);
     }
     if (!cdp || !port || !hwnd) {
-      throw new Error(`The app did not open (${launcher.exitCode === null ? "still running" : `exited ${launcher.exitCode}`}; port ${port}, window ${hwnd}, page ${cdp ? "yes" : "no"})`);
+      const state = launcher.exitCode === null ? "still running" : `exited ${launcher.exitCode}`;
+      // Ended here: the session only stops an app that opened.
+      await shot(`${label}-did-not-open`);
+      cdp?.close();
+      Bun.spawnSync(["taskkill", "/PID", String(launcher.pid), "/T", "/F"]);
+      stopApp(app);
+      const log = await readFile(join(dataDir, "stall-log.txt"), "utf8").catch(() => "");
+      await writeFile(join(this.out, `stall-log-${this.launches}.txt`), log);
+      throw new Error(`The app did not open (${state}; port ${port}, window ${hwnd}, page ${cdp ? "yes" : "no"})`);
     }
     const running: Running = { app, launcher, cdp, hwnd, port, probe: new Probe(port), dataDir, readyAt: Date.now(), stdout };
     this.running = running;
@@ -610,9 +618,17 @@ async function updateAtLaunch(session: Session, installed: string, out: string):
   const info = await readJson(versionPath);
   const server = await serveUpdate(app, join(out, "update"));
   const notes: string[] = [];
+  const title = "An update found at launch, downloaded and unpacked";
   try {
     await writeFile(versionPath, JSON.stringify({ ...info, channel: "stable", baseUrl: server.baseUrl }, null, 2));
-    const running = await session.launch("update", app);
+    let running: Running;
+    try {
+      running = await session.launch("update", app);
+    } catch (error) {
+      // The holds that follow open the app again, from the install.
+      const reason = error instanceof Error ? error.message : String(error);
+      return { id: "update", title, holds: 0, heldMs: 0, longestWaitMs: 0, p95WaitMs: 0, questions: 0, stalls: [], notes: [reason] };
+    }
     const downloaded = join(extraction, `${UPDATE_HASH}.tar`);
     const done = await waitUntil(240_000, () => existsSync(downloaded));
     if (!done) notes.push("the app did not download and unpack the update");
@@ -620,7 +636,7 @@ async function updateAtLaunch(session: Session, installed: string, out: string):
     const from = server.requestedAt() || running.readyAt;
     const to = Date.now();
     const stalls = await stallsBetween(running.dataDir, from, to);
-    const result = summarize("update", "An update found at launch, downloaded and unpacked", [{ scenario: "update", index: 1, from, to }], running.probe, stalls);
+    const result = summarize("update", title, [{ scenario: "update", index: 1, from, to }], running.probe, stalls);
     result.notes.push(...notes);
     return result;
   } finally {
