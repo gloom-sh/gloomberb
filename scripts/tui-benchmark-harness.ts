@@ -1,4 +1,6 @@
 import { existsSync } from "fs";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 
 export async function runTmux(args: string[], check = true): Promise<void> {
   const process = Bun.spawn(["tmux", ...args], { stdout: "pipe", stderr: "pipe" });
@@ -18,6 +20,31 @@ export async function waitForFile(path: string, timeoutMs: number): Promise<void
     await Bun.sleep(50);
   }
   throw new Error(`Benchmark report was not written: ${path}`);
+}
+
+/**
+ * Writes the config.json a fresh install starts from, setup finished.
+ *
+ * A fresh install records the plugins that moved out of the app as already
+ * restored (the config store's first-run default). A profile without that
+ * record reads as an upgrade from before they moved: every launch would first
+ * clone and install each of them from GitHub and npm, holding the first frame
+ * for as long as the network takes, and the benchmark would measure an app
+ * with all of them loaded.
+ */
+export async function writeFreshInstallConfig(dataDir: string): Promise<void> {
+  // Loaded here so scripts that only parse options do not load the app's modules.
+  const [{ createDefaultConfig }, { EXTRACTED_PLUGINS }] = await Promise.all([
+    import("../src/types/config"),
+    import("../src/plugins/extracted-plugins"),
+  ]);
+  const config = {
+    ...createDefaultConfig(dataDir),
+    seededPlugins: EXTRACTED_PLUGINS.map((plugin) => plugin.id),
+    onboardingComplete: true,
+  };
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, "config.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 /**
