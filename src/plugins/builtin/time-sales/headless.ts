@@ -88,9 +88,10 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const instrument = await ctx.resolveInstrument?.(symbol);
     if (listedAbroad(symbol, instrument?.exchange)) {
       // Say why the table is empty and where the finest bars for it are, rather than the tape's bare "unavailable".
+      const quotesView = ctx.settings?.tab === "quotes";
       return { complete: false, sections: [
-        { title: ctx.settings?.tab === "quotes" ? "NBBO" : "Trades", rows: [], empty: subMinuteDataMessage(symbol, "abroad") },
-      ] };
+        { title: quotesView ? "NBBO" : "Trades", rows: [], empty: subMinuteDataMessage(symbol, "abroad") },
+      ], ...(quotesView ? { metadata: { view: "quotes" } } : {}) };
     }
     const exchange = instrument?.exchange ?? "";
     const from = String(args.options.from ?? "").trim(), to = String(args.options.to ?? "").trim();
@@ -127,3 +128,6 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...(quotesView ? { view: "quotes" } : {}) } };
   },
 };
+
+/** QR: the same tape, its NBBO first, named as such where it answers a listing abroad too. */
+export const quoteRecapHeadless: HeadlessPaneDefinition<"bundle"> = { ...timeSalesHeadless, usListingsOnly: "Quote recap" };

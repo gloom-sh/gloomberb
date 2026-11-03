@@ -29,6 +29,8 @@ test("QR on a listing abroad says where the finest bars are instead of loading a
     expect(result.complete).toBe(false);
     expect(result.sections).toEqual([{ title: "NBBO", rows: [],
       empty: `No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.` }]);
+    const args = createTestHeadlessArgs({ argument: symbol, symbols: [symbol] });
+    expect(typeof timeSalesHeadless.describe === "function" && timeSalesHeadless.describe(args, result)).toBe(`Quote recap ${symbol}`);
   }
   // A US listing loads its tape and keeps the source's own gaps.
   const us = await report("AAPL");
