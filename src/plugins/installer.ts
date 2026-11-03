@@ -19,7 +19,7 @@ import {
 import { pluginDirectoryNames } from "./plugin-names";
 import { gitInstallAdvice } from "./extracted-plugins";
 import { pluginFromModule } from "./plugin-export";
-import { trackInstallCommand } from "./running-installs";
+import { INSTALL_TIMED_OUT, trackInstallCommand } from "./running-installs";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
 import { compareSemver, requiredGloomberb } from "../utils/semver";
@@ -105,10 +105,11 @@ export interface PluginInstallOptions {
   quiet?: boolean;
   pin?: PluginPin;
   /**
-   * How long each git command and the dependency install may run before it
-   * is stopped and the install fails. No limit when absent.
+   * How long each git command, and the dependency install, may run before it
+   * is stopped and the install fails with the code `INSTALL_TIMED_OUT`. No
+   * limit when absent.
    */
-  timeoutMs?: number;
+  timeouts?: { gitMs: number; dependenciesMs: number };
   /**
    * Fail, leaving nothing installed, when the plugin's dependencies do not
    * all install, rather than keep a checkout that only loads once the loader
@@ -128,7 +129,7 @@ export interface PluginDirectoryInfo {
 }
 
 class GitError extends Error {
-  constructor(message: string, readonly stderr: string) {
+  constructor(message: string, readonly stderr: string, readonly timedOut = false) {
     super(stderr.trim() ? `${message}: ${stderr.trim().split("\n").pop()}` : message);
     this.name = "GitError";
   }
@@ -261,7 +262,7 @@ async function git(args: string[], cwd: string, quiet: boolean, failure: string,
     const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
     throw new GitError(failure, missing ? gitMissingMessage() : String(error));
   }
-  if (result.timedOut) throw new GitError(failure, `no answer within ${seconds(timeoutMs!)}`);
+  if (result.timedOut) throw new GitError(failure, `no answer within ${seconds(timeoutMs!)}`, true);
   if (result.code !== 0) throw new GitError(failure, result.stderr);
   return result.stdout.trim();
 }
@@ -438,7 +439,7 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   // passes for the plugin.
   removeAbandonedInstalls();
   const stagingDir = join(PLUGINS_DIR, `${STAGING_PREFIX}${name}-${process.pid}-${++stagingCount}`);
-  const { timeoutMs } = options;
+  const timeoutMs = options.timeouts?.gitMs;
   const pin = options.pin ?? {};
   try {
     const cloneArgs = ["clone", "--depth", "1"];
@@ -458,15 +459,19 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
 
     if (pin.ref || pin.commit) say(cliStyles.muted(`Pinned to ${pin.ref ?? pin.commit}`));
 
-    const dependencies = await installDependencies(stagingDir, quiet, timeoutMs, targetDir);
+    const dependenciesMs = options.timeouts?.dependenciesMs;
+    const dependencies = await installDependencies(stagingDir, quiet, dependenciesMs, targetDir);
+    if (dependencies?.timedOut) {
+      throw Object.assign(new Error(`Installing ${name}'s dependencies took longer than ${seconds(dependenciesMs!)}.`), { timedOut: true });
+    }
     if (options.requireDependencies) {
-      if (dependencies?.timedOut) throw new Error(`Installing ${name}'s dependencies took longer than ${seconds(timeoutMs!)}.`);
       const missing = missingPluginDependencies(stagingDir);
       if (missing.length > 0) throw new Error(`${name}'s dependencies did not install: ${missing.join(", ")}.`);
     }
   } catch (error) {
     rmSync(stagingDir, { recursive: true, force: true });
-    fail(error instanceof Error ? error.message : String(error));
+    const timedOut = (error as { timedOut?: unknown } | null)?.timedOut === true;
+    fail(error instanceof Error ? error.message : String(error), undefined, timedOut ? INSTALL_TIMED_OUT : undefined);
   }
 
   let moved = false;

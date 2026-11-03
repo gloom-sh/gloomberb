@@ -9,6 +9,7 @@ import {
 } from "../plugins/extracted-plugins";
 import type { PluginDirectoryInfo, PluginInstallOptions, RegistryListing } from "../plugins/installer";
 import { publishPluginSeedProgress, samePluginSeedFailure, type PluginSeedEntry, type PluginSeedProgress, type PluginSeedRecord } from "../plugins/seed-progress";
+import { INSTALL_TIMED_OUT } from "../plugins/running-installs";
 import { debugLog } from "../utils/debug-log";
 import type { AppConfig } from "../types/config";
 import { withDeadline } from "../utils/async-deadline";
@@ -22,11 +23,13 @@ const log = debugLog.createLogger("plugin-seed");
  */
 const REGISTRY_WAIT_MS = 8_000;
 /**
- * How long one git command or dependency install of the restore may run. A
- * clone of one of these plugins takes seconds; one that stalls is stopped
- * here, its plugin counts as not installed, and the next launch tries again.
+ * How long one git command, and one dependency install, of the restore may
+ * run. A clone of one of these plugins is a few hundred kilobytes and takes
+ * seconds; the largest dependency install is tens of megabytes. One that runs
+ * past its limit is stopped, its plugin counts as not installed, the rest
+ * wait too (the network is not answering), and the next launch tries again.
  */
-const INSTALL_STEP_LIMIT_MS = 120_000;
+const INSTALL_LIMITS = { gitMs: 60_000, dependenciesMs: 300_000 };
 
 /** What the restore runs: git and the installer, injected so a test can stand in for them. */
 export interface PluginSeedDeps {
@@ -128,7 +131,10 @@ async function installPending(
   deps: PluginSeedDeps,
 ): Promise<PluginSeedRecord> {
   let listings: Promise<Map<string, RegistryListing>> | undefined;
+  let stalled: unknown = null;
   const result = await seedExtractedPlugins(config, async (repo) => {
+    // One install the network never answered: the others would wait as long.
+    if (stalled) throw stalled;
     // Through the registry like `gloom install`: the reviewed commit, and
     // nothing on a Gloomberb too old for it. That failure is retried at the
     // next launch, by when this Gloomberb has usually updated itself. Only no
@@ -137,12 +143,17 @@ async function installPending(
     // their repositories. Quiet: git's or bun's output would land on the
     // terminal app's screen.
     listings ??= withDeadline(deps.loadRegistryListings(), REGISTRY_WAIT_MS, "the plugin registry did not answer");
-    const installed = await deps.installListedPlugin(repo, {
-      quiet: true,
-      timeoutMs: INSTALL_STEP_LIMIT_MS,
-      requireDependencies: true,
-    }, await listings);
-    return { directory: installed.directory, ...(installed.peers?.length ? { peers: installed.peers } : {}) };
+    try {
+      const installed = await deps.installListedPlugin(repo, {
+        quiet: true,
+        timeouts: INSTALL_LIMITS,
+        requireDependencies: true,
+      }, await listings);
+      return { directory: installed.directory, ...(installed.peers?.length ? { peers: installed.peers } : {}) };
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code === INSTALL_TIMED_OUT) stalled = error;
+      throw error;
+    }
   }, getPluginsDir(), (id, installed) => {
     const entry = plugins.find((candidate) => candidate.id === id);
     if (!entry) return;

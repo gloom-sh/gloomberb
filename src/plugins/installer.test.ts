@@ -135,13 +135,13 @@ test.skipIf(process.platform === "win32")("a clone that stalls is stopped at its
 
   const result = await runIsolated(root, `
     const started = Date.now();
-    const error = await installer.installPlugin("fixture/gloom-fixture-stall", { quiet: true, timeoutMs: 1000 })
-      .then(() => null, (failure) => failure.message);
+    const error = await installer.installPlugin("fixture/gloom-fixture-stall", { quiet: true, timeouts: { gitMs: 1000, dependenciesMs: 1000 } })
+      .then(() => null, (failure) => ({ message: failure.message, code: failure.code }));
     const { readdirSync } = await import("fs");
     return { error, ms: Date.now() - started, left: readdirSync(loader.getPluginsDir()) };
   `, { GLOOMBERB_HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` });
 
-  expect(result.error).toBe("Failed to clone https://github.com/fixture/gloom-fixture-stall.git: no answer within 1 s");
+  expect(result.error).toEqual({ message: "Failed to clone https://github.com/fixture/gloom-fixture-stall.git: no answer within 1 s", code: "install_timed_out" });
   expect(result.ms).toBeLessThan(10_000);
   expect(result.left).toEqual([]);
   // The process ended only once the stalled command was gone, and it took its helpers along.

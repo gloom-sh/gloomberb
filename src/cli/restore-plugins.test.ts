@@ -140,6 +140,30 @@ test("offline, every install fails without holding anything up, nothing is recor
   expect(JSON.parse(readFileSync(join(profile.home, "config.json"), "utf8")).seededPlugins).toBeUndefined();
 }, 60_000);
 
+/**
+ * A step past its time limit means the network is not answering, and each
+ * plugin after it would wait out its own limit: ten in a row is many minutes
+ * before the launch can say anything. The first stall ends this launch's
+ * attempt, and the next launch tries all of them again.
+ */
+test("a clone that runs out of time leaves the rest to the next launch", async () => {
+  const profile = upgradeProfile();
+  const result = await run(profile, `
+    const attempts = [];
+    const launch = await restore.prepareExtractedPluginSeed({
+      gitInstalled: () => true,
+      loadRegistryListings: async () => new Map(),
+      installListedPlugin: async (repo) => {
+        attempts.push(repo);
+        throw Object.assign(new Error("Failed to clone: no answer within 60 s"), { code: "install_timed_out" });
+      },
+    });
+    const record = await launch.start();
+    return { attempts, failed: record.pluginSeedFailure.plugins.length };
+  `, null);
+  expect(result).toEqual({ attempts: [EXTRACTED_PLUGINS[0].repo], failed: EXTRACTED_PLUGINS.length });
+}, 60_000);
+
 test("a fresh install, and a profile that restored everything, plan nothing and install nothing", async () => {
   const restored = upgradeProfile();
   const config = JSON.parse(readFileSync(join(restored.home, "config.json"), "utf8"));

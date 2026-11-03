@@ -5,6 +5,9 @@
  * out reaches them without loading it. A process exit stops them as well,
  * but the app cannot count on that event, so it calls this on its way out.
  */
+/** The code of an install that failed because a step ran past its time limit: the network did not answer. */
+export const INSTALL_TIMED_OUT = "install_timed_out";
+
 const running = new Set<() => void>();
 let stopsOnExit = false;
 /** Set on the way out: a command started after that, as the next install begins, stops at once. */
