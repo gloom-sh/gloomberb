@@ -13,6 +13,7 @@ import { installProcessCrashListeners } from "../../../telemetry/crash-reports-n
 import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import { settleInstallerFolder } from "./desktop/installer-folder";
+import { holdWebviewMessagesUntilSocketOpens } from "./window/held-webview-messages";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -29,6 +30,9 @@ setConfigStoreHost(nodeConfigStoreHost);
 // ahead of it and spools the report for the next launch. Nothing is sent
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
+
+// Before any window opens: on Windows its first messages wait for its socket.
+holdWebviewMessagesUntilSocketOpens();
 
 // An install the Windows installer made lives in the installer's folder,
 // where its shortcuts, the gloom command and its uninstall entry lead.

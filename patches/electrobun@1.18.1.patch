@@ -11,26 +11,6 @@ index 3e309b18fdbcec84a4a56f97df4debe7fb8246f8..03420222c1d9ba897835c5e7376c7153
  		);
  
  		this.bunSocket = socket;
-diff --git a/dist/api/bun/core/BrowserView.ts b/dist/api/bun/core/BrowserView.ts
-index 815be82b961fcff5229f9809cfe800be16db65ed..ae5c36dec3018ea0f27a210ba55dc58920104b53 100644
---- a/dist/api/bun/core/BrowserView.ts
-+++ b/dist/api/bun/core/BrowserView.ts
-@@ -321,7 +321,14 @@ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
- 				if (!that.ptr || that.isRemoved) {
- 					return;
- 				}
--				const sentOverSocket = sendMessageToWebviewViaSocket(that.id, message);
-+				// On Windows, executing a message in the page waits on the thread
-+				// that runs the windows, which a busy window or an open menu holds
-+				// for seconds: the page's socket takes it once it opens instead.
-+				const sentOverSocket = sendMessageToWebviewViaSocket(
-+					that.id,
-+					message,
-+					process.platform === "win32",
-+				);
- 
- 				if (!sentOverSocket) {
- 					try {
 diff --git a/dist/api/bun/core/BrowserWindow.ts b/dist/api/bun/core/BrowserWindow.ts
 index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd19ee13e02 100644
 --- a/dist/api/bun/core/BrowserWindow.ts
@@ -100,7 +80,7 @@ index 807fd20e2264616a9dd95ac909c2fe326932e7d1..1aeb3b3161febc2f74d78e6ab1fa549a
  	type?: "normal";
  	label?: string;
 diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
-index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661d2dfe2fc 100644
+index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4422646d3f0e34ac7d9f0300e0bb2fc3d829f2f5 100644
 --- a/dist/api/bun/core/Socket.ts
 +++ b/dist/api/bun/core/Socket.ts
 @@ -3,13 +3,8 @@ import { BrowserView } from "./BrowserView";
@@ -119,7 +99,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
  }
  
  // Encrypt function
-@@ -44,15 +39,53 @@ export const socketMap: {
+@@ -44,10 +39,65 @@ export const socketMap: {
  	[webviewId: string]: {
  		socket: null | ServerWebSocket<unknown>;
  		queue: string[];
@@ -128,9 +108,25 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
  	};
  } = {};
  
-+/** Messages held for a webview whose socket has not opened yet; past this the oldest go. */
-+const MAX_QUEUED_MESSAGES = 1000;
-+const droppingFor = new Set<number>();
++/**
++ * Takes the messages for a webview whose socket has not opened yet, where
++ * set (setWebviewMessageHolder). Without it they go by running script in the
++ * page, which on Windows waits on the thread that runs the windows.
++ */
++export interface WebviewMessageHolder {
++	/** Holds `message` for the webview; false when it should go by running script now. */
++	hold(webviewId: number, message: string): boolean;
++	/** The webview's socket opened: what was held for it, in order. */
++	release(webviewId: number): string[];
++	/** The webview is gone. */
++	forget(webviewId: number): void;
++}
++
++let messageHolder: WebviewMessageHolder | null = null;
++
++export function setWebviewMessageHolder(holder: WebviewMessageHolder | null): void {
++	messageHolder = holder;
++}
 +
 +const sendEncrypted = (
 +	socket: ServerWebSocket<unknown>,
@@ -150,8 +146,9 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
 +/** Sends, in order, what was held for a webview while its socket was not open. */
 +const flushQueuedMessages = (webviewId: number) => {
 +	const rpc = socketMap[webviewId];
-+	if (!rpc?.socket || rpc.queue.length === 0) return;
-+	const queued = rpc.queue.splice(0);
++	if (!rpc?.socket || !messageHolder) return;
++	const queued = messageHolder.release(webviewId);
++	if (queued.length === 0) return;
 +	const browserView = BrowserView.getById(webviewId);
 +	if (!browserView) return;
 +	for (const message of queued) {
@@ -164,16 +161,11 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
 +};
 +
  export const removeSocketForWebview = (webviewId: number) => {
++	messageHolder?.forget(webviewId);
  	const rpc = socketMap[webviewId];
  	if (!rpc) return;
  
- 	rpc.socket = null;
- 	delete socketMap[webviewId];
-+	droppingFor.delete(webviewId);
- };
- 
- const startRPCServer = () => {
-@@ -65,6 +98,8 @@ const startRPCServer = () => {
+@@ -65,6 +115,8 @@ const startRPCServer = () => {
  	while (port <= endPort) {
  		try {
  			server = Bun.serve<{ webviewId: number }>({
@@ -182,7 +174,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
  				port,
  				fetch(req: Request, server: Server<{ webviewId: number }>) {
  					const url = new URL(req.url);
-@@ -99,10 +134,12 @@ const startRPCServer = () => {
+@@ -99,10 +151,12 @@ const startRPCServer = () => {
  						const { webviewId } = ws.data;
  
  						if (!socketMap[webviewId]) {
@@ -196,24 +188,20 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
  					},
  					close(ws: ServerWebSocket<{ webviewId: number }>, _code: number, _reason: string) {
  						if (!ws?.data) {
-@@ -168,11 +205,14 @@ const startRPCServer = () => {
+@@ -168,8 +222,10 @@ const startRPCServer = () => {
  
  export const { rpcServer, rpcPort } = startRPCServer();
  
 -// Will return true if message was sent over websocket
 -// false if it was not (caller should fallback to postMessage/evaluateJS rpc)
-+// Will return true if message was sent over websocket, or held for it with
-+// `queueUntilOpen` until it first opens; false if it was not (caller should
++// Will return true if message was sent over websocket, or held for it by the
++// message holder until it first opens; false if it was not (caller should
 +// fallback to postMessage/evaluateJS rpc). A socket that opened and closed
 +// again is not held for: the webview does not reconnect.
  export const sendMessageToWebviewViaSocket = (
  	webviewId: number,
  	message: any,
-+	queueUntilOpen = false,
- ): boolean => {
- 	const rpc = socketMap[webviewId];
- 	const browserView = BrowserView.getById(webviewId);
-@@ -181,25 +221,25 @@ export const sendMessageToWebviewViaSocket = (
+@@ -181,25 +237,16 @@ export const sendMessageToWebviewViaSocket = (
  
  	if (rpc?.socket?.readyState === WebSocket.OPEN) {
  		try {
@@ -238,17 +226,8 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..4ac152ac218aa29e5358a342146c3661
  	}
  
 -	return false;
-+	if (!queueUntilOpen || rpc?.opened) return false;
-+	const held = (socketMap[webviewId] ??= { socket: null, queue: [] });
-+	held.queue.push(JSON.stringify(message));
-+	if (held.queue.length > MAX_QUEUED_MESSAGES) {
-+		held.queue.shift();
-+		if (!droppingFor.has(webviewId)) {
-+			droppingFor.add(webviewId);
-+			console.warn(`webview ${webviewId}: its socket has not opened; dropping the oldest held messages`);
-+		}
-+	}
-+	return true;
++	if (!messageHolder || rpc?.opened) return false;
++	return messageHolder.hold(webviewId, JSON.stringify(message));
  };
  
  console.log("Server started at", rpcServer?.url.origin);
@@ -701,10 +680,10 @@ index a7822d85c187c1edf361f2e65757057aad9da7b0..533d431c6cc2097951f421cb1fbe3142
  
  async function generateKeyFromBytes(rawKey: Uint8Array): Promise<CryptoKey> {
 diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
-index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b73d16c7f7 100644
+index f0f6c2532ba2eb467ec1d452a25c835b6db72661..58dc569e499e06b808ee01bd79cfe2e8a50600cd 100644
 --- a/dist/api/bun/proc/native.ts
 +++ b/dist/api/bun/proc/native.ts
-@@ -79,11 +79,28 @@ function getWindowPtr(winId: number) {
+@@ -79,11 +79,30 @@ function getWindowPtr(winId: number) {
  	);
  }
  
@@ -720,11 +699,13 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
 +/**
 + * Where set, makes a context menu's native call instead of this thread when
 + * it returns true. On Windows that call waits on the thread that runs the
-+ * windows, which answers only once the menu closes.
++ * windows, which answers only once the menu closes. `showHere` makes the
++ * call on this thread, for a menu the runner took and then could not show.
 + */
-+let contextMenuRunner: ((menuConfig: string, handler: number) => boolean) | null = null;
++type ContextMenuRunner = (menuConfig: string, handler: number, showHere: () => void) => boolean;
++let contextMenuRunner: ContextMenuRunner | null = null;
 +
-+export function setContextMenuRunner(runner: ((menuConfig: string, handler: number) => boolean) | null): void {
++export function setContextMenuRunner(runner: ContextMenuRunner | null): void {
 +	contextMenuRunner = runner;
 +}
 +
@@ -736,7 +717,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  		return dlopen(nativeWrapperPath, {
  			// window
  			createWindowWithFrameAndStyleFromWorker: {
-@@ -829,6 +846,7 @@ const _ffiImpl = {
+@@ -829,6 +848,7 @@ const _ffiImpl = {
  			id: number;
  			url: string | null;
  			title: string;
@@ -744,7 +725,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			frame: {
  				width: number;
  				height: number;
-@@ -862,6 +880,7 @@ const _ffiImpl = {
+@@ -862,6 +882,7 @@ const _ffiImpl = {
  				id,
  				url: _url,
  				title,
@@ -752,7 +733,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  				frame: { x, y, width, height },
  				styleMask: {
  					Borderless,
-@@ -926,6 +945,9 @@ const _ffiImpl = {
+@@ -926,6 +947,9 @@ const _ffiImpl = {
  			}
  
  			native_.symbols.setWindowTitle(windowPtr, toCString(title));
@@ -762,16 +743,20 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			if (!hidden) {
  				native_.symbols.showWindow(windowPtr, activate);
  			}
-@@ -1583,6 +1605,8 @@ window.__electrobunBunBridge = window.__electrobunBunBridge || window.webkit?.me
+@@ -1583,8 +1607,11 @@ window.__electrobunBunBridge = window.__electrobunBunBridge || window.webkit?.me
  		},
  		showContextMenu: (params: { menuConfig: string }): void => {
  			const { menuConfig } = params;
 +			const handler = contextMenuHandler.ptr as unknown as number | null;
-+			if (contextMenuRunner && handler && contextMenuRunner(menuConfig, handler)) return;
++			const showHere = () => native_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
++			if (contextMenuRunner && handler && contextMenuRunner(menuConfig, handler, showHere)) return;
  
- 			native_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
+-			native_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
++			showHere();
  		},
-@@ -1915,6 +1939,14 @@ process.on("SIGTERM", () => {
+ 		moveToTrash: (params: { path: string }): boolean => {
+ 			const { path } = params;
+@@ -1915,6 +1942,14 @@ process.on("SIGTERM", () => {
  //   }
  // );
  
@@ -786,7 +771,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  const windowCloseCallback = new JSCallback(
  	(id) => {
  		const handler = electrobunEventEmitter.events.window.close;
-@@ -2036,7 +2068,7 @@ const windowKeyCallback = new JSCallback(
+@@ -2036,7 +2071,7 @@ const windowKeyCallback = new JSCallback(
  
  const getMimeType = new JSCallback(
  	(filePath) => {
@@ -795,7 +780,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  		const mimeType = Bun.file(_filePath).type; // || "application/octet-stream";
  
  		// For this usecase we generally don't want the charset included in the mimetype
-@@ -2074,7 +2106,7 @@ const globalShortcutHandlers = new Map<string, () => void>();
+@@ -2074,7 +2109,7 @@ const globalShortcutHandlers = new Map<string, () => void>();
  if (native) {
  	const urlOpenCallback = new JSCallback(
  		(urlPtr) => {
@@ -804,7 +789,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			const handler = electrobunEventEmitter.events.app.openUrl;
  			const event = handler({ url });
  			electrobunEventEmitter.emitEvent(event);
-@@ -2111,7 +2143,7 @@ if (native) {
+@@ -2111,7 +2146,7 @@ if (native) {
  
  	const globalShortcutCallback = new JSCallback(
  		(acceleratorPtr) => {
@@ -813,7 +798,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			const handler = globalShortcutHandlers.get(accelerator);
  			if (handler) handler();
  		},
-@@ -2505,8 +2537,8 @@ const webviewEventJSCallback = new JSCallback(
+@@ -2505,8 +2540,8 @@ const webviewEventJSCallback = new JSCallback(
  
  		try {
  			// Convert cstring pointers to actual strings
@@ -824,7 +809,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  		} catch (err) {
  			console.error("[webviewEventJSCallback] Error converting strings:", err);
  			console.error("[webviewEventJSCallback] Raw values:", {
-@@ -2528,7 +2560,7 @@ const webviewEventJSCallback = new JSCallback(
+@@ -2528,7 +2563,7 @@ const webviewEventJSCallback = new JSCallback(
  const bunBridgePostmessageHandler = new JSCallback(
  	(id, msg) => {
  		try {
@@ -833,7 +818,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  
  			if (!msgStr.length) {
  				return;
-@@ -2564,7 +2596,7 @@ const bunBridgePostmessageHandler = new JSCallback(
+@@ -2564,7 +2599,7 @@ const bunBridgePostmessageHandler = new JSCallback(
  const eventBridgeHandler = new JSCallback(
  	(_id: number, msg: number) => {
  		try {
@@ -842,7 +827,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			const rawMessage = message.toString().trim();
  			if (!rawMessage || (rawMessage[0] !== "{" && rawMessage[0] !== "[")) {
  				return;
-@@ -2593,7 +2625,7 @@ const eventBridgeHandler = new JSCallback(
+@@ -2593,7 +2628,7 @@ const eventBridgeHandler = new JSCallback(
  const internalBridgeHandler = new JSCallback(
  	(_id: number, msg: number) => {
  		try {
@@ -851,7 +836,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  			const jsonBatch = JSON.parse(batchMessage.toString());
  
  			if (jsonBatch.id === "webviewEvent") {
-@@ -2664,7 +2696,7 @@ const trayItemHandler = new JSCallback(
+@@ -2664,7 +2699,7 @@ const trayItemHandler = new JSCallback(
  	(id, action) => {
  		// Note: Some invisible character that doesn't appear in .length
  		// is causing issues
@@ -860,7 +845,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  
  		// Use shared deserialization method
  		const { action: actualAction, data } = deserializeMenuAction(actionString);
-@@ -2688,7 +2720,7 @@ const trayItemHandler = new JSCallback(
+@@ -2688,7 +2723,7 @@ const trayItemHandler = new JSCallback(
  
  const applicationMenuHandler = new JSCallback(
  	(id, action) => {
@@ -869,7 +854,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b7
  
  		// Use shared deserialization method
  		const { action: actualAction, data } = deserializeMenuAction(actionString);
-@@ -2711,7 +2743,7 @@ const applicationMenuHandler = new JSCallback(
+@@ -2711,7 +2746,7 @@ const applicationMenuHandler = new JSCallback(
  
  const contextMenuHandler = new JSCallback(
  	(_id, action) => {
