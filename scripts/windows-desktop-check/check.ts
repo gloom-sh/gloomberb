@@ -1346,11 +1346,22 @@ class Run {
       const floor = { width: Math.round((minimum.width * dpi) / 96), height: Math.round((minimum.height * dpi) / 96) };
       const grab = await this.grabPoint(window, "bottom-right");
       const to = { x: before.left + Math.round(floor.width / 3), y: before.top + Math.round(floor.height / 3) };
+      // Read as often as it can, between the moves too: a size the window
+      // takes under the minimum and gives back a few milliseconds later is
+      // the jump this step looks for. Each size is kept once in a row.
       const samples: Array<{ width: number; height: number }> = [];
+      let readings = 0;
       const sample = () => {
         if (!win.isWindow(window.hwnd)) return;
         const rect = win.windowRect(window.hwnd);
-        samples.push({ width: win.rectWidth(rect), height: win.rectHeight(rect) });
+        readings += 1;
+        const size = { width: win.rectWidth(rect), height: win.rectHeight(rect) };
+        const last = samples[samples.length - 1];
+        if (!last || last.width !== size.width || last.height !== size.height) samples.push(size);
+      };
+      const sampleFor = (ms: number) => {
+        const end = performance.now() + ms;
+        while (performance.now() < end) sample();
       };
       const area = { left: before.left - 20, top: before.top - 20, right: before.right + 20, bottom: before.bottom + 20 };
       // The window follows the pointer, as with Windows' default, so a size it
@@ -1360,8 +1371,8 @@ class Run {
       try {
         await win.drag(grab.point, to, {
           steps: 24,
-          stepMs: 30,
-          afterStep: sample,
+          stepMs: 1,
+          afterStep: () => sampleFor(30),
           whileHeld: async () => {
             sample();
             const shot = this.shots.take(`${name}-minimum-during`, area);
@@ -1385,14 +1396,14 @@ class Run {
       const followed = samples.some((size) => size.width !== win.rectWidth(before) || size.height !== win.rectHeight(before));
       const problems = [
         ...(followed ? [] : ["the window did not follow the pointer while the button was held"]),
-        ...(under.length ? [`went under the minimum while held (${under.length} of ${samples.length} readings, down to ${smallest.width}x${smallest.height})`] : []),
+        ...(under.length ? [`went under the minimum while held (${under.length} of ${samples.length} sizes it took, down to ${smallest.width}x${smallest.height})`] : []),
         ...(atMinimum ? [] : [`ended at ${win.rectWidth(after)}x${win.rectHeight(after)}`]),
       ];
       return {
         status: !problems.length && fills.ok ? "pass" : "fail",
         detail: [
           ...problems,
-          `minimum ${floor.width}x${floor.height} px at ${dpi} dpi; dragged from ${grab.cursor} (${grab.hit}): ${fmt(before)} -> ${fmt(after)}, smallest while held ${smallest.width}x${smallest.height}`,
+          `minimum ${floor.width}x${floor.height} px at ${dpi} dpi; dragged from ${grab.cursor} (${grab.hit}): ${fmt(before)} -> ${fmt(after)}, smallest while held ${smallest.width}x${smallest.height} (${readings} readings, ${samples.length} sizes)`,
           fills.detail,
         ].join("; "),
         data: { floor, before, after, samples, grab },

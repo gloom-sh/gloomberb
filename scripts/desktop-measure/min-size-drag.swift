@@ -97,9 +97,20 @@ result["before"] = ["x": before.minX, "y": before.minY, "width": before.width, "
 
 let grab = CGPoint(x: before.maxX - 2, y: before.maxY - 2)
 let target = CGPoint(x: before.minX + minimum.width / 3, y: before.minY + minimum.height / 3)
+// Read as often as it can, between the moves too: a size the window takes
+// under the minimum and gives back a few milliseconds later is the jump this
+// looks for. Each size is kept once in a row.
 var samples: [[String: Double]] = []
+var readings = 0
 func sample() {
-  if let bounds = appWindow()?.bounds { samples.append(["width": bounds.width, "height": bounds.height]) }
+  guard let bounds = appWindow()?.bounds else { return }
+  readings += 1
+  if let last = samples.last, last["width"] == bounds.width, last["height"] == bounds.height { return }
+  samples.append(["width": bounds.width, "height": bounds.height])
+}
+func sample(forMs ms: Double) {
+  let end = Date().addingTimeInterval(ms / 1000)
+  while Date() < end { sample() }
 }
 
 post(.mouseMoved, grab)
@@ -110,24 +121,23 @@ let steps = 30
 for step in 1...steps {
   let progress = CGFloat(step) / CGFloat(steps)
   post(.leftMouseDragged, CGPoint(x: grab.x + (target.x - grab.x) * progress, y: grab.y + (target.y - grab.y) * progress))
-  sleepMs(30)
-  sample()
+  sample(forMs: 30)
 }
-sleepMs(300)
-sample()
+sample(forMs: 300)
 post(.leftMouseUp, target)
 sleepMs(1200)
 
 let after = appWindow()?.bounds ?? .zero
 result["after"] = ["x": after.minX, "y": after.minY, "width": after.width, "height": after.height]
 result["samples"] = samples
+result["readings"] = readings
 let smallest = CGSize(width: samples.map { $0["width"]! }.min() ?? after.width, height: samples.map { $0["height"]! }.min() ?? after.height)
 let under = samples.filter { $0["width"]! < minimum.width - 1 || $0["height"]! < minimum.height - 1 }
 let resized = abs(after.width - before.width) > 2 || abs(after.height - before.height) > 2
 let atMinimum = abs(after.width - minimum.width) <= 2 && abs(after.height - minimum.height) <= 2
 var problems: [String] = []
 if !resized { problems.append("the drag did not resize the window (no input reached it?)") }
-if !under.isEmpty { problems.append("went under the minimum while held (\(under.count) of \(samples.count) readings, down to \(Int(smallest.width))x\(Int(smallest.height)))") }
+if !under.isEmpty { problems.append("went under the minimum while held (\(under.count) of \(samples.count) sizes it took, down to \(Int(smallest.width))x\(Int(smallest.height)))") }
 if !atMinimum { problems.append("ended at \(Int(after.width))x\(Int(after.height))") }
-let summary = "minimum \(Int(minimum.width))x\(Int(minimum.height)); \(Int(before.width))x\(Int(before.height)) -> \(Int(after.width))x\(Int(after.height)), smallest while held \(Int(smallest.width))x\(Int(smallest.height))"
+let summary = "minimum \(Int(minimum.width))x\(Int(minimum.height)); \(Int(before.width))x\(Int(before.height)) -> \(Int(after.width))x\(Int(after.height)), smallest while held \(Int(smallest.width))x\(Int(smallest.height)) (\(readings) readings, \(samples.count) sizes)"
 finish(problems.isEmpty, (problems + [summary]).joined(separator: "; "))
