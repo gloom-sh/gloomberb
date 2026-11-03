@@ -10,6 +10,7 @@ import type { PaneHint } from "../../layout/pane/footer/model";
 import type { ContextMenuItem } from "../../../types/context-menu";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { isPlainKey } from "../../../utils/keyboard";
+import { keepEscapeFromClosing } from "../../../utils/double-escape-close";
 import { nextDrawingId, nextLevelId } from "./drawing-store";
 import { CHART_TOOL_MENU, KEYBOARD_TOOL_HINTS, ARMED_TOOL_BY_INTERACTION } from "./tool-catalog";
 import {
@@ -460,14 +461,21 @@ export function useCompositeChartKeyboard({
     };
     if (timePick && scene && isPlainKey(event, "return", "enter", "escape")) {
       consume();
-      if (event.name === "escape") timePick.onCancel();
+      // A pick, like a placement below, is unfinished input: ending it is no half of a close.
+      if (event.name === "escape") {
+        keepEscapeFromClosing(event);
+        timePick.onCancel();
+      }
       else chartActionsRef.current.pick();
       return;
     }
     // Esc ends a price pick even with nothing drawn yet; Enter needs a price at the cursor.
     if (pricePick && (scene || isPlainKey(event, "escape")) && isPlainKey(event, "return", "enter", "escape")) {
       consume();
-      if (event.name === "escape") pricePick.onCancel();
+      if (event.name === "escape") {
+        keepEscapeFromClosing(event);
+        pricePick.onCancel();
+      }
       else chartActionsRef.current.pickPrice();
       return;
     }
@@ -512,6 +520,7 @@ export function useCompositeChartKeyboard({
     }
     if (keyboardPlacement && (isPlainKey(event, "escape") || isPlainKey(event, "backspace"))) {
       consume();
+      keepEscapeFromClosing(event);
       setKeyboardPlacement(null);
       return;
     }

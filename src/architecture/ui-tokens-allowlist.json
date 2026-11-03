@@ -21,14 +21,6 @@
       "why": "Registry plugin (gloomberb-crypto-fear-greed): the gauge's figure, as above."
     }
   ],
-  "CHAT": [
-    {
-      "measure": "inset",
-      "value": 7.2,
-      "component": "PaneSidebarRow",
-      "why": "Chat has its own owner: its channel rows start 7px in (reported, not changed)."
-    }
-  ],
   "FXMD_REST_HEALTH": [
     {
       "measure": "inset",

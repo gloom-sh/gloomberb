@@ -1,22 +1,30 @@
 import { mkdir } from "fs/promises";
-import { join, resolve } from "path";
+import { basename, join, resolve } from "path";
 import { median, positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, launchBrowser, sleep, type Cdp, type Point } from "./browser";
 import { serveFixturePage } from "./page";
-import { createReplay, routeDirectReads, seedScript, serveWebApp } from "./web-app";
+import { createReplay, liveSocket, replaySocket, routeDirectReads, seedScript, serveWebApp, type SocketStandIn } from "./web-app";
 
 /**
  * How smooth a pane move is, with real pointer input, in the app's two
- * renderers and the two engines they run in. Each run presses a pane's header
- * and moves the pointer for 2 s at 60 moves a second: a floating pane moved
- * around the screen, over the docked panes, their title bars and the edges it
- * can join at, and a docked pane pulled out of the dock, across the panes
- * beside and under it, and back.
+ * renderers and the two engines they run in: a floating pane moved about the
+ * screen, and a docked pane pulled out of the dock.
+ *
+ * Each drag moves the pointer as a hand does, at a speed (`--speed`): from
+ * stop to stop, speeding up and slowing down on the way (a minimum-jerk
+ * path), and resting at each stop. Most stops put an edge of the moving pane
+ * a few px from another pane's edge or the screen's, where the magnets catch
+ * it; on the way it crosses others. `slow` averages 150 px/s, `medium` 450 and
+ * `fast` 1,300 between stops; `sweep` is one 2 s loop at 60 moves a second
+ * with no stop.
  *
  * - `web`: the real web build of each checkout (the browser renderer),
- *   signed out, over the reads web-app.ts replays: a watchlist, news, a
- *   ticker's research with its chart, movers, indices, a calendar and a
- *   floating trending list.
+ *   signed out, with the workspace a first visit gets (a heat map, the
+ *   watchlist, a chart, news, trending, the Fear & Greed gauge floating) and
+ *   the watchlist's ticker floating over it, on the reads web-app.ts replays. `--stream live`
+ *   streams quotes from Gloom Cloud as the web app does; `--stream replay`
+ *   plays the quotes `--record-stream <s>` kept from it, at the pace they
+ *   came, the same for every checkout. Without `--stream` no quote streams.
  * - `desktop`: the desktop view's renderer (the page the desktop app loads,
  *   with its own UI host) on the pane chrome fixture's dense layout of nine
  *   docked tables and a floating one (`perf`), which needs no network.
@@ -27,30 +35,36 @@ import { createReplay, routeDirectReads, seedScript, serveWebApp } from "./web-a
  * Per drag: the time between animation frames (50th and 95th percentile), the
  * 60 Hz slots with no frame, long tasks (Chromium's longtask entries; WebKit
  * reports none, so frames over 50 ms apart stand in), main-thread time per
- * frame (Chromium), React commits per pointer move the page received, and how
- * the moving pane kept to the pointer: frames where it stood still while the
- * pointer moved, frames where it moved more than 2 px differently from the
- * pointer (held by a magnet, or jumping off one), and how far its offset from
- * the pointer strayed (95th percentile). Checkouts take turns, `--runs` times;
- * the table shows the median.
+ * frame (Chromium), React commits per pointer move, and how the moving pane
+ * kept to the pointer: frames where it stood still while the pointer moved,
+ * frames where it moved more than 2 px differently from the pointer, the
+ * largest such difference in one frame (a jump), and how far its offset from
+ * the pointer strayed (95th percentile). For the frames drawn late (over one
+ * and a half 60 Hz slots apart): the React commits and quote frames that came
+ * in them, and in Chromium the scripts of its long animation frames. Checkouts
+ * take turns, `--runs` times; the table shows the median.
  *
- *   bun run benchmark:pane-drag:smoothness --side pre=<checkout> --side main=<checkout> --side fix=. \
- *     [--app web,desktop] [--engine chromium,webkit] [--runs 3] [--drag-ms 2000] [--dpr 1] [--gpu]
- *     [--offline] [--no-build] [--only <text>] [--json <file>] [--shots <dir>] [--trace <dir>] [--verbose]
+ *   bun run benchmark:pane-drag:smoothness --side v0.19.5=<checkout> --side main=<checkout> --side fix=. \
+ *     [--app web,desktop] [--engine chromium,webkit] [--speed slow,medium,fast] [--runs 3] [--dpr 1] [--gpu]
+ *     [--stream live|replay] [--record-stream <s>] [--replay-dir <dir>] [--offline] [--no-build]
+ *     [--only <text>] [--json <file>] [--shots <dir>] [--trace <dir>] [--profile <dir>] [--verbose]
  *
  * Chromium is the pinned headless shell, which paints without a GPU; `--gpu`
  * runs Chrome (CHROME_PATH, or the installed one) in its new headless mode
  * with its GPU. On a Mac whose display sleeps (a headless Mac mini) headless
  * Chrome paints only 8 to 30 frames a second however little a frame costs, so
  * its frame times say nothing there: take them from Linux (the CI runner) and
- * read WebKit's, which keeps to 60 Hz, on the Mac. `--shots` pictures each drag
- * held at points along its path instead of measuring; `--trace` writes a
- * Chromium performance trace of each drag.
+ * read WebKit's, which keeps to 60 Hz, on the Mac. `--shots` pictures each
+ * drag at rest at each stop and after the release instead of measuring;
+ * `--trace` writes a Chromium performance trace of each drag and `--profile`
+ * a CPU profile, with the functions that took the most time printed.
  */
 
 const VIEWPORT = { width: 1440, height: 900 };
 const FRAME_MS = 1_000 / 60;
+const LATE_FRAME_MS = 1.5 * FRAME_MS;
 const LONG_FRAME_MS = 50;
+const SWEEP_MS = 2_000;
 
 const PAGE_PROBES = `
 window.__commits = 0;
@@ -63,7 +77,23 @@ window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
 window.__moves = 0;
 window.__pointerX = 0;
 window.__pointerY = 0;
-window.addEventListener("pointermove", (event) => { window.__moves += 1; window.__pointerX = event.clientX; window.__pointerY = event.clientY; }, true);
+window.__predicted = [];
+window.addEventListener("pointermove", (event) => {
+  window.__moves += 1; window.__pointerX = event.clientX; window.__pointerY = event.clientY;
+  // Chrome predicts where the mouse goes next (getPredictedEvents); the host draws a drag there.
+  if (window.__recording && event.getPredictedEvents) {
+    const next = event.getPredictedEvents()[0];
+    window.__predicted.push(next ? [event.clientX, event.clientY, next.clientX, next.clientY] : [event.clientX, event.clientY, null, null]);
+  }
+}, true);
+window.__quotes = 0;
+const PageSocket = window.WebSocket;
+window.WebSocket = class extends PageSocket {
+  constructor(...args) {
+    super(...args);
+    this.addEventListener("message", (event) => { if (typeof event.data === "string" && event.data.includes('"type":"market.quote')) window.__quotes += 1; });
+  }
+};
 window.__longTasks = null;
 window.__loaf = [];
 try {
@@ -85,9 +115,17 @@ try {
 
 type Engine = "chromium" | "webkit";
 type App = "web" | "desktop";
+type Speed = "slow" | "medium" | "fast" | "sweep";
+type Stream = "off" | "live" | "replay";
+
+/** A hand's pace between stops, px/s on average, and how long it rests at each. */
+const HAND: Record<Exclude<Speed, "sweep">, { pxPerS: number; restMs: number }> = {
+  slow: { pxPerS: 150, restMs: 350 },
+  medium: { pxPerS: 450, restMs: 250 },
+  fast: { pxPerS: 1_300, restMs: 150 },
+};
 
 interface Options {
-  dragMs: number;
   dpr: number;
   gpu: boolean;
 }
@@ -144,8 +182,10 @@ async function webkitDriver(options: Options): Promise<Driver> {
   const { webkit } = await import("playwright-core");
   const browser = await webkit.launch({ headless: true });
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: options.dpr });
-  // Nothing past this machine, as the Chromium side does.
-  await context.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+  // Nothing past this machine, as the Chromium side does. Only those requests
+  // are intercepted: WebKit stops answering now and then when every request,
+  // the page's socket among them, goes through Playwright.
+  await context.route((url) => url.hostname !== "127.0.0.1", (route) => route.abort());
   await context.addInitScript({ content: PAGE_PROBES });
   let page = await context.newPage();
   let pressed = false;
@@ -174,66 +214,160 @@ async function webkitDriver(options: Options): Promise<Driver> {
 
 interface Scenario {
   name: string;
-  /** A page expression for where the press lands. */
-  grab: string;
+  /** The pane pressed, by its grip. */
+  paneId: string;
   /** What moves with the pointer: the floating pane, or the outline a docked one drags. */
   follower: string;
-  path(start: Point, t: number): Point;
+  /** `sweep`: where the pointer is `t` of the way through the loop. */
+  sweep(start: Point, t: number): Point;
 }
 
 const pane = (id: string) => `[data-gloom-pane-id='${id}']`;
-const titleOf = (id: string) => `(() => { const element = document.querySelector("${pane(id)} [data-gloom-role=pane-title]"); if (!element) return null; const r = element.getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 24), y: r.y + r.height / 2 }; })()`;
+/** The pane's grip: its title can be a control (a ticker picker), the grip always moves it. */
+const gripOf = (id: string) => `(() => { const element = document.querySelector("${pane(id)} [data-gloom-role=pane-grip]"); if (!element) return null; const r = element.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`;
 const OUTLINE = "[data-gloom-role=drag-outline]";
 
-/**
- * Around the screen and back, over docked panes, their title bars and the
- * edges a floating pane joins at, never so far that the window's edge holds
- * the pane.
- */
-const floatingPath = (start: Point, t: number): Point => ({
+/** Around the screen and back, over docked panes, their title bars and the edges a floating pane joins at. */
+const floatingSweep = (start: Point, t: number): Point => ({
   x: start.x + Math.sin(t * Math.PI * 2) * 380,
   y: start.y + (1 - Math.cos(t * Math.PI * 2)) * 90,
 });
-/** Out of the dock at the top left, across the panes beside and under it, and back over where it was. */
-const undockPath = (start: Point, t: number): Point => ({
+/** Out of the dock at the top left, across the panes beside it and under it, and back over where it was. */
+const undockSweep = (start: Point, t: number): Point => ({
   x: start.x + Math.sin(t * Math.PI) * 480,
   y: start.y + (1 - Math.cos(t * Math.PI * 2)) * 110,
 });
 
 const leaf = (instanceId: string) => ({ kind: "pane", instanceId });
+/**
+ * The workspace a first visit gets from onboarding (first-run-workspace.ts):
+ * the portfolio's heat map and the watchlist (its twelve starter names, two of
+ * them crypto that trade all day), a chart, top news, trending and the Fear &
+ * Greed gauge floating; with the watchlist's ticker opened over it, floating,
+ * as a new pane opens.
+ */
 const WEB_LAYOUT = {
   dockRoot: {
-    kind: "split", axis: "horizontal", ratio: 0.32,
-    first: { kind: "split", axis: "vertical", ratio: 0.55, first: leaf("portfolio-list:main"), second: leaf("news-top:main") },
+    kind: "split", axis: "horizontal", ratio: 0.36,
+    first: { kind: "split", axis: "vertical", ratio: 0.5, first: leaf("portfolio-list:home-heatmap"), second: leaf("portfolio-list:home-watchlist") },
     second: {
-      kind: "split", axis: "horizontal", ratio: 0.58,
-      first: { kind: "split", axis: "vertical", ratio: 0.62, first: leaf("ticker-research:main"), second: leaf("market-movers:main") },
-      second: { kind: "split", axis: "vertical", ratio: 0.5, first: leaf("world-indices:main"), second: leaf("econ-calendar:main") },
+      kind: "split", axis: "vertical", ratio: 0.62,
+      first: leaf("chart-composer:home"),
+      second: { kind: "split", axis: "horizontal", ratio: 0.6, first: leaf("news-top:home"), second: leaf("attention-trending:home") },
     },
   },
   instances: [
-    { instanceId: "portfolio-list:main", paneId: "portfolio-list", params: { collectionId: "main" }, binding: { kind: "none" } },
-    { instanceId: "news-top:main", paneId: "news-top", binding: { kind: "none" } },
-    { instanceId: "ticker-research:main", paneId: "ticker-research", binding: { kind: "fixed", symbol: "AAPL" } },
-    { instanceId: "market-movers:main", paneId: "market-movers", binding: { kind: "none" } },
-    { instanceId: "world-indices:main", paneId: "world-indices", binding: { kind: "none" } },
-    { instanceId: "econ-calendar:main", paneId: "econ-calendar", binding: { kind: "none" } },
-    { instanceId: "attention-trending:float", paneId: "attention-trending", binding: { kind: "none" } },
+    { instanceId: "portfolio-list:home-heatmap", paneId: "portfolio-list", params: { collectionId: "main" }, settings: { collectionScope: "portfolios", visibleCollectionIds: [], viewMode: "grid" }, binding: { kind: "none" } },
+    { instanceId: "portfolio-list:home-watchlist", paneId: "portfolio-list", params: { collectionId: "watchlist" }, settings: { collectionScope: "watchlists", visibleCollectionIds: [], viewMode: "table" }, binding: { kind: "none" } },
+    { instanceId: "chart-composer:home", paneId: "chart-composer", binding: { kind: "fixed", symbol: "SPY" } },
+    { instanceId: "news-top:home", paneId: "news-top", binding: { kind: "none" } },
+    { instanceId: "attention-trending:home", paneId: "attention-trending", binding: { kind: "none" } },
+    { instanceId: "fear-greed:home", paneId: "fear-greed", binding: { kind: "none" } },
+    { instanceId: "ticker-research:float", paneId: "ticker-research", binding: { kind: "follow", sourceInstanceId: "portfolio-list:home-watchlist" } },
   ],
-  floating: [{ instanceId: "attention-trending:float", x: 66, y: 10, width: 64, height: 20, zIndex: 60 }],
+  floating: [
+    { instanceId: "ticker-research:float", x: 62, y: 6, width: 72, height: 26, zIndex: 61 },
+    { instanceId: "fear-greed:home", x: 9999, y: 9999, width: 46, height: 16, zIndex: 60 },
+  ],
   detached: [],
 };
 
 const SCENARIOS: Record<App, Scenario[]> = {
   web: [
-    { name: "floating move", grab: titleOf("attention-trending:float"), follower: pane("attention-trending:float"), path: floatingPath },
-    { name: "undock", grab: titleOf("portfolio-list:main"), follower: OUTLINE, path: undockPath },
+    { name: "floating move", paneId: "ticker-research:float", follower: pane("ticker-research:float"), sweep: floatingSweep },
+    { name: "undock", paneId: "portfolio-list:home-heatmap", follower: OUTLINE, sweep: undockSweep },
   ],
   desktop: [
-    { name: "floating move", grab: titleOf("table:float"), follower: pane("table:float"), path: floatingPath },
-    { name: "undock", grab: titleOf("table:1"), follower: OUTLINE, path: undockPath },
+    { name: "floating move", paneId: "table:float", follower: pane("table:float"), sweep: floatingSweep },
+    { name: "undock", paneId: "table:1", follower: OUTLINE, sweep: undockSweep },
   ],
 };
+
+interface Rect { x: number; y: number; width: number; height: number }
+
+/** What a hand's path is planned from, once the drag has begun: where the moving pane is, and the edges about it. */
+interface Surroundings {
+  pointer: Point;
+  follower: Rect;
+  xs: number[];
+  ys: number[];
+  area: { width: number; height: number };
+}
+
+const surroundings = (scenario: Scenario) => `(() => {
+  const follower = document.querySelector(${JSON.stringify(scenario.follower)})?.getBoundingClientRect();
+  if (!follower) return null;
+  const xs = [0, innerWidth], ys = [0, innerHeight];
+  const seen = new Set([${JSON.stringify(scenario.paneId)}]);
+  for (const element of document.querySelectorAll("[data-gloom-pane-id]")) {
+    const id = element.getAttribute("data-gloom-pane-id");
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const r = element.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40) continue;
+    xs.push(r.left, r.right);
+    ys.push(r.top, r.bottom);
+  }
+  return { pointer: { x: window.__pointerX, y: window.__pointerY }, follower: { x: follower.x, y: follower.y, width: follower.width, height: follower.height }, xs, ys, area: { width: innerWidth, height: innerHeight } };
+})()`;
+
+/**
+ * The stops of a hand's path, as moves of the pane's top left, and which of
+ * its edges each puts `off` px from the nearest edge about it: right and in to
+ * a line, down to one, back left across the screen to one, up into the open,
+ * and into a corner.
+ */
+const STOPS: Array<{ dx: number; dy: number; snap: "x" | "y" | "xy" | null; off: number }> = [
+  { dx: 320, dy: 0, snap: "x", off: 5 },
+  { dx: 0, dy: 170, snap: "y", off: -4 },
+  { dx: -460, dy: 0, snap: "x", off: 3 },
+  { dx: 90, dy: -130, snap: null, off: 0 },
+  { dx: 60, dy: -40, snap: "xy", off: 6 },
+];
+
+interface Leg { to: Point; ms: number; restMs: number }
+
+function handLegs(around: Surroundings, speed: Exclude<Speed, "sweep">): Leg[] {
+  const { pxPerS, restMs } = HAND[speed];
+  const margin = 12;
+  const clamp = (rect: Rect): Rect => ({
+    ...rect,
+    x: Math.max(margin, Math.min(around.area.width - rect.width - margin, rect.x)),
+    y: Math.max(margin, Math.min(around.area.height - rect.height - margin, rect.y)),
+  });
+  const nearest = (lines: number[], start: number, end: number) => {
+    let best = 0;
+    for (const line of lines) for (const edge of [start, end]) if (best === 0 || Math.abs(line - edge) < Math.abs(best)) best = line - edge;
+    return best;
+  };
+  const grab = { x: around.pointer.x - around.follower.x, y: around.pointer.y - around.follower.y };
+  let rect = around.follower;
+  let at = around.pointer;
+  return STOPS.map((stop, index) => {
+    let next = clamp({ ...rect, x: rect.x + stop.dx, y: rect.y + stop.dy });
+    if (stop.snap?.includes("x")) next = { ...next, x: next.x + nearest(around.xs, next.x, next.x + next.width) + stop.off };
+    if (stop.snap?.includes("y")) next = { ...next, y: next.y + nearest(around.ys, next.y, next.y + next.height) + stop.off };
+    next = clamp(next);
+    const to = { x: Math.round((next.x + grab.x) * 2) / 2, y: Math.round((next.y + grab.y) * 2) / 2 };
+    const ms = Math.max(200, (Math.hypot(to.x - at.x, to.y - at.y) / pxPerS) * 1000);
+    rect = next;
+    at = to;
+    return { to, ms, restMs: index === STOPS.length - 1 ? 400 : restMs };
+  });
+}
+
+/** A step that has not finished in `ms` fails the run instead of holding it. */
+async function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${what} took over ${ms / 1000} s`)), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A minimum-jerk move: how far along it is `t` of the way through, from rest to rest. */
+const minimumJerk = (t: number) => t * t * t * (10 - 15 * t + 6 * t * t);
 
 interface AppSetup {
   /** Opens the layout and waits until it has drawn and its data settled. */
@@ -260,7 +394,16 @@ async function waitUntil(driver: Driver, predicate: string, timeoutMs: number): 
   throw new Error(`timed out waiting for ${predicate}`);
 }
 
-async function setUpApp(app: App, label: string, root: string, options: { offline: boolean; build: boolean }): Promise<AppSetup> {
+interface WebOptions {
+  offline: boolean;
+  build: boolean;
+  stream: Stream;
+  replayDir: string;
+  /** Live: where Gloom Cloud's frames are kept. */
+  record?: string;
+}
+
+async function setUpApp(app: App, label: string, root: string, options: WebOptions): Promise<AppSetup> {
   if (app === "desktop") {
     // This checkout's fixture, built against `root` (or `root`'s own when it lacks what the fixture imports).
     const page = await serveFixturePage(root, cacheDir("build", `smooth-${label}-${process.pid}`), { ownFixtureFallback: true });
@@ -276,17 +419,27 @@ async function setUpApp(app: App, label: string, root: string, options: { offlin
   }
   const dist = cacheDir("drag-smoothness", label, "web");
   if (options.build || !await Bun.file(join(dist, "index.html")).exists()) {
-    const built = Bun.spawnSync(["bun", "scripts/build-web.ts", "--out", dist], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const built = Bun.spawnSync(["bun", "scripts/build-web.ts", "--out", dist, "--keep-names"], { cwd: root, stdout: "pipe", stderr: "pipe" });
     if (built.exitCode !== 0) throw new Error(`The web build of ${root} failed:\n${built.stderr.toString().slice(-2000)}`);
   }
-  const replay = createReplay(cacheDir("drag-smoothness-replay"), { offline: options.offline });
-  const server = serveWebApp(dist, replay);
+  const replay = createReplay(options.replayDir, { offline: options.offline });
+  let socket: SocketStandIn | undefined;
+  if (options.stream === "live") socket = liveSocket(options.record);
+  if (options.stream === "replay") socket = await replaySocket(join(options.replayDir, "socket.jsonl"));
+  const server = serveWebApp(dist, replay, { socket });
   return {
     async open(driver) {
       if (driver.cdp) await routeDirectReads(driver.cdp, replay);
-      await driver.load(server.url, seedScript(WEB_LAYOUT, await replay.clock(), "ticker-research:main"));
-      await waitUntil(driver, `!!document.querySelector("${pane("news-top:main")}")`, 30_000);
-      await settle(driver, 1_500, 20_000);
+      // Live quotes carry today's times: the page keeps the real clock.
+      const clock = options.stream === "live" ? Date.now() : await replay.clock();
+      await driver.load(server.url, seedScript(WEB_LAYOUT, clock, "portfolio-list:home-watchlist"));
+      await waitUntil(driver, `!!document.querySelector("${pane("chart-composer:home")} canvas")`, 30_000).catch(async (error) => {
+        await driver.screenshot(cacheDir("drag-smoothness", "open-failed.png"));
+        throw error;
+      });
+      // Streaming, the page never stops changing: a fixed while for its reads to land.
+      if (options.stream === "off") await settle(driver, 1_500, 20_000);
+      else await sleep(8_000);
     },
     async close() { server.stop(); },
   };
@@ -306,12 +459,34 @@ interface Sample {
   commits: number;
   moves: number;
   commitsPerMove: number;
+  /** Quote frames the page received during the drag. */
+  quotes: number;
+  /** Frames over one and a half 60 Hz slots apart, and the React commits and quote frames that came in them. */
+  lateFrames: number;
+  lateFrameCommits: number;
+  lateFrameQuotes: number;
   /** How far the moving pane's offset from the pointer strayed from its usual one, px, 95th percentile. */
   offPointerPx: number;
   /** Frames where the pointer moved 2 px or more and the pane did not move. */
   stuckFrames: number;
   /** Frames where the pane moved more than 2 px differently from the pointer: held, or jumping. */
   jerkyFrames: number;
+  /** The most the pane moved differently from the pointer in one frame, px. */
+  largestJumpPx: number;
+  /**
+   * Chromium: the moves with no predicted point (the host draws those at the
+   * pointer, the others up to 48 px ahead of it), and how much the predicted
+   * point's lead changed from one move to the next, px, 95th percentile and
+   * most: what it adds to the drawn pane's own motion. WebKit predicts nothing.
+   */
+  unpredictedMoves: number | null;
+  predictionWobblePx: number | null;
+  predictionWobbleMaxPx: number | null;
+  /** Chromium: long animation frames, and their scripts' time by what ran them. */
+  loafCount: number | null;
+  loafScripts?: Record<string, number>;
+  /** Where the pane landed, its top left, px. */
+  landing?: Point | null;
   /** `--verbose`: [pointer x, pointer y, pane x, pane y] each frame, and Chromium's long animation frames. */
   follow?: Array<[number, number, number, number]>;
   loaf?: unknown[];
@@ -324,35 +499,59 @@ function percentile(values: readonly number[], fraction: number): number {
 
 /**
  * How the moving pane kept to the pointer, from where the pointer was when
- * each frame began and where the pane was drawn in it: its offset against
- * the usual one (a magnet holding it, or a frame drawn late, strays from it),
- * the frames it stood still while the pointer moved, and the frames it moved
- * differently from the pointer.
+ * each frame began and where the pane was drawn in it: its offset against the usual one (a
+ * magnet holding it, or a frame drawn late, strays from it), the frames it
+ * stood still while the pointer moved, the frames it moved differently from
+ * the pointer, and the most it did in one frame.
  */
-function followStats(samples: Array<[number, number, number, number]>): Pick<Sample, "offPointerPx" | "stuckFrames" | "jerkyFrames"> {
-  if (samples.length < 3) return { offPointerPx: 0, stuckFrames: 0, jerkyFrames: 0 };
+function followStats(samples: Array<[number, number, number, number]>): Pick<Sample, "offPointerPx" | "stuckFrames" | "jerkyFrames" | "largestJumpPx"> {
+  if (samples.length < 3) return { offPointerPx: 0, stuckFrames: 0, jerkyFrames: 0, largestJumpPx: 0 };
   const dx = samples.map(([px, , x]) => x - px);
   const dy = samples.map(([, py, , y]) => y - py);
   const mx = median(dx);
   const my = median(dy);
   let stuck = 0;
   let jerky = 0;
+  let largest = 0;
   for (let index = 1; index < samples.length; index += 1) {
     const [px, py, x, y] = samples[index]!;
     const [ppx, ppy, prevX, prevY] = samples[index - 1]!;
     if (Math.hypot(px - ppx, py - ppy) >= 2 && Math.hypot(x - prevX, y - prevY) < 0.5) stuck += 1;
-    if (Math.hypot((x - prevX) - (px - ppx), (y - prevY) - (py - ppy)) > 2) jerky += 1;
+    const off = Math.hypot((x - prevX) - (px - ppx), (y - prevY) - (py - ppy));
+    if (off > 2) jerky += 1;
+    largest = Math.max(largest, off);
   }
   return {
     offPointerPx: percentile(samples.map((_, index) => Math.hypot(dx[index]! - mx, dy[index]! - my)), 0.95),
     stuckFrames: stuck,
     jerkyFrames: jerky,
+    largestJumpPx: largest,
+  };
+}
+
+/** Where the host draws a drag for each move (the predicted point, or the pointer), against the pointer. */
+function predictionStats(moves: Array<[number, number, number | null, number | null]>, predicts: boolean): Pick<Sample, "unpredictedMoves" | "predictionWobblePx" | "predictionWobbleMaxPx"> {
+  if (!predicts || moves.length === 0) return { unpredictedMoves: null, predictionWobblePx: null, predictionWobbleMaxPx: null };
+  const lead = moves.map(([x, y, px, py]) => {
+    if (px === null || py === null || Math.hypot(px - x, py - y) > 48) return null;
+    return [px - x, py - y] as const;
+  });
+  const wobble: number[] = [];
+  for (let index = 1; index < lead.length; index += 1) {
+    const [ax, ay] = lead[index - 1] ?? [0, 0];
+    const [bx, by] = lead[index] ?? [0, 0];
+    wobble.push(Math.hypot(bx - ax, by - ay));
+  }
+  return {
+    unpredictedMoves: lead.filter((entry) => entry === null).length,
+    predictionWobblePx: percentile(wobble, 0.95),
+    predictionWobbleMaxPx: Math.max(0, ...wobble),
   };
 }
 
 const TRACE_CATEGORIES = [
   "devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame",
-  "blink", "cc", "gpu", "viz", "benchmark", "toplevel",
+  "blink", "cc", "gpu", "viz", "benchmark", "toplevel", "v8", "disabled-by-default-v8.gc",
 ];
 
 /** Chromium: a performance trace of `run`, written to `file`. */
@@ -367,22 +566,83 @@ async function traced(cdp: Cdp, file: string, run: () => Promise<void>): Promise
   await Bun.write(file, JSON.stringify({ traceEvents: events }));
 }
 
-async function measure(driver: Driver, scenario: Scenario, options: Options, traceFile?: string): Promise<Sample> {
-  const start = await driver.evaluate<Point | null>(scenario.grab);
-  if (!start) throw new Error(`${scenario.name}: nothing to grab (${scenario.grab})`);
+interface CpuProfile {
+  nodes: Array<{ id: number; callFrame: { functionName: string; url: string; lineNumber: number } }>;
+  samples: number[];
+  timeDeltas: number[];
+}
+
+/** Chromium: a CPU profile of `run`, written to `file`; the functions that took the most time themselves, ms. */
+async function profiled(cdp: Cdp, file: string, run: () => Promise<void>): Promise<Array<[string, number]>> {
+  await cdp.send("Profiler.enable");
+  await cdp.send("Profiler.setSamplingInterval", { interval: 200 });
+  await cdp.send("Profiler.start");
+  await run();
+  const { profile } = await cdp.send<{ profile: CpuProfile }>("Profiler.stop");
+  await Bun.write(file, JSON.stringify(profile));
+  const byNode = new Map(profile.nodes.map((node) => [node.id, node.callFrame]));
+  const self = new Map<string, number>();
+  profile.samples.forEach((id, index) => {
+    const frame = byNode.get(id);
+    if (!frame || frame.functionName === "(idle)" || frame.functionName === "(program)") return;
+    const name = `${frame.functionName || "(anonymous)"} ${frame.url ? `${basename(frame.url)}:${frame.lineNumber + 1}` : ""}`.trim();
+    self.set(name, (self.get(name) ?? 0) + (profile.timeDeltas[index] ?? 0) / 1000);
+  });
+  return [...self].sort((a, b) => b[1] - a[1]).slice(0, 12);
+}
+
+/** Presses the pane's grip and moves the pointer a few px, so the drag has begun and what moves with it is drawn. */
+async function pickUp(driver: Driver, scenario: Scenario): Promise<Point> {
+  const start = await driver.evaluate<Point | null>(gripOf(scenario.paneId));
+  if (!start) throw new Error(`${scenario.name}: no grip to grab on ${scenario.paneId}`);
   await driver.mouse("move", start.x, start.y);
   await driver.mouse("down", start.x, start.y);
-  // Each frame notes when it began and where the pointer was, and once it has
-  // drawn (a task after it), where the moving pane is.
+  for (let step = 1; step <= 4; step += 1) {
+    await driver.mouse("move", start.x + step * 3, start.y + step * 2);
+    await sleep(FRAME_MS);
+  }
+  await sleep(200);
+  return { x: start.x + 12, y: start.y + 8 };
+}
+
+/** Moves the pointer along `legs` at 60 moves a second, resting at each stop. */
+async function walk(driver: Driver, from: Point, legs: Leg[], onRest?: (index: number) => Promise<void>): Promise<void> {
+  let at = from;
+  for (const [index, leg] of legs.entries()) {
+    const began = performance.now();
+    for (let move = 1; ; move += 1) {
+      const t = Math.min(1, (move * FRAME_MS) / leg.ms);
+      const k = minimumJerk(t);
+      const x = Math.round((at.x + (leg.to.x - at.x) * k) * 2) / 2;
+      const y = Math.round((at.y + (leg.to.y - at.y) * k) * 2) / 2;
+      await driver.mouse("move", x, y);
+      if (t >= 1) break;
+      const wait = began + move * FRAME_MS - performance.now();
+      if (wait > 0) await sleep(wait);
+    }
+    at = leg.to;
+    await sleep(leg.restMs);
+    await onRest?.(index);
+  }
+}
+
+async function measure(driver: Driver, scenario: Scenario, speed: Speed, traceFile?: string, profileFile?: string): Promise<Sample & { profile?: Array<[string, number]> }> {
+  const start = await pickUp(driver, scenario);
+  const around = await driver.evaluate<Surroundings | null>(surroundings(scenario));
+  if (!around) throw new Error(`${scenario.name}: ${scenario.follower} is not drawn once the drag began`);
+  // Each frame notes how long since the last, what came in it and where the
+  // pointer is (the host applies the moves that came before the frame in it,
+  // and any later one in the next), and once it has drawn (a task after it),
+  // where the moving pane is.
   await driver.evaluate(`(() => {
-    window.__frameTimes = []; window.__follow = []; window.__commits = 0; window.__moves = 0; window.__loaf = [];
+    window.__frames = []; window.__follow = []; window.__commits = 0; window.__moves = 0; window.__quotes = 0; window.__loaf = []; window.__predicted = [];
     if (window.__longTasks) window.__longTasks = [];
     const follower = ${JSON.stringify(scenario.follower)};
     window.__recording = true;
-    let last = performance.now();
+    let last = performance.now(), commits = 0, quotes = 0;
     const tick = (now) => {
-      window.__frameTimes.push(now - last);
-      last = now;
+      window.__frames.push([now - last, window.__commits - commits, window.__quotes - quotes]);
+      last = now; commits = window.__commits; quotes = window.__quotes;
       const pointer = [window.__pointerX, window.__pointerY];
       setTimeout(() => {
         const box = document.querySelector(follower)?.getBoundingClientRect();
@@ -393,27 +653,44 @@ async function measure(driver: Driver, scenario: Scenario, options: Options, tra
     requestAnimationFrame(tick);
   })()`);
   const taskBefore = await driver.taskMs();
+  let end = start;
   const moves = async () => {
-    const began = performance.now();
-    for (let move = 1; ; move += 1) {
-      const t = (performance.now() - began) / options.dragMs;
-      if (t >= 1) break;
-      const at = scenario.path(start, t);
-      await driver.mouse("move", at.x, at.y);
-      const wait = began + move * FRAME_MS - performance.now();
-      if (wait > 0) await sleep(wait);
+    if (speed === "sweep") {
+      const began = performance.now();
+      for (let move = 1; ; move += 1) {
+        const t = (performance.now() - began) / SWEEP_MS;
+        if (t >= 1) break;
+        end = scenario.sweep(start, t);
+        await driver.mouse("move", end.x, end.y);
+        const wait = began + move * FRAME_MS - performance.now();
+        if (wait > 0) await sleep(wait);
+      }
+      return;
     }
+    const legs = handLegs(around, speed);
+    await walk(driver, around.pointer, legs);
+    end = legs[legs.length - 1]!.to;
   };
-  if (traceFile && driver.cdp) await traced(driver.cdp, traceFile, moves);
+  let profile: Array<[string, number]> | undefined;
+  if (profileFile && driver.cdp) profile = await profiled(driver.cdp, profileFile, moves);
+  else if (traceFile && driver.cdp) await traced(driver.cdp, traceFile, moves);
   else await moves();
   const taskAfter = await driver.taskMs();
-  const recorded = await driver.evaluate<{ frameTimes: number[]; follow: Array<[number, number, number, number]>; commits: number; moves: number; longTasks: number[] | null; loaf: unknown[] }>(
-    "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), follow: window.__follow.slice(1), commits: window.__commits, moves: window.__moves, longTasks: window.__longTasks, loaf: window.__loaf }; })()",
+  const recorded = await driver.evaluate<{ frames: Array<[number, number, number]>; follow: Array<[number, number, number, number]>; commits: number; moves: number; quotes: number; longTasks: number[] | null; loaf: Array<{ duration: number; scripts: Array<{ duration: number; invoker: string; source: string }> }>; predicted: Array<[number, number, number | null, number | null]> }>(
+    "(() => { window.__recording = false; return { frames: window.__frames.slice(1), follow: window.__follow.slice(1), commits: window.__commits, moves: window.__moves, quotes: window.__quotes, longTasks: window.__longTasks, loaf: window.__loaf, predicted: window.__predicted }; })()",
   );
-  const end = scenario.path(start, 1);
   await driver.mouse("up", end.x, end.y);
-  await sleep(200);
-  const { frameTimes } = recorded;
+  await sleep(300);
+  const landing = scenario.follower === OUTLINE ? null : await driver.evaluate<Point | null>(`(() => { const r = document.querySelector(${JSON.stringify(scenario.follower)})?.getBoundingClientRect(); return r ? { x: r.x, y: r.y } : null; })()`);
+  const frameTimes = recorded.frames.map(([interval]) => interval);
+  const late = recorded.frames.filter(([interval]) => interval > LATE_FRAME_MS);
+  const loafScripts: Record<string, number> = {};
+  for (const frame of recorded.loaf) {
+    for (const script of frame.scripts) {
+      const name = `${script.invoker}${script.source ? ` (${script.source})` : ""}`;
+      loafScripts[name] = (loafScripts[name] ?? 0) + script.duration;
+    }
+  }
   return {
     p50FrameMs: percentile(frameTimes, 0.5),
     p95FrameMs: percentile(frameTimes, 0.95),
@@ -424,34 +701,31 @@ async function measure(driver: Driver, scenario: Scenario, options: Options, tra
     commits: recorded.commits,
     moves: recorded.moves,
     commitsPerMove: recorded.moves > 0 ? recorded.commits / recorded.moves : 0,
+    quotes: recorded.quotes,
+    lateFrames: late.length,
+    lateFrameCommits: late.reduce((sum, [, commits]) => sum + commits, 0),
+    lateFrameQuotes: late.reduce((sum, [, , quotes]) => sum + quotes, 0),
     ...followStats(recorded.follow),
+    ...predictionStats(recorded.predicted, driver.cdp !== null),
+    loafCount: driver.cdp ? recorded.loaf.length : null,
+    loafScripts,
+    landing,
     follow: recorded.follow,
     loaf: recorded.loaf,
+    profile,
   };
 }
 
-/** Pictures a drag held at each of `stops` (fractions of its path), and after the release; nothing is measured. */
-async function picture(driver: Driver, scenario: Scenario, file: (label: string) => string, stops: number[]): Promise<void> {
-  const start = await driver.evaluate<Point | null>(scenario.grab);
-  if (!start) throw new Error(`${scenario.name}: nothing to grab (${scenario.grab})`);
-  await driver.mouse("move", start.x, start.y);
-  await driver.mouse("down", start.x, start.y);
-  let t = 0;
-  for (const stop of stops) {
-    for (; t < stop; t = Math.min(stop, t + 1 / 120)) {
-      const point = scenario.path(start, t);
-      await driver.mouse("move", point.x, point.y);
-      await sleep(FRAME_MS);
-    }
-    const point = scenario.path(start, stop);
-    await driver.mouse("move", point.x, point.y);
-    // Long enough for the magnets to catch where it rests and a join to arm.
-    await sleep(600);
-    await driver.screenshot(file(`t${Math.round(stop * 100)}`));
-  }
-  const end = scenario.path(start, t);
+/** Pictures a hand's drag at rest at each stop (held long enough for the magnets and a join), and after the release; nothing is measured. */
+async function picture(driver: Driver, scenario: Scenario, file: (label: string) => string): Promise<void> {
+  await pickUp(driver, scenario);
+  const around = await driver.evaluate<Surroundings | null>(surroundings(scenario));
+  if (!around) throw new Error(`${scenario.name}: ${scenario.follower} is not drawn once the drag began`);
+  const legs = handLegs(around, "medium").map((leg) => ({ ...leg, restMs: 700 }));
+  await walk(driver, around.pointer, legs, (index) => driver.screenshot(file(`stop${index + 1}`)));
+  const end = legs[legs.length - 1]!.to;
   await driver.mouse("up", end.x, end.y);
-  await sleep(300);
+  await sleep(400);
   await driver.screenshot(file("released"));
 }
 
@@ -463,10 +737,38 @@ const ROWS: Array<[string, (sample: Sample) => number | null, number]> = [
   ["frames over 50 ms", (s) => s.longFrames, 0],
   ["main thread per frame (ms)", (s) => s.mainMsPerFrame, 2],
   ["React commits per pointer move", (s) => s.commitsPerMove, 3],
+  ["quote frames during the drag", (s) => s.quotes, 0],
+  ["frames drawn late (over 1.5 slots)", (s) => s.lateFrames, 0],
+  ["React commits in late frames", (s) => s.lateFrameCommits, 0],
+  ["quote frames in late frames", (s) => s.lateFrameQuotes, 0],
   ["frames the pane stood still while the pointer moved", (s) => s.stuckFrames, 0],
   ["frames the pane moved off the pointer's motion", (s) => s.jerkyFrames, 0],
+  ["largest jump off the pointer's motion (px)", (s) => s.largestJumpPx, 1],
   ["pane off its place under the pointer, p95 (px)", (s) => s.offPointerPx, 1],
+  ["moves with no predicted point", (s) => s.unpredictedMoves, 0],
+  ["predicted point's lead, change per move p95 (px)", (s) => s.predictionWobblePx, 1],
+  ["predicted point's lead, largest change (px)", (s) => s.predictionWobbleMaxPx, 1],
 ];
+
+async function recordStream(root: string, label: string, seconds: number, options: WebOptions & Options): Promise<void> {
+  await mkdir(options.replayDir, { recursive: true });
+  const record = join(options.replayDir, "socket.jsonl");
+  await Bun.write(record, "");
+  const setup = await setUpApp("web", label, root, { ...options, stream: "live", record });
+  const driver = await chromiumDriver(`record-${label}`, options);
+  try {
+    // The replay's clock, so the reads the page makes now are the ones a replay asks for.
+    await setup.open(driver);
+    console.error(`Recording Gloom Cloud's frames for ${seconds} s into ${record}`);
+    await sleep(seconds * 1000);
+  } finally {
+    await driver.close();
+    await setup.close();
+  }
+  const lines = (await Bun.file(record).text()).trim().split("\n").filter(Boolean);
+  const quotes = lines.filter((line) => line.includes("market.quote")).length;
+  console.log(`Kept ${lines.length} frames (${quotes} of quotes, ${(quotes / seconds).toFixed(1)} a second) in ${record}`);
+}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -480,56 +782,86 @@ async function main(): Promise<void> {
   if (sides.length === 0) sides.push({ label: "this checkout", root: resolve(join(import.meta.dir, "../..")) });
   const apps = (takeOption(args, "--app") ?? "web,desktop").split(",") as App[];
   const engines = (takeOption(args, "--engine") ?? "chromium,webkit").split(",") as Engine[];
+  const speeds = (takeOption(args, "--speed") ?? "slow,medium,fast").split(",") as Speed[];
   const runs = positiveInteger(takeOption(args, "--runs"), 3, "--runs");
   const only = takeOption(args, "--only");
   const jsonOut = takeOption(args, "--json");
   const shots = takeOption(args, "--shots");
   const traces = takeOption(args, "--trace");
-  const options: Options = {
-    dragMs: positiveInteger(takeOption(args, "--drag-ms"), 2_000, "--drag-ms"),
+  const profiles = takeOption(args, "--profile");
+  const recordSeconds = takeOption(args, "--record-stream");
+  const options: Options & WebOptions = {
     dpr: Number(takeOption(args, "--dpr") ?? 1),
     gpu: args.includes("--gpu"),
+    offline: args.includes("--offline"),
+    build: !args.includes("--no-build"),
+    stream: (takeOption(args, "--stream") ?? "off") as Stream,
+    replayDir: resolve(takeOption(args, "--replay-dir") ?? cacheDir("drag-smoothness-replay")),
   };
-  const offline = args.includes("--offline");
-  const build = !args.includes("--no-build");
   const verbose = args.includes("--verbose");
   for (const app of apps) if (!(app in SCENARIOS)) throw new Error(`Unknown --app ${app}: web or desktop`);
   for (const engine of engines) if (engine !== "chromium" && engine !== "webkit") throw new Error(`Unknown --engine ${engine}: chromium or webkit`);
+  for (const speed of speeds) if (speed !== "sweep" && !(speed in HAND)) throw new Error(`Unknown --speed ${speed}: slow, medium, fast or sweep`);
+  if (!["off", "live", "replay"].includes(options.stream)) throw new Error(`Unknown --stream ${options.stream}: live or replay`);
+  if (recordSeconds) {
+    await recordStream(sides[0]!.root, sides[0]!.label, positiveInteger(recordSeconds, 180, "--record-stream"), options);
+    return;
+  }
 
-  const results: Record<string, Record<string, Sample[]>> = {};
+  const results: Record<string, Record<string, Array<Sample & { profile?: Array<[string, number]> }>>> = {};
   const launch = (engine: Engine, label: string) => (engine === "chromium" ? chromiumDriver(`smooth-${label}`, options) : webkitDriver(options));
   for (const app of apps) {
     const scenarios = SCENARIOS[app].filter((scenario) => !only || scenario.name.includes(only));
     const setups = new Map<string, AppSetup>();
     try {
-      for (const side of sides) setups.set(side.label, await setUpApp(app, side.label, side.root, { offline, build }));
+      for (const side of sides) setups.set(side.label, await setUpApp(app, side.label, side.root, { ...options, stream: app === "web" ? options.stream : "off" }));
       for (const engine of engines) {
         for (let run = 1; run <= (shots ? 1 : runs); run += 1) {
           for (const side of sides) {
             const setup = setups.get(side.label)!;
-            const driver = await launch(engine, side.label);
+            let driver = await launch(engine, side.label);
+            const close = () => withTimeout(driver.close(), 10_000, `closing ${engine} for ${side.label}`).catch((error) => console.error(String(error)));
             try {
               for (const scenario of scenarios) {
-                await setup.open(driver);
                 const slug = `${app}-${engine}-${scenario.name.replace(/\W+/g, "-")}`;
                 if (shots) {
+                  await setup.open(driver);
                   await mkdir(resolve(shots), { recursive: true });
-                  await picture(driver, scenario, (label) => join(resolve(shots), `${slug}-${side.label}-${label}.png`), [0.12, 0.25, 0.5]);
+                  await picture(driver, scenario, (label) => join(resolve(shots), `${slug}-${side.label}-${label}.png`));
                   continue;
                 }
-                const traceFile = traces ? join(resolve(traces), `${slug}-${side.label}-${run}.json`) : undefined;
-                if (traceFile) await mkdir(resolve(traces!), { recursive: true });
-                const sample = await measure(driver, scenario, options, traceFile);
-                if (!verbose) {
-                  delete sample.follow;
-                  delete sample.loaf;
+                for (const speed of speeds) {
+                  const name = `${slug}-${speed}-${side.label}-${run}`;
+                  const traceFile = traces ? join(resolve(traces), `${name}.json`) : undefined;
+                  const profileFile = profiles ? join(resolve(profiles), `${name}.cpuprofile`) : undefined;
+                  for (const dir of [traces, profiles]) if (dir) await mkdir(resolve(dir), { recursive: true });
+                  // A fresh page each drag: the last one's landing moved the pane.
+                  // Playwright's WebKit now and then stops answering a page
+                  // with a socket open: that drag runs again in a new browser.
+                  let sample: Awaited<ReturnType<typeof measure>> | null = null;
+                  for (let attempt = 1; !sample; attempt += 1) {
+                    try {
+                      await withTimeout(setup.open(driver), 60_000, `${name}: opening the page`);
+                      sample = await withTimeout(measure(driver, scenario, speed, traceFile, profileFile), 60_000, `${name}: the drag`);
+                    } catch (error) {
+                      if (attempt === 2) throw error;
+                      console.error(`${String(error)}; again in a new browser`);
+                      await close();
+                      driver = await launch(engine, side.label);
+                    }
+                  }
+                  if (!verbose) {
+                    delete sample.follow;
+                    delete sample.loaf;
+                  }
+                  const key = `${app} | ${engine} | ${scenario.name} | ${speed}`;
+                  ((results[key] ??= {})[side.label] ??= []).push(sample);
+                  console.error(`${key} | ${side.label} #${run}: p95 ${sample.p95FrameMs.toFixed(1)} ms, dropped ${sample.droppedFrames}, long tasks ${sample.longTasks ?? "-"}, ${sample.quotes} quote frames, late frames ${sample.lateFrames} (${sample.lateFrameCommits} commits, ${sample.lateFrameQuotes} quote frames in them), stood still ${sample.stuckFrames}, off the pointer's motion ${sample.jerkyFrames}, largest jump ${sample.largestJumpPx.toFixed(1)} px`);
+                  if (sample.profile) console.error(`  most time: ${sample.profile.map(([fn, ms]) => `${fn} ${ms.toFixed(1)} ms`).join("; ")}`);
                 }
-                const key = `${app} | ${engine} | ${scenario.name}`;
-                ((results[key] ??= {})[side.label] ??= []).push(sample);
-                console.error(`${key} | ${side.label} #${run}: p50 ${sample.p50FrameMs.toFixed(1)} ms, p95 ${sample.p95FrameMs.toFixed(1)} ms, dropped ${sample.droppedFrames}, long tasks ${sample.longTasks ?? "-"}, frames over 50 ms ${sample.longFrames}, main ${sample.mainMsPerFrame?.toFixed(2) ?? "-"} ms/frame, ${sample.commits} commits / ${sample.moves} moves, stood still ${sample.stuckFrames}, off the pointer's motion ${sample.jerkyFrames}`);
               }
             } finally {
-              await driver.close();
+              await close();
             }
           }
         }
@@ -544,7 +876,7 @@ async function main(): Promise<void> {
   }
 
   const lines = [
-    `Median of ${runs} runs. ${options.dragMs / 1000} s drags at 60 moves a second, ${VIEWPORT.width} by ${VIEWPORT.height} at ${options.dpr}x. Chromium: ${options.gpu ? "Chrome with its GPU" : "the pinned headless shell"}; WebKit: Playwright's.`,
+    `Median of ${runs} runs, 60 moves a second, ${VIEWPORT.width} by ${VIEWPORT.height} at ${options.dpr}x, quotes ${options.stream === "off" ? "not streaming" : options.stream === "live" ? "streaming live" : "streaming as kept"}. Chromium: ${options.gpu ? "Chrome with its GPU" : "the pinned headless shell"}; WebKit: Playwright's.`,
     "",
     `| drag | metric | ${sides.map((side) => side.label).join(" | ")} |`,
     `|---|---|${sides.map(() => "---|").join("")}`,
@@ -559,11 +891,24 @@ async function main(): Promise<void> {
       lines.push(`| ${key} | ${label} | ${cells.join(" | ")} |`);
     }
   }
+  const loafLines: string[] = [];
+  for (const [key, bySide] of Object.entries(results)) {
+    for (const side of sides) {
+      const totals: Record<string, number> = {};
+      const samples = bySide[side.label] ?? [];
+      for (const sample of samples) for (const [name, ms] of Object.entries(sample.loafScripts ?? {})) totals[name] = (totals[name] ?? 0) + ms / samples.length;
+      const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      if (top.length > 0) loafLines.push(`- ${key} | ${side.label}: ${top.map(([name, ms]) => `${name} ${ms.toFixed(0)} ms`).join("; ")}`);
+    }
+  }
+  if (loafLines.length > 0) lines.push("", "Scripts in Chromium's long animation frames (a run's mean):", "", ...loafLines);
   console.log(lines.join("\n"));
   const out = resolve(jsonOut ?? cacheDir("drag-smoothness", `results-${Date.now()}.json`));
   await mkdir(resolve(out, ".."), { recursive: true });
-  await Bun.write(out, JSON.stringify({ sides, runs, options, results }, null, 2));
+  await Bun.write(out, JSON.stringify({ sides, runs, speeds, options, results }, null, 2));
   console.error(`Samples: ${out}`);
 }
 
 await main();
+// A browser that stopped answering keeps the process alive: the run is over.
+process.exit(process.exitCode ?? 0);

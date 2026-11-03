@@ -7,7 +7,7 @@ import {
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
-import { exportedFundamentals, formatPriceEarnings, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
+import { exportedFundamentals, formatPriceEarnings, forwardFiscalYear, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
 import {
   formatCompact,
@@ -16,6 +16,7 @@ import {
   formatNumber,
   formatPercent,
   formatPercentRaw,
+  MISSING_VALUE,
 } from "../../utils/format";
 import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
 import {
@@ -761,7 +762,11 @@ function fundamentalsMetrics(
     { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, fundamentals) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
     { label: "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
-    { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
+    // Next fiscal year's consensus, named by its year: `Forward P/E FY27`.
+    {
+      label: forwardLabel(fundamentals),
+      ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)),
+    },
     { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
     // EPS (TTM) is the last four filed quarters' (filed-trailing-eps), so its twelve months can end before those of
     // the flows below, Gloom Cloud's trailing block; Gloom Cloud's EPS standing in is noted (trailingEpsSourceNote).
@@ -828,8 +833,16 @@ function floatAndShortInterestMetrics(
 const STOCK_ONLY_METRICS = new Set(["Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)",
   "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)", "Operating Margin", "Profit Margin", "Revenue Growth", "Last Quarter Growth"]);
 
+function forwardLabel(fundamentals: TickerFinancials["fundamentals"]): string {
+  const year = forwardFiscalYear(fundamentals?.forwardEpsPeriodEnd);
+  return year ? `Forward P/E ${year}` : "Forward P/E";
+}
+
+/** A line's name without the fiscal year a forward figure names: `Forward P/E FY27` is Forward P/E. */
+const metricName = (label: string) => label.replace(/ FY\d{2}$/, "");
+
 function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
-  return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metric.label)) : metrics;
+  return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metricName(metric.label))) : metrics;
 }
 
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
@@ -989,7 +1002,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
       .filter((metric) => metric.text !== "—");
   }
-  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || isYieldMetric(label)) && text !== "—");
+  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(metricName(label)) || isYieldMetric(label)) && text !== MISSING_VALUE);
   // The share count follows the market cap it is the basis of.
   const isShares = (label: string) => label === "Shares Outstanding" || label === "Shares Outstanding As Of";
   const shares = valued.filter((metric) => isShares(metric.label));

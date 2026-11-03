@@ -788,6 +788,50 @@ describe("view operations", () => {
     if (!notAView.ok) expect(notAView.error.message).toContain("not a custom view");
   });
 
+  test("view.create and view.update refuse keys the source's rows never carry and name the keys they do", async () => {
+    const { controller, createdFromTemplate, getState } = createRegistryHarness({ withCustomView: true });
+    const asked = {
+      source: { pane: "MOST" },
+      projection: {
+        columns: ["symbol", { key: "change1d", label: "1D" }, "low30d"],
+        filters: [{ key: "venue", op: "eq", value: "kalshi" }],
+        sort: { by: "change", direction: "desc" },
+      },
+    };
+    const created = await controller.handle({ type: "call", operation: "view.create", input: { spec: asked } });
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.message).toBe(
+        "No view was created. Not in the Market Movers rows: columns change1d, low30d; filter key venue. "
+          + "Its rows carry: symbol, change. Use only those keys, and say which of the asked-for columns this source does not have.",
+      );
+    }
+    expect(createdFromTemplate).toHaveLength(0);
+
+    // Keys the rows carry pass; a filter that drops every loaded row opens with a warning.
+    const empty = await controller.handle({
+      type: "call",
+      operation: "view.create",
+      input: { spec: { source: { pane: "MOST" }, projection: { columns: ["symbol"], filters: [{ key: "change", op: "lt", value: 0 }] } } },
+    });
+    expect(empty.ok && (empty.data as { warnings?: string[] }).warnings).toEqual([
+      "The one row the source loaded does not pass the view's filters, so the view shows no rows.",
+    ]);
+    expect(createdFromTemplate).toHaveLength(1);
+
+    const view = () => getState().config.layout.instances.find((entry) => entry.instanceId === "custom-view:test");
+    const before = view()?.settings?.spec;
+    const updated = await controller.handle({
+      type: "call",
+      operation: "view.update",
+      input: { paneId: "custom-view:test", spec: { source: { pane: "MOST" }, projection: { sort: { by: "lastTrade", direction: "desc" } } }, name: "Broken" },
+    });
+    expect(updated.ok).toBe(false);
+    if (!updated.ok) expect(updated.error.message).toStartWith("The view was left as it was. Not in the Market Movers rows: sort key lastTrade. Its rows carry: symbol, change.");
+    expect(view()?.settings?.spec).toBe(before);
+    expect(view()?.title).toBeUndefined();
+  });
+
   test("view.update with a source that cannot load leaves the working spec as it was", async () => {
     const { controller, getState } = createRegistryHarness({ withCustomView: true });
     const before = getState().config.layout.instances.find((entry) => entry.instanceId === "custom-view:test")?.settings?.spec;

@@ -26,7 +26,7 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
-import { canonicalExchange } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
@@ -529,26 +529,52 @@ export const screenLabel = (field: string) =>
   field
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (value) => value.toUpperCase());
+/** A category's `in` alternatives. */
+const MAX_CATEGORY_VALUES = 25;
+/** A list of symbols is a watchlist or a pasted list, so it takes up to 500 names. */
+export const MAX_SYMBOL_VALUES = 500;
+const maxCategoryValues = (field: string) => (field === "symbol" ? MAX_SYMBOL_VALUES : MAX_CATEGORY_VALUES);
+
+/** A watchlist's tickers as a screen's symbols: each without its venue (`SAP:XETRA` is SAP), once. */
+export function screenSymbols(tickers: readonly string[]): string[] {
+  return [...new Set(tickers.map((ticker) => parsePublicTickerKey(ticker).symbol).filter(Boolean))];
+}
+
+/** The one name typed for a symbol list, which may name a watchlist (`HY3`), or null. */
+export function typedListName(fieldId: string, operator: ScreenOperator, text: string): string | null {
+  if (fieldId !== "symbol" || operator !== "in") return null;
+  const typed = text.split(",").map((value) => value.trim()).filter(Boolean);
+  return typed.length === 1 ? typed[0]! : null;
+}
+
+/**
+ * A criterion as the editor's fields give it. `readWatchlist` reads one name
+ * typed for the symbol field as that watchlist's symbols (`HY3`), or null
+ * when it names none.
+ */
 export function parseCriterion(
   field: ScreenFieldDefinition,
   operator: ScreenOperator,
   text: string,
+  readWatchlist?: (typed: string) => { symbols: readonly string[] } | null,
 ): ScreenCriterion {
   if (!field.operators.includes(operator))
     throw new Error("Choose a supported operator for this field.");
   if (operator === "present" || operator === "missing")
     return { field: field.id, op: operator };
   if (field.kind === "category") {
-    const values = [
-      ...new Set(
-        text
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
-      ),
-    ];
-    if (operator !== "in" || !values.length || values.length > 25 || values.some((value) => value.length > 120))
-      throw new Error("Enter 1-25 comma-separated values, up to 120 characters each.");
+    const typed = text
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const name = typedListName(field.id, operator, text);
+    const listed = name ? readWatchlist?.(name)?.symbols ?? null : null;
+    const values = [...new Set(listed ?? typed)];
+    const maximum = maxCategoryValues(field.id);
+    if (operator !== "in" || !values.length || values.length > maximum || values.some((value) => value.length > 120))
+      throw new Error(field.id === "symbol"
+        ? `Enter a watchlist name or 1-${maximum} comma-separated symbols, up to 120 characters each.`
+        : `Enter 1-${maximum} comma-separated values, up to 120 characters each.`);
     return {
       field: field.id as (typeof CATEGORY_FIELDS)[number],
       op: "in",
@@ -606,6 +632,7 @@ export function criterionValueLabel(field: Pick<ScreenFieldDefinition, "id" | "u
 export function criterionValueHint(field: Pick<ScreenFieldDefinition, "id">, operator: ScreenOperator): string {
   if (LETTER_GRADES.has(field.id as NumericField)) return operator === "between" ? "lowest, highest grade, e.g. B, A+" : "grade, e.g. B+";
   if (field.id === "gradeComposite") return operator === "between" ? "minimum, maximum, e.g. 3.5, 5" : "score or label, e.g. 3.5 or Strong";
+  if (field.id === "symbol" && operator === "in") return "a watchlist's name or symbols, e.g. AAPL, MSFT";
   return operator === "between" ? "minimum, maximum" : operator === "in" ? "comma-separated values" : "threshold, e.g. 25 or 10B";
 }
 const SCALE: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
@@ -618,6 +645,13 @@ export function parseThreshold(text: string): number | null {
 }
 const thresholdText = (value: number) =>
   Math.abs(value) >= 1e6 ? formatCompact(value) : String(value);
+
+/** A list past a category's length names its first values and counts the rest: a watchlist's 300 symbols do not fill a line. */
+function listText(items: readonly string[]): string {
+  return items.length > MAX_CATEGORY_VALUES
+    ? `${items.slice(0, 8).join(", ")} and ${items.length - 8} more`
+    : items.join(", ");
+}
 
 export function criterionText(criterion: ScreenCriterion): string {
   const symbols = {
@@ -643,7 +677,7 @@ export function criterionText(criterion: ScreenCriterion): string {
     : criterion.field === "gradeComposite" && typeof criterion.value === "number"
       ? ` ${thresholdText(criterion.value)}${COMPOSITE_BANDS.some((band) => band.from === criterion.value && band.from > 1) ? ` (${compositeLabel(criterion.value)})` : ""}`
     : Array.isArray(criterion.value)
-      ? ` ${criterion.value.map((item) => (typeof item === "number" ? thresholdText(item) : item)).join(", ")}`
+      ? ` ${listText(criterion.value.map((item) => (typeof item === "number" ? thresholdText(item) : item)))}`
       : ` ${thresholdText(criterion.value)}`;
   return `${screenLabel(criterion.field)} ${symbols[criterion.op]}${value}`;
 }
@@ -698,7 +732,8 @@ export function screenDefinitionSyntax(): string {
     `${OBSERVED_SUBSET_FIELDS.join(" and ")} take only ${OBSERVED_SUBSET_OPERATORS.join(", ")};`,
     `${MEMBERSHIP_FIELDS.join(" and ")} take only ${MEMBERSHIP_OPERATORS.join(", ")}, eq with 1 for a member or 0;`,
     `the grades (${LETTER_GRADE_FIELDS.join(", ")}) are numbers from 1 (F) to 13 (A+), so B+ or better is gte 10, and gradeComposite runs from 1 to 5 (4.5 and up is Top);`,
-    `category fields (${CATEGORY_FIELDS.join(", ")}) take in with an array of 1-25 names, present, missing.`,
+    `category fields (${CATEGORY_FIELDS.join(", ")}) take in with an array of 1-${MAX_CATEGORY_VALUES} names, present, missing;`,
+    `symbol takes up to ${MAX_SYMBOL_VALUES}, or one watchlist's name, which reads as its symbols.`,
   ].join(" ");
 }
 
@@ -714,8 +749,16 @@ export const EXAMPLE_SCREEN_DEFINITION: ScreenDefinition = {
   sort: { field: "marketCap", direction: "desc" },
 };
 
+/** A screen of one watchlist's names: the name stands for its symbols. */
+export const WATCHLIST_SCREEN_DEFINITION: ScreenDefinition = {
+  version: 1,
+  currency: "USD",
+  criteria: [{ field: "symbol", op: "in", value: ["Watchlist"] }],
+  sort: { field: "marketCap", direction: "desc" },
+};
+
 const VALUE_SHAPES: Partial<Record<ScreenOperator, string>> = {
-  in: "an array of 1-25 names, such as [\"Gold\"]",
+  in: `an array of 1-${MAX_CATEGORY_VALUES} names (symbol: 1-${MAX_SYMBOL_VALUES}, or a watchlist's name), such as ["Gold"]`,
   between: "[min, max] in ascending order, such as [5, 30]",
 };
 
@@ -747,7 +790,7 @@ function checkCriterion(criterion: unknown, index: number): ScreenCriterion {
   const value = item.value;
   const shape = VALUE_SHAPES[op] ?? "one number, such as 10000000000";
   const valid = op === "in"
-    ? Array.isArray(value) && value.length >= 1 && value.length <= 25
+    ? Array.isArray(value) && value.length >= 1 && value.length <= maxCategoryValues(field)
       && value.every((entry) => typeof entry === "string" && entry.trim().length > 0 && entry.length <= 120)
     : op === "between"
       ? Array.isArray(value) && value.length === 2 && value.every((entry) => typeof entry === "number" && Number.isFinite(entry))

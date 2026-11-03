@@ -735,7 +735,9 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
     lines.push(...wrapCommandLine(`gloom fn ${invocation}`, width));
     for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloom fn ${entry.token} ${example}`, width));
     for (const option of capability.options) {
-      if (option.example) lines.push(...wrapCommandLine(`gloom fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
+      for (const example of [option.example, ...(option.examples ?? [])]) {
+        if (example) lines.push(...wrapCommandLine(`gloom fn ${option.exampleWithoutArgument ? entry.token : invocation} ${example}`, width));
+      }
     }
   }
   const shotInvocation = entry.shotArgument ? `${entry.token} ${entry.shotArgument}` : invocation;

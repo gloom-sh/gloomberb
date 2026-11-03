@@ -1,13 +1,12 @@
-import { execFileSync } from "child_process";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { loadRegistry } from "../src/plugins/marketplace/feed";
 import { PluginBundleError, bundleExternalPlugin } from "../src/plugins/bundle";
 import { findMissingHostExport } from "../src/plugins/compat";
 import { linkHostPackages } from "../src/plugins/host-link";
 import { resolvePluginBrowserEntry, resolvePluginEntry } from "../src/plugins/loader";
+import { annotate, cloneRegistryPlugins } from "./registry-plugins";
 
 /**
  * Compiles every plugin the registry lists against this checkout, the way the
@@ -21,49 +20,22 @@ import { resolvePluginBrowserEntry, resolvePluginEntry } from "../src/plugins/lo
  * else that goes wrong (the registry or GitHub unreachable, a dependency of
  * the plugin's own that does not resolve) is reported as a warning. This job
  * judges the host, not the plugins.
+ *
+ * Compiling against sources says nothing about the terminal as it is
+ * packaged; check-packaged-registry-plugins.ts loads the same plugins in the
+ * compiled binary and the desktop's terminal bundle.
  */
 
-const annotate = (level: "error" | "warning", message: string) => {
-  console.log(process.env.GITHUB_ACTIONS ? `::${level}::${message}` : `${level}: ${message}`);
-};
-
-function run(command: string, args: string[], cwd: string): void {
-  execFileSync(command, args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
-}
-
-const feed = await loadRegistry();
-const listed = feed.plugins.filter((plugin) => plugin.repo && !plugin.bundled);
-if (listed.length === 0) {
-  annotate("warning", `No registry plugins to check${feed.error ? `: ${feed.error}` : ""}.`);
-  process.exit(0);
-}
-
-// One folder for all of them, named like the installer names them, so a
-// plugin that builds on another (Gateway on IBKR) finds it the same way.
 const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-registry-plugins-"));
 const failures: string[] = [];
+let listed = 0;
 
 try {
-  const cloned: Array<{ id: string; dir: string }> = [];
-  for (const plugin of listed) {
-    const dir = join(pluginsDir, plugin.repo!.split("/")[1]!);
-    try {
-      run("git", ["clone", "--quiet", "--depth", "1", ...(plugin.ref ? ["--branch", plugin.ref] : []), `https://github.com/${plugin.repo}.git`, dir], pluginsDir);
-      cloned.push({ id: plugin.id, dir });
-    } catch (error) {
-      annotate("warning", `${plugin.id}: could not clone ${plugin.repo}${plugin.ref ? ` at ${plugin.ref}` : ""}: ${error}`);
-    }
-  }
+  const result = await cloneRegistryPlugins(pluginsDir);
+  listed = result.listed;
+  const cloned = result.cloned;
 
-  for (const { id, dir } of cloned) {
-    try {
-      // Peers are the host and sibling plugins, which are linked below.
-      run("bun", ["install", "--production", "--omit", "peer", "--ignore-scripts"], dir);
-    } catch (error) {
-      annotate("warning", `${id}: bun install failed: ${error}`);
-    }
-    linkHostPackages(dir, undefined, pluginsDir);
-  }
+  for (const { dir } of cloned) linkHostPackages(dir, undefined, pluginsDir);
 
   for (const { id, dir } of cloned) {
     const nativeEntry = await resolvePluginEntry(dir);
@@ -93,9 +65,11 @@ try {
   rmSync(pluginsDir, { recursive: true, force: true });
 }
 
+if (listed === 0) process.exit(0);
+
 for (const failure of failures) annotate("error", failure);
 if (failures.length > 0) {
   console.log(`\n${failures.length} import${failures.length === 1 ? "" : "s"} of host exports this checkout does not have. See the policy in PLUGINS.md.`);
   process.exit(1);
 }
-console.log(`\nEvery registry plugin's host imports resolve (${listed.length} listed).`);
+console.log(`\nEvery registry plugin's host imports resolve (${listed} listed).`);

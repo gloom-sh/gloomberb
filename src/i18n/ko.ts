@@ -850,7 +850,6 @@ export const ko: Record<string, string> = {
   "Start group chat": "그룹 채팅 시작",
   "Use @username, or multiple usernames for a group chat": "그룹 채팅에는 @username 또는 여러 사용자 이름을 사용하세요",
   "Type DM @username to start one": "DM @username을 입력하여 시작하세요",
-  "Read-only chat. Log in or sign up to send.": "읽기 전용 채팅. 보내려면 로그인하거나 회원가입하세요.",
   "Saved login found. Log in again to send.": "저장된 로그인을 찾았습니다. 보내려면 다시 로그인하세요.",
   "Verify your email to send messages.": "메시지를 보내려면 이메일을 인증하세요.",
   // The first-chat prompt for an account still on its signup handle.
@@ -874,7 +873,6 @@ export const ko: Record<string, string> = {
   "ask questions about anything on screen": "화면에 보이는 모든 내용에 대해 질문",
   "Free with a verified Gloom account.": "인증된 Gloom 계정이 있으면 무료입니다.",
   "search X": "X를 검색",
-  "{shortcut}, then Resend Verification Email": "{shortcut} 후 인증 이메일 재전송",
   "editing": "편집 중",
   "replying to": "답장 대상",
   "Reply": "답장",

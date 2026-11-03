@@ -5,7 +5,7 @@ import type { AppConfig } from "../../../types/config";
 import { getSharedRegistry, type PluginRegistry } from "../../registry";
 import { marketContextFromRegistry } from "../cloud/askg/host";
 import { notViewSourceMessage, unknownViewSourceMessage } from "./sources";
-import type { ViewRow, ViewSource, ViewSpec } from "./view-spec";
+import { applyViewProjection, unknownViewKeys, type UnknownViewKey, type ViewKeyPlace, type ViewRow, type ViewSource, type ViewSpec } from "./view-spec";
 
 export interface LoadedView {
   rows: ViewRow[];
@@ -113,14 +113,93 @@ export async function loadViewSource(
 
 /** How long a trial load waits; under the 10 s a remote tool call is given. */
 const VIEW_TRIAL_TIMEOUT_MS = 8_000;
+/** Source keys a refusal lists at most. */
+const LISTED_SOURCE_KEYS = 60;
+
+/** The spec names keys the source's rows never carry; nothing is kept. */
+export class UnknownViewKeysError extends Error {
+  override name = "UnknownViewKeysError";
+}
+
+const PLACE_NAMES: Record<ViewKeyPlace, [one: string, many: string]> = {
+  column: ["column", "columns"],
+  filter: ["filter key", "filter keys"],
+  sort: ["sort key", "sort keys"],
+  symbolKey: ["symbol key", "symbol keys"],
+};
+
+/** `columns change1d, low30d; sort key vol` */
+function describeUnknownKeys(unknown: readonly UnknownViewKey[]): string {
+  const byPlace = new Map<ViewKeyPlace, string[]>();
+  for (const { key, place } of unknown) byPlace.set(place, [...(byPlace.get(place) ?? []), key]);
+  return [...byPlace].map(([place, keys]) => `${PLACE_NAMES[place][keys.length === 1 ? 0 : 1]} ${keys.join(", ")}`).join("; ");
+}
+
+function comparable(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** The source's keys, its listed columns first with their header where it says more than the key: `title (Market)`. */
+function describeSourceKeys(columns: readonly HeadlessPaneColumn[], rowKeys: Iterable<string>): string {
+  const entries = new Map<string, string>();
+  for (const column of columns) {
+    if (entries.has(column.key)) continue;
+    const header = column.header?.trim();
+    entries.set(column.key, header && comparable(header) !== comparable(column.key) ? `${column.key} (${header})` : column.key);
+  }
+  for (const key of rowKeys) if (!entries.has(key)) entries.set(key, key);
+  const listed = [...entries.values()];
+  const more = listed.length - LISTED_SOURCE_KEYS;
+  return more > 0 ? `${listed.slice(0, LISTED_SOURCE_KEYS).join(", ")} and ${more} more` : listed.join(", ");
+}
+
+/**
+ * What a trial load says about the spec. Names the spec uses that none of the
+ * loaded rows carry throw `UnknownViewKeysError` with the keys they do carry,
+ * so a view never opens on columns that stay blank or filters that drop every
+ * row. With no rows to read, the source's listed columns are all there is to
+ * check against and they need not list every key, so a mismatch only warns.
+ */
+function checkLoadedView(spec: ViewSpec, loaded: LoadedView): string[] {
+  const notes = loaded.errors.slice(0, 2);
+  const listed = new Set(loaded.columns.map((column) => column.key));
+  if (loaded.rows.length === 0) {
+    const unlisted = listed.size > 0 ? unknownViewKeys(spec, listed) : [];
+    return [
+      "The source loaded no rows.",
+      ...notes,
+      ...(unlisted.length > 0
+        ? [`With no rows to check, these are not among the ${loaded.sourceLabel} columns: ${describeUnknownKeys(unlisted)}. Its columns: ${describeSourceKeys(loaded.columns, [])}.`]
+        : []),
+    ];
+  }
+  const rowKeys = new Set<string>();
+  for (const row of loaded.rows) for (const key of Object.keys(row)) rowKeys.add(key);
+  const unknown = unknownViewKeys(spec, new Set([...listed, ...rowKeys]));
+  if (unknown.length > 0) {
+    throw new UnknownViewKeysError(
+      `Not in the ${loaded.sourceLabel} rows: ${describeUnknownKeys(unknown)}. `
+        + `Its rows carry: ${describeSourceKeys(loaded.columns, rowKeys)}. `
+        + "Use only those keys, and say which of the asked-for columns this source does not have.",
+    );
+  }
+  const { filters } = spec.projection;
+  if (filters.length > 0 && applyViewProjection(loaded.rows, { columns: [], filters }, null).length === 0) {
+    const count = loaded.rows.length;
+    const none = count === 1 ? "The one row the source loaded does not pass" : `None of the ${count} rows the source loaded pass`;
+    return [`${none} the view's filters, so the view shows no rows.`, ...notes];
+  }
+  return notes;
+}
 
 /**
  * Loads the spec's source once through `loadViewSource`, the path its pane
  * takes, before the spec is kept. Throws what the source throws (an unknown
- * function with the valid ones, a usage or option error, a failed read), so
- * nothing broken is saved. Resolves with what to tell the person: notes the
- * source carried, an empty result, or that it had not answered in time, which
- * is not a failure: a slow source still opens.
+ * function with the valid ones, a usage or option error, a failed read), or
+ * `UnknownViewKeysError` for keys its rows never carry, so nothing broken is
+ * saved. Resolves with what to tell the person: notes the source carried, an
+ * empty result, or that it had not answered in time, which is not a failure:
+ * a slow source still opens.
  */
 export async function trialLoadViewSource(
   spec: ViewSpec,
@@ -148,9 +227,7 @@ export async function trialLoadViewSource(
     if (outcome === "timeout") {
       return [`The source had not answered after ${Math.max(1, Math.round(timeoutMs / 1_000))} s, so it was not checked. The view opens and keeps loading.`];
     }
-    return outcome.rows.length === 0
-      ? ["The source loaded no rows.", ...outcome.errors.slice(0, 2)]
-      : outcome.errors.slice(0, 2);
+    return checkLoadedView(spec, outcome);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);

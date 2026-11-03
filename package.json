@@ -68,6 +68,7 @@
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
+    "plugins:registry:packaged": "bun run scripts/check-packaged-registry-plugins.ts",
     "web:proxy-hosts": "bun run scripts/generate-web-proxy-hosts.ts",
     "map:data": "bun run scripts/generate-world-map-data.ts",
     "glyphs:terminal": "bun run scripts/generate-terminal-glyphs.ts",

@@ -1,15 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useShortcut } from "../../../../react/input";
 import { useKeybindings } from "../../../../app/keybindings";
 import type { WindowEditMode } from "../../../../plugins/registry";
-import {
-  armDoubleEscapeClose,
-  createDoubleEscapeCloseState,
-  offerEscapeTowardClose,
-  resetDoubleEscapeClose,
-  takeDoubleEscapeClose,
-} from "../../../../utils/double-escape-close";
 import { createOneShots } from "../../../../utils/one-shot";
+import { useDoubleEscapeClose } from "../../double-escape-close";
 import {
   inputCaptureAllowsPaneManagementShortcut,
   resolvePaneManagementShortcut,
@@ -19,7 +13,8 @@ interface ShellPaneManagementShortcutOptions {
   askAboutFocusedPane(): boolean;
   cancelActiveDrag(): void;
   closeAllFloatingPanes(): boolean;
-  closeFocusedPane(): boolean;
+  /** `focusNextFloating`: the top floating pane left takes the focus, for closing them one after another. */
+  closeFocusedPane(options?: { focusNextFloating?: boolean }): boolean;
   copyFocusedPaneScreenshot(): boolean;
   exportFocusedPaneCsv(): boolean;
   focusedPaneId: string | null;
@@ -60,16 +55,18 @@ export function useShellPaneManagementShortcuts({
   toggleFocusedPaneFloating,
   toggleFocusedPaneNewLayout,
 }: ShellPaneManagementShortcutOptions): void {
-  const doubleEscapeCloseRef = useRef(createDoubleEscapeCloseState());
   // A key held down, or a trigger with no repeat flag, runs each action once.
   const [shots] = useState(createOneShots);
   const keybindings = useKeybindings();
 
-  useEffect(() => {
-    if (overlayOpen) {
-      resetDoubleEscapeClose(doubleEscapeCloseRef.current);
-    }
-  }, [overlayOpen]);
+  // Esc Esc closes the focused pane and hands the focus to the next floating one.
+  useDoubleEscapeClose({
+    targetId: focusedPaneId,
+    overlayOpen,
+    editing: inputCaptured,
+    dragging: hasActiveDrag,
+    close: () => closeFocusedPane({ focusNextFloating: true }),
+  });
 
   useShortcut((event) => {
     const shortcut = resolvePaneManagementShortcut(event, keybindings);
@@ -105,7 +102,6 @@ export function useShellPaneManagementShortcuts({
         }
         if (askAboutFocusedPane()) {
           shots.get(shortcut).end();
-          resetDoubleEscapeClose(doubleEscapeCloseRef.current);
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -113,46 +109,12 @@ export function useShellPaneManagementShortcuts({
       }
     }
 
-    const isEscape = event.name === "escape" || event.name === "esc";
-    if (isEscape) {
-      const doubleEscapeState = doubleEscapeCloseRef.current;
-      if (!hasActiveDrag() && !overlayOpen) {
-        if (takeDoubleEscapeClose(doubleEscapeState, focusedPaneId, Date.now()) && closeFocusedPane()) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-      } else {
-        resetDoubleEscapeClose(doubleEscapeState);
-      }
-
-      if (!hasActiveDrag()) return;
+    if ((event.name === "escape" || event.name === "esc") && hasActiveDrag()) {
       cancelActiveDrag();
       event.preventDefault();
       event.stopPropagation();
-    } else {
-      resetDoubleEscapeClose(doubleEscapeCloseRef.current);
     }
   }, { phase: "before" });
-
-  const armDoubleEscape = () => {
-    armDoubleEscapeClose(doubleEscapeCloseRef.current, focusedPaneId, Date.now());
-  };
-
-  // A pane that uses an Esc to leave an empty field may still count it.
-  useShortcut((event) => {
-    if (event.name !== "escape" && event.name !== "esc") return;
-    if (hasActiveDrag() || overlayOpen) return;
-    offerEscapeTowardClose(event, armDoubleEscape);
-  }, { phase: "before", allowEditable: true });
-
-  // Only an Esc nothing else used arms the close, including a footer's Esc
-  // hint: the idle phase runs last and never sees a key a handler consumed.
-  useShortcut((event) => {
-    if (event.name !== "escape" && event.name !== "esc") return;
-    if (hasActiveDrag() || overlayOpen) return;
-    armDoubleEscape();
-  }, { phase: "idle" });
 
   // The pane menu key is a fallback too: a pane that binds "." keeps it,
   // however late it mounted.

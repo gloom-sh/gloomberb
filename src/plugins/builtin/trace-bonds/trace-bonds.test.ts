@@ -4,6 +4,7 @@ import { createTestDataProvider, createTestQuote } from "../../../test-support/d
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { setCliWidthOverride, visibleLength } from "../../../utils/cli-output";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { ApiRequestError } from "../../../api-client/errors";
 import { bondTapeRequests, fetchBondTape, isCusip, noPrintsText, parseBondQuery, tapeIssuerName } from "./client";
 import { traceBondsHeadless } from "./headless";
 import { DEFAULT_BOND_SORT, buildBondColumns, sharesOneIssuer, shownBondSort } from "./model";
@@ -42,9 +43,9 @@ const filterOn = (posted: Posted, field: string, type?: string) => posted.filter
 /** The date filter that leaves matured issues out, or the one that asks for perpetuals. */
 const perpetual = (posted: Posted) => filterOn(posted, "maturityDate", "EQUAL")?.fieldValue === null;
 
-async function report(argument: string, marketData = createTestDataProvider()) {
-  const args = createTestHeadlessArgs({ argument, rawArgument: argument });
-  const result = await traceBondsHeadless.load(args, createTestHeadlessContext({ marketData }));
+async function report(argument: string, marketData = createTestDataProvider(), apiClient?: object, options: Record<string, string> = {}) {
+  const args = createTestHeadlessArgs({ argument, rawArgument: argument, options });
+  const result = await traceBondsHeadless.load(args, createTestHeadlessContext({ marketData, ...(apiClient ? { apiClient: apiClient as never } : {}) }));
   return { result, text: renderHeadlessPaneText(traceBondsHeadless, result, args, "TRACE") };
 }
 
@@ -255,4 +256,44 @@ test("a narrow tape keeps price, yield and CUSIP ahead of what describes the bon
   const issuerSort = { columnId: "issuer", direction: "asc" } as const;
   expect(shownBondSort(issuerSort, true)).toEqual(DEFAULT_BOND_SORT);
   expect(shownBondSort(issuerSort, false)).toBe(issuerSort);
+});
+
+test("a CUSIP reports its kept daily closes in the range, titled by since when they are kept; a refusal is a note beside the tape", async () => {
+  fakeTape(() => [bond("644393AC4", "NFE5833345", "NEW FORTRESS ENERGY INC", "2026-10-30")]);
+  const day = (date: string, price: number | null) => ({ date, prints: 1, price, yield: 25 });
+  const history = {
+    cusip: "644393AC4", issuerName: "NEW FORTRESS ENERGY INC", coupon: 8.75, maturity: "2029-03-15",
+    issuer: { symbol: "NFE", name: "New Fortress Energy Inc." }, from: "2023-10-28", to: "2026-11-01", trades: [], truncated: false,
+    keptSince: "2024-03-05", backfillPending: false,
+    // A day whose only sale had no price is not a close.
+    days: [day("2024-03-05", 97.25), day("2026-08-14", 61), day("2026-10-29", null), day("2026-10-30", 52.5)],
+  };
+  const asked: string[] = [];
+  const client = { getCloudStoredBond: async (cusip: string) => (asked.push(cusip), history) };
+  const { result, text } = await report("644393AC4", undefined, client);
+  expect(asked).toEqual(["644393AC4"]);
+  expect(result.sections?.[1]).toMatchObject({ title: "Daily closes, kept since 2024-03-05" });
+  // 3M by default: the closes since 2026-08-03, newest first.
+  expect(result.sections?.[1]?.rows?.map((row) => row.date)).toEqual(["2026-10-30", "2026-08-14"]);
+  expect(text).toContain("Kept since 2024-03-05.");
+  const all = await report("644393AC4", undefined, client, { range: "3Y" });
+  expect(all.result.sections?.[1]?.rows?.map((row) => row.date)).toEqual(["2026-10-30", "2026-08-14", "2024-03-05"]);
+  const pending = await report("644393AC4", undefined, { getCloudStoredBond: async () => ({ ...history, keptSince: "2026-11-02", backfillPending: true, days: [] }) });
+  expect(pending.text).toContain("Kept since 2026-11-02; earlier prints are still being read.");
+
+  const refused = await report("644393AC4", undefined, { getCloudStoredBond: async () => { throw new ApiRequestError("Pro only", 403); } });
+  expect(refused.result.sections).toHaveLength(1);
+  expect(refused.result.complete).toBe(true);
+  expect(refused.text).toContain("Kept price history needs Gloom Pro.");
+});
+
+test("a ticker's lookup keeps its company's bonds from now on, and a failure to do so never touches the report", async () => {
+  fakeTape(() => [bond("963320BG0", "WHR6415676", "WHIRLPOOL CORP", "2026-10-16")]);
+  const kept: string[] = [];
+  const { result } = await report("WHR", undefined, {
+    getCloudStoredIssuerBonds: async (symbol: string) => { kept.push(symbol); throw new ApiRequestError("down", 503); },
+  });
+  expect(kept).toEqual(["WHR"]);
+  expect(result.complete).toBe(true);
+  expect(result.notes ?? []).toEqual([]);
 });

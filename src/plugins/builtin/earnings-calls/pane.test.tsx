@@ -86,13 +86,20 @@ const transcript = (ticker: string): CloudEarningsTranscriptPayload => ({
   riskFactors: null, notable: null, analystFocus: null, sentimentRationale: null,
   qaStartTurn: null, asrModel: null, updatedAt: "2026-08-02",
 });
+/**
+ * Whether the code calling `setTimeout` is the pane. The poll delays below are
+ * not the pane's alone: the data client waits 15 seconds between its outage
+ * probes, and `bun test` runs every file in one process, so a timer another
+ * file left behind would land in these spies and count as the pane's poll.
+ */
+const calledByPane = () => /earnings-calls[\\/]pane\.tsx/.test(new Error().stack ?? "");
 function manualPollTimers() {
   const originalSet = globalThis.setTimeout;
   const originalClear = globalThis.clearTimeout;
   let nextId = 900_000_000;
   const pending = new Map<number, () => void>();
   const set = spyOn(globalThis, "setTimeout").mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
-    if (delay !== 20_000 && delay !== 15_000) return originalSet(callback, delay, ...args);
+    if ((delay !== 20_000 && delay !== 15_000) || !calledByPane()) return originalSet(callback, delay, ...args);
     const id = ++nextId;
     pending.set(id, () => callback(...args));
     return id;

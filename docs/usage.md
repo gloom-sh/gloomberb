@@ -41,6 +41,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
+| `Esc` `Esc` | Close focused pane, even one that could still go back, and focus the next floating pane. Not over a typed draft or with a menu or dialog open |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
 | `Ctrl+Shift+D` | Dock or float focused pane |
 | `Ctrl+Shift+N` | Move the focused pane to a new layout of its own; again to move it back |
@@ -668,6 +669,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 - **`TRACE`:** an issuer name (`TRACE whirlpool`), a TRACE symbol root (`TRACE WHR`, exactly: not `WHRL`) or a 9-character CUSIP asks FINRA for that issuer's bonds, newest sale first (the first 100, and it says so). Matured bonds are left out and perpetuals kept.
   - A stock ticker with no bonds under its own symbol is asked again by the company name its quote gives (`TRACE CMLSQ` shows CUMULUS MEDIA and says so).
   - Nothing found says `No prints for <name> on <date>.`
+  - With Gloom Pro, Enter on a bond (or a CUSIP looked up, on its own) opens its kept history: the daily closes as a line, the prints behind them, and since when they are kept (`Kept since 2024-03-05`). Gloom Cloud keeps the bonds of the companies it covers. A bond looked up by CUSIP, or a company's bonds looked up by its ticker, is kept from then on too, with the prints the source still publishes for it (about three years), read in the background. Until those are read, the history starts the day it was first looked up and says that earlier prints are being read. Nothing before the kept-since date is drawn or listed, and a gap of three weeks or more without a sale breaks the line. `fn TRACE <CUSIP>` adds the daily closes (`--range 1M|3M|1Y|3Y`, 3M by default) and the kept-since date.
 - **`AUCT`** searches by type, benchmark (`AUCT 10Y` finds the 10-year note and its reopenings), term, CUSIP or date. Windows reach back 10 years (`--historyDays 3650`) or to the first auction on 1979-10-31 (`--historyDays all`).
 - **`CDS`:** with no argument, the issuers traded in the last 5 days, most active first, with each one's 5Y spread and its 1W and 1M moves (`fn CDS --sort 1m`, in points upfront past 2,000bp: `57.6 pts`). With a ticker or issuer, its 5Y spread, history and trades. `fn CDS F --csv` carries the same figures, `--csv --section daily` the daily 5Y levels.
 - **`TBO`** keeps loaded data when a session, subscription or token check fails and says access is unknown. Retry the initial error with Retry, or press `r` to refresh a loaded table.
@@ -2054,6 +2056,8 @@ An assistant connected to the Gloom Cloud MCP with Terminal control (Cloud setti
 
 ## Chat
 
+Chat needs a free Gloom Cloud account: signed out, the Chat pane shows the sign-in wall and nothing of the conversation. With a saved login it reads the chat and asks you to log in again to send, and until your email is verified it reads the chat with **Resend Verification Email** under it.
+
 ### Mentions
 
 Type `@` in a channel's composer to suggest up to five people (usernames or words in display names, recent activity first). Team and group channels offer their members, public channels known authors and your DM contacts. Direct-message composers have no mention menu.
@@ -2483,7 +2487,7 @@ Below half of the holdings' value, cash aside, the views say so instead of estim
 
 ## Equity criteria screener
 
-`EQS` screens the stored Cloud equity universe, starting with USD companies above $10 billion in market capitalization. **Criteria** edits typed numeric ranges, category lists and available/unavailable data conditions, all ANDed. Thresholds accept `k`, `M`, `B` and `T` (`10B` is ten billion). The currency selector is required for price and market-cap comparisons.
+`EQS` screens the stored Cloud equity universe, starting with USD companies above $10 billion in market capitalization. **Criteria** edits typed numeric ranges, category lists and available/unavailable data conditions, all ANDed. Thresholds accept `k`, `M`, `B` and `T` (`10B` is ten billion). The currency selector is required for price and market-cap comparisons. A category list takes up to 25 names. **Symbol** takes up to 500, or one watchlist's name, which reads as its symbols without their venues (`HY3`; the note says `Read HY3 as watchlist HY3 (70 symbols).`). `fn EQS --definition` reads it the same way: `{"field": "symbol", "op": "in", "value": ["HY3"]}`.
 
 Besides valuation, growth, margins, short interest, insider and 13F activity and social attention, fields cover:
 

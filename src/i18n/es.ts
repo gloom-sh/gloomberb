@@ -837,7 +837,6 @@ export const es: Record<string, string> = {
   "Start group chat": "Iniciar chat grupal",
   "Use @username, or multiple usernames for a group chat": "Usa @username, o varios usuarios para un chat grupal",
   "Type DM @username to start one": "Escribe DM @username para empezar",
-  "Read-only chat. Log in or sign up to send.": "Chat de solo lectura. Inicia sesión o regístrate para enviar.",
   "Saved login found. Log in again to send.": "Sesión guardada encontrada. Vuelve a iniciar sesión para enviar.",
   "Verify your email to send messages.": "Verifica tu correo para enviar mensajes.",
   // The first-chat prompt for an account still on its signup handle.
@@ -861,7 +860,6 @@ export const es: Record<string, string> = {
   "ask questions about anything on screen": "hacer preguntas sobre cualquier cosa en pantalla",
   "Free with a verified Gloom account.": "Gratis con una cuenta de Gloom verificada.",
   "search X": "buscar en X",
-  "{shortcut}, then Resend Verification Email": "{shortcut} y luego Reenviar correo de verificación",
   "editing": "editando",
   "replying to": "respondiendo a",
   "Reply": "Responder",

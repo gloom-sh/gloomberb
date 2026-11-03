@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  DataTableView,
+  DataTableStackView,
   loadingText,
   Notice,
   QueryBar,
@@ -13,6 +13,8 @@ import {
   type DataTableRootKeyContext,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { apiClient } from "../../../api-client";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneInstance } from "../../../state/app/context";
@@ -31,6 +33,8 @@ import {
   quotedCompanyName,
   type CorporateBond,
 } from "./client";
+import { BondHistoryDetail } from "./detail";
+import { loadStoredBond, PRO_HISTORY_TEXT } from "./history";
 import {
   DEFAULT_BOND_SORT,
   TRACE_BONDS_PANE_ID,
@@ -55,6 +59,12 @@ function dash(value: string | null): string {
   return value ?? "—";
 }
 
+/** What a bond's detail is called: its issuer, coupon and maturity, as a bond is named. */
+function bondTitle(bond: CorporateBond): string {
+  return [bond.issuerName, bond.couponRate == null ? null : formatBondDecimal(bond.couponRate, 3), bond.maturityDate]
+    .filter(Boolean).join(" ");
+}
+
 export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const presetIssuer = usePaneInstance()?.params?.issuer ?? "";
   const [query, setQuery] = usePluginPaneState("issuer", presetIssuer);
@@ -73,7 +83,6 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const { active: searchActive, focus: focusSearch, searchProps } = useQueryBarSearch();
 
   useAutoRefresh(updatedAt, load);
-  usePaneRefreshKey(() => void reload(), { focused, enabled: !searchActive });
 
   // One issuer's tape says its name once, in what was asked, not on every row.
   const sharedIssuer = useMemo(() => sharesOneIssuer(bonds), [bonds]);
@@ -98,6 +107,38 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     }
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
   }, [answered, rows, selectedId, setSelectedId]);
+
+  // A bond opens on its kept prints: Enter on a row, and with Gloom Pro a CUSIP looked up opens on its own once.
+  const [detailOpen, setDetailOpen] = usePluginPaneState("detailOpen", false);
+  const selectedBond = rows.find((row) => row.id === selectedId) ?? null;
+  const access = usePlanAccess();
+  const pro = access.hasProAccess;
+  const openedFor = useRef<string | null>(null);
+  const asked = answered ? data.query : null;
+  useEffect(() => {
+    if (!pro || asked?.kind !== "cusip" || rows.length !== 1 || openedFor.current === asked.cusip) return;
+    openedFor.current = asked.cusip;
+    setDetailOpen(true);
+  }, [asked, pro, rows.length, setDetailOpen]);
+  // A ticker looked up keeps its company's bonds from now on, as `fn TRACE` does; nothing waits on it.
+  useEffect(() => {
+    if (!pro || asked?.kind !== "issuer" || !asked.ticker) return;
+    const controller = new AbortController();
+    void apiClient.getCloudStoredIssuerBonds(asked.ticker, { signal: controller.signal }).catch(() => {
+      // Intentional ignore: keeping the company's bonds is a side effect; the tape shows without it.
+    });
+    return () => controller.abort();
+  }, [asked, pro]);
+  const detailCusip = detailOpen && selectedBond?.cusip ? selectedBond.cusip : null;
+  const historyRequest = useCallback(() => loadStoredBond(detailCusip!, apiClient), [detailCusip]);
+  const history = useAsyncResource(detailCusip && pro ? historyRequest : null);
+  // Without Pro, refused or failed: the detail says why in place of the prints.
+  const historyRefusal = !pro ? PRO_HISTORY_TEXT
+    : history.data?.refusal ?? (history.error && !history.data ? unavailableText("Kept price history") : null);
+  usePaneRefreshKey(() => {
+    void reload();
+    if (detailCusip && pro) history.load();
+  }, { focused, enabled: !searchActive });
 
   const onHeaderClick = useCallback((columnId: string) => {
     if (!isBondColumnId(columnId)) return;
@@ -154,7 +195,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   // A failure or a load for another query is the table's own message; the footer keeps the answered query's status.
   usePaneStatusFooter({
     registrationId: TRACE_BONDS_PANE_ID,
-    loading: loading && answered,
+    loading: (loading && answered) || (!!detailCusip && history.loading && !history.data),
     error: answered ? error : null,
     info: footerInfo,
   });
@@ -165,8 +206,26 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   });
 
   return (
-    <DataTableView
+    <DataTableStackView
       focused={focused && !searchActive}
+      detailOpen={detailOpen && !!selectedBond}
+      onBack={() => setDetailOpen(false)}
+      detailTitle={selectedBond ? bondTitle(selectedBond) : undefined}
+      detailContent={selectedBond ? (
+        <BondHistoryDetail
+          bond={selectedBond}
+          history={history.data?.history ?? null}
+          loading={!!detailCusip && pro && history.loading && !history.data}
+          refusal={historyRefusal}
+          focused={focused && detailOpen}
+          width={width}
+          height={Math.max(0, height - 1)}
+        />
+      ) : null}
+      onActivate={(row) => {
+        setSelectedId(row.id);
+        setDetailOpen(true);
+      }}
       rootWidth={width}
       rootHeight={height}
       rootBefore={(

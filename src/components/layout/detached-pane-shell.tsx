@@ -19,13 +19,7 @@ import { getPaneDisplayTitle } from "./pane/title";
 import { TITLEBAR_OVERLAY_HEIGHT_PX, getTitlebarLeadingInset } from "./titlebar-overlay";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
-import {
-  armDoubleEscapeClose,
-  createDoubleEscapeCloseState,
-  offerEscapeTowardClose,
-  resetDoubleEscapeClose,
-  takeDoubleEscapeClose,
-} from "../../utils/double-escape-close";
+import { useDoubleEscapeClose } from "./double-escape-close";
 import { contextMenuDivider, type ContextMenuItem } from "../../types/context-menu";
 import { useKeybindings } from "../../app/keybindings";
 import { useDialogState } from "../../ui/dialog";
@@ -61,7 +55,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const config = usePaneAppConfig();
   const paneState = useAppSelector((state) => state.paneState);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
-  const doubleEscapeCloseRef = useRef(createDoubleEscapeCloseState());
   // A key held down, or a trigger with no repeat flag, runs each action once.
   const [shots] = useState(createOneShots);
   const keybindings = useKeybindings();
@@ -132,35 +125,15 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     };
   }, [focusPane]);
 
-  useShortcut((event) => {
-    const doubleEscapeState = doubleEscapeCloseRef.current;
-    const isEscape = event.name === "escape" || event.name === "esc";
-    if (isEscape) {
-      if (takeDoubleEscapeClose(doubleEscapeState, desktopWindowBridge.paneId, Date.now())) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!locked) fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
-      }
-      return;
-    }
-
-    resetDoubleEscapeClose(doubleEscapeState);
-  }, { phase: "before" });
-
-  const armDoubleEscape = () => {
-    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
-  };
-
-  // A pane that uses an Esc to leave an empty field may still count it.
-  useShortcut((event) => {
-    if (event.name !== "escape" && event.name !== "esc") return;
-    offerEscapeTowardClose(event, armDoubleEscape);
-  }, { phase: "before", allowEditable: true });
-
-  useShortcut((event) => {
-    if (event.name !== "escape" && event.name !== "esc") return;
-    armDoubleEscape();
-  }, { phase: "idle" });
+  useDoubleEscapeClose({
+    targetId: desktopWindowBridge.paneId,
+    overlayOpen: dialogOpen || menuState !== null,
+    editing: inputCaptured,
+    close: () => {
+      if (!locked) fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
+      return true;
+    },
+  });
 
   const closePane = useCallback(() => {
     if (locked) {

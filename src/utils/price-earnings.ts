@@ -39,6 +39,24 @@ export function formatPriceEarnings(value: PriceEarnings | null | undefined, pre
   return value <= 0 ? "N/M" : formatNumber(value, precision);
 }
 
+/**
+ * The fiscal year a forward consensus is for, as a label names it: `FY27`
+ * for a year that ends in 2027, whichever month. Null for a block that does
+ * not say.
+ */
+export function forwardFiscalYear(periodEnd: string | null | undefined): string | null {
+  return typeof periodEnd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ? `FY${periodEnd.slice(2, 4)}` : null;
+}
+
+/**
+ * Whether a forward P/E line is shown even with no figure: the block read
+ * next year's consensus for a company (one with a trailing EPS) and found
+ * none, or one from before the last split, which reads as a dash.
+ */
+export function forwardPEAsked(fundamentals: Pick<Fundamentals, "forwardEpsPeriodEnd" | "eps"> | undefined): boolean {
+  return fundamentals?.forwardEpsPeriodEnd !== undefined && fundamentals.eps != null;
+}
+
 type PriceEarningsField = "trailingPE" | "forwardPE" | "pegRatio";
 
 /**
