@@ -137,7 +137,10 @@ The plugin API changes by these rules:
   misbehaving.
 - CI compares every runtime export with a reviewed snapshot, and compiles each
   plugin the registry lists, at the ref it would install, against every pull
-  request.
+  request. It also loads each of them in the compiled terminal binary and in
+  the desktop's bundled terminal, which serve React and the `gloomberb/*`
+  modules from inside the process. The release build repeats the load in each
+  binary and in the macOS app it builds, before they are published.
 
 `update` only moves a plugin forward. When the registry's published tag is older
 than what is checked out (an install from the default branch can be ahead of

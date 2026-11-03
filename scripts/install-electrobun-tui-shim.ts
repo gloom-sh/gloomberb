@@ -2,19 +2,9 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, re
 import { basename, join } from "path";
 import * as ResEdit from "resedit";
 import { buildShotView, packShotView, SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
+import { buildDesktopTuiBundle } from "./desktop-tui-bundle";
 
 type TargetOs = "darwin" | "linux" | "win";
-
-const OPEN_TUI_NATIVE_PACKAGES = [
-  "@opentui/core-darwin-arm64",
-  "@opentui/core-darwin-x64",
-  "@opentui/core-linux-arm64",
-  "@opentui/core-linux-arm64-musl",
-  "@opentui/core-linux-x64",
-  "@opentui/core-linux-x64-musl",
-  "@opentui/core-win32-arm64",
-  "@opentui/core-win32-x64",
-];
 
 const MACOS_SHIM = `#!/bin/sh
 set -eu
@@ -333,25 +323,7 @@ for (const bundlePath of bundleCandidates(os)) {
   rmSync(tuiBundleDir, { recursive: true, force: true });
   mkdirSync(tuiBundleDir, { recursive: true });
 
-  // Production React and JSX, as the standalone binary ships (see build.ts
-  // for why it takes `--production` rather than NODE_ENV): the development
-  // build is twice the size and every launch of the desktop CLI paid to load it.
-  const build = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      "build",
-      join(process.cwd(), "src", "renderers", "electrobun", "bun", "tui-entry.ts"),
-      "--target=bun",
-      "--production",
-      "--splitting",
-      `--outdir=${tuiBundleDir}`,
-      ...OPEN_TUI_NATIVE_PACKAGES.map((packageName) => `--external=${packageName}`),
-    ],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-
-  if (build.exitCode !== 0) {
+  if (buildDesktopTuiBundle(tuiBundleDir) !== 0) {
     process.exit(1);
   }
 
