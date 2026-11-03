@@ -144,6 +144,24 @@ interface RunResult {
 /** How long a command stopped at its time limit has to exit before it is killed. */
 const KILL_GRACE_MS = 2_000;
 
+/**
+ * Commands run with a time limit, which are installs nobody waits on: the
+ * app quitting stops them rather than leave a download running after it.
+ */
+const limitedCommands = new Set<() => void>();
+let stopsOnExit = false;
+
+function stopOnExit(stop: () => void): () => void {
+  if (!stopsOnExit) {
+    stopsOnExit = true;
+    process.once("exit", () => {
+      for (const command of limitedCommands) command();
+    });
+  }
+  limitedCommands.add(stop);
+  return () => { limitedCommands.delete(stop); };
+}
+
 function seconds(ms: number): string {
   return `${Math.round(ms / 1000)} s`;
 }
@@ -193,6 +211,8 @@ function run(
         // Intentional ignore: it exited between the check and the signal.
       }
     };
+    const forget = timeoutMs === undefined ? null : stopOnExit(() => stop("SIGKILL"));
+    child.once("exit", () => forget?.());
     const timer = timeoutMs === undefined ? null : setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -207,6 +227,7 @@ function run(
     child.stderr?.setEncoding("utf-8").on("data", (chunk: string) => { stderr += chunk; });
     child.once("error", (error) => {
       if (timer) clearTimeout(timer);
+      forget?.();
       if (settled) return;
       settled = true;
       reject(error);
