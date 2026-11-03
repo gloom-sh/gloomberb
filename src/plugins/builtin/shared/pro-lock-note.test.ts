@@ -161,7 +161,7 @@ test("a function whose free routes all answer that the listing has none says so,
 
 test("RISK names its page on gloom.sh, else the filings, and asks for no upgrade where the company files no 10-K or 20-F", async () => {
   // AAPL has a report on gloom.sh and files 10-Ks; ASML files 20-Fs; ALL:ASX files neither.
-  const reports: Record<string, number> = { AAPL: 28 };
+  const reports: Record<string, number> = { AAPL: 28, "BRK.B": 13 };
   const forms: Record<string, string[]> = { AAPL: ["10-K"], ASML: ["20-F"], ALL: [] };
   const context = {
     marketData: { getQuote: async () => null },
@@ -172,7 +172,8 @@ test("RISK names its page on gloom.sh, else the filings, and asks for no upgrade
   } as unknown as HeadlessPaneContext;
   const readSummary = async (wall: string, symbol: string, exchange?: string) => {
     expect(wall).toBe("risk-wall");
-    const count = exchange ? undefined : reports[symbol];
+    // ALL:ASX is not Allstate: a venue abroad reads no US company's report.
+    const count = exchange && !["NASDAQ", "NYSE"].includes(exchange) ? undefined : reports[symbol];
     return count ? { kind: "counts" as const, items: [{ label: "risk_count" as const, value: count }] } : null;
   };
   const note = (symbol: string) => riskFactorsLockNote({ gate: "sign-in", symbol, context }, readSummary);
@@ -180,6 +181,9 @@ test("RISK names its page on gloom.sh, else the filings, and asks for no upgrade
   const apple = (await note("AAPL")).split("\n");
   expect(apple[1]).toBe("Free, with no sign-in: gloom.sh/stocks/aapl/risk-factors has AAPL's risk factors from each 10-K, with what was added, dropped or reworded since the year before.");
   expect(apple[2]).toContain("then upgrade (Ctrl+P, UPGRADE); gloom fn RISK AAPL then reads");
+  // The page is named by the listing, as gloom.sh spells it: no venue, a share class after a dash.
+  expect(await note("AAPL:NASDAQ")).toContain("Free, with no sign-in: gloom.sh/stocks/aapl/risk-factors has AAPL:NASDAQ's risk factors");
+  expect(await note("BRK.B")).toContain("Free, with no sign-in: gloom.sh/stocks/brk-b/risk-factors has BRK.B's risk factors");
   expect(await note("ASML")).toContain("Free, with no sign-in: gloom filings ASML --form 20-F lists");
 
   expect((await note("ALL:ASX")).split("\n")).toEqual([

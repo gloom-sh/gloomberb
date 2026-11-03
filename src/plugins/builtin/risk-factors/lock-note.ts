@@ -7,17 +7,28 @@ import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 type ReadSummary = (wall: string, symbol: string, exchange?: string) => Promise<WallSummary | null>;
 
 /**
+ * How gloom.sh spells a US ticker in a page's address: lower case, a share
+ * class after a dash (`brk-b`), as its canonical link does. The venue is no
+ * part of it: `aapl:nasdaq` is no page.
+ */
+const pageTicker = (symbol: string) => symbol.trim().toLowerCase().replace(/[./]/g, "-");
+
+/**
  * The company's risk factor page on gloom.sh, which needs no account: each
  * 10-K's risks with what was added, dropped or reworded. It is there for a
- * company RISK has read a 10-K of, which the public wall summary counts.
+ * company RISK has read a 10-K of, which the public wall summary counts, and
+ * named by the listing that check resolved, not the argument as typed.
  */
 function webRoute(readSummary: ReadSummary): FreeRoute {
+  let resolved: string | null = null;
   return {
-    text: (ticker, company) => `gloom.sh/stocks/${ticker.toLowerCase()}/risk-factors has ${company}'s risk factors from each 10-K, with what was added, dropped or reworded since the year before.`,
+    text: (ticker, company) => `gloom.sh/stocks/${pageTicker(resolved ?? ticker)}/risk-factors has ${company}'s risk factors from each 10-K, with what was added, dropped or reworded since the year before.`,
     answers: async (symbol, context) => {
       const { symbol: ticker, exchange } = await resolveHeadlessInstrument(context, symbol);
       const summary = await readSummary("risk-wall", ticker, exchange);
-      return summary?.items.some((item) => item.label === "risk_count" && Number(item.value) > 0) ?? false;
+      const has = summary?.items.some((item) => item.label === "risk_count" && Number(item.value) > 0) ?? false;
+      if (has) resolved = ticker;
+      return has;
     },
   };
 }
