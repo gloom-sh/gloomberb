@@ -534,13 +534,7 @@ function AppInner({
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
             />
-            <StatusBar
-              onOpenChangelog={(version) => {
-                void pluginRegistry.createPaneFromTemplateAsync("changelog-pane", {
-                  values: { version },
-                }).catch(() => {});
-              }}
-            />
+            <StatusBar />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
           {initialized && !onboardingActive && !signInGateActive ? <AttentionCountsNotice notify={notifyRequest} /> : null}

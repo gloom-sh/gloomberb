@@ -3,8 +3,9 @@ import { apiClient } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { Button } from "../../../components/ui/button";
-import { DelayedMark, delayedMarkWidth } from "../../../components/ui/delayed-mark";
-import { Box, useCommandBarShortcut, useUiCapabilities } from "../../../ui";
+import { DelayedMark, delayedMarkWidth, useStateQuoteDelay } from "../../../components/ui/delayed-mark";
+import { Box, Text, useCommandBarShortcut, useUiCapabilities } from "../../../ui";
+import { useThemeColors } from "../../../theme/theme-context";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES, resolvePlanAccess } from "../../../api-client/plan-access";
@@ -25,12 +26,15 @@ interface CloudUpgradeStatusWidgetProps {
 
 /**
  * Global entitlement status: the trial countdown while Pro is on loan, or,
- * signed out or on the free plan, the delayed mark the app's prices carry and
- * the upgrade. While the trial offer line already pitches Pro, the mark stands
- * alone. Pro accounts have nothing to report.
+ * signed out or on the free plan, the one place that says the app's prices
+ * are late (`◷ 15m delayed`), pressed for the upgrade. Said here, a price
+ * outside a pane footer leaves its own mark out. While the trial offer line
+ * already pitches Pro, the mark stands alone. Pro accounts have nothing to
+ * report.
  */
 export function CloudUpgradeStatusWidget({ controller = chatController }: CloudUpgradeStatusWidgetProps) {
   useAppLanguage();
+  const colors = useThemeColors();
   const openUpgrade = useCloudUpgradeAction("status-widget");
   const openPlan = useCloudPlanAction();
   const offerShowing = useTrialOfferShowing();
@@ -38,22 +42,20 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   // The status bar takes no keyboard focus; the chip names the command instead.
   const commandBarKey = useCommandBarShortcut();
   const [access, setAccess] = useState(() => resolvePlanAccess(apiClient.getCurrentUser()));
+  const delayed = !access.isTrialActive && !access.hasProAccess;
   // The bar holds back its usual columns for the widgets' own text, which
-  // this one shares with the chat's sign-in: half of them are its own. The
-  // label never shrinks into Feedback beside it: "delayed data · upgrade"
-  // where the row has room for what the mark and "upgrade" draw past that
-  // half and the words before it, else "upgrade". What it draws past the
-  // usual columns is claimed, so the version chip gives way to it.
+  // this one shares with the account chip beside it: half of them are its
+  // own. The note says "delayed" where the row has room for what it draws
+  // past that half, and claims it, else it is the mark alone.
   const room = useStatusWidgetRoom();
   const othersClaimed = useOtherStatusWidgetClaims(CLAIM_ID);
-  const free = !access.isTrialActive && !access.hasProAccess && !offerShowing;
-  const longLabel = t("delayed data · upgrade");
-  const shortLabel = t("upgrade");
-  const overflow = Math.max(0, delayedMarkWidth(CLOUD_QUOTE_DELAY_MINUTES, false) + 1 + displayWidth(shortLabel) + 1
-    - STATUS_WIDGET_COLUMNS / 2);
-  const extra = displayWidth(longLabel) - displayWidth(shortLabel);
-  const long = nativePaneChrome || room - STATUS_WIDGET_COLUMNS - othersClaimed >= overflow + extra;
-  useStatusWidgetClaim(CLAIM_ID, free && !nativePaneChrome ? long ? extra : overflow : 0);
+  const word = t("delayed");
+  // The mark, the space before the word, the word and the space after the note.
+  const noteColumns = delayedMarkWidth(CLOUD_QUOTE_DELAY_MINUTES, false) + 1 + displayWidth(word) + 1;
+  const overflow = Math.max(0, noteColumns - STATUS_WIDGET_COLUMNS / 2);
+  const spelled = !offerShowing && (nativePaneChrome || room - STATUS_WIDGET_COLUMNS - othersClaimed >= overflow);
+  useStatusWidgetClaim(CLAIM_ID, delayed && spelled && !nativePaneChrome ? overflow : 0);
+  useStateQuoteDelay(delayed);
 
   useEffect(
     // The chat widget already drives session refreshes; this only follows them.
@@ -76,19 +78,24 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   if (access.hasProAccess) return null;
 
   const mark = <DelayedMark minutes={CLOUD_QUOTE_DELAY_MINUTES} />;
+  const detail = tf("{delay} delayed", { delay: `${CLOUD_QUOTE_DELAY_MINUTES}m` });
   return (
-    <Box flexDirection="row" alignItems="center" gap={1} flexShrink={0} paddingRight={offerShowing || !nativePaneChrome ? 1 : 0} data-gloom-role="delayed-status">
-      {mark}
-      {offerShowing ? null : (
+    <Box flexDirection="row" alignItems="center" flexShrink={0} paddingRight={1} data-gloom-role="delayed-status">
+      {spelled ? (
         <Button
-          label={long ? longLabel : shortLabel}
-          title={tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" })}
+          label={detail}
+          title={`${detail}. ${tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" })}`}
           variant="plain"
           compact
           stopPropagation
           onPress={openUpgrade}
-        />
-      )}
+        >
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            {mark}
+            <Text fg={colors.textDim} selectable={false}>{word}</Text>
+          </Box>
+        </Button>
+      ) : mark}
     </Box>
   );
 }

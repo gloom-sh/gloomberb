@@ -284,6 +284,8 @@ export const ko: Record<string, string> = {
 
   // ── Context menu ─────────────────────────────────────────────
   "Start Here": "여기서 시작",
+  "About": "정보",
+  "What's new in v{version}": "v{version}의 새로운 기능",
   "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "기업 조사: 개요부터 보고 차트, 재무, 뉴스, 공시, 실적 발표 탭으로 이동합니다.",
   "Add what you own. Alerts and emails then follow your portfolio.": "보유 종목을 추가하세요. 알림과 이메일이 포트폴리오에 맞춰집니다.",
   "Your portfolio and watchlists.": "포트폴리오와 관심 목록.",
@@ -685,7 +687,7 @@ export const ko: Record<string, string> = {
   "{delay} delayed · try Pro live": "{delay} 지연 · Pro 실시간 사용해 보기",
   "Pro trial {days}d": "Pro 체험 {days}일",
   "Pro trial — ends {date}": "Pro 체험 — {date} 종료",
-  "delayed data · upgrade": "지연 데이터 · 업그레이드",
+  "delayed": "지연",
   "upgrade": "업그레이드",
   "real-time news": "실시간 뉴스",
   "AI command bar": "AI 명령 바",

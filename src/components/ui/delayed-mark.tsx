@@ -1,7 +1,9 @@
+import { useEffect, useSyncExternalStore } from "react";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { tf } from "../../i18n";
 import { displayWidth } from "../../utils/format";
+import { useFreeQuoteDelay, type QuoteDelayFacts } from "../../api-client/plan-access";
 import { ICON_GLYPHS, Icon } from "./icon";
 
 /** The terminal's form of the mark: the clock and the delay, as the pane footer draws it (`◷15m`). */
@@ -23,13 +25,63 @@ export function delayedMarkWidth(minutes: number, nativePaneChrome: boolean): nu
 }
 
 /**
- * The one mark for a price shown late, beside the price: what the pane
- * footer's clock is for a pane's data (`delayedFooterSegment`), for a price
- * outside a footer (the header's SPY, the status bar, a quote's headline).
- * It reads without hovering: a yellow clock and the delay (`15m`) in the dim
- * tone of the meta text around it on the desktop and the web, `◷15m` in the
- * terminal, with `15m delayed` in its tooltip. Callers decide when a price is
- * late with `freeQuoteDelayMinutes` (or `useFreeQuoteDelay`); it draws nothing else.
+ * How many status bar notes say, for the whole app, that this account's
+ * prices are late. Counted rather than flagged so a note leaving as another
+ * arrives never clears it.
+ */
+let statedCount = 0;
+const statedListeners = new Set<() => void>();
+
+function subscribeStated(listener: () => void): () => void {
+  statedListeners.add(listener);
+  return () => {
+    statedListeners.delete(listener);
+  };
+}
+
+function quoteDelayStated(): boolean {
+  return statedCount > 0;
+}
+
+/**
+ * For the status bar's delayed note: while `stating`, the app's prices are
+ * said to be late once for the whole screen, so a price outside a pane
+ * footer leaves its own mark out (`useDelayedMarkMinutes`).
+ */
+export function useStateQuoteDelay(stating: boolean): void {
+  useEffect(() => {
+    if (!stating) return;
+    statedCount += 1;
+    for (const listener of statedListeners) listener();
+    return () => {
+      statedCount -= 1;
+      for (const listener of statedListeners) listener();
+    };
+  }, [stating]);
+}
+
+/**
+ * The delay to mark beside a price shown outside a pane footer (the header's
+ * SPY, a quote's headline): this account's (`useFreeQuoteDelay`) while
+ * nothing else on screen says it, null while the price is live or the status
+ * bar's delayed note says it for the whole app. The delay is said once per
+ * screen: with the status bar hidden (presentation mode, `SB`), or in a
+ * capture of the pane alone, the price carries the mark itself.
+ */
+export function useDelayedMarkMinutes(quote: QuoteDelayFacts | null | undefined): number | null {
+  const minutes = useFreeQuoteDelay(quote);
+  const stated = useSyncExternalStore(subscribeStated, quoteDelayStated, quoteDelayStated);
+  return stated ? null : minutes;
+}
+
+/**
+ * The one mark for a price shown late: what the pane footer's clock is for a
+ * pane's data (`delayedFooterSegment`), for the status bar's delayed note and
+ * for a price outside a footer where nothing else on screen says the delay
+ * (`useDelayedMarkMinutes`). It reads without hovering: a yellow clock and the
+ * delay (`15m`) in the dim tone of the meta text around it on the desktop and
+ * the web, `◷15m` in the terminal, with `15m delayed` in its tooltip. It draws
+ * nothing else.
  */
 export function DelayedMark({ minutes }: { minutes: number }) {
   const colors = useThemeColors();

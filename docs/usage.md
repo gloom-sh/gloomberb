@@ -184,7 +184,7 @@ Chords use `Ctrl`, `Cmd`, `Alt`, `Shift` and `CmdOrCtrl` (Control in the termina
 
 ## Command Reference
 
-Use `HELP` inside Gloom for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`), then one line on the search bar and **Start Here**. The command bar's keys and the layout notes are in the Reference tab, and every key table in Help shares one key column so the descriptions line up.
+Use `HELP` inside Gloom for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`), then one line on the search bar, **Start Here** and **About**: the app's version, whose notes `CHG` opens, and in the browser the desktop app for Mac or Windows (also **Download Desktop App** in the command bar). The command bar's keys and the layout notes are in the Reference tab, and every key table in Help shares one key column so the descriptions line up.
 
 ### Searching by asset class
 
@@ -1021,6 +1021,8 @@ Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or 
 ## Live prices and refresh cadence
 
 Prices come from one shared stream, and a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update about 10 times a second, everything else about once a second. Minimizing or hiding the app pauses streams and polling, and plans that cap streamed symbols spend them on the rows in view.
+
+Signed out or on Free, Gloom Cloud's stock and options quotes are 15 minutes behind (crypto is real-time). The status bar says so once, `◷ 15m delayed`, and a click on it starts Pro; each pane whose prices are late has a yellow clock in its footer (`◷15m` in the terminal), its tooltip saying how late. A price outside a pane footer, such as the header's SPY or a quote's headline, carries the clock and `15m` itself only while the status bar is hidden.
 
 What moves while you watch:
 

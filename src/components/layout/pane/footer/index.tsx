@@ -81,12 +81,10 @@ function terminalSegmentKey(segment: PaneFooterSegment, focused: boolean): strin
     : "";
 }
 
-/** Columns an icon segment keeps when hints crowd the footer: the icon, and on the desktop its `iconText` after it. */
+/** Columns an icon segment keeps when hints crowd the footer. */
 function iconSegmentReserve(segment: PaneFooterSegment, focused: boolean, nativePaneChrome: boolean): number {
   if (!segment.icon) return 0;
-  return nativePaneChrome
-    ? 3 + (segment.iconText ? segment.iconText.length + 1 : 0)
-    : Math.max(3, 1 + terminalSegmentKey(segment, focused).length);
+  return nativePaneChrome ? 3 : Math.max(3, 1 + terminalSegmentKey(segment, focused).length);
 }
 
 function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused: boolean }) {
@@ -127,7 +125,6 @@ function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused
         data-icon={segment.icon}
       >
         <Icon name={segment.icon} size={14} color={segment.disabled ? colors.textMuted : footerToneColor(segment.parts[0] ?? { text: "" })} />
-        {segment.iconText ? <Text fg={colors.textMuted} selectable={false} data-gloom-role="pane-footer-icon-text">{segment.iconText}</Text> : null}
       </Box>
     );
   }
@@ -144,7 +141,6 @@ function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused
         disabled={!interactive}
         color={segment.disabled ? colors.textMuted : footerToneColor(segment.parts[0] ?? { text: "" })}
         onPress={() => segment.onPress?.()}
-        text={segment.iconText}
       />
     );
   }

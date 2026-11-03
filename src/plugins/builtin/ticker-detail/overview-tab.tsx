@@ -62,8 +62,7 @@ import { describeFundamentalMarketCap } from "../../../utils/market-capitalizati
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
-import { DelayedMark, delayedMarkWidth } from "../../../components/ui/delayed-mark";
-import { useFreeQuoteDelay } from "../../../api-client/plan-access";
+import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
 import { safeExternalUrl } from "../../../utils/external-url";
 import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
@@ -151,7 +150,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const figureCells = useFigureCells();
 
   const quote = financials?.quote;
-  const quoteDelayMinutes = useFreeQuoteDelay(quote);
+  const quoteDelayMinutes = useDelayedMarkMinutes(quote);
   const fundamentals = financials?.fundamentals;
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
@@ -276,7 +275,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const sessionLabel = quoteSessionLabel(quote);
   const marketStateText = sessionLabel ? t(sessionLabel) : "";
-  // Signed out or free, the headline price is the delayed one: the mark says so after the session.
+  // Signed out or free, the headline price is the delayed one. The status bar says so for the
+  // app; where it is hidden, or in a capture of the pane alone, the mark says so after the session.
   const delayMinutes = sessionQuote ? quoteDelayMinutes : null;
   const delayCells = delayMinutes != null ? delayedMarkWidth(delayMinutes, nativePaneChrome === true) + 1 : 0;
   const hasIdentityLine = Boolean(companyName || venueText || marketStateText || delayMinutes != null);

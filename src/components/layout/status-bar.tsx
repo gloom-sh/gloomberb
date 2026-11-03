@@ -3,7 +3,6 @@ import {
   Text,
   contextMenuDivider,
   useContextMenu,
-  useRendererHost,
   useUiCapabilities,
   useUiHost,
 } from "../../ui";
@@ -28,7 +27,6 @@ import {
   type ShortcutDisplayMode,
   type ShortcutPlatform,
 } from "../../utils/shortcut-labels";
-import { getCurrentPluginTarget } from "../../plugins/current-target";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
   shouldShowTidyWindows,
@@ -36,7 +34,6 @@ import {
 } from "../../layout/pane-manager";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
-import { VERSION } from "../../version";
 import { displayWidth } from "../../utils/format";
 import { Button } from "../ui/button";
 import { confirmDialog } from "../ui/confirm-dialog";
@@ -65,12 +62,6 @@ type HoveredControl = string | null;
 type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) => void;
 
 /**
- * Where term.gloom.sh sends people who want the installed app. The route
- * picks the installer for the visitor's OS, so one link serves every platform.
- */
-const DESKTOP_DOWNLOAD_URL = "https://gloom.sh/download/desktop";
-
-/**
  * The note while the data service gives no answer at all, and its short form
  * for a narrow terminal. Every pane's own failure says why; this says once,
  * for the whole app, that it is the connection, and goes when it answers.
@@ -97,9 +88,7 @@ type StatusBarViewProps = {
   hoveredControl: HoveredControl;
   layoutTabItems: LayoutTabItem[];
   layoutTabsWidth: number;
-  openChangelog?: (event?: StatusBarEvent) => void;
   openLayoutContextMenu: (index: number, event: any) => void | Promise<unknown>;
-  rightAvailableWidth: number;
   /** The connection note to show (CONNECTION_NOTE or its short form), or null while the data service answers. */
   connectionNote: string | null;
   openConnections: () => void;
@@ -153,7 +142,7 @@ const openNewLayout = (event?: StatusBarEvent) => {
 
 const TERMINAL_NEW_LAYOUT_LABEL = " + ";
 
-export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: string) => void } = {}) {
+export function StatusBar() {
   const { nativePaneChrome, nativeContextMenu } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
   const dialog = useDialog();
@@ -291,12 +280,6 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       notify: registry.notify,
       onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
     });
-  };
-
-  const openChangelog = (event?: StatusBarEvent) => {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    onOpenChangelog?.(VERSION);
   };
 
   const requestDeleteLayout = useCallback(async (index: number) => {
@@ -458,13 +441,12 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   if (!statusBarVisible) return null;
 
   // Feedback keeps the bottom-right corner; the connection note comes before
-  // the version chip, which gives way first, also to a widget that claimed
-  // more than the usual room. A narrow terminal shortens the note.
+  // the widgets and gives way to a widget that claimed more than the usual
+  // room. A narrow terminal shortens the note.
   const rightWidth = Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - claimedWidgetColumns - feedbackWidth);
   const connectionNote = !dataServiceUnreachable ? null
     : nativePaneChrome || rightWidth >= displayWidth(t(CONNECTION_NOTE)) + 1 ? CONNECTION_NOTE
       : rightWidth >= displayWidth(t(CONNECTION_NOTE_SHORT)) + 1 ? CONNECTION_NOTE_SHORT : null;
-  const connectionNoteWidth = connectionNote && !nativePaneChrome ? displayWidth(t(connectionNote)) + 1 : 0;
 
   const viewProps: StatusBarViewProps = {
     activeLayoutIdx,
@@ -476,9 +458,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     hoveredControl,
     layoutTabItems,
     layoutTabsWidth: tabsWidth,
-    openChangelog: onOpenChangelog ? openChangelog : undefined,
     openLayoutContextMenu,
-    rightAvailableWidth: Math.max(0, rightWidth - connectionNoteWidth),
     connectionNote,
     openConnections,
     setHoveredControl,
@@ -518,7 +498,6 @@ function NativeStatusBar({
       {showTidyWindows && <NativeTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
       <StatusBarConnectionNote nativePaneChrome {...props} />
-      <StatusBarSummary nativePaneChrome {...props} />
       {/* Widgets keep their width; the layout tabs give way instead. */}
       <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
         <PluginSlot name="status:widget" />
@@ -551,7 +530,6 @@ function TerminalStatusBar({
       {showTidyWindows && <TerminalTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
       <StatusBarConnectionNote nativePaneChrome={false} {...props} />
-      <StatusBarSummary nativePaneChrome={false} {...props} />
       <StarPromptStatusLine />
       <PluginSlot name="status:widget" />
       <StatusBarFeedback nativePaneChrome={false} {...props} />
@@ -599,58 +577,6 @@ function StatusBarLayoutControl({
         />
       </Box>
     </Box>
-  );
-}
-
-/**
- * The version chip and, on the hosted web app, a link to the desktop app.
- * The link goes first when the row runs out of room, then the version. Live
- * market status lives at the header's right edge, not here, so nothing in the
- * status bar repeats it.
- */
-function StatusBarSummary({
-  hoveredControl,
-  nativePaneChrome,
-  openChangelog,
-  rightAvailableWidth,
-  setHoveredControl,
-}: Pick<
-  StatusBarViewProps,
-  "hoveredControl" | "openChangelog" | "rightAvailableWidth" | "setHoveredControl"
-> & { nativePaneChrome: boolean }) {
-  const rendererHost = useRendererHost();
-  const versionLabel = `v${VERSION}`;
-  const downloadLabel = t("Download desktop app");
-  const showVersion = rightAvailableWidth >= versionLabel.length + 1;
-  const showDownload = getCurrentPluginTarget() === "web"
-    && rightAvailableWidth >= versionLabel.length + 1 + downloadLabel.length + 1;
-  if (!showVersion) return null;
-  return (
-    <>
-      <StatusBarChip
-        hoveredControl={hoveredControl}
-        id="version"
-        label={versionLabel}
-        nativePaneChrome={nativePaneChrome}
-        onPress={openChangelog}
-        role="button"
-        setHoveredControl={setHoveredControl}
-        // CHG opens the same notes from the command bar, where the keyboard can reach them.
-        title={openChangelog ? `${tf("Open changelog for {version}", { version: versionLabel })} (CHG)` : undefined}
-      />
-      {showDownload && (
-        <StatusBarChip
-          hoveredControl={hoveredControl}
-          id="desktop-download"
-          label={downloadLabel}
-          nativePaneChrome={nativePaneChrome}
-          onPress={() => { void rendererHost.openExternal(DESKTOP_DOWNLOAD_URL); }}
-          role="link"
-          setHoveredControl={setHoveredControl}
-          title={t("Get Gloom for Mac or Windows")}
-        />
-      )}
-    </>
   );
 }
 
@@ -720,7 +646,7 @@ function StatusBarChip({
   label: string;
   nativePaneChrome: boolean;
   onPress?: (event?: StatusBarEvent) => void;
-  role: "button" | "link";
+  role: "button";
   title?: string;
   tone?: "warning";
 }) {

@@ -31,12 +31,6 @@ export interface PaneFooterSegment {
    */
   icon?: "warning" | "clock";
   /**
-   * A few characters the desktop draws after `icon`, in the footer's muted
-   * tone, so the segment reads without hovering: a delay's `15m`. The
-   * terminal's `parts` already carry it (`◷15m`).
-   */
-  iconText?: string;
-  /**
    * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
    * shot` whose status line already dates that data leaves it out, so the
    * date is not said twice, and gives it up before its status line is cut.
@@ -89,11 +83,12 @@ export interface PaneFooterSegment {
 const DELAYED_FOOTER_GLYPH = "◷";
 
 /**
- * The footer's one form for data a source delivers late: a yellow clock and
- * the delay (`15m`) on the desktop, with `detail` in its tooltip, and the
- * clock with the delay (`◷15m`) in the terminal, which has no tooltip, so it
- * takes a few cells rather than a phrase. Without a known delay the desktop
- * draws the clock alone. `onPress` makes it a button, such as an upgrade.
+ * The footer's one form for data a source delivers late: a yellow clock with
+ * `detail` in its tooltip on the desktop and the web, and the clock with the
+ * delay (`◷15m`) in the terminal, which has no tooltip, so it takes a few
+ * cells rather than a phrase. The clock alone keeps the delay from repeating
+ * in every pane: the status bar's delayed note spells out the account's
+ * (`◷ 15m delayed`). `onPress` makes it a button, such as an upgrade.
  */
 export function delayedFooterSegment({
   id,
@@ -116,7 +111,6 @@ export function delayedFooterSegment({
     label: detail,
     title: detail,
     parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
-    ...(delay ? { iconText: delay } : {}),
     ...(onPress ? { onPress } : {}),
     ...(quoteStatus ? { quoteStatus } : {}),
   };

@@ -286,6 +286,8 @@ export const zhTW: Record<string, string> = {
 
   // ── Context menu ─────────────────────────────────────────────
   "Start Here": "從這裡開始",
+  "About": "關於",
+  "What's new in v{version}": "v{version} 新功能",
   "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "研究一家公司：先看概覽，再切換到圖表、財務、新聞、文件和法說會標籤。",
   "Add what you own. Alerts and emails then follow your portfolio.": "新增你的持股。之後提醒和郵件都會圍繞你的投資組合。",
   "Your portfolio and watchlists.": "你的投資組合和自選清單。",
@@ -687,7 +689,7 @@ export const zhTW: Record<string, string> = {
   "{delay} delayed · try Pro live": "延遲 {delay} · 試用 Pro 即時資料",
   "Pro trial {days}d": "Pro 試用 {days} 天",
   "Pro trial — ends {date}": "Pro 試用 — {date} 結束",
-  "delayed data · upgrade": "資料延遲 · 升級",
+  "delayed": "延遲",
   "upgrade": "升級",
   "real-time news": "即時新聞",
   "AI command bar": "AI 命令列",

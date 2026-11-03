@@ -20,6 +20,9 @@ import { ShortcutTable, type ShortcutTableEntry } from "./shortcut-table";
 import { resolveCommandShortcuts, resolveWindowTemplates } from "./shortcut-model";
 import { badgeColumnWidth } from "./table-cells";
 import { logFailure } from "../../../utils/log-failure";
+import { VERSION } from "../../../version";
+import { getCurrentPluginTarget } from "../../current-target";
+import { openUrl } from "../../../components/ui/external-link";
 
 const HELP_TABS = [
   { label: "Basics", value: "basics" },
@@ -32,6 +35,12 @@ const HELP_TABS = [
 
 type HelpTabId = typeof HELP_TABS[number]["value"];
 const GLOOMBERB_ISSUES_URL = "https://github.com/gloom-sh/gloomberb/issues";
+/**
+ * Where the web app sends people who want the installed app. The route picks
+ * the installer for the visitor's OS, so one link serves every platform.
+ */
+const DESKTOP_DOWNLOAD_URL = "https://gloom.sh/download/desktop";
+const DESKTOP_DOWNLOAD_DESCRIPTION = "Get Gloom for Mac or Windows";
 
 function entry(id: string, badges: string[], description: string): ShortcutTableEntry {
   return { id, badges, description };
@@ -133,6 +142,14 @@ function HelpPane({ focused, width, height }: PaneProps) {
     void rendererHost.openExternal(GLOOMBERB_ISSUES_URL);
   }, [rendererHost]);
 
+  const openChangelog = useCallback(() => {
+    createPaneFromTemplate("changelog-pane", { values: { version: VERSION } });
+  }, [createPaneFromTemplate]);
+
+  const openDesktopDownload = useCallback(() => {
+    void rendererHost.openExternal(DESKTOP_DOWNLOAD_URL);
+  }, [rendererHost]);
+
   // Each tab's actions. `l` moves between tabs, so layout actions take `a`.
   const tabHints = useMemo<PaneHint[]>(() => {
     if (activeTabId === "basics") {
@@ -197,6 +214,29 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("start-askg", ["ASKG", "<question>"], "Ask Gloom: answers that cite filings, calls and news."),
     ].filter((item) => hasCode(item.badges[0]!)),
   }], [hasCode]);
+
+  // The app's version and, in the browser, the installed app: kept out of the
+  // status bar, which holds only what a new visitor needs.
+  const aboutRows = useMemo(() => [
+    ...(hasCode("CHG")
+      ? [{ ...entry("about-changelog", ["CHG"], tf("What's new in v{version}", { version: VERSION })), run: openChangelog }]
+      : []),
+    ...(getCurrentPluginTarget() === "web"
+      ? [{ ...entry("about-desktop", [], t(DESKTOP_DOWNLOAD_DESCRIPTION)), run: openDesktopDownload }]
+      : []),
+  ], [hasCode, openChangelog, openDesktopDownload]);
+  const aboutSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(
+    () => aboutRows.length > 0 ? [{ label: "About", items: aboutRows }] : [],
+    [aboutRows],
+  );
+  // The keyboard reaches them from the pane menu, as it does Try These.
+  usePaneMenuItems("help:about", () => activeTabId === "basics"
+    ? aboutRows.map((row) => ({
+      id: row.id,
+      label: row.id === "about-desktop" ? t("Download desktop app") : `${row.description} (CHG)`,
+      onSelect: row.run,
+    }))
+    : null, [activeTabId, aboutRows]);
 
   const referenceSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [
     {
@@ -371,7 +411,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
             </Text>
 
             <Box marginTop={1}>
-              <ShortcutTable sections={startSections} width={bodyWidth} keyWidth={keyColumnWidth} />
+              <ShortcutTable sections={[...startSections, ...aboutSections]} width={bodyWidth} keyWidth={keyColumnWidth} />
             </Box>
           </>
         );
@@ -420,6 +460,20 @@ function HelpPane({ focused, width, height }: PaneProps) {
 }
 
 export const helpModule: PluginModule = {
+  setup(ctx) {
+    // The browser's way to the installed app; the desktop app and the terminal are installed already.
+    ctx.registerCommand({
+      id: "download-desktop-app",
+      label: "Download Desktop App",
+      description: DESKTOP_DOWNLOAD_DESCRIPTION,
+      keywords: ["desktop", "download", "install", "app", "mac", "macos", "windows"],
+      category: "config",
+      hidden: () => getCurrentPluginTarget() !== "web",
+      execute: () => {
+        openUrl(DESKTOP_DOWNLOAD_URL);
+      },
+    });
+  },
   panes: [
     {
       id: "help",

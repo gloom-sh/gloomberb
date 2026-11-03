@@ -286,6 +286,8 @@ export const zhCN: Record<string, string> = {
 
   // ── Context menu ─────────────────────────────────────────────
   "Start Here": "从这里开始",
+  "About": "关于",
+  "What's new in v{version}": "v{version} 新功能",
   "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "研究一家公司：先看概览，再切换到图表、财务、新闻、文件和财报电话会议标签。",
   "Add what you own. Alerts and emails then follow your portfolio.": "添加你的持仓。之后提醒和邮件都会围绕你的投资组合。",
   "Your portfolio and watchlists.": "你的投资组合和自选列表。",
@@ -687,7 +689,7 @@ export const zhCN: Record<string, string> = {
   "{delay} delayed · try Pro live": "延迟 {delay} · 试用 Pro 实时数据",
   "Pro trial {days}d": "Pro 试用 {days} 天",
   "Pro trial — ends {date}": "Pro 试用 — {date} 结束",
-  "delayed data · upgrade": "数据延迟 · 升级",
+  "delayed": "延迟",
   "upgrade": "升级",
   "real-time news": "实时新闻",
   "AI command bar": "AI 命令栏",

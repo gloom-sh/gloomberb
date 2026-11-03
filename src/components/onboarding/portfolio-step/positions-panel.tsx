@@ -49,7 +49,7 @@ function fieldPlaceholder(field: PositionFieldId, state: OnboardingPositionsStat
 /** Company name and last price for the symbol being typed, or why it will not resolve. */
 function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview" | "error">) {
   const colors = useThemeColors();
-  // Signed out or free, the price is the delayed one, and says so.
+  // Signed out or free, the price is the delayed one, and says so: setup covers the status bar's note.
   const delay = useFreeQuoteDelay(preview.status === "ready" ? preview.quote : null);
   if (error) return <Text fg={colors.negative} wrapText>{error}</Text>;
   if (preview.status === "idle") return null;
