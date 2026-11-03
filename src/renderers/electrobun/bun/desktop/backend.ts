@@ -11,6 +11,7 @@ import {
 import { saveConfig } from "../../../../data/config/store";
 import { pluginAutoUpdateEnabled } from "../../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../../plugins/auto-update-node";
+import { getPluginSeedProgress, subscribePluginSeed } from "../../../../plugins/seed-progress";
 import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
@@ -215,6 +216,13 @@ export class DesktopBackend {
     // handlers wait for the windows to go.
     Electrobun.events.on("before-quit", () => {
       if (!this.quitting) this.windowController?.flush();
+    });
+    // The launch restores plugins that moved into their own repositories in
+    // this process, after the services are up; the main window brings each
+    // in as it lands. Its init carries where the restore was then.
+    subscribePluginSeed(() => {
+      const seed = getPluginSeedProgress();
+      if (seed) this.readyMainWindowRpc()?.send["plugins.seedProgress"]({ seed });
     });
     this.windowController.openWindow(MAIN_WINDOW_ID);
     this.windowController.focus(MAIN_WINDOW_ID);

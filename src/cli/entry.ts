@@ -22,17 +22,23 @@ import {
 async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
   // Before anything in the app can reach for the render library, so a temp
   // folder that cannot run it is worked around (or named) first.
-  const { restoreExtractedPlugins } = await import("./restore-plugins");
+  const { prepareExtractedPluginSeed } = await import("./restore-plugins");
   const { loadExternalPlugins } = await import("../plugins/loader");
   const { loadRenderLib } = await import("../renderers/opentui/render-lib");
   await measurePerfAsync("startup.opentui.render-lib", loadRenderLib);
   const { startOpenTuiApp } = await import("../renderers/opentui/start");
-  // Before the catalog is read, so a plugin that moved out of this repository is
-  // available in the same session rather than only after a restart.
-  await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
+  // Plugins that moved out of this repository are planned before the config
+  // is read, which records the ones already settled, and installed once the
+  // app is drawn: cloning them first held a blank screen for seconds, or for
+  // good on a connection that hangs. The app brings each in as it lands.
+  const seed = await measurePerfAsync("startup.opentui.restore-plugins", () => prepareExtractedPluginSeed());
   const externalPlugins = await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
   try {
     await startOpenTuiApp({ externalPlugins, cliLaunchRequest });
+    if (seed?.start) {
+      const { logFailure } = await import("../utils/log-failure");
+      void seed.start().catch(logFailure("plugin-seed", "Plugin restore failed"));
+    }
   } catch (error) {
     // A failed launch still prints and exits as before; the report is only
     // sent when the config was read far enough to install the reporter.

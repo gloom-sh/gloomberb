@@ -85,6 +85,72 @@ test("the update check reads a clone's GitHub repo, and none from a repository w
 });
 
 /**
+ * Runs `body` in a Bun process of its own, with `installer`, `loader` and
+ * `createNodePluginManager` in scope: the installer reads its plugins folder
+ * once, from the environment, so each test's folder needs a process. `fetch`
+ * answers the registry with `registry` and fails anything else. Returns what
+ * `body` returns.
+ */
+async function runIsolated(root: string, body: string, env: Record<string, string>, registry: unknown = { plugins: [] }): Promise<any> {
+  const script = join(root, "run.ts");
+  writeFileSync(script, `
+    globalThis.fetch = async (url) => String(url).endsWith("/registry.json")
+      ? Response.json(${JSON.stringify(registry)})
+      : Promise.reject(new Error("offline"));
+    const installer = await import(${JSON.stringify(join(import.meta.dir, "installer.ts"))});
+    const loader = await import(${JSON.stringify(join(import.meta.dir, "loader.ts"))});
+    const { createNodePluginManager } = await import(${JSON.stringify(join(import.meta.dir, "manager-node.ts"))});
+    console.log(JSON.stringify(await (async () => { ${body} })()));
+  `);
+  const child = Bun.spawn([process.execPath, script], {
+    env: { ...process.env, GLOOMBERB_NO_TELEMETRY: "1", ...env },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, status] = await Promise.all([
+    new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+  ]);
+  expect({ status, stderr: status === 0 ? "" : stderr }).toEqual({ status: 0, stderr: "" });
+  return JSON.parse(stdout.trim().split("\n").pop()!);
+}
+
+/**
+ * A launch installs the plugins that moved out of Gloom in the background,
+ * and a connection that stalls mid-clone used to hold that install for good.
+ * Each git command now has a time limit: past it, git and the helpers it
+ * started are stopped, the install fails with a plain reason, and nothing is
+ * left in the plugins folder for the next launch to take for an install.
+ */
+test.skipIf(process.platform === "win32")("a clone that stalls is stopped at its time limit and leaves nothing behind", async () => {
+  const smoke = join(homedir(), ".cache", "gloom-smoke");
+  mkdirSync(smoke, { recursive: true });
+  const root = mkdtempSync(join(smoke, "plugin-stall-"));
+  scratch.push(root);
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  // A git that never answers, does not stop when asked to, and waits on a helper of its own.
+  writeFileSync(join(bin, "git"), "#!/bin/sh\ntrap '' TERM\nsleep 29.517\n");
+  chmodSync(join(bin, "git"), 0o755);
+  const home = join(root, "home");
+
+  const result = await runIsolated(root, `
+    const started = Date.now();
+    const error = await installer.installPlugin("fixture/gloom-fixture-stall", { quiet: true, timeoutMs: 1000 })
+      .then(() => null, (failure) => failure.message);
+    const { readdirSync } = await import("fs");
+    return { error, ms: Date.now() - started, left: readdirSync(loader.getPluginsDir()) };
+  `, { GLOOMBERB_HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` });
+
+  expect(result.error).toBe("Failed to clone https://github.com/fixture/gloom-fixture-stall.git: no answer within 1 s");
+  expect(result.ms).toBeLessThan(10_000);
+  expect(result.left).toEqual([]);
+  // The process ended only once the stalled command was gone, and it took its helpers along.
+  const running = execFileSync("ps", ["-A", "-o", "args="]).toString();
+  expect(running).not.toContain(join(bin, "git"));
+  expect(running).not.toContain("sleep 29.517");
+}, 30_000);
+
+/**
  * The registry pins tags, and a checkout installed from the default branch
  * can be ahead of the newest one. Checking that tag out would downgrade it.
  * Installs are shallow, so the history that would settle it is usually not
@@ -193,41 +259,18 @@ describe("plugins that import a sibling plugin", () => {
       "plugin.ts": `import { bridge } from "gloom-fixture-peer/bridge";\nexport const label = bridge;\n`,
     });
     const home = join(root, "home");
-    const run = async (body: string): Promise<any> => {
-      const script = join(root, "run.ts");
-      const registry = {
-        plugins: [
-          { id: "fixture-gateway", name: "Fixture Gateway", repo: "fixture/gloom-fixture-gateway", ref: "v1" },
-          { id: "fixture-peer", name: "Fixture Peer", repo: "fixture/gloom-fixture-peer", ref: "v1" },
-        ],
-      };
-      writeFileSync(script, `
-        globalThis.fetch = async (url) => String(url).endsWith("/registry.json")
-          ? Response.json(${JSON.stringify(registry)})
-          : Promise.reject(new Error("offline"));
-        const installer = await import(${JSON.stringify(join(import.meta.dir, "installer.ts"))});
-        const loader = await import(${JSON.stringify(join(import.meta.dir, "loader.ts"))});
-        const { createNodePluginManager } = await import(${JSON.stringify(join(import.meta.dir, "manager-node.ts"))});
-        console.log(JSON.stringify(await (async () => { ${body} })()));
-      `);
-      const child = Bun.spawn([process.execPath, script], {
-        env: {
-          ...process.env,
-          GLOOMBERB_HOME: home,
-          GLOOMBERB_NO_TELEMETRY: "1",
-          GIT_CONFIG_COUNT: "1",
-          GIT_CONFIG_KEY_0: `url.file://${remotes}/.insteadOf`,
-          GIT_CONFIG_VALUE_0: "https://github.com/fixture/",
-        },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, status] = await Promise.all([
-        new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
-      ]);
-      expect({ status, stderr: status === 0 ? "" : stderr }).toEqual({ status: 0, stderr: "" });
-      return JSON.parse(stdout.trim().split("\n").pop()!);
+    const registry = {
+      plugins: [
+        { id: "fixture-gateway", name: "Fixture Gateway", repo: "fixture/gloom-fixture-gateway", ref: "v1" },
+        { id: "fixture-peer", name: "Fixture Peer", repo: "fixture/gloom-fixture-peer", ref: "v1" },
+      ],
     };
+    const run = (body: string) => runIsolated(root, body, {
+      GLOOMBERB_HOME: home,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: `url.file://${remotes}/.insteadOf`,
+      GIT_CONFIG_VALUE_0: "https://github.com/fixture/",
+    }, registry);
     return { home, run };
   }
 

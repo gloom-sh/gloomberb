@@ -8,7 +8,11 @@ import { instrumentFromTicker, type InstrumentRef } from "../../market-data/requ
 import { useSavedLayoutWarmup } from "./layout-warmup";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { PLUGIN_MARKETPLACE_PANE_ID } from "../../plugins/marketplace/ids";
-import { takePluginSeedNotice } from "../../plugins/seed-notice";
+import { activateInstall } from "../../plugins/marketplace/activation";
+import { getMarketplaceHost, getPluginManager } from "../../plugins/marketplace/store";
+import { listExternalPlugins } from "../../plugins/external-runtime";
+import { scheduleConfigSave } from "../../state/config-save-scheduler";
+import { startPluginSeedConsumer, withPluginSeedRecord } from "./plugin-seed";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import type { PluginRegistry } from "../../plugins/registry";
 import type {
@@ -208,15 +212,32 @@ export function useAppStartupRuntime({
     // identity, so this runs when initialization flips and not again.
   }, [externalPlugins, isDetachedWindow, pluginRegistry, state.initialized]);
 
-  // Official plugins the launch could not install (no git, offline) are
-  // otherwise simply missing. One notice, taken once, says which and why.
+  // Official plugins that moved out of Gloom install after the first frame
+  // (cli/restore-plugins.ts). Each is brought into the session as it lands,
+  // the outcome is recorded, and what could not be installed (no git,
+  // offline) is said once, since it is otherwise simply missing.
   useEffect(() => {
     if (!state.initialized || isDetachedWindow) return;
-    const notice = takePluginSeedNotice();
-    if (!notice) return;
-    appLog.warn("official plugins not installed at launch", { notice: notice.body });
-    pluginRegistry.notify({ ...notice, duration: PLUGIN_SEED_NOTICE_MS });
-  }, [isDetachedWindow, pluginRegistry, state.initialized]);
+    return startPluginSeedConsumer({
+      ready: pluginsReady ?? Promise.resolve(),
+      activate: async (install) => {
+        const host = getMarketplaceHost();
+        const manager = getPluginManager();
+        return host && manager ? activateInstall(install, host, manager) : null;
+      },
+      isRunning: (directory) => listExternalPlugins().some((entry) => entry.directory === directory && !entry.error),
+      record: (record) => {
+        const config = withPluginSeedRecord(getState().config, record);
+        if (!config) return;
+        dispatch({ type: "SET_CONFIG", config });
+        scheduleConfigSave(config);
+      },
+      notify: (notice) => {
+        appLog.warn("official plugin restore", { notice: notice.body });
+        pluginRegistry.notify({ ...notice, duration: PLUGIN_SEED_NOTICE_MS });
+      },
+    });
+  }, [dispatch, getState, isDetachedWindow, pluginRegistry, pluginsReady, state.initialized]);
 
   // What people keep on screen: the functions open in the workspace restored
   // at launch, counted once per session. The layout is taken as restored,

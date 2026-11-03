@@ -49,7 +49,7 @@ import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 import { loadOfficialPluginIds } from "../../../plugins/marketplace/feed";
-import { setPluginSeedNotice } from "../../../plugins/seed-notice";
+import { publishPluginSeedProgress } from "../../../plugins/seed-progress";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 import { forwardAttendedStalls } from "../../../telemetry/stall-reports-dom";
@@ -183,8 +183,9 @@ async function boot() {
     : init.desktopSnapshot;
   const config = desktopSnapshot?.config ?? init.config;
   applyLanguageFromConfig(config);
-  // Said by the app once it is up, as the terminal says it.
-  setPluginSeedNotice(init.pluginSeedNotice ?? null);
+  // The plugins the launch is restoring, which the app brings in as they
+  // land, as the terminal does; later changes come as messages.
+  if (init.pluginSeed) publishPluginSeedProgress(init.pluginSeed);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
   // Menus and the command bar offer the other windows from here.
   setDesktopWindows(desktopWindowBridge.windows ?? null);

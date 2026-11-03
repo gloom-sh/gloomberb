@@ -6,6 +6,7 @@ import { debugLog } from "../utils/debug-log";
 import { getPluginsDir } from "./loader";
 import { encodeBuiltinDisabledPluginIds } from "./ownership";
 import { pluginDirectoryNames } from "./plugin-names";
+import { samePluginSeedFailure, type PluginSeedNotice } from "./seed-progress";
 
 const log = debugLog.createLogger("plugin-seed");
 
@@ -37,6 +38,12 @@ export const EXTRACTED_PLUGINS = [
 
 type ExtractedPlugin = (typeof EXTRACTED_PLUGINS)[number];
 
+/** Where an install landed: its folder, and the sibling plugins it brought along. */
+interface SeedInstall {
+  directory: string;
+  peers?: string[];
+}
+
 export interface SeedResult {
   installed: string[];
   failed: string[];
@@ -49,17 +56,18 @@ export interface SeedResult {
  * was renamed sits in a directory under the old one. Missing that install would
  * clone a second copy, and the loader refuses the duplicate id.
  */
-function isInstalled(directory: string, pluginsDir: string): boolean {
-  return pluginDirectoryNames(directory).some((name) => existsSync(join(pluginsDir, name)));
+function installedDirectory(directory: string, pluginsDir: string): string | null {
+  return pluginDirectoryNames(directory).find((name) => existsSync(join(pluginsDir, name))) ?? null;
 }
 
 /**
  * The plugins left to install, each neither recorded as seeded, installed
  * already, nor switched off before the move, and the ids to record as seeded
  * without installing them. After a launch's seed, `pending` is what it could
- * not install.
+ * not install. Reads only the config and the plugins folder, so a launch can
+ * know before its first frame what it will install after.
  */
-function classifyExtractedPlugins(config: AppConfig, pluginsDir: string): { pending: ExtractedPlugin[]; settled: string[] } {
+export function classifyExtractedPlugins(config: AppConfig, pluginsDir: string = getPluginsDir()): { pending: ExtractedPlugin[]; settled: string[] } {
   const alreadySeeded = new Set(config.seededPlugins ?? []);
   // A previous owner that is now a group of built-ins counts as off only while
   // all of them are, which is when its id is saved.
@@ -74,7 +82,7 @@ function classifyExtractedPlugins(config: AppConfig, pluginsDir: string): { pend
     // Present already (installed by hand, or seeded before this record
     // existed), or turned off before the move, which restoring it would
     // override: recorded so we stop looking.
-    if (isInstalled(entry.directory, pluginsDir)
+    if (installedDirectory(entry.directory, pluginsDir)
       || disabled.has(entry.id) || ("previousOwnerIds" in entry && entry.previousOwnerIds.some((id) => disabled.has(id)))) {
       settled.push(entry.id);
       continue;
@@ -85,29 +93,47 @@ function classifyExtractedPlugins(config: AppConfig, pluginsDir: string): { pend
 }
 
 /**
- * Installs any extracted plugin the user has not seen yet.
+ * Installs any extracted plugin the user has not seen yet, one at a time, and
+ * reports each as it settles (`onSettled`, with where it landed when it did).
  *
  * Best effort by design: a failure is logged and retried on the next launch
  * rather than recorded, because the common cause is being offline at startup and
- * marking it seeded would silently drop the plugin forever.
+ * marking it seeded would silently drop the plugin forever. A plugin that is
+ * there by the time its turn comes (a sibling's install brought it along, or
+ * another Gloom running beside this one installed it) counts as installed.
  */
 export async function seedExtractedPlugins(
   config: AppConfig,
-  installPlugin: (ref: string) => Promise<unknown>,
+  installPlugin: (ref: string) => Promise<SeedInstall | void>,
   pluginsDir: string = getPluginsDir(),
+  onSettled?: (id: string, installed: SeedInstall | null) => void,
 ): Promise<SeedResult> {
   const { pending, settled } = classifyExtractedPlugins(config, pluginsDir);
   const result: SeedResult = { installed: [], failed: [], seeded: [...config.seededPlugins ?? [], ...settled] };
+  const succeed = (entry: ExtractedPlugin, installed: SeedInstall) => {
+    result.installed.push(entry.id);
+    result.seeded.push(entry.id);
+    onSettled?.(entry.id, installed);
+  };
 
   for (const entry of pending) {
+    const present = installedDirectory(entry.directory, pluginsDir);
+    if (present) {
+      succeed(entry, { directory: present });
+      continue;
+    }
     try {
       log.info(`Restoring ${entry.id} from ${entry.repo}`);
-      await installPlugin(entry.repo);
-      result.installed.push(entry.id);
-      result.seeded.push(entry.id);
+      succeed(entry, await installPlugin(entry.repo) ?? { directory: entry.directory });
     } catch (error) {
-      log.error(`Could not restore ${entry.id}: ${error}`);
+      const raced = installedDirectory(entry.directory, pluginsDir);
+      if (raced) {
+        succeed(entry, { directory: raced });
+        continue;
+      }
+      log.error(`Could not restore ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);
       result.failed.push(entry.id);
+      onSettled?.(entry.id, null);
     }
   }
 
@@ -132,16 +158,6 @@ function capitalize(text: string): string {
 /** What a seed's result leaves to record: the plugins it could not install, sorted, or nothing. */
 export function pluginSeedFailure(failedIds: readonly string[], gitMissing: boolean): PluginSeedFailure | undefined {
   return failedIds.length > 0 ? { plugins: [...new Set(failedIds)].sort(), gitMissing } : undefined;
-}
-
-/** Whether two recorded seed failures are the same: the same plugins, for the same reason. */
-export function samePluginSeedFailure(a: PluginSeedFailure | undefined, b: PluginSeedFailure | undefined): boolean {
-  return a?.gitMissing === b?.gitMissing && (a?.plugins ?? []).join() === (b?.plugins ?? []).join();
-}
-
-export interface PluginSeedNotice {
-  body: string;
-  type: "error" | "info";
 }
 
 /**
