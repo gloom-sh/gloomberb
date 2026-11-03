@@ -11,6 +11,26 @@ index 3e309b18fdbcec84a4a56f97df4debe7fb8246f8..03420222c1d9ba897835c5e7376c7153
  		);
  
  		this.bunSocket = socket;
+diff --git a/dist/api/bun/core/BrowserView.ts b/dist/api/bun/core/BrowserView.ts
+index 815be82b961fcff5229f9809cfe800be16db65ed..ae5c36dec3018ea0f27a210ba55dc58920104b53 100644
+--- a/dist/api/bun/core/BrowserView.ts
++++ b/dist/api/bun/core/BrowserView.ts
+@@ -321,7 +321,14 @@ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
+ 				if (!that.ptr || that.isRemoved) {
+ 					return;
+ 				}
+-				const sentOverSocket = sendMessageToWebviewViaSocket(that.id, message);
++				// On Windows, executing a message in the page waits on the thread
++				// that runs the windows, which a busy window or an open menu holds
++				// for seconds: the page's socket takes it once it opens instead.
++				const sentOverSocket = sendMessageToWebviewViaSocket(
++					that.id,
++					message,
++					process.platform === "win32",
++				);
+ 
+ 				if (!sentOverSocket) {
+ 					try {
 diff --git a/dist/api/bun/core/BrowserWindow.ts b/dist/api/bun/core/BrowserWindow.ts
 index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd19ee13e02 100644
 --- a/dist/api/bun/core/BrowserWindow.ts
@@ -66,8 +86,21 @@ index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd1
  			frame: {
  				width: this.frame.width,
  				height: this.frame.height,
+diff --git a/dist/api/bun/core/ContextMenu.ts b/dist/api/bun/core/ContextMenu.ts
+index 807fd20e2264616a9dd95ac909c2fe326932e7d1..1aeb3b3161febc2f74d78e6ab1fa549ad59dda6a 100644
+--- a/dist/api/bun/core/ContextMenu.ts
++++ b/dist/api/bun/core/ContextMenu.ts
+@@ -7,6 +7,8 @@ import { ffi, type ApplicationMenuItemConfig } from "../proc/native";
+ import electrobunEventEmitter from "../events/eventEmitter";
+ import { roleLabelMap } from "./menuRoles";
+ 
++export { nativeWrapperLibraryPath, setContextMenuRunner } from "../proc/native";
++
+ type NonDividerMenuItem = {
+ 	type?: "normal";
+ 	label?: string;
 diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
-index cdaa2bca0fabe577cb667056aa6f8f84211189c2..e9cdd82c934f6da58055dc8343ee3b953ec1ee81 100644
+index cdaa2bca0fabe577cb667056aa6f8f84211189c2..34db8a17c1d35a6a9b045da0be346bcd5785fb54 100644
 --- a/dist/api/bun/core/Socket.ts
 +++ b/dist/api/bun/core/Socket.ts
 @@ -3,13 +3,8 @@ import { BrowserView } from "./BrowserView";
@@ -86,7 +119,56 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..e9cdd82c934f6da58055dc8343ee3b95
  }
  
  // Encrypt function
-@@ -65,6 +60,8 @@ const startRPCServer = () => {
+@@ -47,12 +42,48 @@ export const socketMap: {
+ 	};
+ } = {};
+ 
++/** Messages held for a webview whose socket has not opened; past this the oldest go. */
++const MAX_QUEUED_MESSAGES = 1000;
++const droppingFor = new Set<number>();
++
++const sendEncrypted = (
++	socket: ServerWebSocket<unknown>,
++	secretKey: Uint8Array,
++	unencryptedString: string,
++) => {
++	const encrypted = encrypt(secretKey, unencryptedString);
++	socket.send(
++		JSON.stringify({
++			encryptedData: encrypted.encrypted,
++			iv: encrypted.iv,
++			tag: encrypted.tag,
++		}),
++	);
++};
++
++/** Sends, in order, what was held for a webview while its socket was not open. */
++const flushQueuedMessages = (webviewId: number) => {
++	const rpc = socketMap[webviewId];
++	if (!rpc?.socket || rpc.queue.length === 0) return;
++	const queued = rpc.queue.splice(0);
++	const browserView = BrowserView.getById(webviewId);
++	if (!browserView) return;
++	for (const message of queued) {
++		try {
++			sendEncrypted(rpc.socket, browserView.secretKey, message);
++		} catch (error) {
++			console.error("Error sending a held message to webview via socket:", error);
++		}
++	}
++};
++
+ export const removeSocketForWebview = (webviewId: number) => {
+ 	const rpc = socketMap[webviewId];
+ 	if (!rpc) return;
+ 
+ 	rpc.socket = null;
+ 	delete socketMap[webviewId];
++	droppingFor.delete(webviewId);
+ };
+ 
+ const startRPCServer = () => {
+@@ -65,6 +96,8 @@ const startRPCServer = () => {
  	while (port <= endPort) {
  		try {
  			server = Bun.serve<{ webviewId: number }>({
@@ -95,11 +177,108 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..e9cdd82c934f6da58055dc8343ee3b95
  				port,
  				fetch(req: Request, server: Server<{ webviewId: number }>) {
  					const url = new URL(req.url);
+@@ -103,6 +136,7 @@ const startRPCServer = () => {
+ 						} else {
+ 							socketMap[webviewId].socket = ws;
+ 						}
++						flushQueuedMessages(webviewId);
+ 					},
+ 					close(ws: ServerWebSocket<{ webviewId: number }>, _code: number, _reason: string) {
+ 						if (!ws?.data) {
+@@ -168,11 +202,13 @@ const startRPCServer = () => {
+ 
+ export const { rpcServer, rpcPort } = startRPCServer();
+ 
+-// Will return true if message was sent over websocket
+-// false if it was not (caller should fallback to postMessage/evaluateJS rpc)
++// Will return true if message was sent over websocket, or held for it with
++// `queueUntilOpen` while it is not open yet; false if it was not (caller
++// should fallback to postMessage/evaluateJS rpc)
+ export const sendMessageToWebviewViaSocket = (
+ 	webviewId: number,
+ 	message: any,
++	queueUntilOpen = false,
+ ): boolean => {
+ 	const rpc = socketMap[webviewId];
+ 	const browserView = BrowserView.getById(webviewId);
+@@ -181,25 +217,25 @@ export const sendMessageToWebviewViaSocket = (
+ 
+ 	if (rpc?.socket?.readyState === WebSocket.OPEN) {
+ 		try {
+-			const unencryptedString = JSON.stringify(message);
+-			const encrypted = encrypt(browserView.secretKey, unencryptedString);
+-
+-			const encryptedPacket = {
+-				encryptedData: encrypted.encrypted,
+-				iv: encrypted.iv,
+-				tag: encrypted.tag,
+-			};
+-
+-			const encryptedPacketString = JSON.stringify(encryptedPacket);
+-
+-			rpc.socket.send(encryptedPacketString);
++			sendEncrypted(rpc.socket, browserView.secretKey, JSON.stringify(message));
+ 			return true;
+ 		} catch (error) {
+ 			console.error("Error sending message to webview via socket:", error);
+ 		}
++		return false;
+ 	}
+ 
+-	return false;
++	if (!queueUntilOpen) return false;
++	const held = (socketMap[webviewId] ??= { socket: null, queue: [] });
++	held.queue.push(JSON.stringify(message));
++	if (held.queue.length > MAX_QUEUED_MESSAGES) {
++		held.queue.shift();
++		if (!droppingFor.has(webviewId)) {
++			droppingFor.add(webviewId);
++			console.warn(`webview ${webviewId}: its socket has not opened; dropping the oldest held messages`);
++		}
++	}
++	return true;
+ };
+ 
+ console.log("Server started at", rpcServer?.url.origin);
 diff --git a/dist/api/bun/core/Updater.ts b/dist/api/bun/core/Updater.ts
-index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd700879a5db 100644
+index 39daf6d341780af8e30c2c50327162863f5977ec..c57c374e4abd22c8c70d8922f5f822665074da63 100644
 --- a/dist/api/bun/core/Updater.ts
 +++ b/dist/api/bun/core/Updater.ts
-@@ -132,6 +132,19 @@ let updateInfo: {
+@@ -71,6 +71,33 @@ export interface UpdateStatusEntry {
+ 
+ // Status history and callback
+ const statusHistory: UpdateStatusEntry[] = [];
++/**
++ * Runs one of the updater's tools to its end without holding the thread,
++ * with what spawnSync would have answered.
++ */
++async function runTool(
++	command: string[],
++	options: { cwd?: string; inherit?: boolean } = {},
++): Promise<{ success: boolean; exitCode: number | null; stdout?: Buffer; stderr?: Buffer }> {
++	const child = Bun.spawn(command, {
++		cwd: options.cwd,
++		stdin: "ignore",
++		stdout: options.inherit ? "inherit" : "pipe",
++		stderr: options.inherit ? "inherit" : "pipe",
++	});
++	const [exitCode, stdout, stderr] = await Promise.all([
++		child.exited,
++		options.inherit ? undefined : new Response(child.stdout as ReadableStream).arrayBuffer(),
++		options.inherit ? undefined : new Response(child.stderr as ReadableStream).arrayBuffer(),
++	]);
++	return {
++		success: exitCode === 0,
++		exitCode,
++		...(stdout ? { stdout: Buffer.from(stdout) } : {}),
++		...(stderr ? { stderr: Buffer.from(stderr) } : {}),
++	};
++}
++
+ let onStatusChangeCallback: ((entry: UpdateStatusEntry) => void) | null = null;
+ 
+ function emitStatus(
+@@ -132,6 +159,19 @@ let updateInfo: {
  	error: string;
  };
  
@@ -119,7 +298,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  function cleanupExtractionFolder(
  	extractionFolder: string,
  	keepTarHash: string,
-@@ -158,6 +171,54 @@ function cleanupExtractionFolder(
+@@ -158,6 +198,54 @@ function cleanupExtractionFolder(
  	}
  }
  
@@ -174,7 +353,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  const Updater = {
  	updateInfo: () => {
  		return updateInfo;
-@@ -176,6 +237,12 @@ const Updater = {
+@@ -176,6 +264,12 @@ const Updater = {
  		onStatusChangeCallback = callback;
  	},
  
@@ -187,7 +366,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  	// todo: allow switching channels, by default will check the current channel
  	checkForUpdate: async () => {
  		emitStatus("checking", "Checking for updates...");
-@@ -196,11 +263,11 @@ const Updater = {
+@@ -196,11 +290,11 @@ const Updater = {
  
  		const cacheBuster = Math.random().toString(36).substring(7);
  		const platformPrefix = getPlatformPrefix(
@@ -201,7 +380,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  		try {
  			const updateInfoResponse = await fetch(updateInfoUrl);
-@@ -329,11 +396,11 @@ const Updater = {
+@@ -329,11 +423,11 @@ const Updater = {
  
  				// check if there's a patch file for it
  				const platformPrefix = getPlatformPrefix(
@@ -215,7 +394,18 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  				emitStatus(
  					"fetching-patch",
  					`Checking for patch: ${currentHash.slice(0, 8)}`,
-@@ -498,11 +565,25 @@ const Updater = {
+@@ -425,7 +519,9 @@ const Updater = {
+ 				}
+ 
+ 				try {
+-					const patchResult = Bun.spawnSync([
++					// Awaited, not run with spawnSync: patching and unpacking take
++					// seconds, all of them on the app's only thread.
++					const patchResult = await runTool([
+ 						bspatchPath,
+ 						currentTarPath,
+ 						tmpPatchedTarFilePath,
+@@ -498,11 +594,25 @@ const Updater = {
  				// - macOS/Windows: Resources/version.json (inside the app bundle directory)
  				// - Linux: metadata.json (alongside the app bundle)
  				const resourcesDir = "Resources";
@@ -246,7 +436,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  				for (const [filePath] of patchedFiles) {
  					if (
-@@ -528,8 +609,11 @@ const Updater = {
+@@ -528,8 +638,11 @@ const Updater = {
  				}
  
  				const hashFile = patchedFiles.get(hashFilePath);
@@ -260,7 +450,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  				if (seenHashes.includes(nextHash)) {
  					emitStatus(
-@@ -612,12 +696,12 @@ const Updater = {
+@@ -612,12 +725,12 @@ const Updater = {
  
  				const cacheBuster = Math.random().toString(36).substring(7);
  				const platformPrefix = getPlatformPrefix(
@@ -275,10 +465,11 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  				const prevVersionCompressedTarballPath = join(
  					appDataFolder,
  					"self-extraction",
-@@ -689,6 +773,13 @@ const Updater = {
+@@ -689,23 +802,27 @@ const Updater = {
  					emitStatus("error", updateInfo.error, { zstdPath });
  					console.error("zig-zstd not found:", zstdPath);
  				} else {
+-					const decompressResult = Bun.spawnSync(
 +					// Into a name of its own, renamed once whole: zig-zstd writes as
 +					// it goes, and a run that failed (a download cut short) or never
 +					// finished (the app quit) left part of a tar under the update's
@@ -286,10 +477,10 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
 +					// install then failed to unpack.
 +					const partialTarPath = `${latestTarPath}.partial`;
 +					rmSync(partialTarPath, { force: true });
- 					const decompressResult = Bun.spawnSync(
++					const decompressResult = await runTool(
  						[
  							zstdPath,
-@@ -696,7 +787,7 @@ const Updater = {
+ 							"decompress",
  							"-i",
  							prevVersionCompressedTarballPath,
  							"-o",
@@ -297,16 +488,19 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
 +							partialTarPath,
  							"--no-timing",
  						],
- 						{
-@@ -706,6 +797,7 @@ const Updater = {
- 						},
+-						{
+-							cwd: extractionFolder,
+-							stdout: "inherit",
+-							stderr: "inherit",
+-						},
++						{ cwd: extractionFolder, inherit: true },
  					);
  					if (!decompressResult.success) {
 +						rmSync(partialTarPath, { force: true });
  						updateInfo.error = `zig-zstd failed with exit code ${decompressResult.exitCode}`;
  						emitStatus("error", updateInfo.error, {
  							zstdPath,
-@@ -716,6 +808,7 @@ const Updater = {
+@@ -716,6 +833,7 @@ const Updater = {
  							zstdPath,
  						});
  					} else {
@@ -314,7 +508,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  						emitStatus("decompressing", "Decompression complete");
  					}
  				}
-@@ -731,6 +824,8 @@ const Updater = {
+@@ -731,6 +849,8 @@ const Updater = {
  			// check for patch from that tar and apply it, until it matches the latest version
  			// as a fallback it should just download and unpack the latest version
  			updateInfo.updateReady = true;
@@ -323,7 +517,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  			emitStatus(
  				"download-complete",
  				`Update ready to install (used ${usedPatchPath ? "patch" : "full download"} path)`,
-@@ -741,7 +836,8 @@ const Updater = {
+@@ -741,7 +861,8 @@ const Updater = {
  				},
  			);
  		} else {
@@ -333,7 +527,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  			emitStatus("error", "Failed to download latest version", { latestHash });
  		}
  
-@@ -760,7 +856,12 @@ const Updater = {
+@@ -760,7 +881,12 @@ const Updater = {
  				mkdirSync(extractionFolder, { recursive: true });
  			}
  
@@ -347,7 +541,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  			const latestTarPath = join(extractionFolder, `${latestHash}.tar`);
  
  			let appBundleSubpath: string = "";
-@@ -782,9 +883,26 @@ const Updater = {
+@@ -782,9 +908,26 @@ const Updater = {
  					mkdirSync(extractionDir, { recursive: true });
  				}
  
@@ -377,7 +571,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  				if (currentOS === "macos") {
  					// Find the .app bundle by scanning extracted directory
-@@ -894,14 +1012,7 @@ const Updater = {
+@@ -894,14 +1037,7 @@ const Updater = {
  					emitStatus("replacing-app", "Removing old version...");
  
  					if (currentOS === "macos") {
@@ -393,7 +587,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  						// Remove quarantine extended attributes to prevent "damaged" error
  						// The inner bundle is already signed/notarized, but macOS applies
-@@ -918,14 +1029,7 @@ const Updater = {
+@@ -918,14 +1054,7 @@ const Updater = {
  						// On Linux, we now have directory bundles instead of AppImage files
  						// The app is stored in {appDataFolder}/app/
  						const appBundleDir = join(appDataFolder, "app");
@@ -409,7 +603,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  
  						// Ensure launcher binary is executable
  						const launcherPath = join(appBundleDir, "bin", "launcher");
-@@ -1071,14 +1175,18 @@ del "%~f0"
+@@ -1071,14 +1200,18 @@ del "%~f0"
  					// current process has exited first. The detached shell survives our
  					// exit and polls until the process is gone.
  					const pid = process.pid;
@@ -430,7 +624,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..4f3d2bef8e4b41a13a5a522c0af8dd70
  							detached: true,
  							stdio: ["ignore", "ignore", "ignore"],
  						} as any,
-@@ -1087,7 +1195,8 @@ del "%~f0"
+@@ -1087,7 +1220,8 @@ del "%~f0"
  					// On Linux, launch the launcher binary inside the app directory
  					const launcherPath = join(runningAppBundlePath, "bin", "launcher");
  					// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -495,10 +689,42 @@ index a7822d85c187c1edf361f2e65757057aad9da7b0..533d431c6cc2097951f421cb1fbe3142
  
  async function generateKeyFromBytes(rawKey: Uint8Array): Promise<CryptoKey> {
 diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
-index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74d0fb578d 100644
+index f0f6c2532ba2eb467ec1d452a25c835b6db72661..a7b4f832c4e1e1b806197b6b127d06b73d16c7f7 100644
 --- a/dist/api/bun/proc/native.ts
 +++ b/dist/api/bun/proc/native.ts
-@@ -829,6 +829,7 @@ const _ffiImpl = {
+@@ -79,11 +79,28 @@ function getWindowPtr(winId: number) {
+ 	);
+ }
+ 
++// Use absolute path to native wrapper DLL to avoid working directory issues
++// On Windows shortcuts, the working directory may not be set correctly
++const nativeWrapperPath = join(process.cwd(), `libNativeWrapper.${suffix}`);
++
++/** The native library this process opened, for another thread to open too. */
++export function nativeWrapperLibraryPath(): string {
++	return nativeWrapperPath;
++}
++
++/**
++ * Where set, makes a context menu's native call instead of this thread when
++ * it returns true. On Windows that call waits on the thread that runs the
++ * windows, which answers only once the menu closes.
++ */
++let contextMenuRunner: ((menuConfig: string, handler: number) => boolean) | null = null;
++
++export function setContextMenuRunner(runner: ((menuConfig: string, handler: number) => boolean) | null): void {
++	contextMenuRunner = runner;
++}
++
+ export const native = (() => {
+ 	try {
+-		// Use absolute path to native wrapper DLL to avoid working directory issues
+-		// On Windows shortcuts, the working directory may not be set correctly
+-		const nativeWrapperPath = join(process.cwd(), `libNativeWrapper.${suffix}`);
+ 		return dlopen(nativeWrapperPath, {
+ 			// window
+ 			createWindowWithFrameAndStyleFromWorker: {
+@@ -829,6 +846,7 @@ const _ffiImpl = {
  			id: number;
  			url: string | null;
  			title: string;
@@ -506,7 +732,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			frame: {
  				width: number;
  				height: number;
-@@ -862,6 +863,7 @@ const _ffiImpl = {
+@@ -862,6 +880,7 @@ const _ffiImpl = {
  				id,
  				url: _url,
  				title,
@@ -514,7 +740,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  				frame: { x, y, width, height },
  				styleMask: {
  					Borderless,
-@@ -926,6 +928,9 @@ const _ffiImpl = {
+@@ -926,6 +945,9 @@ const _ffiImpl = {
  			}
  
  			native_.symbols.setWindowTitle(windowPtr, toCString(title));
@@ -524,7 +750,16 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			if (!hidden) {
  				native_.symbols.showWindow(windowPtr, activate);
  			}
-@@ -1915,6 +1920,14 @@ process.on("SIGTERM", () => {
+@@ -1583,6 +1605,8 @@ window.__electrobunBunBridge = window.__electrobunBunBridge || window.webkit?.me
+ 		},
+ 		showContextMenu: (params: { menuConfig: string }): void => {
+ 			const { menuConfig } = params;
++			const handler = contextMenuHandler.ptr as unknown as number | null;
++			if (contextMenuRunner && handler && contextMenuRunner(menuConfig, handler)) return;
+ 
+ 			native_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
+ 		},
+@@ -1915,6 +1939,14 @@ process.on("SIGTERM", () => {
  //   }
  // );
  
@@ -539,7 +774,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  const windowCloseCallback = new JSCallback(
  	(id) => {
  		const handler = electrobunEventEmitter.events.window.close;
-@@ -2036,7 +2049,7 @@ const windowKeyCallback = new JSCallback(
+@@ -2036,7 +2068,7 @@ const windowKeyCallback = new JSCallback(
  
  const getMimeType = new JSCallback(
  	(filePath) => {
@@ -548,7 +783,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  		const mimeType = Bun.file(_filePath).type; // || "application/octet-stream";
  
  		// For this usecase we generally don't want the charset included in the mimetype
-@@ -2074,7 +2087,7 @@ const globalShortcutHandlers = new Map<string, () => void>();
+@@ -2074,7 +2106,7 @@ const globalShortcutHandlers = new Map<string, () => void>();
  if (native) {
  	const urlOpenCallback = new JSCallback(
  		(urlPtr) => {
@@ -557,7 +792,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			const handler = electrobunEventEmitter.events.app.openUrl;
  			const event = handler({ url });
  			electrobunEventEmitter.emitEvent(event);
-@@ -2111,7 +2124,7 @@ if (native) {
+@@ -2111,7 +2143,7 @@ if (native) {
  
  	const globalShortcutCallback = new JSCallback(
  		(acceleratorPtr) => {
@@ -566,7 +801,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			const handler = globalShortcutHandlers.get(accelerator);
  			if (handler) handler();
  		},
-@@ -2505,8 +2518,8 @@ const webviewEventJSCallback = new JSCallback(
+@@ -2505,8 +2537,8 @@ const webviewEventJSCallback = new JSCallback(
  
  		try {
  			// Convert cstring pointers to actual strings
@@ -577,7 +812,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  		} catch (err) {
  			console.error("[webviewEventJSCallback] Error converting strings:", err);
  			console.error("[webviewEventJSCallback] Raw values:", {
-@@ -2528,7 +2541,7 @@ const webviewEventJSCallback = new JSCallback(
+@@ -2528,7 +2560,7 @@ const webviewEventJSCallback = new JSCallback(
  const bunBridgePostmessageHandler = new JSCallback(
  	(id, msg) => {
  		try {
@@ -586,7 +821,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  
  			if (!msgStr.length) {
  				return;
-@@ -2564,7 +2577,7 @@ const bunBridgePostmessageHandler = new JSCallback(
+@@ -2564,7 +2596,7 @@ const bunBridgePostmessageHandler = new JSCallback(
  const eventBridgeHandler = new JSCallback(
  	(_id: number, msg: number) => {
  		try {
@@ -595,7 +830,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			const rawMessage = message.toString().trim();
  			if (!rawMessage || (rawMessage[0] !== "{" && rawMessage[0] !== "[")) {
  				return;
-@@ -2593,7 +2606,7 @@ const eventBridgeHandler = new JSCallback(
+@@ -2593,7 +2625,7 @@ const eventBridgeHandler = new JSCallback(
  const internalBridgeHandler = new JSCallback(
  	(_id: number, msg: number) => {
  		try {
@@ -604,7 +839,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  			const jsonBatch = JSON.parse(batchMessage.toString());
  
  			if (jsonBatch.id === "webviewEvent") {
-@@ -2664,7 +2677,7 @@ const trayItemHandler = new JSCallback(
+@@ -2664,7 +2696,7 @@ const trayItemHandler = new JSCallback(
  	(id, action) => {
  		// Note: Some invisible character that doesn't appear in .length
  		// is causing issues
@@ -613,7 +848,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  
  		// Use shared deserialization method
  		const { action: actualAction, data } = deserializeMenuAction(actionString);
-@@ -2688,7 +2701,7 @@ const trayItemHandler = new JSCallback(
+@@ -2688,7 +2720,7 @@ const trayItemHandler = new JSCallback(
  
  const applicationMenuHandler = new JSCallback(
  	(id, action) => {
@@ -622,7 +857,7 @@ index f0f6c2532ba2eb467ec1d452a25c835b6db72661..3b9cc732f8d71da17e71c019f0930e74
  
  		// Use shared deserialization method
  		const { action: actualAction, data } = deserializeMenuAction(actionString);
-@@ -2711,7 +2724,7 @@ const applicationMenuHandler = new JSCallback(
+@@ -2711,7 +2743,7 @@ const applicationMenuHandler = new JSCallback(
  
  const contextMenuHandler = new JSCallback(
  	(_id, action) => {

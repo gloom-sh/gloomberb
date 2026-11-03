@@ -46,6 +46,7 @@ import {
   takeExternalPluginBundles,
 } from "../external-plugins";
 import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../window/focus";
+import { runContextMenusOffThread } from "../window/context-menu-thread";
 import { measureNativeWindowCalls } from "../window/native-timing";
 import { createAppWindow } from "../window/create";
 import { desktopBootFramePath, desktopBootFramePreload, readDesktopBootFrame } from "../window/boot-frame";
@@ -441,6 +442,7 @@ export class DesktopBackend {
       setStallSink((event) => recordStall("app", event));
       setStallClocks(createStallClocks());
       measureNativeWindowCalls();
+      runContextMenusOffThread();
       startMainThreadStallMonitor();
     }
     // The native menu shows the same accelerators the keys use, so a rebind

@@ -46,3 +46,12 @@ export function measureNativeWindowCalls(): void {
   measureCalls(BrowserWindow.prototype, "native.window", WINDOW_CALLS);
   measureCalls(BrowserView.prototype, "native.view", VIEW_CALLS);
 }
+
+/**
+ * Measures one of Electrobun's other native calls (a menu, the clipboard, a
+ * notification) as `native.<name>`: on Windows each waits for the thread that
+ * runs the windows, as the window calls do.
+ */
+export function measureNativeCall<T>(name: string, call: () => T): T {
+  return measurePerf(`native.${name}`, call);
+}
