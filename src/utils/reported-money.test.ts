@@ -9,7 +9,8 @@ test("reported per-share values retain small profit/loss signs and explicit mone
     expect(Number(amount)).toBe(value);
     expect(amount.length).toBeLessThanOrEqual(11);
     for (const currency of [undefined, "GBp", "GBX", "ILA", "ZAc"]) {
-      expect(formatReportedMoney(value, currency, true)).toBe(`${amount} ${currency ?? "(ccy?)"}`);
+      // No currency: the bare amount, never a guess or a placeholder unit.
+      expect(formatReportedMoney(value, currency, true)).toBe(currency ? `${amount} ${currency}` : amount);
     }
   }
   expect(formatReportedMoney(0.004125, "USD", true)).toBe("$0.004125");

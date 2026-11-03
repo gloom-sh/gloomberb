@@ -119,10 +119,10 @@ describe("report tables", () => {
       { label: "Breakdown", value: { up: 3, down: 2 } },
       { label: "Yield", value: 0.0425, formatted: "4.25%" },
       { label: "Tenor", value: "3M" },
-      { label: "EPS", value: 31.43, formatted: "31.43 (ccy?)", unit: "ccy?" },
+      { label: "EPS", value: 31.43, formatted: "31.43 ZAR", unit: "ZAR" },
     ]);
     expect(entries.columns).toEqual(["Metric", "Value"]);
-    expect(entries.rows).toEqual([["Breakdown", "up: 3, down: 2"], ["Yield (%)", 4.25], ["Tenor", "3M"], ["EPS (ccy?)", 31.43]]);
+    expect(entries.rows).toEqual([["Breakdown", "up: 3, down: 2"], ["Yield (%)", 4.25], ["Tenor", "3M"], ["EPS (ZAR)", 31.43]]);
   });
 
   test("a rendered table exports the instant behind a shortened time and numbers from its text", () => {

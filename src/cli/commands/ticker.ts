@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
-import { formatReportedMoney } from "../../utils/reported-money";
+import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
   appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote,
   fundamentalsCurrency, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
@@ -545,9 +545,23 @@ interface FundamentalsMetric {
 
 type MetricFigure = Omit<FundamentalsMetric, "label">;
 
-/** An amount in the currency the source reported it in; `ccy?` when it named none, as the text says. `codes`: per share too (6.54 USD). */
+/**
+ * An amount in the currency the source reported it in. One it named none for
+ * is bare, with no unit, and a note under the block says so
+ * (unsourcedCurrencyNote). `codes`: per share too (6.54 USD).
+ */
 function reportedMoney(value: number | undefined, currency: string | undefined, perShare = false, codes = false): MetricFigure {
-  return { text: formatReportedMoney(value, currency, perShare, codes), value, unit: currency?.trim() || "ccy?" };
+  const unit = currency?.trim();
+  return { text: formatReportedMoney(value, currency, perShare, codes), value, ...(unit ? { unit } : {}) };
+}
+
+/** `Reporting currency not sourced for EPS (TTM) and Revenue (TTM).`: the trailing amounts shown bare. */
+function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string | undefined {
+  const bare = metrics.filter((metric) => TRAILING_MONEY_METRICS.has(metric.label) && metric.text !== "—" && !metric.unit)
+    .map((metric) => metric.label);
+  if (bare.length === 0) return undefined;
+  const list = bare.length === 1 ? bare[0]! : `${bare.slice(0, -1).join(", ")} and ${bare.at(-1)}`;
+  return `${REPORTING_CURRENCY_NOT_SOURCED[0]!.toUpperCase()}${REPORTING_CURRENCY_NOT_SOURCED.slice(1)} for ${list}.`;
 }
 
 /**
@@ -880,7 +894,8 @@ function fundamentalsNotes(
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
-  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings].filter((note): note is string => !!note);
+  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings, unsourcedCurrencyNote(metrics)]
+    .filter((note): note is string => !!note);
 }
 
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.
@@ -1370,15 +1385,21 @@ export async function buildTickerReport({
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));
   }
 
+  // A statement whose currency no source names reads bare, and says so once under its amounts.
+  const unsourced = (row: FinancialStatement) => {
+    if (!statementCurrency(row)) lines.push(cliStyles.muted(`${REPORTING_CURRENCY_NOT_SOURCED[0]!.toUpperCase()}${REPORTING_CURRENCY_NOT_SOURCED.slice(1)}.`));
+  };
   if (latestAnnual) {
     appendMetricSection(lines, `Latest Annual (${statementPeriodText(latestAnnual.date, statementFilings?.latestAnnual ?? null)})`,
       buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual), codes));
+    unsourced(latestAnnual);
   }
 
   if (latestQuarter) {
     const runway = cashRunway(financials);
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
       buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes, runway));
+    unsourced(latestQuarter);
     // How the months are counted, and an offering since the balance sheet that the cash does not include yet.
     if (burnsCash(runway)) lines.push(cliStyles.muted(runwayMethod(runway.includesShortTerm)));
     const offering = runway ? offeringNote(offeringsAfter(offerings, runway.periodEnd), runway.periodEnd) : null;

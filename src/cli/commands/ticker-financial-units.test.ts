@@ -36,7 +36,9 @@ test("ticker monetary fundamentals keep reported units across foreign, minor and
   // A listing quoted in pence does not say whether unlabelled figures are pence or pounds.
   const pence = await report({ quote: { ...quote, currency: "GBp" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { eps: 2.5, revenue: 1_000_000 } });
-  expect(pence).toContain("Revenue (TTM) 1M (ccy?)");
+  expect(pence).toContain("Revenue (TTM) 1M\n");
+  expect(pence).toContain("Reporting currency not sourced for EPS (TTM) and Revenue (TTM).");
+  expect(pence).not.toContain("(ccy?)");
 });
 
 test("statement units use compatible history, keep explicit overrides and exclude share counts", async () => {
@@ -46,7 +48,7 @@ test("statement units use compatible history, keep explicit overrides and exclud
   expect(await report(financials)).toContain("Diluted EPS CN¥0.00");
   financials.quarterlyStatements.push({ date: "2026-06-30", currency: "EUR", eps: -1.25, totalRevenue: 200_000 });
   const mixed = await report(financials);
-  expect(mixed).toContain("Diluted EPS 0.00 (ccy?)");
+  expect(mixed).toContain("Diluted EPS 0.00\nDiluted Shares 400k\nReporting currency not sourced.\n\nLatest Quarter");
   expect(mixed).toContain("Diluted EPS -€1.25");
   expect(mixed).toContain("Revenue 200k EUR");
   expect(mixed).toContain("Diluted Shares 400k");
@@ -231,25 +233,29 @@ test("trailing figures use the fundamentals' currency, then the statements' on a
   expect(plain(renderFundamentalsReport({ ...reportedIn("ZAR"), symbol: "UNITTEST" }, "valuation"))).toContain("EPS (TTM) ZAR 31.43");
   expect(plain(await report(reportedIn("ZAR", "USD")))).toContain("Revenue (TTM) 202.08B USD");
   // Nothing declares a currency and there are no statements: a GBP listing's currency only when it listed in the last year.
-  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B (ccy?)");
+  const unsourced = "Reporting currency not sourced for EPS (TTM), Revenue (TTM), Net Income (TTM), Operating Cash Flow (TTM) and Free Cash Flow (TTM).";
+  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain(`Revenue (TTM) 202.08B\n`);
+  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain(unsourced);
   const listedIn = (listingDate: string) => ({ deal: ipoDeal({ id: "ipo", symbol: "UNITTEST", status: "listed", listingDate }), news: [] });
   const recent = plain(await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials: reportedIn(undefined, undefined, "GBP"),
     config, toBase: async value => value, ipo: listedIn(new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)) }));
   expect(recent).toContain("Revenue (TTM) 202.08B GBP");
   const old = plain(await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials: reportedIn(undefined, undefined, "GBP"),
     config, toBase: async value => value, ipo: listedIn(new Date(Date.now() - 500 * 86_400_000).toISOString().slice(0, 10)) }));
-  expect(old).toContain("Revenue (TTM) 202.08B (ccy?)");
+  expect(old).toContain("Revenue (TTM) 202.08B\n");
   // A dollar receipt, or a US listing whose statements read failed, does not say its figures are dollars.
   expect(plain(await report({ ...reportedIn(undefined, undefined, "USD"), quote: { ...quote, isDepositaryReceipt: true } })))
-    .toContain("Revenue (TTM) 202.08B (ccy?)");
+    .toContain("Revenue (TTM) 202.08B\n");
   expect(plain(await report({ ...reportedIn(undefined, undefined, "USD"),
     statementHistory: { mode: "extended", source: "sec", status: "retryable-failure", fetchedAt: "2026-10-28T00:00:00Z" } })))
-    .toContain("Revenue (TTM) 202.08B (ccy?)");
+    .toContain(unsourced);
   expect(plain(await report(reportedIn(undefined, undefined, "USD")))).toContain("Revenue (TTM) 202.08B USD");
   // The ZAR statements of a GBP listing do not name its figures.
   const london = plain(await report(reportedIn("ZAR", undefined, "GBP")));
-  expect(london).toContain("EPS (TTM) 31.43 (ccy?)");
-  expect(london).toContain("Revenue (TTM) 202.08B (ccy?)");
+  expect(london).toContain("EPS (TTM) 31.43\n");
+  expect(london).toContain("Revenue (TTM) 202.08B\n");
+  expect(london).toContain(unsourced);
+  expect(london).not.toContain("(ccy?)");
 });
 
 // Signed out on 2026-10-24: YPFD on BYMA printed `Revenue (TTM) 29.23T USD` and `EPS (TTM) $265.69`, ARS figures
@@ -273,8 +279,9 @@ test("a listing's TTM block and its statements each carry their own currency, an
   expect(labelled).not.toContain("converted from");
   // Served unlabelled, the block is in no known currency: never the statements' USD.
   const unlabelled = plainText(await buildTickerReport({ symbol: "YPFD:BYMA", tickerFile: null, financials: ypfd({}), config, toBase }));
-  expect(unlabelled).toContain("Revenue (TTM) 29.23T (ccy?)");
-  expect(unlabelled).toContain("EPS (TTM) 265.69 (ccy?)");
+  expect(unlabelled).toContain("Revenue (TTM) 29.23T\n");
+  expect(unlabelled).toContain("EPS (TTM) 265.69\n");
+  expect(unlabelled).toContain("Reporting currency not sourced for EPS (TTM), Revenue (TTM), Net Income (TTM) and Operating Cash Flow (TTM).");
   expect(unlabelled).not.toMatch(/\(TTM\) [^\n]*USD|\$265/);
   expect(unlabelled).not.toContain("TTM figures in");
 });
