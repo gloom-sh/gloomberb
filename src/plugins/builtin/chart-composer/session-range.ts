@@ -74,7 +74,7 @@ interface SessionRangeWindow {
 
 /**
  * What a US line's intraday bars count and how many of the regular session's
- * spans had no bar (GLO-1688): `Bars are of every US venue's prints that set a
+ * spans had no bar: `Bars are of every US venue's prints that set a
  * price; odd lots and special-condition prints count only in volume. 3 of 276
  * minutes had none, so no bar.` Each session is counted from the 09:30 open to
  * its close, or to its newest bar while it trades. Null for another venue.

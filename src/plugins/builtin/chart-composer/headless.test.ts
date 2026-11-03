@@ -430,7 +430,7 @@ describe("GIP headless sessions", () => {
     expect(early.csv).toContain("\nAAPL:XNAS regular-session low (USD),85.1\n");
   });
 
-  // GLO-1688: `fn GIP GPK` said "not a live feed (intraday bars)" at 17:11 where its capture said "15 min delayed" at 17:10.
+  // `fn GIP GPK` said "not a live feed (intraday bars)" at 17:11 where its capture said "15 min delayed" at 17:10.
   test("bars a delayed quote carries on are dated by that quote, as the capture dates them; a past session by its bars", async () => {
     setSystemTime(new Date("2026-10-20T19:59:30Z"));
     try {

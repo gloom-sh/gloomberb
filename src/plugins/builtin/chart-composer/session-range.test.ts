@@ -26,7 +26,7 @@ test("a session's low and high are the bars' own extremes, each at the first bar
   expect(week.entries.map((entry) => entry.label)).toEqual(["BTC-USD:CCC low", "BTC-USD:CCC high"]);
 });
 
-// GLO-1688: GPK's one-minute bars on Tue 3 Nov 2026 went from 14:31 to 14:33 UTC, and nothing said a minute was missing.
+// GPK's one-minute bars on Tue 3 Nov 2026 went from 14:31 to 14:33 UTC, and nothing said a minute was missing.
 test("a US line's bars say how many of the regular session's spans had no price-setting print", () => {
   const minutes = (times: string[]) => times.map((time) => bar(`2026-11-03T${time}:00Z`, 10.2, 10.3));
   const trading = minutes(["14:29", "14:30", "14:31", "14:33", "14:34"]);

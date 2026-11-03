@@ -373,7 +373,7 @@ test("a pence-quoted range shares one decimal count, other ranges are unchanged"
   expect(yen).toContain("Day Range ¥2,950 - ¥3,012");
   const dollars = await report({ quote: { ...quote, instrumentType: "EQUITY", low: 99.5, high: 101.25 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
   expect(dollars).toContain("Day Range $99.50 - $101.25\n");
-  // GLO-1688: a US line's range from Gloom Cloud says what it counts, the rule GIP and TAS read the session's by.
+  // A US line's range from Gloom Cloud says what it counts, the rule GIP and TAS read the session's by.
   const cloud = { ...quote, instrumentType: "EQUITY", low: 10.17, high: 11.23, providerId: "gloomberb-cloud" as const, exchangeName: "NYSE" };
   expect(await report({ quote: cloud, annualStatements: [], quarterlyStatements: [], priceHistory: [] }))
     .toContain("Day Range $10.17 - $11.23 (regular session, every US venue, odd lots excluded)");
