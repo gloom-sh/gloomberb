@@ -372,7 +372,13 @@ test("a pence-quoted range shares one decimal count, other ranges are unchanged"
   const yen = await report({ quote: { ...quote, currency: "JPY", instrumentType: "EQUITY", price: 3000, low: 2950, high: 3012 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
   expect(yen).toContain("Day Range ¥2,950 - ¥3,012");
   const dollars = await report({ quote: { ...quote, instrumentType: "EQUITY", low: 99.5, high: 101.25 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
-  expect(dollars).toContain("Day Range $99.50 - $101.25");
+  expect(dollars).toContain("Day Range $99.50 - $101.25\n");
+  // GLO-1688: a US line's range from Gloom Cloud says what it counts, the rule GIP and TAS read the session's by.
+  const cloud = { ...quote, instrumentType: "EQUITY", low: 10.17, high: 11.23, providerId: "gloomberb-cloud" as const, exchangeName: "NYSE" };
+  expect(await report({ quote: cloud, annualStatements: [], quarterlyStatements: [], priceHistory: [] }))
+    .toContain("Day Range $10.17 - $11.23 (regular session, every US venue, odd lots excluded)");
+  const abroad = await report({ quote: { ...cloud, currency: "AUD", exchangeName: "ASX", listingExchangeName: "ASX" }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(abroad).not.toContain("odd lots");
 });
 
 test("share counts say ADR equivalent where the service puts them on the receipts, and the profile decides only without it", async () => {
