@@ -75,7 +75,7 @@ Some changes need one more check:
 | A runtime export of the plugin API (package.json `exports`) | `bun test src/public/public-api.test.ts` and `bun run plugins:registry:check`; see [Plugin compatibility](PLUGINS.md#plugin-compatibility) before removing or renaming one |
 | Desktop view code | `bun run desktop:view:build` |
 | Web app, share page or Worker code | `bun run web:audit` and `bun run cloudflare:dry-run` |
-| Build scripts or the terminal entry point | `bun run build` |
+| Build scripts, the terminal entry point, the modules the host serves to plugins (`src/plugins/host-modules.ts`, `host-resolver.ts`) or dependencies (`package.json`, `bun.lock`) | `bun run build`, then `bun run plugins:registry:packaged --terminal dist/gloomberb-<target>.gz --desktop-tui`: loads every plugin the registry lists in the compiled binary and in the desktop's bundled terminal (needs the network; the `registry-plugins-packaged` job runs it on every pull request) |
 | Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
 | What runs before the first frame: the terminal entry point, app startup, the desktop Bun process, or the page and launch frame of the desktop and web apps | `bun run benchmark:startup <tui\|desktop\|web> --base <main checkout>` (add `--cold` for a first launch; the desktop needs Linux with Xvfb, the terminal tmux) |
 | Pane chrome, docking, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |

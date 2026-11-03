@@ -65,6 +65,15 @@ jobs:
       - name: Build
         run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
+      # Before the binary is uploaded: every plugin the registry lists has to
+      # load in it. Not the musl builds, which only run in the Alpine container
+      # build.ts starts, nor Windows, whose paths this check has not been run
+      # with. A registry or plugin outage only warns; a host that does not
+      # serve what plugins import fails the leg, so no asset ships from it.
+      - name: Load registry plugins in the built binary
+        if: ${{ !matrix.target && runner.os != 'Windows' }}
+        run: bun run plugins:registry:packaged --terminal dist/gloomberb-*.gz
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -118,6 +127,9 @@ jobs:
           test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
           "$app/Contents/Resources/gloom" help
           "$app/Contents/Resources/gloomberb" help
+          # The terminal the app ships, with the Bun it ships, must load every
+          # plugin the registry lists.
+          bun run plugins:registry:packaged --terminal "$app/Contents/Resources/gloom"
           ditto -c -k --keepParent "$app" artifacts/stable-macos-arm64-Gloom.app.zip
           # The same signed bundle under its old name, for a Homebrew cask that
           # still installs Gloomberb.app. Its signature does not cover the name.
