@@ -62,8 +62,12 @@ Plugins pane's settings.
 ### Official plugins that need Git
 
 These official plugins live in their own repositories and install from GitHub
-with `git` when the app starts: TV, Substack, Interactive Brokers, IBKR
-Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI.
+with `git`: TV, Substack, Interactive Brokers, IBKR Gateway, Public,
+Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI. A profile from
+before they moved gets them back after the app has drawn: the layout keeps
+their panes, and each one appears in place once its plugin is installed. A
+clone that gets no answer for a minute, or dependencies still installing after
+five, is stopped, and the next launch tries again.
 Windows does not ship `git`: install
 [Git for Windows](https://git-scm.com/download/win), then restart Gloom.
 Without it the app starts without them and says so at each launch, and
