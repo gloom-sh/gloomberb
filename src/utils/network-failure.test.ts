@@ -22,14 +22,28 @@ const bunUnreachable = () => Object.assign(new Error("Unable to connect. Is the 
 
 const originalProxy = process.env.HTTPS_PROXY;
 
+/**
+ * A transport that fails to connect keeps asking `/health` on a timer, up to
+ * every 15 seconds, until something answers or it is disposed. `bun test`
+ * runs every file in one process, so one left behind probes through every
+ * later file and lands its timers in their `setTimeout` spies.
+ */
+const transports: CloudApiRequestTransport[] = [];
+function transportFor(options: ConstructorParameters<typeof CloudApiRequestTransport>[0]) {
+  const created = new CloudApiRequestTransport(options);
+  transports.push(created);
+  return created;
+}
+
 afterEach(() => {
+  for (const transport of transports.splice(0)) transport.dispose();
   setCloudApiFetchTransport(null);
   if (originalProxy === undefined) delete process.env.HTTPS_PROXY;
   else process.env.HTTPS_PROXY = originalProxy;
 });
 
 test("every fetch's failure to connect reaches callers as the data service being unreachable, and an answer or an abort does not", async () => {
-  const failing = (error: unknown) => new CloudApiRequestTransport({ fetchTransport: async () => { throw error; } })
+  const failing = (error: unknown) => transportFor({ fetchTransport: async () => { throw error; } })
     .request("/market/quote?symbol=SPY")
     .catch((caught: unknown) => caught);
 
@@ -41,13 +55,13 @@ test("every fetch's failure to connect reaches callers as the data service being
   // Code that classifies failures by code (the updater) still reads Bun's.
   expect(await failing(bunUnreachable())).toMatchObject({ code: "ConnectionRefused" });
 
-  const answered = await new CloudApiRequestTransport({
+  const answered = await transportFor({
     fetchTransport: async () => ({ ok: false, status: 502, headers: new Headers(), text: async () => "Bad gateway" }) as Response,
   }).request("/market/quote?symbol=SPY").catch((caught: unknown) => caught);
   expect(isNetworkFailure(answered)).toBe(false);
 
   const controller = new AbortController();
-  const aborted = await new CloudApiRequestTransport({
+  const aborted = await transportFor({
     fetchTransport: async () => {
       controller.abort();
       throw Object.assign(bunUnreachable(), { name: "AbortError" });
@@ -58,7 +72,7 @@ test("every fetch's failure to connect reaches callers as the data service being
 });
 
 test("a request nothing answers before its deadline fails as unreachable, in the words and code of a refused one", async () => {
-  const hung = await new CloudApiRequestTransport({ marketRequestTimeoutMs: 10, fetchTransport: () => new Promise<Response>(() => {}) })
+  const hung = await transportFor({ marketRequestTimeoutMs: 10, fetchTransport: () => new Promise<Response>(() => {}) })
     .request("/market/quote?symbol=SPY").catch((caught: unknown) => caught);
   expect(hung).toBeInstanceOf(DataServiceUnreachableError);
   const json = await captureConsole(() => printCliError(hung, inferCliErrorOptions(["--json"])));
@@ -76,7 +90,7 @@ test("an answer from the server or a local service is never \"couldn't reach\", 
     Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
   ]) {
     expect(isNetworkFailure(answered)).toBe(false);
-    const failing = new CloudApiRequestTransport({ fetchTransport: async () => { throw answered; } });
+    const failing = transportFor({ fetchTransport: async () => { throw answered; } });
     expect(await failing.request("/market/quote?symbol=SPY").catch((caught: unknown) => caught)).toBe(answered);
     const json = await captureConsole(() => printCliError(answered, inferCliErrorOptions(["--json"])));
     expect(JSON.parse(json.stderr).error.code).not.toBe("service_unreachable");
