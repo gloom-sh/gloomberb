@@ -297,6 +297,34 @@ export function parseViewSpecOr(value: unknown): { spec: ViewSpec; result: ViewS
   return { spec, result };
 }
 
+/** Where a spec names a row key. */
+export type ViewKeyPlace = "column" | "filter" | "sort" | "symbolKey";
+
+export interface UnknownViewKey {
+  key: string;
+  place: ViewKeyPlace;
+}
+
+/**
+ * The row keys the spec's columns, filters, sort and symbol key name that are
+ * not in `known`, once per place, in the spec's order. A key no row carries
+ * leaves a column blank, and a filter or sort on it drops or scrambles every row.
+ */
+export function unknownViewKeys(spec: ViewSpec, known: ReadonlySet<string>): UnknownViewKey[] {
+  const unknown: UnknownViewKey[] = [];
+  const seen = new Set<string>();
+  const check = (key: string, place: ViewKeyPlace) => {
+    if (known.has(key) || seen.has(`${place}:${key}`)) return;
+    seen.add(`${place}:${key}`);
+    unknown.push({ key, place });
+  };
+  for (const column of spec.projection.columns) check(column.key, "column");
+  for (const filter of spec.projection.filters) check(filter.key, "filter");
+  if (spec.projection.sort) check(spec.projection.sort.by, "sort");
+  if (spec.presentation.symbolKey) check(spec.presentation.symbolKey, "symbolKey");
+  return unknown;
+}
+
 export function serializeViewSpec(spec: ViewSpec): string {
   const result = validateViewSpec(spec);
   if (!result.valid) throw new Error(result.errors.map((entry) => entry.message).join(" "));
