@@ -1610,37 +1610,58 @@ describe("ChatContent", () => {
     expect(tui.frame()).not.toContain("Local time");
   });
 
-  test("shows a saved-login read-only footer when a session token is cached", async () => {
-    const controller = createController({
-      sessionToken: "token-123",
-      user: null,
-    });
-
+  test("signed out shows the sign-in wall and none of the chat, following the session both ways", async () => {
+    const controller = createController({ sessionToken: null, user: null, messages: [makeMessage(1)] });
     await mountChat(controller);
 
-    const frame = tui.frame();
-    expect(frame).toContain("Saved login found.");
-    expect(frame).toContain("Log in again to send.");
-    expect(frame).toContain("No messages yet.");
-    expect(frame).not.toContain("Type a message...");
+    expect(tui.frame()).toContain("Sign in to chat.");
+    expect(tui.frame()).toContain("Sign up free");
+    expect(tui.frame()).not.toContain("message 1");
+
+    await act(async () => {
+      controller.adoptSession("token-123", { id: "u0", username: "ada", emailVerified: true });
+    });
+    await flushFrame();
+    expect(tui.frame()).toContain("message 1");
+    expect(tui.frame()).toContain("Type a message...");
+    expect(tui.frame()).not.toContain("Sign in to chat.");
+
+    await act(async () => {
+      controller.clearSession();
+    });
+    await flushFrame();
+    expect(tui.frame()).toContain("Sign in to chat.");
+    expect(tui.frame()).not.toContain("message 1");
   });
 
-  test("keeps the transcript visible for logged-out users and blocks the composer, down to a narrow pane", async () => {
-    for (const width of [60, 27]) {
-      const controller = createController({
-        sessionToken: null,
-        user: null,
-        messages: [makeMessage(1)],
-      });
-
-      await mountChat(controller, { width });
+  test("a saved login or an unverified account reads the chat, with the one action it needs under it", async () => {
+    const states = [
+      { user: null, prompt: "Saved login found. Log in again to send.", action: "Log in", command: "Log In" },
+      {
+        user: { id: "u0", username: "ada", emailVerified: false },
+        prompt: "Verify your email to send messages.",
+        action: "Resend Verification Email",
+        command: "Resend Verification Email",
+      },
+    ];
+    for (const { user, prompt, action, command } of states) {
+      const opened: string[] = [];
+      const controller = createController({ sessionToken: "token-123", user, messages: [makeMessage(1)] });
+      await mountChat(controller, { width: 72, runtime: createTestPluginRuntime({ openCommandBar: (query) => opened.push(query ?? "") }) });
 
       const frame = tui.frame();
       expect(frame).toContain("message 1");
-      expect(frame).toContain("Read-only chat.");
-      expect(frame).toContain("Log in");
-      expect(frame).toContain("Sign up free");
+      expect(frame).toContain(prompt);
+      expect(frame).not.toContain("Sign up free");
       expect(frame).not.toContain("Type a message...");
+      // The button is the last row with its label: the saved-login line says "Log in" too.
+      const rows = frame.split("\n");
+      const row = rows.findLastIndex((line) => line.includes(action));
+      await act(async () => {
+        await tui.setup().mockMouse.click(rows[row]!.indexOf(action) + 1, row);
+        await tui.setup().renderOnce();
+      });
+      expect(opened).toEqual([command]);
     }
   });
 

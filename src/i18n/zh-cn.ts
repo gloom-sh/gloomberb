@@ -852,7 +852,6 @@ export const zhCN: Record<string, string> = {
   "Start group chat": "开始群聊",
   "Use @username, or multiple usernames for a group chat": "使用 @用户名，或输入多个用户名开始群聊",
   "Type DM @username to start one": "输入 DM @用户名开始私信",
-  "Read-only chat. Log in or sign up to send.": "聊天为只读模式。登录或注册后才能发送消息。",
   "Saved login found. Log in again to send.": "发现已保存的登录信息。请重新登录后发送消息。",
   "Verify your email to send messages.": "验证邮箱后才能发送消息。",
   // The first-chat prompt for an account still on its signup handle.
@@ -876,7 +875,6 @@ export const zhCN: Record<string, string> = {
   "ask questions about anything on screen": "就屏幕上的任何内容提问",
   "Free with a verified Gloom account.": "使用已验证的 Gloom 账户即可免费使用。",
   "search X": "搜索 X",
-  "{shortcut}, then Resend Verification Email": "按 {shortcut}，然后选择“重新发送验证邮件”",
   "editing": "编辑中",
   "replying to": "回复",
   "Reply": "回复",

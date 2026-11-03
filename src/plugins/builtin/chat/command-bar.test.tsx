@@ -21,7 +21,7 @@ import { chatController } from "./controller";
 import { buildChatConversations, type ChatConversationList, type ChatConversationState } from "./conversations";
 import { chatModule } from "./index";
 import { ChatPane } from "./pane";
-import { createChatTestHarness, createController, installServerChannels, makeMessage } from "./test-harness";
+import { createChatTestHarness, createController, installServerChannels, makeMessage, signInAppChat } from "./test-harness";
 
 const tui = createChatTestHarness();
 const { flushFrame } = tui;
@@ -346,6 +346,7 @@ describe("a Chat pane switched from outside", () => {
     chatController.refreshSession = async () => {};
     chatController.refreshPresence = async () => {};
     chatController.refreshChannelMessages = async () => {};
+    const signOut = signInAppChat();
     const paneId = "chat:x";
     const base = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
     const layout: LayoutConfig = {
@@ -398,6 +399,7 @@ describe("a Chat pane switched from outside", () => {
       expect(attached).toContainEqual(["dm:bob", true]);
       expect(attached).not.toContainEqual(["everyone", true]);
     } finally {
+      signOut();
       installServerChannels(chatController, originalChannels);
       for (const key of ["attachChannelView", "refreshChannels", "refreshSession", "refreshPresence", "refreshChannelMessages"]) {
         delete (chatController as any)[key];

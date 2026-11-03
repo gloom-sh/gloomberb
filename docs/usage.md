@@ -2054,6 +2054,8 @@ An assistant connected to the Gloom Cloud MCP with Terminal control (Cloud setti
 
 ## Chat
 
+Chat needs a free Gloom Cloud account: signed out, the Chat pane shows the sign-in wall and nothing of the conversation. With a saved login it reads the chat and asks you to log in again to send, and until your email is verified it reads the chat with **Resend Verification Email** under it.
+
 ### Mentions
 
 Type `@` in a channel's composer to suggest up to five people (usernames or words in display names, recent activity first). Team and group channels offer their members, public channels known authors and your DM contacts. Direct-message composers have no mention menu.

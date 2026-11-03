@@ -27,6 +27,7 @@ import {
   makeAccountProfile,
   makeMessage,
   MemoryPersistence,
+  signInAppChat,
 } from "./test-harness";
 
 const tui = createChatTestHarness();
@@ -689,6 +690,7 @@ describe("ChatContent channel sidebar", () => {
     const originalRefreshChannels = chatController.refreshChannels;
     const originalRefreshSession = chatController.refreshSession;
     const originalRefreshChannelMessages = chatController.refreshChannelMessages;
+    let signOut = () => {};
 
     try {
       await gloomberbCloudPlugin.setup!({
@@ -717,6 +719,7 @@ describe("ChatContent channel sidebar", () => {
       chatController.refreshChannels = async () => {};
       chatController.refreshSession = async () => {};
       chatController.refreshChannelMessages = async () => {};
+      signOut = signInAppChat();
 
       const paneInstanceId = "chat:test";
       const chatInstance: PaneInstanceConfig = {
@@ -810,6 +813,7 @@ describe("ChatContent channel sidebar", () => {
         try {
           await tui.destroy();
         } finally {
+          signOut();
           // Setup starts every cloud module, including their auth listeners.
           gloomberbCloudPlugin.dispose?.();
         }
