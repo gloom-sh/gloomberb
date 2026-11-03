@@ -88,6 +88,7 @@ function New-EarlierInstall {
   if (Test-Path -LiteralPath $Folder) { Remove-Item -LiteralPath $Folder -Recurse -Force }
   Write-Tree $Folder @{ "Resources\version.json" = "earlier"; "uninstaller-mode.txt" = $Mode; "uninstaller-files.txt" = "Resources\version.json`r`nbin\launcher.exe`r`nbin\bun.exe" }
   Write-Tree $Folder $UserFiles
+  New-Item -ItemType Directory -Force -Path (Join-Path $Folder "bin") | Out-Null
   Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\launcher.exe")
   Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\bun.exe")
   Copy-Item -LiteralPath $FakeUninstaller -Destination (Join-Path $Folder "unins000.exe")
