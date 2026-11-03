@@ -136,11 +136,20 @@ const server = Bun.serve({
 // ---------------------------------------------------------------------------
 // Processes
 
-interface ProcessInfo { pid: number; ppid: number; name: string; rssKb: number; privateKb: number | null; path: string | null }
+interface ProcessInfo {
+  pid: number;
+  ppid: number;
+  name: string;
+  rssKb: number;
+  privateKb: number | null;
+  path: string | null;
+  /** When it started (Windows, as a file time): a parent id there can name a process long gone, its id since taken by another. */
+  startedAt?: number;
+}
 
 async function listProcesses(): Promise<ProcessInfo[]> {
   if (process.platform === "win32") {
-    const command = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,WorkingSetSize,PageFileUsage | ConvertTo-Json -Compress";
+    const command = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,WorkingSetSize,PageFileUsage,@{n='Started';e={if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }}} | ConvertTo-Json -Compress";
     const run = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]);
     const parsed = JSON.parse(run.stdout.toString() || "[]") as Array<Record<string, unknown>>;
     return parsed.map((entry) => ({
@@ -150,6 +159,7 @@ async function listProcesses(): Promise<ProcessInfo[]> {
       rssKb: Math.round(Number(entry.WorkingSetSize ?? 0) / 1024),
       privateKb: Number(entry.PageFileUsage ?? 0),
       path: typeof entry.ExecutablePath === "string" ? entry.ExecutablePath : null,
+      startedAt: Number(entry.Started) || undefined,
     }));
   }
   const run = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,rss=,comm="]);
@@ -177,11 +187,16 @@ function appProcesses(all: ProcessInfo[], rootPid: number, before: Set<number>):
   }
   const picked = new Map<number, ProcessInfo>();
   const queue = all.filter((info) => info.pid === rootPid);
+  // A child starts after its parent. One that started before claims a parent
+  // id another process held once: on a runner that took in the job's own
+  // shells, and the kill after a measured launch ended them.
+  const childrenOf = (parent: ProcessInfo) => (byParent.get(parent.pid) ?? [])
+    .filter((child) => child.startedAt === undefined || parent.startedAt === undefined || child.startedAt >= parent.startedAt);
   while (queue.length) {
     const next = queue.shift()!;
     if (picked.has(next.pid)) continue;
     picked.set(next.pid, next);
-    queue.push(...(byParent.get(next.pid) ?? []));
+    queue.push(...childrenOf(next));
   }
   const root = resolve(appRoot!).toLowerCase();
   for (const info of all) {
@@ -189,7 +204,7 @@ function appProcesses(all: ProcessInfo[], rootPid: number, before: Set<number>):
     const insideApp = info.path ? resolve(info.path).toLowerCase().startsWith(root) : false;
     if (insideApp || isWebviewHelper(info)) {
       picked.set(info.pid, info);
-      for (const child of byParent.get(info.pid) ?? []) if (!before.has(child.pid)) picked.set(child.pid, child);
+      for (const child of childrenOf(info)) if (!before.has(child.pid)) picked.set(child.pid, child);
     }
   }
   return [...picked.values()];
@@ -218,8 +233,8 @@ async function sampleMemory(rootPid: number, before: Set<number>): Promise<Memor
 async function killApp(rootPid: number, before: Set<number>): Promise<void> {
   const picked = appProcesses(await listProcesses(), rootPid, before);
   if (process.platform === "win32") {
-    Bun.spawnSync(["taskkill", "/PID", String(rootPid), "/T", "/F"]);
-    for (const info of picked) Bun.spawnSync(["taskkill", "/PID", String(info.pid), "/T", "/F"]);
+    // Each one picked, never /T: taskkill finds a tree by parent ids too.
+    for (const info of picked) Bun.spawnSync(["taskkill", "/PID", String(info.pid), "/F"]);
   } else {
     for (const info of picked.reverse()) {
       try { process.kill(info.pid, "SIGKILL"); } catch { /* gone */ }

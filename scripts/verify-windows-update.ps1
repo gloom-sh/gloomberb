@@ -425,7 +425,10 @@ function Assert-LeadsToElectrobunFolder {
 
   $Launcher = Join-Path $AppDir "bin\launcher.exe"
   $Shortcuts = @($StartMenuShortcut) + $(if ($Desktop) { @($DesktopShortcut) } else { @() })
-  $Done = Wait-Until 180 {
+  # Counted from this build's first processes. On Windows on Arm the
+  # retirement ended three minutes later: the app came up slowly, and the
+  # script it starts 10 s in took 40 s more to begin.
+  $Done = Wait-Until 420 {
     (-not (Test-Path $InstallerKey)) -and (-not (Test-Path -LiteralPath $EarlierDir)) -and (Test-Path $ElectrobunKey) -and
       (@($Shortcuts | Where-Object { (Get-ShortcutTarget $_) -ne $Launcher }).Count -eq 0) -and
       ((Get-UserPathEntries) -contains (Join-Path $AppDir "bin").ToLowerInvariant()) -and
