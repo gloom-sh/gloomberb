@@ -12,9 +12,12 @@ Requires [Bun](https://bun.sh) 1.3.14, the version CI runs (`packageManager` in 
 git clone https://github.com/gloom-sh/gloomberb.git
 cd gloomberb
 bun install
+bun run desktop:sync  # Electrobun's SDK, for the desktop app, typecheck and tests
 bun dev               # terminal app, restarted on save
 bun run desktop:dev   # desktop app
 ```
+
+Electrobun 2 keeps its SDK out of `node_modules`: `bun run desktop:sync` downloads the pinned release's into `.hutch/devkit` and applies our patch over it (`patches/electrobun-devkit@*.patch`). The desktop app, `bun run typecheck` and `bun test` read it from there. Run it again after `bun install` brings a new Electrobun version.
 
 Both use your real profile (`~/.gloomberb`, or the XDG folders on a Linux install that never had one). To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
 
