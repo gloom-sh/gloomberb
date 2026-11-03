@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { MarketContext } from "../types";
@@ -8,6 +8,10 @@ import type { TickerIpo } from "../../plugins/builtin/ipo-calendar/listing-ipo";
 import { ticker } from "./ticker";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-ipo-unused");
+
+// The lock-up below ends on 2 Nov 2026: read it on a fixed day before that, so the test does not expire.
+beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
+afterAll(() => { setSystemTime(); });
 
 /** HawkEye 360 as the IPO calendar lists it: priced at $26, first traded on the NYSE on 7 May 2026, a 180-day lock-up from its prospectus. */
 const HAWK: TickerIpo = {
