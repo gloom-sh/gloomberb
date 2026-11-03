@@ -26,7 +26,16 @@ runs:
 
     # Electrobun 2 keeps its SDK out of node_modules: `electrobun sync` puts
     # the pinned release's in .hutch/devkit, where the desktop build and the
-    # type checks read it, and our patch goes over it.
+    # type checks read it, and our patch goes over it. Its download from
+    # Electrobun's servers is tried again after a failure (an HTTP 503 once).
     - if: inputs.install == 'true'
       shell: bash
-      run: bun run desktop:sync
+      run: |
+        for attempt in 1 2 3; do
+          bun run desktop:sync && exit 0
+          if [ "$attempt" -lt 3 ]; then
+            echo "desktop:sync failed, trying again in $((attempt * 30)) s"
+            sleep $((attempt * 30))
+          fi
+        done
+        exit 1
