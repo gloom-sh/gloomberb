@@ -80,7 +80,7 @@ let workspace: Record<string, number> = {};
 try {
   const context = await browser.newContext();
   // As the native side does: the window's key, then Electrobun's preload.
-  const { preloadScript } = await import(resolve(option("preload", join(root, "node_modules/electrobun/dist/api/bun/preload/.generated/compiled.ts"))));
+  const { preloadScript } = await import(resolve(option("preload", join(root, ".hutch/devkit/api/preload/.generated/compiled.ts"))));
   await context.addInitScript({ content: `window.__electrobunSecretKeyBytes = ${JSON.stringify(Array.from(crypto.getRandomValues(new Uint8Array(32))))};` });
   await context.addInitScript({ content: preloadScript });
   await context.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());

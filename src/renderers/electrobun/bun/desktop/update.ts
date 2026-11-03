@@ -40,7 +40,7 @@ type ElectrobunUpdater = typeof Electrobun.Updater;
 /**
  * The part of Electrobun's updater this flow uses. Tests pass a fake, because
  * the real module cannot be loaded or exercised outside the packaged app.
- * `setUpdateSource` is this app's patch (patches/electrobun@*.patch).
+ * `setUpdateSource` is this app's patch (patches/electrobun-devkit@*.patch).
  */
 export type ElectrobunUpdaterApi = Pick<
   ElectrobunUpdater,

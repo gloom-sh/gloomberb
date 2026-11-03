@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
+import { DETACHED_WINDOW_MIN_SIZE, MAIN_WINDOW_MIN_SIZE } from "../../src/renderers/electrobun/bun/window/frame";
 import * as win from "./win32";
 import type { Bitmap, Point, Rect } from "./win32";
 import type { CheckResult, CheckRun, CheckStatus } from "./results";
@@ -66,16 +67,15 @@ async function install(installer: string, dir: string): Promise<void> {
 /**
  * A release opens no DevTools port; the check drives the page through one,
  * so it opens it again in its own install, after `ports` has looked at the
- * build as shipped.
+ * build as shipped. Electrobun 2 opens one only when a build asks for it.
  */
 async function enableDevtools(dir: string): Promise<void> {
   const buildPath = join(dir, "Resources", "build.json");
   const build = JSON.parse((await readFile(buildPath, "utf8")).replace(/^\uFEFF/, "")) as { chromiumFlags?: Record<string, unknown> };
   const flags = { ...build.chromiumFlags };
-  delete flags["remote-debugging-port"];
   delete flags["remote-allow-origins"];
-  if (Object.keys(flags).length) build.chromiumFlags = flags;
-  else delete build.chromiumFlags;
+  flags["remote-debugging-port"] = "9222";
+  build.chromiumFlags = flags;
   await writeFile(buildPath, JSON.stringify(build));
   console.log(`DevTools port open for the check (Chromium flags now ${JSON.stringify(build.chromiumFlags ?? {})})`);
 }
@@ -1264,9 +1264,28 @@ class Run {
       const grab = await this.grabPoint(window, edge);
       // The pointer stops at the screen's edge, and so does the drag.
       const screen = win.monitorOf(window.hwnd).monitor;
+      // A shrink stops short of the window's minimum size, which holds the
+      // window at it (the minimum-size step checks that): the app's minimum
+      // in logical pixels, on the window rect, which reaches past the visible
+      // frame by the invisible resize borders.
+      const minimum = name === "main" ? MAIN_WINDOW_MIN_SIZE : DETACHED_WINDOW_MIN_SIZE;
+      const dpi = win.windowDpi(window.hwnd).dpi || 96;
+      const outer = win.windowRect(window.hwnd);
+      const floor = {
+        width: Math.round((minimum.width * dpi) / 96) - (win.rectWidth(outer) - win.rectWidth(before)) + 4,
+        height: Math.round((minimum.height * dpi) / 96) - (win.rectHeight(outer) - win.rectHeight(before)) + 4,
+      };
+      const shrinkX = edge.includes("right") ? -requested.x : edge.includes("left") ? requested.x : 0;
+      const shrinkY = edge.includes("bottom") ? -requested.y : edge.includes("top") ? requested.y : 0;
+      const roomX = Math.max(0, win.rectWidth(before) - floor.width);
+      const roomY = Math.max(0, win.rectHeight(before) - floor.height);
+      const asked = {
+        x: shrinkX > roomX ? Math.sign(requested.x) * roomX : requested.x,
+        y: shrinkY > roomY ? Math.sign(requested.y) * roomY : requested.y,
+      };
       const to = {
-        x: Math.max(screen.left + 2, Math.min(screen.right - 3, grab.point.x + requested.x)),
-        y: Math.max(screen.top + 2, Math.min(screen.bottom - 3, grab.point.y + requested.y)),
+        x: Math.max(screen.left + 2, Math.min(screen.right - 3, grab.point.x + asked.x)),
+        y: Math.max(screen.top + 2, Math.min(screen.bottom - 3, grab.point.y + asked.y)),
       };
       const delta = { x: to.x - grab.point.x, y: to.y - grab.point.y };
       let during: Rect | null = null;

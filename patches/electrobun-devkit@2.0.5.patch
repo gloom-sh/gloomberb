@@ -1,0 +1,148 @@
+diff --git a/api/preload/encryption.ts b/api/preload/encryption.ts
+index 8cf3ab6..0f70f21 100644
+--- a/api/preload/encryption.ts
++++ b/api/preload/encryption.ts
+@@ -3,27 +3,30 @@
+ 
+ import "./globals.d.ts";
+ 
++// Native base64 where the engine has it (WebKit since Safari 18.2, Chromium
++// since 140); the fallbacks copy bytes in a loop and join strings in chunks.
++// Splitting the decoded string into an array of characters, or growing a
++// string one byte at a time, costs tens of milliseconds per megabyte on the
++// main thread, and every message from the host is decrypted here.
+ function base64ToUint8Array(base64: string): Uint8Array {
++	const native = Uint8Array as unknown as { fromBase64?: (value: string) => Uint8Array };
++	if (typeof native.fromBase64 === "function") return native.fromBase64(base64);
+ 	const binary = atob(base64);
+-	if (window.__electrobunPlatform === "linux") {
+-		// WebKitGTK becomes allocation-bound on large RPC bursts if every byte
+-		// is first expanded into a split/map array.
+-		const bytes = new Uint8Array(binary.length);
+-		for (let i = 0; i < binary.length; i++) {
+-			bytes[i] = binary.charCodeAt(i);
+-		}
+-		return bytes;
++	const bytes = new Uint8Array(binary.length);
++	for (let i = 0; i < binary.length; i++) {
++		bytes[i] = binary.charCodeAt(i);
+ 	}
+-
+-	return new Uint8Array(binary.split("").map((char) => char.charCodeAt(0)));
++	return bytes;
+ }
+ 
+ function uint8ArrayToBase64(uint8Array: Uint8Array): string {
+-	let binary = "";
+-	for (let i = 0; i < uint8Array.length; i++) {
+-		binary += String.fromCharCode(uint8Array[i]!);
++	const native = (uint8Array as unknown as { toBase64?: () => string }).toBase64;
++	if (typeof native === "function") return native.call(uint8Array);
++	const parts: string[] = [];
++	for (let i = 0; i < uint8Array.length; i += 32768) {
++		parts.push(String.fromCharCode.apply(null, uint8Array.subarray(i, i + 32768) as unknown as number[]));
+ 	}
+-	return btoa(binary);
++	return btoa(parts.join(""));
+ }
+ 
+ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+diff --git a/api/sdks/main/core/Updater.ts b/api/sdks/main/core/Updater.ts
+index 4c47ed9..3221b5d 100644
+--- a/api/sdks/main/core/Updater.ts
++++ b/api/sdks/main/core/Updater.ts
+@@ -323,6 +323,39 @@ let updateInfo: UpdateInfo = {
+ 	error: "",
+ };
+ let checkedManifest: UpdateManifestV1 | undefined;
++
++// Where updates are fetched from when it is not the channel and baseUrl that
++// version.json names: a release whose files carry another prefix (`nightly-*`)
++// under its own URL. Only the URLs read it. The manifest is still checked
++// against the installed build's identity and channel, and the app data
++// folder and the "dev" check keep that channel too.
++let updateSource: { channel: string; baseUrl: string } | null = null;
++
++function updateSourceBaseUrl(info: LocalUpdateInfo): string {
++	return updateSource?.baseUrl ?? info.baseUrl;
++}
++
++/** The prefix of the source's files: `<channel>-<os>-<arch>`. */
++function updateSourcePrefix(
++	channel: BuildEnvironment,
++	os: SupportedOS,
++	arch: SupportedArch,
++): string {
++	if (!updateSource) return getPlatformPrefix(channel, os, arch);
++	return `${updateSource.channel}-${os}-${arch}`;
++}
++
++/**
++ * The manifest names its archive under the channel it was built for; a
++ * source that carries the files under its own prefix has it under that one.
++ */
++function updateSourceArtifactFile(manifest: UpdateManifestV1): string {
++	const built = `${manifest.channel}-`;
++	if (!updateSource || !manifest.artifact.file.startsWith(built)) {
++		return manifest.artifact.file;
++	}
++	return `${updateSource.channel}-${manifest.artifact.file.slice(built.length)}`;
++}
+ let checkInFlight: Promise<UpdateInfo> | undefined;
+ let downloadInFlight: Promise<void> | undefined;
+ let applyInFlight: Promise<void> | undefined;
+@@ -1773,8 +1806,8 @@ async function checkForUpdateOperation(): Promise<UpdateInfo> {
+ 		return updateInfo;
+ 	}
+ 
+-	const platformPrefix = getPlatformPrefix(info.channel, currentOS, currentArch);
+-	const updateInfoUrl = `${info.baseUrl.replace(/\/+$/, "")}/${platformPrefix}-update.json?${randomBytes(8).toString("hex")}`;
++	const platformPrefix = updateSourcePrefix(info.channel, currentOS, currentArch);
++	const updateInfoUrl = `${updateSourceBaseUrl(info).replace(/\/+$/, "")}/${platformPrefix}-update.json?${randomBytes(8).toString("hex")}`;
+ 	try {
+ 		const response = await fetch(updateInfoUrl, {
+ 			signal: AbortSignal.timeout(30_000),
+@@ -1938,7 +1971,7 @@ export async function preparePatchChainForUpdate(
+ 	const bspatchPath =
+ 		dependencies.bspatchPath ??
+ 		join(dirname(process.execPath), currentOS === "win" ? "bspatch.exe" : "bspatch");
+-	const platformPrefix = getPlatformPrefix(
++	const platformPrefix = updateSourcePrefix(
+ 		channel,
+ 		manifest.platform,
+ 		manifest.arch,
+@@ -1952,7 +1985,7 @@ export async function preparePatchChainForUpdate(
+ 	try {
+ 		while (currentHash !== manifest.hash) {
+ 			const patchNumber = patchesApplied + 1;
+-			patchUrl = getPatchFileUrl(info.baseUrl, platformPrefix, currentHash);
++			patchUrl = getPatchFileUrl(updateSourceBaseUrl(info), platformPrefix, currentHash);
+ 			const pathPrefix = join(
+ 				extractionFolder,
+ 				`.${transactionId}.${patchNumber}.${currentHash}`,
+@@ -2136,8 +2169,8 @@ async function downloadUpdateOperation(): Promise<void> {
+ 		join(extractionFolder, `${manifest.hash}.tar`),
+ 	);
+ 	const artifactUrl = buildUpdateArtifactUrl(
+-		info.baseUrl,
+-		manifest.artifact.file,
++		updateSourceBaseUrl(info),
++		updateSourceArtifactFile(manifest),
+ 	);
+ 	const artifactRequestUrl = addUpdateArtifactCacheBuster(
+ 		artifactUrl,
+@@ -2388,6 +2421,14 @@ const Updater = {
+ 		onStatusChangeCallback = callback;
+ 		if (callback) scheduleNativeUpdateResultReconciliation();
+ 	},
++	// Checks and downloads from `source` (a file prefix and the URL its files
++	// sit under) until it is set again; null goes back to version.json.
++	setUpdateSource: (source: { channel: string; baseUrl: string } | null): void => {
++		if (source && !/^[a-z0-9][a-z0-9-]*$/.test(source.channel)) {
++			throw new Error(`Invalid update source channel: ${source.channel}`);
++		}
++		updateSource = source;
++	},
+ 	checkForUpdate,
+ 	downloadUpdate,
+ 	applyUpdate,

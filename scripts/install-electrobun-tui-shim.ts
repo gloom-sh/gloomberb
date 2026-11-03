@@ -251,7 +251,14 @@ const VERSION_LANGUAGE = { lang: 1033, codepage: 1200 };
  * version, for rcedit to fill in.
  */
 function addVersionDetails(exePath: string, version: string): void {
-  const exe = ResEdit.NtExecutable.from(readFileSync(exePath), { ignoreCert: true });
+  let exe: ResEdit.NtExecutable;
+  try {
+    exe = ResEdit.NtExecutable.from(readFileSync(exePath), { ignoreCert: true });
+  } catch (error) {
+    // Electrobun 2's bun.exe is one resedit cannot read: rcedit still edits the details it has.
+    console.log(`Left the version details of ${basename(exePath)} to rcedit: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   const resources = ResEdit.NtExecutableResource.from(exe);
   if (ResEdit.Resource.VersionInfo.fromEntries(resources.entries).length > 0) return;
   const info = ResEdit.Resource.VersionInfo.createEmpty();

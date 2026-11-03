@@ -1,4 +1,4 @@
-import Electrobun, { ApplicationMenu, Utils } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, Updater, Utils } from "electrobun/bun";
 import { homedir } from "os";
 import { debugLog } from "../../../utils/debug-log";
 import { setConfigStoreHost } from "../../../data/config/store";
@@ -13,6 +13,7 @@ import { installProcessCrashListeners } from "../../../telemetry/crash-reports-n
 import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import { settleInstallerFolder } from "./desktop/installer-folder";
+import { ensureInstallRecords } from "./desktop/install-records";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -30,24 +31,17 @@ setConfigStoreHost(nodeConfigStoreHost);
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
 
-// An install the Windows installer made lives in the installer's folder,
-// where its shortcuts, the gloom command and its uninstall entry lead.
-// Electrobun's updater installs an update into a folder of its own and opens
-// it from there: this build moves into the installer's folder and opens again
-// from it before any window shows.
-const installerFolderMove = await settleInstallerFolder({
+// A Windows install from before Electrobun 2 lives in the installer's folder.
+// Its last update put this build in Electrobun's folder, the only one
+// Electrobun 2 updates: the installer's folder is retired in the background.
+void settleInstallerFolder({
   platform: process.platform,
   execPath: process.execPath,
   homeDir: homedir(),
   localAppData: process.env.LOCALAPPDATA,
 }).catch((error: unknown) => {
-  console.error("[desktop] could not move the app into the installer's folder", error instanceof Error ? error.message : String(error));
-  return null;
+  console.error("[desktop] could not retire the installer's folder", error instanceof Error ? error.message : String(error));
 });
-if (installerFolderMove?.kind === "relaunching") {
-  Utils.quit();
-  await new Promise<never>(() => {});
-}
 
 // An install from before the rename runs from Gloomberb.app, where its updater
 // put this build. It takes the new name and opens again from there before any
@@ -69,6 +63,18 @@ if (appRename?.kind === "renamed") {
 } else if (appRename?.kind === "skipped") {
   console.error(`[desktop] kept the app's old name: ${appRename.reason}`);
 }
+
+// A Mac app that has not updated yet has no folder for Electrobun's install
+// records, which its launcher otherwise fails to write at every start. The
+// records name the bundle the app runs from, so they are written once it has
+// its new name: a Gloomberb.app being renamed above opens again as Gloom.app
+// and writes them from there.
+void ensureInstallRecords({
+  platform: process.platform,
+  execPath: process.execPath,
+  channel: () => Updater.localInfo.channel(),
+  channelRoot: () => Updater.appDataFolder(),
+});
 
 function readOpenUrlEvent(event: unknown): string | null {
   const data = event && typeof event === "object" ? (event as { data?: unknown }).data : null;

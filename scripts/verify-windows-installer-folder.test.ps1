@@ -1,51 +1,73 @@
+param(
+  # This build's installer: its PrepareToInstall runs over an earlier install whose uninstaller fails.
+  [string]$Installer = ""
+)
+
 $ErrorActionPreference = "Stop"
 
-# The script the Windows app leaves to move an update into the installer's
-# folder (src/renderers/electrobun/bun/desktop/installer-folder.ts), as the
-# app writes it, run by Windows PowerShell 5.1 as the app runs it, on folders
-# made here: which files it replaces, what it leaves, what a failure partway
-# puts back, and when the app opens again. scripts/verify-windows-update.ps1
-# runs it on a real install.
+# The script the Windows app leaves to retire an earlier installer's folder
+# (src/renderers/electrobun/bun/desktop/installer-folder.ts), as the app
+# writes it, run by Windows PowerShell 5.1 as the app runs it, over installs
+# made up here: an uninstaller that fails, an earlier build still running, a
+# folder the user picked with a file of theirs in it, and the installer's
+# default folder. With -Installer, this build's installer over an earlier
+# install whose uninstaller fails. scripts/verify-windows-update.ps1 retires
+# a real install.
+#
+# It works on the runner's own uninstall entry, Start menu, Desktop and user
+# PATH, as the script does, and puts them back as they were.
+
+if (-not $env:RUNNER_TEMP) {
+  Write-Host "Skipping the installer folder checks outside CI: they change the user's uninstall entries, shortcuts and PATH."
+  exit 0
+}
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 # A quote of each kind PowerShell reads in a path the script carries.
-$Name = "gloom installer folder O'Brien" + [char]0x2019 + "s"
-$Work = Join-Path $env:RUNNER_TEMP $Name
-# The updater's folder is under %LOCALAPPDATA%, on C:; the checkout's temp is on D:.
-$OtherDriveWork = Join-Path $env:LOCALAPPDATA $Name
+$Work = Join-Path $env:LOCALAPPDATA ("gloom installer folder O'Brien" + [char]0x2019 + "s")
+$EntryKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
+$DefaultFolder = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
+$ElectrobunRoot = Join-Path $env:LOCALAPPDATA "com.vincelwt.gloomberb"
+$StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk"
+$DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Gloom.lnk"
+$App = Join-Path $Work "app"
 $Failures = New-Object System.Collections.Generic.List[string]
-
-if (-not $env:RUNNER_TEMP) {
-  Write-Host "Skipping the installer folder script outside CI."
-  exit 0
-}
 
 function Check {
   param([string]$Name, [bool]$Ok, [string]$Detail)
   if ($Ok) { Write-Host "ok   $Name" } else { Write-Host "FAIL $Name`n$Detail"; $Failures.Add($Name) }
 }
 
-# The script, as the app writes it for these folders.
-function Write-MoveScript {
-  param([string]$Path, [string]$Target, [string]$Source, [string]$Data, [bool]$AfterExit)
+function Get-RawUserPath {
+  $Key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment")
+  try {
+    if (-not $Key -or $null -eq $Key.GetValue("Path")) { return $null }
+    @{ Value = [string]$Key.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); Kind = $Key.GetValueKind("Path") }
+  } finally { if ($Key) { $Key.Close() } }
+}
 
-  $Writer = Join-Path $Work "write-script.ts"
-  $Module = ($Root -replace '\\', '/') + "/src/renderers/electrobun/bun/desktop"
-  [IO.File]::WriteAllText($Writer, @"
-import { installerFolderScript } from "$Module/installer-folder";
-import { writePowerShellScript } from "$Module/windows-script";
-const args = JSON.parse(process.env.GLOOM_MOVE_SCRIPT ?? "{}");
-await writePowerShellScript(args.path, installerFolderScript({
-  target: args.target,
-  sources: [args.source],
-  folder: args.data,
-  log: args.data + "\\installer-folder.log",
-  afterExit: args.afterExit ? { cancel: args.data + "\\installer-folder.cancel", taskName: "" } : undefined,
-}));
-"@)
-  $env:GLOOM_MOVE_SCRIPT = (@{ path = $Path; target = $Target; source = $Source; data = $Data; afterExit = $AfterExit } | ConvertTo-Json -Compress)
-  & bun $Writer
-  if ($LASTEXITCODE -ne 0) { throw "bun could not write the script" }
+function Set-RawUserPath($Path) {
+  $Key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Environment")
+  try {
+    if ($null -eq $Path) { $Key.DeleteValue("Path", $false) } else { $Key.SetValue("Path", $Path.Value, $Path.Kind) }
+  } finally { $Key.Close() }
+}
+
+function Get-PathEntries {
+  $Path = Get-RawUserPath
+  if ($null -eq $Path) { return @() }
+  @($Path.Value -split ";" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim().TrimEnd("\").ToLowerInvariant() })
+}
+
+function Get-ShortcutTarget([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path)) { return "" }
+  (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+}
+
+function New-Shortcut([string]$Path, [string]$Target) {
+  $Link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+  $Link.TargetPath = $Target
+  $Link.Save()
 }
 
 function Write-Tree {
@@ -57,261 +79,185 @@ function Write-Tree {
   }
 }
 
-# Every file and folder under $Base, with what the files hold.
-function Get-Snapshot {
-  param([string]$Base)
-  if (-not (Test-Path -LiteralPath $Base)) { return "" }
-  (Get-ChildItem -LiteralPath $Base -Recurse -Force | Sort-Object FullName | ForEach-Object {
-    $Relative = $_.FullName.Substring($Base.Length + 1)
-    if ($_.PSIsContainer) { "$Relative\" } else { "$Relative=" + [IO.File]::ReadAllText($_.FullName) }
-  }) -join "`n"
+# An earlier installer's install in $Folder: its files, its uninstaller (which
+# fails with "fail" in uninstaller-mode.txt, and otherwise removes what it
+# installed, its Start menu shortcut and its entry, as Inno's does), its
+# entry, its PATH entry and its shortcut.
+function New-EarlierInstall {
+  param([string]$Folder, [string]$Mode, [hashtable]$UserFiles = @{})
+  if (Test-Path -LiteralPath $Folder) { Remove-Item -LiteralPath $Folder -Recurse -Force }
+  Write-Tree $Folder @{ "Resources\version.json" = "earlier"; "uninstaller-mode.txt" = $Mode; "uninstaller-files.txt" = "Resources\version.json`r`nbin\launcher.exe`r`nbin\bun.exe" }
+  Write-Tree $Folder $UserFiles
+  New-Item -ItemType Directory -Force -Path (Join-Path $Folder "bin") | Out-Null
+  Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\launcher.exe")
+  Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\bun.exe")
+  Copy-Item -LiteralPath $FakeUninstaller -Destination (Join-Path $Folder "unins000.exe")
+  New-Item -Path $EntryKey -Force | Out-Null
+  Set-ItemProperty -LiteralPath $EntryKey -Name "Inno Setup: App Path" -Value $Folder
+  Set-ItemProperty -LiteralPath $EntryKey -Name "UninstallString" -Value ('"' + (Join-Path $Folder "unins000.exe") + '"')
+  $Path = Get-RawUserPath
+  $Kind = if ($null -eq $Path) { [Microsoft.Win32.RegistryValueKind]::ExpandString } else { $Path.Kind }
+  $Value = if ($null -eq $Path -or -not $Path.Value) { "" } else { $Path.Value.TrimEnd(";") + ";" }
+  Set-RawUserPath @{ Value = $Value + (Join-Path $Folder "bin"); Kind = $Kind }
+  New-Shortcut $StartMenuShortcut (Join-Path $Folder "bin\launcher.exe")
 }
 
-function Get-Leftovers {
-  param([string]$Target)
-  @(Get-ChildItem -LiteralPath $Target -Force -Directory | Where-Object { $_.Name -like ".gloom-*" })
+function Remove-EarlierInstall([string]$Folder) {
+  Get-RunningFrom $Folder | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 500
+  if (Test-Path -LiteralPath $EntryKey) { Remove-Item -LiteralPath $EntryKey -Recurse -Force }
+  if (Test-Path -LiteralPath $Folder) { Remove-Item -LiteralPath $Folder -Recurse -Force }
+  foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) { if (Test-Path -LiteralPath $Shortcut) { Remove-Item -LiteralPath $Shortcut -Force } }
+  Set-RawUserPath $SavedPath
 }
 
-# An installed build and an update, both with a program that waits like the app does.
-function New-Install {
-  param([string]$Base)
-
-  if (Test-Path -LiteralPath $Base) { Remove-Item -LiteralPath $Base -Recurse -Force }
-  $Target = Join-Path $Base "Gloom"
-  $Source = Join-Path $Base "data\app"
-  Write-Tree $Target @{ "bin\a.dll" = "old a"; "bin\cef\x.pak" = "old x"; "Resources\version.json" = "old version"; "Info.plist" = "old plist"; "unins000.exe" = "uninstaller" }
-  Write-Tree $Source @{ "bin\a.dll" = "new a"; "bin\b.dll" = "new b"; "bin\cef\x.pak" = "new x"; "Resources\version.json" = "new version"; "Info.plist" = "new plist" }
-  foreach ($Folder in @($Target, $Source)) {
-    Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\launcher.exe")
-    Copy-Item -LiteralPath $Sleeper -Destination (Join-Path $Folder "bin\bun.exe")
-  }
-  @{ Target = $Target; Source = $Source; Data = (Join-Path $Base "data") }
-}
-
-function Get-RunningIn {
-  param([string]$Folder)
+function Get-RunningFrom([string]$Folder) {
   @(Get-Process -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -and $_.Path.StartsWith("$Folder\", [StringComparison]::OrdinalIgnoreCase) } catch { $false } })
 }
 
-function Stop-RunningIn {
+# The script as the app writes it for $Folder, run as the app runs it, to its end.
+function Invoke-Retire {
   param([string]$Folder)
-  Get-RunningIn $Folder | Stop-Process -Force -ErrorAction SilentlyContinue
-  for ($Wait = 0; $Wait -lt 20 -and (Get-RunningIn $Folder).Count -gt 0; $Wait += 1) { Start-Sleep -Milliseconds 250 }
+  $Data = Join-Path $Work "data"
+  New-Item -ItemType Directory -Force -Path $Data | Out-Null
+  $Script = Join-Path $Data ("installer-folder-retire-" + [guid]::NewGuid().ToString("N") + ".ps1")
+  $Writer = Join-Path $Work "write-script.ts"
+  $Module = ($Root -replace '\\', '/') + "/src/renderers/electrobun/bun/desktop"
+  [IO.File]::WriteAllText($Writer, @"
+import { installerFolderScript } from "$Module/installer-folder";
+import { writePowerShellScript } from "$Module/windows-script";
+const args = JSON.parse(process.env.GLOOM_RETIRE_SCRIPT ?? "{}");
+await writePowerShellScript(args.script, installerFolderScript({ folder: args.folder, app: args.app, log: args.log, pending: args.pending }));
+"@)
+  $env:GLOOM_RETIRE_SCRIPT = (@{ script = $Script; folder = $Folder; app = $App; log = $Log; pending = $Pending } | ConvertTo-Json -Compress)
+  & bun $Writer | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "bun could not write the script" }
+  [IO.File]::WriteAllText($Pending, $Folder)
+  $Process = Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -PassThru -ArgumentList @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "`"$Script`"")
+  # Its exit code reads back only with the handle taken while it runs.
+  $null = $Process.Handle
+  if (-not $Process.WaitForExit(300000)) { throw "the script ran past five minutes" }
+  $Process.ExitCode
 }
 
-function Wait-For {
-  param([int]$Seconds, [scriptblock]$Condition)
-  $Deadline = (Get-Date).AddSeconds($Seconds)
-  while ((Get-Date) -lt $Deadline) {
-    if (& $Condition) { return $true }
-    Start-Sleep -Milliseconds 250
-  }
-  [bool](& $Condition)
+function Get-RetireLog {
+  try { [IO.File]::ReadAllText($Log) } catch { "" }
 }
 
-function Start-Program {
-  param([string]$Path)
-  Start-Process -FilePath $Path -WorkingDirectory (Split-Path -Parent $Path) | Out-Null
-  Wait-For 10 { (Get-RunningIn (Split-Path -Parent $Path)).Count -gt 0 } | Out-Null
-}
-
-# The whole script, after the app's exit, the way the scheduled task runs it.
-function Start-MoveScript {
-  param($Install, [bool]$AfterExit = $true)
-  $Path = Join-Path $Install.Data ("installer-folder-" + [guid]::NewGuid().ToString("N") + ".ps1")
-  Write-MoveScript $Path $Install.Target $Install.Source $Install.Data $AfterExit
-  Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -PassThru -ArgumentList @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "`"$Path`"")
-}
-
-function Get-MoveLog {
-  param($Install)
-  try { [IO.File]::ReadAllText((Join-Path $Install.Data "installer-folder.log")) } catch { "" }
-}
+$Launcher = Join-Path $App "bin\launcher.exe"
+$Log = Join-Path $Work "data\installer-folder.log"
+$Pending = Join-Path $Work "data\installer-folder.pending"
+$SavedPath = Get-RawUserPath
 
 try {
   if ($PSVersionTable.PSVersion.Major -ne 5) { throw "Run this with Windows PowerShell 5.1, which the app runs the script with." }
+  foreach ($Taken in @($EntryKey, $DefaultFolder, $StartMenuShortcut, $DesktopShortcut, $ElectrobunRoot)) {
+    if (Test-Path -LiteralPath $Taken) { throw "$Taken is already there: run this on a runner without Gloom." }
+  }
   if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force }
   New-Item -ItemType Directory -Force -Path $Work | Out-Null
   $Sleeper = Join-Path $Work "sleeper.exe"
   Add-Type -OutputAssembly $Sleeper -OutputType WindowsApplication -TypeDefinition "public static class Sleeper { public static void Main() { System.Threading.Thread.Sleep(300000); } }"
-
-  # Its functions, to run Install-Build on its own.
-  $Functions = Join-Path $Work "functions.ps1"
-  $Install = New-Install (Join-Path $Work "functions")
-  Write-MoveScript $Functions $Install.Target $Install.Source $Install.Data $true
-  $Text = [IO.File]::ReadAllText($Functions)
-  $Main = $Text.IndexOf("# One script at a time")
-  if ($Main -lt 0) { throw "The script has no '# One script at a time' section to stop before" }
-  [IO.File]::WriteAllText($Functions, $Text.Substring(0, $Main), (New-Object Text.UTF8Encoding $true))
-  . $Functions
-
-  # 1. Folders holding nothing but the app's files are replaced whole; the
-  #    uninstaller and the list of what updates put there stay right.
-  $Install = New-Install (Join-Path $Work "whole")
-  $Target = $Install.Target; $Log = Join-Path $Work "whole.log"
-  $NewBin = Get-Snapshot (Join-Path $Install.Source "bin")
-  Install-Build $Install.Source
-  Check "whole: bin is the update's" ((Get-Snapshot (Join-Path $Target "bin")) -eq $NewBin) (Get-Snapshot $Target)
-  Check "whole: the uninstaller stays" (Test-Path -LiteralPath (Join-Path $Target "unins000.exe")) ""
-  Check "whole: the log says so" ([IO.File]::ReadAllText($Log).Contains("replaced $Target\bin")) ([IO.File]::ReadAllText($Log))
-  Check "whole: nothing left beside it" ((Get-Leftovers $Target).Count -eq 0) ""
-  $List = [IO.File]::ReadAllLines((Join-Path $Target "Resources\update-files.txt")) -join ","
-  Check "whole: the files are listed for the uninstaller" ($List -eq "bin\a.dll,bin\b.dll,bin\bun.exe,bin\cef\x.pak,bin\launcher.exe,Info.plist,Resources\version.json") $List
-
-  # 2. In a folder that also holds the user's files (C:\Tools, with its own
-  #    bin), only the app's files are replaced.
-  $Install = New-Install (Join-Path $Work "merge")
-  $Target = $Install.Target; $Log = Join-Path $Work "merge.log"
-  Write-Tree $Target @{ "bin\rg.exe" = "the user's"; "bin\scripts\notes.txt" = "the user's notes" }
-  Install-Build $Install.Source
-  Check "merge: the user's files stay" (([IO.File]::ReadAllText((Join-Path $Target "bin\rg.exe")) -eq "the user's") -and ([IO.File]::ReadAllText((Join-Path $Target "bin\scripts\notes.txt")) -eq "the user's notes")) (Get-Snapshot $Target)
-  Check "merge: the app's files are replaced" (([IO.File]::ReadAllText((Join-Path $Target "bin\a.dll")) -eq "new a") -and ([IO.File]::ReadAllText((Join-Path $Target "bin\cef\x.pak")) -eq "new x") -and (Test-Path -LiteralPath (Join-Path $Target "bin\b.dll"))) (Get-Snapshot $Target)
-  Check "merge: the log says so" ([IO.File]::ReadAllText($Log).Contains("kept 2 file(s) in $Target\bin that are not the app's")) ([IO.File]::ReadAllText($Log))
-  Check "merge: nothing left beside it" ((Get-Leftovers $Target).Count -eq 0) ""
-  $List = [IO.File]::ReadAllLines((Join-Path $Target "Resources\update-files.txt"))
-  Check "merge: the user's files are not listed" (-not ($List -contains "bin\rg.exe")) ($List -join ",")
-
-  # 3. A failure partway (here a folder of the user's where the build has a
-  #    file) puts back every file it moved, in both folders.
-  $Install = New-Install (Join-Path $Work "undo")
-  $Target = $Install.Target; $Log = Join-Path $Work "undo.log"
-  Write-Tree $Target @{ "bin\rg.exe" = "the user's"; "bin\b.dll\inside.txt" = "the user's" }
-  $TargetBefore = Get-Snapshot $Target; $SourceBefore = Get-Snapshot $Install.Source
-  $Failed = $null
-  try { Install-Build $Install.Source } catch { $Failed = $_.Exception.Message }
-  Check "undo: it fails" ($null -ne $Failed) ""
-  Check "undo: the installed build is as it was" ((Get-Snapshot $Target) -eq $TargetBefore) (Get-Snapshot $Target)
-  Check "undo: the update is as it was" ((Get-Snapshot $Install.Source) -eq $SourceBefore) (Get-Snapshot $Install.Source)
-
-  # 4. From another drive, a copy that fails partway (a full disk, here a
-  #    file it cannot read) changes nothing, and leaves no partial copy.
-  if ((Split-Path -Qualifier $OtherDriveWork) -eq (Split-Path -Qualifier $Work)) {
-    Write-Host "skip another drive: $OtherDriveWork is on the same drive as $Work"
-  } else {
-    $Install = New-Install (Join-Path $Work "other-drive")
-    $Target = $Install.Target; $Log = Join-Path $Work "other-drive.log"
-    if (Test-Path -LiteralPath $OtherDriveWork) { Remove-Item -LiteralPath $OtherDriveWork -Recurse -Force }
-    Copy-Item -LiteralPath (Split-Path -Parent $Install.Source) -Destination $OtherDriveWork -Recurse
-    $Source = Join-Path $OtherDriveWork "app"
-    $TargetBefore = Get-Snapshot $Target
-    $Lock = [IO.File]::Open((Join-Path $Source "bin\cef\x.pak"), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
-    $Failed = $null
-    try { Install-Build $Source } catch { $Failed = $_.Exception.Message } finally { $Lock.Dispose() }
-    Check "other drive: a failed copy fails the move" ($null -ne $Failed -and $Failed.StartsWith("could not copy the build into $Target")) $Failed
-    Check "other drive: the installed build is as it was, with no partial copy" ((Get-Snapshot $Target) -eq $TargetBefore) (Get-Snapshot $Target)
-    $SourceBefore = Get-Snapshot $Source
-    Install-Build $Source
-    Check "other drive: the next copy moves it in" ([IO.File]::ReadAllText((Join-Path $Target "bin\a.dll")) -eq "new a") (Get-Snapshot $Target)
-    Check "other drive: nothing left beside it" ((Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
-    Check "other drive: the update stays for the script to remove" ((Get-Snapshot $Source) -eq $SourceBefore) ""
-    Remove-Item -LiteralPath $OtherDriveWork -Recurse -Force
+  $FakeUninstaller = Join-Path $Work "fake-uninstaller.exe"
+  Add-Type -OutputAssembly $FakeUninstaller -OutputType WindowsApplication -TypeDefinition @"
+using System;
+using System.IO;
+public static class FakeUninstaller {
+  public static int Main(string[] args) {
+    string dir = AppDomain.CurrentDomain.BaseDirectory;
+    File.AppendAllText(Path.Combine(dir, "uninstaller-ran.txt"), string.Join(" ", args) + Environment.NewLine);
+    if (File.ReadAllText(Path.Combine(dir, "uninstaller-mode.txt")).Trim() == "fail") return 5;
+    foreach (string relative in File.ReadAllLines(Path.Combine(dir, "uninstaller-files.txt"))) {
+      string file = Path.Combine(dir, relative);
+      if (File.Exists(file)) File.Delete(file);
+    }
+    string link = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Gloom.lnk");
+    if (File.Exists(link)) File.Delete(link);
+    Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1", false);
+    return 0;
   }
+}
+"@
+  New-Item -ItemType Directory -Force -Path (Join-Path $App "bin") | Out-Null
+  Copy-Item -LiteralPath $Sleeper -Destination $Launcher
+  $AppBin = (Join-Path $App "bin").TrimEnd("\").ToLowerInvariant()
 
-  # 5. A move cut short leaves the installed build in what it set aside: it
-  #    goes back before that is removed, and nothing a newer build dropped
-  #    comes back beside it.
-  $Install = New-Install (Join-Path $Work "restore")
-  $Target = $Install.Target; $Log = Join-Path $Work "restore.log"
-  $InstalledBin = Get-Snapshot (Join-Path $Target "bin")
-  # A power cut between the two renames of bin.
-  New-Item -ItemType Directory -Path (Join-Path $Target ".gloom-previous-20260101000000-a") | Out-Null
-  Move-Item -LiteralPath (Join-Path $Target "bin") -Destination (Join-Path $Target ".gloom-previous-20260101000000-a\bin")
-  Remove-Staging
-  Check "restore: bin goes back whole" ((Get-Snapshot (Join-Path $Target "bin")) -eq $InstalledBin) (Get-Snapshot $Target)
-  Check "restore: then what was set aside goes" ((Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
-  # One file at a time, cut short after the launcher was set aside.
-  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-b") @{ "bin\a.dll" = "old a" }
-  Move-Item -LiteralPath (Join-Path $Target "bin\launcher.exe") -Destination (Join-Path $Target ".gloom-previous-20260101000000-b\bin\launcher.exe")
-  [IO.File]::WriteAllText((Join-Path $Target "bin\a.dll"), "new a")
-  Remove-Staging
-  Check "restore: the launcher goes back, beside what was already replaced" ((Test-Path -LiteralPath (Join-Path $Target "bin\launcher.exe")) -and [IO.File]::ReadAllText((Join-Path $Target "bin\a.dll")) -eq "new a") (Get-Snapshot $Target)
-  Check "restore: then what was set aside goes too" ((Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
-  # A move that worked and could not remove what it replaced.
-  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-c") @{ "bin\dropped.dll" = "old"; "bin\a.dll" = "old a" }
-  Remove-Staging
-  Check "restore: nothing comes back beside a whole build" (-not (Test-Path -LiteralPath (Join-Path $Target "bin\dropped.dll")) -and (Get-Leftovers $Target).Count -eq 0) (Get-Snapshot $Target)
-  # With no launcher anywhere, what was set aside stays.
-  Remove-Item -LiteralPath (Join-Path $Target "bin\launcher.exe")
-  Write-Tree (Join-Path $Target ".gloom-previous-20260101000000-d") @{ "bin\a.dll" = "old a" }
-  Remove-Staging
-  Check "restore: what was set aside stays while the build has no launcher" ((Get-Leftovers $Target).Count -eq 1) (Get-Snapshot $Target)
+  # 1. An uninstaller that fails keeps its entry and its folder for the next
+  #    start. The shortcuts and PATH lead to this build meanwhile.
+  $Folder = Join-Path $Work "Tools"
+  New-EarlierInstall $Folder "fail" @{ "notes.txt" = "the user's" }
+  New-Shortcut $DesktopShortcut (Join-Path $Folder "bin\launcher.exe")
+  $Code = Invoke-Retire $Folder
+  $RetireLog = Get-RetireLog
+  Check "failing uninstaller: the script says it is unfinished" ($Code -eq 2 -and $RetireLog.Contains("did not finish; its entry stays")) "exit $Code`n$RetireLog"
+  Check "failing uninstaller: its entry stays" (Test-Path -LiteralPath $EntryKey) ""
+  Check "failing uninstaller: its folder and uninstaller stay" ((Test-Path -LiteralPath (Join-Path $Folder "unins000.exe")) -and (Test-Path -LiteralPath (Join-Path $Folder "bin\bun.exe"))) ""
+  Check "failing uninstaller: the next start is due" (Test-Path -LiteralPath $Pending) ""
+  Check "failing uninstaller: the shortcuts lead to this build" (((Get-ShortcutTarget $StartMenuShortcut) -eq $Launcher) -and ((Get-ShortcutTarget $DesktopShortcut) -eq $Launcher)) "$(Get-ShortcutTarget $StartMenuShortcut) / $(Get-ShortcutTarget $DesktopShortcut)"
+  $Entries = Get-PathEntries
+  Check "failing uninstaller: PATH leads to this build" (($Entries -contains $AppBin) -and -not ($Entries -contains (Join-Path $Folder "bin").ToLowerInvariant())) ($Entries -join ";")
 
-  # 6. While a program of the app runs from the installer's folder (the
-  #    gloom command), the script says so before the app would quit for it.
-  $Install = New-Install (Join-Path $Work "busy")
-  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
-  Start-Program (Join-Path $Install.Target "bin\bun.exe")
-  $Script = Start-MoveScript $Install
-  $Script.WaitForExit(60000) | Out-Null
-  $MoveLog = Get-MoveLog $Install
-  Check "busy: it says busy, and does not start" ($MoveLog.Contains(" busy: ") -and -not $MoveLog.Contains(" started ")) $MoveLog
-  Check "busy: the installed build is as it was" ([IO.File]::ReadAllText((Join-Path $Install.Target "bin\a.dll")) -eq "old a") ""
-  Stop-RunningIn $Install.Target
-  Stop-RunningIn $Install.Source
+  # 2. The next start, once the uninstaller works: the user's file stays in
+  #    the folder they picked; the rest is done.
+  [IO.File]::WriteAllText((Join-Path $Folder "uninstaller-mode.txt"), "ok")
+  Remove-Item -LiteralPath $Log -Force
+  $Code = Invoke-Retire $Folder
+  $RetireLog = Get-RetireLog
+  Check "retry: it finishes" ($Code -eq 0 -and $RetireLog.Contains(" done") -and -not (Test-Path -LiteralPath $Pending)) "exit $Code`n$RetireLog"
+  Check "retry: the entry is gone" (-not (Test-Path -LiteralPath $EntryKey)) ""
+  Check "retry: the user's file stays in the folder they picked" (([IO.File]::ReadAllText((Join-Path $Folder "notes.txt")) -eq "the user's") -and -not (Test-Path -LiteralPath (Join-Path $Folder "bin\bun.exe"))) (@(Get-ChildItem -LiteralPath $Folder -Recurse -Force | ForEach-Object { $_.FullName }) -join "`n")
+  Check "retry: the shortcut the uninstaller removed leads to this build again" (((Get-ShortcutTarget $StartMenuShortcut) -eq $Launcher) -and ((Get-ShortcutTarget $DesktopShortcut) -eq $Launcher)) "$(Get-ShortcutTarget $StartMenuShortcut) / $(Get-ShortcutTarget $DesktopShortcut)"
+  Remove-EarlierInstall $Folder
+  Remove-Item -LiteralPath $Log -Force
 
-  # 7. Once the app quits, the build moves in and the app opens from the
-  #    installer's folder before the copy it came from goes.
-  $Install = New-Install (Join-Path $Work "move")
-  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
-  $Script = Start-MoveScript $Install
-  Check "move: it starts" (Wait-For 30 { (Get-MoveLog $Install).Contains(" started ") }) (Get-MoveLog $Install)
-  Stop-RunningIn $Install.Source
-  $Script.WaitForExit(120000) | Out-Null
-  $MoveLog = Get-MoveLog $Install
-  $Opened = $MoveLog.IndexOf("opened $($Install.Target)\bin\launcher.exe")
-  $Removed = $MoveLog.IndexOf("removed $($Install.Source)")
-  Check "move: it opens the app from the installer's folder, then removes the copy" ($Opened -ge 0 -and $Removed -gt $Opened -and $MoveLog.Contains(" done")) $MoveLog
-  Check "move: the app runs from the installer's folder" ((Wait-For 10 { (Get-RunningIn $Install.Target).Count -gt 0 }) -and -not (Test-Path -LiteralPath $Install.Source)) ""
-  Stop-RunningIn $Install.Target
+  # 3. While the earlier build runs from its folder, nothing is uninstalled.
+  $Folder = Join-Path $Work "Running"
+  New-EarlierInstall $Folder "ok"
+  Start-Process -FilePath (Join-Path $Folder "bin\bun.exe") | Out-Null
+  $Code = Invoke-Retire $Folder
+  $RetireLog = Get-RetireLog
+  Check "running: it waits for the next start" ($Code -eq 2 -and $RetireLog.Contains("still runs from")) "exit $Code`n$RetireLog"
+  Check "running: the uninstaller did not run, and the entry stays" ((-not (Test-Path -LiteralPath (Join-Path $Folder "uninstaller-ran.txt"))) -and (Test-Path -LiteralPath $EntryKey)) ""
+  Check "running: the Start menu leads to this build" ((Get-ShortcutTarget $StartMenuShortcut) -eq $Launcher) (Get-ShortcutTarget $StartMenuShortcut)
+  Remove-EarlierInstall $Folder
+  Remove-Item -LiteralPath $Log -Force
 
-  # 8. An app slow to quit (past a minute) still ends up open, moved.
-  $Install = New-Install (Join-Path $Work "slow")
-  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
-  $Script = Start-MoveScript $Install
-  Check "slow: it starts" (Wait-For 30 { (Get-MoveLog $Install).Contains(" started ") }) (Get-MoveLog $Install)
-  Start-Sleep -Seconds 75
-  Stop-RunningIn $Install.Source
-  $Script.WaitForExit(120000) | Out-Null
-  $MoveLog = Get-MoveLog $Install
-  Check "slow: it waits, moves the build and opens the app" ($MoveLog.Contains(" moved ") -and $MoveLog.Contains("opened $($Install.Target)\bin\launcher.exe")) $MoveLog
-  Check "slow: the app runs from the installer's folder" (Wait-For 10 { (Get-RunningIn $Install.Target).Count -gt 0 }) ""
-  Stop-RunningIn $Install.Target
+  # 4. The installer's default folder goes whole, with what the app wrote there.
+  New-EarlierInstall $DefaultFolder "ok" @{ "bin\app.log" = "written by the app" }
+  $Code = Invoke-Retire $DefaultFolder
+  $RetireLog = Get-RetireLog
+  Check "default folder: it finishes" ($Code -eq 0 -and $RetireLog.Contains(" done")) "exit $Code`n$RetireLog"
+  Check "default folder: it is gone" (-not (Test-Path -LiteralPath $DefaultFolder)) $RetireLog
+  Check "default folder: the entry is gone" (-not (Test-Path -LiteralPath $EntryKey)) ""
+  $Entries = Get-PathEntries
+  Check "default folder: PATH leads to this build" (($Entries -contains $AppBin) -and -not ($Entries -contains (Join-Path $DefaultFolder "bin").ToLowerInvariant())) ($Entries -join ";")
+  Remove-EarlierInstall $DefaultFolder
 
-  # 9. A move that fails after the app quit opens it again where it was.
-  $Install = New-Install (Join-Path $Work "reopen")
-  Write-Tree $Install.Target @{ "bin\b.dll\inside.txt" = "the user's" }
-  $TargetBefore = Get-Snapshot $Install.Target
-  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
-  $Script = Start-MoveScript $Install
-  Check "reopen: it starts" (Wait-For 30 { (Get-MoveLog $Install).Contains(" started ") }) (Get-MoveLog $Install)
-  Stop-RunningIn $Install.Source
-  $Script.WaitForExit(120000) | Out-Null
-  $MoveLog = Get-MoveLog $Install
-  Check "reopen: it fails and opens the app where it was" ($MoveLog.Contains(" move failed: ") -and $MoveLog.Contains("opened $($Install.Source)\bin\launcher.exe") -and -not $MoveLog.Contains("opened $($Install.Target)")) $MoveLog
-  Check "reopen: the app runs where it was" (Wait-For 10 { (Get-RunningIn $Install.Source).Count -gt 0 }) ""
-  Check "reopen: the installed build is as it was" ((Get-Snapshot $Install.Target) -eq $TargetBefore) (Get-Snapshot $Install.Target)
-  Stop-RunningIn $Install.Source
-
-  # 10. When the app stopped waiting for the script, the script leaves it be,
-  #    and never opens a second one.
-  $Install = New-Install (Join-Path $Work "cancel")
-  Start-Program (Join-Path $Install.Source "bin\launcher.exe")
-  $Script = Start-MoveScript $Install
-  Check "cancel: it starts" (Wait-For 30 { (Get-MoveLog $Install).Contains(" started ") }) (Get-MoveLog $Install)
-  [IO.File]::WriteAllText((Join-Path $Install.Data "installer-folder.cancel"), "")
-  Stop-RunningIn $Install.Source
-  $Script.WaitForExit(60000) | Out-Null
-  $MoveLog = Get-MoveLog $Install
-  Check "cancel: nothing moves, nothing opens" ($MoveLog.Contains("stopped waiting") -and -not $MoveLog.Contains("opened") -and -not $MoveLog.Contains(" moved ")) $MoveLog
-  Check "cancel: no app runs" (((Get-RunningIn $Install.Source).Count -eq 0) -and ((Get-RunningIn $Install.Target).Count -eq 0)) ""
+  # 5. This build's installer over an install whose uninstaller fails keeps
+  #    its entry and its folder for the app to try again, and installs.
+  if ($Installer) {
+    New-EarlierInstall $DefaultFolder "fail"
+    $SetupLog = Join-Path $Work "setup.log"
+    $Setup = Start-Process -FilePath (Resolve-Path $Installer).Path -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=`"$SetupLog`"") -PassThru -Wait
+    $SetupText = try { [IO.File]::ReadAllText($SetupLog) } catch { "" }
+    Check "installer: it installs" ($Setup.ExitCode -eq 0 -and (Test-Path -LiteralPath (Join-Path $ElectrobunRoot "stable\app\bin\launcher.exe"))) "exit $($Setup.ExitCode)"
+    Check "installer: the earlier entry stays for the app" ((Test-Path -LiteralPath $EntryKey) -and $SetupText.Contains("its record stays for the app to try again")) $SetupText
+    Check "installer: the earlier folder stays, with its uninstaller" (Test-Path -LiteralPath (Join-Path $DefaultFolder "unins000.exe")) ""
+    $Entries = Get-PathEntries
+    Check "installer: PATH leads to the new install" (($Entries -contains (Join-Path $ElectrobunRoot "stable\app\bin").ToLowerInvariant()) -and -not ($Entries -contains (Join-Path $DefaultFolder "bin").ToLowerInvariant())) ($Entries -join ";")
+    Remove-EarlierInstall $DefaultFolder
+  }
 } finally {
-  foreach ($Folder in @($Work, $OtherDriveWork)) {
-    Get-Process -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -and $_.Path.StartsWith("$Folder\", [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue
+  foreach ($Folder in @($Work, $DefaultFolder, $ElectrobunRoot)) {
+    Get-RunningFrom $Folder | Stop-Process -Force -ErrorAction SilentlyContinue
   }
   Start-Sleep -Seconds 1
-  Remove-Item -LiteralPath $Work, $OtherDriveWork -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item Env:GLOOM_MOVE_SCRIPT -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $EntryKey) { Remove-Item -LiteralPath $EntryKey -Recurse -Force -ErrorAction SilentlyContinue }
+  foreach ($Shortcut in @($StartMenuShortcut, $DesktopShortcut)) { Remove-Item -LiteralPath $Shortcut -Force -ErrorAction SilentlyContinue }
+  Remove-Item -LiteralPath $Work, $DefaultFolder, $ElectrobunRoot -Recurse -Force -ErrorAction SilentlyContinue
+  Set-RawUserPath $SavedPath
+  Remove-Item Env:GLOOM_RETIRE_SCRIPT -ErrorAction SilentlyContinue
 }
 
 if ($Failures.Count -gt 0) { throw "$($Failures.Count) check(s) failed: $($Failures -join '; ')" }
-Write-Host "The installer folder script replaces only the app's files, puts back what a failed move took, and opens the app once, where it belongs."
+Write-Host "The installer's folder is retired only once its uninstaller worked, the shortcuts and PATH lead to this build either way, and a failure is tried again."
