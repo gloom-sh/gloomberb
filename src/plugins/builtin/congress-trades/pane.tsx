@@ -19,6 +19,7 @@ const CONGRESS_TABS = [
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useShortcut } from "../../../react/input";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
+import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
@@ -221,6 +222,8 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   useShortcut((event) => {
     if (!focused || event.targetEditable) return;
     if (tickerFilter && detailMode && isDetailBackNavigationKey(event)) {
+      // Ahead of the shell's own Esc handler when restored with it, so it counts the Esc itself.
+      countEscapeTowardClose(event);
       event.preventDefault?.(); event.stopPropagation?.(); setDetailMode(null); return;
     }
     if (!payload) handleRefreshKey(event, refresh, { stopPropagation: true });

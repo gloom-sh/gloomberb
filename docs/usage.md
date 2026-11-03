@@ -41,6 +41,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
+| `Esc` `Esc` | Close focused pane, even one that could still go back, and focus the next floating pane. Not over a typed draft or with a menu or dialog open |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
 | `Ctrl+Shift+D` | Dock or float focused pane |
 | `Ctrl+Shift+N` | Move the focused pane to a new layout of its own; again to move it back |

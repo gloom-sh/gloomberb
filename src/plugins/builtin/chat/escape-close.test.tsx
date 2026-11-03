@@ -61,7 +61,7 @@ function releaseEsc() {
 afterEach(() => setSystemTime());
 
 describe("double Esc in the chat", () => {
-  test("closes an idle chat, after the Esc that clears a selection", async () => {
+  test("closes the chat, even when the first Esc clears a selection", async () => {
     const closes = await mountChatPane();
 
     await emitKeypress(ESC);
@@ -72,7 +72,6 @@ describe("double Esc in the chat", () => {
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     const clearSelection = await emitKeypress(ESC);
     expect(clearSelection.propagationStopped).toBe(true);
-    await emitKeypress(ESC);
     expect(closes.count).toBe(1);
     await emitKeypress(ESC);
     expect(closes.count).toBe(2);
@@ -100,15 +99,8 @@ describe("double Esc in the chat", () => {
     expect(tui.frame()).toContain("> draft");
   });
 
-  test("in a narrow pane, Esc backs out to the channel list before Esc Esc closes", async () => {
+  test("in a narrow pane, one Esc backs out to the channel list and a quick second closes", async () => {
     const closes = await mountChatPane({}, { stacked: true });
-    expect(tui.frame()).toContain("← Back");
-
-    // A selected message is dropped first, and the channel stays open.
-    await emitKeypress({ name: "up", sequence: "\u001b[A" });
-    const clearSelection = await emitKeypress(ESC);
-    expect(clearSelection.propagationStopped).toBe(true);
-    await flushFrame();
     expect(tui.frame()).toContain("← Back");
 
     const backToList = await emitKeypress(ESC);
@@ -117,7 +109,6 @@ describe("double Esc in the chat", () => {
     expect(tui.frame()).not.toContain("← Back");
     expect(closes.count).toBe(0);
 
-    await emitKeypress(ESC);
     await emitKeypress(ESC);
     expect(closes.count).toBe(1);
   });

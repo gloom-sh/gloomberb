@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { useShortcut, type KeyEventLike, type ShortcutOptions } from "../../../../react/input";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { TestShellPaneKeys } from "../../../../test-support/shell-pane-keys";
+import { countEscapeTowardClose, keepEscapeFromClosing } from "../../../../utils/double-escape-close";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../../utils/one-shot";
 
 const tui = createOpenTuiTestHarness({ width: 20, height: 4 });
@@ -173,5 +175,95 @@ describe("pane shortcuts held down", () => {
     }
 
     expect(closes).toBe(1);
+  });
+});
+
+/** A pane that takes every Esc for itself, the way a stack's back or a menu does. */
+function EscPane({ onEscape, options }: { onEscape: (event: KeyEventLike) => void; options?: ShortcutOptions }) {
+  useShortcut((event) => {
+    if (event.name !== "escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onEscape(event);
+  }, options);
+  return null;
+}
+
+/** The pane first, then the shell's keys: the order of a pane restored with the layout at launch. */
+async function mountEscPane(
+  onEscape: (event: KeyEventLike) => void,
+  { options, overlayOpen = false }: { options?: ShortcutOptions; overlayOpen?: boolean } = {},
+) {
+  const closes: Array<{ focusNextFloating?: boolean } | undefined> = [];
+  await tui.render(
+    <>
+      <EscPane onEscape={onEscape} options={options} />
+      <TestShellPaneKeys
+        focusedPaneId="a"
+        overlayOpen={overlayOpen}
+        closeFocusedPane={(closeOptions) => {
+          closes.push(closeOptions);
+          return true;
+        }}
+      />
+    </>,
+    { width: 20, height: 4 },
+  );
+  return closes;
+}
+
+const ESC = { name: "escape", sequence: "\u001b" };
+const press = () => tui.emitKeypress(ESC, { trackPropagation: true });
+
+describe("double Esc", () => {
+  test("closes a pane that took the first Esc to go back, and hands the focus to the next floating pane", async () => {
+    let backs = 0;
+    const closes = await mountEscPane(() => { backs += 1; });
+
+    await press();
+    expect(backs).toBe(1);
+    expect(closes).toEqual([]);
+    const second = await press();
+    expect(second.propagationStopped).toBe(true);
+    expect(backs).toBe(1);
+    expect(closes).toEqual([{ focusNextFloating: true }]);
+  });
+
+  test("a pane's Esc handler that runs ahead of the shell counts its back itself", async () => {
+    let backs = 0;
+    const closes = await mountEscPane((event) => {
+      backs += 1;
+      countEscapeTowardClose(event);
+    }, { options: { phase: "before" } });
+
+    await press();
+    await press();
+    expect(backs).toBe(1);
+    expect(closes).toHaveLength(1);
+  });
+
+  test("the Esc that closes a menu of the pane's own is not half of a close", async () => {
+    let menuOpen = true;
+    const closes = await mountEscPane((event) => {
+      if (!menuOpen) return;
+      keepEscapeFromClosing(event);
+      menuOpen = false;
+    });
+
+    await press();
+    expect(menuOpen).toBe(false);
+    await press();
+    expect(closes).toEqual([]);
+    await press();
+    expect(closes).toHaveLength(1);
+  });
+
+  test("an Esc under an open dialog or menu never closes the pane", async () => {
+    const closes = await mountEscPane(() => {}, { options: { enabled: false }, overlayOpen: true });
+
+    await press();
+    await press();
+    await press();
+    expect(closes).toEqual([]);
   });
 });
