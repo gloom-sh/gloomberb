@@ -26,6 +26,25 @@ export function findNamedCollection<T extends { id: string; name: string }>(
 }
 
 /**
+ * What a list argument that names a watchlist reads (`SIW HY3`): its symbols,
+ * at most a function's `maximum`, and a note saying the name was read as the
+ * watchlist, which matters when it is a ticker too (`AI`): `Read AI as
+ * watchlist AI (12 symbols).` or `Read HY3 as watchlist HY3 (70 symbols); the
+ * first 60 are read.` Every function's list argument, in `fn` and in the
+ * command bar, reads a watchlist's name here.
+ */
+export function readWatchlistArgument(
+  typed: string,
+  watchlist: { name: string },
+  members: readonly string[],
+  maximum: number | undefined,
+): { symbols: string[]; note: string } {
+  const read = `Read ${typed.trim()} as watchlist ${watchlist.name} (${members.length} symbol${members.length === 1 ? "" : "s"})`;
+  if (maximum == null || members.length <= maximum) return { symbols: [...members], note: `${read}.` };
+  return { symbols: members.slice(0, maximum), note: `${read}; the first ${maximum} are read.` };
+}
+
+/**
  * The command bar's row for a function typed with a portfolio or watchlist
  * nothing has (`PF Nope`, `PORT Nope`), or null when one of `collections` has
  * that name or id. `noun` says what was looked for; `form` writes each name

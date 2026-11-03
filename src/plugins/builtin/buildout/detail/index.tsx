@@ -7,8 +7,8 @@ import { SiteDetail } from "./site";
 import { IntelDetail } from "./intel";
 
 export {
-  CompanyCell,
   FavoriteCell,
+  ListingBadges,
 } from "./ui";
 
 export function BuildoutDetail({

@@ -16,7 +16,7 @@ import {
   type CliTickerOptions,
   type CliTickerResolution,
 } from "./ticker-resolution";
-import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, tickerChangeLine, tickerChangeSymbol } from "../tickers/ticker-changes";
+import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, movedAwayChange, tickerChangeLine, tickerChangeSymbol, type MovedTickerChange } from "../tickers/ticker-changes";
 import { isVenueAbroad } from "../tickers/listing-fate";
 import { sameCompany } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
@@ -283,7 +283,16 @@ function choiceNeeded(
       : recent ? `${symbol} matched ${label}, ${sameCompany(resolution.ticker.metadata.name, history?.company) ? "that company's old line" : "another company's listing"}`
         : null);
   if (!found) return null;
+  // The line stopped trading as its company moved on (Rite Aid to RADCQ): one line says both.
+  const moved = resolution.ended ? movedAwayChange(resolution.change) : null;
+  if (moved) return { message: stoppedTradingLine(symbol, moved), successor: moved.tradesAs };
   return { message: history ? `${history.note}; ${found}` : found, successor: history?.successor ?? null };
+}
+
+/** "RAD stopped trading 2023-10-17, now RADCQ", the company named first when known: a symbol whose line ended as its company moved. */
+function stoppedTradingLine(symbol: string, moved: MovedTickerChange): string {
+  const who = moved.issuer ? `${moved.issuer} (${symbol})` : symbol;
+  return `${who} stopped trading ${moved.changes[0]!.date}, now ${moved.tradesAs}`;
 }
 
 /** The plain no-match answer, which a "Not found" line already says. */
@@ -404,6 +413,7 @@ export async function addSymbols({
   reject,
   add,
   onRetry,
+  onProgress,
   retry,
   askWhenAmbiguous,
   failure,
@@ -413,6 +423,8 @@ export async function addSymbols({
   dataProvider: DataProvider;
   /** Told when requests failed and the symbols that failed are about to be looked up again. */
   onRetry?: (count: number, waitMs: number) => void;
+  /** Told as the symbols are looked up, with how many are and how many there are. */
+  onProgress?: (looked: number, total: number) => void;
   /** The command that adds one listing, for the choices a failure names. */
   retry?: (key: string) => string;
   /** Why a symbol cannot be added before it is looked up, such as the cash line; null when it can. */
@@ -430,7 +442,7 @@ export async function addSymbols({
 }): Promise<SymbolRow[]> {
   const staged = new StagedTickerRepository(store);
   const rejected = new Map(symbols.map((input) => [input, reject?.(input) ?? null] as const));
-  const resolutions = await resolveTickersForCli(symbols.filter((input) => !rejected.get(input)), staged, dataProvider, exchange, { onRetry, retry, askWhenAmbiguous });
+  const resolutions = await resolveTickersForCli(symbols.filter((input) => !rejected.get(input)), staged, dataProvider, exchange, { onRetry, onProgress, retry, askWhenAmbiguous });
   const resolved = new Map(resolutions.map((resolution) => [resolution.input, resolution] as const));
   const rows: SymbolRow[] = [];
   // Listings a symbol of this list was added to, which a later symbol's choice must not drop.

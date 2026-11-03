@@ -22,7 +22,7 @@ import {
 } from "../../../../portfolio/mutations";
 import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
@@ -123,6 +123,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       store: market.store,
       dataProvider: market.dataProvider,
       onRetry: retryNotice(ctx),
+      onProgress: progressNotice(ctx),
       retry,
       suggest: true,
       dryRun,

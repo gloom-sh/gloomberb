@@ -210,6 +210,14 @@ const TOPIC_POINTERS: ReadonlyArray<{
 }> = [
   BANK_FIGURES_TOPIC,
   {
+    // CRPR's agency ratings are licensed by the agencies; the tape's grade of each bond is the nearest public read.
+    topic: "Agency credit ratings and rating history",
+    availability: "not carried (the agencies license them)",
+    phrases: ["crpr", "agency rating", "agency ratings", "credit rating history", "credit ratings history", "rating agency",
+      "rating agencies", "moody's rating", "moodys rating", "fitch rating"],
+    closest: [["TRACE", "each bond's grade, investment grade or high yield: gloom fn TRACE <ticker>"], ["CRD", "spreads by rating"]],
+  },
+  {
     topic: "defense budget",
     phrases: ["defense budget", "defence budget", "defense spending", "defence spending", "dod", "department of defense",
       "military budget", "military spending", "pentagon budget", "pentagon spending"],

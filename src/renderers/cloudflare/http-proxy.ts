@@ -25,6 +25,13 @@ import { fetchCheckingRedirects, readBytesWithin, type ProxyUpstreamResult } fro
 import type { ProxySessionGate } from "./proxy-session";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+/**
+ * What a caller without a confirmed session may send. The functions that work
+ * signed out only read (a POST carries a search, as FINRA's tape does), and
+ * the Origin check is no barrier to a script, so anonymous use stays a
+ * read-only proxy to the allowlisted hosts.
+ */
+const ANONYMOUS_METHODS = new Set(["GET", "HEAD", "POST"]);
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** Plugin request bodies are small JSON; anything near this is not one. */
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -74,13 +81,14 @@ function proxyError(message: string, status: number, headers: Record<string, str
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store", ...headers } });
 }
 
+/** The pane shows `error` as is, so it says what happened in plain words. */
 function upstreamFailure(error: unknown): Response {
   const timedOut = error instanceof Error && error.name === "TimeoutError";
-  return proxyError(timedOut ? "The upstream request timed out." : "The upstream request failed.", 504);
+  return proxyError(timedOut ? "The data source timed out. Try again shortly." : "The data source could not be reached. Try again shortly.", 504);
 }
 
 export interface HttpProxyOptions {
-  /** Confirms the caller is signed in. One per isolate, so its cache is shared. */
+  /** Rate limits the caller, by user when signed in. One per isolate, so its cache is shared. */
   sessions: ProxySessionGate;
   /** Reaches the Gloomberb API for that check. */
   fetchApi: (request: Request) => Promise<Response>;
@@ -133,6 +141,9 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
   const init = readRequestInit(payload.init);
   if (!PROXY_METHODS.has(init.method)) {
     return proxyError("Method not allowed", 405);
+  }
+  if (!admission.signedIn && !ANONYMOUS_METHODS.has(init.method)) {
+    return proxyError("Sign in to Gloom to send this request.", 401);
   }
 
   const signal = AbortSignal.timeout(Math.min(init.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS));

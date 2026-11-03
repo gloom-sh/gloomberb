@@ -7,13 +7,15 @@ import { loadExternalPlugin } from "./loader";
 /**
  * The plugin the smoke writes: one import from each kind of module a real
  * plugin uses. `react` and the JSX runtime have to be the host's own
- * instance, `gloomberb/ui` is shared state, `gloomberb/types/config` is a
+ * instance, imported by name as registry plugins do: a host that served
+ * React's default export alone passed a default import and failed every
+ * plugin. `gloomberb/ui` is shared state, `gloomberb/types/config` is a
  * value from a module that used to be bundled from the package directory,
  * and `smoke-dep` stands in for a dependency `bun install` put in the
  * plugin's own `node_modules`.
  */
 const SMOKE_PLUGIN_SOURCE = `
-import React from "react";
+import React, { memo, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Box, Text } from "gloomberb/ui";
 import { formatNumber } from "gloomberb/utils";
 import { TICKER_RESEARCH_PANE_ID } from "gloomberb/types/config";
@@ -31,7 +33,8 @@ export default {
     const element = <Probe />;
     const tree = Probe();
     return {
-      react: typeof React.createElement === "function" && typeof React.useState === "function",
+      react: typeof React.createElement === "function"
+        && [memo, useCallback, useEffect, useState, useSyncExternalStore].every((value) => typeof value === "function"),
       jsx: typeof element.type === "function" && tree != null && typeof tree === "object" && "type" in tree,
       paneId: TICKER_RESEARCH_PANE_ID,
       platform,

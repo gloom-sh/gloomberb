@@ -32,7 +32,28 @@ const ATS_COLUMNS: PublicationColumn[] = [
   { id: "atsTrades", label: "ATS TRADES", detailLabel: "ATS trades", width: 14, align: "right", format: shares },
   { id: "nonAtsTrades", label: "NON-ATS TRADES", detailLabel: "Non-ATS trades", width: 16, align: "right", format: shares },
 ];
-export const publicationColumns = (kind: PublicationKind) => kind === "ftd" ? FTD_COLUMNS : ATS_COLUMNS;
+/**
+ * What every fail row names: one CUSIP and one security, as a ticker with a
+ * single issue has. A shared value is said once above the table (and in the
+ * export's notes), not on every row; a ticker with several CUSIPs, or a
+ * security the filings spell differently over time, keeps the column.
+ */
+interface FailIdentity {
+  cusip: string | null;
+  security: string | null;
+}
+const NO_IDENTITY: FailIdentity = { cusip: null, security: null };
+export function sharedFailIdentity(rows: readonly PublicationRow[]): FailIdentity {
+  const shared = (id: "cusip" | "description"): string | null => {
+    const values = new Set(rows.map((row) => row[id]));
+    const [value] = values;
+    return values.size === 1 && typeof value === "string" && value.trim() ? value : null;
+  };
+  return rows.length ? { cusip: shared("cusip"), security: shared("description") } : NO_IDENTITY;
+}
+export const publicationColumns = (kind: PublicationKind, shared: FailIdentity = NO_IDENTITY) => kind === "ftd"
+  ? FTD_COLUMNS.filter((column) => !(column.id === "cusip" && shared.cusip) && !(column.id === "description" && shared.security))
+  : ATS_COLUMNS;
 export function publicationRows(data: PublicationPayload): PublicationRow[] {
   return data.history.toReversed().map((row) => "cusip" in row
     ? { ...row, id: `${row.date}:${row.cusip}` }

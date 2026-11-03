@@ -55,7 +55,7 @@ import {
   tabs,
   type BuildoutOpenTarget,
 } from "../table-model";
-import { tickerSearchText, tickerSymbol } from "../format";
+import { listingKey, tickerSearchText, tickerSymbol } from "../format";
 import {
   activeBuildoutPage,
   renderBuildoutPageStatus,
@@ -69,12 +69,6 @@ import { boardRows, boardThemes, resolveBoardTheme, ThemeBoard, ThemeStats, them
 const BUILDOUT_UPGRADE_URL = "https://thebuildout.ai/pricing";
 /** How long the cursor rests on a company before linked panes follow it. */
 const CURSOR_PUBLISH_MS = 150;
-
-/** A symbol the rest of the app can open: the dataset writes some Asian listings by number alone. */
-function linkableTicker(value: string | null | undefined): string | null {
-  const symbol = tickerSymbol(value);
-  return symbol && /^[A-Z][A-Z0-9.-]*$/.test(symbol) ? symbol : null;
-}
 
 function sameScope(left: GeoScope | null, right: GeoScope | null): boolean {
   return left?.key === right?.key && left?.label === right?.label;
@@ -193,7 +187,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   // Panes linked to this one follow the company under the cursor, and a linked map can widen to the
   // theme it belongs to. Off the company tabs both stay where they were.
   const cursorCompany = detailRow?.kind === "company" ? detailRow.item : selectedRow?.kind === "company" ? selectedRow.item : null;
-  const cursorTicker = linkableTicker(cursorCompany?.ticker);
+  const cursorTicker = cursorCompany ? listingKey(cursorCompany.ticker, cursorCompany.exchange) : null;
   // Published once the cursor rests: arrowing down a theme would otherwise load every company it passes.
   useEffect(() => {
     if (!cursorTicker) return;

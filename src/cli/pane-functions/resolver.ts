@@ -23,6 +23,8 @@ import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
+import { findWatchlist } from "../helpers";
+import { readWatchlistArgument } from "../../portfolio/collection-name";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
@@ -217,6 +219,9 @@ export async function applyListingArgument(
   if (!(takesOneTicker || takesList) || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
   }
+  // A watchlist's name stands for its symbols, as saved (`fn SIW HY3`).
+  const watchlist = takesList ? await watchlistArgument(args.arg, context, headless?.argument.maximum) : null;
+  if (watchlist) args = { ...args, arg: watchlist.symbols.join(", ") };
   // A function that reads FRED series (MDAY) gets FRED:T10Y2Y as typed; any other is told it is no listing.
   const fred = takesOneTicker && headless?.fredSeriesArgument && typeof args.options.exchange !== "string" ? fredSeriesArgument(args.arg) : null;
   if (fred) return { ...args, arg: `FRED:${fred}` };
@@ -299,6 +304,7 @@ export async function applyListingArgument(
     }
     notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
   }
+  notes.unshift(...watchlist?.notes ?? []);
   // One listing's notes come with its choice note; a list's are said here, with a coin's code read as a listing
   // (CORR RIOT,BTC: BTC is the Grayscale fund) as `quote BTC` says it.
   if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes), ...await listCoinNotes(listings, context));
@@ -309,6 +315,28 @@ export async function applyListingArgument(
     ...(listings.length === 1 ? { listing: listings[0]! } : {}),
     ...(notes.length > 0 ? { listingNotes: notes } : {}),
   };
+}
+
+/**
+ * The symbols of the watchlist a list argument names (case aside), as saved,
+ * at most the function's `maximum` of them, with the note that says the name
+ * was read as that watchlist (`readWatchlistArgument`). Null when the
+ * argument names no watchlist, or one with nothing in it.
+ */
+async function watchlistArgument(
+  arg: string,
+  context: MarketContext,
+  maximum: number | undefined,
+): Promise<{ symbols: string[]; notes: string[] } | null> {
+  if (/[,;\t\n]/.test(arg)) return null;
+  const watchlist = findWatchlist(context.config, arg);
+  if (!watchlist) return null;
+  const symbols = (await context.store.loadAllTickers())
+    .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
+    .map((ticker) => ticker.metadata.ticker);
+  if (symbols.length === 0) return null;
+  const read = readWatchlistArgument(arg, watchlist, symbols, maximum);
+  return { symbols: read.symbols, notes: [read.note] };
 }
 
 /**

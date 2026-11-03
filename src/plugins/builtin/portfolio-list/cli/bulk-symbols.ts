@@ -237,6 +237,23 @@ export function retryNotice(ctx: CliCommandContext): (count: number, waitMs: num
   };
 }
 
+/** A list this long says how far its lookup has got, so a long add never looks stuck. */
+const PROGRESS_FROM = 50;
+const PROGRESS_EVERY_MS = 5_000;
+
+/**
+ * Lines on standard error while a long add looks its symbols up: "Looked up
+ * 120 of 300 symbols." every few seconds, and nothing for a short list.
+ */
+export function progressNotice(ctx: CliCommandContext, now = () => Date.now()): (looked: number, total: number) => void {
+  let last = now();
+  return (looked, total) => {
+    if (ctx.cliOptions.quiet || total < PROGRESS_FROM || looked >= total || now() - last < PROGRESS_EVERY_MS) return;
+    last = now();
+    console.error(cliStyles.muted(`Looked up ${looked} of ${total} symbols.`));
+  };
+}
+
 /**
  * The symbols an add or remove was given, failing the command when there are
  * none or the file cannot be read. An add reads a typed company's name with

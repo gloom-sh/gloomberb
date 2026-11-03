@@ -6,7 +6,7 @@ import { paneSchemas } from "../plugins/builtin/chart-composer/headless-schema";
 import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
-import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
+import { buildPaneCatalogEntries, buildPaneFunctionLookup, filterPaneCatalogEntries, renderPaneCatalogReport, selectPaneCatalogMatches } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
@@ -478,6 +478,26 @@ test("USDA's and grain words find the crop balances, PSD and FUT's crops tab", a
       expect(found.map((entry) => entry.token), query).toContain("PSD");
       expect(found.find((entry) => entry.token === "PSD")!.paneId, query).toBe("commodities-energy");
     }
+  } finally {
+    registry.destroy();
+  }
+});
+
+/** A high-yield desk's asks of 2 Nov 2026: CDSW and CRPR found nothing, and "distressed exchange" led to FX crosses. */
+test("CDSW opens CDS, CRPR says ratings are not carried and points to TRACE's grade, and a distressed exchange leads to DIST", async () => {
+  expect(knownGapMessage("CRPR")).toBe("Agency credit ratings and rating history: not carried (the agencies license them); closest: "
+    + "TRACE (each bond's grade, investment grade or high yield: gloom fn TRACE <ticker>), CRD (spreads by rating)");
+  expect(knownGapMessage("credit rating")).toBeNull();
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const cdsw = buildPaneFunctionLookup(registry).get("cdsw");
+    expect(cdsw && "shortcut" in cdsw ? cdsw.shortcut?.prefix : null).toBe("CDS");
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const shown = (query: string) => selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 5).shown.map((entry) => entry.token);
+    expect(shown("CDSW")).toEqual(["CDS"]);
+    expect(shown("distressed exchange")).toEqual(["DIST"]);
+    expect(shown("covenant waiver")).toEqual(["DIST"]);
   } finally {
     registry.destroy();
   }

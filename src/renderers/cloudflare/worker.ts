@@ -1,6 +1,6 @@
 import { handleHttpProxy } from "./http-proxy";
 import { createProxySessionGate } from "./proxy-session";
-import { HTTP_PROXY_PATH } from "../../utils/plugin-proxy-hosts";
+import { HTTP_PROXY_PATH, WEB_DIRECT_HOSTS } from "../../utils/plugin-proxy-hosts";
 
 interface StaticAssetsBinding {
   fetch(request: Request): Promise<Response>;
@@ -70,8 +70,21 @@ type ApiFetch = (request: Request) => Promise<Response>;
 /** Module scope, so every request this isolate serves shares one session cache. */
 const proxySessions = createProxySessionGate({ sessionUrl: `${API_ORIGIN}/auth/get-session` });
 
+/**
+ * What the page may fetch: itself (the API and the plugin proxy are both
+ * same-origin), the app's own hosts, and the plugin hosts the browser calls
+ * directly. Every other plugin host goes through the proxy.
+ */
+const CONNECT_SRC = [
+  "'self'",
+  "https://api.github.com",
+  "https://plugins.gloom.sh",
+  "https://gloom.sh",
+  ...WEB_DIRECT_HOSTS.map((host) => `https://${host}`),
+].join(" ");
+
 export const SECURITY_HEADERS = {
-  "content-security-policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https://api.github.com https://api.fiscaldata.treasury.gov https://plugins.gloom.sh https://gloom.sh; form-action 'self'; upgrade-insecure-requests",
+  "content-security-policy": `default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src ${CONNECT_SRC}; form-action 'self'; upgrade-insecure-requests`,
   "cross-origin-opener-policy": "same-origin",
   "cross-origin-resource-policy": "same-origin",
   "permissions-policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",

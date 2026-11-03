@@ -35,11 +35,15 @@ describe("plugin host resolver", () => {
   test("loads an external plugin from a Bun compiled executable with no package root", () => {
     const entry = join(import.meta.dir, `.compiled-host-resolver-entry-${process.pid}.ts`);
     const outfile = join(import.meta.dir, `.compiled-host-resolver-entry-${process.pid}.exe`);
+    // A default import of React, as the OpenTUI renderer has: with it, a split
+    // bundle answers `import("react")` with React as `default` and nothing else.
     writeFileSync(entry, `
+      import React from "react";
       import { findHostPackageRoot } from "./host-link";
       import { isPluginHostResolverInstalled } from "./host-resolver";
       import { smokePluginHostLoad } from "./host-smoke";
 
+      if (typeof React.createElement !== "function") throw new Error("The host has no React.");
       const hostRoot = findHostPackageRoot();
       await smokePluginHostLoad();
       console.log(JSON.stringify({
@@ -52,11 +56,12 @@ describe("plugin host resolver", () => {
     try {
       // The same flags as scripts/build.ts. `--production` is what makes the
       // host's React a production build, whose jsx-dev-runtime has no
-      // `jsxDEV`; without `--compile-autoload-package-json` the executable
-      // cannot resolve a plugin dependency that publishes an `exports` map.
+      // `jsxDEV`; `--splitting` is what puts React in a chunk of its own;
+      // without `--compile-autoload-package-json` the executable cannot
+      // resolve a plugin dependency that publishes an `exports` map.
       const build = Bun.spawnSync(
         [
-          process.execPath, "build", "--compile", "--production", "--compile-autoload-package-json",
+          process.execPath, "build", "--compile", "--production", "--splitting", "--compile-autoload-package-json",
           entry, "--outfile", outfile,
         ],
         { cwd: join(import.meta.dir, "../.."), stdout: "pipe", stderr: "pipe" },

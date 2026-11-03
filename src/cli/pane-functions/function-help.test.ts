@@ -55,4 +55,6 @@ test("EQS help names ATR% and says IV rank is a rank, not an IV percentile", () 
   expect(FUNCTION_HELP.EQS!.usage).toContain("gloom fn EQS --preset quality");
   expect(FUNCTION_HELP.EQS!.summary).toContain("Classic scores: Piotroski F, Altman Z, the Graham number and Lynch fair value");
   expect(FUNCTION_HELP.EQS!.usage).toContain("gloom fn EQS --preset magic-formula");
+  expect(FUNCTION_HELP.EQS!.summary).toContain("each ranked within the sector, and their equal-weighted 1-5 composite labelled Top, Strong, Neutral, Weak or Bottom");
+  expect(FUNCTION_HELP.EQS!.usage).toContain("gloom fn EQS --preset top-grades");
 });

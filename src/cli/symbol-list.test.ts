@@ -144,3 +144,21 @@ test("a comma between plain digits splits codes, unless the line or the sheet's 
     symbols: ["ED", "CNX"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 number cells beside it: 2.582,52; 1,899.21."],
   });
 });
+
+test("a pasted grid keeps every cell when some are a terminal's codes or numeric exchange codes, which the lookup reads", () => {
+  const grid = (cell: string) => `${cell}\tAAL\tUAL\nDAL\tJBLU\tULCC\nHTZ\tCAR\tCCL\n`;
+  for (const cell of ["czr us equity", "1128 HK Equity", "2007"]) {
+    expect(parseSymbolText(grid(cell))).toEqual({ symbols: [cell, "AAL", "UAL", "DAL", "JBLU", "ULCC", "HTZ", "CAR", "CCL"], ignored: [] });
+  }
+  // A code in a later column too.
+  expect(parseSymbolText("AAL\tczr us equity\tUAL\nDAL\t2007\tULCC\n").ignored).toEqual([]);
+  // A column of whole numbers alone is still each symbol's value.
+  expect(parseSymbolText("ED\t2582\nCNX\t1200\n")).toEqual({ symbols: ["ED", "CNX"], ignored: ["2582", "1200"] });
+  // A grid of Hong Kong codes alone reads every cell.
+  expect(parseSymbolText("0700\t9988\n1810\t3690\n")).toEqual({ symbols: ["0700", "9988", "1810", "3690"], ignored: [] });
+  // A name before its legal form is no code (SE and AG are market codes too), and a rating or a quantity beside a
+  // symbol is a value, never a symbol, even where the column also holds one.
+  expect(parseSymbolText("SAP SE\tSAP\nSIEMENS AG\tSIE\n").symbols).toEqual(["SAP SE", "SIEMENS AG"]);
+  expect(parseSymbolText("AAPL\tHOLD\nMSFT\tBUY\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["HOLD", "BUY"] });
+  expect(parseSymbolText("AAPL\tHOLD\nMSFT\t100\nNVDA\tAMD\n").symbols).toEqual(["AAPL", "MSFT", "NVDA"]);
+});
