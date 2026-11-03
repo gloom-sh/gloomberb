@@ -1,4 +1,4 @@
-import { lastPerfSample, recordPerfSample, takeHeldPerfSample, withoutLastStep } from "./perf-marks";
+import { lastPerfSample, recordPerfSample, takeHeldPerfSample, takePersonWaitMs, withoutLastStep } from "./perf-marks";
 
 /** How often the monitor checks in. Short enough to date a stall precisely. */
 const SAMPLE_INTERVAL_MS = 250;
@@ -196,13 +196,14 @@ export function startMainThreadStallMonitor(
     previousClocks = currentClocks;
     // Taken on every tick, so a stall weighs only the steps that ended inside it.
     const held = takeHeldPerfSample();
+    const personWaitMs = takePersonWaitMs();
     const awakeMs = delta(currentClocks?.awakeMs, before?.awakeMs);
     // Asleep, the computer runs nothing; only the awake part of the gap was a freeze.
     const asleepMs = awakeMs == null ? 0 : Math.max(0, elapsedMs - awakeMs);
-    const blockedMs = elapsedMs - asleepMs - intervalMs;
+    // A menu held open on the thread waited for the person, not the computer:
+    // only the rest of the gap was a freeze.
+    const blockedMs = elapsedMs - asleepMs - intervalMs - personWaitMs;
     if (blockedMs < thresholdMs) return;
-    // A menu held open on the thread waited for the person, not the computer.
-    if (held?.waitedOnPerson && held.durationMs * 2 >= blockedMs) return;
     const sample = held ?? lastPerfSample();
     const sqlite = sample?.name === "sqlite.blocked" ? sqliteDetail(sample.metadata) : undefined;
     const threadCpuMs = delta(currentClocks?.threadCpuMs, before?.threadCpuMs);

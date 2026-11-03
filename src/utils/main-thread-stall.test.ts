@@ -159,9 +159,10 @@ test("a stall names the step that held the thread, not what ran after it", () =>
   ]);
 });
 
-// A menu that could not open off the thread holds it until the person picks:
-// that wait is theirs, not a freeze. Work around it still counts.
-test("a menu held open on the thread is not a stall", () => {
+// A menu that holds the thread until the person picks (where it cannot open
+// off it): that wait is theirs, not a freeze. A freeze around it still is,
+// for the rest of the gap, named after what held the thread then.
+test("a menu held open on the thread is the person's wait, and only the rest of a stall is reported", () => {
   const harness = createHarness();
   harness.advance(250);
   harness.fire();
@@ -173,12 +174,13 @@ test("a menu held open on the thread is not a stall", () => {
   harness.fire();
 
   recordPerfSample("native.context-menu.show", 1_000, undefined, { waitedOnPerson: true });
+  recordPerfSample("session.save", 2_800);
   harness.advance(4_250);
   harness.fire();
   harness.stop();
 
-  expect(harness.reports.map(({ blockedMs, context }) => [blockedMs, context.lastMeasured])).toEqual([
-    [4_000, "native.context-menu.show"],
+  expect(harness.reports.map(({ blockedMs, context }) => [blockedMs, context.lastMeasured, context.lastMeasuredMs])).toEqual([
+    [3_000, "session.save", 2_800],
   ]);
 });
 

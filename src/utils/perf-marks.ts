@@ -34,7 +34,10 @@ let heldName: string | null = null;
 let heldEndedAt = 0;
 let heldDurationMs = 0;
 let heldMetadata: Record<string, unknown> | undefined;
-let heldWaitedOnPerson = false;
+// Time the thread spent waiting on a person (a menu held open on it): all
+// told, and since the stall monitor last looked.
+let personWaitTotalMs = 0;
+let personWaitUntakenMs = 0;
 
 /**
  * The most recent measured section, when it ended and what it was measured
@@ -70,7 +73,6 @@ function noteHeldStep(
   endedAt: number,
   durationMs: number,
   metadata: Record<string, unknown> | undefined,
-  waitedOnPerson: boolean,
 ): void {
   if (heldName != null) {
     const inside = heldEndedAt >= startedAt;
@@ -80,35 +82,37 @@ function noteHeldStep(
   heldEndedAt = endedAt;
   heldDurationMs = durationMs;
   heldMetadata = metadata;
-  heldWaitedOnPerson = waitedOnPerson;
 }
 
 /**
  * The step that held the thread longest since the last call, and forgets it:
  * the stall monitor asks on every tick, so a stall only weighs the steps that
  * ended inside it. Only steps that ran on the thread throughout count, not an
- * awaited one's time. `waitedOnPerson`: the step waited for a person's
- * choice (a menu held open), not for the computer.
+ * awaited one's time, and not the time a step waited on a person.
  */
-export function takeHeldPerfSample(): {
-  name: string;
-  endedAt: number;
-  durationMs: number;
-  metadata?: Record<string, unknown>;
-  waitedOnPerson?: true;
-} | null {
+export function takeHeldPerfSample(): { name: string; endedAt: number; durationMs: number; metadata?: Record<string, unknown> } | null {
   if (heldName == null) return null;
-  const held = {
-    name: heldName,
-    endedAt: heldEndedAt,
-    durationMs: heldDurationMs,
-    ...(heldMetadata ? { metadata: heldMetadata } : {}),
-    ...(heldWaitedOnPerson ? { waitedOnPerson: true as const } : {}),
-  };
+  const held = { name: heldName, endedAt: heldEndedAt, durationMs: heldDurationMs, ...(heldMetadata ? { metadata: heldMetadata } : {}) };
   heldName = null;
   heldMetadata = undefined;
-  heldWaitedOnPerson = false;
   return held;
+}
+
+function notePersonWait(ms: number): void {
+  if (!(ms > 0)) return;
+  personWaitTotalMs += ms;
+  personWaitUntakenMs += ms;
+}
+
+/**
+ * How long the thread waited on a person (`waitedOnPerson`) since the last
+ * call, and forgets it: the stall monitor takes it out of a stall, which
+ * leaves only the freeze around it.
+ */
+export function takePersonWaitMs(): number {
+  const ms = personWaitUntakenMs;
+  personWaitUntakenMs = 0;
+  return ms;
 }
 
 function logSlowPerfSample(
@@ -117,7 +121,7 @@ function logSlowPerfSample(
   metadata?: Record<string, unknown>,
   lastStep = true,
   startedAt?: number,
-  held: "no" | "thread" | "person" = "no",
+  heldMs: number | null = null,
 ): void {
   if (lastStep && quietDepth === 0) {
     const endedAt = now();
@@ -127,7 +131,7 @@ function logSlowPerfSample(
       lastSampleDurationMs = durationMs;
       lastSampleMetadata = metadata;
     }
-    if (held !== "no") noteHeldStep(name, startedAt ?? endedAt - durationMs, endedAt, durationMs, metadata, held === "person");
+    if (heldMs != null && heldMs > 0) noteHeldStep(name, startedAt ?? endedAt - durationMs, endedAt, heldMs, metadata);
   }
   const payload = {
     durationMs: Math.round(durationMs * 10) / 10,
@@ -175,7 +179,8 @@ export function recordPerfSample(
   metadata?: Record<string, unknown>,
   options?: { lastStep?: boolean; waitedOnPerson?: boolean },
 ): void {
-  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false, undefined, options?.waitedOnPerson ? "person" : "thread");
+  if (options?.waitedOnPerson) notePersonWait(durationMs);
+  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false, undefined, options?.waitedOnPerson ? null : durationMs);
 }
 
 /**
@@ -190,10 +195,15 @@ export function measurePerf<T>(
   options?: { waitedOnPerson?: boolean },
 ): T {
   const start = now();
+  const personWaitBefore = personWaitTotalMs;
   try {
     return fn();
   } finally {
-    logSlowPerfSample(name, now() - start, metadata, true, start, options?.waitedOnPerson ? "person" : "thread");
+    const durationMs = now() - start;
+    // A person's wait inside it is not the thread's work.
+    const ownMs = Math.max(0, durationMs - (personWaitTotalMs - personWaitBefore));
+    if (options?.waitedOnPerson) notePersonWait(ownMs);
+    logSlowPerfSample(name, durationMs, metadata, true, start, options?.waitedOnPerson ? null : ownMs);
   }
 }
 
