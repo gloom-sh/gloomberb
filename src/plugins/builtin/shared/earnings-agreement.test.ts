@@ -134,5 +134,5 @@ test("a quarter whose basis Gloom Cloud cannot tell reads unknown in events as i
   const { result, options } = events.printed[0]!;
   const row = (options!.rows!(result.data) as Array<Record<string, unknown>>).find((candidate) => candidate.date === "2025-05-05");
   expect(ern.rows.find((candidate) => candidate.date === "2025-05-05")?.epsBasis).toBe("unknown");
-  expect(row).toMatchObject({ epsBasis: "unknown", detail: "eps $0.04, unknown, -0.04 vs est (Mar 2025)" });
+  expect(row).toMatchObject({ epsBasis: "unknown", detail: "eps $0.04, -0.04 vs est (Mar 2025)" });
 });
