@@ -124,7 +124,9 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     if (!pro || asked?.kind !== "issuer" || !asked.ticker) return;
     const controller = new AbortController();
-    void apiClient.getCloudStoredIssuerBonds(asked.ticker, { signal: controller.signal }).catch(() => null);
+    void apiClient.getCloudStoredIssuerBonds(asked.ticker, { signal: controller.signal }).catch(() => {
+      // Intentional ignore: keeping the company's bonds is a side effect; the tape shows without it.
+    });
     return () => controller.abort();
   }, [asked, pro]);
   const detailCusip = detailOpen && selectedBond?.cusip ? selectedBond.cusip : null;

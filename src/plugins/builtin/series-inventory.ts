@@ -53,6 +53,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "credit-conditions", chart: "Corporate bond spreads by rating", series: ["fred:BAML*"] },
   { module: "credit-boards", chart: "Index CDS (CDX, iTraxx) and sovereign 5Y CDS", series: ["cdx:*", "sovereign-cds:*"] },
   { module: "cds", chart: "A company's 5Y CDS spread", series: ["cds:*"] },
+  { module: "trace-bonds", chart: "A bond's daily closing price since it was kept", notInCatalog: "not-yet", reason: "Daily and dated per CUSIP, kept only for the bonds Pro accounts looked up; none is registered for the composer yet." },
   { module: "credit-documents", chart: "Principal due by year", notInCatalog: "not-a-time-series", reason: "A maturity schedule, not a history." },
   { module: "debt-maturities", chart: "A company's principal and the share due soon, across annual filings", series: ["debt-maturities:*"] },
   { module: "debt-maturities", chart: "A company's maturity wall", notInCatalog: "not-a-time-series", reason: "A schedule by maturity year from one filing; its total and near-term shares across filings are in the catalog." },

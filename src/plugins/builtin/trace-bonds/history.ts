@@ -146,7 +146,10 @@ export async function readStoredHistory(
     const ticker = query.ticker;
     await Promise.resolve()
       .then(() => client.getCloudStoredIssuerBonds(ticker, { signal: signalWithTimeout(options.signal, ISSUER_KEEP_TIMEOUT_MS) }))
-      .catch(() => null);
+      .catch(() => {
+        // Intentional ignore: keeping a company's bonds never changes the tape this report answers with.
+        return null;
+      });
   }
   return null;
 }
