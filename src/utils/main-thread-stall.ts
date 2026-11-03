@@ -201,6 +201,8 @@ export function startMainThreadStallMonitor(
     const asleepMs = awakeMs == null ? 0 : Math.max(0, elapsedMs - awakeMs);
     const blockedMs = elapsedMs - asleepMs - intervalMs;
     if (blockedMs < thresholdMs) return;
+    // A menu held open on the thread waited for the person, not the computer.
+    if (held?.waitedOnPerson && held.durationMs * 2 >= blockedMs) return;
     const sample = held ?? lastPerfSample();
     const sqlite = sample?.name === "sqlite.blocked" ? sqliteDetail(sample.metadata) : undefined;
     const threadCpuMs = delta(currentClocks?.threadCpuMs, before?.threadCpuMs);

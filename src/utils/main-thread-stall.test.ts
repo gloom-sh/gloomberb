@@ -159,6 +159,29 @@ test("a stall names the step that held the thread, not what ran after it", () =>
   ]);
 });
 
+// A menu that could not open off the thread holds it until the person picks:
+// that wait is theirs, not a freeze. Work around it still counts.
+test("a menu held open on the thread is not a stall", () => {
+  const harness = createHarness();
+  harness.advance(250);
+  harness.fire();
+
+  measurePerf("rpc.request.host.show-context-menu", () => {
+    recordPerfSample("native.context-menu.show", 6_000, undefined, { waitedOnPerson: true });
+  });
+  harness.advance(6_250);
+  harness.fire();
+
+  recordPerfSample("native.context-menu.show", 1_000, undefined, { waitedOnPerson: true });
+  harness.advance(4_250);
+  harness.fire();
+  harness.stop();
+
+  expect(harness.reports.map(({ blockedMs, context }) => [blockedMs, context.lastMeasured])).toEqual([
+    [4_000, "native.context-menu.show"],
+  ]);
+});
+
 // Windows keeps the timers' clock running while the computer sleeps, so a
 // closed lid read as a freeze of minutes. Only the awake part of a late
 // timer is a stall, and the platform's clocks say whether the thread was

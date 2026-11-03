@@ -177,7 +177,9 @@ export async function handleDesktopHostRequest(
       if (menu.length === 0) return false;
       const requestId = getContextMenuRequestId(menu);
       if (requestId) backend.trackContextMenuRequest(requestId, rpc);
-      measureNativeCall("context-menu.show", () => ContextMenu.showContextMenu(menu as never));
+      // On Windows the menu opens on a thread of its own (context-menu-thread.ts);
+      // where it cannot, this call returns when the person picks or dismisses.
+      measureNativeCall("context-menu.show", () => ContextMenu.showContextMenu(menu as never), { waitsOnPerson: true });
       return true;
     }
     case "host.saveBootFrame":

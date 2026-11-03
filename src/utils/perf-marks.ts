@@ -34,6 +34,7 @@ let heldName: string | null = null;
 let heldEndedAt = 0;
 let heldDurationMs = 0;
 let heldMetadata: Record<string, unknown> | undefined;
+let heldWaitedOnPerson = false;
 
 /**
  * The most recent measured section, when it ended and what it was measured
@@ -63,7 +64,14 @@ function lastStepAccountsForSection(startedAt: number, durationMs: number): bool
  * rarely what froze it. A step inside a section that took at least half of
  * it stands for the section, as it does for the last step.
  */
-function noteHeldStep(name: string, startedAt: number, endedAt: number, durationMs: number, metadata?: Record<string, unknown>): void {
+function noteHeldStep(
+  name: string,
+  startedAt: number,
+  endedAt: number,
+  durationMs: number,
+  metadata: Record<string, unknown> | undefined,
+  waitedOnPerson: boolean,
+): void {
   if (heldName != null) {
     const inside = heldEndedAt >= startedAt;
     if (inside ? heldDurationMs * 2 >= durationMs : heldDurationMs >= durationMs) return;
@@ -72,19 +80,34 @@ function noteHeldStep(name: string, startedAt: number, endedAt: number, duration
   heldEndedAt = endedAt;
   heldDurationMs = durationMs;
   heldMetadata = metadata;
+  heldWaitedOnPerson = waitedOnPerson;
 }
 
 /**
  * The step that held the thread longest since the last call, and forgets it:
  * the stall monitor asks on every tick, so a stall only weighs the steps that
  * ended inside it. Only steps that ran on the thread throughout count, not an
- * awaited one's time.
+ * awaited one's time. `waitedOnPerson`: the step waited for a person's
+ * choice (a menu held open), not for the computer.
  */
-export function takeHeldPerfSample(): { name: string; endedAt: number; durationMs: number; metadata?: Record<string, unknown> } | null {
+export function takeHeldPerfSample(): {
+  name: string;
+  endedAt: number;
+  durationMs: number;
+  metadata?: Record<string, unknown>;
+  waitedOnPerson?: true;
+} | null {
   if (heldName == null) return null;
-  const held = { name: heldName, endedAt: heldEndedAt, durationMs: heldDurationMs, ...(heldMetadata ? { metadata: heldMetadata } : {}) };
+  const held = {
+    name: heldName,
+    endedAt: heldEndedAt,
+    durationMs: heldDurationMs,
+    ...(heldMetadata ? { metadata: heldMetadata } : {}),
+    ...(heldWaitedOnPerson ? { waitedOnPerson: true as const } : {}),
+  };
   heldName = null;
   heldMetadata = undefined;
+  heldWaitedOnPerson = false;
   return held;
 }
 
@@ -94,7 +117,7 @@ function logSlowPerfSample(
   metadata?: Record<string, unknown>,
   lastStep = true,
   startedAt?: number,
-  heldThread = false,
+  held: "no" | "thread" | "person" = "no",
 ): void {
   if (lastStep && quietDepth === 0) {
     const endedAt = now();
@@ -104,7 +127,7 @@ function logSlowPerfSample(
       lastSampleDurationMs = durationMs;
       lastSampleMetadata = metadata;
     }
-    if (heldThread) noteHeldStep(name, startedAt ?? endedAt - durationMs, endedAt, durationMs, metadata);
+    if (held !== "no") noteHeldStep(name, startedAt ?? endedAt - durationMs, endedAt, durationMs, metadata, held === "person");
   }
   const payload = {
     durationMs: Math.round(durationMs * 10) / 10,
@@ -143,30 +166,34 @@ export function isPerfTraceEnabled(): boolean {
  * A sample measured elsewhere (a React Profiler callback, for instance).
  * `lastStep: false` logs it without making it the step a later stall names:
  * the stall monitor's own samples, which measure no work.
+ * `waitedOnPerson`: the time went to a person's choice (a menu held open),
+ * which the stall monitor does not count as a freeze.
  */
 export function recordPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
-  options?: { lastStep?: boolean },
+  options?: { lastStep?: boolean; waitedOnPerson?: boolean },
 ): void {
-  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false, undefined, true);
+  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false, undefined, options?.waitedOnPerson ? "person" : "thread");
 }
 
 /**
  * Measures `fn`. A step measured inside it that took most of its time stays
- * the step a stall names (`lastStepAccountsForSection`).
+ * the step a stall names (`lastStepAccountsForSection`). `waitedOnPerson` as
+ * for `recordPerfSample`.
  */
 export function measurePerf<T>(
   name: string,
   fn: () => T,
   metadata?: Record<string, unknown>,
+  options?: { waitedOnPerson?: boolean },
 ): T {
   const start = now();
   try {
     return fn();
   } finally {
-    logSlowPerfSample(name, now() - start, metadata, true, start, true);
+    logSlowPerfSample(name, now() - start, metadata, true, start, options?.waitedOnPerson ? "person" : "thread");
   }
 }
 
