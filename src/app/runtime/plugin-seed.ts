@@ -44,7 +44,9 @@ export function startPluginSeedConsumer(consumer: PluginSeedConsumer): () => voi
   let finished = false;
   let disposed = false;
   // One at a time, in the order they landed: a sibling before what needs it.
-  let chain: Promise<void> = consumer.ready.then(() => {}, () => {});
+  let chain: Promise<void> = consumer.ready.then(() => {}, () => {
+    // Intentional ignore: a plugin that failed to register is reported where it registers.
+  });
 
   const bringIn = async (name: string, directory: string, peers: string[]) => {
     if (disposed || activating.has(directory) || consumer.isRunning(directory)) return;
