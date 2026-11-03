@@ -32,7 +32,7 @@ import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data/market/freshness";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
@@ -346,9 +346,6 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
  * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
  * newest observation and how far behind that is.
  */
-/** How far a quote's time can sit from a chart's newest intraday bar and still be the quote that carries the bars on. */
-const QUOTE_CARRIES_BARS_MS = 24 * 60 * 60_000;
-
 function chartFreshness(
   allSeries: readonly HeadlessSeries[],
   spec: ChartSpec,
@@ -388,15 +385,19 @@ function chartFreshness(
   }
   // Intraday bars of listings whose quotes carry them on are dated as their capture dates them: by those quotes,
   // with their delay and where their markets stand (GIP: `Tue 3 Nov 2026 17:10 UTC · 15 min delayed`).
-  // A session of the past (`--session 2026-10-01`) is not what today's quote carries on.
+  // Only a quote of the newest bar's trading date in the venue's zone carries them on: a session of the past
+  // (`--session 2026-10-01`, or yesterday's) is not what today's quote carries on.
   const visibleSecurities = visible.filter((entry) => entry.source.kind === "security");
-  const carriedOn = (id: string) => {
-    const newest = series.find((entry) => entry.id === id)?.points.at(-1)?.date;
+  const carriedOn = (entry: ChartSeriesSpec) => {
+    const newest = series.find((item) => item.id === entry.id)?.points.at(-1)?.date;
     const time = newest ? new Date(newest).getTime() : Number.NaN;
-    return Number.isFinite(time) && Math.abs(quotes.get(id)!.lastUpdated - time) < QUOTE_CARRIES_BARS_MS;
+    const quoted = quotes.get(entry.id)?.lastUpdated;
+    if (!Number.isFinite(time) || quoted == null || !Number.isFinite(quoted) || entry.source.kind !== "security") return false;
+    const zone = intradaySessionTimeZone(entry.source.instrument.symbol, entry.source.instrument.exchange);
+    return zonedDateKey(quoted, zone) === zonedDateKey(time, zone);
   };
   if (!["1d", "1wk", "1mo"].includes(coarsest!) && visibleSecurities.length === visible.length && visible.length > 0
-    && visibleSecurities.every((entry) => quotes.has(entry.id) && carriedOn(entry.id))) {
+    && visibleSecurities.every(carriedOn)) {
     return { prices: true, observations: visibleSecurities.map((entry) => ({ ...quoteObservation(quotes.get(entry.id)!) })) };
   }
   const forming = formingPriceBar(series);

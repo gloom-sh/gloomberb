@@ -457,10 +457,14 @@ describe("GIP headless sessions", () => {
       // A session of the past is the bars' own history, which today's quote does not carry on.
       const past = deriveHeadlessFreshness(definition, await load({ session: "2026-10-20" }));
       expect(past.status).toBe("delayed");
+      // A day later, today's quote is within a day of Tuesday's last bar but not of its session.
+      setSystemTime(new Date("2026-10-21T15:00:00Z"));
+      const yesterday = await load({ session: "2026-10-20" });
+      expect(yesterday.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
+      expect(deriveHeadlessFreshness(definition, yesterday).status).not.toBe("delayed");
       setSystemTime(new Date("2026-10-23T15:00:00Z"));
       const later = await load({ session: "2026-10-20" });
       expect(later.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
-      expect(deriveHeadlessFreshness(definition, later).status).not.toBe("delayed");
     } finally {
       setSystemTime();
     }
