@@ -10,19 +10,25 @@ export const DESKTOP_APP_NAME = "Gloom";
 export const LEGACY_DESKTOP_APP_NAME = "Gloomberb";
 
 /**
- * Kept through the rename. Electrobun names the app's data and update folders
- * after it, and macOS ties the app's settings, WebKit storage and permissions
- * to it.
+ * The bundle identifier. Electrobun names the app's data and update folders
+ * after it (and on Windows the folder the app itself is updated in), and
+ * macOS ties the app's WebKit storage and notification permission to it.
  */
-export const DESKTOP_APP_IDENTIFIER = "com.vincelwt.gloomberb";
+export const DESKTOP_APP_IDENTIFIER = "sh.gloom.desktop";
 
 /**
- * The identifiers a build of this app carries: the one above, and the one a
- * later release moves to. Until every install has moved, either one can be
- * on disk (an app bundle, an install the script or Homebrew replaces), so
- * anything that asks whether a copy is this app accepts both.
+ * The identifier before that one, kept through the rename to Gloom. An
+ * install from then has its folders under it until this build moves them,
+ * at its first start (bun/desktop/app-identifier.ts).
  */
-export const DESKTOP_APP_IDENTIFIERS: readonly string[] = [DESKTOP_APP_IDENTIFIER, "sh.gloom.desktop"];
+export const LEGACY_DESKTOP_APP_IDENTIFIER = "com.vincelwt.gloomberb";
+
+/**
+ * Both identifiers. A copy of the app on disk (an app bundle, an install the
+ * script or Homebrew replaces) can carry either until every install has
+ * moved, so anything that asks whether a copy is this app accepts both.
+ */
+export const DESKTOP_APP_IDENTIFIERS: readonly string[] = [DESKTOP_APP_IDENTIFIER, LEGACY_DESKTOP_APP_IDENTIFIER];
 
 /** Whether `identifier` is one a build of this app carries. */
 export function isDesktopAppIdentifier(identifier: string | null | undefined): boolean {
