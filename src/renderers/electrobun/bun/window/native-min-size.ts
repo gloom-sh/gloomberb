@@ -1,6 +1,5 @@
 import { cc, dlopen, FFIType, type Pointer } from "bun:ffi";
-import { createHash } from "crypto";
-import { existsSync, writeFileSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { logFailure } from "../../../../utils/log-failure";
@@ -175,11 +174,21 @@ let compiledSetter: MinSizeSetter | null | undefined;
 /** The compiled code, kept for good: a window procedure in it runs for as long as its window does. */
 const compiledLibraries: unknown[] = [];
 
-/** Writes `source` where `cc` can read it: a file named after its content, so one never changes under another app. */
-function sourceFile(source: string): string {
-  const path = join(tmpdir(), `gloom-native-min-size-${createHash("sha256").update(source).digest("hex").slice(0, 16)}.c`);
-  if (!existsSync(path)) writeFileSync(path, source);
-  return path;
+/**
+ * Hands `compile` a file holding `source`, in a folder this process just made
+ * for it alone (owner only, under a random name), never a shared name another
+ * user could have written first. `cc` reads the file only while it compiles,
+ * so the folder goes right after.
+ */
+function fromPrivateSource<T>(source: string, compile: (path: string) => T): T {
+  const folder = mkdtempSync(join(tmpdir(), "gloom-native-min-size-"));
+  try {
+    const path = join(folder, "min-size.c");
+    writeFileSync(path, source, { flag: "wx", mode: 0o600 });
+    return compile(path);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 }
 
 function windowsSetter(): MinSizeSetter | null {
@@ -190,13 +199,13 @@ function windowsSetter(): MinSizeSetter | null {
   const user32 = kernel32.GetModuleHandleW(Buffer.from("user32.dll\0", "utf16le"));
   if (!user32) return null;
   const proc = (name: string) => kernel32.GetProcAddress(user32, cString(name));
-  const library = cc({
-    source: sourceFile(WINDOWS_SOURCE),
+  const library = fromPrivateSource(WINDOWS_SOURCE, (source) => cc({
+    source,
     symbols: {
       ...MIN_SIZE_SYMBOLS,
       gloom_min_size_init: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     },
-  });
+  }));
   const ready = library.symbols.gloom_min_size_init(
     proc("CallWindowProcW"),
     proc("GetWindowLongPtrW"),
@@ -233,13 +242,13 @@ function linuxSetter(): MinSizeSetter | null {
   const ref = linuxSymbol("libgobject-2.0.so.0", "g_object_ref");
   const unref = linuxSymbol("libgobject-2.0.so.0", "g_object_unref");
   if (!idleAdd || !geometryHints || !ref || !unref) return null;
-  const library = cc({
-    source: sourceFile(LINUX_SOURCE),
+  const library = fromPrivateSource(LINUX_SOURCE, (source) => cc({
+    source,
     symbols: {
       ...MIN_SIZE_SYMBOLS,
       gloom_min_size_init: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     },
-  });
+  }));
   if (!library.symbols.gloom_min_size_init(idleAdd, geometryHints, ref, unref)) return null;
   compiledLibraries.push(library);
   return library.symbols.gloom_min_size_set;
