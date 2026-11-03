@@ -618,13 +618,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       const { matched, missing } = matchCloudBatchItems(submitted, payload.items);
       return [...rejected, ...matched.map(({ target, item }) => {
         // A successful batch can contain an expired cache fallback for only
-        // one listing. Match the single-quote freshness boundary and let the
-        // normal router retry that item without discarding its healthy peers.
-        // A listing that no longer trades has only that last quote: kept, flagged stale.
-        const delisted = !!parseListingDelisting(item.data?.delisting);
-        if (item.stale === true && !delisted) {
-          return { target, quote: null, error: createProviderMiss(`Cloud quotes are stale for ${target.symbol}`) };
-        }
+        // one listing: the last price the service has, flagged stale as the
+        // single-quote route flags it. No freshness check passes it, so the
+        // router asks for that listing alone and keeps this price only when
+        // that read brings none. A listing that no longer trades has only
+        // that last quote too.
         if ((item.status === "success" || item.status === "partial") && item.data) {
           const answered = mapQuote(item.data);
           if (pricesOtherListing(answered, cloudInstrumentTarget(target.symbol, target.exchange))) {

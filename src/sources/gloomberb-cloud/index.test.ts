@@ -441,12 +441,13 @@ describe("GloomberbCloudProvider", () => {
       apiClient.getCloudQuote = async () => ({ status, stale: true, data: quote });
       const provider = new GloomberbCloudProvider();
       const results = await provider.getQuotesBatch(targets);
+      // A stale answer, in a batch or alone, comes back as the last price the service has, flagged stale.
       expect(results[0]?.target).toBe(targets[1]!);
-      expect(results[0]?.quote).toBeNull();
-      expect(results[0]?.error?.message).toContain("stale");
+      expect(results[0]?.quote).toMatchObject({ symbol: "VOD:XLON", price: 1.18, stale: true });
+      expect(results[0]?.error).toBeUndefined();
       expect(results[1]?.target).toBe(targets[0]!);
       expect(results[1]?.quote).toMatchObject({ symbol: "VOD", currency: "USD", price: 15 });
-      // A single stale answer comes back as the last price the service has, flagged stale.
+      expect(results[1]?.quote?.stale).not.toBe(true);
       expect(await provider.getQuote("VOD:XLON", "LSE")).toMatchObject({ price: 1.18, stale: true });
     }
   });
