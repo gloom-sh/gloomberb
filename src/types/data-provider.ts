@@ -223,6 +223,13 @@ export interface QuoteBatchResult {
   target: QuoteSubscriptionTarget;
   quote: Quote | null;
   error?: unknown;
+  /**
+   * Set only with `deferFollowUps`: the batch left this target without a
+   * current quote, and `getQuote` with this cache mode is the read that
+   * settles it. `quote` meanwhile is the dated price the batch had, flagged
+   * stale, or none.
+   */
+  followUp?: "default" | "refresh";
 }
 
 export interface QuoteBatchOptions {
@@ -241,6 +248,13 @@ export interface QuoteBatchOptions {
    * each form's own copy from whenever it was last asked for.
    */
   revalidate?: boolean;
+  /**
+   * Answer from the cache and the batch read alone: a target they leave
+   * without a current quote comes back with `followUp` instead of being
+   * asked for on its own. A board paints the batch as soon as it answers and
+   * asks for those itself, so a slow one holds only its own row.
+   */
+  deferFollowUps?: boolean;
   /** The caller stopped waiting; a transport that can abandon the request does. */
   signal?: AbortSignal;
   /** The caller prints what each move is from (MarketDataRequestContext.datesChangeBasis). */

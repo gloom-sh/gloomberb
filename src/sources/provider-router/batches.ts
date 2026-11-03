@@ -21,6 +21,7 @@ import {
   hasRecentFinancialProfileAttempt,
   hasDetailedStatementRows,
   isProviderQuoteUsableForCurrentSession,
+  lastKnownProviderQuote,
   providerFinancialsMatchTarget,
   quoteWithFreshnessExchange,
   type CachedFinancialsSelection,
@@ -58,6 +59,8 @@ export class ProviderRouterBatchRoutes {
     const providerOptions = { forceRefresh: options.forceRefresh };
     const forceRefresh = options.forceRefresh === true;
     const results = new Array<QuoteBatchResult | null>(targets.length).fill(null);
+    // A dated price the batch answered that is not current: shown, flagged stale, when asking alone brings none.
+    const lastKnown = new Array<Quote | null>(targets.length).fill(null);
     const misses: Array<{ index: number; target: QuoteSubscriptionTarget }> = [];
 
     targets.forEach((target, index) => {
@@ -104,8 +107,12 @@ export class ProviderRouterBatchRoutes {
         return logFailure("sources.provider-router.batches", "Loading batch quotes failed", [] as QuoteBatchResult[])(error);
       });
       for (const item of batchResults) {
-        if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) continue;
         const key = this.quoteBatchKey(item.target);
+        if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) {
+          const fallback = lastKnownProviderQuote(item.quote, item.target.exchange, item.target.symbol);
+          if (fallback) for (const entry of providerIndexes.get(key) ?? []) lastKnown[entry.index] = fallback;
+          continue;
+        }
         const sourceKey = this.deps.providerSourceKey(batchProvider);
         for (const entry of providerIndexes.get(key) ?? []) {
           const entityKey = this.deps.getEntityKey(entry.target.symbol, entry.target.context?.instrument);
@@ -119,16 +126,24 @@ export class ProviderRouterBatchRoutes {
     // The batch never reached the data service: a copy saved a moment ago is still a saved copy, not the
     // service's answer, so each is asked for as a refresh, which fails at once and says it answers from that copy.
     const unreached = isNetworkFailure(batchFailure) ? new Set(providerMisses.map(({ index }) => index)) : null;
+    const followUp = (index: number): "default" | "refresh" => (forceRefresh || unreached?.has(index) ? "refresh" : "default");
+    if (options.deferFollowUps) {
+      for (const { index, target } of misses) {
+        results[index] ??= { target, quote: lastKnown[index] ?? null, followUp: followUp(index) };
+      }
+    }
     await Promise.all(misses.map(async ({ index, target }) => {
       if (results[index]) return;
       try {
         const quote = await this.deps.getQuote(target.symbol, target.exchange, {
           ...target.context,
-          cacheMode: forceRefresh || unreached?.has(index) ? "refresh" : "default",
+          cacheMode: followUp(index),
         });
         results[index] = { target, quote };
       } catch (error) {
-        results[index] = { target, quote: null, error };
+        // Asked alone it brought nothing: the batch's dated price, flagged stale, rather than none, as the quote route answers.
+        const fallback = lastKnown[index];
+        results[index] = fallback ? { target, quote: fallback } : { target, quote: null, error };
       }
     }));
 
