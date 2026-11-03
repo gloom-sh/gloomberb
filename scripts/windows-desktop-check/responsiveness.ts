@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { Jimp } from "jimp";
-import { Cdp, click as pageClick, evaluate } from "../pane-chrome/browser";
+import { Cdp, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import * as win from "./win32";
 
@@ -344,18 +344,34 @@ async function waitUntil(ms: number, condition: () => boolean | Promise<boolean>
   return condition();
 }
 
-/** The page's own window button, in page pixels. */
-const windowButton = (action: "toggle-maximize" | "close") => String.raw`(() => {
+/**
+ * Presses one of the page's own window buttons from script: the page asks
+ * the app for the window call as it does for a click, and no input goes
+ * through the browser, which would take the mouse from an open menu.
+ */
+const pressWindowButton = (action: "toggle-maximize" | "close") => String.raw`(() => {
   const el = document.querySelector("[data-window-control-action=${action}]");
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  if (!el) return false;
+  el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, buttons: 1 }));
+  return true;
 })()`;
+
+function foregroundName(running: Running): string {
+  const hwnd = win.foregroundWindow();
+  if (hwnd === running.hwnd) return "the app";
+  const info = win.topLevelWindows().find((window) => window.hwnd === hwnd);
+  return info ? `"${info.title}" (${info.className})` : "nothing";
+}
 
 const COMMAND_BAR_OPEN = `!!document.querySelector("[data-gloom-role=header-command-prompt] input, [data-gloom-role=header-command-prompt] textarea")`;
 
 /** Opens the app's menu with a right click in the pane, as a person does. Null when it opened; else why not. */
 async function openMenu(running: Running, label: string): Promise<string | null> {
+  // One left open by the step before would pass for this one.
+  if (menuOpen()) {
+    await win.pressKeys(win.VK.escape);
+    if (!await waitUntil(3_000, () => !menuOpen())) return "a menu from the step before was still open";
+  }
   await focusApp(running);
   const point = await evaluate<{ x: number; y: number } | null>(running.cdp, MENU_POINT, 5_000);
   if (!point) {
@@ -373,19 +389,17 @@ async function openMenu(running: Running, label: string): Promise<string | null>
 
 /**
  * While the menu is open, the page asks for a window call (its maximize
- * button, clicked through the page, so the menu stays open), and the
- * window must answer before the menu closes. Then back again.
+ * button), and the window must answer before the menu closes. Then back
+ * again.
  */
 async function windowCallWithMenuOpen(running: Running): Promise<string | null> {
-  const button = await evaluate<{ x: number; y: number } | null>(running.cdp, windowButton("toggle-maximize"), 5_000);
-  if (!button) return "no maximize button in the page";
   const asked = Date.now();
-  await pageClick(running.cdp, button);
+  if (!await evaluate<boolean>(running.cdp, pressWindowButton("toggle-maximize"), 5_000)) return "no maximize button in the page";
   const maximized = await waitUntil(5_000, () => win.isMaximized(running.hwnd));
   const answeredMs = Date.now() - asked;
   const stillOpen = menuOpen();
   if (maximized) {
-    await pageClick(running.cdp, button);
+    await evaluate<boolean>(running.cdp, pressWindowButton("toggle-maximize"), 5_000);
     await waitUntil(5_000, () => !win.isMaximized(running.hwnd));
   }
   if (!maximized) return "the page's maximize, asked for with the menu open, did not happen within 5 s";
@@ -432,7 +446,11 @@ async function holdContextMenus(running: Running): Promise<Hold[]> {
     const note = await end(running);
     if (menuOpen()) await win.pressKeys(win.VK.escape);
     const closed = await waitUntil(5_000, () => !menuOpen());
-    const notes = [...(note ? [`${ending}: ${note}`] : []), ...(closed ? [] : ["the menu stayed open after Escape"])];
+    if (!closed) await shot(`menu-${index}-open-after-escape`);
+    const notes = [
+      ...(note ? [`${ending}: ${note}`] : []),
+      ...(closed ? [] : [`the menu stayed open after Escape (foreground: ${foregroundName(running)})`]),
+    ];
     holds.push({ scenario: "menu", index, from, to: Date.now(), ...(notes.length ? { note: notes.join("; ") } : {}) });
     await sleep(2_000);
     // A window call that waited for the menu to close lands now.
@@ -449,12 +467,9 @@ async function quitWithMenuOpen(running: Running): Promise<{ ms: number; note?: 
   const failed = await openMenu(running, "quit-menu");
   if (failed) return { ms: 0, note: failed };
   await sleep(2_000);
-  const button = await evaluate<{ x: number; y: number } | null>(running.cdp, windowButton("close"), 5_000);
-  if (!button) return { ms: 0, note: "no close button in the page" };
   const asked = Date.now();
-  await pageClick(running.cdp, button).catch(() => {
-    // Intentional ignore: the page can go before its click's frame comes back.
-  });
+  const pressed = await evaluate<boolean>(running.cdp, pressWindowButton("close"), 5_000).catch(() => true);
+  if (!pressed) return { ms: 0, note: "no close button in the page" };
   const exited = await Promise.race([running.launcher.exited.then(() => true), sleep(30_000).then(() => false)]);
   const ms = Date.now() - asked;
   if (!exited) {
