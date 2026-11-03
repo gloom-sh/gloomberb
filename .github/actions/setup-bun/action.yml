@@ -6,6 +6,10 @@ inputs:
     description: Install dependencies from bun.lock
     required: false
     default: "true"
+  desktop:
+    description: Fetch Electrobun's SDK into .hutch/devkit and patch it, for desktop builds, the type checks and the tests
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -25,10 +29,12 @@ runs:
       run: bun install --frozen-lockfile
 
     # Electrobun 2 keeps its SDK out of node_modules: `electrobun sync` puts
-    # the pinned release's in .hutch/devkit, where the desktop build and the
-    # type checks read it, and our patch goes over it. Its download from
-    # Electrobun's servers is tried again after a failure (an HTTP 503 once).
-    - if: inputs.install == 'true'
+    # the pinned release's in .hutch/devkit, where the desktop build, the
+    # type checks and the tests read it, and our patch goes over it. Only the
+    # jobs that need it ask, so an outage of Electrobun's servers cannot hold
+    # up a web deploy or the terminal builds. The download is tried again
+    # after a failure (an HTTP 503 once).
+    - if: inputs.install == 'true' && inputs.desktop == 'true'
       shell: bash
       run: |
         for attempt in 1 2 3; do

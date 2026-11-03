@@ -43,15 +43,6 @@ void settleInstallerFolder({
   console.error("[desktop] could not retire the installer's folder", error instanceof Error ? error.message : String(error));
 });
 
-// A Mac app that has not updated yet has no folder for Electrobun's install
-// records, which its launcher otherwise fails to write at every start.
-void ensureInstallRecords({
-  platform: process.platform,
-  execPath: process.execPath,
-  channel: () => Updater.localInfo.channel(),
-  channelRoot: () => Updater.appDataFolder(),
-});
-
 // An install from before the rename runs from Gloomberb.app, where its updater
 // put this build. It takes the new name and opens again from there before any
 // window shows. Anywhere else this returns without touching the disk.
@@ -72,6 +63,18 @@ if (appRename?.kind === "renamed") {
 } else if (appRename?.kind === "skipped") {
   console.error(`[desktop] kept the app's old name: ${appRename.reason}`);
 }
+
+// A Mac app that has not updated yet has no folder for Electrobun's install
+// records, which its launcher otherwise fails to write at every start. The
+// records name the bundle the app runs from, so they are written once it has
+// its new name: a Gloomberb.app being renamed above opens again as Gloom.app
+// and writes them from there.
+void ensureInstallRecords({
+  platform: process.platform,
+  execPath: process.execPath,
+  channel: () => Updater.localInfo.channel(),
+  channelRoot: () => Updater.appDataFolder(),
+});
 
 function readOpenUrlEvent(event: unknown): string | null {
   const data = event && typeof event === "object" ? (event as { data?: unknown }).data : null;

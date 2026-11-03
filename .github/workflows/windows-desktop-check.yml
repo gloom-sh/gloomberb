@@ -92,6 +92,8 @@ jobs:
           ref: ${{ inputs.app_ref }}
 
       - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
 
       - name: Build the desktop package
         shell: pwsh
