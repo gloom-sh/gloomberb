@@ -90,7 +90,7 @@ async function runBenchmark(root: string, label: string): Promise<NavigationRepo
       return report;
     }
     if (attempt === 3) throw new Error(`The benchmark could not run (${label}):\n${stderr.trim()}`);
-    console.error(`${label}: benchmark failed to run, retrying`);
+    console.error(`${label}: benchmark failed to run, retrying:\n${stderr.trim().replace(/^/gm, "  ")}`);
   }
 }
 
