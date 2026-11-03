@@ -18,7 +18,7 @@ import {
   formatPercentRaw,
   MISSING_VALUE,
 } from "../../utils/format";
-import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
+import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, nearParCoinPriceDigits, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -944,14 +944,20 @@ function fundFactsNote(
  * close's move), and a pre-market, after-hours or overnight print is a line
  * of its own, measured from that close.
  */
+/** A coin near a dollar prints to four decimals, as `quote`, `G` and CRYP print it: $0.9989, not $0.99886. */
+function withNearParCoinDigits(options: MarketFormatOptions, quote: Quote | null | undefined): MarketFormatOptions {
+  const digits = nearParCoinPriceDigits(quote);
+  return digits == null ? options : { ...options, fixedFractionDigits: digits };
+}
+
 function valuationPriceMetrics(financials: FundamentalsReportData): FundamentalsMetric[] {
   const quote = financials.quote;
   const session = getRegularSessionDisplay(quote);
   if (!quote || !session) return [];
-  const options = withCurrencyMinorDigits({
+  const options = withNearParCoinDigits(withCurrencyMinorDigits({
     ...quoteFormatOptions(quote, undefined, financials.quoteMetadata?.instrumentType),
     ...financials.currencyCodes ? { currencyCode: true } : {},
-  }, quote.currency);
+  }, quote.currency), quote);
   const price = (value: number) => formatMarketPriceWithCurrency(value, quote.currency, options);
   const extended = getExtendedSessionDisplay(quote);
   const extendedLabel = extended ? EXTENDED_SESSION_LABELS[extended.session] : "";
@@ -1204,7 +1210,10 @@ export async function buildTickerReport({
     boughtAt: boughtRateCurrencies(tickerFile, quote?.currency?.trim() || tickerFile?.metadata.currency?.trim() || "", config.baseCurrency),
   };
   // Pad money prices to the currency's minor unit so a range reads £35.10 - £35.485, never past it (JPY has none).
-  const quoteOptions = withCurrencyMinorDigits(codes ? { ...baseQuoteOptions, currencyCode: true } : baseQuoteOptions, quote?.currency);
+  const quoteOptions = withNearParCoinDigits(
+    withCurrencyMinorDigits(codes ? { ...baseQuoteOptions, currencyCode: true } : baseQuoteOptions, quote?.currency),
+    quote,
+  );
   const lines: string[] = [];
 
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);

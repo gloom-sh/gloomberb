@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestQuote } from "../../test-support/data-provider";
 import { DEFAULT_CLI_OPTIONS } from "../options";
@@ -37,4 +37,40 @@ test("quote keeps a board coin's 24h marker at narrow widths and suppresses a mo
   expect(csv).toContain(",-1.32,");
   expect(csv).toContain(",24h,");
   expect(csv).not.toContain("9.99");
+});
+
+/**
+ * During an outage on 3 Nov 2026, USD1-USD's last print was from 29 Oct, and `quote` still printed
+ * "0.00% since 00:00 UTC" and OPEN for it, a move and a session that are not its own.
+ */
+test("a coin whose last print is before today's 00:00 UTC has no move and no session, and says why in an export", async () => {
+  const now = Date.parse("2026-11-03T22:00:00Z");
+  const coin = { instrumentType: "CRYPTOCURRENCY", marketState: "REGULAR", listingExchangeName: "CCC", exchangeName: "CCC" } as const;
+  const quotes = [
+    createTestQuote({ ...coin, symbol: "USD1-USD", name: "World Liberty Financial USD", price: 0.999, change: 0, changePercent: 0, previousClose: 0.999,
+      lastUpdated: Date.parse("2026-10-29T00:02:00Z") }),
+    createTestQuote({ ...coin, symbol: "USDT-USD", name: "Tether USDt", price: 0.9989, change: 0.0006, changePercent: 0.06, previousClose: 0.9983,
+      lastUpdated: Date.parse("2026-11-03T21:46:00Z") }),
+  ];
+  const cli = createTestCliContext({ dataProvider: {
+    getQuotesBatch: async () => quotes.map((quote) => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
+  } });
+  setSystemTime(new Date(now));
+  try {
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(quotes.map((quote) => quote.symbol), cli.context);
+    const { result, options } = cli.printed[0]!;
+    const rows = options!.rows!(result.data) as Array<Record<string, unknown>>;
+    expect(rows.map(({ changePercent, changeBasis, sessionLabel }) => ({ changePercent, changeBasis, sessionLabel }))).toEqual([
+      { changePercent: null, changeBasis: "", sessionLabel: "" },
+      { changePercent: 0.06, changeBasis: "since 00:00 UTC", sessionLabel: "OPEN" },
+    ]);
+    const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, width: 200 }, options);
+    const stale = text.split("\n").find((line) => line.startsWith("USD1-USD"))!;
+    expect(stale).not.toMatch(/0\.00%|since 00:00 UTC|OPEN/);
+    expect(stale.match(/—/g)).toHaveLength(2);
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
+    expect(csv).toContain("Chg%: last print before 00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
 });

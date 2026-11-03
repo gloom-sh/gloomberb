@@ -6,7 +6,7 @@ import {
   formatPercentRaw,
 } from "../utils/format";
 import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
-import { changeBasisLabel, changeBasisNote, quoteChangeBasis } from "../market-data/market/change-basis";
+import { changeBasisLabel, changeBasisNote, printPredatesChangeBasis, quoteChangeBasis } from "../market-data/market/change-basis";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import type { ActiveQuoteDisplay } from "../market-data/market/status";
 import type { Quote } from "../types/financials";
@@ -39,11 +39,13 @@ export function quoteChangeText(
 ): string {
   // A listing that no longer trades: its last close moves no more.
   if (quote.delisting) return "—";
+  const basis = quoteChangeBasis(quote, { terms });
+  // A print older than what its move is from (a coin's before 00:00 UTC) has no move as of now, as `quote` says.
+  if (printPredatesChangeBasis(quote, basis, now)) return "—";
   const move = colorBySign(
     `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
     session.change,
   );
-  const basis = quoteChangeBasis(quote, { terms });
   if (!basis) return move;
   const note = changeBasisNote(basis, now);
   return `${move} ${cliStyles.muted(changeBasisLabel(basis, now))}${note ? `\n${cliStyles.muted(note)}` : ""}`;

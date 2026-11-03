@@ -9,9 +9,11 @@ import {
   buildCryptoRows,
   CRYPTO_BOARD_FRESHNESS,
   CRYPTO_CHANGE_BASIS_LABEL,
+  CRYPTO_SORT_OPTIONS,
   formatCryptoPercent,
   formatDayRangeTime,
   formatOffPeg,
+  sortCryptoRows,
   withCryptoSupply,
 } from "./model";
 import { stackedSupply, supplyByCode, supplyFailure, supplyHistoryRows, supplySummaryLine } from "./supply";
@@ -226,6 +228,16 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     ],
     example: "--list defi --by chain",
     pluginState: { pluginId: "market-overview", key: "defiList" },
+  }, {
+    key: "sort",
+    // No default: a missing one is the board's market-cap order, which every list keeps.
+    description: "Row order: market cap (the default), or offpeg for the stablecoins furthest off their peg first, either way, with --list stablecoin.",
+    type: "enum",
+    values: [
+      { value: "mcap", aliases: ["cap", "marketcap", "rank"] },
+      { value: "offpeg", aliases: ["off-peg", "peg", "depeg"] },
+    ],
+    example: "--list stablecoin --sort offpeg",
   }],
   columns: COIN_COLUMNS,
   describe: (args) => `Crypto | ${args.options.list === "defi" ? `DeFi TVL by ${args.options.by === "chain" ? "chain" : "protocol"}` : args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
@@ -233,10 +245,19 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["CRYP"],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
+  // The pane opens on the order asked for, as its header sorts it.
+  shotState: (args, _load, given) => {
+    const sort = given.has("sort") ? CRYPTO_SORT_OPTIONS[String(args.options.sort)] : undefined;
+    return sort ? { pluginState: { "market-overview": { sort } } } : {};
+  },
   // The board as the server read it, at most 15 seconds before; the pane streams, the report does not.
   // Each row keeps the time of its own last trade, so a coin that has not traded lately reads its age.
   freshness: CRYPTO_BOARD_FRESHNESS,
   async load(args, ctx) {
+    const offPeg = args.options.sort === "offpeg";
+    if (offPeg && args.options.list !== "stablecoin") {
+      throw new Error("--sort offpeg orders the stablecoins by how far each is off its peg: add --list stablecoin.");
+    }
     if (args.options.list === "defi") return loadDefi(args.options.by === "chain" ? "chain" : "protocol", ctx);
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     // Supply is its own request: a failure there leaves the prices whole.
@@ -247,7 +268,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
         : null,
     ]);
     const supply = supplyResult && "payload" in supplyResult ? supplyResult.payload : null;
-    const rows = withCryptoSupply(buildCryptoRows(data.assets, kind, NO_QUOTES), supplyByCode(supply)).map((row) => ({
+    const built = withCryptoSupply(buildCryptoRows(data.assets, kind, NO_QUOTES), supplyByCode(supply));
+    const rows = sortCryptoRows(built, CRYPTO_SORT_OPTIONS[String(args.options.sort ?? "mcap")] ?? { columnId: null, direction: "asc" }).map((row) => ({
       rank: row.rank,
       symbol: row.asset.symbol,
       code: row.code,
@@ -282,7 +304,10 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
         pegType: row.pegType,
       } : {}),
     }));
-    const metadata = { list: kind, status: data.status, asOf: data.asOf, generatedAt: data.generatedAt, changeBasis: CRYPTO_CHANGE_BASIS_LABEL };
+    const metadata = {
+      list: kind, status: data.status, asOf: data.asOf, generatedAt: data.generatedAt, changeBasis: CRYPTO_CHANGE_BASIS_LABEL,
+      ...(offPeg ? { sort: "offpeg" } : {}),
+    };
     if (kind !== "stablecoin") return { rows, errors: data.warnings, metadata };
     const summary = supply ? supplySummaryLine(supply) : null;
     const history = supply ? supplyHistoryTable(supply) : null;

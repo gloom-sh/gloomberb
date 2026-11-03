@@ -64,9 +64,11 @@ export interface ChartTableLayoutInput {
   /**
    * Null when there is nothing to chart. `compactRows` is the least it can
    * draw in below a short table; `maxRows` caps content with a natural
-   * height (a few bars), whose rows beyond it go to the table.
+   * height (a few bars), whose rows beyond it go to the table; `maxShare`
+   * caps the chart at that share of `height` (a third under a board whose
+   * rows come first), a strip when that is less than it draws in.
    */
-  chart: { minRows?: number; compactRows?: number; maxRows?: number; strip?: boolean } | null;
+  chart: { minRows?: number; compactRows?: number; maxRows?: number; maxShare?: number; strip?: boolean } | null;
 }
 
 export interface ChartTableLayout {
@@ -151,9 +153,11 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
 
   const minRows = input.chart.minRows ?? CHART_MIN_ROWS;
   const compactRows = Math.min(minRows, input.chart.compactRows ?? minRows);
-  const maxRows = input.chart.maxRows ?? Number.POSITIVE_INFINITY;
-  const room = rest - tableMin;
-  const spare = rest - tableFit;
+  const shareRows = input.chart.maxShare != null ? Math.floor(Math.max(0, input.height) * input.chart.maxShare) : Number.POSITIVE_INFINITY;
+  const maxRows = Math.min(input.chart.maxRows ?? Number.POSITIVE_INFINITY, shareRows);
+  // A share smaller than the least the chart draws in leaves the rows its band would take to the table.
+  const room = Math.min(rest - tableMin, shareRows);
+  const spare = Math.min(rest - tableFit, shareRows);
   const full = (rows: number): ChartTableLayout => ({ figures, figureRows: shownRows, figureMaxLines, mode: "full", chartRows: Math.min(rows, maxRows) });
   if (room >= minRows) {
     // With every table row in view beside a readable chart, the chart takes

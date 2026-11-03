@@ -369,6 +369,31 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How far a perpetual's price sits above or below the reference price it tracks, as a percent. "
       + "Positive means buyers are paying up for the contract; funding pulls it back toward zero.",
   },
+  // Stablecoins (CRYP --list stablecoin).
+  {
+    term: "Off peg", aliases: ["off-peg", "peg", "depeg", "de-peg", "peg deviation", "stablecoin peg"], functions: ["CRYP"],
+    definition: "How far a stablecoin trades from its peg, in basis points: (price ÷ peg − 1) × 10,000, the peg being $1 for a dollar coin "
+      + "and the EUR/USD rate for a euro coin (Peg EUR 1.1194). A coin whose Peg reads USD yield (yield accrues into its price) or USD bond "
+      + "(a bond token priced toward a dollar at maturity) has no par to be off, so it shows none.",
+  },
+  {
+    term: "24h low/high", aliases: ["24h low", "24h high", "24-hour low", "24-hour high", "24h range", "low utc", "high utc"], functions: ["CRYP"],
+    shown: ["24h low", "24h high", "Low UTC", "High UTC"],
+    definition: "A stablecoin's lowest and highest trade over the rolling 24 hours to the board's time, not since midnight, "
+      + "with when each traded in UTC (Low UTC, High UTC). A newer price outside them becomes the low or the high.",
+  },
+  {
+    term: "Supply", aliases: ["stablecoin supply", "total supply", "supply 7d", "supply 30d", "supply change"], functions: ["CRYP"],
+    shown: ["Supply", "Total supply"],
+    definition: "The dollar value of a stablecoin's coins in circulation, from a daily series that ends on the previous day: "
+      + "the line above the table gives its as-of date. Supply 7D and Supply 30D are its change over those days, in dollars and in percent; "
+      + "supply grows as coins are issued and shrinks as they are redeemed.",
+  },
+  {
+    term: "Share", aliases: ["supply share", "share of supply", "tvl share"], functions: ["CRYP"],
+    definition: "A stablecoin's part of all stablecoin supply, in percent, on the same previous-day series as Supply. "
+      + "On the DeFi chain list, a chain's part of all value locked.",
+  },
   // Portfolio weights and rebalancing (PF, portfolio show).
   {
     term: "Weight", aliases: ["weights", "portfolio weight", "allocation weight"], functions: ["PF"],

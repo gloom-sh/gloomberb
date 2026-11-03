@@ -6,12 +6,14 @@ interface CryptoDailyCloses {
 
 export type CryptoAssetKind = "coin" | "stablecoin";
 
-/** What a stablecoin holds to: a currency, or a dollar value that accrues yield. */
+/** What a stablecoin holds to: a currency, a dollar value that accrues yield, or a dollar at a bond's maturity. */
 export interface CryptoPeg {
   /** The currency it is pegged to: USD, EUR. */
   currency: string;
-  /** Yield accrues into the price (USDY): it has no par to be off. */
+  /** Its price is not held at par: yield accrues into it (USDY), or it is a bond token priced toward par at maturity (BUSD0). It has no par to be off. */
   accrues: boolean;
+  /** What a coin that accrues is: `yield` (USDY) or `bond` (BUSD0), `par` for the rest; absent from servers before it was served, where an accruing coin is a yield one. */
+  kind?: "par" | "yield" | "bond";
   /** The target in dollars: 1 for USD, the EUR/USD rate for EUR; null when it accrues or the rate is unavailable. */
   price: number | null;
   /** When a target that moves (an exchange rate) was quoted; null for USD. */

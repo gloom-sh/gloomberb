@@ -52,6 +52,25 @@ export function quoteFormatOptions(
   };
 }
 
+/** A hundredth of a cent, one basis point of a dollar peg: the decimals CRYP prints a stablecoin to. */
+export const NEAR_PAR_COIN_PRICE_DIGITS = 4;
+
+/**
+ * The decimals a coin trading near a dollar prints to, a dollar stablecoin's
+ * 0.9989 and 1.0003 and a bond token's 0.9762, whatever digits its source sent
+ * (0.99886, 0.97619265): four either side of par, as CRYP prints them, so
+ * `quote`, `ticker` and `G` read one price. Undefined for any other price,
+ * which keeps its kind's own decimals (a sub-cent coin's eight).
+ */
+export function nearParCoinPriceDigits(
+  quote: Pick<Quote, "instrumentType" | "currency" | "previousClose" | "price"> | null | undefined,
+): number | undefined {
+  if (!quote || resolveAssetDisplayKind({ assetCategory: quote.instrumentType }) !== "crypto") return undefined;
+  if ((quote.currency ?? "USD").trim().toUpperCase() !== "USD") return undefined;
+  const reference = [quote.previousClose, quote.price].find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
+  return reference != null && reference >= 0.9 && reference < 1.1 ? NEAR_PAR_COIN_PRICE_DIGITS : undefined;
+}
+
 /** Decimals a sub-unit quote adds in the major unit: two for pence shown in pounds. */
 function quotedUnitFractionDigits(divisor: number | undefined): number {
   return divisor != null && Number.isFinite(divisor) && divisor > 1 ? Math.min(3, Math.round(Math.log10(divisor))) : 0;

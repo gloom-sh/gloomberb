@@ -31,7 +31,26 @@ test("a coin typed bare is named by its one board symbol, by code or name, once 
   expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloom search Apple`.");
 });
 
-test("a board that fails leaves the search hint", async () => {
+test("a board that fails names the coins this build knows, and leaves the search hint for any other word", async () => {
   await primeBoardCoins(["Not a ticker: USDT."], async () => { throw new Error("down"); });
-  expect(withSearchHints("Not a ticker: USDT.", ["USDT"])).toBe("Not a ticker: USDT. Try `gloom search USDT`.");
+  expect(withSearchHints("Not a ticker: USDT.", ["USDT"])).toBe("Not a ticker: USDT. Did you mean USDT-USD (Tether USDt)?");
+  expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloom search Apple`.");
+});
+
+/**
+ * In an outage on 3 Nov 2026 `quote USDT` and `quote FOOBARX` both read "Gloom's data service did not
+ * answer", a typo and an outage alike, and USDT lost its pointer to USDT-USD with the board the same service serves.
+ */
+test("a symbol the data service could not check keeps the coin it may be, from the coins this build knows in an outage", async () => {
+  const line = "Could not check USDT: Gloom's data service did not answer. Try again in a moment.";
+  await primeBoardCoins([line], async () => { throw new Error("down"); });
+  expect(withSearchHints(line, ["usdt"])).toBe(`${line} Did you mean USDT-USD (Tether USDt)?`);
+  const both = "Could not check USDT, FOOBARX: Gloom's data service did not answer. Try again in a moment.";
+  expect(withSearchHints(both, ["USDT", "FOOBARX"])).toBe(`${both} Did you mean USDT-USD (Tether USDt) for USDT?`);
+  expect(withSearchHints("Could not check FOOBARX: Gloom couldn't reach its data service", ["FOOBARX"]))
+    .toBe("Could not check FOOBARX: Gloom couldn't reach its data service");
+  expect(withSearchHints("Could not check out abc1234: not found", [])).toBe("Could not check out abc1234: not found");
+  // A command that resolves one symbol says it the same way; the hint is given once.
+  const lookup = "Could not look up BTC: Gloom Cloud did not answer. Try again in a minute.";
+  expect(withSearchHints(withSearchHints(lookup, ["BTC"]), ["BTC"])).toBe(`${lookup} Did you mean BTC-USD (Bitcoin)?`);
 });

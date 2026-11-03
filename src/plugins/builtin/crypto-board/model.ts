@@ -88,9 +88,9 @@ export interface CryptoRow extends CryptoRowSupply {
   delayed: boolean;
   /** A stablecoin's peg; null for a coin, or a server that does not send it. */
   peg: CryptoPeg | null;
-  /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`; empty without a peg. */
+  /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`, `USD bond`; empty without a peg. */
   pegText: string;
-  /** How far the price is off its target, in basis points; null when it accrues yield or the target is unknown. */
+  /** How far the price is off its target, in basis points; null when it accrues (yield, a bond) or the target is unknown. */
   offPegBp: number | null;
   /** The 24-hour low and high, the price shown included, and when each traded (epoch ms). */
   low24h: number | null;
@@ -227,17 +227,18 @@ function buildCryptoRow(
 /**
  * What a stablecoin's price is measured against: `USD`; a coin on another
  * currency by its target in dollars, `EUR 1.1242`, so EURC at 1.1234 does not
- * read as a 12% premium; a coin whose yield accrues into its price (USDY) is
- * marked so and has no par to be off.
+ * read as a 12% premium; a coin whose yield accrues into its price (USDY) or a
+ * bond token priced toward par at maturity (BUSD0) is marked by its kind and
+ * has no par to be off.
  */
 export function formatPegTarget(peg: CryptoPeg | null | undefined): string {
   if (!peg) return "";
-  if (peg.accrues) return `${peg.currency} yield`;
+  if (peg.accrues) return `${peg.currency} ${peg.kind === "bond" ? "bond" : "yield"}`;
   if (peg.currency === "USD") return "USD";
   return peg.price == null ? peg.currency : `${peg.currency} ${peg.price.toFixed(4)}`;
 }
 
-/** Basis points off the peg, to a tenth: (price / target - 1) x 10,000. Null when the coin accrues yield or the target is unknown. */
+/** Basis points off the peg, to a tenth: (price / target - 1) x 10,000. Null when the coin accrues (yield, a bond) or the target is unknown. */
 export function offPegBasisPoints(price: number, peg: CryptoPeg | null | undefined): number | null {
   if (!peg || peg.accrues || peg.price == null || !(peg.price > 0) || !(price > 0)) return null;
   return toBasisPoints((price / peg.price - 1) * 100, 1);
@@ -409,6 +410,25 @@ export interface CryptoSortPreference {
 
 export const DEFAULT_CRYPTO_SORT: CryptoSortPreference = { columnId: null, direction: "asc" };
 
+/**
+ * `--sort` of `fn CRYP` and `shot CRYP` as the pane's header sorts it: the
+ * board's market-cap order, or off peg largest first, either side of par.
+ */
+export const CRYPTO_SORT_OPTIONS: Readonly<Record<string, CryptoSortPreference>> = {
+  mcap: DEFAULT_CRYPTO_SORT,
+  offpeg: { columnId: "offPegBp", direction: "desc" },
+};
+
+/** A saved sort as the pane reads it back; anything else is the board's order. */
+export function readCryptoSort(value: unknown): CryptoSortPreference {
+  if (!value || typeof value !== "object") return DEFAULT_CRYPTO_SORT;
+  const { columnId, direction } = value as Partial<CryptoSortPreference>;
+  return (columnId === null || (typeof columnId === "string" && SORTABLE_COLUMNS.has(columnId)))
+    && (direction === "asc" || direction === "desc")
+    ? { columnId: columnId as CryptoColumnId | null, direction }
+    : DEFAULT_CRYPTO_SORT;
+}
+
 const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name", "pegText"]);
 
 /** Numbers open largest-first (top gainers, biggest caps); names open A-Z. */
@@ -491,6 +511,10 @@ const STABLECOIN_SUPPLY_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "supply30d", label: "SUP 30D", width: 8, align: "right", optional: 4.8 },
   { id: "supplyShare", label: "SHARE", width: 7, align: "right", optional: 3.8 },
 ];
+
+/** Every column a header click sorts by: all but the sparkline. */
+const SORTABLE_COLUMNS = new Set<string>([...COLUMN_SPECS, ...STABLECOIN_COLUMN_SPECS, ...STABLECOIN_SUPPLY_COLUMN_SPECS]
+  .map((column) => column.id).filter((id) => id !== "trend"));
 
 const MAX_NAME_WIDTH = 24;
 

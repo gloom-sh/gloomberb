@@ -253,3 +253,17 @@ test("COT's words are found by plain names and explained from the classes and co
   expect(terms(reportGlossary("COT", "Class  Net\nLeveraged Funds  +1\nAsset Manager/Institutional  -1\nDealer/Intermediary  +2\nFutures + options")))
     .toEqual(["Net position", "Leveraged funds", "Asset manager/institutional", "Dealer/intermediary", "Futures and options combined"]);
 });
+
+test("CRYP's stablecoin words are found by plain names and explained from what its stablecoin list prints", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["depeg", "off peg", "24h low", "Low UTC", "total supply", "supply share"].map(exact))
+    .toEqual([["Off peg"], ["Off peg"], ["24h low/high"], ["24h low/high"], ["Supply"], ["Share"]]);
+  const stablecoins = [
+    "Total supply 299.41B · 7D -4.61B (-1.52%) · 30D -9.28B (-3.01%) · as of 2026-11-02",
+    " #  Coin   Name       Price USD  Peg       Off peg  24h low  Low UTC    24h high  High UTC   Supply  Supply 7D %  Share",
+    "12  USDY   Ondo US    1.1511     USD yield       —   1.1508  Tue 16:00    1.1520  Tue 17:45       —            —      —",
+  ].join("\n");
+  expect(terms(reportGlossary("CRYP", stablecoins))).toEqual(["Off peg", "24h low/high", "Supply", "Share"]);
+  // The coin list prints none of them.
+  expect(reportGlossary("CRYP", " #  Coin  Name     Price USD  Chg % UTC  7D %  Market cap USD")).toEqual([]);
+});
