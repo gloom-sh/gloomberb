@@ -305,10 +305,10 @@ index 4c47ed9d2..fde979421 100644
  	downloadUpdate,
  	applyUpdate,
 diff --git a/api/sdks/main/core/BrowserView.ts b/api/sdks/main/core/BrowserView.ts
-index ced422137..f097bd4b2 100644
+index ced422137..43e8e905c 100644
 --- a/api/sdks/main/core/BrowserView.ts
 +++ b/api/sdks/main/core/BrowserView.ts
-@@ -33,6 +33,16 @@ const HOST_MESSAGE_SEND_TURN_MS = 8;
+@@ -33,6 +33,22 @@ const HOST_MESSAGE_SEND_TURN_MS = 8;
  const HOST_MESSAGE_SOCKET_AVAILABLE = process.platform !== "win32";
  const HOST_MESSAGE_RESPONSE_PRIORITY = process.platform === "linux";
  
@@ -316,27 +316,38 @@ index ced422137..f097bd4b2 100644
 + * Where set, runs a script in a webview instead of this thread when it
 + * returns true. On Windows every message to a page goes as a script, and the
 + * native call waits on the thread that runs the windows until it takes it.
-+ * `runHere` runs it on this thread, for a script the runner took and then
-+ * could not run.
++ * `webview` is the native pointer, which a webview made after this one is
++ * removed can reuse; `webviewId` is never reused. `runHere` runs it on this
++ * thread, for a script the runner took and then could not run.
 + */
-+type WebviewScriptRunner = (js: string, webview: number, runHere: () => void) => boolean;
++type WebviewScriptRunner = (
++	js: string,
++	webviewId: number,
++	webview: number,
++	runHere: () => void,
++) => boolean;
 +let webviewScriptRunner: WebviewScriptRunner | null = null;
 +
  function isRpcResponsePacket(message: unknown): boolean {
  	return (
  		typeof message === "object" &&
-@@ -267,10 +277,17 @@ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
+@@ -267,10 +283,22 @@ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
  	// so we have to chunk it
  	// TODO: is this still needed after switching from named pipes
  	executeJavascript(js: string) {
 -		if (!this.ptr || this.isRemoved) {
 +		const webview = this.ptr;
 +		if (!webview || this.isRemoved) {
++			return;
++		}
++		const runHere = () => ffi.request.evaluateJavascriptWithNoCompletion({ id: this.id, js });
++		if (
++			webviewScriptRunner &&
++			webviewScriptRunner(js, this.id, webview as unknown as number, runHere)
++		) {
  			return;
  		}
 -		ffi.request.evaluateJavascriptWithNoCompletion({ id: this.id, js });
-+		const runHere = () => ffi.request.evaluateJavascriptWithNoCompletion({ id: this.id, js });
-+		if (webviewScriptRunner && webviewScriptRunner(js, webview as unknown as number, runHere)) return;
 +		runHere();
 +	}
 +
