@@ -7,7 +7,8 @@ import { reportCrash } from "./crash-reports";
  * Freezes, made visible outside the app's own Debug Log.
  *
  * The stall monitor (utils/main-thread-stall.ts) notices when a process could
- * not answer the user for a while and names the last measured section, and
+ * not answer the user for a while and names the measured section that held
+ * it (or the last one before it), and
  * hands the stall to its sink. The terminal app and the desktop app's Bun
  * process record their own stalls here; the desktop window sends the stalls
  * it had in front of the user (stall-reports-dom.ts) to the Bun process,
@@ -24,7 +25,9 @@ import { reportCrash } from "./crash-reports";
  *
  * A report also says when in the process's life the stall came (still
  * starting or up, and an uptime bucket), how long before it the named section
- * ended (or that it ended inside it, which makes it the likely cause), and,
+ * ended (or that it ended inside it), what share of the stall that section
+ * itself ran (all of it: it froze the thread; little: it ran after a wait
+ * nothing measured), and,
  * for the desktop app's own process, whether the app was in front and had a
  * window on screen: a hidden app's slowed timers read like a freeze. A stall
  * after a SQLite statement names the statement (a fixed name), its tries and
@@ -62,6 +65,11 @@ export interface StallReport {
   uptime: UptimeBucket | "unknown";
   /** How long before the stall began the section ended; "in" when it ended inside it. */
   gap: GapBucket;
+  /**
+   * The share of the stall the section itself ran, in percent, by tens: 100
+   * when it froze the thread, near 0 when it only ran after an unmeasured wait.
+   */
+  heldPercent?: number;
   /** The desktop app's own process: whether the app was in front (null: not known yet). */
   active?: boolean | null;
   /** The desktop app's own process: whether a window was open and not minimized. */
@@ -184,13 +192,14 @@ function gapBucket(event: StallEvent): GapBucket {
 /** A stall another process sent over, kept only when it has the right shape. */
 export function parseStallEvent(value: unknown): StallEvent | null {
   if (!value || typeof value !== "object") return null;
-  const { blockedMs, lastMeasured, lastMeasuredEndedMsAgo, sqlite, uptimeMs, phase } = value as Record<string, unknown>;
+  const { blockedMs, lastMeasured, lastMeasuredEndedMsAgo, lastMeasuredMs, sqlite, uptimeMs, phase } = value as Record<string, unknown>;
   if (typeof blockedMs !== "number" || !Number.isFinite(blockedMs) || blockedMs <= 0) return null;
   const detail = sqlite && typeof sqlite === "object" ? sqlite as Record<string, unknown> : null;
   return {
     blockedMs,
     ...(typeof lastMeasured === "string" && lastMeasured.length <= 200 ? { lastMeasured } : {}),
     ...(typeof lastMeasuredEndedMsAgo === "number" && Number.isFinite(lastMeasuredEndedMsAgo) ? { lastMeasuredEndedMsAgo } : {}),
+    ...(typeof lastMeasuredMs === "number" && Number.isFinite(lastMeasuredMs) && lastMeasuredMs >= 0 ? { lastMeasuredMs } : {}),
     ...(detail && typeof detail.operation === "string" && detail.operation.length <= 80
       && typeof detail.attempts === "number" && Number.isFinite(detail.attempts)
       ? { sqlite: { operation: detail.operation, attempts: detail.attempts, lockWait: detail.lockWait === true } }
@@ -219,6 +228,7 @@ interface StallContext {
   phase: StallReport["phase"];
   uptime: StallReport["uptime"];
   gap: GapBucket;
+  heldPercent?: number;
   attention: StallAttention | null;
   cpuPercent?: number;
   otherCpuPercent?: number;
@@ -227,10 +237,14 @@ interface StallContext {
 function stallContext(event: StallEvent, attention: StallAttention | null): StallContext {
   const cpuPercent = tens(event.threadCpu, 100);
   const otherCpuPercent = tens(event.otherCpu, MAX_OTHER_CPU_PERCENT);
+  const heldPercent = event.lastMeasured && event.lastMeasuredMs !== undefined
+    ? tens(Math.min(1, event.lastMeasuredMs / event.blockedMs), 100)
+    : undefined;
   return {
     phase: event.phase ?? "unknown",
     uptime: uptimeBucket(event.uptimeMs),
     gap: gapBucket(event),
+    ...(heldPercent === undefined ? {} : { heldPercent }),
     attention,
     ...(cpuPercent === undefined ? {} : { cpuPercent }),
     ...(otherCpuPercent === undefined ? {} : { otherCpuPercent }),
@@ -241,7 +255,7 @@ function stallContext(event: StallEvent, attention: StallAttention | null): Stal
 function formatStallLogLine(process: StallProcess, event: StallEvent, context: StallContext, at: number): string {
   const time = new Date(at).toISOString().replace(/\.\d{3}Z$/, "Z");
   const last = event.lastMeasured
-    ? `last measured: ${event.lastMeasured}${event.lastMeasuredEndedMsAgo === undefined ? "" : `, ended ${Math.round(event.lastMeasuredEndedMsAgo)} ms before`}`
+    ? `last measured: ${event.lastMeasured}${event.lastMeasuredMs === undefined ? "" : `, ran ${Math.round(event.lastMeasuredMs)} ms`}${event.lastMeasuredEndedMsAgo === undefined ? "" : `, ended ${Math.round(event.lastMeasuredEndedMsAgo)} ms before`}`
     : "nothing measured before it";
   const sqlite = event.sqlite
     ? ` (${event.sqlite.operation}, ${event.sqlite.attempts} ${event.sqlite.attempts === 1 ? "try" : "tries"}${event.sqlite.lockWait ? ", waited on a lock" : ""})`
@@ -250,6 +264,7 @@ function formatStallLogLine(process: StallProcess, event: StallEvent, context: S
     `phase=${context.phase}`,
     `up=${context.uptime}`,
     `gap=${context.gap}`,
+    ...(context.heldPercent === undefined ? [] : [`held=${context.heldPercent}`]),
     ...(context.attention ? [`fg=${flag(context.attention.active)}`, `vis=${flag(context.attention.visible)}`] : []),
     ...(context.cpuPercent === undefined ? [] : [`cpu=${context.cpuPercent}`]),
     ...(context.otherCpuPercent === undefined ? [] : [`oth=${context.otherCpuPercent}`]),
@@ -281,6 +296,7 @@ export function formatStallReportDetails(report: StallReport): string {
     `phase=${report.phase}`,
     `up=${report.uptime}`,
     `gap=${report.gap}`,
+    ...(report.heldPercent === undefined ? [] : [`held=${report.heldPercent}`]),
     ...(report.active === undefined ? [] : [`fg=${flag(report.active)}`]),
     ...(report.visible === undefined ? [] : [`vis=${flag(report.visible)}`]),
     ...(report.cpuPercent === undefined ? [] : [`cpu=${report.cpuPercent}`]),
@@ -383,6 +399,7 @@ export function recordStall(process: StallProcess, event: StallEvent): void {
         phase: context.phase,
         uptime: context.uptime,
         gap: context.gap,
+        ...(context.heldPercent === undefined ? {} : { heldPercent: context.heldPercent }),
         ...(context.attention ? { active: context.attention.active, visible: context.attention.visible } : {}),
         ...(context.cpuPercent === undefined ? {} : { cpuPercent: context.cpuPercent }),
         ...(context.otherCpuPercent === undefined ? {} : { otherCpuPercent: context.otherCpuPercent }),

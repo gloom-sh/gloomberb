@@ -1,4 +1,4 @@
-import { lastPerfSample, recordPerfSample, withoutLastStep } from "./perf-marks";
+import { lastPerfSample, recordPerfSample, takeHeldPerfSample, withoutLastStep } from "./perf-marks";
 
 /** How often the monitor checks in. Short enough to date a stall precisely. */
 const SAMPLE_INTERVAL_MS = 250;
@@ -34,10 +34,19 @@ export interface StallClockReading {
 export interface StallEvent {
   /** How long the thread could not run while the computer was awake. */
   blockedMs: number;
-  /** The last measured section before the stall (perf-marks), if any. */
+  /**
+   * The measured section that held the thread longest during the stall
+   * (perf-marks); the last one before it when none ended inside it.
+   */
   lastMeasured?: string;
   /** How long before the stall was noticed that section ended. */
   lastMeasuredEndedMsAgo?: number;
+  /**
+   * How long that section itself ran, when it ended inside the stall: near
+   * the stall's length it froze the thread, far below it ran in what queued
+   * up behind an unmeasured wait.
+   */
+  lastMeasuredMs?: number;
   /** When that section was a SQLite statement that held the thread. */
   sqlite?: StallSqliteDetail;
   /** How long the process had been running when the stall was noticed. */
@@ -147,7 +156,8 @@ function defaultNow(): number {
  * Names the freezes. A timer that should fire every quarter second is a
  * witness to everything that blocks the main thread, measured or not: when it
  * comes back late, the app was unresponsive for exactly that long. The report
- * carries the last measured section and how long before the stall it ended,
+ * carries the measured section that held the thread longest in that time (or
+ * the last one before it), how long it ran and how long before the stall it ended,
  * which is usually enough to tell "the cache read did it" from "the render
  * did it" in a report that only says the app hung for a few seconds, and how
  * long the process had been up, so a slow start reads apart from a hang
@@ -184,12 +194,14 @@ export function startMainThreadStallMonitor(
     const before = previousClocks;
     previous = current;
     previousClocks = currentClocks;
+    // Taken on every tick, so a stall weighs only the steps that ended inside it.
+    const held = takeHeldPerfSample();
     const awakeMs = delta(currentClocks?.awakeMs, before?.awakeMs);
     // Asleep, the computer runs nothing; only the awake part of the gap was a freeze.
     const asleepMs = awakeMs == null ? 0 : Math.max(0, elapsedMs - awakeMs);
     const blockedMs = elapsedMs - asleepMs - intervalMs;
     if (blockedMs < thresholdMs) return;
-    const sample = lastPerfSample();
+    const sample = held ?? lastPerfSample();
     const sqlite = sample?.name === "sqlite.blocked" ? sqliteDetail(sample.metadata) : undefined;
     const threadCpuMs = delta(currentClocks?.threadCpuMs, before?.threadCpuMs);
     const processCpuMs = delta(currentClocks?.processCpuMs, before?.processCpuMs);
@@ -197,6 +209,7 @@ export function startMainThreadStallMonitor(
       ...(sample
         ? { lastMeasured: sample.name, lastMeasuredEndedMsAgo: Math.round(current - sample.endedAt) }
         : {}),
+      ...(held ? { lastMeasuredMs: Math.round(held.durationMs) } : {}),
       ...(sqlite ? { sqlite } : {}),
       uptimeMs: Math.round(current),
       phase: startupComplete ? "steady" : "startup",

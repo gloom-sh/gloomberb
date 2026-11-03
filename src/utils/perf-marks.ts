@@ -29,6 +29,11 @@ let lastSampleDurationMs = 0;
 let lastSampleMetadata: Record<string, unknown> | undefined;
 /** Inside `withoutLastStep`: samples are logged, and none becomes the last step. */
 let quietDepth = 0;
+// The step that held the thread longest since the stall monitor last looked.
+let heldName: string | null = null;
+let heldEndedAt = 0;
+let heldDurationMs = 0;
+let heldMetadata: Record<string, unknown> | undefined;
 
 /**
  * The most recent measured section, when it ended and what it was measured
@@ -51,18 +56,55 @@ function lastStepAccountsForSection(startedAt: number, durationMs: number): bool
   return lastSampleName != null && lastSampleEndedAt >= startedAt && lastSampleDurationMs * 2 >= durationMs;
 }
 
+/**
+ * Keeps the step that held the thread longest since the stall monitor last
+ * looked (`takeHeldPerfSample`). After a freeze the thread first runs what
+ * queued up behind it, so the last step before the monitor's late timer is
+ * rarely what froze it. A step inside a section that took at least half of
+ * it stands for the section, as it does for the last step.
+ */
+function noteHeldStep(name: string, startedAt: number, endedAt: number, durationMs: number, metadata?: Record<string, unknown>): void {
+  if (heldName != null) {
+    const inside = heldEndedAt >= startedAt;
+    if (inside ? heldDurationMs * 2 >= durationMs : heldDurationMs >= durationMs) return;
+  }
+  heldName = name;
+  heldEndedAt = endedAt;
+  heldDurationMs = durationMs;
+  heldMetadata = metadata;
+}
+
+/**
+ * The step that held the thread longest since the last call, and forgets it:
+ * the stall monitor asks on every tick, so a stall only weighs the steps that
+ * ended inside it. Only steps that ran on the thread throughout count, not an
+ * awaited one's time.
+ */
+export function takeHeldPerfSample(): { name: string; endedAt: number; durationMs: number; metadata?: Record<string, unknown> } | null {
+  if (heldName == null) return null;
+  const held = { name: heldName, endedAt: heldEndedAt, durationMs: heldDurationMs, ...(heldMetadata ? { metadata: heldMetadata } : {}) };
+  heldName = null;
+  heldMetadata = undefined;
+  return held;
+}
+
 function logSlowPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
   lastStep = true,
   startedAt?: number,
+  heldThread = false,
 ): void {
-  if (lastStep && quietDepth === 0 && (startedAt === undefined || !lastStepAccountsForSection(startedAt, durationMs))) {
-    lastSampleName = name;
-    lastSampleEndedAt = now();
-    lastSampleDurationMs = durationMs;
-    lastSampleMetadata = metadata;
+  if (lastStep && quietDepth === 0) {
+    const endedAt = now();
+    if (startedAt === undefined || !lastStepAccountsForSection(startedAt, durationMs)) {
+      lastSampleName = name;
+      lastSampleEndedAt = endedAt;
+      lastSampleDurationMs = durationMs;
+      lastSampleMetadata = metadata;
+    }
+    if (heldThread) noteHeldStep(name, startedAt ?? endedAt - durationMs, endedAt, durationMs, metadata);
   }
   const payload = {
     durationMs: Math.round(durationMs * 10) / 10,
@@ -108,7 +150,7 @@ export function recordPerfSample(
   metadata?: Record<string, unknown>,
   options?: { lastStep?: boolean },
 ): void {
-  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false);
+  logSlowPerfSample(name, durationMs, metadata, options?.lastStep !== false, undefined, true);
 }
 
 /**
@@ -124,7 +166,7 @@ export function measurePerf<T>(
   try {
     return fn();
   } finally {
-    logSlowPerfSample(name, now() - start, metadata, true, start);
+    logSlowPerfSample(name, now() - start, metadata, true, start, true);
   }
 }
 
