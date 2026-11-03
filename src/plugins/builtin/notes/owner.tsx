@@ -6,7 +6,7 @@ import { QueryBar } from "../../../components/ui/query-bar";
 import { Box } from "../../../ui";
 import type { DialogApi, PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
-import { teamAccentHex, teamPrefix } from "../../../team/model";
+import { canManageTeam, teamAccentHex, teamPrefix } from "../../../team/model";
 import { teamStore } from "../../../team/store";
 import { logFailure } from "../../../utils/log-failure";
 import { NoteConflictError, type NoteOwner, noteOwnerKey } from "./store";
@@ -17,6 +17,25 @@ export function useNoteTeams(): TeamSummary[] {
     () => teamStore.getSnapshot(),
   ).teams;
 }
+
+/**
+ * Whether the server lets me delete a note: any of mine, and a team note I
+ * wrote or whose team I run. A team note without an author is one I just
+ * added, or one from a server that lets any member delete.
+ */
+export function mayDeleteNote(
+  note: { owner: NoteOwner; createdBy?: string | null },
+  teams: readonly TeamSummary[],
+  selfUserId: string | null,
+): boolean {
+  const { owner } = note;
+  if (owner.kind === "user" || note.createdBy === undefined) return true;
+  if (selfUserId !== null && note.createdBy === selfUserId) return true;
+  return canManageTeam(teams.find((team) => team.id === owner.teamId)?.role);
+}
+
+/** Why a teammate's note offers no delete. */
+export const NOT_YOUR_NOTE = "Only its author or a team admin can delete this note.";
 
 /** The owner a new note defaults to: the focused team, else me. */
 export function defaultNoteOwner(): NoteOwner {

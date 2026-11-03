@@ -312,11 +312,11 @@ function notifySuccess(pluginRegistry: PluginRegistry, body: string): void {
 }
 
 /**
- * A link that changes something (creates an alert, adds a layout or a pane,
- * starts a conversation) waits for a click on a toast that says what it
- * asks: any web page can open a gloomberb:// link, and a browser told to
- * always allow them asks nothing more. Links that only show something run
- * at once.
+ * A link that changes something (creates an alert, adds a layout, starts a
+ * conversation) waits for a click on a toast that says what it asks: any web
+ * page can open a gloomberb:// link, and a browser told to always allow them
+ * asks nothing more. Links that only show something, a shared pane among
+ * them, run at once.
  */
 function askBeforeRunning(pluginRegistry: PluginRegistry, body: string, label: string, run: () => void): void {
   pluginRegistry.notify({
@@ -629,10 +629,9 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       handleOpenNews(action, options.pluginRegistry);
       return;
     case "open-share":
-      askBeforeRunning(options.pluginRegistry, "Open the shared pane this link points to?", "Open", () => {
-        const open = () => void openShareInApp(action.id, options.pluginRegistry, { retry: open });
-        open();
-      });
+      // Opening a shared pane only adds a view of what the person just
+      // clicked, so it runs at once.
+      void openShareInApp(action.id, options.pluginRegistry, { retry: () => handleDesktopDeepLink(rawUrl, options) });
       return;
     case "open-layout":
       askBeforeRunning(options.pluginRegistry, "Add the shared layout this link points to?", "Add layout", () => {

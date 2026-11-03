@@ -5,6 +5,8 @@ export interface QuickNoteEntry {
   id: string;
   title: string;
   updatedAt?: number;
+  /** Who wrote a cloud note, when the server says; never saved to disk. */
+  createdBy?: string | null;
 }
 
 /** A stored note: `key` is what `load`/`save` take, not the file path. */

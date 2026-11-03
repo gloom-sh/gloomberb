@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { handleDesktopDeepLink, resolveDesktopDeepLinkAction } from "./desktop-deeplink";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppState } from "../../state/app/context";
@@ -47,14 +47,12 @@ describe("desktop deeplinks", () => {
     handleDesktopDeepLink("gloomberb://alert/new?symbol=AAPL&condition=above&price=200", options);
     handleDesktopDeepLink("gloomberb://chat/dm?users=alice,@bob", options);
     handleDesktopDeepLink(`gloomberb://layout/${"a".repeat(32)}`, options);
-    handleDesktopDeepLink(`gloomberb://share/${"b".repeat(32)}`, options);
     expect(ran).toEqual([]);
     expect(dispatched).toEqual([]);
     expect(notices.map(({ body, action }) => [body, action?.label])).toEqual([
       ["Create an alert for AAPL above 200?", "Create alert"],
       ["Open a conversation with @alice, @bob?", "Open"],
       ["Add the shared layout this link points to?", "Add layout"],
-      ["Open the shared pane this link points to?", "Open"],
     ]);
 
     notices[0]!.action!.onClick();
@@ -64,6 +62,21 @@ describe("desktop deeplinks", () => {
       { command: "set-alert", values: { symbol: "AAPL", condition: "above", price: "200" } },
       { command: "direct-message", values: { participants: "alice,@bob" } },
     ]);
+
+    // A shared pane only adds a view of what was clicked: it opens at once.
+    const fetched: string[] = [];
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      throw new Error("offline");
+    }) as typeof fetch);
+    const before = notices.length;
+    try {
+      handleDesktopDeepLink(`gloomberb://share/${"b".repeat(32)}`, options);
+      expect(fetched).toEqual([expect.stringContaining("b".repeat(32))]);
+      expect(notices.slice(before).filter((notice) => notice.action)).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
 
     // Words that are not usernames are never put in the toast.
     handleDesktopDeepLink("gloomberb://chat/dm?users=Your%20account%20is%20locked", options);
