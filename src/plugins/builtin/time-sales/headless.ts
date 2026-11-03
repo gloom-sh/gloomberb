@@ -30,7 +30,7 @@ function listedNote(range: TapeRange, served: number, listed: number): string[] 
 const WINDOW_OPTION = { reportOnly: "lists a window of the session in the text report" };
 
 /** What each low and high of the report is taken over; the session's is the rule quote and GIP read the day's range by. */
-export function tapeRangeBasis(window: string): string {
+function tapeRangeBasis(window: string): string {
   return `${window} low and high: every print listed, odd lots included. Regular session low and high: consolidated prints that set a price, `
     + "as quote and GIP read them; odd lots and special-condition prints set none.";
 }
