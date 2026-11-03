@@ -15,6 +15,7 @@ import {
   metricDate,
   parseCriterion,
   parseThreshold,
+  screenSymbols,
   resultFields,
   parseScreenDefinition,
   screenColumnLabel,
@@ -344,4 +345,23 @@ test("grades print as letters and the composite with its label, in one sign colo
   for (const row of older.rows) for (const field of GRADE_FIELDS) delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   for (const field of [...LETTER_GRADE_FIELDS, "gradeComposite"] as const) expect(loaded.rows[0]!.metrics[field]).toMatchObject({ value: null, state: "unavailable" });
+});
+
+test("a symbol list takes a watchlist's name or up to 500 symbols; other categories stay at 25", () => {
+  const symbol: ScreenFieldDefinition = { id: "symbol", label: "Symbol", kind: "category", unit: "", description: "", operators: ["in"] };
+  const sector: ScreenFieldDefinition = { ...symbol, id: "sector", label: "Sector" };
+  const names = (count: number) => Array.from({ length: count }, (_, index) => `S${index}`);
+  expect(parseCriterion(symbol, "in", names(500).join(","))).toMatchObject({ field: "symbol", value: names(500) });
+  expect(() => parseCriterion(symbol, "in", names(501).join(","))).toThrow("Enter a watchlist name or 1-500 comma-separated symbols");
+  expect(() => parseCriterion(sector, "in", names(26).join(","))).toThrow("Enter 1-25 comma-separated values");
+  // One typed name that is a watchlist reads as its symbols; one that is not stays a symbol.
+  const readWatchlist = (typed: string) => (typed.toLowerCase() === "hy3" ? { symbols: ["NFE", "CZR", "RIG"] } : null);
+  expect(parseCriterion(symbol, "in", "HY3", readWatchlist)).toMatchObject({ value: ["NFE", "CZR", "RIG"] });
+  expect(parseCriterion(symbol, "in", "AAPL", readWatchlist)).toMatchObject({ value: ["AAPL"] });
+  expect(parseCriterion(sector, "in", "HY3", readWatchlist)).toMatchObject({ value: ["HY3"] });
+  expect(parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field: "symbol", op: "in", value: names(500) }] }).criteria).toHaveLength(1);
+  expect(() => parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field: "sector", op: "in", value: names(26) }] })).toThrow();
+  // The server matches bare symbols: a watchlist's venues come off, once each.
+  expect(screenSymbols(["SAP:XETRA", "SAP", "NFE", "7203:TSE"])).toEqual(["SAP", "NFE", "7203"]);
+  expect(criterionText({ field: "symbol", op: "in", value: names(300) })).toBe("Symbol in S0, S1, S2, S3, S4, S5, S6, S7 and 292 more");
 });

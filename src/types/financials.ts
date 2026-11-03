@@ -350,13 +350,25 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   marketCap?: number;
   marketCapCurrency?: string;
   trailingPE?: number;
+  /** The price over next fiscal year's consensus EPS; absent when that EPS is not positive or there is none. */
   forwardPE?: number;
   /**
-   * Forward EPS behind `forwardPE`, per share in the listing's major currency
-   * unit. Served only when its basis matches the multiple, so the multiple can
-   * be repriced from a live quote; absent otherwise.
+   * Next fiscal year's consensus EPS behind `forwardPE`, per share in the
+   * unit of the multiple's price, so the multiple can be repriced from a live
+   * quote. Served negative without a multiple (N/M); absent otherwise.
    */
   forwardEps?: number;
+  /** The currency `forwardEps` is in. */
+  forwardEpsCurrency?: string;
+  /**
+   * The end of the fiscal year the consensus is for (`2027-12-31` is FY27).
+   * Null when the source was asked and had no consensus for next year, or
+   * only one from before the listing's last split; absent from a block
+   * served before Gloom Cloud read consensus.
+   */
+  forwardEpsPeriodEnd?: string | null;
+  /** When the consensus was read. */
+  forwardEpsObservedAt?: string;
   pegRatio?: number;
   enterpriseValue?: number;
   enterpriseToRevenue?: number;
