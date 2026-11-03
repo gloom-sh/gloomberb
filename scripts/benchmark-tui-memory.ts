@@ -1,9 +1,17 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../src/types/config";
+import { TICKER_RESEARCH_PANE_ID } from "../src/types/config";
 import { sendRemoteControlRequest } from "../src/remote/client";
-import { positiveInteger, runTmux, shellQuote, takeOption, waitForFile } from "./tui-benchmark-harness";
+import {
+  positiveInteger,
+  runTmux,
+  shellQuote,
+  startTerminalSession,
+  takeOption,
+  waitForTerminal,
+  writeFreshInstallConfig,
+} from "./tui-benchmark-harness";
 
 /**
  * Opens one ticker after another in a sandboxed TUI and checks that memory
@@ -51,19 +59,14 @@ const heapLog = join(sandbox, "heap.log");
 
 try {
   if (!Bun.which("tmux")) throw new Error("tmux is required for the TUI memory benchmark.");
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(
-    join(dataDir, "config.json"),
-    `${JSON.stringify({ ...createDefaultConfig(dataDir), onboardingComplete: true }, null, 2)}\n`,
-    "utf8",
-  );
-  await runTmux(["new-session", "-d", "-s", session, "-x", "140", "-y", "45", "-c", options.root,
+  await writeFreshInstallConfig(dataDir);
+  await startTerminalSession(session, { width: 140, height: 45, cwd: options.root },
     `env GLOOMBERB_HOME=${shellQuote(dataDir)} GLOOMBERB_HEAP_PROBE=${shellQuote(heapLog)} `
-    + `bun --preload ${shellQuote(join(import.meta.dir, "heap-probe.ts"))} src/cli/entry.ts`]);
+    + `bun --preload ${shellQuote(join(import.meta.dir, "heap-probe.ts"))} src/cli/entry.ts`);
 
   const endpointPath = join(dataDir, "remote-control.tui.json");
   // A cold checkout (every CI run) transpiles the whole app on first launch.
-  await waitForFile(endpointPath, 60_000);
+  await waitForTerminal(session, endpointPath, 60_000);
   const { pid } = JSON.parse(await readFile(endpointPath, "utf8")) as { pid: number };
   await Bun.sleep(3_000);
 

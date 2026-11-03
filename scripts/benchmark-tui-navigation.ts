@@ -1,16 +1,25 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { createDefaultConfig } from "../src/types/config";
 import { SqliteDatabase } from "../src/data/sqlite/database";
 import { sendRemoteControlRequest } from "../src/remote/client";
 import {
   summarizeInteractionPerformance,
   type InteractionPerformanceSample,
 } from "../src/renderers/opentui/interaction-performance";
-import { median, positiveInteger, runTmux, shellQuote, takeOption, waitForFile } from "./tui-benchmark-harness";
+import {
+  median,
+  positiveInteger,
+  runTmux,
+  shellQuote,
+  startTerminalSession,
+  takeOption,
+  waitForFile,
+  waitForTerminal,
+  writeFreshInstallConfig,
+} from "./tui-benchmark-harness";
 
 interface Options {
   command: string;
@@ -53,23 +62,15 @@ try {
   await rm(options.output, { force: true });
   await seedSandbox(dataDir);
   await runTmux(["kill-session", "-t", session], false);
-  await runTmux([
-    "new-session",
-    "-d",
-    "-s",
+  await startTerminalSession(
     session,
-    "-x",
-    String(options.width),
-    "-y",
-    String(options.height),
-    "-c",
-    root,
+    { width: options.width, height: options.height, cwd: root },
     `env HOME=${shellQuote(sandboxHome)} GLOOMBERB_INTERACTION_PERF=${shellQuote(options.output)} bun src/cli/entry.ts`,
-  ]);
+  );
   await runTmux(["pipe-pane", "-o", "-t", session, `cat > ${shellQuote(appLog)}`]);
 
   // A cold checkout (every CI run) transpiles the whole app on first launch.
-  await waitForFile(join(dataDir, "remote-control.tui.json"), 60_000);
+  await waitForTerminal(session, join(dataDir, "remote-control.tui.json"), 60_000);
   await Bun.sleep(500);
   await runTmux(["send-keys", "-t", session, "C-p"]);
   await Bun.sleep(100);
@@ -143,12 +144,7 @@ async function sendNavigation(key: "Up" | "Down", count: number, intervalMs: num
 }
 
 async function seedSandbox(targetDataDir: string): Promise<void> {
-  await mkdir(targetDataDir, { recursive: true });
-  const config = {
-    ...createDefaultConfig(targetDataDir),
-    onboardingComplete: true,
-  };
-  await writeFile(join(targetDataDir, "config.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  await writeFreshInstallConfig(targetDataDir);
 
   const target = new SqliteDatabase(join(targetDataDir, ".gloomberb-cache.db"));
   try {
