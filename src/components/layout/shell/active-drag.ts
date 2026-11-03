@@ -32,11 +32,14 @@ import {
 import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
 import {
+  createMagnetGlide,
   createMagnetPace,
+  NO_GLIDE,
   NO_LATCH,
   snapMovedRect,
   snapResizedRect,
   type MagnetDistances,
+  type MagnetGlide,
   type MagnetLatch,
   type MagnetPace,
 } from "./drag/magnets";
@@ -111,7 +114,9 @@ export function useShellActiveDrag({
   // the edges its magnets hold, with the other panes' rects they hold to, the
   // join it is holding still for, and on the desktop where the pointer has
   // been lately (the magnets wait for it to slow down) with the check that
-  // catches once it rests.
+  // catches once it rests, and where the pane is drawn against where the
+  // pointer puts it, with the frame that moves it there while the pointer is
+  // still.
   const memoRef = useRef<{
     drag: unknown;
     baseRect: FloatingRect | null;
@@ -121,10 +126,15 @@ export function useShellActiveDrag({
     magnetTargets: LayoutBounds[] | null;
     join: PendingJoin | null;
     pace: MagnetPace;
-  }>({ drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null, pace: createMagnetPace() });
+    glide: MagnetGlide;
+  }>({
+    drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null,
+    pace: createMagnetPace(), glide: createMagnetGlide(),
+  });
   useEffect(() => () => {
     dropPendingJoin(memoRef.current);
     memoRef.current.pace.reset();
+    memoRef.current.glide.reset();
   }, []);
   // The handler as it is now, for the rest check to run again.
   const handleRef = useRef<(event: ShellMouseEvent) => void>(() => {});
@@ -152,6 +162,7 @@ export function useShellActiveDrag({
       memo.latch = NO_LATCH;
       memo.magnetTargets = null;
       memo.pace.reset();
+      memo.glide.reset();
       dropPendingJoin(memo);
     }
     // Any later event supersedes the rest check of an earlier move.
@@ -169,9 +180,9 @@ export function useShellActiveDrag({
     };
     const magnetsOff = event.modifiers?.alt === true;
     const magnetArea = { x: 0, y: 0, width, height: contentHeight };
-    // Desktop: while the pointer travels, a moving pane follows it exactly;
-    // its magnets catch once it slows down near a line, or rests there (the
-    // rest check runs the last move again once the pointer has stopped). What
+    // Desktop: past the travel speed a release lands the pane where the
+    // pointer puts it, its magnets left out (the rest check runs the last move
+    // again once the pointer has stopped, so a release then catches). What
     // they hold to still follows every move, so it rests where it would have.
     const travelling = () => {
       if (!nativePaneChrome || drag.type !== "pane-drag") return false;
@@ -179,14 +190,40 @@ export function useShellActiveDrag({
       const rest = event.type === "drag" ? () => { if (dragRef.current === drag) handleRef.current(event); } : undefined;
       return memo.pace.travelling({ t: performance.now(), x: preciseX, y: preciseShellY }, magnetDistances, rest);
     };
-    const snapMove = (paneId: string, rect: FloatingRect): FloatingRect => {
+    // Where a move lands the pane (`rect`), and where its magnets hold it as
+    // the pointer slows down (`snapped`).
+    const snapMove = (paneId: string, rect: FloatingRect): { rect: FloatingRect; snapped: FloatingRect } => {
       if (magnetsOff) {
         memo.latch = NO_LATCH;
-        return rect;
+        return { rect, snapped: rect };
       }
       const snapped = snapMovedRect(rect, magnetTargets(paneId), magnetArea, magnetDistances, memo.latch);
       memo.latch = snapped.latch;
-      return travelling() ? rect : snapped.rect;
+      return { rect: travelling() ? rect : snapped.rect, snapped: snapped.rect };
+    };
+    // Desktop: the moving pane is drawn under the pointer while it moves, and
+    // where its magnets hold it once the pointer slows down to place it,
+    // gliding between the two (the frames after the pointer stops carry the
+    // glide on). The terminal draws where a release would land it.
+    const drawMove = (paneId: string, free: FloatingRect, moved: { rect: FloatingRect; snapped: FloatingRect }) => {
+      if (!nativePaneChrome) {
+        updateDragFloatingRect({ paneId, rect: moved.rect });
+        return;
+      }
+      const { snapped } = moved;
+      let drawn: { x: number; y: number } | null = null;
+      memo.glide.follow(() => {
+        const now = performance.now();
+        const placing = memo.pace.placing(now, magnetDistances);
+        const target = placing ? { x: snapped.x - free.x, y: snapped.y - free.y } : NO_GLIDE;
+        const offset = memo.glide.step(now, target);
+        // A frame that moves nothing (the pointer still, the glide at rest) restyles nothing.
+        if (!drawn || drawn.x !== offset.x || drawn.y !== offset.y) {
+          drawn = offset;
+          updateDragFloatingRect({ paneId, rect: { ...free, x: free.x + offset.x, y: free.y + offset.y } });
+        }
+        return placing && memo.glide.settled(target);
+      });
     };
     const snapResize = (paneId: string, rect: FloatingRect, edges: { x: -1 | 0 | 1; y: -1 | 0 | 1 }): FloatingRect => {
       if (magnetsOff) {
@@ -221,6 +258,7 @@ export function useShellActiveDrag({
     if (event.type === "drag-cancel") {
       // The window lost focus or the system took the pointer: put everything back.
       dropPendingJoin(memo);
+      memo.glide.reset();
       cancelActiveDrag();
       event.stopPropagation();
       event.preventDefault();
@@ -248,6 +286,7 @@ export function useShellActiveDrag({
         }
       } else if (drag.type === "pane-drag") {
         if (!isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold)) {
+          memo.glide.reset();
           updateDockPreview(null);
           if (drag.mode === "floating") {
             updateDragFloatingRect({ paneId: drag.paneId, rect: drag.origRect });
@@ -257,8 +296,10 @@ export function useShellActiveDrag({
           return;
         }
 
-        const nextRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight));
-        updateDragFloatingRect({ paneId: drag.paneId, rect: nextRect });
+        const freeRect = resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight);
+        const moved = snapMove(drag.paneId, freeRect);
+        const nextRect = moved.rect;
+        drawMove(drag.paneId, freeRect, moved);
 
         // Over a title bar it would be a tab there; pushed against a docked
         // pane's edge it would join the dock on that side.
@@ -325,6 +366,7 @@ export function useShellActiveDrag({
 
     if (event.type === "up" || event.type === "drag-end") {
       dropPendingJoin(memo);
+      memo.glide.reset();
       if (drag.type === "divider") {
         if (live.get().divider) {
           const nextLayout = resizeSplitAtPath(baseLayout, drag.path, dividerRatioAt(preciseX, preciseShellY));
@@ -343,7 +385,7 @@ export function useShellActiveDrag({
           // A click on a stack's tab shows that pane.
           if (drag.mode === "docked") focusPane(drag.paneId);
         } else {
-          const releaseRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight));
+          const releaseRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight)).rect;
           const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview);
           if (windowMode) {
             updateWindowModePreviewLayout(nextLayout, drag.paneId);

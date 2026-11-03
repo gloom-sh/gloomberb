@@ -7,7 +7,9 @@ import { serveFixturePage, type FixturePage } from "./page";
 /**
  * Frame budget of pane drags and resizes, against a base checkout. Each run
  * drags with real pointer input at 60 moves a second for 1.5 s: a docked and a
- * floating pane across a dense layout (fixture.tsx, `perf`), and, over the
+ * floating pane across a dense layout (fixture.tsx, `perf`), the floating one
+ * also at a hand's speed for 3 s (speeding up and slowing down across the
+ * docked panes' edges, with a rest), and, over the
  * `resize` layout, the corner of a floating news table, chart, heat map (an
  * invented one, and the market board of 500 names with ticks) and Fear &
  * Greed pane and of the charts that sit inside a pane's own layout (G
@@ -69,6 +71,14 @@ const MAX_MOVE_MISSED_FRAMES = 6;
 const MAX_OFF_POINTER_RATIO = 1.5;
 const MIN_OFF_POINTER_DELTA = 4;
 /**
+ * Nor does it jump: in no frame of a move clear of the area's edges does it
+ * move more than this (px) differently from the pointer, where the base draws
+ * at 60 Hz. A magnet that caught or let
+ * go in one frame jumped a pane 8 to 18 px at a hand's speed; one that glides
+ * moves it 2 to 3 px a frame.
+ */
+const MAX_MOVE_JUMP_PX = 6;
+/**
  * A resized frame, and what it holds, stays this close to the pointer (px,
  * 95th percentile), three cells: one that waits for React to catch up is up
  * to 100 ms of pointer travel behind (a chart drawn on the cell grid was 90
@@ -124,6 +134,8 @@ interface DragSample {
   stuckFrames?: number;
   /** Moves: frames where the pane moved more than 2 px differently from the pointer (held, or jumping). */
   offPointerFrames?: number;
+  /** Moves: the most the pane moved differently from the pointer in one frame, px. */
+  largestJumpPx?: number;
   /** Charts: how far CSS scaled the canvas's bitmap from 1:1 during the drag, %, 95th percentile. */
   bitmapStretchPct?: number;
   /** Charts: the same once the pane is at rest after the release, %: 0 is drawn sharp. */
@@ -149,10 +161,18 @@ interface Scenario {
   canvas?: string;
   /** Moves: the element that moves with the pointer, which should keep to it frame by frame. */
   follower?: string;
+  /**
+   * Moves that stay clear of the area's edges (where a pane stops while the
+   * pointer goes on, and comes back at once), so its largest jump off the
+   * pointer's motion is its magnets': judged against MAX_MOVE_JUMP_PX.
+   */
+  clearOfEdges?: boolean;
   /** A page expression that holds once the scenario's content has loaded, for panes that load data. */
   ready?: string;
   /** Puts the page in the state the drag starts from, once it is ready. */
   prepare?(cdp: Cdp): Promise<void>;
+  /** How long the drag takes, ms, if not DRAG_MS. */
+  ms?: number;
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -239,6 +259,23 @@ const SCENARIOS: Scenario[] = [
     grab: (cdp) => evaluate(cdp, partCenter(`${pane("table:float")} [data-gloom-role=pane-title]`)),
     follower: pane("table:float"),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 360, y: start.y + (1 - Math.cos(t * Math.PI * 2)) * 140 }),
+  },
+  {
+    // As a hand moves a window: speeding up and slowing down (a minimum-jerk
+    // path), left across two of the docked panes' edges, a rest, then down
+    // and right across three, under 300 px/s much of the way.
+    name: "floating pane drag, hand speed",
+    fixture: "perf",
+    ms: 3_000,
+    grab: (cdp) => evaluate(cdp, partCenter(`${pane("table:float")} [data-gloom-role=pane-title]`)),
+    follower: pane("table:float"),
+    clearOfEdges: true,
+    path: (start, t) => {
+      const ease = (u: number) => { const k = Math.max(0, Math.min(1, u)); return k * k * k * (10 - 15 * k + 6 * k * k); };
+      const out = ease(t / 0.45);
+      const back = ease((t - 0.55) / 0.45);
+      return { x: start.x - 300 * out + 200 * back, y: start.y + 170 * back };
+    },
   },
   {
     name: "news table resize",
@@ -388,6 +425,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     const tick = (now) => {
       window.__frameTimes.push(now - last);
       last = now;
+      // The host applies the moves that came before the frame in it, and any
+      // later one in the next: the pane follows the pointer as the frame began.
       if (follower) {
         const point = [window.__pointerX, window.__pointerY];
         setTimeout(() => {
@@ -411,7 +450,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   const before = await metrics(cdp);
   const began = performance.now();
   for (let move = 1; ; move += 1) {
-    const t = (performance.now() - began) / DRAG_MS;
+    const t = (performance.now() - began) / (scenario.ms ?? DRAG_MS);
     if (t >= 1) break;
     const at = scenario.path(start, t);
     await mouse(cdp, "mouseMoved", at.x, at.y, true);
@@ -459,17 +498,20 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
 }
 
 /** How a moving pane kept to the pointer, frame by frame: where the pointer was when the frame began against where the pane was drawn. */
-function followStats(samples: Array<[number, number, number, number]>): { stuckFrames: number; offPointerFrames: number } {
+function followStats(samples: Array<[number, number, number, number]>): { stuckFrames: number; offPointerFrames: number; largestJumpPx: number } {
   let stuck = 0;
   let off = 0;
+  let largest = 0;
   for (let index = 1; index < samples.length; index += 1) {
     const [px, py, x, y] = samples[index]!;
     const [ppx, ppy, prevX, prevY] = samples[index - 1]!;
     const pointer = Math.hypot(px - ppx, py - ppy);
     if (pointer >= 2 && Math.hypot(x - prevX, y - prevY) < 0.5) stuck += 1;
-    if (Math.hypot((x - prevX) - (px - ppx), (y - prevY) - (py - ppy)) > 2) off += 1;
+    const jump = Math.hypot((x - prevX) - (px - ppx), (y - prevY) - (py - ppy));
+    if (jump > 2) off += 1;
+    largest = Math.max(largest, jump);
   }
-  return { stuckFrames: stuck, offPointerFrames: off };
+  return { stuckFrames: stuck, offPointerFrames: off, largestJumpPx: largest };
 }
 
 async function runSide(page: FixturePage, label: string, scenarios: Scenario[]): Promise<Record<string, DragSample>> {
@@ -540,7 +582,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   const lines = [
     "### Pane drag and resize frame budget",
     "",
-    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
+    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags (the hand-speed one 3 s) at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
     "",
     ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
     `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
@@ -548,7 +590,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   ];
   const problems: string[] = [];
   const notes: string[] = [];
-  for (const { name, track, canvas, follower } of scenarios) {
+  for (const { name, track, canvas, follower, clearOfEdges } of scenarios) {
     const pick = (side: "base" | "head", key: keyof DragSample) => median(samples[side].map((sample) => sample[name]![key] ?? 0));
     const row = (label: string, key: keyof DragSample, unit = "") => {
       lines.push(`| ${name}: ${label} | ${round(pick("base", key))}${unit} | ${round(pick("head", key))}${unit} |`);
@@ -570,6 +612,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     if (follower) {
       row("frames the pane stood still while the pointer moved", "stuckFrames");
       row("frames the pane moved off the pointer's motion", "offPointerFrames");
+      if (clearOfEdges) row("largest jump off the pointer's motion", "largestJumpPx", " px");
       for (const [what, key] of [["stood still while the pointer moved", "stuckFrames"], ["moved off the pointer's motion", "offPointerFrames"]] as const) {
         const value = { base: pick("base", key), head: pick("head", key) };
         if (value.head > value.base * MAX_OFF_POINTER_RATIO && value.head - value.base >= MIN_OFF_POINTER_DELTA) {
@@ -585,6 +628,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
         if (p95 > MAX_MOVE_P95_FRAME_MS) problems.push(`${name}: the 95th percentile frame took ${round(p95, 1)} ms (limit: ${round(MAX_MOVE_P95_FRAME_MS, 1)} ms).`);
         const missed = pick("head", "missedFrames");
         if (missed > MAX_MOVE_MISSED_FRAMES) problems.push(`${name}: the drag missed ${missed} frames (limit: ${MAX_MOVE_MISSED_FRAMES}).`);
+        const jump = pick("head", "largestJumpPx");
+        if (clearOfEdges && jump > MAX_MOVE_JUMP_PX) problems.push(`${name}: in one frame the pane moved ${round(jump, 1)} px differently from the pointer (limit: ${MAX_MOVE_JUMP_PX} px).`);
       }
     }
     if (canvas) {
