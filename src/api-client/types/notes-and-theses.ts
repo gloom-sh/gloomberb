@@ -15,6 +15,8 @@ export interface CloudNoteSummary {
   key: string;
   title: string | null;
   revision: number;
+  /** Who wrote the note; null when unknown. Older servers leave it out. */
+  createdBy?: string | null;
   updatedBy: { id: string; username: string | null; displayName: string };
   createdAt: string;
   updatedAt: string;

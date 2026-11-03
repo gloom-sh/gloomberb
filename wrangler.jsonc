@@ -9,6 +9,13 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true
   },
+  // Signed-out plugin proxy calls, counted across isolates per Cloudflare
+  // location (worker.ts signedOutProxyLimit). Bindings are not inherited, so
+  // production repeats them.
+  "ratelimits": [
+    { "name": "SIGNED_OUT_PROXY_PER_ADDRESS", "namespace_id": "48211", "simple": { "limit": 240, "period": 60 } },
+    { "name": "SIGNED_OUT_PROXY_TOTAL", "namespace_id": "48212", "simple": { "limit": 12000, "period": 60 } }
+  ],
   "env": {
     // term.gloom.sh, deployed from main by the Verify workflow.
     "production": {
@@ -24,7 +31,11 @@
       "observability": {
         "enabled": true,
         "head_sampling_rate": 1
-      }
+      },
+      "ratelimits": [
+        { "name": "SIGNED_OUT_PROXY_PER_ADDRESS", "namespace_id": "48213", "simple": { "limit": 240, "period": 60 } },
+        { "name": "SIGNED_OUT_PROXY_TOTAL", "namespace_id": "48214", "simple": { "limit": 12000, "period": 60 } }
+      ]
     }
   }
 }

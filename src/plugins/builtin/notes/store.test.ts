@@ -148,6 +148,27 @@ describe("CloudNotesStore", () => {
     await expect(store.save("AAPL", "x")).rejects.toThrow("Sign in");
   });
 
+  test("quick notes carry their author when the server sends one", async () => {
+    const note = (id: string, createdBy?: string | null): ServerNote => ({
+      id,
+      owner: { kind: "team", id: "desk" },
+      kind: "quick",
+      key: id,
+      title: id,
+      revision: 1,
+      content: "",
+      ...(createdBy !== undefined ? { createdBy } : {}),
+      updatedBy: { id: "u2", username: "alice", displayName: "Alice" },
+      createdAt: `2026-09-14T12:00:0${id.length}.000Z`,
+      updatedAt: "2026-09-14T12:00:00.000Z",
+    });
+    const server = fakeServer([note("a", "u2"), note("bb", null), note("ccc")]);
+    const store = new CloudNotesStore({ kind: "team", teamId: "desk" }, new MemoryPluginPersistence(), server.client);
+    const index = await store.loadQuickNotesIndex();
+    expect(index.map((entry) => [entry.id, entry.createdBy])).toEqual([["a", "u2"], ["bb", null], ["ccc", undefined]]);
+    expect(index[2]).not.toHaveProperty("createdBy");
+  });
+
   test("delete drops the server row and the cache", async () => {
     const server = fakeServer();
     const store = new CloudNotesStore({ kind: "user" }, new MemoryPluginPersistence(), server.client);

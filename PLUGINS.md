@@ -368,7 +368,10 @@ To be bundled, a plugin has to be web-capable in practice, not just in its
 
 Bundling one is a change to this repository: add the plugin as a devDependency,
 add its package name to `WEB_BUNDLED_PLUGIN_PACKAGES`, and run
-`bun run web:proxy-hosts` so the worker allowlist covers its hosts. A host
+`bun run web:proxy-hosts` so the worker allowlist covers its hosts. Then list
+in `SIGNED_OUT_ROUTES` (`src/renderers/cloudflare/http-proxy.ts`) the
+methods and paths a signed-out visitor's pane sends to each new host. A host
+with no routes there works on the web only after sign-in. A host
 that answers https://term.gloom.sh with CORS headers can go in
 `WEB_DIRECT_HOSTS` (`src/utils/plugin-proxy-hosts.ts`) instead, so the browser
 calls it directly with no proxy round trip or response size cap. The web

@@ -1,13 +1,36 @@
 import { handleHttpProxy } from "./http-proxy";
-import { createProxySessionGate } from "./proxy-session";
+import { anonymousRateKey, createProxySessionGate } from "./proxy-session";
 import { HTTP_PROXY_PATH, WEB_DIRECT_HOSTS } from "../../utils/plugin-proxy-hosts";
 
 interface StaticAssetsBinding {
   fetch(request: Request): Promise<Response>;
 }
 
+/** Cloudflare's rate limiting binding: counts per key, per location, across isolates. */
+interface RateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface WorkerEnv {
   ASSETS: StaticAssetsBinding;
+  /** Signed-out plugin proxy calls per address (wrangler.jsonc `ratelimits`). */
+  SIGNED_OUT_PROXY_PER_ADDRESS?: RateLimitBinding;
+  /** Signed-out plugin proxy calls from everyone together. */
+  SIGNED_OUT_PROXY_TOTAL?: RateLimitBinding;
+}
+
+/**
+ * The isolate's own window can be dodged by landing on many isolates, so a
+ * signed-out call also counts against Cloudflare's limits per address and
+ * for every signed-out caller together. Either one spent refuses it.
+ */
+export function signedOutProxyLimit(env: WorkerEnv): ((request: Request) => Promise<boolean>) | undefined {
+  const { SIGNED_OUT_PROXY_PER_ADDRESS: perAddress, SIGNED_OUT_PROXY_TOTAL: total } = env;
+  if (!perAddress && !total) return undefined;
+  return async (request) => {
+    if (perAddress && !(await perAddress.limit({ key: anonymousRateKey(request) })).success) return false;
+    return !total || (await total.limit({ key: "signed-out" })).success;
+  };
 }
 
 const SHARE_PATH = /^\/s\/[a-f0-9]{32}\/?$/;
@@ -129,7 +152,11 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
   if (API_PATH.test(url.pathname)) return proxyApi(request, fetchApi);
   // Before the GET/HEAD gate below, since plugin requests arrive as POST.
   if (url.pathname === HTTP_PROXY_PATH) {
-    return withSecurityHeaders(await handleHttpProxy(request, { sessions: proxySessions, fetchApi }));
+    return withSecurityHeaders(await handleHttpProxy(request, {
+      sessions: proxySessions,
+      fetchApi,
+      signedOutLimit: signedOutProxyLimit(env),
+    }));
   }
 
   if (request.method !== "GET" && request.method !== "HEAD") {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createProxyResponse, type HttpProxyResponseEnvelope } from "../../utils/http-proxy-response";
-import { handleHttpProxy, validateProxyTarget } from "./http-proxy";
+import { PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
+import { handleHttpProxy, SIGNED_OUT_ROUTES, signedOutRouteAllows, validateProxyTarget } from "./http-proxy";
 import { createProxySessionGate, type ProxySessionGateOptions } from "./proxy-session";
 
 const ORIGIN = "https://term.gloom.sh";
@@ -10,6 +11,7 @@ const SESSION_COOKIE = "__Secure-gloomberb.session_token=abc123.signature";
 // The real allowlist is generated from what bundled plugins declare. These
 // tests are about the guardrails, so they pin one example host.
 const HOSTS = ["substack.com"];
+const SIGNED_OUT = { "substack.com": [{ methods: ["GET", "HEAD", "POST"] as const, path: "/" }] };
 
 type Upstream = (url: URL, init: RequestInit) => Response | Promise<Response>;
 
@@ -43,6 +45,7 @@ function harness(options: {
   upstream?: Upstream;
   api?: (request: Request) => Response | Promise<Response>;
   gate?: Partial<ProxySessionGateOptions>;
+  signedOutLimit?: (request: Request) => Promise<boolean>;
 } = {}) {
   let clock = 1_000_000;
   const apiCalls: Request[] = [];
@@ -65,7 +68,14 @@ function harness(options: {
       clock += ms;
     },
     send(request: Request) {
-      return handleHttpProxy(request, { sessions, fetchApi, fetchUpstream, hosts: HOSTS });
+      return handleHttpProxy(request, {
+        sessions,
+        fetchApi,
+        fetchUpstream,
+        hosts: HOSTS,
+        signedOutRoutes: SIGNED_OUT,
+        signedOutLimit: options.signedOutLimit,
+      });
     },
   };
 }
@@ -256,6 +266,48 @@ describe("proxy session check", () => {
     expect(statuses).toEqual([200, 200, 401, 401, 401]);
     expect(proxy.upstreamCalls.map((call) => call.init.method)).toEqual(["GET", "POST"]);
     expect(signedIn.status).toBe(200);
+  });
+
+  test("a signed-out caller reaches only the endpoints the signed-out plugins read", () => {
+    const allows = (url: string, method = "GET") => signedOutRouteAllows(new URL(url), method);
+    expect(allows("https://api.elections.kalshi.com/trade-api/v2/markets?limit=50")).toBe(true);
+    expect(allows("https://api.elections.kalshi.com/trade-api/v2/portfolio/orders", "POST")).toBe(false);
+    expect(allows("https://api.gemini.com/v1/prediction-markets/events")).toBe(true);
+    expect(allows("https://api.gemini.com/v1/mytrades")).toBe(false);
+    expect(allows("https://data.pascal.trade/api/v1/markets/text-search", "POST")).toBe(true);
+    expect(allows("https://data.pascal.trade/api/v1/orders", "POST")).toBe(false);
+    expect(allows("https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities", "POST")).toBe(true);
+    expect(allows("https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/x")).toBe(false);
+    expect(allows("https://www.nasdaqtrader.com/rss.aspx?feed=tradehalts")).toBe(true);
+    expect(allows("https://api.votehub.com/polls?subject=Trump")).toBe(true);
+    expect(allows("https://api.votehub.com/pollsters")).toBe(false);
+    // The URL parser has already folded dot segments away.
+    expect(allows("https://api.crypto.com/dcm/v1/public/../private/create-order")).toBe(false);
+  });
+
+  test("every proxied host says what a signed-out caller may send it", () => {
+    // A new plugin host fails here until someone decides its signed-out endpoints.
+    expect(Object.keys(SIGNED_OUT_ROUTES).sort()).toEqual([...PROXY_ALLOWED_HOSTS].sort());
+  });
+
+  test("a signed-out call also counts against the limit across isolates; a signed-in one does not", async () => {
+    let allowed = true;
+    const asked: string[] = [];
+    const signedOutLimit = async (request: Request) => {
+      asked.push(request.headers.get("cf-connecting-ip") ?? "");
+      return allowed;
+    };
+    const anonymous = harness({ api: NO_SESSION, signedOutLimit });
+    expect((await anonymous.send(proxyRequest({ url: "https://substack.com/x" }, fromIp("198.51.100.7")))).status).toBe(200);
+    allowed = false;
+    const refused = await anonymous.send(proxyRequest({ url: "https://substack.com/x" }, fromIp("198.51.100.7")));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(anonymous.upstreamCalls).toHaveLength(1);
+
+    const signedIn = harness({ signedOutLimit });
+    expect((await signedIn.send(proxyRequest({ url: "https://substack.com/x" }, fromIp("198.51.100.9", SESSION_COOKIE)))).status).toBe(200);
+    expect(asked).toEqual(["198.51.100.7", "198.51.100.7"]);
   });
 
   test("counts an IPv6 caller by its /64, so rotating addresses does not reset the window", async () => {

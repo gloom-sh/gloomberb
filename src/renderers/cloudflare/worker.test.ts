@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleRequest, SECURITY_HEADERS, type WorkerEnv } from "./worker";
+import { handleRequest, SECURITY_HEADERS, signedOutProxyLimit, type WorkerEnv } from "./worker";
 import { REGISTRY_ORIGIN } from "../../plugins/marketplace/feed";
 import { DOCS_SITE } from "../../docs/content";
 
@@ -244,3 +244,32 @@ describe("content security policy", () => {
     expect(connectSrc?.split(/\s+/)).toContain(DOCS_SITE);
   });
 });
+
+test("a signed-out proxy call is counted by its address and with everyone's, and refused once either is spent", async () => {
+  const counted: string[] = [];
+  const binding = (name: string, allow: (key: string) => boolean) => ({
+    async limit({ key }: { key: string }) {
+      counted.push(`${name}:${key}`);
+      return { success: allow(key) };
+    },
+  });
+  const { env } = fixture();
+  const request = (ip: string) => new Request("https://term.example/http-proxy", { method: "POST", headers: { "cf-connecting-ip": ip } });
+  expect(signedOutProxyLimit(env)).toBeUndefined();
+  const limit = signedOutProxyLimit({
+    ...env,
+    SIGNED_OUT_PROXY_PER_ADDRESS: binding("address", (key) => key !== "ip:203.0.113.9"),
+    SIGNED_OUT_PROXY_TOTAL: binding("total", () => counted.length < 4),
+  })!;
+  expect(await limit(request("203.0.113.1"))).toBe(true);
+  expect(await limit(request("203.0.113.9"))).toBe(false);
+  expect(await limit(request("2001:db8:1:2::5"))).toBe(false);
+  expect(counted).toEqual([
+    "address:ip:203.0.113.1",
+    "total:signed-out",
+    "address:ip:203.0.113.9",
+    "address:ip6:2001:db8:1:2",
+    "total:signed-out",
+  ]);
+});
+

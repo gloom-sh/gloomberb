@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiClient } from "../../../api-client";
 import { Box, Text, type InputRenderable, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -17,7 +18,15 @@ import {
   generateNoteId,
   type QuickNoteEntry,
 } from "./model";
-import { chooseNoteOwner, ownerColor, ownerLabel, resolveNoteConflict, useNoteTeams } from "./owner";
+import {
+  chooseNoteOwner,
+  mayDeleteNote,
+  NOT_YOUR_NOTE,
+  ownerColor,
+  ownerLabel,
+  resolveNoteConflict,
+  useNoteTeams,
+} from "./owner";
 import { NoteConflictError, type NoteOwner, noteOwnerKey, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
 
@@ -63,6 +72,10 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
     const unreadableIndexRef = useRef(new Set<string>());
     const [indexError, setIndexError] = useState<{ message: string; owners: NoteOwner[] } | null>(null);
     const activeTab = tabs.find((tab) => tab.id === activeTabId);
+    // Closing a tab deletes its note, which a teammate's team note refuses.
+    const mayDelete = useCallback((tab: OwnedQuickNote) => (
+      mayDeleteNote(tab, teams, apiClient.getCurrentUser()?.id ?? null)
+    ), [teams]);
 
     const saveQuickNotesIndex = useCallback((entries: OwnedQuickNote[]) => {
       // Each owner keeps its own index; a title change only touches that store.
@@ -296,6 +309,10 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
 
     const requestRemoveTab = useCallback(async (id: string) => {
       const tab = tabs.find((entry) => entry.id === id);
+      if (tab && !mayDelete(tab)) {
+        notify({ body: NOT_YOUR_NOTE, type: "info" });
+        return;
+      }
       const store = storeFor(tab?.owner ?? { kind: "user" });
       const text = id === activeTabId
         ? readActiveNoteText()
@@ -317,7 +334,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       }
 
       removeTab(id);
-    }, [activeTabId, dialog, readActiveNoteText, removeTab, storeFor, tabs]);
+    }, [activeTabId, dialog, mayDelete, notify, readActiveNoteText, removeTab, storeFor, tabs]);
 
     const startRename = useCallback(() => {
       if (!activeTab) return;
@@ -404,7 +421,8 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
 
     // Deleting the only note when it is empty just swaps in another empty one,
     // and a note that failed to load reads as empty, so it would go unconfirmed.
-    const canDelete = !!activeTabId && !readError && (tabs.length > 1 || noteText.trim().length > 0);
+    const canDelete = !!activeTabId && !readError && (tabs.length > 1 || noteText.trim().length > 0)
+      && (!activeTab || mayDelete(activeTab));
 
     usePaneFooter("quick-notes", () => ({
       info: footerWarning
@@ -426,7 +444,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       label: tab.owner.kind === "team" ? `${ownerLabel(tab.owner, teams)} ${tab.title}` : tab.title,
       value: tab.id,
       ...(tab.owner.kind === "team" ? { fg: ownerColor(tab.owner, teams) } : {}),
-      onClose: tabs.length > 1 ? (id: string) => { void requestRemoveTab(id); } : undefined,
+      onClose: tabs.length > 1 && mayDelete(tab) ? (id: string) => { void requestRemoveTab(id); } : undefined,
       onDoubleClick: startRenameTab,
     }));
     const selectTab = (id: string) => {

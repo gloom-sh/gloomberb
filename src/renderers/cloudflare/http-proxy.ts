@@ -25,13 +25,60 @@ import { fetchCheckingRedirects, readBytesWithin, type ProxyUpstreamResult } fro
 import type { ProxySessionGate } from "./proxy-session";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+
+/** Requests a caller without a confirmed session may send to one host. */
+export interface SignedOutRoute {
+  methods: readonly ("GET" | "HEAD" | "POST")[];
+  /** A path and anything under it; one ending in a slash covers only what is under it. */
+  path: string;
+}
+
+const READ = ["GET", "HEAD"] as const;
+
 /**
- * What a caller without a confirmed session may send. The functions that work
- * signed out only read (a POST carries a search, as FINRA's tape does), and
- * the Origin check is no barrier to a script, so anonymous use stays a
- * read-only proxy to the allowlisted hosts.
+ * What a caller without a confirmed session may send, host by host: the
+ * reads the plugins that work signed out make, and nothing else. The Origin
+ * check is no barrier to a script, so anonymous use stays a read-only proxy
+ * to those endpoints (a POST carries a search, as FINRA's tape and Pascal's
+ * market search do), never to the rest of an exchange's API. Every proxied
+ * host is listed, with no routes when it needs a sign-in; a test holds the
+ * two lists together.
  */
-const ANONYMOUS_METHODS = new Set(["GET", "HEAD", "POST"]);
+export const SIGNED_OUT_ROUTES: Readonly<Record<string, readonly SignedOutRoute[]>> = {
+  "api.crypto.com": [{ methods: READ, path: "/dcm/v1/public/" }],
+  "api.elections.kalshi.com": [{ methods: READ, path: "/trade-api/v2/" }],
+  "api.fda.gov": [{ methods: READ, path: "/" }],
+  "api.gemini.com": [{ methods: READ, path: "/v1/prediction-markets/" }],
+  "api.limitless.exchange": [{ methods: READ, path: "/markets/" }],
+  "api.votehub.com": [{ methods: READ, path: "/polls" }],
+  "clinicaltrials.gov": [{ methods: READ, path: "/api/v2/" }],
+  "data.pascal.trade": [
+    { methods: READ, path: "/api/v1/markets" },
+    { methods: ["POST"], path: "/api/v1/markets/text-search" },
+  ],
+  "efts.sec.gov": [{ methods: READ, path: "/LATEST/search-index" }],
+  "forms13f.com": [{ methods: READ, path: "/api/v1/" }],
+  "gateway.polymarket.us": [{ methods: READ, path: "/v1/markets" }],
+  "markets.newyorkfed.org": [{ methods: READ, path: "/api/" }],
+  "nasdaqtrader.com": [{ methods: READ, path: "/rss.aspx" }],
+  "production.dataviz.cnn.io": [{ methods: READ, path: "/index/fearandgreed/" }],
+  "services-dynarep.ddwa.finra.org": [{ methods: ["POST"], path: "/public/reporting/v2/data/group/" }],
+};
+
+/** Whether a caller without a confirmed session may send `method` to `url`. */
+export function signedOutRouteAllows(
+  url: URL,
+  method: string,
+  routes: Readonly<Record<string, readonly SignedOutRoute[]>> = SIGNED_OUT_ROUTES,
+): boolean {
+  const host = url.hostname.toLowerCase();
+  const entry = Object.entries(routes).find(([allowed]) => host === allowed || host.endsWith(`.${allowed}`));
+  return !!entry?.[1].some((route) => (route.methods as readonly string[]).includes(method) && (
+    route.path.endsWith("/")
+      ? url.pathname.startsWith(route.path)
+      : url.pathname === route.path || url.pathname.startsWith(`${route.path}/`)
+  ));
+}
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** Plugin request bodies are small JSON; anything near this is not one. */
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -90,6 +137,13 @@ function upstreamFailure(error: unknown): Response {
 export interface HttpProxyOptions {
   /** Rate limits the caller, by user when signed in. One per isolate, so its cache is shared. */
   sessions: ProxySessionGate;
+  /**
+   * The limit on signed-out calls across isolates (Cloudflare's rate limiting
+   * binding): false once the caller's address, or signed-out callers as a
+   * whole, have had their share. Absent where there is none, as in tests.
+   */
+  signedOutLimit?: (request: Request) => Promise<boolean>;
+  signedOutRoutes?: Readonly<Record<string, readonly SignedOutRoute[]>>;
   /** Reaches the Gloomberb API for that check. */
   fetchApi: (request: Request) => Promise<Response>;
   /** Reaches the plugin's target. */
@@ -103,7 +157,7 @@ export interface HttpProxyOptions {
  * to a third party, which is the opposite of what this exists to do.
  */
 export async function handleHttpProxy(request: Request, options: HttpProxyOptions): Promise<Response> {
-  const { sessions, fetchApi, fetchUpstream = fetch, hosts = PROXY_ALLOWED_HOSTS } = options;
+  const { sessions, fetchApi, fetchUpstream = fetch, hosts = PROXY_ALLOWED_HOSTS, signedOutRoutes = SIGNED_OUT_ROUTES } = options;
   if (request.method !== "POST") {
     return proxyError("Method not allowed", 405);
   }
@@ -142,8 +196,13 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
   if (!PROXY_METHODS.has(init.method)) {
     return proxyError("Method not allowed", 405);
   }
-  if (!admission.signedIn && !ANONYMOUS_METHODS.has(init.method)) {
-    return proxyError("Sign in to Gloom to send this request.", 401);
+  if (!admission.signedIn) {
+    if (!signedOutRouteAllows(target.url, init.method, signedOutRoutes)) {
+      return proxyError("Sign in to Gloom to send this request.", 401);
+    }
+    if (options.signedOutLimit && !(await options.signedOutLimit(request).catch(() => true))) {
+      return proxyError("Too many requests right now. Sign in to Gloom, or try again in a minute.", 429, { "retry-after": "60" });
+    }
   }
 
   const signal = AbortSignal.timeout(Math.min(init.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS));

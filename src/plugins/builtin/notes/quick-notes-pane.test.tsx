@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -6,11 +6,16 @@ import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, TestDialogProvider } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
+import { apiClient } from "../../../api-client";
+import { teamStore } from "../../../team/store";
+import { createTestTeam } from "../../../team/test-fixture";
+import type { AppNotificationRequest } from "../../../types/plugin";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, Text } from "../../../ui";
 import { NotesFiles } from "./files";
 import { createQuickNotesPane } from "./quick-notes-pane";
+import type { NotesStoreRegistry } from "./store";
 import { createTestNotesFiles, registryFor, type TestNotesFiles } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
@@ -28,7 +33,8 @@ function createMockNotesFiles(options: { loadDelayMs?: number } = {}) {
 }
 
 const PANE_INSTANCE_ID = "quick-notes:test";
-const paneRuntime = createTestPluginRuntime();
+const notices: AppNotificationRequest[] = [];
+const paneRuntime = createTestPluginRuntime({ notify: (notice) => { notices.push(notice); } });
 
 function QuickNotesHarness({
   QuickNotesPane,
@@ -166,6 +172,76 @@ describe("createQuickNotesPane", () => {
 
     expect(notesFiles.saves).toEqual([]);
   });
+  test("a teammate's team note offers no close or delete, and asking to delete it calls no server", async () => {
+    const team = createTestTeam({ id: "desk", shortName: "MD", role: "member" });
+    const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "me" } as ReturnType<typeof apiClient.getCurrentUser>);
+    teamStore.upsertTeam(team);
+    const deletes: string[] = [];
+    const recording = (files: TestNotesFiles) => Object.assign(files, {
+      async delete(key: string) { deletes.push(key); },
+    });
+    const mine = recording(createTestNotesFiles({ notes: { mine: "my text" }, index: [{ id: "mine", title: "Mine" }] }));
+    const desk = recording(createTestNotesFiles({
+      notes: { theirs: "their text", ours: "our text" },
+      index: [
+        { id: "theirs", title: "Theirs", createdBy: "alice" },
+        { id: "ours", title: "Ours", createdBy: "me" },
+      ],
+    }));
+    const registry = {
+      forOwner: (owner: { kind: string }) => (owner.kind === "user" ? mine : desk),
+      cloud: () => null,
+    } as unknown as NotesStoreRegistry;
+    const settle = async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          await tui.setup().renderOnce();
+        });
+      }
+    };
+    const clickTab = async (label: string) => {
+      const row = tui.frame().split("\n").findIndex((line) => line.includes(label));
+      const col = tui.frame().split("\n")[row]!.indexOf(label);
+      await act(async () => {
+        await tui.setup().mockMouse.click(col + 1, row);
+        await tui.setup().renderOnce();
+      });
+      await settle();
+    };
+    const tabRow = () => tui.frame().split("\n").find((line) => line.includes("Theirs")) ?? "";
+    try {
+      notices.length = 0;
+      await tui.render(<QuickNotesHarness QuickNotesPane={createQuickNotesPane(registry)} />, { width: 80, height: 24 });
+      await settle();
+      expect(tabRow()).toContain("Mine x");
+
+      await clickTab("MD· Theirs");
+      expect(tui.frame()).toContain("their text");
+      expect(tabRow()).not.toContain("Theirs x");
+      await act(async () => {
+        await tui.setup().mockInput.typeText("d");
+        await tui.setup().renderOnce();
+      });
+      await settle();
+      expect(tui.frame()).not.toContain("Delete note?");
+      expect(tui.frame()).toContain("MD· Theirs");
+      expect(deletes).toEqual([]);
+
+      // The team's note I wrote still closes, as my own notes do.
+      await clickTab("MD· Ours");
+      expect(tabRow()).toContain("Ours x");
+      team.role = "admin";
+      teamStore.upsertTeam({ ...team });
+      await settle();
+      await clickTab("MD· Theirs");
+      expect(tabRow()).toContain("Theirs x");
+    } finally {
+      teamStore.removeTeam(team.id);
+      user.mockRestore();
+    }
+  });
+
   test("an index it cannot read is never saved over, and a first run still gets its first tab", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gloomberb-quick-notes-"));
     const index = join(dir, "__quick-notes-index__.json");

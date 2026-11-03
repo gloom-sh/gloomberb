@@ -240,7 +240,12 @@ export class CloudNotesStore implements NotesStore {
     return [...index.values()]
       .filter((summary) => summary.kind === "quick")
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map((summary) => ({ id: summary.key, title: summary.title ?? "Note", updatedAt: Date.parse(summary.updatedAt) || undefined }));
+      .map((summary) => ({
+        id: summary.key,
+        title: summary.title ?? "Note",
+        updatedAt: Date.parse(summary.updatedAt) || undefined,
+        ...(summary.createdBy !== undefined ? { createdBy: summary.createdBy } : {}),
+      }));
   }
 
   /**

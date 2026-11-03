@@ -156,13 +156,20 @@ jobs:
       # Bun for Windows on Arm has no bun:ffi, which the check's input, window
       # and screen calls go through, so there the check runs on x64 Bun under
       # emulation: the Bun the app ships on Windows, whose crash handler leaves
-      # the emulator's own faults alone.
+      # the emulator's own faults alone. The zip must match the SHA-256 Bun
+      # published for it in the release's SHASUMS256.txt.
       - name: Use x64 Bun for the check
         if: matrix.machine == 'arm64'
         shell: pwsh
         run: |
           $Dir = Join-Path $env:RUNNER_TEMP "bun-x64"
+          $Expected = "0f20ce6674d4f2dbcc8c5d59fdf99f7ba45f8c3b367e0f5781cbfa30a1c78d99"
           Invoke-WebRequest -UseBasicParsing "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-windows-x64-baseline.zip" -OutFile "$Dir.zip"
+          $Actual = (Get-FileHash -Algorithm SHA256 "$Dir.zip").Hash.ToLowerInvariant()
+          if ($Actual -ne $Expected) {
+            Write-Error "bun-windows-x64-baseline.zip has SHA-256 $Actual, not the published $Expected."
+            exit 1
+          }
           Expand-Archive "$Dir.zip" $Dir
           $Bun = (Get-ChildItem $Dir -Recurse -Filter bun.exe | Select-Object -First 1).FullName
           & $Bun --print "process.arch + ' ' + Bun.version"

@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { homedir, tmpdir } from "os";
 import { delimiter, join } from "path";
 
-import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseGitHubRef, parseRemoteHead, readPluginRemoteAsync, validatePluginDirectoryName } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseGitHubRef, parseRemoteHead, readPluginRemoteAsync, validatePinRef, validatePluginDirectoryName } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -263,6 +263,14 @@ describe("plugins that import a sibling plugin", () => {
       { name: "Fixture Gateway", error: null },
     ]);
   }, 30_000);
+});
+
+// The pin's ref goes to git clone and git fetch; one starting with a dash would be read as an option.
+test("a registry pin's ref is a tag or branch name, never an option or a range", () => {
+  for (const ref of ["v1", "v1.2.3", "release/2026-11", "main", "v2.0.0-rc.1+build"]) expect(validatePinRef(ref)).toBe(ref);
+  for (const ref of ["-x", "--upload-pack=touch pwned", "v1..v2", "a//b", "v1/", "v1.", "v1.lock", "a@{1}", "a b", "v1\n", ""]) {
+    expect(() => validatePinRef(ref)).toThrow("Invalid ref");
+  }
 });
 
 test("plugin names and references consume the complete name, including a trailing line ending", () => {
