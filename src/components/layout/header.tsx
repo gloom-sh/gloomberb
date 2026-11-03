@@ -769,8 +769,9 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
     available: width,
     baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
     countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
-    // A delayed SPY keeps its mark: the two fit, or give way, together. Once the
-    // rest of the cluster is gone, it gives up its move rather than give way.
+    // A delayed SPY carries its mark only while the status bar does not say the
+    // delay. Then the two fit, or give way, together, and once the rest of the
+    // cluster is gone SPY gives up its move rather than give way.
     spyWidth: summary.spyText.length + 1 + (summary.spyDelayMinutes != null ? delayedMarkWidth(summary.spyDelayMinutes, nativePaneChrome) + 1 : 0),
     spyMoveWidth: summary.spyDelayMinutes != null ? summary.spyText.length - summary.spyPriceText.length : 0,
     stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,

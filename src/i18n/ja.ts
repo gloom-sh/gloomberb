@@ -286,6 +286,8 @@ export const ja: Record<string, string> = {
 
   // ── Context menu ─────────────────────────────────────────────
   "Start Here": "ここから始める",
+  "About": "このアプリについて",
+  "What's new in v{version}": "v{version} の新機能",
   "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "企業を調べる：概要から、チャート、財務、ニュース、提出書類、決算説明会のタブへ。",
   "Add what you own. Alerts and emails then follow your portfolio.": "保有銘柄を追加します。アラートとメールがポートフォリオに沿った内容になります。",
   "Your portfolio and watchlists.": "ポートフォリオとウォッチリスト。",
@@ -687,7 +689,7 @@ export const ja: Record<string, string> = {
   "{delay} delayed · try Pro live": "{delay}遅延 · Pro のリアルタイムを試す",
   "Pro trial {days}d": "Pro トライアル{days}日",
   "Pro trial — ends {date}": "Pro トライアル — {date} まで",
-  "delayed data · upgrade": "データ遅延 · アップグレード",
+  "delayed": "遅延",
   "upgrade": "アップグレード",
   "real-time news": "リアルタイムニュース",
   "AI command bar": "AI コマンドバー",

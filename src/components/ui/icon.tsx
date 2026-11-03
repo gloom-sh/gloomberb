@@ -138,11 +138,6 @@ export interface IconButtonProps {
   size?: number;
   /** Keep the press from also reaching a row or header behind the button. */
   stopPropagation?: boolean;
-  /**
-   * A few characters after the icon, in a muted tone, for a status that must
-   * read without hovering (a delay's `15m`). The label stays the accessible name.
-   */
-  text?: string;
 }
 
 /**
@@ -162,7 +157,6 @@ export function IconButton({
   disabled = false,
   size = 12,
   stopPropagation = true,
-  text,
 }: IconButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
@@ -188,7 +182,6 @@ export function IconButton({
         disabled={disabled}
         size={size}
         stopPropagation={stopPropagation}
-        text={text}
       />
     );
   }
@@ -208,7 +201,7 @@ export function IconButton({
     >
       {/* Pressed takes the colour the desktop and the terminal pane header give an active toggle. */}
       <Text fg={disabled ? colors.textMuted : color ?? (pressed ? colors.warning : colors.textDim)} selectable={false}>
-        {` ${ICON_GLYPHS[icon]}${text ?? ""} `}
+        {` ${ICON_GLYPHS[icon]} `}
       </Text>
     </Box>
   );

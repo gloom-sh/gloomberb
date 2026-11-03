@@ -285,6 +285,8 @@ export const es: Record<string, string> = {
 
   // ── Context menu ─────────────────────────────────────────────
   "Start Here": "Empieza aquí",
+  "About": "Acerca de",
+  "What's new in v{version}": "Novedades de la v{version}",
   "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls.": "Investiga una empresa: el resumen y luego pestañas de gráfico, finanzas, noticias, presentaciones y llamadas de resultados.",
   "Add what you own. Alerts and emails then follow your portfolio.": "Añade lo que tienes. Las alertas y los correos seguirán tu cartera.",
   "Your portfolio and watchlists.": "Tu cartera y tus listas de seguimiento.",
@@ -1265,7 +1267,7 @@ export const es: Record<string, string> = {
   "Rate limited — try again in a minute": "Límite alcanzado; inténtalo en un minuto",
   "{count}m": "{count} min",
   "{count}h": "{count} h",
-  "delayed data · upgrade": "datos diferidos · mejorar",
+  "delayed": "de retraso",
   "upgrade": "mejorar",
   "real-time news": "noticias en tiempo real",
   "Pro trial · {days}d left": "Prueba Pro · quedan {days} d",

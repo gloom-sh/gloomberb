@@ -224,10 +224,15 @@ its fill in device pixels. Half a pixel is the line between centred and not.
 **App chrome** (the shell's, never a pane's): the header holds the command
 bar prompt, update notices and the market summary; the status bar at the
 bottom holds layout tabs, Tidy Windows, the connection note (in the warning
-tone, only while the data service gives no answer at all), the version chip
-and the `status:widget` slot. A plugin puts a widget there only for app-wide state
+tone, only while the data service gives no answer at all), the `status:widget`
+slot and Feedback. A plugin puts a widget there only for app-wide state
 that matters outside its pane (unread count, account verification). Pane data
-never goes there.
+never goes there. Its right side stays short for someone new: the account
+(`Log in`, or the chat's `@name`), the plan (`◷ 15m delayed` signed out or on
+Free, pressed for the upgrade; `Pro trial 5d` on a trial; nothing on Pro) and
+Feedback. Sign-in and the upgrade never take a chip each. The version and the
+changelog are in Help's Basics tab (About), and so is the desktop download in
+the browser, which the command bar also lists (Download Desktop App).
 
 **Pane chrome**, one per instance:
 
@@ -259,8 +264,8 @@ never goes there.
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
-| Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer and, when the delay is known, the delay after it in the muted meta tone (`15m`), so it reads without hovering; the detail in its tooltip. The terminal draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
-| A price an account without Pro sees late, signed out included | The footer clock for a pane's prices; beside the price where there is no footer (the header's SPY, a quote's headline, onboarding's preview), as the clock and `15m` in the dim tone of the meta text around it. A narrow header sheds the base currency, the market state and then SPY's move before SPY and its mark. Pro and trial accounts see neither | `useQuoteDelayFooter`, `DelayedMark` with `useFreeQuoteDelay` / `freeQuoteDelayMinutes` |
+| Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer, the detail in its tooltip; the terminal, which has no tooltip, draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
+| A price an account without Pro sees late, signed out included | Said once per screen, never beside every price: the status bar's note (`◷ 15m delayed`) for the app, the footer clock for a pane's prices. A price outside a footer (the header's SPY, a quote's headline) carries the mark, the clock and `15m` in the dim tone of the meta text around it, only where the note is not on screen: the status bar hidden (presentation mode, `SB`) or a capture of the pane alone. Onboarding's preview, which covers the status bar, always does. A narrow header that draws the mark sheds the base currency, the market state and then SPY's move before SPY and its mark. Pro and trial accounts see none of them | `useQuoteDelayFooter`, `DelayedMark` with `useDelayedMarkMinutes` (`useFreeQuoteDelay` where nothing else can say it) |
 | Nothing can render yet (first load, hard failure, no data) | Body, replacing content below the tab strip and query bar, which stay | `PaneStatusBody`, a table's `status` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
 | Refresh failed but last data exists | Keep the data, failure in footer info | `loading={loading && !data}`, `error={!data ? error : null}` |

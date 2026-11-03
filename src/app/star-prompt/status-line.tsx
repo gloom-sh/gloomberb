@@ -156,7 +156,7 @@ function StarPromptLine({ delayMs = STAR_PROMPT_DELAY_MS, visibleMs = STAR_PROMP
 
   const showing = phase === "showing" && fits;
   useEffect(() => (showing ? bindStarPromptKeys({ open, dismiss }) : undefined), [dismiss, open, showing]);
-  // The version chip gives way to the line.
+  // The connection note gives way to the line.
   useStatusWidgetClaim("star-prompt", showing && copy ? copy.columns : 0);
 
   if (!showing || !copy) return null;

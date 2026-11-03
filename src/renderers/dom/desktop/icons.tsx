@@ -225,7 +225,6 @@ export function WebIconButton({
   disabled = false,
   size = 12,
   stopPropagation = true,
-  text,
 }: IconButtonProps) {
   return (
     <button
@@ -262,7 +261,6 @@ export function WebIconButton({
       }}
     >
       <WebIcon name={icon} size={size} />
-      {text ? <span className="gloom-icon-button-text">{text}</span> : null}
     </button>
   );
 }
