@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { Jimp } from "jimp";
-import { Cdp, evaluate } from "../pane-chrome/browser";
+import { Cdp, click as pageClick, evaluate } from "../pane-chrome/browser";
 import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import * as win from "./win32";
 
@@ -12,14 +12,17 @@ import * as win from "./win32";
  * Windows app with real OS input:
  *
  * - an update found at launch, downloaded and unpacked;
- * - a context menu held open;
- * - the window held mid-move, and mid-resize, with the pointer still moving.
+ * - a context menu held open, then a window call made while it is open, an
+ *   item picked from it (its action must reach the page), or Escape;
+ * - the window held mid-move, and mid-resize, with the pointer still moving;
+ * - last, a quit through the page's Close button with a menu open.
  *
  * A probe asks the app's own local server (the one its windows' sockets
  * connect to) for a page every 50 ms; how long each answer takes is how long
  * the thread could not run. The stalls the app logged meanwhile say what it
  * named. `--strict` fails when the thread waited a second or more through
- * the update or a menu.
+ * the update or a menu, when a menu's window call or picked item did not
+ * arrive, or when the app did not end with a menu open.
  *
  *   bun scripts/windows-desktop-check/responsiveness.ts run --app <install dir> --out <dir> [--label <name>] [--strict]
  *
@@ -341,36 +344,124 @@ async function waitUntil(ms: number, condition: () => boolean | Promise<boolean>
   return condition();
 }
 
-async function holdContextMenus(running: Running, count: number): Promise<Hold[]> {
+/** The page's own window button, in page pixels. */
+const windowButton = (action: "toggle-maximize" | "close") => String.raw`(() => {
+  const el = document.querySelector("[data-window-control-action=${action}]");
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`;
+
+const COMMAND_BAR_OPEN = `!!document.querySelector("[data-gloom-role=header-command-prompt] input, [data-gloom-role=header-command-prompt] textarea")`;
+
+/** Opens the app's menu with a right click in the pane, as a person does. Null when it opened; else why not. */
+async function openMenu(running: Running, label: string): Promise<string | null> {
+  await focusApp(running);
+  const point = await evaluate<{ x: number; y: number } | null>(running.cdp, MENU_POINT, 5_000);
+  if (!point) {
+    await shot(`${label}-no-point`);
+    return "no point in the pane to right-click";
+  }
+  const screenPoint = await toScreen(running, point);
+  await win.rightClick(screenPoint);
+  if (await waitUntil(5_000, menuOpen)) return null;
+  await shot(`${label}-not-open`);
+  const hit = win.hitTest(screenPoint);
+  await win.pressKeys(win.VK.escape);
+  return `the menu did not open (right-clicked ${screenPoint.x},${screenPoint.y}: ${hit.code} of "${hit.window?.title ?? "nothing"}", foreground ${win.foregroundWindow() === running.hwnd ? "the app" : "another window"})`;
+}
+
+/**
+ * While the menu is open, the page asks for a window call (its maximize
+ * button, clicked through the page, so the menu stays open), and the
+ * window must answer before the menu closes. Then back again.
+ */
+async function windowCallWithMenuOpen(running: Running): Promise<string | null> {
+  const button = await evaluate<{ x: number; y: number } | null>(running.cdp, windowButton("toggle-maximize"), 5_000);
+  if (!button) return "no maximize button in the page";
+  const asked = Date.now();
+  await pageClick(running.cdp, button);
+  const maximized = await waitUntil(5_000, () => win.isMaximized(running.hwnd));
+  const answeredMs = Date.now() - asked;
+  const stillOpen = menuOpen();
+  if (maximized) {
+    await pageClick(running.cdp, button);
+    await waitUntil(5_000, () => !win.isMaximized(running.hwnd));
+  }
+  if (!maximized) return "the page's maximize, asked for with the menu open, did not happen within 5 s";
+  if (!stillOpen) return `the window maximized in ${answeredMs} ms, but the menu had closed by then`;
+  return null;
+}
+
+/** Picks the menu's first item (Command Bar) with the keys, and its action must reach the page. */
+async function pickFirstItem(running: Running): Promise<string | null> {
+  await win.pressKeys(win.VK.down);
+  await sleep(150);
+  await win.pressKeys(win.VK.enter);
+  const arrived = await waitUntil(5_000, () => evaluate<boolean>(running.cdp, COMMAND_BAR_OPEN, 3_000).catch(() => false));
+  if (!arrived) {
+    await shot("menu-pick-missing");
+    return "picked the menu's first item, and the command bar it opens did not open within 5 s";
+  }
+  await win.pressKeys(win.VK.escape);
+  return null;
+}
+
+/**
+ * Holds the app's menu open three times, each ended a different way: a
+ * window call while it is open, a picked item, and Escape. The probe's
+ * numbers cover the ending too.
+ */
+async function holdContextMenus(running: Running): Promise<Hold[]> {
   const holds: Hold[] = [];
-  for (let index = 1; index <= count; index += 1) {
-    await focusApp(running);
-    const point = await evaluate<{ x: number; y: number } | null>(running.cdp, MENU_POINT, 5_000);
-    if (!point) {
-      await shot(`menu-${index}-no-point`);
-      holds.push({ scenario: "menu", index, from: Date.now(), to: Date.now(), note: "no point in the pane to right-click" });
-      continue;
-    }
-    const screenPoint = await toScreen(running, point);
-    await win.rightClick(screenPoint);
-    const opened = await waitUntil(5_000, menuOpen);
+  const endings = [
+    ["window call", windowCallWithMenuOpen],
+    ["pick", pickFirstItem],
+    ["escape", async () => null],
+  ] as const;
+  for (const [index, [ending, end]] of endings.map((entry, at) => [at + 1, entry] as const)) {
+    const failed = await openMenu(running, `menu-${index}`);
     const from = Date.now();
-    if (!opened) {
-      await shot(`menu-${index}-not-open`);
-      const hit = win.hitTest(screenPoint);
-      holds.push({ scenario: "menu", index, from, to: from, note: `the menu did not open (right-clicked ${screenPoint.x},${screenPoint.y}: ${hit.code} of "${hit.window?.title ?? "nothing"}", foreground ${win.foregroundWindow() === running.hwnd ? "the app" : "another window"})` });
-      await win.pressKeys(win.VK.escape);
+    if (failed) {
+      holds.push({ scenario: "menu", index, from, to: from, note: failed });
       continue;
     }
     await sleep(HOLD_MS / 2);
     if (index === 1) await shot("menu-held");
     await sleep(HOLD_MS / 2);
-    await win.pressKeys(win.VK.escape);
+    const note = await end(running);
+    if (menuOpen()) await win.pressKeys(win.VK.escape);
     const closed = await waitUntil(5_000, () => !menuOpen());
-    holds.push({ scenario: "menu", index, from, to: Date.now(), ...(closed ? {} : { note: "the menu stayed open after Escape" }) });
+    const notes = [...(note ? [`${ending}: ${note}`] : []), ...(closed ? [] : ["the menu stayed open after Escape"])];
+    holds.push({ scenario: "menu", index, from, to: Date.now(), ...(notes.length ? { note: notes.join("; ") } : {}) });
     await sleep(2_000);
+    // A window call that waited for the menu to close lands now.
+    if (win.isMaximized(running.hwnd)) {
+      win.showWindow(running.hwnd, "restore");
+      await sleep(1_000);
+    }
   }
   return holds;
+}
+
+/** Quits through the page's Close button with the menu open: the app must still end. */
+async function quitWithMenuOpen(running: Running): Promise<{ ms: number; note?: string }> {
+  const failed = await openMenu(running, "quit-menu");
+  if (failed) return { ms: 0, note: failed };
+  await sleep(2_000);
+  const button = await evaluate<{ x: number; y: number } | null>(running.cdp, windowButton("close"), 5_000);
+  if (!button) return { ms: 0, note: "no close button in the page" };
+  const asked = Date.now();
+  await pageClick(running.cdp, button).catch(() => {
+    // Intentional ignore: the page can go before its click's frame comes back.
+  });
+  const exited = await Promise.race([running.launcher.exited.then(() => true), sleep(30_000).then(() => false)]);
+  const ms = Date.now() - asked;
+  if (!exited) {
+    await shot("quit-menu-still-running");
+    return { ms, note: `the app still ran 30 s after Close with a menu open${menuOpen() ? ", the menu still showing" : ""}` };
+  }
+  return { ms, ...(running.launcher.exitCode ? { note: `the app ended with exit code ${running.launcher.exitCode}` } : {}) };
 }
 
 /**
@@ -525,6 +616,7 @@ async function run(): Promise<void> {
   await mkdir(shotDir, { recursive: true });
   const session = new Session(app, out);
   const results: ScenarioResult[] = [];
+  let quit: { ms: number; note?: string } | null = null;
   let fatal: string | null = null;
   stopApp(app);
   try {
@@ -532,12 +624,13 @@ async function run(): Promise<void> {
     const running = await session.launch("held");
     await focusApp(running);
     await shot("held-launch");
-    const menus = await holdContextMenus(running, 3);
+    const menus = await holdContextMenus(running);
     results.push(summarize("menu", "A context menu held open", menus, running.probe, await stallsBetween(running.dataDir, menus[0]?.from ?? 0, Date.now())));
     const moves = await holdWindow(running, "move", 2);
     results.push(summarize("move", "The window held mid-move", moves, running.probe, await stallsBetween(running.dataDir, moves[0]?.from ?? 0, Date.now())));
     const resizes = await holdWindow(running, "resize", 2);
     results.push(summarize("resize", "The window held mid-resize", resizes, running.probe, await stallsBetween(running.dataDir, resizes[0]?.from ?? 0, Date.now())));
+    quit = await quitWithMenuOpen(running);
   } catch (error) {
     fatal = error instanceof Error ? error.stack ?? error.message : String(error);
     console.error(fatal);
@@ -546,8 +639,9 @@ async function run(): Promise<void> {
     await session.close();
   }
   const version = await readJson(join(app, "Resources", "version.json")).then((info) => info.version as string).catch(() => "unknown");
-  await writeFile(join(out, "results.json"), JSON.stringify({ label, version, results, fatal }, null, 2));
-  const summary = table(results, `${label} (${version})`);
+  await writeFile(join(out, "results.json"), JSON.stringify({ label, version, results, quit, fatal }, null, 2));
+  const quitLine = quit ? `Quit through Close with a menu open: ${quit.note ?? `the app ended ${(quit.ms / 1000).toFixed(1)} s later`}` : null;
+  const summary = `${table(results, `${label} (${version})`)}${quitLine ? `${quitLine}\n` : ""}`;
   console.log(summary);
   for (const result of results) for (const note of result.notes) console.log(`note: ${note}`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
@@ -557,6 +651,7 @@ async function run(): Promise<void> {
   const failures = [
     ...(fatal ? [`the run stopped: ${fatal.split("\n")[0]}`] : []),
     ...results.flatMap((result) => result.notes.length && (result.id === "menu" || result.id === "update") ? result.notes : []),
+    ...(quit?.note ? [`quit with a menu open: ${quit.note}`] : []),
     ...results.filter((result) => (result.id === "menu" || result.id === "update") && result.longestWaitMs >= STRICT_LIMIT_MS)
       .map((result) => `${result.title}: the app's thread waited ${result.longestWaitMs} ms`),
   ];
