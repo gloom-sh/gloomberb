@@ -55,3 +55,13 @@ test("a US line's range is its regular session's, as quote reads the day's", () 
     ["GPK:XNYS regular-session high", "11.19 at 2026-11-03 18:40 UTC"],
   ]);
 });
+
+test("on an early close, prints after the 13:00 close are not the regular session's", () => {
+  // Fri 27 Nov 2026 closes at 13:00 New York (18:00 UTC); a 14:10 after-hours print is not the session's low.
+  const points = [bar("2026-11-27T14:30:00Z", 10.17, 10.62), bar("2026-11-27T17:59:00Z", 10.4, 11.19), bar("2026-11-27T19:10:00Z", 9.8, 11.5)];
+  const report = sessionRangeReport([{ symbol: "GPK", exchange: "NYSE", points, sessionDates: ["2026-11-27"] }]);
+  expect(report.entries.map((entry) => entry.formatted)).toEqual(["10.17 at 2026-11-27 14:30 UTC", "11.19 at 2026-11-27 17:59 UTC"]);
+  // Its minutes are counted to 13:00: 210 of them.
+  expect(usBarCoverageNotice([{ symbol: "GPK", exchange: "NYSE", points, resolution: "1m" }], Date.parse("2026-11-30T12:00:00Z")))
+    .toContain("208 of 210 minutes had none");
+});

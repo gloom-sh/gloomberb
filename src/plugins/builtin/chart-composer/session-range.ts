@@ -18,11 +18,18 @@ function usStockLine(symbol: string, exchange: string): boolean {
   return isUsListingExchange(exchange) && futuresSessionOpenMinute(symbol, exchange) == null;
 }
 
-/** The bars that start in a US regular session, 09:30 to 16:00 New York. */
-function regularSessionBars<T extends Pick<PricePoint, "date">>(points: readonly T[]): T[] {
+/**
+ * The bars that start in a US regular session: from the venue's published
+ * open to its close, 13:00 New York on an early close (the day after
+ * Thanksgiving, Christmas Eve). A day the calendar does not publish is taken
+ * as 09:30 to 16:00.
+ */
+function regularSessionBars<T extends Pick<PricePoint, "date">>(points: readonly T[], exchange: string): T[] {
   return points.filter(({ date }) => {
     const time = new Date(date).getTime();
     if (!Number.isFinite(time)) return false;
+    const session = getPublishedUsEquitySession(exchange, zonedDateKey(time, NEW_YORK));
+    if (session?.kind === "session") return time >= session.open && time < session.close;
     const { hour, minute } = zonedDateTimeParts(time, NEW_YORK);
     const at = hour * 60 + minute;
     return at >= REGULAR_OPEN_MINUTE && at < REGULAR_CLOSE_MINUTE;
@@ -86,7 +93,7 @@ export function usBarCoverageNotice(
   const counts = windows.flatMap((window) => {
     const step = barStepMs(window.resolution);
     if (!step || !usStockLine(window.symbol, window.exchange)) return [];
-    const bars = regularSessionBars(window.points).map(({ date }) => new Date(date).getTime());
+    const bars = regularSessionBars(window.points, window.exchange).map(({ date }) => new Date(date).getTime());
     if (!bars.length) return [];
     let expected = 0;
     let present = 0;
@@ -134,7 +141,7 @@ export function sessionRangeReport(windows: readonly SessionRangeWindow[]): Sess
   for (const window of windows) {
     // A US line's range is its regular session's, the rule `quote` reads the day's low and high by.
     const regular = usStockLine(window.symbol, window.exchange);
-    const range = sessionRange(regular ? regularSessionBars(window.points) : window.points);
+    const range = sessionRange(regular ? regularSessionBars(window.points, window.exchange) : window.points);
     if (!range) continue;
     const listing = publicTickerKey(window.symbol, window.exchange);
     const several = (window.sessionDates?.length ?? 1) > 1;
