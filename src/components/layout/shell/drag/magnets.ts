@@ -37,13 +37,24 @@ const MAGNET_RELEASE_PX = 12;
 const TERMINAL_MAGNETS: MagnetDistances = { catchX: 1, catchY: 1, releaseX: 2, releaseY: 2 };
 
 /**
- * Desktop: a moving pane's magnets act while the pointer slows down or rests
- * near a line; faster than this, in catch distances a second (300 px/s), the
- * pane follows the pointer exactly. Holding an edge on every line a window
- * crossed on its way stopped it for 20 px at each one and then jumped it,
- * which read as a drag that lags and stutters.
+ * Desktop: past this pointer speed, in catch distances a second (300 px/s),
+ * a release lands the pane where the pointer puts it, its magnets left out.
  */
 const MAGNET_TRAVEL_SPEED = 300 / MAGNET_CATCH_PX;
+/**
+ * Desktop: below this pointer speed (60 px/s, about a px a frame) the pointer
+ * is placing the pane, and it is drawn where its magnets hold it; faster, it
+ * is drawn under the pointer. Drawing the magnets at a hand's usual speed
+ * held the pane on each line it crossed, then jumped it up to 18 px, which
+ * read as a drag that lags and stutters.
+ */
+const MAGNET_PLACE_SPEED = 60 / MAGNET_CATCH_PX;
+/**
+ * How fast the drawn pane glides between the pointer's place and the
+ * magnets', 1/s: a critically damped spring that settles in about 0.17 s and
+ * moves it at most about a fifth of the distance in a 60 Hz frame.
+ */
+const GLIDE_RATE = 35;
 /** How far back the pointer's speed is read, ms: a few frames. */
 const SPEED_WINDOW_MS = 64;
 /** How long the pointer rests before the magnets catch where it stopped, ms. */
@@ -66,9 +77,10 @@ function trackPointer(track: PointerSample[], sample: PointerSample): void {
 /**
  * Desktop: when a moving pane's magnets act, over one drag. `travelling`
  * takes each move and says whether the pointer is on its way somewhere; while
- * it is, the pane follows it exactly, and `rest` (the move run again) is set
- * to run once the pointer has stopped for MAGNET_REST_MS, so the magnets
- * catch where it stopped. Any later move drops that check, travelling or not:
+ * it is, a release lands the pane where the pointer puts it, and `rest` (the
+ * move run again) is set to run once the pointer has stopped for
+ * MAGNET_REST_MS, so the magnets catch where it stopped. `placing` says
+ * whether the magnets are drawn. Any later move drops that check, travelling or not:
  * run after a slower move, it would put the pane back where the pointer was.
  * The check runs at the start of a frame, after the moves that frame brings,
  * so a page drawing fewer frames than 1 / MAGNET_REST_MS still sees a
@@ -76,6 +88,8 @@ function trackPointer(track: PointerSample[], sample: PointerSample): void {
  */
 export interface MagnetPace {
   travelling(sample: PointerSample, distances: MagnetDistances, rest?: () => void): boolean;
+  /** Whether the pointer, as of `now`, moves slowly enough to be placing the pane: its magnets are drawn. */
+  placing(now: number, distances: MagnetDistances): boolean;
   /** Drops the rest check: another event of the drag came first. */
   cancel(): void;
   /** Forgets the pointer's path, for a new drag. */
@@ -98,7 +112,7 @@ export function createMagnetPace(): MagnetPace {
       const last = track[track.length - 1];
       // The same place again (a rest check, a repeated event) is not a move.
       if (!last || last.x !== sample.x || last.y !== sample.y) trackPointer(track, sample);
-      if (!pointerTravelling(track, sample.t, distances)) return false;
+      if (pointerSpeed(track, sample.t, distances) <= MAGNET_TRAVEL_SPEED) return false;
       if (onRest) {
         rest = setTimeout(() => {
           rest = null;
@@ -111,6 +125,7 @@ export function createMagnetPace(): MagnetPace {
       }
       return true;
     },
+    placing: (now, distances) => pointerSpeed(track, now, distances) < MAGNET_PLACE_SPEED,
     cancel,
     reset() {
       cancel();
@@ -120,15 +135,14 @@ export function createMagnetPace(): MagnetPace {
 }
 
 /**
- * Whether the pointer is on its way somewhere rather than placing the pane:
- * how far it went over the last few frames, in catch distances a second,
- * against the travel speed. A move with nothing before it (the first of a
- * drag) is travel, so a pane leaves its spot without catching the lines it
- * sits on.
+ * How fast the pointer moves as of `now`: how far it went over the last few
+ * frames, in catch distances a second; still since then, none. A move with
+ * nothing before it (the first of a drag) is as fast as can be, so a pane
+ * leaves its spot without catching the lines it sits on.
  */
-function pointerTravelling(track: readonly PointerSample[], now: number, distances: MagnetDistances): boolean {
+function pointerSpeed(track: readonly PointerSample[], now: number, distances: MagnetDistances): number {
   const latest = track[track.length - 1];
-  if (!latest) return false;
+  if (!latest) return 0;
   const since = now - SPEED_WINDOW_MS;
   let from = track[0]!;
   for (const sample of track) {
@@ -136,10 +150,105 @@ function pointerTravelling(track: readonly PointerSample[], now: number, distanc
     from = sample;
   }
   const span = Math.min(SPEED_WINDOW_MS, now - from.t);
-  if (from === latest) return track.length === 1 && span <= 0;
-  if (span <= 0) return true;
+  if (from === latest) return track.length === 1 && span <= 0 ? Infinity : 0;
+  if (span <= 0) return Infinity;
   const catches = Math.hypot((latest.x - from.x) / distances.catchX, (latest.y - from.y) / distances.catchY);
-  return (catches / span) * 1000 > MAGNET_TRAVEL_SPEED;
+  return (catches / span) * 1000;
+}
+
+/** An offset of a moving pane's drawn place from where the pointer puts it, in cells. */
+export interface GlideOffset {
+  x: number;
+  y: number;
+}
+
+export const NO_GLIDE: GlideOffset = { x: 0, y: 0 };
+
+/**
+ * Desktop: where a moving pane is drawn, as an offset from where the pointer
+ * puts it, gliding toward `target` (where its magnets hold it, or nothing):
+ * a catch or a release moves it over a few frames instead of in one, and it
+ * comes to rest exactly on `target`, so it rests and lands where it would
+ * have without the glide.
+ */
+export interface MagnetGlide {
+  step(now: number, target: GlideOffset): GlideOffset;
+  /** Whether it rests on `target`. */
+  settled(target: GlideOffset): boolean;
+  /**
+   * Draws the pane now with `draw`, and on each frame after until `draw`
+   * says it rests: the frames that carry a glide on once the pointer stops.
+   * A later `draw` takes over from an earlier one.
+   */
+  follow(draw: () => boolean): void;
+  /** Back under the pointer, with no frame to come: a drag ended or began. */
+  reset(): void;
+}
+
+function requestFrame(callback: () => void): ReturnType<typeof setTimeout> | number {
+  return typeof requestAnimationFrame === "function" ? requestAnimationFrame(callback) : setTimeout(callback, 16);
+}
+
+function cancelFrame(frame: ReturnType<typeof setTimeout> | number): void {
+  if (typeof cancelAnimationFrame === "function" && typeof frame === "number") cancelAnimationFrame(frame);
+  else clearTimeout(frame as ReturnType<typeof setTimeout>);
+}
+
+export function createMagnetGlide(): MagnetGlide {
+  let x = 0;
+  let y = 0;
+  let vx = 0;
+  let vy = 0;
+  let last: number | null = null;
+  let frame: ReturnType<typeof setTimeout> | number | null = null;
+  let drawing: (() => boolean) | null = null;
+  const stop = () => {
+    if (frame !== null) cancelFrame(frame);
+    frame = null;
+    drawing = null;
+  };
+  const tick = () => {
+    frame = null;
+    if (drawing && !drawing()) frame = requestFrame(tick);
+  };
+  // One axis of a critically damped spring after `dt` seconds: [place, speed].
+  const spring = (place: number, speed: number, target: number, dt: number): [number, number] => {
+    const off = place - target;
+    const decay = Math.exp(-GLIDE_RATE * dt);
+    const pull = speed + GLIDE_RATE * off;
+    return [target + (off + pull * dt) * decay, (speed - GLIDE_RATE * pull * dt) * decay];
+  };
+  const settled = (target: GlideOffset) => Math.abs(x - target.x) < 1e-3 && Math.abs(y - target.y) < 1e-3 && Math.abs(vx) < 1e-2 && Math.abs(vy) < 1e-2;
+  return {
+    step(now, target) {
+      // A frame drawn late moves it no further than a tenth of a second would.
+      const dt = last === null ? 0 : Math.max(0, Math.min(0.1, (now - last) / 1000));
+      last = now;
+      [x, vx] = spring(x, vx, target.x, dt);
+      [y, vy] = spring(y, vy, target.y, dt);
+      if (settled(target)) {
+        x = target.x;
+        y = target.y;
+        vx = 0;
+        vy = 0;
+      }
+      return { x, y };
+    },
+    settled,
+    follow(draw) {
+      drawing = draw;
+      if (draw()) stop();
+      else frame ??= requestFrame(tick);
+    },
+    reset() {
+      stop();
+      x = 0;
+      y = 0;
+      vx = 0;
+      vy = 0;
+      last = null;
+    },
+  };
 }
 
 /**
