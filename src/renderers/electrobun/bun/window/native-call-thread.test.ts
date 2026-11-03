@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { startNativeCallThread } from "./native-call-thread";
+import { startNativeCallThread, type NativeCallThreadFailure, type UnstartedNativeCall } from "./native-call-thread";
 
 const LIBC = process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6";
 
@@ -21,8 +21,8 @@ test.skipIf(process.platform === "win32")("a call that blocks runs on its own th
   expect(thread).not.toBeNull();
   try {
     const startedAt = performance.now();
-    expect(thread!.call(timespec(300), null)).toBe(true);
-    expect(thread!.call(timespec(300), null)).toBe(true);
+    expect(thread!.call(timespec(300), null, () => {})).toBe(true);
+    expect(thread!.call(timespec(300), null, () => {})).toBe(true);
     expect(performance.now() - startedAt).toBeLessThan(50);
 
     let latest = 0;
@@ -42,11 +42,37 @@ test.skipIf(process.platform === "win32")("a call that blocks runs on its own th
   }
 });
 
-test("a library the thread cannot open fails once, and the caller makes its calls itself", async () => {
-  const failures: string[] = [];
-  const thread = startNativeCallThread("/nonexistent/libnothing.so", "nothing", { onFailure: (reason) => failures.push(reason) });
+async function waitFor(condition: () => boolean, ms = 5_000): Promise<void> {
+  for (let waited = 0; !condition() && waited < ms; waited += 20) await Bun.sleep(20);
+}
+
+// A menu asked for while the thread was still opening the library would be
+// lost when it fails to: it comes back for the caller to show itself.
+test("a library the thread cannot open gives back the calls it took", async () => {
+  const failures: Array<[NativeCallThreadFailure, UnstartedNativeCall[]]> = [];
+  const replayed: string[] = [];
+  const thread = startNativeCallThread("/nonexistent/libnothing.so", "nothing", { onFailure: (...failure) => failures.push(failure) });
   expect(thread).not.toBeNull();
-  for (let waited = 0; failures.length === 0 && waited < 5_000; waited += 20) await Bun.sleep(20);
-  expect(failures).toHaveLength(1);
-  expect(thread!.call(new Uint8Array(1), null)).toBe(false);
+  expect(thread!.call(new Uint8Array(1), null, () => replayed.push("first"))).toBe(true);
+  expect(thread!.call(new Uint8Array(1), null, () => replayed.push("second"))).toBe(true);
+  await waitFor(() => failures.length > 0);
+  expect(failures.map(([failure, unstarted]) => [failure, unstarted.length])).toEqual([["open-failed", 2]]);
+  for (const call of failures[0]![1]) call.replay();
+  expect(replayed).toEqual(["first", "second"]);
+  expect(thread!.call(new Uint8Array(1), null, () => {})).toBe(false);
+});
+
+// A call that never returns would hold every later one behind it for good.
+test.skipIf(process.platform === "win32")("a call past its limit stops the thread and gives back the calls behind it", async () => {
+  const failures: Array<[NativeCallThreadFailure, UnstartedNativeCall[]]> = [];
+  const thread = startNativeCallThread(LIBC, "nanosleep", { callLimitMs: 200, onFailure: (...failure) => failures.push(failure) });
+  expect(thread).not.toBeNull();
+  const startedAt = performance.now();
+  thread!.call(timespec(2_000), null, () => {});
+  thread!.call(timespec(10), null, () => {});
+  await waitFor(() => failures.length > 0);
+  // Given up near the limit, not when the long call returned, and without waiting for it.
+  expect(performance.now() - startedAt).toBeLessThan(1_500);
+  expect(failures.map(([failure, unstarted]) => [failure, unstarted.length])).toEqual([["stuck", 1]]);
+  expect(thread!.call(timespec(10), null, () => {})).toBe(false);
 });

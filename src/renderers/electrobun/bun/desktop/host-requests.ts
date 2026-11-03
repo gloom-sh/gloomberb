@@ -177,9 +177,13 @@ export async function handleDesktopHostRequest(
       if (menu.length === 0) return false;
       const requestId = getContextMenuRequestId(menu);
       if (requestId) backend.trackContextMenuRequest(requestId, rpc);
-      // On Windows the menu opens on a thread of its own (context-menu-thread.ts);
-      // where it cannot, this call returns when the person picks or dismisses.
-      measureNativeCall("context-menu.show", () => ContextMenu.showContextMenu(menu as never), { waitsOnPerson: true });
+      // On Windows the menu opens on a thread of its own (context-menu-thread.ts)
+      // and this returns at once. Where that thread failed, the menu holds
+      // this thread until it closes, the freeze the thread removes: a stall.
+      // Elsewhere a menu that holds the thread waits on the person.
+      measureNativeCall("context-menu.show", () => ContextMenu.showContextMenu(menu as never), {
+        waitsOnPerson: process.platform !== "win32",
+      });
       return true;
     }
     case "host.saveBootFrame":
