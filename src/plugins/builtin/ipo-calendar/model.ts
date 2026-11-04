@@ -42,7 +42,7 @@ const IPO_BOARD_STATUSES: readonly IpoBoardStatus[] = [
 ];
 
 /** Weekdays past its listing date after which a deal not yet priced or trading is delayed. */
-export const DELAYED_AFTER_BUSINESS_DAYS = 3;
+const DELAYED_AFTER_BUSINESS_DAYS = 3;
 
 /** `date` plus `days` weekdays, YYYY-MM-DD. */
 function addWeekdays(date: string, days: number): string {
