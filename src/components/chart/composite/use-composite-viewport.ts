@@ -28,6 +28,21 @@ function reachesHistoryStart(series: readonly ResolvedSeries[]): boolean {
   return market.length > 0 && market.every((entry) => entry.historyStart !== undefined);
 }
 
+/**
+ * A view left in the space before the first bar (where a pan went while the
+ * source's answer was on its way), moved onto that bar as it would have
+ * stopped there had the answer come first; any other view as it is.
+ */
+function settleAtHistoryStart(
+  frame: CompositeNavigationFrame,
+  view: CompositeViewportRange,
+): CompositeViewportRange {
+  const positions = compositeViewportPositions(frame, view);
+  const span = positions ? positions.end - positions.start : 0;
+  if (!positions || positions.start >= frame.dataStartPosition - span * HISTORY_EDGE_PADDING_RATIO - 1e-6) return view;
+  return fitCompositeViewport(frame, view);
+}
+
 export function useCompositeViewport({
   viewport,
   viewportResetKey,
@@ -72,7 +87,17 @@ export function useCompositeViewport({
       && Number.isFinite(viewport.end.getTime()) && viewport.start <= viewport.end) return viewport;
     return navigationFrame ? compositeNavigationDataViewport(navigationFrame) : null;
   }, [navigationFrame, viewport]);
-  const activeUserViewport = authoredViewportChanged ? null : userViewport;
+  // Once the source says it has nothing older, this render already hands out
+  // the view settled on the first bar, not only once the effect below stores
+  // it. A drag that moves on in between restarts from the view this render
+  // shows; restarted from one before the first bar, it kept the view there
+  // for the rest of that drag and every drag after it.
+  const settledUserViewport = useMemo(
+    () => (historyStartReached && navigationFrame && userViewport
+      ? settleAtHistoryStart(navigationFrame, userViewport) : userViewport),
+    [historyStartReached, navigationFrame, userViewport],
+  );
+  const activeUserViewport = authoredViewportChanged ? null : settledUserViewport;
   const effectiveViewport = activeUserViewport ?? authoredViewport;
   const userViewportStart = activeUserViewport?.start.getTime() ?? null;
   const userViewportEnd = activeUserViewport?.end.getTime() ?? null;
@@ -112,18 +137,16 @@ export function useCompositeViewport({
     }
   }, [authoredViewportChanged, userViewport, viewport, viewportResetKey]);
 
-  // Once the source says it has nothing older, a view left in the space
-  // before the first bar (where a pan went while the answer was on its way)
-  // settles onto it, as it would have stopped there had the answer come first.
+  // The settled view is stored as well, so the next pan or zoom starts from
+  // the first bar rather than from the space before it.
   useEffect(() => {
     if (!historyStartReached || !navigationFrame) return;
     setUserViewport((current) => {
       if (!current) return current;
-      const positions = compositeViewportPositions(navigationFrame, current);
-      const span = positions ? positions.end - positions.start : 0;
-      if (!positions || positions.start >= navigationFrame.dataStartPosition - span * HISTORY_EDGE_PADDING_RATIO - 1e-6) return current;
+      const settled = settleAtHistoryStart(navigationFrame, current);
+      if (settled === current) return current;
       viewportInteractionRef.current = "pan";
-      return fitCompositeViewport(navigationFrame, current);
+      return settled;
     });
   }, [historyStartReached, navigationFrame]);
 
