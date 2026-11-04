@@ -108,6 +108,7 @@ describe("app stalls", () => {
       blockedMs: 2_100,
       lastMeasured: "sqlite.blocked",
       lastMeasuredEndedMsAgo: 400,
+      lastMeasuredMs: 1_900,
       sqlite: { operation: "touch cached resource", attempts: 3, lockWait: true },
       uptimeMs: 40 * 60_000,
       phase: "steady" as const,
@@ -123,10 +124,10 @@ describe("app stalls", () => {
     recordStall("app", { blockedMs: 600 });
 
     expect(sent.map((report) => [report.section, formatStallReportDetails(report)])).toEqual([
-      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms phase=steady up=10-60m gap=in fg=0 vis=1 lock=1 try=3 day=1 platform=macos-arm64"],
+      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms phase=steady up=10-60m gap=in held=90 fg=0 vis=1 lock=1 try=3 day=1"],
       ["unmeasured", "process=app count=1 longest=1500ms phase=steady up=1-6h gap=none fg=0 vis=1 cpu=0 oth=130 day=2 platform=macos-arm64"],
     ]);
-    expect(log[0]).toEndWith("last measured: sqlite.blocked, ended 400 ms before (touch cached resource, 3 tries, waited on a lock)  [phase=steady up=10-60m gap=in fg=0 vis=1]");
+    expect(log[0]).toEndWith("last measured: sqlite.blocked, ran 1900 ms, ended 400 ms before (touch cached resource, 3 tries, waited on a lock)  [phase=steady up=10-60m gap=in held=90 fg=0 vis=1]");
     expect(log[1]).toEndWith("nothing measured before it  [phase=steady up=1-6h gap=none fg=0 vis=1 cpu=0 oth=130]");
     expect(log[3]).toEndWith("nothing measured before it  [phase=unknown up=unknown gap=none]");
   });
@@ -146,6 +147,7 @@ describe("app stalls", () => {
       phase: "startup",
       uptime: "30s-2m",
       gap: "10-60s",
+      heldPercent: 100,
       active: null,
       visible: null,
       attempts: 99,
@@ -155,7 +157,7 @@ describe("app stalls", () => {
     });
 
     expect(details.length).toBeLessThanOrEqual(120);
-    expect(details).toBe("process=app count=999 longest=123400ms phase=startup up=30s-2m gap=10-60s fg=? vis=? cpu=100 oth=990 lock=1 try=99");
+    expect(details).toBe("process=app count=999 longest=123400ms phase=startup up=30s-2m gap=10-60s held=100 fg=? vis=? cpu=100 oth=990 lock=1");
   });
 });
 

@@ -1,6 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { timeSalesHeadless } from "./headless";
+import { quoteRecapHeadless, timeSalesHeadless } from "./headless";
 export const timeSalesModule: PluginModule = {
   panes: [{ id: "time-sales", name: "Time and Sales", icon: "T", get component(): typeof import("./pane").TimeSalesPane { const { TimeSalesPane } = require("./pane"); return TimeSalesPane; },
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 104, height: 28 },
@@ -12,6 +12,6 @@ export const timeSalesModule: PluginModule = {
     { ...createTickerSurfacePaneTemplate({ id: "time-sales-qr", paneId: "time-sales", label: "Quote Recap",
       description: "NBBO history: bid and ask with sizes, venues and spread.",
       keywords: ["nbbo", "quotes", "bid", "ask", "recap", "qr", "trades", "tick", "ticks", "tick data", "second", "seconds", "intraday", "milliseconds"],
-      shortcut: "QR", viewKey: "QR", settings: () => ({ tab: "quotes" }) }), headless: timeSalesHeadless },
+      shortcut: "QR", viewKey: "QR", settings: () => ({ tab: "quotes" }) }), headless: quoteRecapHeadless },
   ],
 };

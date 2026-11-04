@@ -46,3 +46,13 @@ export function measureNativeWindowCalls(): void {
   measureCalls(BrowserWindow.prototype, "native.window", WINDOW_CALLS);
   measureCalls(BrowserView.prototype, "native.view", VIEW_CALLS);
 }
+
+/**
+ * Measures one of Electrobun's other native calls (a menu, the clipboard, a
+ * notification) as `native.<name>`: on Windows each waits for the thread that
+ * runs the windows, as the window calls do. `waitsOnPerson`: the call returns
+ * when a person chooses (a menu), so its time is not a freeze.
+ */
+export function measureNativeCall<T>(name: string, call: () => T, options?: { waitsOnPerson?: boolean }): T {
+  return measurePerf(`native.${name}`, call, undefined, { waitedOnPerson: options?.waitsOnPerson });
+}

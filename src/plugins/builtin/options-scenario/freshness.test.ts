@@ -44,7 +44,7 @@ test("OSA dates its figures by the underlying's quote, its delay and where its m
   });
   // Saturday: the print is Friday's close, and the markets reopen Monday.
   expect(lines(market(spy("2026-10-16T20:00:00Z", { marketState: "CLOSED" })), "2026-10-17T15:00:00Z").report)
-    .toBe("Source: Gloom Cloud · US trading day Fri 16 Oct 2026 close · 15 min delayed · markets closed until Mon");
+    .toBe("Source: Gloom Cloud · US trading day Fri 16 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
 });
 
 test("OSA with no current quote is dated by its load, and a position typed whole is the reader's own inputs", () => {

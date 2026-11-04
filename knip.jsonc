@@ -16,6 +16,7 @@
     // Run by path in .github/workflows/windows-desktop-check.yml, through a
     // variable that names x64 Bun on Windows on Arm.
     "scripts/windows-desktop-check/check.ts",
+    "scripts/windows-desktop-check/responsiveness.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
     "src/renderers/electrobun/view/main.tsx",

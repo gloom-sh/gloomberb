@@ -328,6 +328,34 @@ test("a quote that stopped years ago says since when, keeps its last price, and 
   expect(rows[0]).toMatchObject({ symbol: "TWTR", name: "Twitter, Inc.", price: "$53.86" });
 });
 
+// `quote DBS` on 2026-11-03: the Invesco silver fund delisted in 2023, while search marks DBS Group Holdings on SGX with "DBS".
+test("a bare symbol whose listing stopped asks after the live company search names by it, never one that stopped too", async () => {
+  const lastTrade = Date.parse("2023-03-03T21:00:00Z");
+  const fund = createTestQuote({ symbol: "DBS", name: "Invesco DB Silver Fund", price: 28.68, currency: "USD", exchangeName: "ARCA",
+    lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true,
+    delisting: { status: "delisted", lastTradeDate: "2023-03-03", historyStart: "2016-01-04" } });
+  const answering = (bank: ReturnType<typeof createTestQuote>) => createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "DBS", name: "Invesco DB Silver Fund", exchange: "ARCA", type: "Common Stock", currency: "USD" },
+      { providerId: "test", symbol: "D05", name: "DBS Group Holdings Ltd.", exchange: "SGX", type: "Common Stock", currency: "SGD",
+        homeListing: true, searchAliases: ["DBS"] },
+    ],
+    getQuote: async (symbol: string) => symbol === "D05" ? bank : fund,
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({ target, quote: fund })),
+  });
+  const live = createTestQuote({ symbol: "D05", name: "DBS Group Holdings Ltd.", currency: "SGD", exchangeName: "SGX" });
+  const asked = await runQuote(["DBS"], { dataProvider: answering(live), batches: [], searches: () => 0 });
+  expect(asked.warnings).toContain(
+    "DBS (Invesco DB Silver Fund): Delisted Mar 3, 2023 (last price $28.68). Did you mean D05:SGX (DBS Group Holdings Ltd.)?");
+  // A company whose line stopped too is no answer, and a listing named by its venue is the one meant.
+  const stopped = { ...live, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true };
+  for (const [args, bank] of [[["DBS"], stopped], [["DBS:ARCA"], live]] as const) {
+    const answer = await runQuote([...args], { dataProvider: answering(bank), batches: [], searches: () => 0 });
+    expect(answer.warnings.some((warning) => warning.includes("Delisted Mar 3, 2023"))).toBe(true);
+    expect(answer.warnings.join("\n")).not.toContain("Did you mean");
+  }
+});
+
 test("a bare symbol several companies list names, in one line, the company it was read as and where the others are", async () => {
   const avis = createTestQuote({ symbol: "CAR", name: "Avis Budget Group, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
   const names = { XETRA: "Carrefour SA", NASDAQ: "Avis Budget Group Inc.", BYMA: "Avis Budget Group, Inc. CEDEAR", ASX: "CAR Group Limited" };

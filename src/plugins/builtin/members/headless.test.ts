@@ -39,6 +39,6 @@ test("a Pro account's report is live only while a session trades, and as of the 
     return formatFreshnessLine(deriveHeadlessFreshness(membersHeadless, result, Date.now()));
   };
   expect(await line("realtime", "2026-10-23T19:55:00Z")).toBe("Source: Gloom Cloud · Fri 23 Oct 2026 19:50 UTC · live");
-  expect(await line("realtime", "2026-10-24T14:00:00Z")).toBe("Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed until Mon");
+  expect(await line("realtime", "2026-10-24T14:00:00Z")).toBe("Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
   expect(await line("delayed", "2026-10-24T14:00:00Z")).toContain("15 min delayed");
 });

@@ -9,6 +9,7 @@ import type {
   HeadlessSnapshotResult,
 } from "../../types/plugin";
 import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
+import { timeZoneLabel, zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
 import {
@@ -962,29 +963,45 @@ function sourcesAsOfParts(freshness: ReportFreshness, sources: readonly ReportSo
   return undated && onRetrievalDay(day, freshness.retrievedAt) ? parts : [dayText(day), ...parts];
 }
 
+const twoDigits = (value: number) => String(value).padStart(2, "0");
+
 /**
- * When the first venue opens again: its UTC time when that is later the same
- * UTC day, else its weekday at the venue (`Mon`), with the date a week out.
+ * When the first venue opens again, on the UTC clock and on the venue's own:
+ * `Wed 01:00 UTC, 09:00 SGT`. The UTC time carries its weekday unless it is
+ * later the same UTC day, and its date when it is over a week out; the
+ * venue's carries its weekday where its date is not the UTC one (`23:00 UTC,
+ * Wed 10:00 AET`). `short` and a venue with no known zone leave its clock out;
+ * the reader's own time, when they set a zone, follows both.
  */
-function reopenText(market: ReportMarket, now: number, local: boolean): { text: string; time: boolean } | null {
+function reopenText(market: ReportMarket, now: number, local: boolean, short: boolean): string | null {
   if (!market.reopensAt || !market.reopensOn) return null;
   const at = Date.parse(market.reopensAt);
   if (!Number.isFinite(at)) return null;
   const iso = new Date(at).toISOString();
-  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return { text: `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}`, time: true };
-  return { text: at - now > WEEKDAY_ONLY_MS ? dayText(market.reopensOn) : WEEKDAYS[new Date(`${market.reopensOn}T00:00:00Z`).getUTCDay()]!, time: false };
+  const day = iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? ""
+    : at - now > WEEKDAY_ONLY_MS ? `${dayText(iso)} ` : `${WEEKDAYS[new Date(at).getUTCDay()]} `;
+  const utc = `${day}${iso.slice(11, 16)} UTC`;
+  const reader = local ? localTimeSuffix(at) : "";
+  const zone = market.reopensTimeZone;
+  const label = zone ? timeZoneLabel(zone) : null;
+  if (short || !zone || label === "UTC") return `${utc}${reader}`;
+  const venue = zonedDateTimeParts(at, zone);
+  const venueDay = `${venue.year}-${twoDigits(venue.month)}-${twoDigits(venue.day)}`;
+  const weekday = venueDay === iso.slice(0, 10) ? "" : `${WEEKDAYS[new Date(`${venueDay}T00:00:00Z`).getUTCDay()]} `;
+  return `${utc}, ${weekday}${twoDigits(venue.hour)}:${twoDigits(venue.minute)} ${label}${reader}`;
 }
 
 /**
- * `markets closed until Mon`; `short` is the compact form a narrow capture
- * falls back to (`reopens Mon`). A time is the regular session's open, and
- * says so (`pre-market open · regular session opens 13:30 UTC`), so it is
+ * `markets closed · regular session opens Wed 01:00 UTC, 09:00 SGT`; `short` is
+ * the compact form a narrow capture falls back to (`regular opens Wed 01:00
+ * UTC`). The time is the regular session's open, and says so
+ * (`pre-market open · regular session opens 13:30 UTC, 09:30 ET`), so it is
  * never read as when the pre-market opens, nor a US market as closed until
  * then while its pre-market trades first. A futures venue's Sunday open is no
- * regular session's, so it reads `markets closed · reopens 22:00 UTC`.
+ * regular session's, so it reads `markets closed · reopens 22:00 UTC, 17:00 CT`.
  */
 function marketText(market: ReportMarket, now: number, short: boolean, local: boolean): string {
-  const reopen = reopenText(market, now, local);
+  const reopen = reopenText(market, now, local, short);
   switch (market.state) {
     case "open":
       return short ? "open" : "markets open";
@@ -992,13 +1009,12 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
       return "after hours";
     case "pre-market":
       if (!reopen) return "pre-market open";
-      return short ? `pre-market · regular opens ${reopen.text}` : `pre-market open · regular session opens ${reopen.text}`;
+      return short ? `pre-market · regular opens ${reopen}` : `pre-market open · regular session opens ${reopen}`;
     case "closed":
       if (!reopen) return short ? "closed" : "markets closed";
       // A futures venue's Sunday open is its first trade of the week, which no regular session is.
-      if (reopen.time && market.firstTrade) return short ? `reopens ${reopen.text}` : `markets closed · reopens ${reopen.text}`;
-      if (reopen.time) return short ? `regular opens ${reopen.text}` : `markets closed · regular session opens ${reopen.text}`;
-      return short ? `reopens ${reopen.text}` : `markets closed until ${reopen.text}`;
+      if (market.firstTrade) return short ? `reopens ${reopen}` : `markets closed · reopens ${reopen}`;
+      return short ? `regular opens ${reopen}` : `markets closed · regular session opens ${reopen}`;
     default: {
       const _exhaustive: never = market.state;
       return _exhaustive;
@@ -1007,15 +1023,16 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
 }
 
 /**
- * Where one venue's market stands now and the status line's words for it (`markets closed until Mon`), for a pane with
- * no dated rows to read that from, such as a scanner. Null when no calendar places the venue.
+ * Where one venue's market stands now and the status line's words for it (`markets closed · regular session opens
+ * Mon 13:30 UTC, 09:30 ET`), for a pane with no dated rows to read that from, such as a scanner, with the open alone
+ * (`Mon 13:30 UTC, 09:30 ET`) for a sentence of its own. Null when no calendar places the venue.
  */
-export function venueMarketLine(exchange: string, now: number): { state: ReportMarket["state"]; text: string } | null {
+export function venueMarketLine(exchange: string, now: number): { state: ReportMarket["state"]; text: string; reopens: string | null } | null {
   const { market } = reportMarketSession([{ exchange, time: null }], now);
-  return market ? { state: market.state, text: marketText(market, now, false, false) } : null;
+  return market ? { state: market.state, text: marketText(market, now, false, false), reopens: reopenText(market, now, false, false) } : null;
 }
 
-/** Whether every market of a mixed report reads the same (`markets closed until Mon`): one line then says it for all. */
+/** Whether every market of a mixed report reads the same (`markets closed · regular session opens …`): one line then says it for all. */
 function sameMarketText(markets: readonly VenueMarket[], now: number): boolean {
   return new Set(markets.map((market) => marketText(market, now, false, false))).size === 1;
 }
@@ -1032,12 +1049,12 @@ function marketsText(markets: readonly VenueMarket[], now: number, short: boolea
   const opensAt = (market: VenueMarket) => market.reopensAt ? Date.parse(market.reopensAt) : Number.POSITIVE_INFINITY;
   const rank = (market: VenueMarket) => market.state === "open" ? 0 : market.state === "closed" ? 2 : 1;
   const ordered = [...markets].sort((left, right) => rank(left) - rank(right) || opensAt(left) - opensAt(right));
-  // `LSE opens 08:00 UTC · US 13:30 UTC`: a verb is said once for the timed opens that follow each other
-  // with it; a week's first trade after a session's open says its own (`reopens 22:00 UTC`).
+  // `LSE opens 08:00 UTC, 08:00 UK · US 13:30 UTC, 09:30 ET`: a verb is said once for the opens that follow
+  // each other with it; a week's first trade after a session's open says its own (`reopens 22:00 UTC`).
   let previousVerb: string | null = null;
   const parts = ordered.map((market) => {
-    const reopen = reopenText(market, now, local);
-    const verb = market.state === "closed" && reopen?.time ? market.firstTrade ? "reopens" : "opens" : null;
+    const reopen = reopenText(market, now, local, short);
+    const verb = market.state === "closed" && reopen ? market.firstTrade ? "reopens" : "opens" : null;
     const said = (() => {
       switch (market.state) {
         case "open":
@@ -1045,11 +1062,10 @@ function marketsText(markets: readonly VenueMarket[], now: number, short: boolea
         case "after-hours":
           return `${market.market} after hours`;
         case "pre-market":
-          return reopen?.time ? `${market.market} pre-market, opens ${reopen.text}` : `${market.market} pre-market`;
+          return reopen ? `${market.market} pre-market, opens ${reopen}` : `${market.market} pre-market`;
         case "closed":
           if (!reopen) return `${market.market} closed`;
-          if (!reopen.time) return `${market.market} closed until ${reopen.text}`;
-          return `${market.market} ${verb === previousVerb ? "" : `${verb} `}${reopen.text}`;
+          return `${market.market} ${verb === previousVerb ? "" : `${verb} `}${reopen}`;
         default: {
           const _exhaustive: never = market.state;
           return _exhaustive;
@@ -1067,7 +1083,7 @@ interface StatusLineDetail {
   asOf?: "short";
   /** Count stale rows without their total. */
   status?: "short";
-  /** `reopens Mon` for `markets closed until Mon`; `none` leaves the market out. */
+  /** `regular opens Mon 13:30 UTC` for `markets closed · regular session opens Mon 13:30 UTC, 09:30 ET`; `none` leaves the market out. */
   market?: "short" | "none";
   /** Leave out the reader's local time beside UTC times. */
   local?: "none";
@@ -1178,7 +1194,7 @@ function shorterSchedules(freshness: ReportFreshness, detail: StatusLineDetail):
 
 /**
  * The plain status line of a capture: the longest of `statusLineVariants`,
- * `Fri 9 Oct close · 15 min delayed · markets closed until Mon` for quotes.
+ * `Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET` for quotes.
  */
 export function formatStatusLine(freshness: ReportFreshness): string {
   return statusLineVariants(freshness)[0]!;
@@ -1318,7 +1334,7 @@ export function captureStatusLine({ report: loaded, selfDated, quoted, rendered 
 
 /**
  * The one line every text report ends with, its source then its status line:
- * `Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed until Mon`.
+ * `Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET`.
  * Without a dated observation it says when the report was retrieved instead.
  * A line that dates each of its sources names them there, so it is the status
  * line alone: `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed`.

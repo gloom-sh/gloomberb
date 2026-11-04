@@ -6,7 +6,9 @@ name: Windows desktop check
 # floating panes, a popped-out window and typing, at several display scales,
 # pictured step by step. It checks this commit's build against the list of
 # known failures, and runs the same steps on the latest release to compare,
-# on x64 and, when asked, on Windows on Arm.
+# on x64 and, when asked, on Windows on Arm. Last, it times how long the app's
+# own thread goes without answering while an update unpacks, a context menu
+# is open and a window is held mid-move or mid-resize (responsiveness.ts).
 
 on:
   workflow_dispatch:
@@ -40,7 +42,7 @@ on:
         required: false
         default: GloomSetup-windows-x64
       only:
-        description: Check only the steps whose id or title has this text
+        description: Check only the steps whose id or title has this text ("responsiveness" runs only the timing)
         required: false
         default: ""
   pull_request:
@@ -237,6 +239,7 @@ jobs:
           exit 0
 
       - name: Drive the app at each scale
+        if: inputs.only != 'responsiveness'
         shell: pwsh
         run: |
           $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
@@ -250,6 +253,7 @@ jobs:
           exit 0
 
       - name: Report
+        if: inputs.only != 'responsiveness'
         shell: pwsh
         run: |
           if ("${{ matrix.build }}" -eq "head") {
@@ -257,6 +261,17 @@ jobs:
           } else {
             bun scripts/windows-desktop-check/report.ts windows-desktop-check
           }
+
+      # The release's numbers are the comparison; this commit's must stay under a second.
+      - name: Time the app's thread while it is held
+        if: ${{ !cancelled() && (inputs.only == '' || inputs.only == 'responsiveness') }}
+        shell: pwsh
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
+          $RunArgs = @("scripts/windows-desktop-check/responsiveness.ts", "run", "--app", "$env:RUNNER_TEMP\Gloom check", "--out", "windows-desktop-check\$env:LABEL-responsiveness", "--label", $env:LABEL)
+          if ("${{ matrix.build }}" -eq "head") { $RunArgs += "--strict" }
+          & $Bun @RunArgs
+          exit $LASTEXITCODE
 
       - uses: actions/upload-artifact@v4
         if: always()

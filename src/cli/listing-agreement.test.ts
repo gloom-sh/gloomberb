@@ -231,10 +231,11 @@ test("a function whose data covers US listings only names the company's US listi
   const minuteBars = (key: string) => `No second or tick bars; 1-minute bars: fn GIP ${key}; trades exist for US listings only.`;
   const refused = (token: string, typed: string, ...options: string[]) => runFunction(token, typed, ...options)
     .then(() => null, (error: { message: string; details?: string }) => [error.message, error.details]);
-  for (const token of ["TAS", "QR"]) {
+  // QR names itself as its report does: the NBBO view of the same tape.
+  for (const [token, title] of [["TAS", "Time and sales"], ["QR", "Quote recap"]] as const) {
     for (const typed of [["SAN:EPA"], ["SAN", "--exchange", "EPA"]]) {
       expect(await refused(token, typed[0]!, ...typed.slice(1))).toEqual([
-        "Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).",
+        `${title} covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).`,
         `Sanofi's US listing: SNY (try: gloom fn ${token} SNY)\n${minuteBars("SAN:EPA")}`,
       ]);
     }

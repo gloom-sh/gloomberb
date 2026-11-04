@@ -419,11 +419,55 @@ describe("GIP headless sessions", () => {
       { value: 86.34, open: 86.02, high: 86.3775, low: 86, close: 86.34 },
     ]);
     expect(regular).toMatch(/^Time,Open,High,Low,Close,Volume\n2026-10-20T13:30:00Z,85\.5,85\.9,85\.1,85\.675,9120$/m);
-    expect(regular).toContain("\nAAPL:XNAS session low,85.1 at 2026-10-20 13:30 UTC\n");
+    // The range is the regular session's, as `quote` reads the day's; the bars say what they count and the minutes with none.
+    expect(regular).toContain("\nAAPL:XNAS regular-session low (USD),85.1\n");
     expect(regular).toContain("\n# note: Regular session only, from the 09:30 New York open: pre-market and after-hours bars are not included.");
-    // Bars from 08:30 New York, when a housing release lands, are not the regular session.
-    const early = await csv([{ ...noisy[0]!, date: new Date("2026-10-20T12:30:00Z") }, ...noisy]);
+    expect(regular).toContain("\n# note: Bars are of every US venue's prints that set a price; odd lots and special-condition prints count only in volume."
+      + " 388 of 390 minutes had none, so no bar.");
+    // Bars from 08:30 New York, when a housing release lands, are not the regular session, nor is their low.
+    const early = await csv([{ ...noisy[0]!, date: new Date("2026-10-20T12:30:00Z"), low: 84 }, ...noisy]);
     expect(early.csv).not.toContain("Regular session only");
+    expect(early.csv).toContain("\nAAPL:XNAS regular-session low (USD),85.1\n");
+  });
+
+  // `fn GIP GPK` said "not a live feed (intraday bars)" at 17:11 where its capture said "15 min delayed" at 17:10.
+  test("bars a delayed quote carries on are dated by that quote, as the capture dates them; a past session by its bars", async () => {
+    setSystemTime(new Date("2026-10-20T19:59:30Z"));
+    try {
+      const bars = [
+        { date: new Date("2026-10-20T13:30:00Z"), open: 85.5, high: 85.9, low: 85.1, close: 85.6, volume: 9120 },
+        { date: new Date("2026-10-20T19:44:00Z"), open: 86, high: 86.4, low: 86, close: 86.3, volume: 7934 },
+      ];
+      // Fifteen minutes behind the clock, as a delayed quote runs.
+      const quote = () => ({ symbol: "AAPL", price: 86.3, change: 0, changePercent: 0, currency: "USD", providerId: "gloomberb-cloud" as const,
+        dataSource: "delayed" as const, exchangeName: "NASDAQ", marketState: "REGULAR" as const, lastUpdated: Date.now() - 15 * 60_000 });
+      const { context } = fixture(bars);
+      const quoted = { ...context, marketData: createTestDataProvider({
+        ...context.marketData,
+        getQuote: async () => quote(),
+        getPriceHistoryForResolution: async () => bars,
+        getDetailedPriceHistory: async (_symbol, _exchange, start, end) => bars.filter((point) => point.date >= start && point.date < end),
+      }) };
+      const definition = chartHeadless("graph-intraday-price-pane");
+      const load = async (options: Record<string, string>) => await definition.load({
+        argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options }, quoted) as ChartPaneModel;
+      const today = deriveHeadlessFreshness(definition, await load({}));
+      expect(today).toMatchObject({ status: "delayed", delayMinutes: 15, asOf: "2026-10-20T19:44:30.000Z" });
+      expect(today.basis).toBeUndefined();
+      // A session of the past is the bars' own history, which today's quote does not carry on.
+      const past = deriveHeadlessFreshness(definition, await load({ session: "2026-10-20" }));
+      expect(past.status).toBe("delayed");
+      // A day later, today's quote is within a day of Tuesday's last bar but not of its session.
+      setSystemTime(new Date("2026-10-21T15:00:00Z"));
+      const yesterday = await load({ session: "2026-10-20" });
+      expect(yesterday.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
+      expect(deriveHeadlessFreshness(definition, yesterday).status).not.toBe("delayed");
+      setSystemTime(new Date("2026-10-23T15:00:00Z"));
+      const later = await load({ session: "2026-10-20" });
+      expect(later.freshness).toMatchObject({ status: "not-a-feed", basis: "intraday bars" });
+    } finally {
+      setSystemTime();
+    }
   });
 });
 
@@ -681,9 +725,11 @@ test("GIP ends a closed session on its official close, says when it is still to 
   const trading = await run("AAPL:NASDAQ", "2026-10-30T18:45:00Z", { marketState: "REGULAR" });
   const closed = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST", regularClose: 105.5, regularCloseSessionDate: "2026-10-30" });
   expect(closed.last).toBe(105.5);
-  expect(closed.calls - trading.calls).toBe(1);
+  // One read of the quote serves the close, the footer that dates the bars and the chart's metadata.
+  expect(trading.calls).toBe(1);
+  expect(closed.calls).toBe(1);
   const waiting = await run("AAPL:NASDAQ", "2026-10-30T20:10:00Z", { marketState: "POST" });
   expect(waiting.note).toContain("closing print not in yet");
-  // A coin has no session to close: no quote is read for it.
-  expect((await run("BTC-USD:CCC", "2026-10-30T20:10:00Z", { marketState: "REGULAR", listingExchangeName: "CCC" })).calls).toBe(trading.calls);
+  // A coin has no session to close: its one quote dates the footer alone.
+  expect((await run("BTC-USD:CCC", "2026-10-30T20:10:00Z", { marketState: "REGULAR", listingExchangeName: "CCC" })).calls).toBe(1);
 });

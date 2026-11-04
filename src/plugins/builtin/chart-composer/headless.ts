@@ -23,7 +23,7 @@ import {
 } from "../../../time-series/resolution";
 import type { ChartResolution } from "../../../time-series/range";
 import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
-import { sessionRangeReport } from "./session-range";
+import { sessionRangeReport, usBarCoverageNotice } from "./session-range";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
@@ -32,7 +32,7 @@ import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data/market/freshness";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
@@ -40,7 +40,7 @@ import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
-import { barHistoryFreshness, DAILY_CLOSES, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, DAILY_CLOSES, quoteObservation, REPORTED_DATA } from "../shared/report-freshness";
 import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
@@ -350,8 +350,9 @@ function chartFreshness(
   allSeries: readonly HeadlessSeries[],
   spec: ChartSpec,
   comparison?: PriceComparison | null,
-  quoteTimes: ReadonlyMap<string, number> = new Map(),
+  quotes: ReadonlyMap<string, Quote> = new Map(),
 ): HeadlessPaneFreshness {
+  const quoteTimes = new Map([...quotes].map(([id, quote]) => [id, quote.lastUpdated] as const));
   const order = ["1wk", "1mo"];
   // A leg that failed to load has no bars to date; the ones that loaded say what the chart is.
   const loaded = allSeries.filter((entry) => entry.points.length > 0);
@@ -381,6 +382,23 @@ function chartFreshness(
     const basis = coarsest === "1d" ? "daily closes" : coarsest === "1wk" ? "weekly closes" : coarsest === "1mo" ? "monthly closes" : "intraday bars";
     return { status: "not-a-feed", basis: through ? `${basis} through ${periodDayText(through, new Date().getUTCFullYear())}` : basis,
       ...(through && closedDay ? { asOf: through } : {}), oldest: null };
+  }
+  // Intraday bars of listings whose quotes carry them on are dated as their capture dates them: by those quotes,
+  // with their delay and where their markets stand (GIP: `Tue 3 Nov 2026 17:10 UTC · 15 min delayed`).
+  // Only a quote of the newest bar's trading date in the venue's zone carries them on: a session of the past
+  // (`--session 2026-10-01`, or yesterday's) is not what today's quote carries on.
+  const visibleSecurities = visible.filter((entry) => entry.source.kind === "security");
+  const carriedOn = (entry: ChartSeriesSpec) => {
+    const newest = series.find((item) => item.id === entry.id)?.points.at(-1)?.date;
+    const time = newest ? new Date(newest).getTime() : Number.NaN;
+    const quoted = quotes.get(entry.id)?.lastUpdated;
+    if (!Number.isFinite(time) || quoted == null || !Number.isFinite(quoted) || entry.source.kind !== "security") return false;
+    const zone = intradaySessionTimeZone(entry.source.instrument.symbol, entry.source.instrument.exchange);
+    return zonedDateKey(quoted, zone) === zonedDateKey(time, zone);
+  };
+  if (!["1d", "1wk", "1mo"].includes(coarsest!) && visibleSecurities.length === visible.length && visible.length > 0
+    && visibleSecurities.every(carriedOn)) {
+    return { prices: true, observations: visibleSecurities.map((entry) => ({ ...quoteObservation(quotes.get(entry.id)!) })) };
   }
   const forming = formingPriceBar(series);
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
@@ -439,8 +457,8 @@ function newestDailyPoint(series: readonly HeadlessSeries[], closedDay: string |
 }
 
 /** When each security series' listing was last quoted, by series id, from the quotes the chart was read with. */
-function chartQuoteTimes(model: Pick<ChartPaneModel, "spec" | "snapshot">): Map<string, number> {
-  const times = new Map<string, number>();
+function chartQuotes(model: Pick<ChartPaneModel, "spec" | "snapshot">): Map<string, Quote> {
+  const quotes = new Map<string, Quote>();
   for (const entry of model.spec.series) {
     if (entry.source.kind !== "security") continue;
     const { instrument } = entry.source;
@@ -449,9 +467,9 @@ function chartQuoteTimes(model: Pick<ChartPaneModel, "spec" | "snapshot">): Map<
     const data = model.snapshot.financials.find(([candidate]) => candidate === key)?.[1]
       ?? model.snapshot.instrumentFinancials?.find((item) => snapshotInstrumentKey(item.instrument) === instrumentKey)?.financials;
     const time = data?.quote?.lastUpdated;
-    if (typeof time === "number" && Number.isFinite(time)) times.set(entry.id, time);
+    if (data?.quote && typeof time === "number" && Number.isFinite(time)) quotes.set(entry.id, data.quote);
   }
-  return times;
+  return quotes;
 }
 
 /** A series' venue and the day its newest bar starts, as the forming and closed bar checks read them. */
@@ -777,6 +795,15 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ...await loadIntradayWindow({ provider: context.marketData, symbol: target.symbol, exchange: target.exchange ?? "", request, context: { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument } }),
         })));
         context.signal.throwIfAborted();
+        // One quote per listing, read once: it dates the footer as the capture dates the bars, decides a closed session's
+        // last bar, and answers the chart's metadata. A captured shot's source can have none.
+        await Promise.all(histories.map(async (history) => {
+          if (history.quote || !history.points.length || typeof context.marketData.getQuote !== "function") return;
+          const quote = await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
+            { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
+            .catch(logFailure("chart-composer.headless", "Read an intraday chart's quote failed", null));
+          if (quote) history.quote = quote;
+        }));
         // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
         // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
         await Promise.all(histories.map(async (history) => {
@@ -791,11 +818,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           if (history.quote?.marketState === "REGULAR" || (known && isRegularSessionTime(known, now) === true)) return;
           if (known && !newestClosedSession(history.points, { venue: known, now })) return;
           // A captured shot's source can have no quotes: its bars are drawn as captured.
-          const quote = history.quote ?? (typeof context.marketData.getQuote === "function"
-            ? await Promise.resolve(context.marketData.getQuote(history.symbol, history.exchange,
-              { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument }))
-              .catch(logFailure("chart-composer.headless", "Read the official close of an intraday chart failed", null))
-            : null);
+          const quote = history.quote ?? null;
           const venue = known || quote?.listingExchangeName || quote?.exchangeName || undefined;
           const newest = newestClosedSession(history.points, { venue, now });
           const decided = newest ? newestSessionClose(quote, { ...newest, venue }) : null;
@@ -871,8 +894,10 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       if (template !== "graph-intraday-price-pane") model.series = model.series.map(barsAtSeriesPrecision);
       if (template === "graph-intraday-price-pane") {
         model.series = model.series.map(tradedBars);
-        const regular = regularSessionNotice(intradayHistories.map((window) => ({ ...window, exchange: listingExchange(window.symbol, window.exchange) })));
-        if (regular) model.metadata = { ...model.metadata, notices: [...(Array.isArray(model.metadata?.notices) ? model.metadata.notices : []), regular] };
+        const windows = intradayHistories.map((window) => ({ ...window, exchange: listingExchange(window.symbol, window.exchange) }));
+        // What the bars count, and the minutes of the session with no print that sets a price.
+        const notices = [regularSessionNotice(windows), usBarCoverageNotice(windows)].filter((notice): notice is string => !!notice);
+        if (notices.length) model.metadata = { ...model.metadata, notices: [...(Array.isArray(model.metadata?.notices) ? model.metadata.notices : []), ...notices] };
       }
       const dropped = chartResolutionDrop(
         parsed.viewport.resolution,
@@ -884,7 +909,18 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         model.warnings = [...model.warnings ?? [], dropped.warning];
         model.metadata = { ...model.metadata, resolution: dropped.drop };
       }
-      model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, chartQuoteTimes(model));
+      const quotes = chartQuotes(model);
+      // GIP's bars are dated by the quote that carries them on, as its capture dates them: the one its window read.
+      if (template === "graph-intraday-price-pane") {
+        for (const entry of model.spec.series) {
+          if (entry.source.kind !== "security" || quotes.has(entry.id)) continue;
+          const { symbol, exchange } = entry.source.instrument;
+          const quote = intradayHistories.find((window) => window.quote && window.symbol.toUpperCase() === symbol.toUpperCase()
+            && (!exchange || !window.exchange || canonicalExchange(window.exchange) === canonicalExchange(exchange)))?.quote;
+          if (quote && Number.isFinite(quote.lastUpdated)) quotes.set(entry.id, quote);
+        }
+      }
+      model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, quotes);
       if (closingPrintsPending.length) {
         model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };
       }

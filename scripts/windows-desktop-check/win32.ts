@@ -309,6 +309,8 @@ const INPUT_SIZE = 40;
 const MOUSEEVENTF_MOVE = 0x0001;
 const MOUSEEVENTF_LEFTDOWN = 0x0002;
 const MOUSEEVENTF_LEFTUP = 0x0004;
+const MOUSEEVENTF_RIGHTDOWN = 0x0008;
+const MOUSEEVENTF_RIGHTUP = 0x0010;
 const MOUSEEVENTF_VIRTUALDESK = 0x4000;
 const MOUSEEVENTF_ABSOLUTE = 0x8000;
 const KEYEVENTF_EXTENDEDKEY = 0x0001;
@@ -363,6 +365,15 @@ export async function click(point: Point, { double = false } = {}): Promise<void
     mouseUp();
     await sleep(double ? 60 : 40);
   }
+}
+
+/** A press of the right button at `point`, which opens a context menu. */
+export async function rightClick(point: Point): Promise<void> {
+  moveMouse(point);
+  await sleep(60);
+  mouseInput(MOUSEEVENTF_RIGHTDOWN);
+  await sleep(40);
+  mouseInput(MOUSEEVENTF_RIGHTUP);
 }
 
 /**

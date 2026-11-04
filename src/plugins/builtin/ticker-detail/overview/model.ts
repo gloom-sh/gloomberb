@@ -30,7 +30,7 @@ import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
-import { formatReportedMoney } from "../../../../utils/reported-money";
+import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
 import { enterpriseValueCheck, enterpriseValueNotMeaningful, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
@@ -185,7 +185,15 @@ export function buildOverviewStats({
   runway?: CashRunway | null;
 }): StatField[] {
   const stats: StatField[] = [];
-  const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }), perShare);
+  // Amounts no source names the currency of are bare; the first says so after it, once for all of them.
+  let unsourcedSaid = false;
+  const reported = (value: number, currency: string | undefined, perShare = false): Pick<StatField, "value" | "detail"> => {
+    const text = formatReportedMoney(value, currency, perShare);
+    if (currency?.trim() || unsourcedSaid || !Number.isFinite(value)) return { value: text };
+    unsourcedSaid = true;
+    return { value: text, detail: [REPORTING_CURRENCY_NOT_SOURCED, "currency not sourced"] };
+  };
+  const money = (value: number) => reported(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }));
 
   // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
   const volume = reportedQuoteVolume(quote);
@@ -242,7 +250,7 @@ export function buildOverviewStats({
     stats.push({ label: year ? `Fwd P/E ${year}` : "Fwd P/E", value: formatPriceEarnings(forwardPE) });
   }
   if (fundamentals?.eps != null) {
-    stats.push({ label: "EPS", value: formatReportedMoney(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });
+    stats.push({ label: "EPS", ...reported(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });
   }
   if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatPriceEarnings(fundamentals.pegRatio, 2) });
@@ -290,13 +298,13 @@ export function buildOverviewStats({
     });
   }
   if (fundamentals?.revenue != null) {
-    stats.push({ label: "Revenue", value: money(fundamentals.revenue) });
+    stats.push({ label: "Revenue", ...money(fundamentals.revenue) });
   }
   if (fundamentals?.netIncome != null) {
-    stats.push({ label: "Net Income", value: money(fundamentals.netIncome) });
+    stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });
   }
   if (fundamentals?.freeCashFlow != null) {
-    stats.push({ label: "FCF", value: money(fundamentals.freeCashFlow) });
+    stats.push({ label: "FCF", ...money(fundamentals.freeCashFlow) });
   }
   const runwayField = runwayStat(runway);
   if (runwayField) stats.push(runwayField);
