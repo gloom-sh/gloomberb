@@ -284,7 +284,25 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 #### Which tabs Ticker Research shows
 
-Ticker Research shows the tabs that can have data for the instrument.
+A company's page has eleven tabs, and a tab with several views shows them as choices under the strip (a second row in the terminal):
+
+| Tab | Views |
+|-----|-------|
+| Overview | Overview |
+| Chart | Chart |
+| Financials | Financials, Revenue, Diagnostic, Dividends |
+| Analysts | Analyst, Calls |
+| Options | Options |
+| Events | Events, Catalysts, M&A |
+| Filings | SEC, 8-K, Risks |
+| Ownership | Holders, Insider, 13F, Congress, Short Interest |
+| People | Exec, Hiring, Hiring momentum |
+| Buzz | News, Tweets, Apps |
+| Notes | Thesis, Notes |
+
+`h` and `l` move between the tabs, and a tab opens on the view last chosen in it. The pane menu's **Go to Tab…** lists every view under its tab. Trade (with a connected broker) and ADR vs Home (for a listing with a known receipt pair) sit beside Overview, and a plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
+
+Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 
 | Instrument | Tabs |
 |------------|------|

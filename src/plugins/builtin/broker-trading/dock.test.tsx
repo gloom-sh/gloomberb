@@ -76,7 +76,7 @@ test("Research opens beside either chart surface, falls back at 90 columns, and 
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
   await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
   await tui.waitForFrameToContain("PRICE CONTEXT 140");
-  await tui.emitKeypress({ name: "h" }, { trackPropagation: true });
+  await f.tab("overview");
   // One key opens the ticket from Overview too; the side is chosen in it.
   await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Buy 1 AAPL");
