@@ -11,6 +11,8 @@ import {
 import { saveConfig } from "../../../../data/config/store";
 import { pluginAutoUpdateEnabled } from "../../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../../plugins/auto-update-node";
+import { getPluginSeedProgress, subscribePluginSeed } from "../../../../plugins/seed-progress";
+import { stopInstallCommands } from "../../../../plugins/running-installs";
 import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
@@ -215,7 +217,15 @@ export class DesktopBackend {
     // before the main window opens, so it runs before the shell's own
     // handlers wait for the windows to go.
     Electrobun.events.on("before-quit", () => {
+      stopInstallCommands();
       if (!this.quitting) this.windowController?.flush();
+    });
+    // The launch restores plugins that moved into their own repositories in
+    // this process, after the services are up; the main window brings each
+    // in as it lands. Its init carries where the restore was then.
+    subscribePluginSeed(() => {
+      const seed = getPluginSeedProgress();
+      if (seed) this.readyMainWindowRpc()?.send["plugins.seedProgress"]({ seed });
     });
     this.windowController.openWindow(MAIN_WINDOW_ID);
     this.windowController.focus(MAIN_WINDOW_ID);
@@ -637,6 +647,8 @@ export class DesktopBackend {
   quit(): void {
     if (this.quitting) return;
     this.quitting = true;
+    // Plugin installs still running in the background end with the app.
+    stopInstallCommands();
     // The order a quit had with one window: the other windows close, the
     // services stop while the main window can still hear from them, and
     // the main window goes last.

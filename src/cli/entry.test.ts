@@ -10,7 +10,7 @@ async function smokeDirectory() {
   return mkdtemp(join(parent, "cli-cold-start-entry-"));
 }
 
-test("packaged UI launches restore once before loading the TUI catalog; headless commands do not restore", async () => {
+test("packaged UI launches plan the plugin restore before the TUI catalog and install only once the app is up; headless commands do neither", async () => {
   const root = join(import.meta.dir, "../..");
   const directory = await smokeDirectory();
   const preload = join(directory, "preload.ts");
@@ -20,13 +20,13 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
     await Bun.write(preload, `
       import { mock } from "bun:test";
       const calls = [];
-      let restored = false;
-      mock.module(${modulePath("cli/restore-plugins.ts")}, () => ({ restoreExtractedPlugins: async () => {
-        calls.push("restore"); restored = true;
+      mock.module(${modulePath("cli/restore-plugins.ts")}, () => ({ prepareExtractedPluginSeed: async () => {
+        calls.push("plan");
+        return { record: {}, start: async () => { calls.push("install"); return {}; } };
       }}));
       mock.module(${modulePath("plugins/loader.ts")}, () => ({ loadExternalPlugins: async (target = "cli") => {
         calls.push("catalog:" + target);
-        return restored ? [{ plugin: { id: "tv" }, path: "tv" }] : [];
+        return [{ plugin: { id: "tv" }, path: "tv" }];
       }}));
       mock.module(${modulePath("cli/index.ts")}, () => ({
         dispatchCli: async (args, options) => {
@@ -53,10 +53,12 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
       if (args[0] === "help") {
         expect(calls).toEqual(["dispatch:help", "catalog:cli"]);
       } else {
+        // The first frame waits for no download: the installs start after it.
         expect(calls).toEqual([
           ...(args[0] === "handoff" ? ["dispatch:handoff", "catalog:cli"] : []),
-          "restore", "catalog:tui",
+          "plan", "catalog:tui",
           { launch: ["tv"], request: args[0] === "handoff" ? { source: "handoff" } : null },
+          "install",
         ]);
       }
     }

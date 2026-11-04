@@ -14,6 +14,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
 import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
+import type { PluginSeedProgress } from "../../../plugins/seed-progress";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
 import type { StallEvent } from "../../../utils/main-thread-stall";
@@ -41,8 +42,12 @@ export interface ElectrobunBackendInit {
   windows?: DesktopWindowInfo[];
   /** The main window's: the tabs the other windows hold, for cloud sync. */
   otherWindowTabs?: OtherWindowTab[];
-  /** What the launch's plugin seed could not install, for the main window to say once. */
-  pluginSeedNotice?: { body: string; type: "error" | "info" };
+  /**
+   * The main window's: the plugins the launch is restoring in the background,
+   * to bring into its session as they land and to say what could not be
+   * installed. Later changes arrive as `plugins.seedProgress`.
+   */
+  pluginSeed?: PluginSeedProgress;
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
   /** The copy on disk of the ids the view keeps in its own storage (view/view-ids.ts). */
@@ -377,6 +382,11 @@ interface PluginsUpdatedMessage {
   directories: string[];
 }
 
+/** The launch's restore of plugins that moved into their own repositories, after a change. */
+interface PluginSeedProgressMessage {
+  seed: PluginSeedProgress;
+}
+
 export interface RemoteControlRequestMessage {
   request: RemoteControlRequest;
 }
@@ -414,6 +424,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.focusPane": DesktopFocusPaneMessage;
       "desktop.windowVisibility": DesktopWindowVisibilityMessage;
       "plugins.updated": PluginsUpdatedMessage;
+      "plugins.seedProgress": PluginSeedProgressMessage;
       "update.progress": UpdateProgressMessage;
       "capability.event": CapabilityEventMessage;
       "http.stream.chunk": HttpStreamChunkMessage;

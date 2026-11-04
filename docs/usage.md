@@ -2317,7 +2317,7 @@ A research tab belongs to the plugin of its function: switching off Ownership & 
 
 The old ids `ticker-research`, `macro` and `market-overview` still switch a whole group (`gloom plugin disable macro` turns off every successor). Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview.
 
-Polls lives in its own repository, so it can ship a fix the day the third-party site it reads changes. Existing installations restore it once after upgrading with their saved panes, and a deliberate removal is respected. To install it by hand: `gloom install gloom-sh/gloom-polls`.
+Polls lives in its own repository, so it can ship a fix the day the third-party site it reads changes. Existing installations restore it once after upgrading, in the background once the app has opened, and its saved panes appear in place when it is installed. A deliberate removal is respected. To install it by hand: `gloom install gloom-sh/gloom-polls`.
 
 Fear & Greed, Market Heatmap, Market Halts and the IPO Calendar are built in, with the same panes, shortcuts and settings. A copy installed earlier as a plugin is no longer loaded: `gloom plugins` lists it, and `gloom remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`, `gloom-ipo-calendar`) deletes it.
 

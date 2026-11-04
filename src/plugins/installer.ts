@@ -1,11 +1,11 @@
 import { logFailure } from "../utils/log-failure";
 import { basename, join, resolve } from "path";
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync } from "fs";
 import { execFile as execFileCallback, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./marketplace/store";
-import { bunCommand, recordDependencyInstall } from "./dependencies";
+import { bunCommand, missingPluginDependencies, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import { importSiblingsFromTheirFolders } from "./peer-imports";
 import {
@@ -19,6 +19,7 @@ import {
 import { pluginDirectoryNames } from "./plugin-names";
 import { gitInstallAdvice } from "./extracted-plugins";
 import { pluginFromModule } from "./plugin-export";
+import { INSTALL_TIMED_OUT, trackInstallCommand } from "./running-installs";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
 import { compareSemver, requiredGloomberb } from "../utils/semver";
@@ -103,6 +104,19 @@ export interface PluginInstallOptions {
    */
   quiet?: boolean;
   pin?: PluginPin;
+  /**
+   * How long each git command, and the dependency install, may run before it
+   * is stopped and the install fails with the code `INSTALL_TIMED_OUT`. No
+   * limit when absent.
+   */
+  timeouts?: { gitMs: number; dependenciesMs: number };
+  /**
+   * Fail, leaving nothing installed, when the plugin's dependencies do not
+   * all install, rather than keep a checkout that only loads once the loader
+   * fetches them. For an install nobody is watching, which the next launch
+   * retries.
+   */
+  requireDependencies?: boolean;
 }
 
 export interface PluginDirectoryInfo {
@@ -115,7 +129,7 @@ export interface PluginDirectoryInfo {
 }
 
 class GitError extends Error {
-  constructor(message: string, readonly stderr: string) {
+  constructor(message: string, readonly stderr: string, readonly timedOut = false) {
     super(stderr.trim() ? `${message}: ${stderr.trim().split("\n").pop()}` : message);
     this.name = "GitError";
   }
@@ -125,6 +139,16 @@ interface RunResult {
   code: number | null;
   stdout: string;
   stderr: string;
+  /** Stopped at its time limit. */
+  timedOut?: boolean;
+}
+
+/** How long a command stopped at its time limit has to exit before it is killed. */
+const KILL_GRACE_MS = 2_000;
+
+
+function seconds(ms: number): string {
+  return `${Math.round(ms / 1000)} s`;
 }
 
 /** Resolves git before a command changes into a plugin checkout. */
@@ -134,11 +158,30 @@ function gitExecutable(): string {
   return executable;
 }
 
+/** Ends a Windows process and every process it started; `fallback` when taskkill cannot run. */
+function stopWindowsTree(pid: number, fallback: () => void): void {
+  const killer = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore", windowsHide: true });
+  killer.once("error", () => {
+    try {
+      fallback();
+    } catch {
+      // Intentional ignore: it exited between the check and the signal.
+    }
+  });
+  killer.unref();
+}
+
 /**
  * Runs a command without blocking the event loop: a fetch or `bun install`
  * takes seconds, and the terminal UI and the desktop's Bun process keep
  * serving the app while a plugin updates in the background. Rejects only
  * when the command cannot be started at all.
+ *
+ * With `timeoutMs`, a command still running then is stopped and the result
+ * says so at once: a clone whose connection stalls would otherwise hold its
+ * install for good. The helpers git starts for the transfer are stopped with
+ * it: off Windows it runs in a process group of its own, and on Windows
+ * `taskkill /T` ends its process tree, where a signal reaches only git.
  */
 function run(
   command: string,
@@ -146,15 +189,56 @@ function run(
   cwd: string,
   output: { stdout: "pipe" | "inherit"; stderr: "pipe" | "inherit" },
   env?: NodeJS.ProcessEnv,
+  timeoutMs?: number,
 ): Promise<RunResult> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command === "git" ? gitExecutable() : command, args, { cwd, env, stdio: ["ignore", output.stdout, output.stderr] });
+    const group = timeoutMs !== undefined && process.platform !== "win32";
+    const child = spawn(command === "git" ? gitExecutable() : command, args, {
+      cwd,
+      env,
+      stdio: ["ignore", output.stdout, output.stderr],
+      ...(group ? { detached: true } : {}),
+    });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const stop = (signal: NodeJS.Signals) => {
+      try {
+        if (group && child.pid) process.kill(-child.pid, signal);
+        else if (timeoutMs !== undefined && process.platform === "win32" && child.pid) stopWindowsTree(child.pid, () => child.kill(signal));
+        else child.kill(signal);
+      } catch {
+        // Intentional ignore: it exited between the check and the signal.
+      }
+    };
+    // An install with a limit is one nobody waits on: quitting stops it.
+    const forget = timeoutMs === undefined ? null : trackInstallCommand(() => stop("SIGKILL"));
+    child.once("exit", () => forget?.());
+    const timer = timeoutMs === undefined ? null : setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      stop("SIGTERM");
+      // A command that ignores the request is not left running.
+      setTimeout(() => stop("SIGKILL"), KILL_GRACE_MS).unref?.();
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolveRun({ code: null, stdout, stderr, timedOut: true });
+    }, timeoutMs);
     child.stdout?.setEncoding("utf-8").on("data", (chunk: string) => { stdout += chunk; });
     child.stderr?.setEncoding("utf-8").on("data", (chunk: string) => { stderr += chunk; });
-    child.once("error", reject);
-    child.once("close", (code) => resolveRun({ code, stdout, stderr }));
+    child.once("error", (error) => {
+      if (timer) clearTimeout(timer);
+      forget?.();
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+    child.once("close", (code) => {
+      if (timer) clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      resolveRun({ code, stdout, stderr });
+    });
   });
 }
 
@@ -181,18 +265,19 @@ function gitMissingMessage(platform: string = process.platform): string {
  * the detached-HEAD advice a pinned checkout prints are chatter, and a failure
  * says what went wrong in its error, from git's last line.
  */
-async function git(args: string[], cwd: string, quiet: boolean, failure: string): Promise<string> {
+async function git(args: string[], cwd: string, quiet: boolean, failure: string, timeoutMs?: number): Promise<string> {
   // Quiet means the app owns the screen, or there is no terminal at all: a
   // repository that wants credentials fails instead of prompting on it.
   const env = quiet ? { ...process.env, GIT_TERMINAL_PROMPT: "0" } : undefined;
   let result: RunResult;
   try {
-    result = await run("git", ["-c", "advice.detachedHead=false", ...args], cwd, { stdout: "pipe", stderr: "pipe" }, env);
+    result = await run("git", ["-c", "advice.detachedHead=false", ...args], cwd, { stdout: "pipe", stderr: "pipe" }, env, timeoutMs);
   } catch (error) {
     // git could not start: almost always because it is not installed.
     const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
     throw new GitError(failure, missing ? gitMissingMessage() : String(error));
   }
+  if (result.timedOut) throw new GitError(failure, `no answer within ${seconds(timeoutMs!)}`, true);
   if (result.code !== 0) throw new GitError(failure, result.stderr);
   return result.stdout.trim();
 }
@@ -212,13 +297,13 @@ function pinMatches(commit: string | null, expected: string | undefined): boolea
  * is what the ref names and the pinned commit (when known) only verifies it;
  * with a commit alone, that commit is fetched directly.
  */
-async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): Promise<string> {
+async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean, timeoutMs?: number): Promise<string> {
   const wanted = pin.ref ?? pin.commit;
   if (!wanted) throw new Error("The registry pin names no ref or commit.");
   if (pin.ref) validatePinRef(pin.ref);
   if (pin.commit && !COMMIT_PATTERN.test(pin.commit)) throw new Error(`Invalid commit in registry pin: ${pin.commit}`);
-  await git(["fetch", "--depth", "1", "origin", "--", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
-  const commit = await git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`);
+  await git(["fetch", "--depth", "1", "origin", "--", wanted], targetDir, quiet, `Could not fetch ${wanted}`, timeoutMs);
+  const commit = await git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`, timeoutMs);
   if (!pinMatches(commit, pin.commit)) {
     throw new Error(`${pin.ref ?? "The pinned ref"} now points at ${commit.slice(0, 7)}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
   }
@@ -226,8 +311,8 @@ async function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): Prom
 }
 
 /** Leaves HEAD detached at one exact commit, which is the state `update` expects to find. */
-async function checkoutCommit(targetDir: string, commit: string, quiet: boolean): Promise<void> {
-  await git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`);
+async function checkoutCommit(targetDir: string, commit: string, quiet: boolean, timeoutMs?: number): Promise<void> {
+  await git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`, timeoutMs);
 }
 
 
@@ -282,14 +367,19 @@ export async function describeOlderCommit(dir: string, installed: string, candid
 }
 
 /** Brings `targetDir` to the pinned commit. */
-async function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean): Promise<void> {
+async function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean, timeoutMs?: number): Promise<void> {
   if (!pin.ref && !pin.commit) return;
-  await checkoutCommit(targetDir, await fetchPin(targetDir, pin, quiet), quiet);
+  await checkoutCommit(targetDir, await fetchPin(targetDir, pin, quiet, timeoutMs), quiet, timeoutMs);
 }
 
-async function installDependencies(targetDir: string, quiet: boolean): Promise<void> {
+/**
+ * Runs `bun install` in `targetDir` and links the host. `recordAs` is the
+ * folder the plugin is installed under, when `targetDir` is where it is
+ * being put together. Null when there was nothing to install or no bun.
+ */
+async function installDependencies(targetDir: string, quiet: boolean, timeoutMs?: number, recordAs: string = targetDir): Promise<RunResult | null> {
   const pkgPath = join(targetDir, "package.json");
-  if (!existsSync(pkgPath)) return;
+  if (!existsSync(pkgPath)) return null;
   if (!quiet) console.log(cliStyles.muted("Installing plugin dependencies..."));
   // --production: plugin repos depend on `gloomberb` as a devDependency so
   // their own CI can typecheck against the real API. At runtime the host is
@@ -298,7 +388,7 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   const output = quiet ? "pipe" : "inherit";
   const bun = bunCommand();
   const result = bun
-    ? await recordDependencyInstall(targetDir, () => run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env)
+    ? await recordDependencyInstall(recordAs, () => run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env, timeoutMs)
       .catch(logFailure("plugin-installer", "Plugin dependency installation failed", null)))
     : null;
   if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
@@ -309,6 +399,7 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
     console.error(cliStyles.warning(`Warning: could not link the Gloom runtime (${link.error}).`));
     console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
   }
+  return result;
 }
 
 async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "id" | "name" | "version"> | null> {
@@ -351,37 +442,67 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   ensurePluginsDir();
   const targetDir = join(PLUGINS_DIR, name);
 
-  if (existsSync(targetDir)) {
-    fail(`Plugin "${name}" already exists.`, `Use "gloom update ${name}" to refresh it.`);
-  }
+  const alreadyInstalled = () => fail(`Plugin "${name}" already exists.`, `Use "gloom update ${name}" to refresh it.`);
+  if (existsSync(targetDir)) alreadyInstalled();
 
   say(cliStyles.accent(`Installing ${name}`));
   say(cliStyles.muted(url));
 
+  // Put together beside the plugins, under a dot name the loader and the
+  // seeder pass over, and moved into place only once complete: an install
+  // stopped half way (the app quit, a limit hit) never leaves a folder that
+  // passes for the plugin.
+  removeAbandonedInstalls();
+  const stagingDir = join(PLUGINS_DIR, `${STAGING_PREFIX}${name}-${process.pid}-${++stagingCount}`);
+  const timeoutMs = options.timeouts?.gitMs;
   const pin = options.pin ?? {};
   try {
     const cloneArgs = ["clone", "--depth", "1"];
     if (pin.ref) cloneArgs.push(`--branch=${validatePinRef(pin.ref)}`);
-    cloneArgs.push("--", url, targetDir);
-    await git(cloneArgs, PLUGINS_DIR, quiet, `Failed to clone ${url}`);
+    cloneArgs.push("--", url, stagingDir);
+    await git(cloneArgs, PLUGINS_DIR, quiet, `Failed to clone ${url}`, timeoutMs);
     if (pin.ref) {
-      const commit = readPluginCommit(targetDir);
+      const commit = readPluginCommit(stagingDir);
       if (!pinMatches(commit, pin.commit)) {
         throw new Error(`${pin.ref} now points at ${commit?.slice(0, 7) ?? "?"}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
       }
     } else if (pin.commit) {
-      await checkoutPin(targetDir, pin, quiet);
+      await checkoutPin(stagingDir, pin, quiet, timeoutMs);
     }
     // A fork under another name says what it is in its gloom.json.
-    refuseAbsorbed(findAbsorbedCheckout(targetDir));
+    refuseAbsorbed(findAbsorbedCheckout(stagingDir));
+
+    if (pin.ref || pin.commit) say(cliStyles.muted(`Pinned to ${pin.ref ?? pin.commit}`));
+
+    const dependenciesMs = options.timeouts?.dependenciesMs;
+    const dependencies = await installDependencies(stagingDir, quiet, dependenciesMs, targetDir);
+    if (dependencies?.timedOut) {
+      throw Object.assign(new Error(`Installing ${name}'s dependencies took longer than ${seconds(dependenciesMs!)}.`), { timedOut: true });
+    }
+    if (options.requireDependencies) {
+      const missing = missingPluginDependencies(stagingDir);
+      if (missing.length > 0) throw new Error(`${name}'s dependencies did not install: ${missing.join(", ")}.`);
+    }
   } catch (error) {
-    rmSync(targetDir, { recursive: true, force: true });
-    fail(error instanceof Error ? error.message : String(error));
+    removeStaging(stagingDir);
+    const timedOut = (error as { timedOut?: unknown } | null)?.timedOut === true;
+    fail(error instanceof Error ? error.message : String(error), undefined, timedOut ? INSTALL_TIMED_OUT : undefined);
   }
 
-  if (pin.ref || pin.commit) say(cliStyles.muted(`Pinned to ${pin.ref ?? pin.commit}`));
-
-  await installDependencies(targetDir, quiet);
+  let moved = false;
+  try {
+    moved = await moveIntoPlace(stagingDir, targetDir);
+  } catch (error) {
+    removeStaging(stagingDir);
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  if (!moved) {
+    removeStaging(stagingDir);
+    // Another install of it finished first: the app beside this one, or a second click.
+    alreadyInstalled();
+  }
+  // The links were made from where it was put together.
+  linkHostPackages(targetDir);
 
   const missing = missingPeerPlugins(targetDir);
   if (missing.length > 0) {
@@ -389,6 +510,74 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
     return describe(targetDir, name, null);
   }
   return validateInstall(targetDir, name, quiet);
+}
+
+/** Where an install is put together: `.installing-<name>-<pid>-<n>` in the plugins folder. */
+const STAGING_PREFIX = ".installing-";
+const STAGING_NAME = /^\.installing-.+-(\d+)-\d+$/;
+let stagingCount = 0;
+
+function processRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it runs, as another user.
+    return (error as NodeJS.ErrnoException | null)?.code === "EPERM";
+  }
+}
+
+/**
+ * Removes an install's staging folder. A folder that will not go (a git
+ * helper that outlived its stop still holds it on Windows, a read-only file)
+ * never replaces the reason the install failed: it carries a name the loader
+ * passes over, and a later install clears it once its process has ended.
+ */
+function removeStaging(stagingDir: string): void {
+  try {
+    rmSync(stagingDir, { recursive: true, force: true });
+  } catch (error) {
+    logFailure("plugin-installer", "Could not remove an unfinished plugin install")(error);
+  }
+}
+
+/**
+ * Drops what installs left behind when their process ended mid-way. Best
+ * effort: one that cannot be removed stays, and never stops this install.
+ */
+function removeAbandonedInstalls(): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(PLUGINS_DIR);
+  } catch (error) {
+    logFailure("plugin-installer", "Could not list the plugins folder for unfinished installs")(error);
+    return;
+  }
+  for (const entry of entries) {
+    const pid = Number(STAGING_NAME.exec(entry)?.[1]);
+    if (!pid || pid === process.pid || processRunning(pid)) continue;
+    removeStaging(join(PLUGINS_DIR, entry));
+  }
+}
+
+/**
+ * Renames the finished install into place. False when the folder is taken.
+ * Windows refuses a rename while a scanner still holds a file just written,
+ * so a refusal there is tried again for a moment.
+ */
+async function moveIntoPlace(stagingDir: string, targetDir: string): Promise<boolean> {
+  for (let attempt = 0; ; attempt += 1) {
+    if (existsSync(targetDir)) return false;
+    try {
+      renameSync(stagingDir, targetDir);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if (existsSync(targetDir)) return false;
+      if (attempt >= 10 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw error;
+      await Bun.sleep(200);
+    }
+  }
 }
 
 /** Reads the export of a checkout that was just installed, and says what it is. */

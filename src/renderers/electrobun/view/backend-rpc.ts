@@ -18,6 +18,7 @@ import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
 import { nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { StallEvent } from "../../../utils/main-thread-stall";
+import { publishPluginSeedProgress } from "../../../plugins/seed-progress";
 
 type BackendMessages = ElectrobunDesktopRpcSchema["webview"]["messages"];
 type BackendMessageName = keyof BackendMessages;
@@ -107,6 +108,12 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
         if (!Array.isArray(message?.directories)) return;
         const directories = message.directories.filter((directory): directory is string => typeof directory === "string");
         emit("plugins.updated", { directories });
+      },
+      // Kept, not handed to a listener: it can arrive before the app is up,
+      // and the app reads the latest whenever it looks.
+      "plugins.seedProgress": (message) => {
+        if (typeof message?.seed?.seq !== "number" || !Array.isArray(message.seed.plugins)) return;
+        publishPluginSeedProgress(message.seed);
       },
       "capability.event": (message) => {
         emit("capability.event", {

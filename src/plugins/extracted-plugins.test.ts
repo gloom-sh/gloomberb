@@ -126,6 +126,30 @@ describe("seedExtractedPlugins", () => {
     }
   });
 
+  /**
+   * The installs run while the app is up, one after another, so a plugin can
+   * arrive before its turn: brought along by a sibling's install, or put
+   * there by another Gloom running beside this one. A second clone would
+   * fail on the folder, and counting that as a failure would leave the
+   * plugin out of the session for nothing.
+   */
+  test("counts a plugin that arrived before its turn as installed, and reports each as it settles", async () => {
+    const settled: Array<[string, string | null]> = [];
+    const installs: string[] = [];
+    const result = await withPluginsDir((dir) => seedExtractedPlugins(config(), async (ref) => {
+      installs.push(ref);
+      if (ref === "gloom-sh/gloom-tv") mkdirSync(join(dir, "gloom-substack"));
+      if (ref === "gloom-sh/gloom-polls") throw new Error("offline");
+      return { directory: ref.split("/")[1]! };
+    }, dir, (id, installed) => { settled.push([id, installed?.directory ?? null]); }));
+
+    expect(installs).not.toContain("gloom-sh/gloom-substack");
+    expect(result.installed).toContain("substack");
+    expect(settled.slice(0, 2)).toEqual([["tv", "gloom-tv"], ["substack", "gloom-substack"]]);
+    expect(settled).toContainEqual(["polls", null]);
+    expect(settled).toHaveLength(EXTRACTED_PLUGINS.length);
+  });
+
   test("retries next launch instead of recording a failed install", async () => {
     const result = await withPluginsDir((dir) => seedExtractedPlugins(config(), async () => {
       throw new Error("offline");

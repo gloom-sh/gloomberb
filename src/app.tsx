@@ -364,6 +364,7 @@ function AppInner({
   useAppStartupRuntime({
     appActive,
     autoImportBrokerPositions,
+    importBrokerPositions,
     dataProvider,
     dispatch,
     externalPlugins,
