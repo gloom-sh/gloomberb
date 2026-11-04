@@ -31,7 +31,7 @@ export function redactUnavailableFundamentals(value: Fundamentals | undefined): 
 export const BANK_ENTERPRISE_VALUE = "n/m for banks";
 
 /** A bank by its industry ("Banks - Diversified", "Banks - Regional"), as the Bank section and its EV read one. */
-export function isBankIndustry(industry: string | null | undefined): boolean {
+function isBankIndustry(industry: string | null | undefined): boolean {
   return /\bbanks?\b/i.test(industry ?? "");
 }
 

@@ -227,7 +227,7 @@ class QuoteGatherer {
  * symbols of a batched ticker change lookup, a pasted list's own. A little of
  * each is left for the requests a lookup makes beside these (a profile).
  */
-export const SIGNED_OUT_ALLOWANCE = {
+const SIGNED_OUT_ALLOWANCE = {
   shared: { units: 280, windowMs: 60_000 },
   listLookups: { units: 580, windowMs: 60_000 },
 } as const;
