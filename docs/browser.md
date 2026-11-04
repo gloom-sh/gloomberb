@@ -12,6 +12,7 @@ Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a s
 - Free access has rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Pro provides real-time data and more datasets.
 - Chat needs a free Gloom Cloud account, and is read-only until the account's email is verified.
 - Configuration, tickers, layouts, session state, and plugin state are stored in the browser.
+- A function link opens the hosted terminal on one function and what it opens on, as typing them in the command bar would: `term.gloom.sh/?fn=ERN&arg=NVDA` opens NVDA's earnings, `?fn=PERP&arg=BTC` BTC's perpetuals. The argument is one symbol or a comma list of them; a code that runs a command instead of opening a pane is refused. A ticker link (`?ticker=NVDA&tab=news`) opens the research pane on one of its tabs.
 - A share link opens the hosted terminal on the shared pane, in the state the sender was looking at: a chart keeps its drawings and zoom, a news pane its open story, a filings pane its open document. Opening one requires no account; panes served by Gloom Cloud (SEC filings, insider transactions) ask the receiver to sign in. Creating a share requires a verified Gloom Cloud account.
 
 ## Plugins

@@ -35,6 +35,7 @@ const SHARE_ID = /^[a-f0-9]{32}$/;
 export type DesktopDeepLinkAction =
   | { type: "open-account-management"; route: CloudDeepLinkRoute; message: string }
   | { type: "open-ticker"; symbol: string; tabId: string | null; message: string }
+  | { type: "open-function"; code: string; arg: string | null; message: string }
   | { type: "open-collection"; kind: CollectionDeepLinkKind; collectionId: string; message: string }
   | {
       type: "create-alert";
@@ -195,6 +196,26 @@ function parseTickerDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
   return { type: "open-ticker", symbol, tabId, message: tickerMessage(symbol, tabId) };
 }
 
+/** A function's code as the command bar writes it: ERN, PERP, 13F. */
+const FUNCTION_CODE = /^[A-Z0-9]{1,12}$/;
+/**
+ * One argument, one word: a symbol or a comma list of them (NVDA, BRK.B,
+ * 7203:TSE, BTC-USD, ES=F, ^GSPC, AAPL,MSFT). No spaces, so a link names one
+ * function and what it opens on, never a second command.
+ */
+const FUNCTION_ARG = /^[A-Z0-9^$][A-Z0-9.:=/!^$,_-]{0,63}$/;
+
+function parseFunctionDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
+  const code = (parsed.segments[0] ?? param(parsed.url, "code"))?.trim().toUpperCase() ?? "";
+  if (!FUNCTION_CODE.test(code)) return { type: "unsupported", message: "Function links need a function code." };
+  const rawArg = param(parsed.url, "arg");
+  const arg = rawArg ? rawArg.toUpperCase().replace(/^\$/, "") : null;
+  if (rawArg !== null && (!arg || !FUNCTION_ARG.test(arg))) {
+    return { type: "unsupported", message: "Function links take one symbol or a list of symbols." };
+  }
+  return { type: "open-function", code, arg, message: arg ? `Opened ${code} ${arg}.` : `Opened ${code}.` };
+}
+
 function parseCollectionDeepLink(parsed: ParsedGloomUrl, kind: CollectionDeepLinkKind): DesktopDeepLinkAction {
   const collectionId = parsed.segments[0] ?? param(parsed.url, "id", "collection");
   if (!collectionId) return { type: "unsupported", message: "Collection links need an id." };
@@ -282,6 +303,8 @@ export function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAct
       return parseCloudDeepLink(parsed);
     case "ticker":
       return parseTickerDeepLink(parsed);
+    case "fn":
+      return parseFunctionDeepLink(parsed);
     case "portfolio":
       return parseCollectionDeepLink(parsed, "portfolio");
     case "watchlist":
@@ -414,6 +437,26 @@ function handleOpenTicker(
   } else {
     notifySuccess(pluginRegistry, action.message);
   }
+}
+
+/**
+ * A function link opens the pane its code names, as typing the code and its
+ * argument in the command bar would. Only codes that open a pane run; a code
+ * for a command (settings, sign out) is refused, so a link only adds a view.
+ */
+function handleOpenFunction(
+  action: Extract<DesktopDeepLinkAction, { type: "open-function" }>,
+  pluginRegistry: PluginRegistry,
+): void {
+  const opensPane = [...pluginRegistry.paneTemplates.values()].some(({ shortcut }) => (
+    shortcut?.prefix.toUpperCase() === action.code
+    || shortcut?.aliases?.some((alias) => alias.toUpperCase() === action.code)
+  ));
+  if (!opensPane) {
+    notifyError(pluginRegistry, `${action.code} is not a function this version of Gloom opens from a link.`);
+    return;
+  }
+  pluginRegistry.runCommandBarQuery(action.arg ? `${action.code} ${action.arg}` : action.code);
 }
 
 function handleOpenCollection(
@@ -599,6 +642,10 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       return;
     case "open-ticker":
       handleOpenTicker(action, options.pluginRegistry);
+      return;
+    case "open-function":
+      // Like a ticker link, it only opens a view, so it runs at once.
+      handleOpenFunction(action, options.pluginRegistry);
       return;
     case "open-collection":
       handleOpenCollection(action, options);

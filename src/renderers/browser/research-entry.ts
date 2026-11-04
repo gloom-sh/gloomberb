@@ -21,3 +21,15 @@ export function researchEntryFromSearch(search: string): { symbol: string; tab: 
   const tab = params.get("tab") ?? "overview";
   return { symbol: target, tab: /^[a-z-]{1,40}$/.test(tab) ? tab : "overview" };
 }
+
+/**
+ * `?fn=ERN&arg=NVDA`: a function and what it opens on. The address only
+ * carries it here; the deep-link runtime checks the code and argument.
+ */
+export function functionEntryFromSearch(search: string): { code: string; arg: string | null } | null {
+  const params = new URLSearchParams(search);
+  const code = params.get("fn")?.trim().toUpperCase();
+  if (!code || !/^[A-Z0-9]{1,12}$/.test(code)) return null;
+  const arg = params.get("arg")?.trim() || null;
+  return { code, arg };
+}
