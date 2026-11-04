@@ -164,6 +164,43 @@ test("a clone that runs out of time leaves the rest to the next launch", async (
   expect(result).toEqual({ attempts: [EXTRACTED_PLUGINS[0].repo], failed: EXTRACTED_PLUGINS.length });
 }, 60_000);
 
+/**
+ * Two ways a plugin that did install could be lost to the app. Another Gloom
+ * beside this one installs it between the launch's plan and its start, and
+ * the start, looking again, took it as settled: it stayed "installing" and
+ * was never brought in. And a listener that threw (the desktop's send to a
+ * closing window) turned an install that finished into a failure.
+ */
+test("every planned plugin is reported, one installed meanwhile elsewhere too, whatever a listener does", async () => {
+  const profile = upgradeProfile();
+  const [first, ...rest] = EXTRACTED_PLUGINS;
+  const result = await run(profile, `
+    const { mkdirSync } = await import("fs");
+    const { join } = await import("path");
+    const attempts = [];
+    const launch = await restore.prepareExtractedPluginSeed({
+      gitInstalled: () => true,
+      loadRegistryListings: async () => new Map(),
+      installListedPlugin: async (repo) => {
+        attempts.push(repo);
+        const directory = repo.split("/")[1];
+        mkdirSync(join(pluginsDir, directory), { recursive: true });
+        return { directory, path: join(pluginsDir, directory), commit: null, plugin: null };
+      },
+    });
+    mkdirSync(join(pluginsDir, ${JSON.stringify(first.directory)}), { recursive: true });
+    progress.subscribePluginSeed(() => { throw new Error("the window is closing"); });
+    const record = await launch.start();
+    return {
+      attempts,
+      states: [...new Set(progress.getPluginSeedProgress().plugins.map((entry) => entry.state))],
+      seeded: record.seededPlugins.length,
+      failure: record.pluginSeedFailure ?? null,
+    };
+  `, null);
+  expect(result).toEqual({ attempts: rest.map((entry) => entry.repo), states: ["installed"], seeded: EXTRACTED_PLUGINS.length, failure: null });
+}, 60_000);
+
 test("a fresh install, and a profile that restored everything, plan nothing and install nothing", async () => {
   const restored = upgradeProfile();
   const config = JSON.parse(readFileSync(join(restored.home, "config.json"), "utf8"));

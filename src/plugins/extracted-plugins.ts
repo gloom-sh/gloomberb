@@ -95,6 +95,8 @@ export function classifyExtractedPlugins(config: AppConfig, pluginsDir: string =
 /**
  * Installs any extracted plugin the user has not seen yet, one at a time, and
  * reports each as it settles (`onSettled`, with where it landed when it did).
+ * `plan` is what a launch worked out before its first frame, so each plugin it
+ * said it would install is reported, even one another Gloom installed since.
  *
  * Best effort by design: a failure is logged and retried on the next launch
  * rather than recorded, because the common cause is being offline at startup and
@@ -107,34 +109,41 @@ export async function seedExtractedPlugins(
   installPlugin: (ref: string) => Promise<SeedInstall | void>,
   pluginsDir: string = getPluginsDir(),
   onSettled?: (id: string, installed: SeedInstall | null) => void,
+  plan: { pending: readonly ExtractedPlugin[]; settled: readonly string[] } = classifyExtractedPlugins(config, pluginsDir),
 ): Promise<SeedResult> {
-  const { pending, settled } = classifyExtractedPlugins(config, pluginsDir);
+  const { pending, settled } = plan;
   const result: SeedResult = { installed: [], failed: [], seeded: [...config.seededPlugins ?? [], ...settled] };
-  const succeed = (entry: ExtractedPlugin, installed: SeedInstall) => {
-    result.installed.push(entry.id);
-    result.seeded.push(entry.id);
-    onSettled?.(entry.id, installed);
+  // A report that fails never changes what happened to the install it reports.
+  const report = (id: string, installed: SeedInstall | null) => {
+    try {
+      onSettled?.(id, installed);
+    } catch (error) {
+      log.error(`Could not report ${id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   for (const entry of pending) {
+    let installed: SeedInstall | null = null;
     const present = installedDirectory(entry.directory, pluginsDir);
     if (present) {
-      succeed(entry, { directory: present });
-      continue;
-    }
-    try {
-      log.info(`Restoring ${entry.id} from ${entry.repo}`);
-      succeed(entry, await installPlugin(entry.repo) ?? { directory: entry.directory });
-    } catch (error) {
-      const raced = installedDirectory(entry.directory, pluginsDir);
-      if (raced) {
-        succeed(entry, { directory: raced });
-        continue;
+      installed = { directory: present };
+    } else {
+      try {
+        log.info(`Restoring ${entry.id} from ${entry.repo}`);
+        installed = await installPlugin(entry.repo) ?? { directory: entry.directory };
+      } catch (error) {
+        const raced = installedDirectory(entry.directory, pluginsDir);
+        if (raced) installed = { directory: raced };
+        else log.error(`Could not restore ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      log.error(`Could not restore ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);
-      result.failed.push(entry.id);
-      onSettled?.(entry.id, null);
     }
+    if (installed) {
+      result.installed.push(entry.id);
+      result.seeded.push(entry.id);
+    } else {
+      result.failed.push(entry.id);
+    }
+    report(entry.id, installed);
   }
 
   return result;

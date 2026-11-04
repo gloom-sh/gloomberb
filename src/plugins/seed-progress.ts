@@ -1,4 +1,5 @@
 import type { AppConfig, PluginSeedFailure } from "../types/config";
+import { logFailure } from "../utils/log-failure";
 
 /**
  * The plugins this launch is installing because they moved out of Gloom into
@@ -44,11 +45,21 @@ export function samePluginSeedFailure(a: PluginSeedFailure | undefined, b: Plugi
 let progress: PluginSeedProgress | null = null;
 const listeners = new Set<() => void>();
 
-/** Adopts a snapshot unless an equal or newer one is already here. */
+/**
+ * Adopts a snapshot unless an equal or newer one is already here. A listener
+ * that throws (the desktop's send to a window that is closing) is logged and
+ * the others still hear: the install it reports has happened either way.
+ */
 export function publishPluginSeedProgress(next: PluginSeedProgress): void {
   if (progress && next.seq <= progress.seq) return;
   progress = next;
-  for (const listener of [...listeners]) listener();
+  for (const listener of [...listeners]) {
+    try {
+      listener();
+    } catch (error) {
+      logFailure("plugin-seed", "A plugin restore progress listener failed")(error);
+    }
+  }
 }
 
 export function getPluginSeedProgress(): PluginSeedProgress | null {

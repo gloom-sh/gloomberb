@@ -117,7 +117,9 @@ export async function prepareExtractedPluginSeed(deps?: PluginSeedDeps): Promise
       return { record, start: null };
     }
     publish();
-    return { record, start: () => installPending(config, plugins, publish, resolved) };
+    // The plan, not a second look at start: what it said is installing is
+    // what gets reported, including a plugin another Gloom installs meanwhile.
+    return { record, start: () => installPending(config, { pending, settled }, plugins, publish, resolved) };
   } catch (error) {
     log.error(`Plugin restore skipped: ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -126,6 +128,7 @@ export async function prepareExtractedPluginSeed(deps?: PluginSeedDeps): Promise
 
 async function installPending(
   config: AppConfig,
+  plan: ReturnType<typeof classifyExtractedPlugins>,
   plugins: PluginSeedEntry[],
   publish: (outcome?: PluginSeedProgress["outcome"]) => void,
   deps: PluginSeedDeps,
@@ -160,7 +163,7 @@ async function installPending(
     if (installed) Object.assign(entry, { state: "installed", ...installed });
     else entry.state = "failed";
     publish();
-  });
+  }, plan);
   // Recorded, so doctor knows a launch tried, and a failure the next launch
   // retries is not announced again while it lasts.
   const failure = pluginSeedFailure(result.failed, false);
