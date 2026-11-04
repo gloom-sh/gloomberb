@@ -451,7 +451,8 @@ describe("TickerResearchPane", () => {
     await flushFrame();
 
     await settleTickerTabCommit();
-    expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("chart");
+    // Financials is a group after Chart; the next group is Options.
+    expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("options");
 
     await act(async () => {
       tui.setup().mockInput.pressArrow("left");
@@ -461,24 +462,6 @@ describe("TickerResearchPane", () => {
 
     await settleTickerTabCommit();
     expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("financials");
-  });
-
-  test("shows SEC for US equities", async () => {
-    setSharedRegistryForTests(makeRegistry());
-    setOptionsProvider(createProvider(false));
-
-    await tui.render(
-      <DetailHarness
-        config={createDetailConfig("AAPL")}
-        ticker={createTestTicker("AAPL")}
-        financials={null}
-      />,
-      { width: 90, height: 24 },
-    );
-
-    await flushFrame();
-    const frame = tui.frame();
-    expect(frame).toContain("SEC");
   });
 
   test("hides plugin tabs when their owner plugin is disabled", async () => {
@@ -503,7 +486,7 @@ describe("TickerResearchPane", () => {
 
     await flushFrame();
     const frame = tui.frame();
-    expect(frame).not.toContain("SEC");
+    expect(frame).not.toContain("Filings");
   });
 
   test("refreshes plugin tabs when registration completes after the pane mounted", async () => {

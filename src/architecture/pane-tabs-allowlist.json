@@ -63,6 +63,7 @@
     "symbol": "No ticker yet: the pane asks for one before any view applies."
   },
   "src/plugins/builtin/ticker-detail/pane.tsx": {
-    "!paneSettings.hideTabs && ticker": "The hideTabs setting locks the pane to one view, and with no ticker selected there is nothing to research."
+    "!paneSettings.hideTabs && ticker": "The hideTabs setting locks the pane to one view, and with no ticker selected there is nothing to research.",
+    "views": "A group with one view for this ticker opens it directly; only a group with several offers them as choices."
   }
 }
