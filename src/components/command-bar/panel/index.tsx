@@ -64,6 +64,7 @@ export function CommandBarPanel({
   onThemeCommit,
   onThemePreview,
   panelBounds,
+  clearBounds = null,
   queryDisplayWidth,
   rootGhostSuffix,
   rootShortcutFeedback,
@@ -145,6 +146,18 @@ export function CommandBarPanel({
         onOverlayClose();
       }}
     >
+      {/* The terminal sheet's rows are its own, edge to edge: no piece of a pane shows at its sides. */}
+      {clearBounds && (
+        <Box
+          position="absolute"
+          top={clearBounds.y}
+          left={clearBounds.x}
+          width={clearBounds.width}
+          height={clearBounds.height}
+          backgroundColor={palette.panelBg}
+          zIndex={100}
+        />
+      )}
       <Box
         position="absolute"
         top={0}

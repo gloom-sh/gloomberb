@@ -214,6 +214,7 @@ export function useCommandBarPanelRuntime({
     onThemeCommit: handleThemeCommit,
     onThemePreview: applyThemePreview,
     panelBounds: panelLayout.panelBounds,
+    clearBounds: panelLayout.clearBounds,
     queryDisplayWidth: panelLayout.queryDisplayWidth,
     rootGhostSuffix,
     rootShortcutFeedback,
