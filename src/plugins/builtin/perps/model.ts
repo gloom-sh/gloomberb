@@ -36,7 +36,7 @@ export const price = (n: number | null | undefined) => n == null ? "--" : n.toLo
 export const compact = (n: number | null | undefined) => n == null ? "--" : formatCompact(n, { fixedDecimals: true });
 export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : "--";
 /** A list row's observation, month to minute: the header names UTC and the footer the full as-of. */
-const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : "--";
+export const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : "--";
 /**
  * The listed security a market tracks, as DES, FA and G take it: a US listing by its symbol, the key a stock is
  * saved and opened under, and a listing abroad with its venue (`NET:XLON`), so they open the security the premium

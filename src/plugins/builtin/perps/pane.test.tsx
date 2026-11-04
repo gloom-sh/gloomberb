@@ -239,6 +239,8 @@ test("evidence distinguishes source time, raw interval, reference price and reta
   // A crypto perp has no listed underlying, so the reference-price rows are left out rather than shown as unavailable.
   expect(frame).not.toContain("Underlying last");
   expect(frame).toContain("Source as of");
+  // Where the figures were read, as an export cites it.
+  expect(frame).toMatch(/Source\s+https:\/\/api\.hyperliquid\.xyz/);
 });
 
 test("the board's footer says live only while every row on screen streams, and otherwise dates them by the oldest price", async () => {

@@ -63,7 +63,8 @@ function statusColor(status: IpoBoardStatus, colors: ThemeColors): string {
     case "upcoming":
     case "offering": return colors.warning;
     // Its listing day went by with no word: no longer next, not called off either.
-    case "overdue": return colors.textDim;
+    case "overdue":
+    case "delayed": return colors.textDim;
     case "priced": return colors.textBright;
     case "listed": return colors.positive;
     case "withdrawn": return colors.negative;

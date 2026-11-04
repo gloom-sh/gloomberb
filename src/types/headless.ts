@@ -587,6 +587,15 @@ export type HeadlessBundleSection =
     rowAsOfKey?: string;
     /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
     interval?: string;
+    /** The row field naming each row's own interval (a contract's funding interval, `8h`), for rows that differ: each exported row names it in `interval`. */
+    rowIntervalKey?: string;
+    /**
+     * The row field naming who each row is cited to, for a table whose rows
+     * come from different publishers (each venue's contract): each exported
+     * row names it in `source`, in place of the closing lines' source that
+     * lists them all.
+     */
+    rowSourceKey?: string;
     /** The symbol every row is of, where the report's own is not (a section per name): each exported row names it in `symbol_or_series`. */
     symbol?: string;
     /** When every row was observed (an ISO date or instant), where it is not the report's newest: each exported row names it in `as_of`. */
@@ -630,6 +639,8 @@ export type HeadlessBundleSection =
     unit?: never;
     rowUnitKey?: never;
     interval?: never;
+    rowIntervalKey?: never;
+    rowSourceKey?: never;
     locked?: never;
   };
 

@@ -358,9 +358,36 @@ const COMMAND_POINTERS: ReadonlyArray<{
   },
 ];
 
-/** The command for a query that names a setting ("light theme"), a portfolio report ("drip") or a currency ("yen"), else null. */
+/** The command for a query that names a setting ("light theme"), a portfolio report ("drip"), a currency ("yen") or a perpetual ("btc perp"), else null. */
 export function commandPointer(query: string): string | null {
-  return findCommandPointer(query)?.line ?? currencyPointer(query);
+  return findCommandPointer(query)?.line ?? currencyPointer(query) ?? perpPointer(query);
+}
+
+const PERP_WORDS = new Set(["perp", "perps", "perpetual", "perpetuals"]);
+/** Words a perpetual query says about the contract, not which coin: "btc perpetual funding rate on binance". */
+const PERP_FILLER = new Set(["futures", "future", "contract", "contracts", "swap", "swaps", "funding", "rate", "rates", "open", "interest", "oi",
+  "premium", "basis", "price", "prices", "on", "venue", "venues", "binance", "bybit", "okx", "hyperliquid", "usdt", "usdc", "usd", "crypto"]);
+
+/** A perpetual that is no futures contract: a perpetual bond or preferred share has a coupon, not funding. */
+const PERPETUAL_SECURITIES = new Set(["bond", "bonds", "preferred", "preferreds", "pref", "prefs", "preference", "note", "notes", "coco", "cocos", "at1",
+  "debt", "capital", "annuity", "annuities", "subordinated", "hybrid", "hybrids"]);
+
+/**
+ * `fn PERP` for a query that asks for a perpetual contract: with the market it names, "btc perpetual" reads
+ * `fn PERP BTC`; with none ("perpetual funding rates"), the board. A query that names several things besides, or a
+ * perpetual bond or preferred, is left to search.
+ */
+function perpPointer(query: string): string | null {
+  const asked = words(query);
+  if (!asked.some((word) => PERP_WORDS.has(word)) || asked.some((word) => PERPETUAL_SECURITIES.has(word))) return null;
+  const named = asked.filter((word) => !PERP_WORDS.has(word) && !PERP_FILLER.has(word));
+  if (named.length > 1) return null;
+  // A symbol reads in capitals; a name (bitcoin) as typed, which PERP reads as the market it stands for.
+  const word = named[0];
+  const market = word && word.length <= 5 ? word.toUpperCase() : word;
+  const title = market && `${market[0]!.toUpperCase()}${market.slice(1)}`;
+  return market ? `${title} perpetuals by venue, with funding, open interest and premium: gloom fn PERP ${market}`
+    : "Perpetual markets by venue, with funding, open interest and premium: gloom fn PERP";
 }
 
 /**

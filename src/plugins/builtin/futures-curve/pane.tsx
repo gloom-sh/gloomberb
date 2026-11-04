@@ -17,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -157,7 +157,8 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   [data, colors, horizon, requestedDate]);
   const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
   // Until the bars first answer there is nothing to say: no reason, only blank cells.
-  const bars = basisActive ? spotBars.data : null;
+  // The server's spot in each print's own minute fills what the bars a delayed reader gets do not reach yet.
+  const bars = useMemo(() => basisActive ? curveSpotBars(spotBars.data ?? null, data?.contracts ?? []) : null, [basisActive, spotBars.data, data]);
   const basis = useMemo(() => curveBasisRows(basisActive ? data?.contracts ?? [] : [], bars), [basisActive, bars, data]);
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.columnId, sort.direction, changes, basis), [data, sort, changes, basis]);
   // The curve tab lists the contracts the chart plots; Contracts keeps every one.
@@ -250,7 +251,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   // A past date with no archived curve says why in the body, not behind the warning.
   const emptyPast = !!requestedDate && !!data && !data.contracts.length;
   // The basis notes the report prints under its table: the convention, why a cell is blank, and which rates spot noise swamps.
-  const basisNotes = basisActive && bars ? [BASIS_CONVENTION, blankBasisNote(tableRows, basis), shortDatedBasisNote(tableRows, basis)]
+  const basisNotes = basisActive && bars ? [BASIS_CONVENTION, blankBasisNote(tableRows, basis, data ? curveCache(data, clock) : null), shortDatedBasisNote(tableRows, basis)]
     .filter((note): note is string => !!note) : [];
   // A long in these can be assigned delivery: the hedge a trader rolls before first notice.
   const delivering = data?.contracts.filter((row) => row.inDelivery).map((row) => curveContractCode(row.symbol)) ?? [];

@@ -102,6 +102,12 @@ export interface FuturesContract {
   firstNotice?: string | null
   /** Past first notice: a long can be assigned delivery. */
   inDelivery?: boolean
+  /**
+   * A CME crypto contract's spot in the minute of its last trade: the close
+   * of the USD pair's one-minute bar that opened then. Null when no bar
+   * opened in that minute; absent on other roots and from older servers.
+   */
+  spot?: { symbol: string; price: number; minute: string } | null
 }
 
 export interface FuturesCurvePayload {
@@ -148,6 +154,11 @@ export interface FuturesCurvePayload {
   settlementDate?: string | null
   /** The root's contract terms; null where they are not listed. */
   spec?: FuturesContractSpec | null
+  /**
+   * A copy the server kept from an earlier read (`fetchedAt`), served because
+   * its source failed: every contract is marked stale for that.
+   */
+  cached?: boolean
 }
 
 

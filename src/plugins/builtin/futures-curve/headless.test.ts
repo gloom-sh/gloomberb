@@ -39,7 +39,7 @@ const SPOT_BARS = Array.from({ length: 161 }, (_, index) => Date.parse("2026-10-
   .map((minute) => ({ date: new Date(minute), close: minute === Date.parse("2026-10-24T01:33:00Z") ? 80_600 : minute === Date.parse("2026-10-24T03:34:00Z") ? 80_860 : 80_700 }));
 
 function context(options: { quote?: (symbol: string) => Promise<ReturnType<typeof createTestQuote>>; asOf?: FuturesCurveAsOfPayload;
-  bars?: DataProvider["getPriceHistoryForResolutionWithMetadata"] } = {}) {
+  bars?: DataProvider["getPriceHistoryForResolutionWithMetadata"]; btc?: (payload: FuturesCurvePayload) => FuturesCurvePayload } = {}) {
   const reads: string[] = [];
   const marketData = createTestDataProvider({ getQuote: async (symbol) => {
     reads.push(symbol);
@@ -48,7 +48,8 @@ function context(options: { quote?: (symbol: string) => Promise<ReturnType<typeo
     reads.push(`${symbol} ${range} ${resolution}`);
     return { points: SPOT_BARS, resolution: "1m" };
   }) });
-  const apiClient = { getCloudFuturesCurve: async (root: string) => curve(root, root === "BTC" ? BTC : [contract("ES", "Z26", 30, 6600)]),
+  const apiClient = { getCloudFuturesCurve: async (root: string) => root === "BTC" ? (options.btc ?? ((payload) => payload))(curve(root, BTC))
+    : curve(root, [contract("ES", "Z26", 30, 6600)]),
     getCloudFuturesCurveAsOf: async () => options.asOf! } as never;
   return { reads, ctx: createTestHeadlessContext({ marketData, apiClient }) };
 }
@@ -149,6 +150,27 @@ describe("CTM report basis", () => {
     expect(csv[header]).toMatch(/^Contract,Last Trade,Settle,Last,Change,Spot,Spot Time UTC,Vs Spot \(%\),Days to Expiry,Ann Basis \(%\),As Of UTC,/);
     expect(csv[header + 1]).toContain(`,80740,,80600,2026-10-24T01:33:00Z,${rows[0]!.vsSpotPct},${rows[0]!.daysToExpiry},${rows[0]!.annualisedBasisPct},2026-10-24T01:33:11Z,`);
     expect(csv[header + 6]).toContain(",83035,,,,,,,2026-10-24T03:52:00Z,");
+  });
+
+  test("the server's spot in a print's own minute gives the basis the reader's bars do not reach yet", async () => {
+    // H27 printed at 03:52, twelve minutes past the newest bar a delayed reader gets; the server read the spot in that minute.
+    const spot = { symbol: "BTC-USD", price: 80_900, minute: "2026-10-24T03:52:00Z" };
+    const { rows, result } = await run("BTC", { btc: (payload) => ({ ...payload,
+      contracts: payload.contracts.map((row) => row.symbol === "BTCH27.CME" ? { ...row, spot } : { ...row, spot: null }) }) });
+    const h27 = days("2026-10-24T03:52:00Z", "2027-03-25");
+    expect(rows[5]).toMatchObject({ spot: 80_900, spotTime: "2026-10-24T03:52:00Z", vsSpotPct: Number(((83_035 / 80_900 - 1) * 100).toFixed(4)),
+      annualisedBasisPct: Number(((83_035 / 80_900 - 1) * 365 / h27 * 100).toFixed(4)) });
+    // The bars still price the trades they reach.
+    expect(rows[0]).toMatchObject({ spot: 80_600, spotTime: "2026-10-24T01:33:00Z" });
+    expect(result.notes?.[1]).toBe("Basis blank for BTCZ26 (price over two sessions old); BTCF27 (no price); BTCG27 (last trade has no time of day).");
+  });
+
+  test("a curve the server served from its cache dates the blanks by when that copy was read, never two sessions old", async () => {
+    const read = new Date(NOW - 9 * 3_600_000 - 5 * 60_000).toISOString();
+    const { result } = await run("BTC", { btc: (payload) => ({ ...payload, cached: true, stale: true, fetchedAt: read,
+      contracts: payload.contracts.map((row) => ({ ...row, stale: true })) }) });
+    expect(result.notes?.[1]).toMatch(/^Basis blank for BTCV26, BTCX26, BTCZ26, BTCG27, BTCH27 \(cached curve read (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC, 9 h old\); BTCF27 \(no price\)\.$/);
+    expect(result.notes?.[1]).toContain(read.slice(11, 16));
   });
 
   test("without spot bars every cell is blank and says why; a stale quote blanks nothing a bar can pair", async () => {

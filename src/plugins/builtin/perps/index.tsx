@@ -4,6 +4,7 @@ import { commandRequestParams } from "../shared/command-tab";
 import { PERP_SERIES } from "./series";
 import { perpsCache, perpsDepthCache, perpsHistoryCache, perpsLiquidationsCache, perpsListCache, perpsMarketCache, perpsRankingsCache } from "./client";
 import { perpsHeadless } from "./headless";
+import { VENUES } from "./model";
 
 /**
  * A named market has its own pane, and asking for it again (PERP, a stock's perpetual row in DES or QQ) brings that
@@ -24,7 +25,8 @@ export const perpsModule: PluginModule = {
   panes: [{ id: "perps", name: "Perpetuals", icon: "P", get component(): typeof import("./pane").PerpsPane { const { PerpsPane } = require("./pane"); return PerpsPane; }, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 138, height: 34 }, tableExport: true, headless: perpsHeadless }],
   paneTemplates: [{ id: "perps-pane", paneId: "perps", label: "Perpetuals", description: "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison, liquidations, order book depth and Pro history.",
-    keywords: ["perp", "perpetual", "perpetuals", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
+    // The venues it collects, so a venue's name (and "binance futures") finds PERP.
+    keywords: ["perp", "perpetual", "perpetuals", "perpetual futures", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", ...VENUES, "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
     shortcut: { prefix: "PERP", argKind: "text", argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
     createInstance: (_ctx, options) => perpsInstance(options?.arg) }],
   setup(ctx) {

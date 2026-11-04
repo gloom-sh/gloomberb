@@ -745,21 +745,24 @@ function textNotices(result: HeadlessPaneResult): string[] {
 
 /**
  * What each row of a table is of, from the fields its report names
- * (`rowUnitKey`, `rowSymbolKey`, `rowAsOfKey`); undefined when it names none.
- * An as-of may be an ISO date or instant, or epoch milliseconds.
+ * (`rowUnitKey`, `rowSymbolKey`, `rowAsOfKey`, `rowIntervalKey`,
+ * `rowSourceKey`); undefined when it names none. An as-of may be an ISO date
+ * or instant, or epoch milliseconds.
  */
 function rowIdentitiesOf(
   rows: readonly HeadlessPaneRow[],
-  keys: { rowUnitKey?: string; rowSymbolKey?: string; rowAsOfKey?: string },
+  keys: { rowUnitKey?: string; rowSymbolKey?: string; rowAsOfKey?: string; rowIntervalKey?: string; rowSourceKey?: string },
 ): ExportIdentity[] | undefined {
-  const { rowUnitKey: unitKey, rowSymbolKey: symbolKey, rowAsOfKey: asOfKey } = keys;
-  if (!unitKey && !symbolKey && !asOfKey) return undefined;
+  const { rowUnitKey: unitKey, rowSymbolKey: symbolKey, rowAsOfKey: asOfKey, rowIntervalKey: intervalKey, rowSourceKey: sourceKey } = keys;
+  if (!unitKey && !symbolKey && !asOfKey && !intervalKey && !sourceKey) return undefined;
   const text = (value: unknown) => (typeof value === "string" ? value : null);
   const instant = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? new Date(value).toISOString() : text(value);
   return rows.map((row) => ({
     ...(unitKey ? { currencyOrUnit: text(row[unitKey]) } : {}),
     ...(symbolKey ? { symbolOrSeries: text(row[symbolKey]) } : {}),
     ...(asOfKey ? { asOf: instant(row[asOfKey]) } : {}),
+    ...(intervalKey ? { interval: text(row[intervalKey]) } : {}),
+    ...(sourceKey ? { source: text(row[sourceKey]) } : {}),
   }));
 }
 

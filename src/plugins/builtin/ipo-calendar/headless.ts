@@ -42,7 +42,17 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "lockupEnds", header: "Lockup ends", format: (value) => formatIpoLockupEnd(typeof value === "string" ? value : null) },
 ];
 
-type StatusOption = IpoStatus | "all";
+/** A stage the server sends, or `delayed`: the upcoming deals past their date, which `upcoming` leaves out. */
+type StatusOption = IpoStatus | "delayed" | "all";
+const STATUS_OPTIONS: readonly string[] = [...IPO_STATUSES, "delayed"];
+
+/** Whether a deal is at the stage asked for, as the board reads it. */
+function atStatus(deal: IpoDeal, status: StatusOption, now: Date): boolean {
+  if (status === "all") return true;
+  const shown = ipoBoardStatus(deal, now);
+  if (status === "delayed") return shown === "delayed";
+  return deal.status === status && shown !== "delayed";
+}
 
 function regionOption(args: HeadlessPaneLoadArgs): IpoTab {
   const value = args.options.region;
@@ -51,7 +61,7 @@ function regionOption(args: HeadlessPaneLoadArgs): IpoTab {
 
 function statusOption(args: HeadlessPaneLoadArgs): StatusOption {
   const value = String(args.options.status ?? "all");
-  return (IPO_STATUSES as readonly string[]).includes(value) ? value as IpoStatus : "all";
+  return STATUS_OPTIONS.includes(value) ? value as StatusOption : "all";
 }
 
 function toRow(deal: IpoDeal, now: Date) {
@@ -71,7 +81,7 @@ function toRow(deal: IpoDeal, now: Date) {
     dateKind: deal.dateKind,
     subscriptionOpen: deal.subscriptionOpen,
     subscriptionClose: deal.subscriptionClose,
-    // As the pane reads it: an upcoming deal may be offering or overdue.
+    // As the pane reads it: an upcoming deal may be offering, overdue or delayed.
     status: ipoBoardStatus(deal, now),
     listingType: deal.listingType,
     currency: deal.currency,
@@ -122,7 +132,7 @@ export function projectIpoCalendarHeadless(
   const status = statusOption(args);
   const limit = Number(args.options.limit ?? 50);
   const keyword = ipoKeyword(query);
-  const found = filterIpoDeals(payload.deals, region, query, now).filter((deal) => status === "all" || deal.status === status);
+  const found = filterIpoDeals(payload.deals, region, query, now).filter((deal) => atStatus(deal, status, now));
   const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
   const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
@@ -177,11 +187,11 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     {
       key: "status",
       shot: REPORT_FILTER,
-      description: "IPO stage to include; upcoming takes in the deals listed as offering or overdue.",
+      description: "IPO stage to include; upcoming takes in the deals listed as offering or overdue, and delayed the ones still not listed 3 weekdays past their date.",
       type: "enum",
       defaultValue: "all",
       // `trading` was the plugin's word for a deal that has listed.
-      values: ["all", ...IPO_STATUSES].map((value) => (value === "listed" ? { value, aliases: ["trading"] } : { value })),
+      values: ["all", ...STATUS_OPTIONS].map((value) => (value === "listed" ? { value, aliases: ["trading"] } : { value })),
     },
     {
       key: "limit",
@@ -214,7 +224,8 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     // The default window has no filed or withdrawn deals, so a stage is asked for by name.
     const status = statusOption(args);
     const from = typeof args.options.from === "string" && args.options.from ? args.options.from : undefined;
-    const params = { ...(status === "all" ? {} : { status }), ...(from ? { from } : {}) };
+    // A delayed deal is one the server still calls upcoming.
+    const params = { ...(status === "all" ? {} : { status: status === "delayed" ? "upcoming" as const : status }), ...(from ? { from } : {}) };
     const payload = await fetchIpoCalendar(ctx.apiClient, ctx.signal, params);
     const projected = projectIpoCalendarHeadless(payload, args);
     // One deal found: its price now and its lock-up news, which never fail the report.

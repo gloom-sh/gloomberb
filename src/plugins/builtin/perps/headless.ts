@@ -5,8 +5,8 @@ import { DEPTH_COLUMN_IDS, depthBandTotals, depthCellText, depthColumnLabel, dep
   PRINT_COLUMN_IDS, printCellText, printColumnLabel, type DepthColumnId, type LiquidationColumnId, type PrintColumnId } from "./cascade";
 import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsDepth, fetchPerpsHistory, fetchPerpsLiquidations, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
 import { perpFreshness } from "./freshness";
-import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, openingTab, PERP_TABS, perpCellText,
-  perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueName, IDENTITY_VENUES, type PerpColumnId } from "./model";
+import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, observed, openingTab, PERP_TABS, perpCellText,
+  perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueName, venuesOf, IDENTITY_VENUES, type PerpColumnId } from "./model";
 import { freePreviewNote } from "../shared/free-preview";
 import { basisSpotSymbol } from "../futures-curve/model";
 
@@ -94,10 +94,47 @@ const noMarket = (input: string, nearest: readonly string[] = []) => new Error(`
 /** A pair or plain name read as the market it stands for says so, and names the other contracts that fit it. */
 const readAs = (shown: string, requested: string, others: readonly string[] = []) =>
   [`Showing ${shown} for "${requested}".${others.length ? ` Also on the board: ${others.join(", ")}.` : ""}`];
-// The APR % column is the current rate carried forward a year at each market's own interval, so a table that shows it says how.
-const aprNote = (rows: readonly PerpBoardRow[]) => {
-  const note = aprFootnote(rows);
-  return note ? { notes: [note] } : {};
+/** A contract's funding interval as an export names it, `8h`; null where its venue states none. */
+const intervalOf = (row: PerpBoardRow) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h` : null;
+/**
+ * Market rows as an export cites each one apart: its venue (`source`), the identity `fn PERP` opens it by
+ * (`symbol_or_series`), its quote unit, funding interval and observed time, with its source URL and the hour its
+ * long share is bucketed in beside the figures. JSON keeps these fields too.
+ */
+const citedRows = (rows: readonly PerpBoardRow[]) => rows.map((row) => ({ ...row, venueName: venueName(row.venue), fundingInterval: intervalOf(row),
+  longShareBucketAt: row.longShortRatio?.bucketAt ?? null }));
+const CITED_KEYS = { rowSourceKey: "venueName", rowSymbolKey: "marketId", rowUnitKey: "quoteCurrency", rowIntervalKey: "fundingInterval", rowAsOfKey: "observedAt" };
+/** The exported columns of market rows: the text's, Mark a number in the row's quote unit (`currency_or_unit`), then the long share's bucket and the source URL. */
+const exportColumns = (columns: readonly HeadlessPaneColumn[]): HeadlessPaneColumn[] => [
+  ...columns.map((column) => column.key === "markPrice" ? { ...column, unitKey: "quoteCurrency" } : column),
+  ...columns.some((column) => column.key === "longShortRatio") ? [{ key: "longShareBucketAt", header: "Long % bucket UTC" }] : [],
+  { key: "sourceUrl", header: "Source URL" },
+];
+/** A table of market rows: the pane's columns in the text, every row cited on its own in the exports. */
+const marketSection = (title: string, columns: HeadlessPaneColumn[], rows: readonly PerpBoardRow[]) =>
+  ({ title, columns: exportColumns(columns), textColumns: columns, rows: citedRows(rows), ...CITED_KEYS });
+/** The stablecoins OI USD counts at one dollar, from the rows whose venue figures were converted so. */
+function parityNote(rows: readonly PerpBoardRow[]): string | null {
+  const coins = [...new Set(rows.filter((row) => row.qualityFlags.includes("stablecoin-usd-parity-assumed")).map((row) => row.quoteCurrency))].sort();
+  return coins.length ? `OI USD values ${coins.join(" and ")} at 1 USD.` : null;
+}
+/** When the Long % shares were counted: each venue's hourly bucket, which is not the row's Observed time. */
+function longShareNote(rows: readonly PerpBoardRow[]): string | null {
+  const buckets = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const bucket = row.longShortRatio?.bucketAt;
+    if (bucket) buckets.set(observed(bucket), (buckets.get(observed(bucket)) ?? new Set()).add(venueName(row.venue)));
+  }
+  if (!buckets.size) return null;
+  const when = buckets.size === 1 ? `from ${[...buckets.keys()][0]} UTC`
+    : `(${[...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, venues]) => `${[...venues].sort().join(", ")} ${bucket}`).join("; ")} UTC)`;
+  return `Long % is each venue's hourly account bucket ${when}, not its Observed time.`;
+}
+// The APR % column is the current rate carried forward a year at each market's own interval, so a table that shows it says how;
+// OI USD says which stablecoins it counts at a dollar, and Long % which hour it was counted in.
+const aprNote = (rows: readonly PerpBoardRow[], { apr = true, longShare = true }: { apr?: boolean; longShare?: boolean } = {}) => {
+  const notes = [apr ? aprFootnote(rows) : null, parityNote(rows), longShare ? longShareNote(rows) : null].filter((note): note is string => !!note);
+  return notes.length ? { notes } : {};
 };
 
 const requestedOf = (args: HeadlessPaneLoadArgs) => String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "").trim();
@@ -107,13 +144,24 @@ const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === ar
 // locks is left out and named on the report's one Pro line (`lockedTable`), never marked on the title over the free ones.
 const TITLES: Record<typeof PERP_TABS[number], string> = { board: "Perpetual markets", rankings: "Perpetual rankings", compare: "Perpetual contracts across venues",
   liquidations: "Perpetual liquidations across venues", depth: "Perpetual order book depth across venues", history: "Perpetuals", evidence: "Perpetual evidence" };
-const copy = (rows: readonly PerpBoardRow[]) => rows.map((row) => ({ ...row }));
 /** The days the liquidations read back from their time (`from` to `asOf`), as a heading names them: `7 days`; null without both. */
 const windowDays = (data: Pick<PerpLiquidationsPayload, "from" | "asOf">) => {
   const days = Math.round((Date.parse(data.asOf) - Date.parse(data.from)) / 86_400_000);
   return Number.isFinite(days) && days > 0 ? `${days} ${days === 1 ? "day" : "days"}` : null;
 };
 const more = (count: number, noun: string) => `${count.toLocaleString("en-US")} more ${noun} need Gloom Pro`;
+/**
+ * A free board narrowed to one venue: how many of its markets free shows, or, where the preview holds none of its
+ * markets, which venues the preview's are on. The rest is Pro; how many is not said, since a server that does not
+ * filter by venue counts what it hides across every venue.
+ */
+function venuePreviewLine(venue: string, rows: readonly PerpBoardRow[], preview: readonly PerpBoardRow[]): string {
+  const name = venueName(venue);
+  if (rows.length) return `Free shows ${rows.length} ${name} market${rows.length === 1 ? "" : "s"}, its largest in each asset class; the rest need Gloom Pro`;
+  const venues = venuesOf(preview).map(venueName);
+  if (!venues.length) return `${name} markets need Gloom Pro`;
+  return `The free preview's ${preview.length} markets are on ${venues.length > 1 ? `${venues.slice(0, -1).join(", ")} and ${venues.at(-1)}` : venues[0]}, none on ${name}; ${name} markets need Gloom Pro`;
+}
 // A table the free view leaves empty is locked: the report leaves it out and its one Pro line says what Pro adds.
 const lockedTable = (locked: unknown) => locked ? { locked: true } : {};
 // A free account's history line: what free shows of a market (its latest row, and the futures basis where CTM has
@@ -155,11 +203,12 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = tabOf(args);
     if (tab === "board") {
       const assetClass = String(args.options["asset-class"] ?? "all"), venue = String(args.options.venue ?? "all"), sort = String(args.options.sort ?? "oi");
-      const board = await fetchPerpsBoard({ ...(assetClass !== "all" ? { assetClass } : {}), ...(requested ? { search: boardSearchText(requested) } : {}), sort }, ctx.apiClient);
+      const board = await fetchPerpsBoard({ ...(assetClass !== "all" ? { assetClass } : {}), ...(venue !== "all" ? { venue } : {}),
+        ...(requested ? { search: boardSearchText(requested) } : {}), sort }, ctx.apiClient);
+      // The server answers a venue with its own markets; a server that does not filter by venue answers every venue's.
       const rows = venue === "all" ? board.rows : board.rows.filter((row) => row.venue === venue);
-      // The server counts what the free view hides across every venue; a venue's own share of it is not known, so a venue filter names no count.
-      const lock = venue === "all" ? more(board.locked, "markets") : `${venueName(venue)} markets beyond the free preview need Gloom Pro`;
-      return { sections: [{ title: "Markets", columns: BOARD_TEXT_COLUMNS, rows: copy(rows), ...lockedTable(board.locked && !rows.length) }], complete: !board.locked && board.status === "ok",
+      const lock = venue === "all" ? more(board.locked, "markets") : venuePreviewLine(venue, rows, board.rows);
+      return { sections: [{ ...marketSection("Markets", BOARD_TEXT_COLUMNS, rows), ...lockedTable(board.locked && !rows.length) }], complete: !board.locked && board.status === "ok",
         errors: board.locked ? [lock] : [], ...aprNote(rows), freshness: perpFreshness(rows, { funding: rows, venue }),
         metadata: { ...listMetadata(board), total: board.total, assetClass, venue, sort, ...(requested ? { search: requested } : {}) } };
     }
@@ -167,13 +216,16 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       const rankings = await fetchPerpsRankings(ctx.apiClient);
       // A ranking the free view leaves empty is locked, left out and said on the Pro line; one that has none to rank says so.
       const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => {
-        const rows = copy(rankingRows(rankings, ranking.key));
-        return { title: ranking.label, columns: rankingTextColumns(ranking), rows, ...lockedTable(rankings.locked && !rows.length) };
+        const rows = rankingRows(rankings, ranking.key);
+        return { ...marketSection(ranking.label, rankingTextColumns(ranking), rows), ...lockedTable(rankings.locked && !rows.length) };
       });
       const notices = venueUnused(String(args.options.venue ?? "all"), "rankings");
       // Only the funding lists show funding.
       const funding = RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(rankings, ranking.key));
+      // The rankings show neither APR % nor Long %, only OI USD.
+      const ranked = RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key));
       return { sections, complete: !rankings.locked && rankings.status === "ok", errors: rankings.locked ? ["Full rankings need Gloom Pro"] : [],
+        ...aprNote(ranked, { apr: false, longShare: false }),
         freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
     }
     if (tab === "compare") {
@@ -187,7 +239,7 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       const spread = fundingSpread(compare.rows);
       const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab compare.`]),
         ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), "compare")];
-      return { sections: [{ title: "Contracts", columns: COMPARE_TEXT_COLUMNS, rows: copy(compare.rows), ...lockedTable(compare.locked) },
+      return { sections: [{ ...marketSection("Contracts", COMPARE_TEXT_COLUMNS, compare.rows), ...lockedTable(compare.locked) },
         ...(spread ? [{ title: "Funding spread", entries: [{ key: "fundingSpread8h", label: "Funding spread 8h", value: spread.value, formatted: `${spread.text} ${spread.detail}` }] }] : [])],
         complete: !compare.locked && compare.status === "ok", errors: compare.locked ? [more(compare.locked, compare.locked === 1 ? "contract" : "contracts")] : [],
         ...aprNote(compare.rows), freshness: perpFreshness(compare.rows, { funding: compare.rows }),
@@ -248,17 +300,21 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The same Positioning lines the pane's Evidence shows; JSON keeps the raw reading on the market row.
     const positioning = positioningFields(selected);
     if (tab === "evidence") return {
-      sections: [{ title: "Market evidence", columns: MARKET_COLUMNS, rows: market.rows.map((row) => ({ ...row })) },
+      sections: [marketSection("Market evidence", MARKET_COLUMNS, market.rows),
+        // Where the figures were read, as the pane's Evidence names it: the venue's own endpoint and its time.
+        { title: "Source", entries: [{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
+          { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }] },
         ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
           formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
         { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })), ...lockedTable(market.access !== "pro") }],
-      complete: market.access === "pro" && market.status === "ok", ...aprNote(market.rows), freshness,
+      // Positioning dates the long share itself.
+      complete: market.access === "pro" && market.status === "ok", ...aprNote(market.rows, { longShare: false }), freshness,
       errors: market.access !== "pro" ? [freePreviewNote({ shows: `${marketLabel(selected)}'s latest evidence and positioning`, adds: "its observation revisions" })] : [],
       metadata: { ...metadata, asOf: market.asOf, access: market.access, locked: market.locked, status: market.status },
     };
     const history = await fetchPerpsHistory({ marketId: selected.marketId, from: new Date(Date.now() - Number(args.options.days ?? 7) * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }, ctx.apiClient);
     const locked = lockedTable(history.locked);
-    return { sections: [{ title: "Latest market", columns: MARKET_COLUMNS, rows: [{ ...selected }] }, { title: "Own observations", columns: observationColumns(selected.quoteCurrency), rows: history.rows.map((row) => ({ ...row })), ...locked },
+    return { sections: [marketSection("Latest market", MARKET_COLUMNS, [selected]), { title: "Own observations", columns: observationColumns(selected.quoteCurrency), rows: history.rows.map((row) => ({ ...row })), ...locked },
       { title: "Paid funding", columns: FUNDING_COLUMNS, rows: history.funding.map((row) => ({ ...row })), ...locked }, { title: "Hourly candles", columns: candleColumns(selected.quoteCurrency), rows: history.candles.map((row) => ({ ...row })), ...locked },
       { title: "Long/short history", columns: LONG_SHORT_COLUMNS, rows: (history.longShortRatio ?? []).map((row) => ({ ...row })), ...locked }],
       complete: !history.locked && !history.truncated && history.status === "ok", ...aprNote([selected]), freshness,

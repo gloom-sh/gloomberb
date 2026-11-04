@@ -7,6 +7,7 @@ import {
   formatIpoAmount,
   formatIpoPrice,
   formatIpoReturn,
+  ipoBoardStatus,
   ipoLockupBasis,
   ipoLockupText,
   ipoReturnSince,
@@ -113,7 +114,8 @@ export function ipoDetailNotes(deal: IpoDeal, news: readonly IpoLockupStory[]): 
 export function ipoDetailSentences(deal: IpoDeal, price: number | null | undefined, news: readonly IpoLockupStory[], now = new Date()): string[] {
   const name = deal.symbol ?? deal.company;
   const day = deal.listingDate ?? deal.firstDay?.session ?? null;
-  const listed = deal.status === "listed" ? "listed" : "prices to list";
+  const listed = deal.status === "listed" ? "listed"
+    : ipoBoardStatus(deal, now) === "delayed" ? "is delayed: it was expected to list" : "prices to list";
   const where = `${day ? ` ${day}` : ""}${deal.venue ? ` on ${deal.venue}` : ""}`;
   const offer = deal.offerPrice != null ? ` at a ${formatIpoAmount(deal, deal.offerPrice)} offer price`
     : deal.listingType === "direct" ? `: ${formatIpoPrice(deal, { full: true })}` : "";

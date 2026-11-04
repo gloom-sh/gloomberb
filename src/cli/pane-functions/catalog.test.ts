@@ -102,6 +102,28 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
   }
 });
 
+test("a perp venue's name finds PERP first, and a function only Pro opens is marked Pro where the catalog says its report is ready", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["binance", "OKX", "bybit", "hyperliquid", "binance futures"]) {
+      expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("PERP");
+    }
+    const plain = (args: string[]) => renderPaneCatalogReport(entries, parsePaneCatalogArgs(args)).replace(/\x1b\[[0-9;]*m/g, "");
+    expect(plain(["CALLS"])).toContain("Report       ready · Pro\n");
+    expect(plain(["earnings"])).toMatch(/\nCALLS +Earnings Calls +<ticker> +ready · Pro +Pro earnings/);
+    // A free preview is no lock: PERP reads ready.
+    expect(plain(["PERP"])).toContain("Report       ready\n");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
 test("sizing a curve trade finds the bond calculator, a bond fund's DV01 and the Treasury futures under each word a trader searches", async () => {
   const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
   const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
