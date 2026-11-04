@@ -15,7 +15,8 @@ interface FundFact<T> {
  * premium or discount to NAV. Servers before them say null.
  */
 export type FundStructure = "registered" | "trust" | "closed-end" | "bdc";
-type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
+/** `management-fee`: a Hong Kong fund's management fee, which its issuer states apart from the ongoing charges. */
+type ExpenseRatioKind = "net" | "gross" | "sponsor-fee" | "management-fee";
 /**
  * A bond fund as its sponsor classes it: `municipal` when its interest is
  * exempt from federal income tax, `taxable` otherwise.
@@ -146,7 +147,28 @@ export interface FundFactsPayload {
   sharesOutstanding?: FundFact<number> | null;
   /** The 1M change in shares outstanding; null until a month of counts is kept. Servers before it leave it out. */
   flows?: FundFlows | null;
+  /**
+   * The currency the NAV and closing price are in: a Hong Kong counter's own
+   * (HKD for 3046, USD for 9046). Absent for a US fund, whose figures are in
+   * US dollars.
+   */
+  currency?: string;
+  /**
+   * A spot bitcoin or ether fund's coins as its issuer states them, and the
+   * units in issue per coin on the same day (the Hong Kong spot funds).
+   * Absent for any other fund and from servers before it.
+   */
+  coinHoldings?: FundCoinHoldings | null;
   /** The newest NAV is older than a few US trading days: every figure is older than it looks. */
   stale: boolean;
   fetchedAt: string | null;
+}
+
+export interface FundCoinHoldings {
+  asset: "BTC" | "ETH";
+  coins: number;
+  unitsPerCoin: number;
+  asOf: string;
+  source: string;
+  url?: string;
 }

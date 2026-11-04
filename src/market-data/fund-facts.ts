@@ -30,11 +30,17 @@ const sharesShape = (value: FundFactsPayload["sharesOutstanding"]) => value == n
 const flowsShape = (value: FundFlows | null | undefined) => value == null
   || (finite(value.shares) && (value.value === null || finite(value.value)) && typeof value.from === "string" && typeof value.asOf === "string");
 
+/** Absent for any fund but a spot coin fund abroad; otherwise its coins and the units per coin, dated. */
+const coinHoldingsShape = (value: FundFactsPayload["coinHoldings"]) => value == null
+  || ((value.asset === "BTC" || value.asset === "ETH") && finite(value.coins) && finite(value.unitsPerCoin) && value.unitsPerCoin > 0
+    && typeof value.asOf === "string" && typeof value.source === "string");
+
 export function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
     || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
     || !estimateShape(data.nav) || !sharesShape(data.sharesOutstanding) || !flowsShape(data.flows)
-    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)) {
+    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)
+    || !coinHoldingsShape(data.coinHoldings) || (data.currency !== undefined && typeof data.currency !== "string")) {
     throw new Error("Unreadable fund facts response");
   }
   return data;

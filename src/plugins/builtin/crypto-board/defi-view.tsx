@@ -18,6 +18,7 @@ import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import {
   buildDefiColumns,
+  defiHasIncome,
   buildDefiRows,
   DEFAULT_DEFI_SORT,
   DEFI_LISTS,
@@ -75,6 +76,15 @@ function renderDefiCell(row: DefiRow, column: DefiColumn): DataTableCell {
       return { text: row.share == null ? "—" : `${row.share.toFixed(2)}%`, color: colors.textDim };
     case "chains":
       return { text: row.chains == null ? "—" : String(row.chains), color: colors.textDim };
+    case "fees24h":
+    case "fees7d":
+    case "fees30d":
+    case "revenue24h":
+    case "revenue7d":
+    case "revenue30d": {
+      const value = row[column.id];
+      return value == null ? { text: "—", color: colors.textDim } : { text: formatTvl(value) };
+    }
   }
 }
 
@@ -118,7 +128,8 @@ export function DefiTvlView({
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("defiSelected", null);
   const [sort, setSort] = useState<DefiSortPreference>(DEFAULT_DEFI_SORT);
   const rows = useMemo(() => sortDefiRows(buildDefiRows(payload, list), sort), [list, payload, sort]);
-  const columns = useMemo(() => buildDefiColumns(width, list), [list, width]);
+  const income = defiHasIncome(payload);
+  const columns = useMemo(() => buildDefiColumns(width, list, income), [income, list, width]);
   // A chain's figures are the total's day, which its figure dates; protocols are read live, so they say when.
   const listAsOf = list === "protocol" ? defiListAsOf(payload, list) : null;
 

@@ -73,6 +73,8 @@ export interface CryptoMarketsPayload {
   generatedAt: string;
   /** Each asset's change is since 00:00 UTC; a server before it sent the screener's 24-hour move. */
   dayChangeBasis?: "utc-day";
+  /** Each asset's market cap is its price times its circulating supply; a server before it sent the source's own figure. */
+  marketCapBasis?: "circulating";
   asOf: string | null;
   status: "available" | "partial" | "unavailable";
   source: {
@@ -169,6 +171,18 @@ export interface DefiTvlProtocol {
   change7dPercent: number | null;
   change30d: number | null;
   change30dPercent: number | null;
+  /**
+   * USD its users paid in fees over the last 24 hours, 7 and 30 days, its
+   * versions together, read with its TVL; null where the source has no
+   * figure. Absent from servers before them.
+   */
+  fees24h?: number | null;
+  fees7d?: number | null;
+  fees30d?: number | null;
+  /** The part of those fees the protocol kept (the source's revenue), USD. */
+  revenue24h?: number | null;
+  revenue7d?: number | null;
+  revenue30d?: number | null;
 }
 
 export interface DefiTvlChain {
@@ -199,6 +213,8 @@ export interface DefiTvlPayload {
   protocols: DefiTvlProtocol[];
   /** When the protocols' figures were read: the source's latest, not a daily close. */
   protocolsAsOf: string | null;
+  /** When the protocols' fees and revenue were read; null when they could not be, absent from servers before them. */
+  incomeAsOf?: string | null;
   /** The largest chains by TVL, largest first. */
   chains: DefiTvlChain[];
   /** Total DeFi TVL in USD per UTC day since `start`, its first day with value locked. */

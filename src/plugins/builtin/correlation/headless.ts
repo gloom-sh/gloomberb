@@ -8,7 +8,7 @@ import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeri
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
 import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from "./relationship/model";
 import { paneSchemas } from "./headless-schema";
-import { CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory, unfinishedBarFreshness } from "./history";
+import { CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory, thinCorrelationNote, unfinishedBarFreshness } from "./history";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { PricePoint } from "../../../types/financials";
 import { newestReportTime } from "../../../utils/utc-time";
@@ -70,9 +70,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
     if (!unavailableSymbols.length && rows.every((row) => row.correlation == null)) unavailableSymbols.push(...symbols);
     const unavailablePairs = rows.filter((row) => row.correlation == null).map((row) => ({
       left: row.left, right: row.right, sampleSize: row.sampleSize,
-      reason: bySymbol.get(row.left as string)?.status === "invalid" || bySymbol.get(row.right as string)?.status === "invalid"
-        ? "Inconsistent OHLC history"
-        : row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
+      reason: row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
     const asOf = newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey));
     return {
@@ -80,7 +78,13 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
       rows, unavailableSymbols,
       errors: [
         ...loaded.errors,
-        ...unavailablePairs.map((pair) => `${pair.left}/${pair.right}: ${pair.reason} (${pair.sampleSize} shared observations).`),
+        // A thin pair says which side is short of daily bars; a pair with enough returns and no value has no variance.
+        ...rows.flatMap((row) => {
+          const closes = (symbol: string) => ({ label: symbol, closes: bySymbol.get(symbol)?.prices.length ?? 0 });
+          const thin = thinCorrelationNote(closes(row.left), closes(row.right), row.sampleSize, range);
+          if (thin) return [`${row.left}/${row.right}: ${thin}.`];
+          return row.correlation == null ? [`${row.left}/${row.right}: Zero return variance (${row.sampleSize} shared observations).`] : [];
+        }),
       ],
       metadata: {
         range,
@@ -116,8 +120,6 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     const unavailableSymbols = symbols.filter((symbol) => (histories.get(symbol) ?? []).filter((point) => (
       Number.isFinite(point.close) && point.close > 0 && Number.isFinite(new Date(point.date).getTime())
     )).length < 2);
-    if (analysis.integrity?.left.length) unavailableSymbols.push(symbols[0]!);
-    if (analysis.integrity?.right.length) unavailableSymbols.push(symbols[1]!);
     if (!unavailableSymbols.length && !analysis.returns.length) unavailableSymbols.push(...symbols);
     const correlations = new Map(analysis.correlationPoints.map(({ date, close }) => [date.getTime(), close]));
     const regression = `${symbols[0]} on ${symbols[1]}`;
@@ -142,8 +144,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
       ],
       freshness: unfinishedBarFreshness([...histories.values()], analysis.aligned.at(-1)?.dateKey) ?? {},
       unavailableSymbols: [...new Set(unavailableSymbols)],
-      errors: [...loaded.errors, ...(analysis.unavailableReason ? [analysis.unavailableReason] : []),
-        ...(analysis.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : [])],
+      errors: [...loaded.errors, ...(analysis.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : [])],
       metadata: {
         left: symbols[0], right: symbols[1], range, correlationWindow,
         returnAlignment: CORRELATION_RETURN_BASIS,

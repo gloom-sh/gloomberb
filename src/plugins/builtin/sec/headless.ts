@@ -7,10 +7,11 @@ import type {
   HeadlessPaneRow,
 } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { hasFundFactsAbroad, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
+import { logFailure } from "../../../utils/log-failure";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, fundSeriesFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsNote, loadLatestFilings } from "../../../utils/sec-filings";
@@ -203,6 +204,29 @@ function fundAbroadResult(symbol: string, venue: string, profile: FundAbroadProf
 }
 
 /**
+ * ETF for a Hong Kong spot bitcoin or ether fund's counter (3046:HKEX): its
+ * issuer's figures, the NAV in the counter's own currency, and the units per
+ * coin. It files nothing with the SEC, so there is no filings section.
+ */
+function fundAbroadFactsResult(symbol: string, venue: string, facts: FundFactsPayload): HeadlessBundleResult {
+  const publishers = fundFactPublishers(facts);
+  const stale = fundFactsStaleNote(symbol, facts);
+  return {
+    sections: [{ title: "Fund facts", entries: fundFactEntries(facts) }],
+    complete: true,
+    ...(stale ? { notes: [stale] } : {}),
+    freshness: {
+      source: listNames(publishers) || "Fund issuer",
+      ...(publishers.length ? { publisher: listNames(publishers) } : {}),
+      status: "not-a-feed",
+      basis: "published fund data",
+      ...(facts.nav?.asOf ? { asOf: facts.nav.asOf } : {}),
+    },
+    metadata: { symbol, venue, fundFacts: facts },
+  };
+}
+
+/**
  * ETF: a US-listed fund's facts (fee, NAV, premium or discount, net assets,
  * sponsor, inception, index) as its sponsor publishes them, then its fund
  * filings. Either part can fail or be empty without taking the other with it:
@@ -229,6 +253,11 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       const symbol = args.symbols[0]!;
       const abroad = venueAbroad(symbol);
       if (abroad) {
+        // A Hong Kong spot coin fund has its issuer's figures; any other fund abroad, or a server without them, keeps the issuer link.
+        const facts = hasFundFactsAbroad(abroad)
+          ? await dependencies.loadFacts(symbol, ctx).catch(logFailure("sec.fund-headless", "Read fund facts abroad failed", null))
+          : null;
+        if (facts?.covered) return fundAbroadFactsResult(symbol, abroad, facts);
         try {
           const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx);
           return fundAbroadResult(symbol, abroad, profile);

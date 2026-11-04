@@ -300,6 +300,8 @@ const tvlValue = (value: unknown) => value === null || (isFiniteNumber(value) &&
 const changes = (entry: { change7d: unknown; change7dPercent: unknown; change30d: unknown; change30dPercent: unknown }) =>
   [entry.change7d, entry.change7dPercent, entry.change30d, entry.change30dPercent].every(nullableNumber);
 
+const INCOME_FIELDS = ["fees24h", "fees7d", "fees30d", "revenue24h", "revenue7d", "revenue30d"] as const;
+
 export function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
   const history = data?.history;
   if (
@@ -323,8 +325,11 @@ export function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
       && isFiniteNumber(protocol.tvl)
       && protocol.tvl >= 0
       && nullableNumber(protocol.change1dPercent)
-      && changes(protocol))
+      && changes(protocol)
+      // Fees and revenue: absent from servers before them, otherwise USD or null.
+      && INCOME_FIELDS.every((field) => protocol[field] === undefined || (nullableNumber(protocol[field]) && !((protocol[field] ?? 0) < 0))))
     || !nullableInstant(data.protocolsAsOf)
+    || !(data.incomeAsOf === undefined || nullableInstant(data.incomeAsOf))
     || !Array.isArray(data.chains)
     || data.chains.length > 500
     || !data.chains.every((chain) => !!chain

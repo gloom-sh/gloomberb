@@ -19,7 +19,8 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
-import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { publicTickerKey } from "../../../utils/exchanges";
+import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
@@ -279,7 +280,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // A form list is the fund filings view (ETF), which US-listed funds open too.
   const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeUsEquityTicker(ticker);
   // A fund listed abroad (3042.HK) gets what `ticker` says of it and its issuer's page, as `fn ETF` does.
-  const abroadVenue = forms && !eligibleTicker && ticker ? venueAbroad(ticker.metadata.ticker) : null;
+  // By its key or suffix (3042:HKEX, 3042.HK), else the venue its metadata names (3042 on HKEX).
+  const abroadVenue = forms && !eligibleTicker && ticker
+    ? venueAbroad(ticker.metadata.ticker) ?? venueAbroad(publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange))
+    : null;
   const abroadFinancials = useTickerFinancials(abroadVenue ? ticker?.metadata.ticker : null, abroadVenue ? ticker : null);
   const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
   const abroadPage = abroad?.page ?? null;
@@ -288,7 +292,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     ? listingAnnouncementsPage(ticker.metadata.ticker, ticker.metadata.exchange)
     : null;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
-  const fundFacts = useFundFacts(forms && eligibleTicker ? ticker?.metadata.ticker : null);
+  // A fund in Hong Kong asks too: its spot bitcoin and ether ETFs have their issuers' figures.
+  const factsAbroad = hasFundFactsAbroad(abroadVenue);
+  // Asked for by its listing's key, so a bare 3046 on HKEX is Hong Kong's, not a US ticker.
+  const factsKey = !ticker || !forms ? null
+    : eligibleTicker ? ticker.metadata.ticker
+    : factsAbroad ? fundFactsAbroadKey(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
+  const fundFacts = useFundFacts(factsKey);
   const facts = fundFacts.data?.payload ?? null;
   const factsUrl = facts?.covered ? facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url ?? null : null;
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
@@ -527,7 +538,17 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
-  if (abroadVenue) return <FundAbroadNotice profile={abroad} />;
+  if (abroadVenue) {
+    // Its issuer's figures when the server has them (3046.HK), the issuer link otherwise; a first read is one muted line.
+    if (factsAbroad && (facts?.covered || (fundFacts.loading && !facts))) {
+      return (
+        <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
+          <FundFactsSummary symbol={ticker.metadata.ticker} width={width} facts={facts} loading={fundFacts.loading} error={null} />
+        </Box>
+      );
+    }
+    return <FundAbroadNotice profile={abroad} />;
+  }
   if (!eligibleTicker) {
     return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");
   }
@@ -640,7 +661,7 @@ export const secModule: PluginModule = {
           "leveraged", "inverse", "daily objective", "daily-reset", "decay", "bond fund", "duration", "dv01", "hedge ratio", "steepener"],
         shortcut: "ETF",
         viewKey: "etf",
-        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeFundViewTicker(options.ticker),
         settings: () => ({ forms: ETF_FORMS_SETTING }),
       }),
       headless: fundHeadless,

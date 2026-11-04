@@ -46,6 +46,12 @@ test("a narrow pane drops the optional columns in order and keeps name, TVL, 7D%
   expect(ids(20, "protocol")).toEqual(["rank", "name", "tvl", "change7dPercent"]);
   expect(ids(20, "chain")).toEqual(["rank", "name", "tvl", "change7dPercent", "share"]);
   expect(buildDefiColumns(200, "chain").find((column) => column.id === "name")!.width).toBe(26);
+  // Fees and revenue, when the board has them, leave first and in pairs, the 30-day pair last.
+  const income = (width: number) => buildDefiColumns(width, "protocol", true).map((column) => column.id).filter((id) => /^(fees|revenue)/.test(id));
+  expect(income(200)).toEqual(["fees24h", "fees7d", "fees30d", "revenue24h", "revenue7d", "revenue30d"]);
+  expect(income(140)).toEqual(["fees30d", "revenue30d"]);
+  expect(income(110)).toEqual([]);
+  expect(ids(110, "protocol")).toEqual(buildDefiColumns(110, "protocol", true).map((column) => column.id));
 });
 
 test("the Cloud boundary rejects a malformed board and names DeFi TVL when the endpoint fails", async () => {

@@ -4,7 +4,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { errorMessage } from "../../../utils/errors";
 import { fetchCryptoMarkets, fetchDefiTvl, fetchStablecoinSupply } from "./client";
-import { buildDefiRows, defiHistoryRows, defiHistoryStart, defiSummaryLine, type DefiList, type DefiRow } from "./defi";
+import { buildDefiRows, defiHasIncome, defiHistoryRows, defiHistoryStart, defiSummaryLine, type DefiList, type DefiRow } from "./defi";
 import {
   buildCryptoRows,
   CRYPTO_BOARD_FRESHNESS,
@@ -106,11 +106,24 @@ function supplyMetadata(payload: StablecoinSupplyPayload) {
   };
 }
 
+// Every DeFi figure is in US dollars: the text header says so beside TVL, and each exported row names USD.
+const TVL_COLUMN: HeadlessPaneColumn = { key: "tvl", header: "TVL", textHeader: "TVL USD", align: "right", format: compact };
+
+/** A protocol's fees and revenue, USD: the 30-day figures stay in a narrow table longest, the 24-hour and 7-day ones only where they fit. */
+const INCOME_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "fees24h", header: "Fees 24h", literalHeader: true, align: "right", format: compact, stackPriority: 6, stackRows: 0 },
+  { key: "fees7d", header: "Fees 7D", literalHeader: true, align: "right", format: compact, stackPriority: 7, stackRows: 0 },
+  { key: "fees30d", header: "Fees 30D", literalHeader: true, align: "right", format: compact, stackPriority: 5, stackRows: 0 },
+  { key: "revenue24h", header: "Revenue 24h", literalHeader: true, align: "right", format: compact, stackPriority: 6, stackRows: 0 },
+  { key: "revenue7d", header: "Revenue 7D", literalHeader: true, align: "right", format: compact, stackPriority: 7, stackRows: 0 },
+  { key: "revenue30d", header: "Revenue 30D", literalHeader: true, align: "right", format: compact, stackPriority: 5, stackRows: 0 },
+];
+
 const PROTOCOL_COLUMNS: HeadlessPaneColumn[] = [
   { key: "rank", header: "#", align: "right" },
   { key: "name", header: "Protocol" },
   { key: "category", header: "Category", stackPriority: 2, stackRows: 0 },
-  { key: "tvl", header: "TVL", align: "right", format: compact },
+  TVL_COLUMN,
   { key: "change1dPercent", header: "1D %", align: "right", format: percent, stackPriority: 3, stackRows: 0 },
   { key: "change7d", header: "7D", align: "right", format: signedCompact, stackPriority: 1, stackRows: 0 },
   { key: "change7dPercent", header: "7D %", align: "right", format: percent },
@@ -119,11 +132,13 @@ const PROTOCOL_COLUMNS: HeadlessPaneColumn[] = [
   { key: "chains", header: "Chains", align: "right", stackPriority: 4, stackRows: 0 },
 ];
 
+const PROTOCOL_INCOME_COLUMNS: HeadlessPaneColumn[] = [...PROTOCOL_COLUMNS, ...INCOME_COLUMNS];
+
 const CHAIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "rank", header: "#", align: "right" },
   { key: "name", header: "Chain" },
   { key: "token", header: "Token", stackPriority: 2, stackRows: 0 },
-  { key: "tvl", header: "TVL", align: "right", format: compact },
+  TVL_COLUMN,
   { key: "change7d", header: "7D", align: "right", format: signedCompact, stackPriority: 1, stackRows: 0 },
   { key: "change7dPercent", header: "7D %", align: "right", format: percent },
   { key: "change30d", header: "30D", align: "right", format: signedCompact, stackPriority: 0.5, stackRows: 0 },
@@ -131,7 +146,7 @@ const CHAIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "share", header: "Share", align: "right", format: share },
 ];
 
-function defiRecord(row: DefiRow, list: DefiList) {
+function defiRecord(row: DefiRow, list: DefiList, income: boolean) {
   return {
     rank: row.rank,
     name: row.name,
@@ -142,16 +157,39 @@ function defiRecord(row: DefiRow, list: DefiList) {
     change30d: row.change30d,
     change30dPercent: row.change30dPercent,
     ...(list === "chain" ? { share: row.share } : {}),
+    ...(list === "protocol" && income ? {
+      fees24h: row.fees24h, fees7d: row.fees7d, fees30d: row.fees30d,
+      revenue24h: row.revenue24h, revenue7d: row.revenue7d, revenue30d: row.revenue30d,
+    } : {}),
+    unit: "USD",
   };
+}
+
+const defiColumns = (list: DefiList, income: boolean) =>
+  list === "chain" ? CHAIN_COLUMNS : income ? PROTOCOL_INCOME_COLUMNS : PROTOCOL_COLUMNS;
+
+/**
+ * The note under a protocol list: one as-of date for the whole list. Read
+ * within an hour of the board's day closing (the daily read, 00:00 UTC), the
+ * protocols' figures are that day's close and the source line dates them; a
+ * later read (a retry) says when it was.
+ */
+function protocolsNote(payload: DefiTvlPayload): string {
+  const counted = "Protocols are read at the day's close; their versions are counted together.";
+  const read = payload.protocolsAsOf ? Date.parse(payload.protocolsAsOf) : Number.NaN;
+  const closed = payload.asOf ? Date.parse(`${payload.asOf}T00:00:00Z`) + 86_400_000 : Number.NaN;
+  if (!Number.isFinite(read) || (Number.isFinite(closed) && read >= closed && read - closed <= 3_600_000)) return counted;
+  return `Protocols as of ${isoMinute(payload.protocolsAsOf)}, the source's latest; their versions are counted together.`;
 }
 
 /** The other list and the total's daily history, for `--csv`: one file carries the whole tab. */
 function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExportTable[] {
   const other: DefiList = list === "chain" ? "protocol" : "chain";
-  const otherRows = buildDefiRows(payload, other).map((row) => defiRecord(row, other));
+  const income = defiHasIncome(payload);
+  const otherRows = buildDefiRows(payload, other).map((row) => defiRecord(row, other, income));
   const history = defiHistoryRows(payload);
   return [
-    ...(otherRows.length ? [{ title: other === "chain" ? "DeFi TVL by chain" : "DeFi TVL by protocol", unit: "USD", columns: other === "chain" ? CHAIN_COLUMNS : PROTOCOL_COLUMNS, rows: otherRows }] : []),
+    ...(otherRows.length ? [{ title: other === "chain" ? "DeFi TVL by chain" : "DeFi TVL by protocol", unit: "USD", columns: defiColumns(other, income), rows: otherRows }] : []),
     ...(history.length ? [{
       title: "Total DeFi TVL",
       unit: "USD",
@@ -169,15 +207,17 @@ function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExpo
  */
 async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"rows">["load"]>[1]) {
   const payload = await fetchDefiTvl(ctx.apiClient);
-  const rows = buildDefiRows(payload, list).map((row) => defiRecord(row, list));
+  const income = defiHasIncome(payload);
+  const rows = buildDefiRows(payload, list).map((row) => defiRecord(row, list, income));
   const summary = defiSummaryLine(payload);
   const exportTables = defiExportTables(payload, list);
   return {
     rows,
-    columns: list === "chain" ? CHAIN_COLUMNS : PROTOCOL_COLUMNS,
+    columns: defiColumns(list, income),
+    rowUnitKey: "unit",
     ...(exportTables.length ? { exportTables } : {}),
     errors: payload.warnings,
-    ...(list === "protocol" && payload.protocolsAsOf ? { notes: [`Protocols as of ${isoMinute(payload.protocolsAsOf)}, the source's latest; their versions are counted together.`] } : {}),
+    ...(list === "protocol" && payload.protocolsAsOf ? { notes: [protocolsNote(payload)] } : {}),
     empty: list === "chain" ? "No chains returned." : "No protocols returned.",
     freshness: {
       source: "Gloom Cloud",
@@ -194,6 +234,8 @@ async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"
       asOf: payload.asOf,
       fetchedAt: payload.fetchedAt,
       protocolsAsOf: payload.protocolsAsOf,
+      ...(payload.incomeAsOf !== undefined ? { incomeAsOf: payload.incomeAsOf } : {}),
+      unit: "USD",
       source: payload.source,
       total: payload.total,
       historyStart: defiHistoryStart(payload),
@@ -306,13 +348,17 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     }));
     const metadata = {
       list: kind, status: data.status, asOf: data.asOf, generatedAt: data.generatedAt, changeBasis: CRYPTO_CHANGE_BASIS_LABEL,
+      ...(data.marketCapBasis ? { marketCapBasis: data.marketCapBasis } : {}),
       ...(offPeg ? { sort: "offpeg" } : {}),
     };
-    if (kind !== "stablecoin") return { rows, errors: data.warnings, metadata };
+    // The source's own market cap can be on another supply (Toncoin's was 1.5 times price by circulating supply): the server's is circulating, and says so.
+    const capNote = data.marketCapBasis === "circulating" ? ["Market cap is price times circulating supply."] : [];
+    if (kind !== "stablecoin") return { rows, errors: data.warnings, ...(capNote.length ? { notes: capNote } : {}), metadata };
     const summary = supply ? supplySummaryLine(supply) : null;
     const history = supply ? supplyHistoryTable(supply) : null;
     // A supply outage is a caveat, not a failure: the prices are the report, and they are complete.
     const notes = [
+      ...capNote,
       ...(supply?.warnings ?? []),
       ...(supplyResult && "error" in supplyResult
         ? [`${supplyFailure(errorMessage(supplyResult.error)).replace(/\.$/, "")}; the prices are complete without it.`]
