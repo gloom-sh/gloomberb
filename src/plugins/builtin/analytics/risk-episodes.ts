@@ -24,13 +24,13 @@ export interface RiskEpisode {
 
 export const RISK_EPISODES: readonly RiskEpisode[] = [
   // The record close before the selloff to the low of the crash.
-  { id: "covid-2020", label: "Covid crash Feb-Mar 2020", start: "2020-02-19", end: "2020-03-23" },
+  { id: "covid-2020", label: "Covid crash 2020", start: "2020-02-19", end: "2020-03-23" },
   // The record close of 3 Jan 2022 to the low of the bear market the Fed's hikes brought.
-  { id: "rates-2022", label: "Rate shock Jan-Oct 2022", start: "2022-01-03", end: "2022-10-12" },
+  { id: "rates-2022", label: "Rate shock 2022", start: "2022-01-03", end: "2022-10-12" },
   // The Bank of Japan's hike on 31 Jul 2024 to the 5 Aug low, when the yen carry trade unwound.
-  { id: "carry-2024", label: "Carry unwind Aug 2024", start: "2024-07-31", end: "2024-08-05" },
+  { id: "carry-2024", label: "Carry unwind 2024", start: "2024-07-31", end: "2024-08-05" },
   // The close before the 2 Apr 2025 tariff announcement, after the bell, to the 8 Apr low.
-  { id: "tariffs-2025", label: "Tariff drop Apr 2025", start: "2025-04-02", end: "2025-04-08" },
+  { id: "tariffs-2025", label: "Tariff drop 2025", start: "2025-04-02", end: "2025-04-08" },
 ];
 
 /** A boundary close: the last one on or before the day asked for. */
@@ -59,8 +59,8 @@ export interface RiskEpisodeHistory {
   errors: Record<string, string>;
 }
 
-/** The episode closes as the model reads them, or what they are waiting on: loading, or why they failed. */
-export type RiskEpisodeState = RiskEpisodeHistory | { pending: string };
+/** The episode closes as the model reads them, or what they are waiting on: still loading, or the load's failure. */
+export type RiskEpisodeState = RiskEpisodeHistory | { pending: true; error: string | null };
 
 /** A holding to replay: its listing, and the currency it quotes in when that is not USD. */
 export interface RiskEpisodeTarget {
@@ -239,6 +239,7 @@ export function loadRiskEpisodeHistory(
 export interface EpisodeMember {
   id: string;
   symbol: string;
+  /** Its share of the basket, which the replay weighs it by. */
   weight: number;
   /** Its current value in the account currency, for its share of the book. */
   value: number;
@@ -256,10 +257,11 @@ export interface EpisodeReplay {
   spy: number | null;
   /**
    * Members replayed by their beta to SPY: that beta (1 when `assumed`, the
-   * trailing returns pairing with too few of SPY's), their share of the book,
-   * and `failed` when their closes did not load rather than not exist.
+   * trailing returns pairing with too few of SPY's), their share of the
+   * basket the value is a percent of (`weight`) and of the book, and `failed`
+   * when their closes did not load rather than not exist.
    */
-  proxied: Array<{ id: string; symbol: string; beta: number; assumed: boolean; share: number | null; failed: boolean }>;
+  proxied: Array<{ id: string; symbol: string; beta: number; assumed: boolean; weight: number; bookShare: number | null; failed: boolean }>;
   /** Why the episode has no value. */
   unavailable: string | null;
 }
@@ -272,7 +274,9 @@ export function episodeWindowText(episode: RiskEpisode): string {
 }
 
 const signedPercent = (value: number) => `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)}%`;
-const bookShareText = (share: number) => (share < 0.001 ? "under 0.1%" : `${formatNumber(share * 100, share < 0.1 ? 1 : 0)}%`);
+const shareText = (share: number) => (share < 0.001 ? "under 0.1%" : `${formatNumber(share * 100, share < 0.1 ? 1 : 0)}%`);
+/** A share in whole percent, for a row label: "22%", "<1%". */
+const wholeShareText = (share: number) => (share < 0.005 ? "<1%" : `${Math.round(share * 100)}%`);
 
 /**
  * Replays each episode on today's basket at its current weights: every
@@ -281,8 +285,10 @@ const bookShareText = (share: number) => (share < 0.001 ? "under 0.1%" : `${form
  * basket's move is the weighted sum. A member with no closes across the
  * window (listed later, or its history did not load) moves by its beta to SPY
  * from its trailing daily returns, the regression the index scenario reads,
- * times SPY's move; it is named, with its share of the book, never left out.
- * A non-USD account's returns convert at its pair's closes of the same dates.
+ * times SPY's move; it is named with its share of the basket and stays in
+ * it. The closes are split-adjusted prices, so a replay is a price return:
+ * dividends paid over the window are not in it. A non-USD account's returns
+ * convert at its pair's closes of the same dates.
  */
 export function replayEpisodes(
   history: RiskEpisodeHistory,
@@ -325,7 +331,8 @@ export function replayEpisodes(
           symbol: member.symbol,
           beta,
           assumed: measured == null,
-          share: bookValue > 0 ? Math.abs(member.value) / bookValue : null,
+          weight: member.weight,
+          bookShare: bookValue > 0 ? Math.abs(member.value) / bookValue : null,
           failed,
         });
         move = beta * spy;
@@ -336,26 +343,40 @@ export function replayEpisodes(
   });
 }
 
+/** The basket share a replay moves by beta proxy, for a row label where its evidence does not show: "22% proxy". */
+export function episodeProxyMarker(replay: EpisodeReplay): string | null {
+  const weight = replay.proxied.reduce((sum, row) => sum + row.weight, 0);
+  return replay.proxied.length ? `${wholeShareText(weight)} proxy` : null;
+}
+
 /**
- * What a replay row says beside its value: what is proxied and its share of
- * the book first, so a narrow column still shows it, then the window and
- * SPY's own move over it.
+ * What a replay row says beside its value, a percent of the basket: what is
+ * proxied and its share of that basket first, so a narrow column still shows
+ * it, then the window, SPY's own move over it, and that it is a price return.
  */
 export function episodeEvidence(replay: EpisodeReplay, accountCurrency: string): string {
   if (replay.unavailable) return `% of basket; ${replay.unavailable}; ${episodeWindowText(replay.episode)} closes`;
   const proxies = replay.proxied;
-  const share = proxies.reduce((sum, row) => sum + (row.share ?? 0), 0);
+  const weight = proxies.reduce((sum, row) => sum + row.weight, 0);
   const names = proxies.length > 3 ? `${proxies.slice(0, 2).map((row) => row.symbol).join(", ")} and ${proxies.length - 2} more` : proxies.map((row) => row.symbol).join(", ");
   return [
     "% of basket",
-    ...(proxies.length ? [`${names} by beta proxy, ${bookShareText(share)} of book`] : []),
+    ...(proxies.length ? [`${names} by beta proxy, ${shareText(weight)} of basket`] : []),
     `${episodeWindowText(replay.episode)} closes`,
     `SPY ${signedPercent(replay.spy!)}${accountCurrency === "USD" ? "" : " in USD"}`,
+    "price return",
   ].join("; ");
 }
 
-/** One note per proxied holding: the episodes it stands in for, why, and the beta it moves by. */
-export function episodeProxyNotes(replays: readonly EpisodeReplay[]): string[] {
+/**
+ * What the replays leave to say beside their rows: a note per holding a
+ * replay moves by proxy because it has no closes over the window (its
+ * episodes, its shares of the basket and the book, and its beta), and as
+ * warnings what failed to load: a holding's closes, which a proxy then
+ * stands in for, or SPY's or the account pair's, which leave an episode
+ * without a value.
+ */
+export function episodeIssues(replays: readonly EpisodeReplay[]): { notes: string[]; warnings: string[] } {
   const byHolding = new Map<string, EpisodeReplay["proxied"][number] & { episodes: string[] }>();
   for (const replay of replays)
     for (const row of replay.proxied) {
@@ -363,13 +384,23 @@ export function episodeProxyNotes(replays: readonly EpisodeReplay[]): string[] {
       entry.episodes.push(replay.episode.label);
       byHolding.set(row.id, entry);
     }
-  return [...byHolding.values()].map((row) => {
-    const holding = `${row.symbol}${row.share == null ? "" : ` (${bookShareText(row.share)} of the book)`}`;
+  const notes: string[] = [];
+  const warnings: string[] = [];
+  for (const row of byHolding.values()) {
+    const shares = `${shareText(row.weight)} of the basket${row.bookShare == null ? "" : `, ${shareText(row.bookShare)} of the book`}`;
     const episodes = row.episodes.join(", ");
-    const why = row.failed ? `: daily closes for ${episodes} did not load` : ` has no daily closes across ${episodes}`;
     const beta = row.assumed ? "an assumed beta of 1 to SPY, too few of its returns pairing with SPY's" : `its beta of ${row.beta.toFixed(2)} to SPY`;
-    return `${holding}${why}; ${row.episodes.length === 1 ? "that replay moves" : "those replays move"} it by ${beta}.`;
-  });
+    const moves = `${row.episodes.length === 1 ? "that replay moves" : "those replays move"} it by ${beta}`;
+    if (row.failed) warnings.push(`${row.symbol} (${shares}): daily closes for ${episodes} did not load; ${moves}.`);
+    else notes.push(`${row.symbol} (${shares}) has no daily closes across ${episodes}; ${moves}.`);
+  }
+  // One line per reason: SPY failing leaves every episode without a value for the same one.
+  const unavailable = new Map<string, string[]>();
+  for (const replay of replays)
+    if (replay.unavailable) unavailable.set(replay.unavailable, [...(unavailable.get(replay.unavailable) ?? []), replay.episode.label]);
+  for (const [reason, episodes] of unavailable)
+    warnings.push(`${episodes.length === replays.length ? "Historical episodes" : episodes.join(", ")}: ${reason}.`);
+  return { notes, warnings };
 }
 
 /**

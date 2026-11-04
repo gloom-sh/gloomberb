@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../../ui";
 import { usePaneFooter } from "../../../../components";
 import { usePaneArrowHold, usePaneHasTabStrip } from "../../../../components/layout/pane/footer/registration";
@@ -9,7 +9,7 @@ import { colors } from "../../../../theme/colors";
 import { resolveHeatCellColors } from "../../../../theme/heat-colors";
 import { formatCorrelation } from "../compute";
 import { displaySymbol, MATRIX_CELL_WIDTH, MIN_MATRIX_CELL_WIDTH, ROW_HEADER_WIDTH } from "./model";
-import { matrixSelection, moveMatrixCursor, type MatrixCursor } from "./selection";
+import { clampMatrixCursor, matrixSelection, moveMatrixCursor, type MatrixCursor } from "./selection";
 import { SymbolLabelCell } from "./symbol-cell";
 
 export interface CorrelationMatrixLayout {
@@ -42,29 +42,50 @@ export function correlationMatrixFits(symbols: readonly string[], width: number,
     && symbols.length + 1 <= height;
 }
 
+export interface CorrelationMatrixNavigation {
+  cursor: MatrixCursor;
+  hoveredSymbol: string | null;
+  /** The cursor's pair, or one symbol from its row label; null without symbols. */
+  selection: [string, string] | null;
+  /** What the grid draws the cursor and hover from, and reports clicks and hovers to. */
+  grid: Pick<CorrelationMatrixGridProps, "cursor" | "hoveredSymbol" | "onSelectCell" | "onHoverSymbol" | "onLeaveSymbol">;
+}
+
 /**
- * The matrix's keys in a pane with a tab strip, where it sits one level below
- * the strip as a chart does: the strip keeps Left, Right, h and l until Down,
- * Enter or a click moves into the matrix; there the arrows and h, j, k and l
- * move the cell and Enter opens it, and Esc, or Up from the top row, hands the
- * keys back. Without a strip the matrix has its keys throughout.
+ * The matrix's cursor, hover and keys, the same in every pane that draws it
+ * (CORR, and Correlation in portfolio analytics). The arrows and h, j, k and
+ * l move the cell, starting from a hovered label's row when there is one;
+ * Enter opens the hovered symbol, else the cell's pair, else the row label's
+ * symbol. Under a tab strip the matrix sits one level down, as a chart does:
+ * the strip keeps Left, Right, h and l until Down, Enter or a click moves
+ * into it, and Esc, or Up from the top row, hands them back. Without a strip
+ * the matrix has its keys throughout.
  */
-export function useCorrelationMatrixKeys({
+export function useCorrelationMatrixNavigation({
   symbols,
   focused,
-  cursor,
-  onCursor,
-  onOpen,
   scope,
+  onOpenPair,
+  onOpenSymbol,
 }: {
   symbols: readonly string[];
+  /** Whether the matrix takes the keys: its pane is focused and nothing else in it holds them. */
   focused: boolean;
-  cursor: MatrixCursor;
-  onCursor: (cursor: MatrixCursor) => void;
-  /** The cell Enter opens: a pair, or one symbol from its row label. */
-  onOpen: (selection: [string, string]) => void;
   scope: string;
-}): { enter: () => void } {
+  onOpenPair: (pair: [string, string]) => void;
+  onOpenSymbol: (symbol: string) => void;
+}): CorrelationMatrixNavigation {
+  const [state, setState] = useState<{ cursor: MatrixCursor; hoveredSymbol: string | null }>({
+    cursor: { row: 0, column: 1 },
+    hoveredSymbol: null,
+  });
+  const cursor = clampMatrixCursor(state.cursor, symbols.length);
+  const selection = matrixSelection(symbols, cursor);
+  const symbolsKey = symbols.join(",");
+  // Kept inside a new list; a matrix with nothing in it yet (still loading) keeps the cell it starts on.
+  useEffect(() => {
+    if (symbols.length) setState((current) => ({ ...current, cursor: clampMatrixCursor(current.cursor, symbols.length) }));
+  }, [symbolsKey]);
   const zoned = usePaneHasTabStrip();
   const [entered, setEntered] = useState(false);
   const inside = !zoned || entered;
@@ -73,6 +94,14 @@ export function useCorrelationMatrixKeys({
   useEffect(() => {
     if (!focused) setEntered(false);
   }, [focused]);
+  /** A hovered label stays the keyboard's starting point: Left reaches its row label. */
+  const moveCursor = (key: string) => {
+    setState((current) => {
+      const hoveredRow = current.hoveredSymbol ? symbols.indexOf(current.hoveredSymbol) : -1;
+      const start = hoveredRow >= 0 ? { row: hoveredRow, column: -1 } : clampMatrixCursor(current.cursor, symbols.length);
+      return { cursor: moveMatrixCursor(start, key, symbols.length), hoveredSymbol: null };
+    });
+  };
   useShortcut((event) => {
     if (event.defaultPrevented || event.targetEditable || event.ctrl || event.alt || event.meta) return;
     if (!inside) {
@@ -82,7 +111,7 @@ export function useCorrelationMatrixKeys({
       setEntered(true);
       return;
     }
-    if (zoned && (isPlainKey(event, "escape") || (cursor.row === 0 && isPlainKey(event, "up", "k")))) {
+    if (zoned && (isPlainKey(event, "escape") || (cursor.row === 0 && !state.hoveredSymbol && isPlainKey(event, "up", "k")))) {
       event.preventDefault();
       event.stopPropagation();
       setEntered(false);
@@ -91,13 +120,13 @@ export function useCorrelationMatrixKeys({
     if (isPlainKey(event, "j", "down", "k", "up", "h", "left", "l", "right")) {
       event.preventDefault();
       event.stopPropagation();
-      onCursor(moveMatrixCursor(cursor, event.name ?? event.key ?? "", symbols.length));
-    } else if (isPlainKey(event, "return", "enter")) {
-      const selection = matrixSelection(symbols, cursor);
-      if (!selection) return;
+      moveCursor(event.name ?? event.key ?? "");
+    } else if (isPlainKey(event, "return", "enter") && selection) {
       event.preventDefault();
       event.stopPropagation();
-      onOpen(selection);
+      if (state.hoveredSymbol && symbols.includes(state.hoveredSymbol)) onOpenSymbol(state.hoveredSymbol);
+      else if (selection[0] !== selection[1]) onOpenPair(selection);
+      else onOpenSymbol(selection[0]);
     }
   }, { enabled: focused && symbols.length > 0, phase: "before", scope });
   // Inside, the footer names the way back first, as a chart under a strip does.
@@ -105,7 +134,22 @@ export function useCorrelationMatrixKeys({
   usePaneFooter(`${scope}:leave`, () => leaveHint
     ? { order: -2, hints: [{ id: "matrix-leave", key: "Esc", label: "tabs", title: "Back to Tabs", onPress: () => setEntered(false) }] }
     : null, [leaveHint]);
-  return { enter: () => setEntered(true) };
+  const onHoverSymbol = useCallback((symbol: string) => {
+    setState((current) => ({ ...current, hoveredSymbol: symbol }));
+  }, []);
+  const onLeaveSymbol = useCallback((symbol: string) => {
+    setState((current) => (current.hoveredSymbol === symbol ? { ...current, hoveredSymbol: null } : current));
+  }, []);
+  const onSelectCell = useCallback((next: MatrixCursor) => {
+    setState({ cursor: next, hoveredSymbol: null });
+    setEntered(true);
+  }, []);
+  return {
+    cursor,
+    hoveredSymbol: state.hoveredSymbol,
+    selection,
+    grid: { cursor, hoveredSymbol: state.hoveredSymbol, onSelectCell, onHoverSymbol, onLeaveSymbol },
+  };
 }
 
 export interface CorrelationMatrixGridProps {

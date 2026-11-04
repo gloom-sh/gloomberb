@@ -2,7 +2,7 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
-import { cloudEpisodeReader, episodeProxyNotes, fetchRiskEpisodeHistory, riskEpisodeTargets } from "./risk-episodes";
+import { cloudEpisodeReader, fetchRiskEpisodeHistory, riskEpisodeTargets } from "./risk-episodes";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { shellWord } from "../../../utils/shell-word";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
@@ -10,6 +10,7 @@ import {
   BASKET_VIEWS,
   BOOK_TOTAL_ROW_ID,
   buildPortfolioRisk,
+  isShockRow,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
@@ -369,15 +370,18 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
               ? model.book != null && covered
               : view === "factors"
                 ? covered && model.factors.every((row) => row.value != null)
-                : model.complete;
+                : view === "stress"
+                  // Every basket scenario has a value and no episode stands in a proxy for closes that failed to load.
+                  ? model.complete
+                    && model.rows.stress.every((row) => isShockRow(row) || row.value != null)
+                    && !(model.episodes ?? []).some((row) => row.proxied.some((proxy) => proxy.failed))
+                  : model.complete;
     // A basket view with too little covered shows no estimate, and the report says why rather than leaving dashes.
     const shortfall = BASKET_VIEWS.has(view as RiskView) ? coverageLine(model.coverage).error : undefined;
-    // Which holdings an episode replays by proxy, when the report prints the episodes.
-    const proxyNotes = model.episodes && (!requestedView || requestedView === "stress") ? episodeProxyNotes(model.episodes) : [];
     return {
       complete,
       errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
-      notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback), ...proxyNotes],
+      notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
       sections: (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({
         title: view,
         columns: RISK_COLUMNS,

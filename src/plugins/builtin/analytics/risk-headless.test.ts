@@ -233,3 +233,33 @@ test("--since filed buys the 13F's weights at the filing-date close and holds th
     setSystemTime();
   }
 });
+
+test("a stress report whose episode closes did not load is not complete and says why among its errors", async () => {
+  setSystemTime(now);
+  try {
+    const tickers = brokerFixtureTickers(brokerFixtureHoldings().filter((holding) => holding.symbol === "US01" || holding.symbol === "US02"));
+    const client = brokerRiskClient(now);
+    const history = client.getCloudHistory;
+    // The episodes ask for their span, from February 2020, where SPY's answer is rate limited.
+    client.getCloudHistory = async (symbol: string, exchange: string, params?: { startDate?: string }) => {
+      if (symbol === "SPY" && params?.startDate?.startsWith("2020")) throw new Error("UPSTREAM_RATE_LIMIT");
+      return history(symbol, exchange);
+    };
+    const context = {
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [BROKER_PORTFOLIO] },
+      signal: new AbortController().signal,
+      apiClient: client,
+      resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers }),
+    } as unknown as HeadlessPaneContext;
+    const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "stress" } };
+    const report = await portfolioRiskHeadless.load(args, context);
+    const rows = report.sections[0]!.rows!;
+    // The regression scenarios have values; the episodes have none, and the report says why rather than only in each row.
+    expect(rows.find((row) => row.label === "Index -10%")!.value).not.toBe("--");
+    expect(rows.find((row) => row.label === "Covid crash 2020")!.value).toBe("--");
+    expect(report.errors).toContain("Historical episodes: SPY daily closes did not load: UPSTREAM_RATE_LIMIT.");
+    expect(report.complete).toBe(false);
+  } finally {
+    setSystemTime();
+  }
+});

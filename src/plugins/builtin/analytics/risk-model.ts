@@ -11,7 +11,7 @@ import type { CloudQuotePayload } from "../../../api-client/types";
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
 import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import type { DatedReturn } from "./metrics";
-import { episodeEvidence, episodeWindowText, replayEpisodes, RISK_EPISODES } from "./risk-episodes";
+import { episodeEvidence, episodeIssues, episodeProxyMarker, episodeWindowText, replayEpisodes, RISK_EPISODES } from "./risk-episodes";
 import {
   computeWeightedPortfolioReturns,
   syntheticPositionUnsupportedReason,
@@ -165,6 +165,11 @@ export interface RiskDisplayRow {
   amountBase?: number;
   /** What a tail loss in money is taken on: the basket's value and share of the book, and what it leaves out. */
   basis?: string;
+  /**
+   * The caveat a narrow pane puts beside the label when it has no room for
+   * the evidence: the basket share an episode replays by beta proxy ("22% proxy").
+   */
+  marker?: string;
 }
 /** The tail-loss rows, which also read in money on the covered basket. */
 const TAIL_ROW_IDS: ReadonlySet<string> = new Set(["var", "es"]);
@@ -978,6 +983,12 @@ export function buildPortfolioRisk(
         { spyReturns: spy, accountCurrency: portfolio.currency, bookValue: marketValue },
       )
     : null;
+  if (episodes) {
+    const issues = episodeIssues(episodes);
+    notes.push(...issues.notes);
+    warnings.push(...issues.warnings);
+  } else if (episodeState && "pending" in episodeState && episodeState.error && members.length)
+    warnings.push(`Historical episodes: daily closes did not load: ${episodeState.error}`);
   // The given currency and price shocks reprice every line of the book, cash included, at once.
   const bookLines: RiskBookLine[] = [
     ...holdings.map((row) => ({
@@ -1114,8 +1125,12 @@ export function buildPortfolioRisk(
       })),
       // Dated as the index scenario is: the weights and betas are today's, the window is in the label and the evidence.
       ...(episodeState
-        ? RISK_EPISODES.map((episode, index) => {
+        ? RISK_EPISODES.map((episode, index): RiskDisplayRow => {
             const replay = episodes?.[index];
+            const waiting = "pending" in episodeState
+              ? (episodeState.error ? `daily closes did not load: ${episodeState.error}` : "loading daily closes")
+              : "no basket to replay";
+            const marker = replay ? episodeProxyMarker(replay) : null;
             return {
               id: `episode:${episode.id}`,
               label: episode.label,
@@ -1123,9 +1138,8 @@ export function buildPortfolioRisk(
               unit: "%",
               percentile: null,
               asOf: stresses[0]?.regression?.asOf ?? basket.at(-1)?.dateKey ?? null,
-              detail: replay
-                ? episodeEvidence(replay, portfolio.currency)
-                : `% of basket; ${"pending" in episodeState ? episodeState.pending : "no basket to replay"}; ${episodeWindowText(episode)} closes`,
+              detail: replay ? episodeEvidence(replay, portfolio.currency) : `% of basket; ${waiting}; ${episodeWindowText(episode)} closes`,
+              ...(marker ? { marker } : {}),
             };
           })
         : []),

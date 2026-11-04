@@ -45,7 +45,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { isAccessDenied } from "../../../api-client/errors";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPortfolioRiskMarket } from "./risk-client";
-import { episodeProxyNotes, loadRiskEpisodeHistory, riskEpisodeTargets, type RiskEpisodeState, type RiskEpisodeTarget } from "./risk-episodes";
+import { loadRiskEpisodeHistory, riskEpisodeTargets, type RiskEpisodeState, type RiskEpisodeTarget } from "./risk-episodes";
 import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
 import { useBrokerPortfolioPerformance } from "./broker-performance";
 import { parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
@@ -76,8 +76,7 @@ import {
   resolveTemplatePortfolioId,
 } from "./portfolio-selection";
 import { startBrokerAdd } from "../broker-manager/add-request";
-import { CorrelationMatrixGrid, correlationMatrixFits, useCorrelationMatrixKeys } from "../correlation/matrix/grid";
-import { clampMatrixCursor, type MatrixCursor } from "../correlation/matrix/selection";
+import { CorrelationMatrixGrid, correlationMatrixFits, useCorrelationMatrixNavigation } from "../correlation/matrix/grid";
 import { usePluginTickerActions } from "../../runtime";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { formatTickerListInput } from "../../../tickers/list";
@@ -452,10 +451,11 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [episodeTargetsKey, portfolio?.currency, session.requestKey],
   );
   const episodeResource = useAsyncResource(episodeLoader, { clearOnError: isAccessDenied, keepPreviousData: true });
+  // A reload reads the kept closes again and asks only for those that failed
+  // (a rate limit on a large book), so it follows the market data's cadence.
+  useAutoRefresh(episodeResource.updatedAt, episodeResource.load);
   const episodeState = useMemo<RiskEpisodeState | undefined>(
-    () => (!episodeLoader
-      ? undefined
-      : episodeResource.data ?? { pending: episodeResource.error ? `daily closes did not load: ${episodeResource.error}` : "loading daily closes" }),
+    () => (!episodeLoader ? undefined : episodeResource.data ?? { pending: true, error: episodeResource.error }),
     [episodeLoader, episodeResource.data, episodeResource.error],
   );
   const derived = useMemo(() => {
@@ -629,8 +629,6 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const notices = [
     ...riskCoverageNotices(model?.coverage),
     ...(model?.notes ?? []),
-    // Which holdings an episode replays by proxy, on the view that shows the episodes.
-    ...(view === "stress" && !stressShortfall && model?.episodes ? episodeProxyNotes(model.episodes) : []),
     ...(model?.warnings ?? []),
     ...shocks.errors,
     ...(derived.error ? [derived.error] : []),
@@ -721,7 +719,11 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         event.preventDefault();
         event.stopPropagation();
         hint.onPress();
-      } else if (event.name === "r" && !frozen) void resource.reload();
+      } else if (event.name === "r" && !frozen) {
+        void resource.reload();
+        // The episodes too: a read that failed is asked again.
+        if (view === "stress") void episodeResource.reload();
+      }
     },
     { enabled: focused, scope: "portfolio-risk", phase: "before" },
   );
@@ -827,40 +829,24 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [basketBody, model, view],
   );
   const matrixShown = !!basketMatrix && correlationMatrixFits(basketMatrix.symbols, width, rootHeight - 1);
-  const [matrixState, setMatrixState] = useState<{ cursor: MatrixCursor; hoveredSymbol: string | null }>({
-    cursor: { row: 0, column: 1 },
-    hoveredSymbol: null,
-  });
   // The matrix has no row detail: a pair opened from the list closes once the matrix takes its place.
   useEffect(() => {
     if (matrixShown && open) setOpen(null);
   }, [matrixShown, open, setOpen]);
   const matrixSymbols = matrixShown ? basketMatrix!.symbols : [];
-  const matrixCursor = clampMatrixCursor(matrixState.cursor, matrixSymbols.length);
   const { pinTicker, navigateTicker } = usePluginTickerActions();
   const openMatrixSymbol = useCallback((symbol: string) => {
     if (tickers.has(symbol)) pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
     else navigateTicker(symbol);
   }, [navigateTicker, pinTicker, tickers]);
-  // A pair opens in GR, as it does from CORR; a row label opens its holding.
-  const openMatrixSelection = useCallback((selection: [string, string]) => {
-    if (selection[0] === selection[1]) openMatrixSymbol(selection[0]);
-    else createPaneFromTemplate("relationship-graph-pane", { symbols: selection, arg: formatTickerListInput(selection) });
-  }, [createPaneFromTemplate, openMatrixSymbol]);
-  const matrixKeys = useCorrelationMatrixKeys({
+  // CORR's cursor, hover and keys; a pair opens in GR, as it does from CORR.
+  const matrixNavigation = useCorrelationMatrixNavigation({
     symbols: matrixSymbols,
     focused: focused && matrixShown,
-    cursor: matrixCursor,
-    onCursor: (cursor) => setMatrixState({ cursor, hoveredSymbol: null }),
-    onOpen: openMatrixSelection,
     scope: "portfolio-risk:matrix",
+    onOpenPair: (pair) => createPaneFromTemplate("relationship-graph-pane", { symbols: pair, arg: formatTickerListInput(pair) }),
+    onOpenSymbol: openMatrixSymbol,
   });
-  const hoverMatrixSymbol = useCallback((symbol: string) => {
-    setMatrixState((current) => ({ ...current, hoveredSymbol: symbol }));
-  }, []);
-  const leaveMatrixSymbol = useCallback((symbol: string) => {
-    setMatrixState((current) => (current.hoveredSymbol === symbol ? { ...current, hoveredSymbol: null } : current));
-  }, []);
   if (!portfolio)
     return (
       <EmptyState
@@ -905,14 +891,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             width={width}
             height={rootHeight - 1}
             correlation={basketMatrix!.correlation}
-            cursor={matrixCursor}
-            hoveredSymbol={matrixState.hoveredSymbol}
-            onSelectCell={(cursor) => {
-              setMatrixState({ cursor, hoveredSymbol: null });
-              matrixKeys.enter();
-            }}
-            onHoverSymbol={hoverMatrixSymbol}
-            onLeaveSymbol={leaveMatrixSymbol}
+            {...matrixNavigation.grid}
             onOpenSymbol={openMatrixSymbol}
           />
         </Box>
@@ -974,7 +953,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           })
         }
         renderCell={(row, column) => {
-          if (column.id === "label") return { text: row.label };
+          // Without the evidence column an episode says beside its label how much of it is proxied.
+          if (column.id === "label")
+            return { text: row.marker && !columns.some((entry) => entry.id === "detail") ? `${row.label} (${row.marker})` : row.label };
           if (column.id === "value")
             return row.leftOut
               ? { text: "left out", value: null, color: colors.textMuted }

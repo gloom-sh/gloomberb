@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { DatedReturn } from "./metrics";
-import { episodeCloses, episodeEvidence, fetchRiskEpisodeHistory, replayEpisodes, RISK_EPISODES, type EpisodeReader } from "./risk-episodes";
+import { episodeCloses, episodeEvidence, episodeIssues, fetchRiskEpisodeHistory, replayEpisodes, RISK_EPISODES, type EpisodeReader } from "./risk-episodes";
 
 const covid = RISK_EPISODES.find((episode) => episode.id === "covid-2020")!;
 
@@ -65,26 +65,35 @@ test("a replay weights each holding's own move, converts a foreign one at the sa
   expect(replay!.spy).toBeCloseTo(-0.34, 12);
   // 0.5 * -20% + 0.3 * (0.9 * 0.9 - 1) + 0.2 * 2 * -34%
   expect(replay!.value).toBeCloseTo(0.5 * -0.2 + 0.3 * -0.19 + 0.2 * 2 * -0.34, 10);
-  expect(replay!.proxied).toEqual([{ id: "NYSE:NEW", symbol: "NEW", beta: expect.closeTo(2, 10), assumed: false, share: 0.16, failed: false }]);
-  expect(episodeEvidence(replay!, "USD")).toBe("% of basket; NEW by beta proxy, 16% of book; 19 Feb to 23 Mar 2020 closes; SPY -34.0%");
+  expect(replay!.proxied).toEqual([{ id: "NYSE:NEW", symbol: "NEW", beta: expect.closeTo(2, 10), assumed: false, weight: 0.2, bookShare: 0.16, failed: false }]);
+  // The proxy's share is of the basket the value is a percent of.
+  expect(episodeEvidence(replay!, "USD")).toBe("% of basket; NEW by beta proxy, 20% of basket; 19 Feb to 23 Mar 2020 closes; SPY -34.0%; price return");
 });
 
-test("without SPY's closes an episode has no value and says why, rather than proxying every holding against nothing", async () => {
-  const failing: EpisodeReader = {
+test("closes that fail to load are warnings: a holding's is replayed by proxy, SPY's leaves every episode without a value", async () => {
+  const members = [{ id: "NYSE:AAA", symbol: "AAA", weight: 1, value: 100, convertedFrom: null, returns: returns() }];
+  const options = { spyReturns: returns(), accountCurrency: "USD", bookValue: 100 };
+  const window = { [covid.id]: { start: { date: covid.start, close: 100 }, end: { date: covid.end, close: 66 } } };
+  const failing = (symbol: string): EpisodeReader => ({
     async instrument(instrument) {
-      if (instrument.symbol === "SPY") throw new Error("UPSTREAM_RATE_LIMIT");
-      return {};
+      if (instrument.symbol === symbol) throw new Error("UPSTREAM_RATE_LIMIT");
+      return window;
     },
     async currency() {
       return {};
     },
-  };
-  const history = await fetchRiskEpisodeHistory([{ instrument: { symbol: "AAA", exchange: "NYSE" }, currency: null }], "USD", failing);
-  const [replay] = replayEpisodes(
-    history,
-    [{ id: "NYSE:AAA", symbol: "AAA", weight: 1, value: 100, convertedFrom: null, returns: returns() }],
-    { spyReturns: returns(), accountCurrency: "USD", bookValue: 100 },
-  );
-  expect(replay!.value).toBeNull();
-  expect(replay!.unavailable).toBe("SPY daily closes did not load: UPSTREAM_RATE_LIMIT");
+  });
+  const target = [{ instrument: { symbol: "AAA", exchange: "NYSE" }, currency: null }];
+  const holding = replayEpisodes(await fetchRiskEpisodeHistory(target, "USD", failing("AAA")), members, options);
+  expect(holding[0]!.proxied[0]).toMatchObject({ symbol: "AAA", failed: true });
+  expect(episodeIssues(holding)).toEqual({
+    notes: [],
+    warnings: [
+      "AAA (100% of the basket, 100% of the book): daily closes for Covid crash 2020 did not load; that replay moves it by its beta of 1.00 to SPY.",
+      "Rate shock 2022, Carry unwind 2024, Tariff drop 2025: SPY has no daily closes over the window.",
+    ],
+  });
+  const spy = replayEpisodes(await fetchRiskEpisodeHistory(target, "USD", failing("SPY")), members, options);
+  expect(spy.every((replay) => replay.value == null)).toBe(true);
+  expect(episodeIssues(spy).warnings).toEqual(["Historical episodes: SPY daily closes did not load: UPSTREAM_RATE_LIMIT."]);
 });

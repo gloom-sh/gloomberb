@@ -574,6 +574,9 @@ export function BrokerTradeTab({ width, height, focused, onCapture, docked, onCl
   </Box>;
 }
 
+/** Profiles the empty Orders body offers as buttons; past this the picker alone. */
+const ORDER_PROFILE_BUTTONS = 4;
+
 export function BrokerOrdersPane({ width, height, focused }: PaneProps) {
   const config = usePaneAppConfig();
   const { getBrokerAdapter } = usePluginBrokerActions();
@@ -597,6 +600,13 @@ export function BrokerOrdersPane({ width, height, focused }: PaneProps) {
       options={[{ value: "", label: "Choose a profile", disabled: true }, ...profiles.map((value) => ({ value: value.id, label: value.label }))]} onChange={setSelected} /></Box>
     {broker && instance
       ? <ProfileTicket key={instance.id} broker={broker} instance={instance} contract={contract} width={width} height={height - 1} focused={focused} ordersFirst />
-      : <EmptyState title="Choose a broker profile" />}
+      // The picker already asks; the body opens a profile in one press while they fit on a line.
+      : <PaneStatusBody
+          empty
+          emptyTitle={`${profiles.length} broker profiles list orders.`}
+          actions={profiles.length <= ORDER_PROFILE_BUTTONS
+            ? <>{profiles.map((value) => <Button key={value.id} label={value.label} onPress={() => setSelected(value.id)} />)}</>
+            : undefined}
+        />}
   </Box>;
 }

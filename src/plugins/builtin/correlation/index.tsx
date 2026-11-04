@@ -1,5 +1,5 @@
 import { Box, type InputRenderable } from "../../../ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
@@ -41,10 +41,10 @@ import {
   pairKey,
   rowHeaderColor,
 } from "./matrix/model";
-import { CorrelationMatrixGrid, correlationMatrixLayout } from "./matrix/grid";
+import { CorrelationMatrixGrid, correlationMatrixLayout, useCorrelationMatrixNavigation } from "./matrix/grid";
 import { correlationHeadless, relationshipHeadless } from "./headless";
 import { CORRELATION_HISTORY_RESOLUTION } from "./history";
-import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixSelection, moveMatrixCursor, type MatrixCursor } from "./matrix/selection";
+import { buildMatrixPairHistory, matrixChartRows } from "./matrix/selection";
 import { MatrixPairChart } from "./matrix/pair-chart";
 
 /** A map series' values and when they arrived; after a failed load, the error and any values kept from before. */
@@ -59,12 +59,6 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const { navigateTicker, pinTicker } = usePluginTickerActions();
   const { createPaneFromTemplate } = usePluginAppActions();
   const tickers = useAppSelector((state) => state.tickers);
-  const [{ cursor: cellCursor, hoveredSymbol }, setCursorState] = useState<{ cursor: MatrixCursor; hoveredSymbol: string | null }>({
-    cursor: { row: 0, column: 1 }, hoveredSymbol: null,
-  });
-  const hoverSymbol = useCallback((symbol: string) => {
-    setCursorState((current) => ({ ...current, hoveredSymbol: symbol }));
-  }, []);
   const settings = useMemo(() => getCorrelationPaneSettings(pane?.settings), [pane?.settings]);
   const [rangePreset, setRangePreset] = usePaneSettingValue<CorrelationRangePreset>("rangePreset", settings.rangePreset);
   const [symbolsText, setSymbolsText] = usePaneSettingValue<string>("symbolsText", settings.symbolsText);
@@ -155,12 +149,29 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   const symbols = entries;
   const symbolsKey = symbols.join(",");
-  const cursor = clampMatrixCursor(cellCursor, symbols.length);
-  const selection = matrixSelection(symbols, cursor);
+  const openSymbol = useCallback((symbol: string) => {
+    if (geoSeriesToken(symbol)) {
+      createPaneFromTemplate("chart-composer-pane", { arg: symbol });
+      return;
+    }
+    if (tickers.has(symbol)) {
+      pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
+      return;
+    }
+    navigateTicker(symbol);
+  }, [createPaneFromTemplate, navigateTicker, pinTicker, tickers]);
+  const navigation = useCorrelationMatrixNavigation({
+    symbols,
+    focused: focused && !symbolsEditing,
+    scope: "correlation:matrix",
+    // Ratio and beta are price measures, so a pair with a map series charts both in G instead.
+    onOpenPair: (pair) => pair.some((entry) => geoSeriesToken(entry))
+      ? createPaneFromTemplate("chart-composer-pane", { arg: formatTickerListInput(pair) })
+      : createPaneFromTemplate("relationship-graph-pane", { symbols: pair, arg: formatTickerListInput(pair) }),
+    onOpenSymbol: openSymbol,
+  });
+  const { selection } = navigation;
   const pair = selection && selection[0] !== selection[1] ? selection : null;
-  useEffect(() => {
-    setCursorState((current) => ({ ...current, cursor: clampMatrixCursor(current.cursor, symbols.length) }));
-  }, [symbolsKey]);
   const pairHistory = useMemo(() => pair ? buildMatrixPairHistory(
     seriesBySymbol.get(pair[0]), seriesBySymbol.get(pair[1]), settings.rangePreset,
   ) : null, [pair?.[0], pair?.[1], seriesBySymbol, settings.rangePreset]);
@@ -180,45 +191,10 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     if (geoKey) void geoHistory.reload();
   }, [chartRequests, geoKey, geoHistory.reload]);
 
-  const openSymbol = useCallback((symbol: string) => {
-    if (geoSeriesToken(symbol)) {
-      createPaneFromTemplate("chart-composer-pane", { arg: symbol });
-      return;
-    }
-    if (tickers.has(symbol)) {
-      pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
-      return;
-    }
-    navigateTicker(symbol);
-  }, [createPaneFromTemplate, navigateTicker, pinTicker, tickers]);
-
-  /** Hovered symbols remain a keyboard starting point; Left reaches their row cursor. */
-  const moveCursor = (key: string) => {
-    if (symbols.length === 0) return;
-    setCursorState((current) => {
-      const hoveredRow = current.hoveredSymbol ? symbols.indexOf(current.hoveredSymbol) : -1;
-      const start = hoveredRow >= 0 ? { row: hoveredRow, column: -1 } : current.cursor;
-      return { cursor: moveMatrixCursor(start, key, symbols.length), hoveredSymbol: null };
-    });
-  };
-
   useShortcut((event) => {
     if (!focused || symbolsEditing || event.defaultPrevented) return;
-    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return;
-    if (isPlainKey(event, "j", "down", "k", "up", "h", "left", "l", "right")) {
-      event.preventDefault();
-      event.stopPropagation();
-      moveCursor(event.name ?? event.key ?? "");
-    } else if (isPlainKey(event, "return", "enter") && selection) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (hoveredSymbol && symbols.includes(hoveredSymbol)) openSymbol(hoveredSymbol);
-      // Ratio and beta are price measures, so a pair with a map series charts both in G instead.
-      else if (pair && pair.some((entry) => geoSeriesToken(entry))) createPaneFromTemplate("chart-composer-pane", { arg: formatTickerListInput(pair) });
-      else if (pair) createPaneFromTemplate("relationship-graph-pane", { symbols: pair, arg: formatTickerListInput(pair) });
-      else openSymbol(selection[0]);
-    }
-  }, { phase: "before", scope: "correlation:matrix" });
+    handleRefreshKey(event, refresh, { stopPropagation: true });
+  }, { phase: "before", scope: "correlation:refresh" });
 
   // Esc cancels an edit of the list instead of clearing it: the field's own
   // Esc empties the draft, which would fall back to the default tickers.
@@ -249,10 +225,6 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
       : [],
   }), [settings.symbolsError, statusSummary, symbols.length]);
-
-  const clearHoveredSymbol = useCallback((symbol: string) => {
-    setCursorState((current) => current.hoveredSymbol === symbol ? { ...current, hoveredSymbol: null } : current);
-  }, []);
 
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
@@ -304,12 +276,8 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
             width={width}
             height={matrixHeight}
             correlation={(row, column) => matrix.results.get(pairKey(row, column))?.correlation ?? null}
-            cursor={cursor}
-            hoveredSymbol={hoveredSymbol}
+            {...navigation.grid}
             rowColor={(symbol) => rowHeaderColor(seriesBySymbol.get(symbol)?.status ?? "loading")}
-            onSelectCell={(next) => setCursorState({ cursor: next, hoveredSymbol: null })}
-            onHoverSymbol={hoverSymbol}
-            onLeaveSymbol={clearHoveredSymbol}
             onOpenSymbol={openSymbol}
           />
           {chartRows > 0 && pair && pairHistory ? (
