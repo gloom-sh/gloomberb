@@ -143,6 +143,8 @@ test.each(["trade", "orders"] as const)("%s broker selection is reachable withou
   await tui.emitKeypress([{ name: "down" }, { name: "enter", sequence: "\r" }], { trackPropagation: true });
   await tui.waitForFrameToContain(view === "trade" ? "Buy 1 AAPL" : "No open orders in this account.");
   await tui.waitForFrameToExclude(view === "trade" ? "Choose a broker" : "Choose a profile");
+  // The picker chose the second profile, not the empty body's button for the first.
+  if (view === "orders") expect(second.calls.some((call) => call.method === "listOpenOrders")).toBe(true);
   expect(first.calls.some((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toBe(false);
   expect(second.calls.some((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toBe(false);
 });

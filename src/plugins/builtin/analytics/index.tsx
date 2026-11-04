@@ -3,6 +3,7 @@ import { PortfolioRiskPane } from "./risk-pane";
 import { portfolioRiskHeadless } from "./risk-headless";
 import { NO_HOLDINGS_HINT } from "./risk-model";
 import { portfolioRiskCache } from "./risk-client";
+import { riskEpisodeCache } from "./risk-episodes";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -478,8 +479,14 @@ export const portfolioAnalyticsModule: PluginModule = {
     },
   ],
 
-  setup(ctx) { portfolioRiskCache.attach(ctx.persistence); },
-  dispose() { portfolioRiskCache.reset(); },
+  setup(ctx) {
+    portfolioRiskCache.attach(ctx.persistence);
+    riskEpisodeCache.attach(ctx.persistence);
+  },
+  dispose() {
+    portfolioRiskCache.reset();
+    riskEpisodeCache.reset();
+  },
   paneTemplates: ["PORT", "MARS"].map(prefix => ({
       id: prefix === "PORT" ? "analytics-pane" : "analytics-mars-pane",
       paneId: "analytics",

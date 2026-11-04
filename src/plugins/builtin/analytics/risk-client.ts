@@ -13,6 +13,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { PricePoint } from "../../../types/financials";
 import { resolveDatedReturns, type DatedReturn } from "./metrics";
 import { qualifySharpeCadence } from "./sharpe-cadence";
+import type { RiskEpisodeState } from "./risk-episodes";
 import { evidenceDay } from "./risk-evidence";
 import { FX_LIVE_RATE_MAX_DEVIATION } from "../../../market-data/coordinator/fx-legs";
 import {
@@ -77,6 +78,8 @@ export interface RiskMarketSnapshot {
   fxRates?: Record<string, number>;
   /** For an account not in USD: the daily closes its returns convert at, or why they cannot. */
   accountFx?: AccountFx;
+  /** The closes the Stress view's historical episodes replay, loaded apart from the rest and only for that view. */
+  episodes?: RiskEpisodeState;
 }
 /**
  * The most holdings one load requests daily history for, largest current USD

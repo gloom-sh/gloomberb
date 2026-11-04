@@ -2,6 +2,7 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
+import { cloudEpisodeReader, fetchRiskEpisodeHistory, riskEpisodeTargets } from "./risk-episodes";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { shellWord } from "../../../utils/shell-word";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
@@ -9,6 +10,7 @@ import {
   BASKET_VIEWS,
   BOOK_TOTAL_ROW_ID,
   buildPortfolioRisk,
+  isShockRow,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
@@ -171,6 +173,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       `Fixed-current-weight equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value, in the account's currency; foreign listings convert to USD at daily FX closes, and a non-USD account's returns then convert into its currency at its own daily FX closes; metadata.coverage states the covered share of the book (cash included) and each holding and currency's cash left out.`,
       "--since filed buys the 13F's own weights at the filing-date close and holds them (--weights current holds today's weights fixed instead).",
       "--fx-shift and --asset-shift reprice every holding and the cash at once; the index, 10Y and VIX shifts are separate basket regressions.",
+      "The stress view also replays four past selloffs on today's basket at its current weights, from daily closes (Covid 19 Feb to 23 Mar 2020, rate shock 3 Jan to 12 Oct 2022, carry unwind 31 Jul to 5 Aug 2024, tariffs 2 Apr to 8 Apr 2025); a holding with no closes over a window moves by its trailing beta to SPY, named in the row with its share of the book.",
       "No account performance inferred.",
       "ETF price-return factor proxies.",
       "Historical percentiles need 20 rolling samples.",
@@ -313,7 +316,14 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         ? Promise.resolve(undefined)
         : loadPortfolioOptionBook(tickers, local.portfolio),
     ]);
-    const market = { ...prices, brokerOptions };
+    // The episodes read years-old closes of each holding, so only a report that prints Stress loads them.
+    const episodeTargets = !localOnly && (!requestedView || requestedView === "stress")
+      ? riskEpisodeTargets(prices, tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange })))
+      : [];
+    const episodes = episodeTargets.length
+      ? await fetchRiskEpisodeHistory(episodeTargets, local.portfolio.currency, cloudEpisodeReader(ctx.apiClient), ctx.signal)
+      : undefined;
+    const market = { ...prices, brokerOptions, ...(episodes ? { episodes } : {}) };
     if (ctx.signal.aborted) throw new Error("Portfolio risk load cancelled");
     const model = buildPortfolioRisk(
       local.portfolio,
@@ -360,7 +370,12 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
               ? model.book != null && covered
               : view === "factors"
                 ? covered && model.factors.every((row) => row.value != null)
-                : model.complete;
+                : view === "stress"
+                  // Every basket scenario has a value and no episode stands in a proxy for closes that failed to load.
+                  ? model.complete
+                    && model.rows.stress.every((row) => isShockRow(row) || row.value != null)
+                    && !(model.episodes ?? []).some((row) => row.proxied.some((proxy) => proxy.failed))
+                  : model.complete;
     // A basket view with too little covered shows no estimate, and the report says why rather than leaving dashes.
     const shortfall = BASKET_VIEWS.has(view as RiskView) ? coverageLine(model.coverage).error : undefined;
     return {

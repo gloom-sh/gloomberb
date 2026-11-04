@@ -206,6 +206,6 @@ test("below the coverage minimum Stress keeps its currency and price shocks, whi
   // The Taiwan dollar line and the book total, and none of the basket scenarios, which have nothing to show.
   expect(labels).toEqual(["TWD1", "Book total"]);
   expect(lines.find((line) => line.trimStart().startsWith("TWD1"))).toContain("-20.00%");
-  expect(lines.at(-1)).toContain("Index, 10Y and VIX scenarios: qualifying holdings cover 5% of the holdings' value; basket estimates need 50%");
+  expect(lines.at(-1)).toContain("Index, 10Y, VIX and episode scenarios: qualifying holdings cover 5% of the holdings' value; basket estimates need 50%");
   expect(lines.at(-1)).not.toContain("daily closes");
 });
