@@ -22,7 +22,7 @@ import {
 } from "../../../../portfolio/mutations";
 import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, listAddLookups, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
@@ -110,7 +110,9 @@ async function addTickerToWatchlistCommand(
 async function addToWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withCollectionMarketData(ctx, async (market) => {
     const { watchlist, rest } = requireWatchlistArgs(market.config, args, file, "add", ADD_USAGE, ctx);
-    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
+    // Reading the names and looking the symbols up share their answers, so nothing is asked twice.
+    const lookups = await listAddLookups(market.dataProvider);
+    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, lookups));
     if (list.single) {
       await addTickerToWatchlistCommand(watchlist, list.single, list.notes, exchange, ctx, market);
       return;
@@ -121,7 +123,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       symbols: list.symbols,
       exchange,
       store: market.store,
-      dataProvider: market.dataProvider,
+      dataProvider: lookups,
       onRetry: retryNotice(ctx),
       onProgress: progressNotice(ctx),
       retry,

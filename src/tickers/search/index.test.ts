@@ -1636,12 +1636,13 @@ describe("ticker-search utilities", () => {
         expect(loaded.some((key) => key.includes("/"))).toBe(false);
       }
     }
-    // The venue's own row names its currency too; a share class on a stock exchange is not a coin.
+    // The venue's own row names its currency too; a share class on a stock exchange is not a coin, and is saved
+    // under its dotted spelling, the one row BRK.B, BRK-B and BRK/B share.
     const repository = { loadTicker: async () => null, createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }), saveTicker: async () => {} };
     expect((await upsertTickerFromSearchResult(repository as any, makeSearchResult("BTC-GBP", "Bitcoin GBP", { exchange: "CCC" }))).ticker.metadata)
       .toMatchObject({ ticker: "BTC-GBP", exchange: "CCC", currency: "GBP" });
     expect((await upsertTickerFromSearchResult(repository as any, makeSearchResult("BRK/B", "Berkshire", { exchange: "NYSE" }))).ticker.metadata)
-      .toMatchObject({ ticker: "BRK/B", exchange: "NYSE", currency: "" });
+      .toMatchObject({ ticker: "BRK.B", exchange: "NYSE", currency: "" });
   });
 
   test("a coin pair typed with a slash resolves to the crypto venue's listing", async () => {

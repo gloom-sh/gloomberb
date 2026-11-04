@@ -442,9 +442,24 @@ function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | 
  */
 export function bankFigurePointer(name: string, arg: string): { message: string; details: string } | null {
   if (findTopicPointer(name) !== BANK_FIGURES_TOPIC && findCommandPointer(name) !== BANK_FIGURES_POINTER) return null;
+  return bankFiguresAnswer(`${name} is not a function: a bank's figures are in the Bank section of fundamentals.`, arg);
+}
+
+/**
+ * The answer to `fn BANK JPM`: BANK opens CBR, the central banks' rates, which
+ * takes no ticker; with one it asks for that bank's figures, which the Bank
+ * section of `fundamentals` has. Null for any other name, and with no ticker.
+ */
+export function bankWordPointer(name: string, arg: string | null | undefined): { message: string; details: string } | null {
+  const ticker = arg?.trim() ?? "";
+  if (!/^banks?$/i.test(name.trim()) || !/^[A-Za-z0-9.:^-]+$/.test(ticker)) return null;
+  return bankFiguresAnswer(`${name.trim().toUpperCase()} opens central bank rates; a bank's own figures are in the Bank section of fundamentals.`, ticker);
+}
+
+function bankFiguresAnswer(message: string, arg: string): { message: string; details: string } {
   const symbol = /^[A-Za-z0-9.:^-]+$/.test(arg.trim()) ? arg.trim().toUpperCase() : "";
   return {
-    message: `${name} is not a function: a bank's figures are in the Bank section of fundamentals.`,
+    message,
     details: [
       `Deposits, uninsured share, CRE / capital and the lead bank: gloom fundamentals ${symbol || "<ticker>"}`,
       `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloom fn EQS --metric kpiNimPercent"}`,

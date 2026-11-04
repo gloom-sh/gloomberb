@@ -13,8 +13,8 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import { loadSecFilings } from "./client";
-import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, fundSeriesFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
-import { hiddenFilingsNote, loadLatestFilings } from "../../../utils/sec-filings";
+import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
@@ -119,7 +119,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       },
       {
         key: "all",
-        description: "Also list the pricing supplements and term sheets (424B2, FWP, and a 424B3 filed among them) a bank files for each structured note, which are left out by default.",
+        description: "Also list what is left out by default: the pricing supplements and term sheets (424B2, FWP, and a 424B3 filed among them) a bank files for each structured note, and a fund trust's filings for its other funds.",
         type: "boolean",
         defaultValue: false,
         pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },
@@ -132,13 +132,9 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const limit = Number(args.options.limit);
       const form = typeof args.options.form === "string" ? args.options.form.trim() : "";
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
-      // A form filter searches every filing listed for the issuer, as `filings --form` does, and keeps
-      // the supplements it names; without one, a bank's pricing supplements stay out unless --all.
-      const { filings, hidden } = form
-        ? { filings: (await load(SEC_FILING_FETCH_LIMIT)).filter((filing) => filingFormMatches(filing.form, form)).slice(0, limit), hidden: null }
-        : args.options.all === true
-          ? { filings: (await load(limit)).slice(0, limit), hidden: null }
-          : await loadLatestFilings(load, limit);
+      // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
+      // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
+      const { filings, hidden } = await loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true });
       const note = hidden && hiddenFilingsNote(hidden);
       const rows = buildSecFilingRows(filings);
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
@@ -155,7 +151,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           returned: filings.length,
           issuers: secFilingIssuers(filings),
           ...(form ? { form } : {}),
-          pricingSupplementsHidden: hidden?.pricingSupplements ?? 0,
+          ...hiddenFilingsMetadata(hidden),
         },
       };
     },

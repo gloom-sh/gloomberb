@@ -347,7 +347,8 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A Pro metric the server held back from Free says so once, as KPIS says it; a KPI
     // with gaps says what a gap is, as KPIS does.
     const withheld = rows.some((row) => row.metrics[metric].access === "pro");
-    const errors = withheld ? [...data.warnings, withheldMetricNote(metric)] : data.warnings;
+    // A locked result is the lock line alone: what the server says of its coverage is of values a Free reader cannot see.
+    const errors = withheld ? [withheldMetricNote(metric)] : data.warnings;
     const missing = rows.filter((row) => row.metrics[metric].value === null).length;
     const kpiGaps = !withheld && missing > 0 && (KPI_FIELDS as readonly string[]).includes(metric)
       ? [`${missing} of ${rows.length} ${rows.length === 1 ? "row has" : "rows have"} no ${screenLabel(metric)}. ${KPI_COVERAGE_NOTE}`]

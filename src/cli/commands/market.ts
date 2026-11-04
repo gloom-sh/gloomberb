@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { normalizeTickerSymbol } from "../../tickers/search/ranking";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS } from "../../time-series/resolution";
@@ -200,6 +201,7 @@ import { formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
+import { withBankEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxRateNotes, refreshedFxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
@@ -259,7 +261,7 @@ import {
 } from "../listing-arg";
 import { currencyNameMiss, currencyNameStop } from "../currency-name-hint";
 import { liveCompanyQuestion } from "../company-name-hint";
-import { bareListingNote, listingFateNotes, loadNoQuoteLastTraded, noLongerTradingNote, noQuoteLastTraded, noQuoteLastTradeNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing, usVenueOf } from "../../tickers/listing-fate";
+import { bareListingNote, listingFateNotes, loadNoQuoteLastTraded, noLongerTradingNote, noQuoteLastTraded, noQuoteLastTradeNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing, usVenueOf, type NoQuoteLastTrade } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
@@ -337,8 +339,8 @@ import {
   loadIndexedHolders,
   withIndexedHolders,
 } from "../../plugins/builtin/holders/index-holders";
-import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
-import { currentReportItemsLabel } from "../../utils/sec-filings";
+import { loadShownSecFilings } from "../../plugins/builtin/sec/forms";
+import { currentReportItemsLabel, hiddenFilingsMetadata, hiddenFilingsNote, type HiddenFilings } from "../../utils/sec-filings";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
 import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "../../plugins/builtin/insider/issuer";
 import { buildInsiderSummary } from "../../plugins/builtin/insider/model";
@@ -1095,9 +1097,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
     // A symbol with no quote whose bars stopped over a month ago says when it last traded, in place of why no quote
     // came: no longer listed on the service's record (FLAT, a retired ETN), else no trades since. Each costs a history
-    // read, so a long list says only why.
-    const lastTraded = await Promise.all(answers.map(({ result, listing }) => !result.quote && !isNetworkFailure(result.error)
-      && answers.length <= MAX_CHOICE_LOOKUPS ? loadNoQuoteLastTraded(listing.request, market.dataProvider, now) : null));
+    // read, so a long list says only why. A quote the service did not answer is asked after too: a dead listing's
+    // quote can fail where its history still says when it stopped (FRC), and an unreachable service fails it at once.
+    const lastTraded = await Promise.all(answers.map(async ({ result, listing }) => !result.quote && answers.length <= MAX_CHOICE_LOOKUPS
+      ? await loadNoQuoteLastTraded(listing.request, market.dataProvider, now) ?? await searchedDelisting(listing, market)
+      : null));
     const endedNotes = answers.map(({ listing }, index) => lastTraded[index] ? `${noQuoteLastTradeNote(listing.symbol, lastTraded[index]!)}.` : null);
     // A bare symbol whose listing stopped asks after the company by that name that still trades (DBS: D05 on SGX).
     const liveCompanies = await Promise.all(answers.map(({ result, listing }) => result.quote && !listing.exchange
@@ -2137,7 +2141,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCap: capitalization?.value ?? null,
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
-          fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, report.distributions),
+          // A bank's EV and EV/revenue are null with why: n/m for banks.
+          fundamentals: priced.fundamentals && exportedDividendFundamentals(
+            exportedFundamentals(withBankEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
           // A bond fund's sponsor figures; fundamentals.dividendYield is then its distribution yield, not its SEC yield.
           ...bond ? { bondFund: bond } : {},
           ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},
@@ -2467,7 +2473,10 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchangeOption = takeOption(args, "--exchange");
   const form = takeOption(args, "--form")?.trim() || null;
-  const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
+  // As in fn SEC: a bank's pricing supplements and a trust's other funds stay out unless --all, and the list
+  // says how many it left out.
+  const all = takeFlag(args, "--all");
+  const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>] [--all]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     // NST.AX is NST:ASX, as quote, valuation and the pane functions read it: the SEC is asked by venue.
     const listing = await requireCliListing(raw, exchangeOption, market, ctx, { venueSuffix: true });
@@ -2481,15 +2490,19 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const pageLine = page ? `${page.name}: ${page.url}` : null;
     try {
       const context = identity?.name ? { listingName: identity.name } : undefined;
+      const load = (rows: number) => market.dataProvider.getSecFilings(symbol, rows, exchange, context);
+      let hidden: HiddenFilings | null = null;
       const [filings, quote] = await Promise.all([
-        loadForListing(listing, market, ctx, () => form
-          // A form filter searches every filing the service lists for the issuer, as the SEC pane does.
-          ? market.dataProvider.getSecFilings(symbol, SEC_FILING_FETCH_LIMIT, exchange, context)
-            .then((all) => all.filter((filing) => filingFormMatches(filing.form, form)).slice(0, count))
-          : market.dataProvider.getSecFilings(symbol, count, exchange, context),
+        // What fn SEC shows: a form filter searches every filing listed for the issuer; without one, what fn SEC
+        // leaves out by default stays out unless --all.
+        loadForListing(listing, market, ctx, () => loadShownSecFilings(load, count, { form, all }).then((shown) => {
+          hidden = shown.hidden;
+          return shown.filings;
+        }),
         (found) => found.length === 0),
         quotePromise,
       ]);
+      const hiddenNote = hidden ? hiddenFilingsNote(hidden) : null;
       const resolved = identity ?? listingIdentity(listing, quote);
       const choice = await listingChoiceNotes(listing, market, quote, venues);
       // A company on ASX that files nothing with the SEC lists its ASX announcements instead.
@@ -2502,6 +2515,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         metadata: {
           ...listingMetadata(resolved), ...(form ? { form } : {}),
           ...(page ? { announcementsPage: page.url } : {}),
+          ...hiddenFilingsMetadata(hidden),
         },
         freshness: rowsFreshness(filingRows(filings), SEC_FILING_ROWS),
         ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -2515,7 +2529,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         empty: [form ? `No ${form} filings found for ${listingTitle(resolved)}.`
           : identity ? noSecReportsNotice(resolved)
           : `No SEC filings found for ${listingTitle(resolved)}.`, pageLine].filter(Boolean).join("\n"),
-        ...filingsFootnote(pageLine, filings[0]?.companyFrom),
+        ...filingsFootnote(pageLine, filings[0]?.companyFrom, hiddenNote),
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -2534,12 +2548,29 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 }
 
 /**
- * The lines `filings` prints under its rows and CSV writes as notes: an ASX
- * listing's announcements page, and whose filings a foreign line shows when
- * they are its company's home line's.
+ * A bare symbol's own row that search marks as delisted (FRC: inactive, last
+ * traded 2023-04-28), the service's record of it, for a symbol whose quote
+ * and bars said nothing: "FRC last traded 2023-04-28; no longer listed".
  */
-function filingsFootnote(pageLine: string | null | undefined, companyFrom: CompanyFrom | undefined): { footnote?: string; exportNotes?: string[] } {
-  const lines = [...(pageLine ? [pageLine] : []), ...companyDataNotes(companyFrom)];
+async function searchedDelisting(listing: CliListing, market: MarketContext): Promise<NoQuoteLastTrade | null> {
+  if (listing.exchange || !market.dataProvider.search || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(listing.symbol)) return null;
+  const rows = await market.dataProvider.search(listing.symbol).catch(logFailure("cli.market", "Search a delisted symbol failed", []));
+  const row = rows.find((result) => result.delisting && normalizeTickerSymbol(result.symbol) === listing.symbol);
+  return row?.delisting ? { date: row.delisting.lastTradeDate, recorded: true } : null;
+}
+
+/**
+ * The lines `filings` prints under its rows and CSV writes as notes: how
+ * many pricing supplements it left out, an ASX listing's announcements page,
+ * and whose filings a foreign line shows when they are its company's home
+ * line's.
+ */
+function filingsFootnote(
+  pageLine: string | null | undefined,
+  companyFrom: CompanyFrom | undefined,
+  hiddenNote: string | null = null,
+): { footnote?: string; exportNotes?: string[] } {
+  const lines = [...(hiddenNote ? [hiddenNote] : []), ...(pageLine ? [pageLine] : []), ...companyDataNotes(companyFrom)];
   return lines.length ? { footnote: lines.join("\n"), exportNotes: lines } : {};
 }
 
@@ -3828,10 +3859,11 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's list",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["filings <symbol> [--count <n>] [--form <form>]"],
+      usage: ["filings <symbol> [--count <n>] [--form <form>] [--all]"],
       options: [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
         { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
+        { flags: "--all", description: "Also list what fn SEC leaves out by default: the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, and a fund trust's filings for its other funds" },
         EXCHANGE_OPTION,
       ],
       examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],

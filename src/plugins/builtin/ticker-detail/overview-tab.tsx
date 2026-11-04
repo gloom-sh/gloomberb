@@ -38,7 +38,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
-import { appTtmRate, enterpriseValueReconciliationNote, ttmAtAppRate, ttmConversionNote } from "../../../utils/fundamentals";
+import { appTtmRate, enterpriseValueReconciliationNote, ttmAtAppRate, ttmConversionNote, withBankEnterpriseValue } from "../../../utils/fundamentals";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
@@ -176,9 +176,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     [fxObservations],
   );
   const ttmRate = appTtmRate(fundamentals, (currency) => fxObservations.get(currency));
+  // A bank's EV reads n/m: its deposits are funding, not debt.
   const shownFundamentals = useMemo(
-    () => (fundamentals ? ttmAtAppRate(fundamentals, ttmRate) : fundamentals),
-    [fundamentals, ttmRate?.rate, ttmRate?.asOf],
+    () => (fundamentals ? ttmAtAppRate(withBankEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
+    [fundamentals, profile, ttmRate?.rate, ttmRate?.asOf],
   );
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
@@ -228,7 +229,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   });
   // A provider EV off market cap + debt - cash, or why a withdrawn one is unavailable, at the
   // regular session price the EV beside it is shown at.
-  const enterpriseValueNote = enterpriseValueReconciliationNote(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
+  const enterpriseValueNote = enterpriseValueReconciliationNote(atRegularSessionPrice({ quote, fundamentals: withBankEnterpriseValue(fundamentals, profile) }).fundamentals);
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const runway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
   const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, runway?.trailing?.kind === "months");

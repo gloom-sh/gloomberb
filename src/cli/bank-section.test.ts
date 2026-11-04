@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { BankFiguresPayload } from "../api-client/bank-figures";
 import { createTestCliContext } from "../test-support/cli-context";
 import type { TickerFinancials } from "../types/financials";
+import { loadBankFigures, US_BANKS_ONLY } from "./bank-section";
 import { marketDataCliCommands } from "./commands/market";
 import { DEFAULT_CLI_OPTIONS, type CliOutputFormat } from "./options";
 import { serializeCliResult } from "./result";
@@ -73,8 +74,8 @@ test("a bank's fundamentals show its dated deposits, their change, its lead bank
     "Lead Bank           JPMorgan Chase Bank, National Association (FDIC cert 628; largest of 2 insured banks by assets at 2026-06-30; FDIC data of 2026-10-16)",
     "Deposits            2.71T USD at 2026-06-30 (10-Q filed 2026-08-06)",
     "Deposits QoQ        +1.43% from 2.68T USD at 2026-03-31 (10-Q filed 2026-05-01)",
-    // The FDIC estimate covers domestic offices: 1.39T of 2.29T insured plus uninsured, not of the 2.82T total.
-    "Uninsured Deposits  60.9% of domestic deposits (1.39T uninsured of 2.29T USD estimated insured plus uninsured; call report 2026-06-30, FDIC data of 2026-08-19)",
+    // The FDIC estimate covers domestic offices: 1.39T of 2.29T insured plus uninsured, the denominator named, not the 2.82T total.
+    "Uninsured Deposits  60.9% of estimated insured plus uninsured deposits (1.39T of 2.29T USD; call report 2026-06-30, FDIC data of 2026-08-19)",
     "CRE / Capital       50.7%: CRE 165.48B USD over total risk-based capital 326.43B USD (call report 2026-06-30, FDIC data of 2026-08-19)",
     "The uninsured share covers domestic offices; another 593.49B USD of deposits sits in foreign offices, which FDIC insurance does not cover.",
     "NIM is a Pro figure in EQS: gloom fn EQS --metric kpiNimPercent --definition "
@@ -86,7 +87,8 @@ test("a bank's fundamentals show its dated deposits, their change, its lead bank
   const csv = (await fundamentals(JPM, {}, "csv")).output.split("\n");
   expect(csv).toContain("# section: Bank");
   expect(csv.find((line) => line.startsWith("Deposits Filing,"))).toStartWith("Deposits Filing,10-Q filed 2026-08-06,JPM,");
-  expect(csv.find((line) => line.startsWith("Uninsured Share of Domestic Deposits (%),"))).toStartWith("Uninsured Share of Domestic Deposits (%),60.92");
+  expect(csv.find((line) => line.startsWith("Uninsured Share of Insured plus Uninsured Deposits (%),")))
+    .toStartWith("Uninsured Share of Insured plus Uninsured Deposits (%),60.92");
   expect(csv.find((line) => line.startsWith("Foreign Office Deposits (USD),"))).toStartWith("Foreign Office Deposits (USD),593494000000,");
   expect(csv.find((line) => line.startsWith("Deposits QoQ (%),"))).toStartWith("Deposits QoQ (%),1.427");
 });
@@ -165,4 +167,23 @@ test("a company outside finance is never asked for bank figures, and its report 
   const visa = await fundamentals({ ...apple, profile: { sector: "Financial Services", industry: "Credit Services" } },
     { bankFigures: async () => ({ ...JPM_BANK, bank: false, deposits: null, leadBank: null, callReport: null }) });
   expect(visa.output).not.toContain("\nBank\n");
+});
+
+test("every form of a US bank's listing asks for its US ticker; a bank listed abroad says the figures cover US banks", async () => {
+  const asked: string[] = [];
+  const sources: StatementReportSources = { statementFilings: async () => [], bankFigures: async (symbol) => { asked.push(symbol); return JPM_BANK; } };
+  const bank = { profile: { sector: "Financial Services", industry: "Banks - Diversified" } };
+  // WFC.N and `WFC US Equity` reach here as WFC:NYSE and WFC; a saved bare row keeps its venue beside the bare symbol.
+  for (const listing of [{ symbol: "JPM:NYSE", exchange: "NYSE" }, { symbol: "JPM", exchange: "" }, { symbol: "JPM", exchange: "NYSE" }]) {
+    expect(await loadBankFigures(sources, listing, { ...bank, quote: { exchangeName: "NYSE" } })).toEqual({ bank: JPM_BANK, note: null });
+  }
+  expect(asked).toEqual(["JPM", "JPM", "JPM"]);
+  // Abroad by its key (RY:TSX) or by its quote's venue (HSBA.L, a vendor's suffix): nothing is asked.
+  expect(await loadBankFigures(sources, { symbol: "RY:TSX", exchange: "TSX" }, bank)).toEqual({ bank: null, note: US_BANKS_ONLY });
+  expect(await loadBankFigures(sources, { symbol: "HSBA.L", exchange: "" }, { ...bank, quote: { listingExchangeName: "LSE", exchangeName: "LSE" } }))
+    .toEqual({ bank: null, note: US_BANKS_ONLY });
+  // A financial company abroad that is no bank says nothing.
+  expect(await loadBankFigures(sources, { symbol: "LSEG:LSE", exchange: "LSE" }, { profile: { sector: "Financial Services", industry: "Financial Data & Stock Exchanges" } }))
+    .toEqual({ bank: null, note: null });
+  expect(asked).toHaveLength(3);
 });

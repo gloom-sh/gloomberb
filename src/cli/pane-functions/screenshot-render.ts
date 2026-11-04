@@ -315,7 +315,9 @@ export async function renderDesktopShot({
         const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS));
         abandonReports();
         freshness = line.freshness;
-        return { variants: line.variants, dates: line.dates };
+        // A row whose read failed is marked on the picture, where its figures are missing.
+        const unread = unreadRowsNote(shotPayload.unreadRows);
+        return { variants: unread ? line.variants.map((variant) => `${variant} · ${unread}`) : line.variants, dates: line.dates };
       },
     });
     covered = coverage && await settledWithin(coverage, SHOT_REPORT_WAIT_MS);
@@ -326,5 +328,13 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
-  return freshness ? { ...assessed, freshness } : assessed;
+  const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows } : {};
+  return freshness ? { ...assessed, ...unreadRows, freshness } : { ...assessed, ...unreadRows };
+}
+
+/** "FRC did not load": a list's rows whose read failed, as the capture's status line marks them. */
+export function unreadRowsNote(rows: readonly string[] | undefined): string | null {
+  if (!rows?.length) return null;
+  const named = rows.length > 3 ? `${rows.slice(0, 3).join(", ")} and ${rows.length - 3} more` : rows.join(", ");
+  return `${named} did not load`;
 }

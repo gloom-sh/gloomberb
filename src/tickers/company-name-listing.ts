@@ -2,7 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
-import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, isUsEquityExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, runTogether, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { lineDistance, primaryCompanyLine } from "./search/home-listing";
@@ -10,6 +10,7 @@ import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
 import { hasNonLatinLetters } from "../utils/typed-text";
+import { formerIssuerLine } from "./ticker-changes";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -46,6 +47,12 @@ export type MovedLineLookup = (
 /** Share lines that are not the company's common stock, though search may type them as such. */
 const NOT_COMMON = /preferred|warrant|right|unit|note|bond|debenture/i;
 const RECEIPT = /depositary|^(?:ADR|ADS|GDR|CDR|BDR)$/i;
+
+/** The searches `findListingOfCompanyName` asks for a name: as typed, and without its legal form. */
+export function companyNameQueries(typed: string): string[] {
+  const name = typed.trim();
+  return [...new Set([name, shortCompanyName(name)])].filter(Boolean);
+}
 
 /** A list entry with a space inside is a company's name, never a symbol: "Whirlpool Corporation". */
 export function isCompanyNameInput(input: string): boolean {
@@ -96,7 +103,7 @@ export async function findListingOfCompanyName(
 ): Promise<CompanyNameListing | null> {
   const name = typed.trim();
   if (!name) return null;
-  const queries = [...new Set([name, shortCompanyName(name)])].filter(Boolean);
+  const queries = companyNameQueries(name);
   const answers = await Promise.all(queries.map((query) => searchListings(dataProvider, query)));
   const busy = answers.find(isProviderBusy);
   const results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
@@ -160,6 +167,31 @@ export async function findListingOfCompanyName(
   return meant ? { ...found, meant } : found;
 }
 
+/**
+ * A company that merged away, found by its old name typed where a symbol goes
+ * ("Comerica"): search lists the company it merged into with the old one as
+ * its former issuer (FITB, formerly CMA, COMERICA INC). Its line, as `search`
+ * says it ("CMA was COMERICA until 2026, now Fifth Third Bancorp: FITB"), and
+ * the symbol it trades as now. Null when no row's former issuer is the name
+ * typed, and when search fails or is busy.
+ */
+export async function findFormerIssuerOfName(
+  dataProvider: Pick<DataProvider, "search">,
+  typed: string,
+): Promise<{ note: string; successor: string } | null> {
+  const name = typed.trim();
+  if (!/\p{L}/u.test(name)) return null;
+  const answer = await searchListings(dataProvider, name);
+  if (!Array.isArray(answer)) return null;
+  for (const result of answer) {
+    const former = result.formerIssuer;
+    if (!former?.symbol || !former.name || !former.until || !companyNameMatch(name, former.name)) continue;
+    const successor = former.successor?.symbol?.trim() ? former.successor : { symbol: result.symbol, name: result.name };
+    return { note: formerIssuerLine(former.symbol, former, successor), successor: successor.symbol.toUpperCase() };
+  }
+  return null;
+}
+
 /** The ranks that say how near a listing's name is to the one typed, and whether it is a stock: one company's lines share them. */
 const NAME_RANKS = 3;
 
@@ -206,6 +238,16 @@ async function firstQuoted<T extends RankedListing>(
     if (moved && moved.symbol.toUpperCase() !== symbol) return { line: first, moved: { ...moved, symbol: moved.symbol.toUpperCase() } };
   }
   if (hasPrice(quote)) return only(first);
+  // A US line no source prices (ZION on IEX, as search lists it) is its symbol's: the US listing its own quote names
+  // and prices (ZION on NASDAQ), as `quote ZION` reads it. The US venues share one symbol, so it is the same company.
+  if (isUsEquityExchange(first.exchange)) {
+    const own = await dataProvider.getQuote(first.result.symbol.toUpperCase(), "").catch(() => {
+      // Intentional ignore: with no quote of its own, the symbol's other lines are asked below.
+      return null;
+    });
+    const venue = canonicalExchange(own?.listingExchangeName || own?.exchangeName);
+    if (hasPrice(own) && venue && venue !== first.exchange && isUsEquityExchange(venue)) return only({ ...first, exchange: venue });
+  }
   const keys = new Set([listingKey(first)]);
   const next: T[] = [];
   for (const line of lines) {

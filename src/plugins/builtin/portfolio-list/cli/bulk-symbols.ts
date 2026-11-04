@@ -9,6 +9,8 @@ import { notASymbolError } from "../../../../cli/symbol-cells";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
 import { shellWord } from "../../../../utils/shell-word";
+import { logFailure } from "../../../../utils/log-failure";
+import { parsePublicTickerKey } from "../../../../utils/exchanges";
 import { dryRunNote } from "../../../../cli/helpers";
 import {
   addSymbol,
@@ -26,6 +28,9 @@ import {
   type Verb,
 } from "../../../../cli/symbol-rows";
 import { failPortfolioCommand } from "./shared";
+import type { DataProvider } from "../../../../types/data-provider";
+import { apiClient } from "../../../../api-client";
+import { listLookups, signedOutAllowances } from "../../../../tickers/batched-lookups";
 
 export { addSymbols };
 
@@ -107,7 +112,8 @@ function unansweredLines(rows: readonly SymbolRow[], retry: ((keys: string) => s
  */
 function choiceOffers(choices: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): { successors: string | null; matches: string | null } {
   const successors = [...new Set(choices.flatMap((row) => row.tradesAs ? [row.tradesAs] : []))];
-  const matches = [...new Set(choices.flatMap((row) => row.listing ? [row.listing] : []))];
+  // Only a match its venue names: a bare one (UBSH, a symbol that last traded in 2019) needs the same choice again.
+  const matches = [...new Set(choices.flatMap((row) => row.listing && parsePublicTickerKey(row.listing).exchange ? [row.listing] : []))];
   const command = (keys: string[]) => retry ? retry(keys.map(shellWord).join(" ")) : keys.join(" ");
   const one = choices.length === 1;
   return {
@@ -227,6 +233,19 @@ export async function addOneSymbol(
       ? `${cliStyles.success(`Added ${saved.label} to "${collection.name}".`)}${dryRunNote(dryRun)}`
       : cliStyles.warning(`${saved.label} is already in "${collection.name}".`),
   });
+}
+
+/**
+ * The data provider a list add reads through: reading its names and looking
+ * its symbols up share their answers, and signed out, its requests keep to
+ * the service's allowance, waiting for room rather than being refused. The
+ * CLI holds only the saved session's token, so the session is checked first:
+ * a verified account is not paced as a signed-out caller.
+ */
+export async function listAddLookups(dataProvider: DataProvider): Promise<DataProvider> {
+  const verified = await apiClient.ensureVerifiedSession()
+    .catch(logFailure("portfolio-list.bulk-symbols", "Checking the session before a list add failed", null));
+  return listLookups(dataProvider, { allowances: verified ? null : signedOutAllowances() });
 }
 
 /** A line on standard error while a long add waits to look symbols up again, so it never looks stuck. */

@@ -234,6 +234,8 @@ export async function buildDesktopShotPayload(
   });
 
   const tickers: TickerRecord[] = [];
+  /** Rows of a list whose read failed (refused, timed out): shown without figures, and named under the picture. */
+  const unreadRows: string[] = [];
   const financials: Array<[string, TickerFinancials]> = [];
   const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   let instrumentFinancials: SnapshotMarketData["instrumentFinancials"];
@@ -304,15 +306,14 @@ export async function buildDesktopShotPayload(
         tickers.push(holding);
         continue;
       }
-      // Any other holding no source quotes (an over-the-counter name none
-      // carries) is still a row of the list: it shows without a price, and the
-      // capture names it under "No data for" rather than failing. A read that
-      // was refused, rate limited or timed out fails the capture, to be taken again.
-      if (!isNoSourceAnswer(error)) throw error;
+      // Any other row whose read failed (an over-the-counter name no source
+      // carries, a read refused or timed out) is still a row of the list: it
+      // shows without a price, and the capture names it rather than failing.
       const stored = await loadStoredShotTicker(context, symbol);
       if (!stored) throw error;
       tickers.push(stored);
       financials.push([symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]);
+      if (!isNoSourceAnswer(error)) unreadRows.push(symbol);
       continue;
     }
     const requestedRange = shotPriceHistoryRange(resolved);
@@ -406,6 +407,7 @@ export async function buildDesktopShotPayload(
     optionsChains,
     ...(tapeSnapshots.length ? { tapeSnapshots } : {}),
     ...(scannerSnapshots.length ? { scannerSnapshots } : {}),
+    ...(unreadRows.length ? { unreadRows } : {}),
     valuationSeries,
     statSeries,
     paneState,
@@ -429,10 +431,13 @@ async function collectShotSymbolsWithCollections(
   rawArg: string,
 ): Promise<string[]> {
   if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return collectShotSymbols(resolved, rawArg);
-  // `shot PF Retirement` names a portfolio, not a ticker to fetch.
-  const symbols = rawArg.trim() && findCollection(context.config, rawArg) ? [] : collectShotSymbols(resolved, rawArg);
+  // `shot PF Retirement` names a portfolio, not a ticker to fetch: its rows alone are read, never another list's.
+  const named = rawArg.trim() ? findCollection(context.config, rawArg) : null;
+  const symbols = named ? [] : collectShotSymbols(resolved, rawArg);
   const members = (await context.store.loadAllTickers())
-    .filter(({ metadata }) => metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
+    .filter(({ metadata }) => named
+      ? (named.kind === "portfolio" ? metadata.portfolios : metadata.watchlists).includes(named.id)
+      : metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
     .map(({ metadata }) => metadata.ticker);
   return [...new Set([...symbols, ...members])];
 }

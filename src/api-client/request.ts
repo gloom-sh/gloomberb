@@ -64,9 +64,10 @@ const SERVICE_PROBE_PATH = "/health";
 const RECOVERY_PROBE_FIRST_MS = 2_000;
 const RECOVERY_PROBE_MAX_MS = 15_000;
 // Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
+// A batched search runs a hundred searches, a few at a time, and takes longer than one.
 const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
-  "/market/heatmap", "/market/earnings-calendar",
+  "/market/heatmap", "/market/earnings-calendar", "/market/search/batch",
 ]);
 
 /** When a request gives up: without any answer from the service, and in all. */

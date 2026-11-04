@@ -135,6 +135,22 @@ test("with quoted, a listing with no quote gives way to the next of its company'
     .toMatchObject({ symbol: "SIE", exchange: "XETRA" });
 });
 
+// "Zions Bancorporation" was stored as ZION:IEX, a line search lists first and no source prices.
+test("with quoted, a US line with no quote is the listing its symbol's own quote prices, as `quote ZION` reads it", async () => {
+  const zions = { "ZIONS BANCORPORATION": ["ZION | Zions Bancorporation N.A. | IEX | Common Stock", "ZB1 | ZIONS BANCORPORATION | XSTU | Common Stock"] };
+  const asked: string[] = [];
+  const source = {
+    ...answering(zions),
+    getQuote: async (symbol: string, exchange = ""): Promise<Quote> => {
+      asked.push(`${symbol}:${exchange}`);
+      if (symbol !== "ZION" || exchange) throw new Error(`No quote provider available for ${symbol}`);
+      return { symbol, price: 67.71, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName: "NASDAQ" };
+    },
+  };
+  expect(await findListingOfCompanyName(source, "Zions Bancorporation", { quoted: true })).toMatchObject({ symbol: "ZION", exchange: "NASDAQ" });
+  expect(asked).toEqual(["ZION:IEX", "ZION:"]);
+});
+
 test("with quoted, a company that moved off its US line is followed to the symbol it took before any line abroad, and says so", async () => {
   // Trimmed from the service's answers on 2026-10-28, after Getty Images' NYSE line became GETYQ.
   const getty = { "GETTY IMAGES": [

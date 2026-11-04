@@ -5,6 +5,7 @@ import { isForeignIssuerForm, type StatementReportSources } from "./statement-fi
 import { formatCompact, formatPercent } from "../utils/format";
 import { logFailure } from "../utils/log-failure";
 import { nonUsSecListingVenue } from "../utils/sec";
+import { parsePublicTickerKey } from "../utils/exchanges";
 
 /**
  * The Bank section of `fundamentals` for a bank holding company: its deposits
@@ -44,6 +45,8 @@ export function bankSection(bank: BankFiguresPayload, symbol: string, { latestSt
   annualReportForm: string | null;
 }): BankSection | null {
   if (!bank.bank) return null;
+  // The company's US ticker as Gloom Cloud read it (JPM for JPM:NYSE or WFC.N), which EQS screens by.
+  symbol = bank.symbol?.trim() || symbol;
   const foreignGroup = isForeignIssuerForm(annualReportForm);
   const lines: Array<[string, string]> = [];
   const entries: CliReportEntry[] = [];
@@ -89,13 +92,14 @@ export function bankSection(bank: BankFiguresPayload, symbol: string, { latestSt
   if (callReport) {
     const asOf = day(callReport.source.datasetAsOf);
     const report = `call report ${callReport.reportDate}${asOf ? `, FDIC data of ${asOf}` : ""}`;
-    // The FDIC's estimate covers deposits in domestic offices: its uninsured part over insured plus uninsured.
+    // The FDIC's estimate covers deposits in domestic offices: its uninsured part over insured plus uninsured. That sum
+    // is the denominator the line names, for every bank: it can sit above or below the domestic deposits reported.
     const { uninsuredShare, uninsuredDeposits, insuredDeposits } = callReport;
     const estimated = uninsuredDeposits != null && insuredDeposits != null ? uninsuredDeposits + insuredDeposits : null;
     lines.push(["Uninsured Deposits", uninsuredShare != null && uninsuredDeposits != null && estimated != null
-      ? `${share(uninsuredShare)} of domestic deposits (${formatCompact(uninsuredDeposits)} uninsured of ${money(estimated)} estimated insured plus uninsured; ${report})`
+      ? `${share(uninsuredShare)} of estimated insured plus uninsured deposits (${formatCompact(uninsuredDeposits)} of ${money(estimated)}; ${report})`
       : `not reported: banks under $1B in assets do not file the estimate (${report})`]);
-    if (uninsuredShare != null) entries.push({ label: "Uninsured Share of Domestic Deposits", value: uninsuredShare * 100, unit: "%" });
+    if (uninsuredShare != null) entries.push({ label: "Uninsured Share of Insured plus Uninsured Deposits", value: uninsuredShare * 100, unit: "%" });
     if (uninsuredDeposits != null) entries.push({ label: "Uninsured Deposits", value: uninsuredDeposits, unit: "USD" });
     // Deposits in foreign offices are outside the estimate, and FDIC insurance does not cover them.
     const foreignOffices = callReport.totalDeposits != null && callReport.domesticDeposits != null
@@ -123,25 +127,35 @@ export function bankSection(bank: BankFiguresPayload, symbol: string, { latestSt
 /** The line for a bank whose figures could not be read. */
 const BANK_FIGURES_UNAVAILABLE = "Bank figures (deposits, uninsured share, CRE) are unavailable right now.";
 
+/** The line for a bank listed abroad (HSBA.L, RY:TSX): the SEC deposits and FDIC call reports are US banks'. */
+export const US_BANKS_ONLY = "Bank figures cover US banks.";
+
 /**
- * A US-listed financial company's bank figures, or null: a company outside
- * financial services is never asked about (Gloom Cloud answers a non-bank with
- * `bank: false` anyway). A bank whose figures could not be read gets a one-line
- * `note` in their place.
+ * A financial company's bank figures, or null: a company outside financial
+ * services is never asked about (Gloom Cloud answers a non-bank with `bank:
+ * false` anyway). Every form of a US listing (WFC, WFC.N, WFC:NYSE, `WFC US
+ * Equity`) asks for its US ticker, so each shows the same block. A bank listed
+ * abroad, by its key or by the venue its quote names (HSBA.L), and a bank
+ * whose figures could not be read get a one-line `note` in their place.
  */
 export async function loadBankFigures(
   sources: StatementReportSources | undefined,
   listing: { symbol: string; exchange?: string },
-  financials: Pick<TickerFinancials, "profile">,
+  financials: Pick<TickerFinancials, "profile"> & { quote?: Pick<NonNullable<TickerFinancials["quote"]>, "listingExchangeName" | "exchangeName"> | null },
 ): Promise<{ bank: BankFiguresPayload | null; note: string | null }> {
   const profile = `${financials.profile?.sector ?? ""} ${financials.profile?.industry ?? ""}`;
-  if (!sources || !/financ|bank/i.test(profile) || nonUsSecListingVenue(listing.symbol, listing.exchange)) return { bank: null, note: null };
+  if (!sources || !/financ|bank/i.test(profile)) return { bank: null, note: null };
+  // Only a bank's report says what is missing; another financial company's says nothing.
+  const bankIndustry = /bank/i.test(financials.profile?.industry ?? "");
+  const quoted = financials.quote?.listingExchangeName || financials.quote?.exchangeName;
+  const abroad = nonUsSecListingVenue(listing.symbol, listing.exchange) ?? nonUsSecListingVenue(listing.symbol, quoted || undefined);
+  if (abroad) return { bank: null, note: bankIndustry ? US_BANKS_ONLY : null };
   try {
-    const bank = await sources.bankFigures(listing.symbol);
+    // Not abroad, any venue the key names is a US one: the ticker alone names the company.
+    const bank = await sources.bankFigures(parsePublicTickerKey(listing.symbol).symbol);
     return { bank: bank.bank ? bank : null, note: null };
   } catch (error) {
     logFailure("cli.bank-section", "Reading bank figures failed")(error);
-    // Only a bank's report misses them; another financial company's says nothing.
-    return { bank: null, note: /bank/i.test(financials.profile?.industry ?? "") ? BANK_FIGURES_UNAVAILABLE : null };
+    return { bank: null, note: bankIndustry ? BANK_FIGURES_UNAVAILABLE : null };
   }
 }

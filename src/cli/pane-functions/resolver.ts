@@ -18,7 +18,7 @@ import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
-import { bankFigurePointer } from "../known-gaps";
+import { bankFigurePointer, bankWordPointer } from "../known-gaps";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
@@ -440,6 +440,9 @@ export async function resolvePaneFunction(
   const listed = template !== undefined || ![...registry.paneTemplates.values()].some((entry) => entry.paneId === pane.id);
   const refusesArgument = listed ? takesNoArgument(paneFunctionArgument(template, pane)) : headless?.argument.kind === "none";
   if (refusesArgument && args.arg?.trim()) {
+    // BANK opens CBR, but `fn BANK JPM` asks for that bank's figures.
+    const bank = bankWordPointer(args.target, args.arg);
+    if (bank) throw new UnknownPaneFunctionError(args.target, bank.details, null, bank.message);
     throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
   }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {

@@ -223,6 +223,23 @@ export function hiddenFilingsNote(hidden: HiddenFilings): string | null {
   return parts.length > 0 ? `${parts.join(" and ")} hidden, --all to show` : null;
 }
 
+/**
+ * What a list's metadata says it left out: a count only for each kind it
+ * hid, nothing when it hid none.
+ */
+export function hiddenFilingsMetadata(hidden: HiddenFilings | null | undefined): {
+  pricingSupplementsHidden?: number;
+  ownershipReportsAboutOthersHidden?: number;
+  otherFundFilingsHidden?: number;
+} {
+  if (!hidden) return {};
+  return {
+    ...hidden.pricingSupplements > 0 ? { pricingSupplementsHidden: hidden.pricingSupplements } : {},
+    ...hidden.ownershipReportsAboutOthers > 0 ? { ownershipReportsAboutOthersHidden: hidden.ownershipReportsAboutOthers } : {},
+    ...(hidden.otherFunds ?? 0) > 0 ? { otherFundFilingsHidden: hidden.otherFunds } : {},
+  };
+}
+
 /** Filings asked for first, a few times the rows wanted: supplements come in runs of dozens. */
 const FIRST_READ_MIN = 200;
 /** A read that leaves the list short is followed by one this many times larger. */

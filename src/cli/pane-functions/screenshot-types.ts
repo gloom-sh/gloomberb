@@ -139,6 +139,8 @@ export interface PaneScreenshotResult {
   empty: boolean;
   complete: boolean;
   unavailableSymbols: string[];
+  /** Rows of a list whose read failed (refused, timed out): pictured without figures and named on the status line. */
+  unreadRows?: string[];
   semanticMismatch: boolean;
   usable: boolean;
   unusableReason: string | null;
