@@ -76,7 +76,14 @@ export function findTickerResearchGroup(groups: readonly TickerResearchTabGroup[
   return groups.find((group) => group.views.some((view) => view.id === viewId));
 }
 
+/**
+ * Views a group never reopens on. Trade is the order ticket, opened on
+ * purpose (`b`/`s`, Overview's order links, choosing it), so coming back to
+ * Chart shows the chart.
+ */
+const NOT_REOPENED = new Set(["broker-trade"]);
+
 /** The view a group opens on: the one last chosen in it while it is there, else its first. */
 export function tickerResearchGroupView(group: TickerResearchTabGroup, remembered: string | undefined): string {
-  return (remembered && group.views.some((view) => view.id === remembered) ? remembered : group.views[0]!.id);
+  return remembered && !NOT_REOPENED.has(remembered) && group.views.some((view) => view.id === remembered) ? remembered : group.views[0]!.id;
 }

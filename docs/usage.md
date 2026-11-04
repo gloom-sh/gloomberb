@@ -300,7 +300,7 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 | Buzz | News, Tweets, Apps |
 | Notes | Thesis, Notes |
 
-`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
+`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
 
 Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 

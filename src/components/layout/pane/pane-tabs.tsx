@@ -52,7 +52,8 @@ export interface PaneTabs {
  * views, a Fixed Income section's) it starts its bar, where the terminal's
  * tab row starts; one a level deeper is the shown view's own switch (Holders'
  * Table and Chart under Ownership's views) and sits at the right, as a view's
- * presentation does.
+ * presentation does, and so does a stack detail's own (an app's Chart and
+ * Evidence in Apps).
  */
 export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
   const inHeader = usePaneHeaderTabs(options);
@@ -63,7 +64,7 @@ export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
   if (!options || inHeader) return { strip: null, rows: 0 };
   const { queryBarWidth, ...tabs } = options;
   if (queryBarWidth !== undefined && nativePaneChrome) {
-    const view = { value: tabs.activeValue ?? "", options: tabs.tabs, onChange: tabs.onSelect, start: depth <= 1 };
+    const view = { value: tabs.activeValue ?? "", options: tabs.tabs, onChange: tabs.onSelect, start: depth === 1 };
     return {
       strip: <QueryBar width={queryBarWidth} view={view} />,
       rows: chromeBarRows(true),

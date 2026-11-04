@@ -330,6 +330,8 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     if (!showTabs || !activeGroup || activeGroup.views.length < 2) return;
     if (tickerResearchGroupView(activeGroup, rememberedView(activeGroup.id)) === resolvedTabId) return;
+    // One the group never reopens on (Trade) leaves the remembered view as it was.
+    if (tickerResearchGroupView(activeGroup, resolvedTabId) !== resolvedTabId) return;
     setGroupViews((current) => ({ ...(isRecord(current) ? current : {}), [activeGroup.id]: resolvedTabId }));
   }, [activeGroup, rememberedView, resolvedTabId, setGroupViews, showTabs]);
   const companySymbol = ticker && resolveTickerInstrumentKind(ticker, financials) === "equity"
