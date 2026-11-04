@@ -31,7 +31,8 @@ export interface RemoveTickerFromPortfolioResult {
 export interface SetManualPortfolioPositionInput {
   /** Signed: a negative number is a short. A future counts contracts. */
   shares: number;
-  avgCost: number;
+  /** Null when the cost is not known (a broker export that gives none): the lot is saved without one. */
+  avgCost: number | null;
   currency: string;
   /**
    * A future's contract multiplier from its terms (futuresContractSize). Left
@@ -436,7 +437,7 @@ export function setManualPortfolioPosition(
   const nextCurrency = normalizeHeldCurrencyCode(input.currency);
   const sharesError = validatePositionShares(input.shares, positionQuantityLabel(ticker));
   if (sharesError) throw new Error(sharesError);
-  if (!Number.isFinite(input.avgCost)) {
+  if (input.avgCost !== null && !Number.isFinite(input.avgCost)) {
     throw new Error("Average cost must be a valid number.");
   }
   if (!nextCurrency) {
@@ -469,7 +470,7 @@ export function setManualPortfolioPosition(
   nextPositions.push({
     portfolio: portfolioId,
     shares: input.shares,
-    avgCost: input.avgCost,
+    ...(input.avgCost !== null ? { avgCost: input.avgCost } : {}),
     currency: nextCurrency,
     broker: "manual",
     ...(dateAcquired ? { dateAcquired } : {}),

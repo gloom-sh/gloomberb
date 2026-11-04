@@ -1,0 +1,20 @@
+Account Summary
+Account,Net Account Value,Total Gain $,Total Gain %,Day's Gain Unrealized $,Day's Gain Unrealized %,Available For Withdrawal,Cash Purchasing Power
+"Individual Brokerage -0000",8449.00,2844.00,50.74,24.60,0.29,500.00,500.00
+
+
+View Summary - All Positions
+Filters applied: 
+Symbol,Security type(s),Sort by,Sort order,
+,All,Symbol,Asc,
+
+Symbol,Last Price $,Change $,Change %,Quantity,Price Paid $,Day's Gain $,Total Gain $,Total Gain %,Value $
+NVDA,135.40,1.20,0.89,20.0000,48.25,24.00,1743.00,180.62,2708.0000
+QQQ,520.10,-2.10,-0.40,10.0000,410.00,-21.00,1101.00,26.85,5201.0000
+NVDA Jan 16 '26 $150 Call,12.40,0.60,5.08,1.0000,9.80,60.00,260.00,26.53,1240.0000
+CASH,,,,,,,,,500.00,
+TOTAL,,,,,,,,,9649.00,
+
+
+
+Generated at Jan 15 2025 04:33 PM ET

@@ -1,0 +1,5 @@
+"COB Date","Security #","Symbol","CUSIP #","Security Description","Account Nickname","Account Registration","Account #","Quantity","Price ($)","Value ($)","Unrealized Gain/Loss ($)","Unrealized Gain/Loss (%)","Cumulative Investment Return ($)","Cumulative Investment Return (%)","Accrued Interest ($)"
+"1/15/2025","1000001","KO","191216100","COCA-COLA CO","--","CMA-Edge","0XX-00000","60","62.10","3,726.00","726.00","24.20","726.00","24.20","--"
+"1/15/2025","1000002","JNJ","478160104","JOHNSON & JOHNSON","--","CMA-Edge","0XX-00000","15","146.80","2,202.00","-198.00","-8.25","-198.00","-8.25","--"
+"1/15/2025","1000003","","912828YK0","US TREASURY NOTE 1.375% 10/15/2026","--","CMA-Edge","0XX-00000","1,000","96.40","964.00","-21.00","-2.13","--","--","4.10"
+"1/15/2025","1000004","--","--","ML BANK DEPOSIT PROGRAM","--","CMA-Edge","0XX-00000","1,250.00","1.00","1,250.00","--","--","--","--","--"

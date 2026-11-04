@@ -164,6 +164,26 @@ export function isUsListingExchange(value?: string): boolean {
   return US_LISTING_EXCHANGES.has(canonicalExchange(value));
 }
 
+/** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
+const US_EQUITY_EXCHANGES: ReadonlySet<string> = new Set([
+  ...US_LISTING_EXCHANGES,
+  "BYX",
+  "IEX",
+  "OTC",
+  "PINK",
+  // Listing codes for the OTC Markets tiers.
+  "PNK",
+  "OQB",
+  "OQX",
+  "OEM",
+  "OBB",
+]);
+
+/** A US venue a stock or fund trades on, listed or over the counter. */
+export function isUsEquityExchange(value?: string): boolean {
+  return US_EQUITY_EXCHANGES.has(canonicalExchange(value));
+}
+
 export function resolveExchangeTimeZone(value?: string): string | null {
   const canonical = canonicalExchange(value);
   return canonical ? EXCHANGE_TIME_ZONES[canonical] ?? null : null;

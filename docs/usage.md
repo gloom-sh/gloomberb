@@ -12,6 +12,7 @@
 - [Plugins pane](#plugins-pane)
 - [Portfolio currency](#portfolio-currency)
 - [Dividend income and DRIP](#dividend-income-and-drip)
+- [Importing positions from a broker's export](#importing-positions-from-a-brokers-export)
 - [Importing a manager's 13F as a portfolio](#importing-a-managers-13f-as-a-portfolio)
 - [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
@@ -1952,6 +1953,46 @@ gloom fundamentals MUB --tax-rate 40.8                      # a muni fund's tax-
 `--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year. Today's dividends, prices and exchange rates are held flat and reinvested once a year.
 
 `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).
+
+## Importing positions from a broker's export
+
+A brokerage Gloom does not sync (Fidelity, Schwab, Vanguard, E*TRADE, Merrill, a 401(k) site) can still fill a portfolio: download the positions or holdings page as a CSV and import it. Each symbol becomes a position with its shares, its cost per share and, when the file has one, its purchase date.
+
+- **In `PF`:** open the pane menu (`.`, or `...` in the title bar) and choose **Import Positions…**. The desktop and the web open the file dialog; the terminal asks for the file's path. A preview lists the positions the file adds, with their shares, average cost, purchase date and what changes (new, the shares held before, a new cost, lots made one), and the rows left out with the reason; past 100 of either it counts the rest. Nothing is saved until **Import**. On a manual portfolio's tab, the preview also asks whether the file makes a new portfolio, merges into that one or replaces what it holds (`←` and `→`). A replace asks once more before it saves: `y` or the **Replace** button goes ahead, Enter goes back.
+- **In a shell:** `portfolio import <file>`, beside the 13F import below.
+
+```bash
+gloom portfolio import ~/Downloads/Portfolio_Positions.csv --dry-run   # the preview, nothing saved
+gloom portfolio import ~/Downloads/Portfolio_Positions.csv             # creates "Fidelity"
+gloom portfolio import positions.csv --name Fidelity --merge           # update a portfolio that holds tickers
+gloom portfolio import positions.csv --name Fidelity --replace         # make it hold only the file's positions
+gloom portfolio import - < holdings.csv                                 # from standard input
+```
+
+The layout is read from the file's header row:
+
+| Export | Columns read | Cost |
+|--------|--------------|------|
+| Fidelity positions | Account Number, Symbol, Quantity, Last Price, Current Value, Cost Basis Total, Average Cost Basis | Average Cost Basis, else Cost Basis Total over the shares |
+| Schwab positions, one account or All-Accounts | Symbol, Qty (Quantity), Mkt Val (Market Value), Cost Basis, Security Type | Cost Basis over the shares |
+| Vanguard holdings | Investment Name, Symbol, Shares, Share Price, Total Value | none: the export has no cost |
+| E*TRADE portfolio download | Symbol, Last Price $, Quantity, Price Paid $ | Price Paid |
+| Merrill holdings | Symbol, CUSIP, Security Description, Quantity, Value, Unrealized Gain/Loss | Value less gain, over the shares |
+| Any other table | Symbol (or Ticker) and Quantity (or Shares) | Avg Cost, Cost per Share or Price Paid; else Cost Basis or Total Cost over the shares |
+
+A table of your own can also have a purchase date (Date Acquired, Purchase Date) and a Currency column; the brokers' exports are in US dollars. When a table has two columns that could be the date or the cost, the more specific one is read (Date Acquired before Trade Date before Date, Average Cost before Cost). Comma, tab and semicolon files are read, saved as UTF-8, UTF-16 (Excel's Unicode text) or Windows-1252, and a symbol with a listing suffix (`ASML.AS`, `7203.T`, `VOD.L`) goes to that exchange.
+
+- **Numbers:** `1,500` is fifteen hundred, as a US export writes it. A tab or semicolon file reads its numbers with a decimal comma only when one of them could mean nothing else (`12,5`, `1.234,56`) and none is written with a decimal point (`12.50`).
+- **Dates:** a slashed date is read month first (`04/03/2025` is April 3) unless a date in the file has a day past the 12th first, the file writes numbers with a decimal comma, or the table is in currencies other than the US dollar. A date after today is not a purchase date.
+- **US exports:** a symbol from a Fidelity, Schwab, Vanguard, E*TRADE or Merrill export that resolves to a listing outside the US is imported with a note to check it is the one the account holds.
+
+- **Left out, with the reason in the skipped list:** cash and money market sweeps (SPAXX\*\*, VMFXX, "Cash & Cash Investments", bank deposit programs), pending activity, options, bonds, notes, bills and CDs (by their description, or a CUSIP for a symbol), rows without a ticker (a 401(k) plan's collective trust), rows with no shares, and symbols that do not resolve to a listing.
+- **Left out quietly:** total and footer rows, account headings and blank rows.
+- **Refused:** an activity, transactions or trade history (a Type or Side column of buys and sells), since its rows are trades rather than holdings; a file of more than 1,000 positions; a file over 5 MB.
+- **Several rows of one symbol** (lots, or the same holding in several accounts) become one position: the shares added up, the cost averaged by shares, dated by the earliest lot.
+- **Into a portfolio that holds tickers:** `--merge` (the app's Merge) sets the file's positions over those of the same listings and keeps the rest; a holding of several lots becomes one position at the file's cost, and the preview says so. `--replace` (Replace) also removes the holdings the file does not list, with their target weights. A position the file gives no cost for keeps the holding's own cost, else it is saved without one, and the import says which (set it with `portfolio position set` or **Set Portfolio Position**).
+- **A replace never guesses.** It is refused while any of the file's stock or fund rows could not be imported (a symbol that did not resolve or a busy lookup, a row without a share count, a symbol that is not a ticker), since the portfolio would not then hold what the file does; merge instead, or fix the rows. It never removes a holding the file lists on a skipped row (the cash sweep you also hold as a ticker, say), and the preview names the ones it keeps.
+- The portfolio is named after the broker (or the file) unless `--name` says otherwise, and is made when it does not exist. A broker-synced portfolio is never imported into.
 
 ## Importing a manager's 13F as a portfolio
 
