@@ -76,7 +76,7 @@ import {
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { getFormDescription } from "../../plugins/builtin/sec/model";
 import { ownerNames, rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
-import { hasFundFactsAbroad, isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
+import { fundFactsAbroadKey, hasFundFactsAbroad, isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
@@ -760,7 +760,8 @@ export async function loadReportFundFacts(
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund"
     || (exchange && !isUsListingExchange(exchange) && !hasFundFactsAbroad(exchange))) return null;
   try {
-    return await load(symbol);
+    // Hong Kong's by its listing's key (3046:XHKG), so the server does not read a bare 3046 as a US ticker.
+    return await load(exchange && hasFundFactsAbroad(exchange) ? fundFactsAbroadKey(symbol, exchange) : symbol);
   } catch (error) {
     logFailure("cli.commands-ticker", "Read fund facts failed")(error);
     return null;

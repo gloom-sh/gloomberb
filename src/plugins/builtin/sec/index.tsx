@@ -20,7 +20,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { hasFundFactsAbroad, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
@@ -294,7 +294,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
   // A fund in Hong Kong asks too: its spot bitcoin and ether ETFs have their issuers' figures.
   const factsAbroad = hasFundFactsAbroad(abroadVenue);
-  const fundFacts = useFundFacts(forms && (eligibleTicker || factsAbroad) ? ticker?.metadata.ticker : null);
+  // Asked for by its listing's key, so a bare 3046 on HKEX is Hong Kong's, not a US ticker.
+  const factsKey = !ticker || !forms ? null
+    : eligibleTicker ? ticker.metadata.ticker
+    : factsAbroad ? fundFactsAbroadKey(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
+  const fundFacts = useFundFacts(factsKey);
   const facts = fundFacts.data?.payload ?? null;
   const factsUrl = facts?.covered ? facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url ?? null : null;
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);

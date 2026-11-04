@@ -1,6 +1,6 @@
 import type { TickerRecord } from "../types/ticker";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, exchangeLabel, parsePublicTickerKey, resolveExchangeTimeZone, US_LISTING_EXCHANGES } from "./exchanges";
+import { canonicalExchange, exchangeLabel, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone, US_LISTING_EXCHANGES } from "./exchanges";
 import { shortListingTitle } from "../tickers/company-name";
 
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
@@ -162,6 +162,17 @@ export const US_FUND_FACTS_ONLY = "Fund facts (fee, NAV, premium) cover US-liste
  */
 export function hasFundFactsAbroad(exchange?: string | null): boolean {
   return canonicalExchange(exchange ?? undefined) === "HKEX";
+}
+
+/**
+ * What fund facts are asked for by, for a fund on a venue abroad: a bare
+ * code with its venue's key (3046 on HKEX as 3046:XHKG), so the server reads
+ * it as that listing and not as a US ticker; a key or suffix that already
+ * names its venue (3046:HKEX, 3046.HK) as it is.
+ */
+export function fundFactsAbroadKey(symbol: string, exchange?: string | null): string {
+  if (parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol)) return symbol;
+  return publicTickerKey(symbol, exchange ?? undefined);
 }
 
 /**

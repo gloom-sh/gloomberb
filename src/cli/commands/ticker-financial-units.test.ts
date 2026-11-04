@@ -484,7 +484,7 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
   }
 });
 
-test("fund facts are read for a US-listed fund only, and a failed read leaves the yield as it was", async () => {
+test("fund facts are read for a US-listed fund and a Hong Kong one only, and a failed read leaves the yield as it was", async () => {
   const facts = { bond: { kind: "taxable" as const, state: null, secYield: null, yieldToWorst: null, duration: null } } as FundFactsPayload;
   const reads: string[] = [];
   const load = async (symbol: string) => { reads.push(symbol); return facts; };
@@ -492,7 +492,10 @@ test("fund facts are read for a US-listed fund only, and a failed read leaves th
   expect(await loadReportFundFacts("AGG", "NYSEArca", fund, null, load)).toEqual(facts);
   expect(await loadReportFundFacts("NVDA", "NASDAQ", { quote: { ...quote, instrumentType: "EQUITY" } }, null, load)).toBeNull();
   expect(await loadReportFundFacts("VUSA", "LSE", fund, null, load)).toBeNull();
-  expect(reads).toEqual(["AGG"]);
+  // A Hong Kong spot coin fund is asked for by its listing's key: a bare 3046 is not a US ticker.
+  expect(await loadReportFundFacts("3046", "HKEX", fund, null, load)).toEqual(facts);
+  expect(await loadReportFundFacts("3046.HK", "HKEX", fund, null, load)).toEqual(facts);
+  expect(reads).toEqual(["AGG", "3046:XHKG", "3046.HK"]);
   expect(await loadReportFundFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
 });
 

@@ -460,7 +460,8 @@ test("a fund listed abroad shows what fn ETF prints of it: its name, its issuer'
 
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
   paneSettings = { forms: ETF_FORMS_SETTING };
-  firstSymbol = "3046.HK";
+  // A bare code on HKEX: the server is asked for 3046:XHKG, its Hong Kong listing, not a US 3046.
+  firstSymbol = "3046";
   firstListing = { exchange: "HKEX", currency: "HKD", assetCategory: "ETF" };
   const page = "https://www.chinaamc.com.hk/detail?fundId=HKVAETH";
   const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
@@ -478,6 +479,7 @@ test("a Hong Kong spot coin fund shows its issuer's figures in its counter's cur
     await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
     const shown = (await tui.waitForFrameToContain("Units per ETH")).replace(/\s+/g, " ");
     for (const text of ["HK$5.2842", "+0.20%", "Management fee", "0.99%", "Units per ETH 3,262 18,453 ETH"]) expect(shown).toContain(text);
+    expect(facts.mock.calls.map(([ticker]) => ticker)).toEqual(["3046:XHKG"]);
     expect(filings).toEqual([]);
     expect(footer.hints?.map((hint) => hint.id)).toContain("open");
   } finally {
