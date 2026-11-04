@@ -131,6 +131,59 @@ test("a statement that held the thread through most of a request stays the step,
   ]);
 });
 
+// After a freeze the thread runs what queued up behind it before the
+// monitor's timer: a context menu held the thread, then the menu's answer and
+// the requests that waited went out. Naming the last of those sent field
+// reports to whatever came after the wait instead of the wait.
+test("a stall names the step that held the thread, not what ran after it", () => {
+  const harness = createHarness();
+  harness.advance(250);
+  harness.fire();
+
+  measurePerf("rpc.request.host.show-context-menu", () => {
+    recordPerfSample("native.context-menu.show", 3_000);
+  });
+  measurePerf("rpc.respond.host.show-context-menu", () => {});
+  measurePerf("rpc.request.http.fetch", () => {});
+  harness.advance(3_250);
+  harness.fire();
+
+  // Nothing measured ended inside this one: the last step is named, with no time of its own.
+  harness.advance(1_250);
+  harness.fire();
+  harness.stop();
+
+  expect(harness.reports.map(({ context }) => [context.lastMeasured, context.lastMeasuredMs])).toEqual([
+    ["native.context-menu.show", 3_000],
+    ["rpc.request.http.fetch", undefined],
+  ]);
+});
+
+// A menu that holds the thread until the person picks (where it cannot open
+// off it): that wait is theirs, not a freeze. A freeze around it still is,
+// for the rest of the gap, named after what held the thread then.
+test("a menu held open on the thread is the person's wait, and only the rest of a stall is reported", () => {
+  const harness = createHarness();
+  harness.advance(250);
+  harness.fire();
+
+  measurePerf("rpc.request.host.show-context-menu", () => {
+    recordPerfSample("native.context-menu.show", 6_000, undefined, { waitedOnPerson: true });
+  });
+  harness.advance(6_250);
+  harness.fire();
+
+  recordPerfSample("native.context-menu.show", 1_000, undefined, { waitedOnPerson: true });
+  recordPerfSample("session.save", 2_800);
+  harness.advance(4_250);
+  harness.fire();
+  harness.stop();
+
+  expect(harness.reports.map(({ blockedMs, context }) => [blockedMs, context.lastMeasured, context.lastMeasuredMs])).toEqual([
+    [3_000, "session.save", 2_800],
+  ]);
+});
+
 // Windows keeps the timers' clock running while the computer sleeps, so a
 // closed lid read as a freeze of minutes. Only the awake part of a late
 // timer is a stall, and the platform's clocks say whether the thread was

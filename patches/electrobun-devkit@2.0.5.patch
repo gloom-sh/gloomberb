@@ -1,5 +1,5 @@
 diff --git a/api/preload/encryption.ts b/api/preload/encryption.ts
-index 8cf3ab6..0f70f21 100644
+index 8cf3ab6ce..0f70f2107 100644
 --- a/api/preload/encryption.ts
 +++ b/api/preload/encryption.ts
 @@ -3,27 +3,30 @@
@@ -48,10 +48,18 @@ index 8cf3ab6..0f70f21 100644
  
  function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 diff --git a/api/sdks/main/core/Updater.ts b/api/sdks/main/core/Updater.ts
-index 4c47ed9..3221b5d 100644
+index 4c47ed9d2..fde979421 100644
 --- a/api/sdks/main/core/Updater.ts
 +++ b/api/sdks/main/core/Updater.ts
-@@ -323,6 +323,39 @@ let updateInfo: UpdateInfo = {
+@@ -7,6 +7,7 @@ import {
+ 	read,
+ 	fchmodSync,
+ 	fstatSync,
++	fsync,
+ 	fsyncSync,
+ 	lstatSync,
+ 	mkdirSync,
+@@ -323,6 +324,39 @@ let updateInfo: UpdateInfo = {
  	error: "",
  };
  let checkedManifest: UpdateManifestV1 | undefined;
@@ -91,7 +99,124 @@ index 4c47ed9..3221b5d 100644
  let checkInFlight: Promise<UpdateInfo> | undefined;
  let downloadInFlight: Promise<void> | undefined;
  let applyInFlight: Promise<void> | undefined;
-@@ -1773,8 +1806,8 @@ async function checkForUpdateOperation(): Promise<UpdateInfo> {
+@@ -679,6 +713,56 @@ function atomicWriteJson(path: string, value: unknown): void {
+ 	atomicWriteFile(path, new TextEncoder().encode(`${JSON.stringify(value)}\n`));
+ }
+ 
++/**
++ * `syncFile` without holding this thread while the disk takes a bundle
++ * hundreds of megabytes large: the app's windows keep answering.
++ */
++async function syncFileOffThread(path: string): Promise<void> {
++	const fileDescriptor = openSync(path, fsConstants.O_RDWR);
++	try {
++		await syncDescriptorOffThread(fileDescriptor);
++	} finally {
++		closeSync(fileDescriptor);
++	}
++}
++
++function syncDescriptorOffThread(fileDescriptor: number): Promise<void> {
++	return new Promise((resolve, reject) => {
++		fsync(fileDescriptor, (error) => (error ? reject(error) : resolve()));
++	});
++}
++
++/**
++ * Runs one of the update's tools (zig-zstd, bspatch) without holding this
++ * thread while it unpacks or patches a bundle: the app's windows keep
++ * answering meanwhile. Fails as execFileSync did, naming the command.
++ */
++async function runUpdateTool(
++	executable: string,
++	args: readonly string[],
++	options: { timeoutMs?: number; keepStderr?: boolean } = {},
++): Promise<void> {
++	const child = Bun.spawn([executable, ...args], {
++		stdin: "ignore",
++		stdout: "ignore",
++		stderr: options.keepStderr ? "pipe" : "ignore",
++		windowsHide: true,
++		...(options.timeoutMs ? { timeout: options.timeoutMs } : {}),
++	});
++	const [code, stderr] = await Promise.all([
++		child.exited,
++		options.keepStderr && child.stderr instanceof ReadableStream
++			? new Response(child.stderr).text()
++			: Promise.resolve(""),
++	]);
++	if (code !== 0) {
++		const detail = stderr.trim().slice(-64 * 1024);
++		throw new Error(
++			`Command failed: ${[executable, ...args].join(" ")} (${child.signalCode ?? `exit ${code}`})${detail ? `\n${detail}` : ""}`,
++		);
++	}
++}
++
+ export function syncFile(path: string): void {
+ 	// Cottontail's Windows fsync path requires a read/write handle. Opening an
+ 	// otherwise valid update file read-only can surface EBADF at the durability
+@@ -1164,7 +1248,7 @@ export async function downloadResponseToFile(
+ 			} catch {}
+ 			throw error;
+ 		}
+-		fsyncSync(fileDescriptor);
++		await syncDescriptorOffThread(fileDescriptor);
+ 		closeSync(fileDescriptor);
+ 		fileDescriptor = undefined;
+ 		return bytesDownloaded;
+@@ -1228,24 +1312,21 @@ async function downloadArtifact(
+ type DeltaPatchExecutor = (
+ 	executable: string,
+ 	args: readonly string[],
+-) => void;
++) => void | Promise<void>;
+ 
+-export function applyDeltaPatch(
++export async function applyDeltaPatch(
+ 	options: {
+ 		bspatchPath: string;
+ 		currentTarPath: string;
+ 		patchPath: string;
+ 		outputPath: string;
+ 	},
+-	execute: DeltaPatchExecutor = (executable, args) => {
+-		execFileSync(executable, [...args], {
+-			stdio: ["ignore", "ignore", "pipe"],
+-			maxBuffer: 64 * 1024,
+-			windowsHide: true,
+-			timeout: 10 * 60_000,
+-		});
+-	},
+-): void {
++	execute: DeltaPatchExecutor = (executable, args) =>
++		runUpdateTool(executable, args, {
++			keepStderr: true,
++			timeoutMs: 10 * 60_000,
++		}),
++): Promise<void> {
+ 	requireRegularFile(options.bspatchPath, "bspatch executable");
+ 	requireRegularFile(options.currentTarPath, "Current update archive");
+ 	requireRegularFile(options.patchPath, "Downloaded update patch");
+@@ -1253,7 +1334,7 @@ export function applyDeltaPatch(
+ 		throw new Error("Refusing to replace an existing patch output");
+ 	}
+ 	try {
+-		execute(options.bspatchPath, [
++		await execute(options.bspatchPath, [
+ 			options.currentTarPath,
+ 			options.outputPath,
+ 			options.patchPath,
+@@ -1262,7 +1343,7 @@ export function applyDeltaPatch(
+ 		if (lstatSync(options.outputPath).size <= 0) {
+ 			throw new Error("Patched update archive is empty");
+ 		}
+-		syncFile(options.outputPath);
++		await syncFileOffThread(options.outputPath);
+ 	} catch (error) {
+ 		rmSync(options.outputPath, { force: true });
+ 		throw error;
+@@ -1773,8 +1854,8 @@ async function checkForUpdateOperation(): Promise<UpdateInfo> {
  		return updateInfo;
  	}
  
@@ -102,7 +227,7 @@ index 4c47ed9..3221b5d 100644
  	try {
  		const response = await fetch(updateInfoUrl, {
  			signal: AbortSignal.timeout(30_000),
-@@ -1938,7 +1971,7 @@ export async function preparePatchChainForUpdate(
+@@ -1938,7 +2019,7 @@ export async function preparePatchChainForUpdate(
  	const bspatchPath =
  		dependencies.bspatchPath ??
  		join(dirname(process.execPath), currentOS === "win" ? "bspatch.exe" : "bspatch");
@@ -111,7 +236,7 @@ index 4c47ed9..3221b5d 100644
  		channel,
  		manifest.platform,
  		manifest.arch,
-@@ -1952,7 +1985,7 @@ export async function preparePatchChainForUpdate(
+@@ -1952,7 +2033,7 @@ export async function preparePatchChainForUpdate(
  	try {
  		while (currentHash !== manifest.hash) {
  			const patchNumber = patchesApplied + 1;
@@ -120,7 +245,7 @@ index 4c47ed9..3221b5d 100644
  			const pathPrefix = join(
  				extractionFolder,
  				`.${transactionId}.${patchNumber}.${currentHash}`,
-@@ -2136,8 +2169,8 @@ async function downloadUpdateOperation(): Promise<void> {
+@@ -2136,8 +2217,8 @@ async function downloadUpdateOperation(): Promise<void> {
  		join(extractionFolder, `${manifest.hash}.tar`),
  	);
  	const artifactUrl = buildUpdateArtifactUrl(
@@ -131,7 +256,40 @@ index 4c47ed9..3221b5d 100644
  	);
  	const artifactRequestUrl = addUpdateArtifactCacheBuster(
  		artifactUrl,
-@@ -2388,6 +2421,14 @@ const Updater = {
+@@ -2175,23 +2256,19 @@ async function downloadUpdateOperation(): Promise<void> {
+ 			emitStatus("decompressing", "Decompressing update bundle...", {
+ 				zstdPath,
+ 			});
+-			execFileSync(
+-				zstdPath,
+-				[
+-					"decompress",
+-					"-i",
+-					compressedPath,
+-					"-o",
+-					tarPartialPath,
+-					"--no-timing",
+-				],
+-				{ stdio: "ignore", windowsHide: true },
+-			);
++			await runUpdateTool(zstdPath, [
++				"decompress",
++				"-i",
++				compressedPath,
++				"-o",
++				tarPartialPath,
++				"--no-timing",
++			]);
+ 			requireRegularFile(tarPartialPath, "Decompressed update archive");
+ 			if (lstatSync(tarPartialPath).size <= 0) {
+ 				throw new Error("Decompressed update archive is empty");
+ 			}
+-			syncFile(tarPartialPath);
++			await syncFileOffThread(tarPartialPath);
+ 			publishFileReplacingRegular(tarPartialPath, retainedTarPath);
+ 		}
+ 
+@@ -2388,6 +2465,14 @@ const Updater = {
  		onStatusChangeCallback = callback;
  		if (callback) scheduleNativeUpdateResultReconciliation();
  	},
@@ -146,3 +304,105 @@ index 4c47ed9..3221b5d 100644
  	checkForUpdate,
  	downloadUpdate,
  	applyUpdate,
+diff --git a/api/sdks/main/core/BrowserView.ts b/api/sdks/main/core/BrowserView.ts
+index ced422137..43e8e905c 100644
+--- a/api/sdks/main/core/BrowserView.ts
++++ b/api/sdks/main/core/BrowserView.ts
+@@ -33,6 +33,22 @@ const HOST_MESSAGE_SEND_TURN_MS = 8;
+ const HOST_MESSAGE_SOCKET_AVAILABLE = process.platform !== "win32";
+ const HOST_MESSAGE_RESPONSE_PRIORITY = process.platform === "linux";
+ 
++/**
++ * Where set, runs a script in a webview instead of this thread when it
++ * returns true. On Windows every message to a page goes as a script, and the
++ * native call waits on the thread that runs the windows until it takes it.
++ * `webview` is the native pointer, which a webview made after this one is
++ * removed can reuse; `webviewId` is never reused. `runHere` runs it on this
++ * thread, for a script the runner took and then could not run.
++ */
++type WebviewScriptRunner = (
++	js: string,
++	webviewId: number,
++	webview: number,
++	runHere: () => void,
++) => boolean;
++let webviewScriptRunner: WebviewScriptRunner | null = null;
++
+ function isRpcResponsePacket(message: unknown): boolean {
+ 	return (
+ 		typeof message === "object" &&
+@@ -267,10 +283,22 @@ export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
+ 	// so we have to chunk it
+ 	// TODO: is this still needed after switching from named pipes
+ 	executeJavascript(js: string) {
+-		if (!this.ptr || this.isRemoved) {
++		const webview = this.ptr;
++		if (!webview || this.isRemoved) {
++			return;
++		}
++		const runHere = () => ffi.request.evaluateJavascriptWithNoCompletion({ id: this.id, js });
++		if (
++			webviewScriptRunner &&
++			webviewScriptRunner(js, this.id, webview as unknown as number, runHere)
++		) {
+ 			return;
+ 		}
+-		ffi.request.evaluateJavascriptWithNoCompletion({ id: this.id, js });
++		runHere();
++	}
++
++	static setScriptRunner(runner: WebviewScriptRunner | null): void {
++		webviewScriptRunner = runner;
+ 	}
+ 
+ 	loadURL(url: string) {
+diff --git a/api/sdks/main/core/ContextMenu.ts b/api/sdks/main/core/ContextMenu.ts
+index 807fd20e2..9f8bc899e 100644
+--- a/api/sdks/main/core/ContextMenu.ts
++++ b/api/sdks/main/core/ContextMenu.ts
+@@ -7,6 +7,8 @@ import { ffi, type ApplicationMenuItemConfig } from "../proc/native";
+ import electrobunEventEmitter from "../events/eventEmitter";
+ import { roleLabelMap } from "./menuRoles";
+ 
++export { setContextMenuRunner } from "../proc/native";
++
+ type NonDividerMenuItem = {
+ 	type?: "normal";
+ 	label?: string;
+diff --git a/api/sdks/main/proc/native.ts b/api/sdks/main/proc/native.ts
+index 449853c5b..fc1500c52 100644
+--- a/api/sdks/main/proc/native.ts
++++ b/api/sdks/main/proc/native.ts
+@@ -1279,6 +1279,19 @@ function createFfiRequestProxy(ffiRequest: Record<string, Function>): Record<str
+ const core_ = core!;
+ const native_ = native!;
+ 
++/**
++ * Where set, makes a context menu's native call instead of this thread when
++ * it returns true. On Windows that call waits on the thread that runs the
++ * windows, which answers only once the menu closes. `showHere` makes the
++ * call on this thread, for a menu the runner took and then could not show.
++ */
++type ContextMenuRunner = (menuConfig: string, handler: number, showHere: () => void) => boolean;
++let contextMenuRunner: ContextMenuRunner | null = null;
++
++export function setContextMenuRunner(runner: ContextMenuRunner | null): void {
++	contextMenuRunner = runner;
++}
++
+ type DarwinNativeWrapperSymbols = {
+ 	wgpuViewSetAlphaBlending: (view: Pointer, enabled: boolean) => void;
+ 	setWGPUPointerHandler: (handler: Pointer | null) => void;
+@@ -2349,8 +2362,11 @@ const _ffiImpl = {
+ 		},
+ 		showContextMenu: (params: { menuConfig: string }): void => {
+ 			const { menuConfig } = params;
++			const handler = contextMenuHandler.ptr as unknown as number | null;
++			const showHere = () => core_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
++			if (contextMenuRunner && handler && contextMenuRunner(menuConfig, handler, showHere)) return;
+ 
+-			core_.symbols.showContextMenu(toCString(menuConfig), contextMenuHandler);
++			showHere();
+ 		},
+ 		moveToTrash: (params: { path: string }): boolean => {
+ 			const { path } = params;

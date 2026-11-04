@@ -14,6 +14,7 @@ import { renameLegacyMacApp } from "./desktop/app-name";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import { settleInstallerFolder } from "./desktop/installer-folder";
 import { ensureInstallRecords } from "./desktop/install-records";
+import { runWebviewScriptsOffThread } from "./window/webview-script-thread";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -30,6 +31,10 @@ setConfigStoreHost(nodeConfigStoreHost);
 // ahead of it and spools the report for the next launch. Nothing is sent
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
+
+// Before any window opens: on Windows each message to a window is a script
+// whose native call waits on the thread that runs the windows.
+runWebviewScriptsOffThread();
 
 // A Windows install from before Electrobun 2 lives in the installer's folder.
 // Its last update put this build in Electrobun's folder, the only one

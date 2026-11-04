@@ -11,6 +11,7 @@ import { safeExternalUrl } from "../../../../utils/external-url";
 import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-menu/normalize";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
+import { measureNativeCall } from "../window/native-timing";
 import { startSystemWindowMove, startSystemWindowResize } from "../window/windows-native";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
@@ -138,10 +139,10 @@ export async function handleDesktopHostRequest(
         throw new Error("host.openExternal requires a URL.");
       }
       const externalUrl = safeExternalUrl(request.payload.url);
-      return externalUrl ? Utils.openExternal(externalUrl) !== false : false;
+      return externalUrl ? measureNativeCall("utils.open-external", () => Utils.openExternal(externalUrl)) !== false : false;
     }
     case "host.copyText":
-      Utils.clipboardWriteText(normalizeText(request.payload.text) ?? "");
+      measureNativeCall("utils.clipboard-write-text", () => Utils.clipboardWriteText(normalizeText(request.payload.text) ?? ""));
       return null;
     case "host.focusWindow": {
       const windowKey = backend.rpcs.getRpcWindowKey(rpc);
@@ -151,11 +152,11 @@ export async function handleDesktopHostRequest(
     case "host.copyPngImage": {
       const pngBase64 = normalizeText(request.payload.pngBase64);
       if (!pngBase64) throw new Error("host.copyPngImage requires PNG data.");
-      Utils.clipboardWriteImage(new Uint8Array(Buffer.from(pngBase64, "base64")));
+      measureNativeCall("utils.clipboard-write-image", () => Utils.clipboardWriteImage(new Uint8Array(Buffer.from(pngBase64, "base64"))));
       return null;
     }
     case "host.readText":
-      return Utils.clipboardReadText() ?? "";
+      return measureNativeCall("utils.clipboard-read-text", () => Utils.clipboardReadText()) ?? "";
     case "host.saveTextFile": {
       if (typeof request.payload.name !== "string" || typeof request.payload.text !== "string") {
         throw new Error("host.saveTextFile requires a name and text.");
@@ -164,19 +165,25 @@ export async function handleDesktopHostRequest(
     }
     case "host.notify":
       playNotificationSound(normalizeText(request.payload.sound));
-      Utils.showNotification({
+      measureNativeCall("utils.show-notification", () => Utils.showNotification({
         title: normalizeText(request.payload.title) ?? "Gloom",
         body: normalizeText(request.payload.body),
         subtitle: normalizeText(request.payload.subtitle),
         silent: true,
-      });
+      }));
       return null;
     case "host.showContextMenu": {
       const menu = normalizeContextMenuItems(request.payload.menu);
       if (menu.length === 0) return false;
       const requestId = getContextMenuRequestId(menu);
       if (requestId) backend.trackContextMenuRequest(requestId, rpc);
-      ContextMenu.showContextMenu(menu as never);
+      // On Windows the menu opens on a thread of its own (context-menu-thread.ts)
+      // and this returns at once. Where that thread failed, the menu holds
+      // this thread until it closes, the freeze the thread removes: a stall.
+      // Elsewhere a menu that holds the thread waits on the person.
+      measureNativeCall("context-menu.show", () => ContextMenu.showContextMenu(menu as never), {
+        waitsOnPerson: process.platform !== "win32",
+      });
       return true;
     }
     case "host.saveBootFrame":
