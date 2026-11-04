@@ -24,6 +24,13 @@ export interface PluginSeedConsumer {
   activate(install: { directory: string; peers: string[] }): Promise<PluginActivation | null>;
   /** Whether the plugin in this folder already runs in the session. */
   isRunning(directory: string): boolean;
+  /** The broker types registered in the session now. */
+  brokerTypes(): Iterable<string>;
+  /**
+   * Syncs the saved broker profiles of these types. The launch's sync ran
+   * before their plugin was back, so it had no broker to ask.
+   */
+  syncBrokers(types: ReadonlySet<string>): void;
   record(record: PluginSeedRecord): void;
   notify(notice: PluginSeedNotice): void;
 }
@@ -52,10 +59,13 @@ export function startPluginSeedConsumer(consumer: PluginSeedConsumer): () => voi
     if (disposed || activating.has(directory) || consumer.isRunning(directory)) return;
     activating.add(directory);
     try {
+      const before = new Set(consumer.brokerTypes());
       const activated = await consumer.activate({ directory, peers: peers.filter((peer) => !consumer.isRunning(peer)) });
       // Nothing here can load it (no plugin manager): the next launch does.
       if (!activated || (activated.ok && activated.restart)) restart.push(name);
       else if (!activated.ok) unloaded.push(name);
+      const added = new Set([...consumer.brokerTypes()].filter((type) => !before.has(type)));
+      if (added.size > 0 && !disposed) consumer.syncBrokers(added);
     } finally {
       activating.delete(directory);
     }

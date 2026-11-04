@@ -36,6 +36,8 @@ test("brings restored plugins in after startup, once each, then records the outc
         : { ok: true, pluginId: directory, name: directory };
     },
     isRunning: (directory) => running.has(directory),
+    brokerTypes: () => [],
+    syncBrokers: () => {},
     record: (record) => { recorded.push(record); },
     notify: (notice) => { notices.push(notice.body); },
   });
@@ -67,6 +69,35 @@ test("brings restored plugins in after startup, once each, then records the outc
     "Polls could not be installed. Gloom tries again at the next launch.",
     "Public installed but did not load. Open Plugins to see why.",
   ]);
+  stop();
+});
+
+/**
+ * The launch syncs saved broker profiles before a restored broker plugin is
+ * back, so that sync has no broker to ask. Without another once it registers,
+ * the profile's positions stay as they were until the next launch.
+ */
+test("a restored broker plugin syncs the profiles of the broker types it brought", async () => {
+  const brokers = new Set(["gloomberb-cloud"]);
+  const synced: string[][] = [];
+  const stop = startPluginSeedConsumer({
+    ready: Promise.resolve(),
+    activate: async ({ directory }) => {
+      if (directory === "gloom-ibkr") brokers.add("ibkr");
+      return { ok: true, pluginId: directory, name: directory };
+    },
+    isRunning: () => false,
+    brokerTypes: () => brokers,
+    syncBrokers: (types) => { synced.push([...types]); },
+    record: () => {},
+    notify: () => {},
+  });
+  publish([
+    { id: "polls", name: "Polls", state: "installed", directory: "gloom-polls" },
+    { id: "ibkr", name: "Interactive Brokers", state: "installed", directory: "gloom-ibkr" },
+  ]);
+  await Bun.sleep(10);
+  expect(synced).toEqual([["ibkr"]]);
   stop();
 });
 
