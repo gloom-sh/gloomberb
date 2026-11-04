@@ -15,13 +15,18 @@ import { DialogActions } from "../../../../components/ui/dialog-actions";
 import { fitDialogWidth } from "../../../../components/ui/frame";
 import { t, tf } from "../../../../i18n";
 import {
+  morePositionsLine,
+  moreSkippedLine,
+  PREVIEW_ROWS_SHOWN,
   positionsImportCost,
   positionsImportShares,
+  positionsImportShowsCurrency,
   positionsImportStatus,
 } from "../../../../portfolio/positions-import/describe";
 import type { PositionsFile, SkippedFileRow } from "../../../../portfolio/positions-import/parse";
 import {
   buildPositionsImportPlan,
+  replaceRefusal,
   summarizePositionsImport,
   type PositionsImportMode,
   type PositionsImportPlan,
@@ -62,14 +67,23 @@ export interface PositionsImportPreview {
   baseCurrency: string;
 }
 
+/** What a replace asks before it saves. */
+export interface PositionsImportConfirmation {
+  title: string;
+  body: string[];
+  confirmLabel: string;
+}
+
 export interface PositionsImportDialogProps extends PromptContext<boolean> {
   preview: PositionsImportPreview;
   lookUp: () => Promise<PositionSymbolLookup>;
+  /** Asks before a replace removes what the portfolio holds; true goes ahead. */
+  confirm: (request: PositionsImportConfirmation) => Promise<boolean>;
   /** Saves the plan; a throw is shown in the dialog, which stays open. */
   commit: (plan: PositionsImportPlan, lookup: PositionSymbolLookup, target: PositionsImportTarget) => Promise<void>;
 }
 
-type PositionColumn = DataTableColumn & { id: "ticker" | "name" | "shares" | "cost" | "bought" | "status" };
+type PositionColumn = DataTableColumn & { id: "ticker" | "name" | "shares" | "cost" | "currency" | "bought" | "status" };
 type SkippedColumn = DataTableColumn & { id: "line" | "row" | "reason" };
 
 function errorMessage(error: unknown): string {
@@ -99,13 +113,42 @@ function tableRows(count: number): number {
   return count + 1;
 }
 
+function tickerList(tickers: readonly TickerRecord[]): string {
+  return tickers.map((ticker) => ticker.metadata.ticker).join(", ");
+}
+
+function removedLine(tickers: readonly TickerRecord[]): string {
+  return tf("Removes {tickers}: not in the file.", { tickers: tickerList(tickers) });
+}
+
+/** A replace leaves these as they are: the file names them, on rows it could not import. */
+function keptLine(tickers: readonly TickerRecord[]): string {
+  return tickers.length === 1
+    ? tf("Keeps {ticker}: the file lists it on a skipped row.", { ticker: tickerList(tickers) })
+    : tf("Keeps {tickers}: the file lists them on a skipped row.", { tickers: tickerList(tickers) });
+}
+
+/** The second step of a replace: what the portfolio holds after it, and what it loses. */
+function replaceConfirmation(plan: PositionsImportPlan, portfolioName: string, heldCount: number): PositionsImportConfirmation {
+  const held = heldCount === 1 ? t("1 ticker") : tf("{count} tickers", { count: heldCount });
+  return {
+    title: tf("Replace {name}?", { name: portfolioName }),
+    body: [
+      tf("\"{name}\" holds {held}. After the replace it holds the file's {count}.", { name: portfolioName, held, count: positionsCount(plan.rows.length) }),
+      ...plan.removed.length > 0 ? [removedLine(plan.removed)] : [],
+      ...plan.kept.length > 0 ? [keptLine(plan.kept)] : [],
+    ],
+    confirmLabel: t("Replace"),
+  };
+}
+
 /**
  * The preview of a positions import: what each of the file's positions
  * becomes, what is left out and why, and, for a portfolio that exists,
  * whether the file merges into it or replaces it. Nothing is saved until
  * Import.
  */
-export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, commit }: PositionsImportDialogProps) {
+export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, confirm, commit }: PositionsImportDialogProps) {
   const colors = useThemeColors();
   const { nativePaneChrome: desktop } = useUiCapabilities();
   const viewport = useViewport();
@@ -114,6 +157,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [target, setTarget] = useState<PositionsImportTarget>(preview.initialTarget);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -134,12 +178,26 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
     mode: target === "replace" ? "replace" : "merge",
     baseCurrency: preview.baseCurrency,
   }) : null, [lookup, portfolio, preview, target]);
-  const ready = !!plan && plan.rows.length > 0 && !busy;
+  const heldCount = preview.existing?.holdings.length ?? 0;
+  const refusal = plan && target === "replace" ? replaceRefusal(plan) : null;
+  const ready = !!plan && plan.rows.length > 0 && !refusal && !busy && !confirming;
 
   const submit = useCallback(async () => {
-    if (!plan || !lookup || plan.rows.length === 0 || busy) return;
-    setBusy(true);
+    if (!plan || !lookup || !ready) return;
     setSaveError(null);
+    if (target === "replace") {
+      setConfirming(true);
+      let sure = false;
+      try {
+        sure = await confirm(replaceConfirmation(plan, portfolio.name, heldCount));
+      } catch (error) {
+        setSaveError(errorMessage(error));
+      } finally {
+        setConfirming(false);
+      }
+      if (!sure) return;
+    }
+    setBusy(true);
     try {
       await commit(plan, lookup, target);
       resolve(true);
@@ -147,7 +205,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
       setSaveError(errorMessage(error));
       setBusy(false);
     }
-  }, [busy, commit, lookup, plan, resolve, target]);
+  }, [commit, confirm, heldCount, lookup, plan, portfolio.name, ready, resolve, target]);
 
   const scrollBy = useCallback((rows: number) => {
     const box = scrollRef.current;
@@ -155,6 +213,8 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
   }, []);
 
   useDialogKeyboard((event) => {
+    // The replace's confirm answers its own keys.
+    if (confirming) return;
     if (event.name === "escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -180,14 +240,21 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
   }, { allowEditable: true });
 
   const dated = !!plan?.rows.some((row) => row.dateAcquired);
+  // As PF shows the currency column: once a row is in another currency than the portfolio totals in.
+  const existingId = preview.existing?.portfolio.id;
+  const totalsCurrency = target !== "new" && preview.existing?.holdings.some((ticker) => ticker.metadata.positions.some((position) => position.portfolio === existingId))
+    ? portfolio.currency ?? preview.baseCurrency
+    : null;
+  const priced = !!plan && positionsImportShowsCurrency(plan.rows, totalsCurrency);
   const positionColumns = useMemo<PositionColumn[]>(() => [
     { id: "ticker", label: t("Ticker"), width: 13, align: "left" },
     { id: "name", label: t("Name"), width: 14, align: "left", flexGrow: 1 },
     { id: "shares", label: t("Shares"), width: 10, align: "right" },
-    { id: "cost", label: t("Avg Cost"), width: 12, align: "right" },
-    ...dated ? [{ id: "bought" as const, label: t("Bought"), width: 10, align: "left" as const }] : [],
+    { id: "cost", label: t("Avg Cost"), width: 14, align: "right" },
+    ...priced ? [{ id: "currency" as const, label: t("Ccy"), width: 4, align: "left" as const }] : [],
+    ...dated ? [{ id: "bought" as const, label: t("Bought"), width: 11, align: "left" as const }] : [],
     { id: "status", label: t("Status"), width: 11, align: "left" },
-  ], [dated]);
+  ], [dated, priced]);
   const skippedColumns = useMemo<SkippedColumn[]>(() => [
     { id: "line", label: t("Line"), width: 5, align: "right" },
     { id: "row", label: t("Row"), width: 24, align: "left" },
@@ -201,6 +268,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
       case "name": return { text: row.ticker.metadata.name ?? "", color: colors.text };
       case "shares": return { text: positionsImportShares(row), color: colors.text, value: row.shares };
       case "cost": return { text: positionsImportCost(row), color: row.avgCost === null ? colors.textMuted : colors.text, value: row.avgCost };
+      case "currency": return { text: row.currency, color: colors.textDim };
       case "bought": return { text: row.dateAcquired ?? "", color: colors.textDim };
       case "status": return { text: positionsImportStatus(row), color: row.heldShares === null ? colors.positive : colors.textDim };
     }
@@ -224,13 +292,18 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
       ? [tf("No cost in the file for {tickers}: set it with Set Portfolio Position after the import.", { tickers: withoutCost.join(", ") })]
       : [],
     ...plan.rows.flatMap((row) => row.notes.map((note) => `${row.ticker.metadata.ticker}: ${note}`)),
-    ...plan.removed.length > 0
-      ? [tf("Removes {tickers}: not in the file.", { tickers: plan.removed.map((ticker) => ticker.metadata.ticker).join(", ") })]
-      : [],
+    ...plan.removed.length > 0 && !refusal ? [removedLine(plan.removed)] : [],
+    ...plan.kept.length > 0 && !refusal ? [keptLine(plan.kept)] : [],
   ] : [];
-  const headline = plan ? planHeadline(plan, target, portfolio.name) : null;
-  const status = lookupError ?? (plan && plan.rows.length === 0 ? t("None of the file's positions can be imported.") : null);
+  // A refused replace says why instead of what it would do.
+  const headline = plan && !refusal ? planHeadline(plan, target, portfolio.name) : null;
+  const status = lookupError ?? (plan && plan.rows.length === 0 ? t("None of the file's positions can be imported.") : refusal);
   const symbolCount = preview.file.positions.length;
+  // Each table lists its first rows: a long one is drawn whole, row by row, and the rest are counted.
+  const shownPositions = plan ? plan.rows.slice(0, PREVIEW_ROWS_SHOWN) : [];
+  const morePositions = plan ? morePositionsLine(plan.rows.length) : null;
+  const shownSkipped = plan ? plan.skipped.slice(0, PREVIEW_ROWS_SHOWN) : [];
+  const moreSkipped = plan ? moreSkippedLine(plan.skipped.length) : null;
 
   const body = (
     <Box flexDirection="column">
@@ -240,13 +313,13 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
       {headline && <Text fg={colors.text} wrapText>{headline}</Text>}
       {status && <Notice tone="negative">{status}</Notice>}
       {plan && plan.rows.length > 0 && (
-        <Box flexDirection="column" height={desktop ? undefined : tableRows(plan.rows.length)} marginTop={1}>
+        <Box flexDirection="column" height={desktop ? undefined : tableRows(shownPositions.length)} marginTop={1}>
           <DataTableView<PositionsImportRow, PositionColumn>
             columns={positionColumns}
-            items={plan.rows}
+            items={shownPositions}
             selection={{ kind: "none" }}
             rootWidth={tableWidth}
-            rootHeight={tableRows(plan.rows.length)}
+            rootHeight={tableRows(shownPositions.length)}
             horizontalPadding={0}
             virtualize={false}
             fitRows
@@ -258,6 +331,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
           />
         </Box>
       )}
+      {morePositions && <Text fg={colors.textMuted}>{morePositions}</Text>}
       {notices.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           {notices.map((notice) => <Notice key={notice}>{notice}</Notice>)}
@@ -266,13 +340,13 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
       {plan && plan.skipped.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <SectionHeading title={t("Skipped")} />
-          <Box flexDirection="column" height={desktop ? undefined : tableRows(plan.skipped.length)}>
+          <Box flexDirection="column" height={desktop ? undefined : tableRows(shownSkipped.length)}>
             <DataTableView<SkippedFileRow, SkippedColumn>
               columns={skippedColumns}
-              items={plan.skipped}
+              items={shownSkipped}
               selection={{ kind: "none" }}
               rootWidth={tableWidth}
-              rootHeight={tableRows(plan.skipped.length)}
+              rootHeight={tableRows(shownSkipped.length)}
               horizontalPadding={0}
               virtualize={false}
               fitRows
@@ -283,6 +357,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
               emptyStateTitle="Nothing skipped"
             />
           </Box>
+          {moreSkipped && <Text fg={colors.textMuted}>{moreSkipped}</Text>}
         </Box>
       )}
     </Box>
@@ -312,7 +387,9 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
     </Box>
   ) : null;
 
-  const importLabel = plan && plan.rows.length > 0 ? tf("Import {count}", { count: positionsCount(plan.rows.length) }) : t("Import");
+  const importLabel = target === "replace" && plan && plan.rows.length > 0
+    ? tf("Replace {held} with {count}", { held: heldCount, count: plan.rows.length })
+    : plan && plan.rows.length > 0 ? tf("Import {count}", { count: positionsCount(plan.rows.length) }) : t("Import");
   const actions = (
     <DialogActions alignEnd hints={preview.existing ? { keys: [{ key: "←→", label: "target" }] } : undefined}>
       <Button label={t("Cancel")} variant="secondary" desktopShortcut="Esc" disabled={busy} onPress={() => resolve(false)} />
@@ -338,15 +415,15 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, comm
   const bodyRows = (plan || lookupError ? 0 : 1)
     + (headline ? wrapTextLines(headline, contentWidth).length : 0)
     + (status ? wrapTextLines(status, contentWidth).length : 0)
-    + (plan && plan.rows.length > 0 ? 1 + tableRows(plan.rows.length) : 0)
+    + (plan && plan.rows.length > 0 ? 1 + tableRows(shownPositions.length) + (morePositions ? 1 : 0) : 0)
     + (noticeRows > 0 ? 1 + noticeRows : 0)
-    + (plan && plan.skipped.length > 0 ? 2 + tableRows(plan.skipped.length) : 0);
+    + (plan && plan.skipped.length > 0 ? 2 + tableRows(shownSkipped.length) + (moreSkipped ? 1 : 0) : 0);
   const fixedRows = TERMINAL_CHROME_ROWS + (targetControl ? 3 : 0) + (saveError ? 1 + wrapTextLines(saveError, contentWidth).length : 0);
   const shownRows = Math.max(1, Math.min(bodyRows, viewport.height - 2 - fixedRows));
   const keyLine = [
     ...preview.existing ? [t("←→ target")] : [],
     ...bodyRows > shownRows ? [t("↑↓ scroll")] : [],
-    t("Enter import"),
+    target === "replace" ? t("Enter replace") : t("Enter import"),
     t("Esc cancel"),
   ].join(" · ");
   return (

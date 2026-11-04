@@ -1,10 +1,17 @@
 import { createElement, useCallback, useRef, type ReactNode } from "react";
 import { TextPromptDialog } from "../../../../components";
+import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
 import { t, tf } from "../../../../i18n";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { createManualPortfolio, isManualPortfolio } from "../../../../portfolio/mutations";
 import { defaultImportPortfolioName, positionsImportSource } from "../../../../portfolio/positions-import/describe";
-import { parsePositionsFile, POSITIONS_EXPORT_BROKERS, PositionsFileError } from "../../../../portfolio/positions-import/parse";
+import {
+  decodePositionsFile,
+  MAX_POSITIONS_FILE_BYTES,
+  parsePositionsFile,
+  POSITIONS_EXPORT_BROKERS,
+  PositionsFileError,
+} from "../../../../portfolio/positions-import/parse";
 import { applyPositionsImportPlan, type PositionsImportPlan } from "../../../../portfolio/positions-import/plan";
 import { syncConfigActiveLayoutState, useAppDispatch, useAppStateRef } from "../../../../state/app/context";
 import { scheduleConfigSave } from "../../../../state/config-save-scheduler";
@@ -18,11 +25,12 @@ import { usePluginAppActions } from "../../../runtime";
 import {
   POSITIONS_IMPORT_DIALOG_COLUMNS,
   PositionsImportDialog,
+  type PositionsImportConfirmation,
   type PositionsImportPreview,
   type PositionsImportTarget,
 } from "./dialog";
 import { lookUpPositionSymbols, type PositionSymbolLookup } from "./lookup";
-import { MAX_POSITIONS_FILE_BYTES, readPositionsFilePath } from "./read-file";
+import { readPositionsFilePath } from "./read-file";
 
 /** The terminal dialog's border and padding, around the preview's columns. */
 const TERMINAL_DIALOG_INSET = 6;
@@ -116,14 +124,37 @@ export function usePositionsImport({
       dataProvider: registry.marketData,
     });
 
+    const confirm = async (request: PositionsImportConfirmation) => await dialog.prompt<boolean>({
+      closeOnClickOutside: false,
+      content: (context) => (
+        <ConfirmDialog
+          {...context}
+          title={request.title}
+          body={request.body}
+          confirmLabel={request.confirmLabel}
+          formButtons
+          // The Enter that pressed Replace, held or pressed again, does not confirm: `y` or the button does.
+          defaultAction="cancel"
+        />
+      ),
+    }) === true;
+
+    // The portfolio this preview made. Import again after a save that failed part way finishes in it, rather than making "Fidelity 2".
+    let made: Portfolio | null = null;
     const commit = async (plan: PositionsImportPlan, lookup: PositionSymbolLookup, target: PositionsImportTarget) => {
       const current = stateRef.current;
       let nextConfig = current.config;
       let portfolio: Portfolio;
       if (target === "new" || !existing) {
-        const created = newPortfolioFor(nextConfig, newPortfolio.name);
-        nextConfig = created.config;
-        portfolio = created.portfolio;
+        const again = made && current.config.portfolios.find((entry) => entry.id === made!.id);
+        if (again) {
+          portfolio = again;
+        } else {
+          const created = newPortfolioFor(nextConfig, newPortfolio.name);
+          nextConfig = created.config;
+          portfolio = created.portfolio;
+          made = portfolio;
+        }
       } else {
         portfolio = existing.portfolio;
       }
@@ -148,13 +179,18 @@ export function usePositionsImport({
       }
       onImportedRef.current(portfolio.id);
       const count = plan.rows.length === 1 ? t("1 position") : tf("{count} positions", { count: plan.rows.length });
-      notify({ type: "success", body: tf("Imported {count} into \"{name}\".", { count, name: portfolio.name }) });
+      notify({
+        type: "success",
+        body: target === "replace"
+          ? tf("Replaced the holdings of \"{name}\" with {count}.", { count, name: portfolio.name })
+          : tf("Imported {count} into \"{name}\".", { count, name: portfolio.name }),
+      });
     };
 
     await dialog.prompt<boolean>({
       closeOnClickOutside: false,
       style: { width: POSITIONS_IMPORT_DIALOG_COLUMNS + TERMINAL_DIALOG_INSET },
-      content: (context) => <PositionsImportDialog {...context} preview={importPreview} lookUp={lookUp} commit={commit} />,
+      content: (context) => <PositionsImportDialog {...context} preview={importPreview} lookUp={lookUp} confirm={confirm} commit={commit} />,
     });
   }, [dialog, dispatch, notify, stateRef]);
 
@@ -211,7 +247,7 @@ export function usePositionsImport({
         notify({ type: "error", body: tf("{name} is too large to be a positions export.", { name: picked.name }) });
         return;
       }
-      picked.text().then((text) => preview(text, picked.name)).catch(fail);
+      picked.arrayBuffer().then((buffer) => preview(decodePositionsFile(new Uint8Array(buffer)), picked.name)).catch(fail);
     },
   }) : null;
 

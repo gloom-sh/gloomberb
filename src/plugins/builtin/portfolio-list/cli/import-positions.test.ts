@@ -52,7 +52,7 @@ async function setup() {
   return { store, dataDir, file, run };
 }
 
-test("portfolio import <file> previews with --dry-run, creates the portfolio, and needs --merge or --replace for one that holds tickers", async () => {
+test("portfolio import <file> previews with --dry-run, creates the portfolio, needs --merge or --replace for one that holds tickers, and refuses a replace the file cannot fill", async () => {
   const { store, dataDir, file, run } = await setup();
   setCliColorEnabledOverride(false);
   spyOn(console, "error").mockImplementation(() => {});
@@ -74,6 +74,10 @@ test("portfolio import <file> previews with --dry-run, creates the portfolio, an
   expect((await store.loadTicker("AAPL"))?.metadata.positions).toEqual([{ portfolio: created.id, shares: 10, avgCost: 150, currency: "USD", broker: "manual" }]);
 
   await expect(run([file, "--name", "Main"])).rejects.toThrow('Portfolio "Main" already holds 1 ticker.');
+  // ZZZZ does not resolve: a replace would leave the portfolio short of the file, so it is refused and nothing changes.
+  await expect(run([file, "--name", "Main", "--replace"])).rejects.toThrow("1 of the file's positions could not be imported (ZZZZ)");
+  expect((await store.loadTicker("XOM"))?.metadata.portfolios).toEqual(["main"]);
+  await writeFile(file, "Symbol,Shares,Avg Cost\nAAPL,10,150\nMSFT,5,300\nCASH,100,\n");
   const replaced = await run([file, "--name", "Main", "--replace"]);
   expect(replaced.result.data).toMatchObject({ action: "replace", removed: [{ listing: "XOM:NYSE" }] });
   expect((await store.loadTicker("XOM"))?.metadata.portfolios).toEqual([]);

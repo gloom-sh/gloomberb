@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { homedir } from "os";
 import { saveConfig } from "../../../../data/config/store";
 import { withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
@@ -10,6 +10,9 @@ import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import { createManualPortfolio, isManualPortfolio } from "../../../../portfolio/mutations";
 import {
+  decodePositionsFile,
+  MAX_IMPORT_POSITIONS,
+  MAX_POSITIONS_FILE_BYTES,
   parsePositionsFile,
   POSITIONS_EXPORT_BROKERS,
   POSITIONS_LAYOUT_NAMES,
@@ -18,14 +21,17 @@ import {
 } from "../../../../portfolio/positions-import/parse";
 import {
   defaultImportPortfolioName,
+  moreSkippedLine,
   positionsImportCost,
   positionsImportShares,
   positionsImportSource,
   positionsImportStatus,
+  PREVIEW_ROWS_SHOWN,
 } from "../../../../portfolio/positions-import/describe";
 import {
   applyPositionsImportPlan,
   buildPositionsImportPlan,
+  replaceRefusal,
   summarizePositionsImport,
   type ImportSymbolResolution,
   type PositionsImportMode,
@@ -42,9 +48,9 @@ export const POSITIONS_IMPORT_USAGE = "Usage: gloom portfolio import <file> [--n
 export const POSITIONS_IMPORT_HELP = {
   title: "Importing a broker's positions",
   lines: [
-    `portfolio import <file> reads the positions export (CSV) a brokerage's positions or holdings page downloads: ${POSITIONS_EXPORT_BROKERS.join(", ")}, or any table with a Symbol (or Ticker) and a Quantity (or Shares) column, and a cost in total (Cost Basis) or per share (Avg Cost, Price Paid), a purchase date (Date Acquired) and a Currency where it has them. US brokers' exports are in USD.`,
+    `portfolio import <file> reads the positions export (CSV) a brokerage's positions or holdings page downloads: ${POSITIONS_EXPORT_BROKERS.join(", ")}, or any table with a Symbol (or Ticker) and a Quantity (or Shares) column, and a cost in total (Cost Basis) or per share (Avg Cost, Price Paid), a purchase date (Date Acquired) and a Currency where it has them. US brokers' exports are in USD. A file takes at most ${MAX_IMPORT_POSITIONS.toLocaleString("en-US")} positions; a trade or activity history is refused.`,
     "Each symbol becomes a position of shares at its cost per share; rows of one symbol (several accounts or lots) are added up, dated by the earliest. Totals, footers and account headings are left out. Cash and money market sweeps, pending activity, options, bonds and CDs, rows without a ticker and symbols that do not resolve are listed as skipped, each with the reason.",
-    "The portfolio is named after the broker (or the file) unless --name says otherwise, and is created when it does not exist. One that holds tickers needs --merge (the file's positions replace those of the same listings; the rest stay) or --replace (holdings the file does not list are removed, with their targets). A position the file gives no cost for keeps the holding's own cost, else it has none.",
+    "The portfolio is named after the broker (or the file) unless --name says otherwise, and is created when it does not exist. One that holds tickers needs --merge (the file's positions replace those of the same listings, a holding's lots becoming one position; the rest stay) or --replace (holdings the file does not list are removed, with their targets). A replace is refused while any of the file's stock or fund rows could not be imported, and never removes a holding the file names on a skipped row. A position the file gives no cost for keeps the holding's own cost, else it has none.",
     "--dry-run looks every symbol up and prints the same table without saving. In the app, Import Positions… in the PF pane menu shows the same preview before it saves.",
   ],
 };
@@ -59,11 +65,25 @@ function expandHome(path: string): string {
   return path === "~" || path.startsWith("~/") ? `${homedir()}${path.slice(1)}` : path;
 }
 
-async function readPositionsText(path: string, readStdin: () => Promise<string>): Promise<string> {
-  if (path === "-") return readStdin();
+function tooLarge(path: string): PortfolioCliError {
+  return new PortfolioCliError(`${path === "-" ? "Standard input" : path} is too large to be a positions export (over ${MAX_POSITIONS_FILE_BYTES / 1024 / 1024} MB).`);
+}
+
+/** The file's text, in whichever encoding it was saved; refused past the size of any positions export. */
+async function readPositionsText(path: string, readStdin: () => Promise<Uint8Array>): Promise<string> {
+  if (path === "-") {
+    const bytes = await readStdin();
+    if (bytes.length > MAX_POSITIONS_FILE_BYTES) throw tooLarge(path);
+    return decodePositionsFile(bytes);
+  }
+  const resolved = expandHome(path);
   try {
-    return await readFile(expandHome(path), "utf-8");
+    const info = await stat(resolved);
+    if (!info.isFile()) throw new PortfolioCliError(`${path} is not a file.`);
+    if (info.size > MAX_POSITIONS_FILE_BYTES) throw tooLarge(path);
+    return decodePositionsFile(await readFile(resolved));
   } catch (error) {
+    if (error instanceof PortfolioCliError) throw error;
     const code = (error as NodeJS.ErrnoException).code;
     throw new PortfolioCliError(code === "ENOENT" ? `No file at ${path}.` : `Could not read ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -88,7 +108,7 @@ function importHeadline(plan: PositionsImportPlan, portfolio: Portfolio, created
 export async function importPositionsFileCommand(
   options: PositionsImportOptions,
   ctx: CliCommandContext,
-  readStdin: () => Promise<string> = () => Bun.stdin.text(),
+  readStdin: () => Promise<Uint8Array> = async () => new Uint8Array(await Bun.stdin.arrayBuffer()),
 ) {
   const dryRun = ctx.cliOptions.dryRun === true;
   let file: PositionsFile;
@@ -97,7 +117,8 @@ export async function importPositionsFileCommand(
   } catch (error) {
     if (error instanceof PositionsFileError) {
       // A list of symbols without shares is what `portfolio add --file` reads.
-      ctx.fail(`${options.path}: ${error.message}`, `To add a list of symbols without shares, run: gloom portfolio add <portfolio> --file ${options.path}\n${POSITIONS_IMPORT_USAGE}`);
+      const listHint = error.problem === "no-table" ? `To add a list of symbols without shares, run: gloom portfolio add <portfolio> --file ${options.path}\n` : "";
+      ctx.fail(`${options.path}: ${error.message}`, `${listHint}${POSITIONS_IMPORT_USAGE}`);
     }
     return failPortfolioCommand(ctx, error, `Failed to read ${options.path}.`);
   }
@@ -131,13 +152,21 @@ export async function importPositionsFileCommand(
           ? { error: lookup.error.message }
           : { ticker: lookup.ticker, notes: [tickerChangeLine(lookup.change), lookup.ended].filter((note): note is string => !!note) },
       ]));
-      const plan = buildPositionsImportPlan({
-        file, resolutions, portfolio, holdings, mode: options.mode ?? "merge", baseCurrency: config.baseCurrency,
-      });
+      // A portfolio that holds nothing has nothing to replace: the file goes into it either way.
+      const mode = options.mode === "replace" && holdings.length > 0 ? "replace" : "merge";
+      const plan = buildPositionsImportPlan({ file, resolutions, portfolio, holdings, mode, baseCurrency: config.baseCurrency });
+      const skippedLines = (rows: PositionsImportPlan["skipped"]) => [
+        ...rows.slice(0, PREVIEW_ROWS_SHOWN).map((row) => `line ${row.line} ${row.label}: ${row.reason}`),
+        ...[moreSkippedLine(rows.length)].filter((line): line is string => !!line),
+      ].join("\n");
       if (plan.rows.length === 0) {
+        throw new PortfolioCliError(`None of the positions in ${options.path} could be imported.`, skippedLines(plan.skipped));
+      }
+      const refusal = plan.mode === "replace" ? replaceRefusal(plan, "Use --merge instead") : null;
+      if (refusal) {
         throw new PortfolioCliError(
-          `None of the positions in ${options.path} could be imported.`,
-          plan.skipped.map((row) => `line ${row.line} ${row.label}: ${row.reason}`).join("\n"),
+          `Not replacing "${portfolio.name}". ${refusal}`,
+          skippedLines(plan.replaceBlockers),
         );
       }
 
@@ -164,11 +193,13 @@ export async function importPositionsFileCommand(
         dateAcquired: row.dateAcquired,
         status: row.heldShares === null ? "new" : "updated",
         heldShares: row.heldShares,
+        heldLots: row.heldLots,
         costKept: row.keptCost,
         lines: row.lines,
         ...(row.notes.length > 0 ? { notes: row.notes } : {}),
       }));
       const removed = plan.removed.map((ticker) => listingFields(savedListingName(ticker)));
+      const kept = plan.kept.map((ticker) => listingFields(savedListingName(ticker)));
       const withoutCost = plan.rows.filter((row) => row.avgCost === null);
       const dated = plan.rows.some((row) => row.dateAcquired);
       ctx.printResult({
@@ -183,6 +214,7 @@ export async function importPositionsFileCommand(
           positions,
           skipped: plan.skipped,
           removed,
+          ...(plan.mode === "replace" ? { kept } : {}),
         },
         ...withoutCost.length > 0
           ? { warnings: [`No cost in the file for ${withoutCost.map((row) => savedListingName(row.ticker).key).join(", ")}; set it with portfolio position set.`] }
@@ -199,7 +231,8 @@ export async function importPositionsFileCommand(
             plan.rows.map((row) => {
               const saved = savedListingName(row.ticker);
               return [
-                saved.key, saved.name ?? "", positionsImportShares(row), positionsImportCost(row),
+                // With the currency's sign, as portfolio show prints a position's cost.
+                saved.key, saved.name ?? "", positionsImportShares(row), positionsImportCost(row, { withCurrency: true }),
                 ...dated ? [row.dateAcquired ?? ""] : [], positionsImportStatus(row),
               ];
             }),
@@ -208,10 +241,14 @@ export async function importPositionsFileCommand(
           ...plan.skipped.length > 0
             ? ["", cliStyles.warning(`Skipped ${plan.skipped.length} row${plan.skipped.length === 1 ? "" : "s"}:`),
               renderTable([{ header: "Line", align: "right" }, { header: "Row" }, { header: "Reason" }],
-                plan.skipped.map((row) => [String(row.line), row.label, row.reason]))]
+                plan.skipped.slice(0, PREVIEW_ROWS_SHOWN).map((row) => [String(row.line), row.label, row.reason])),
+              ...[moreSkippedLine(plan.skipped.length)].filter((line): line is string => !!line).map((line) => cliStyles.muted(`${line}; --json lists them all.`))]
             : [],
           ...removed.length > 0
             ? ["", cliStyles.warning(`${dryRun ? "Would remove" : "Removed"} ${removed.map((entry) => entry.listing).join(", ")}: not in the file.`)]
+            : [],
+          ...kept.length > 0
+            ? [cliStyles.muted(`${dryRun ? "Would keep" : "Kept"} ${kept.map((entry) => entry.listing).join(", ")}: the file lists ${kept.length === 1 ? "it" : "them"} on a skipped row.`)]
             : [],
           dryRun ? cliStyles.muted("Dry run: nothing saved.") : renderStats([["ID", portfolio.id]]),
         ].join("\n"),

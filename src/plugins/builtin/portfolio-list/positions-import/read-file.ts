@@ -1,7 +1,6 @@
-type NodeFs = typeof import("fs/promises");
+import { decodePositionsFile, MAX_POSITIONS_FILE_BYTES } from "../../../../portfolio/positions-import/parse";
 
-/** The largest export read: a brokerage's positions file is kilobytes, so anything bigger is the wrong file. */
-export const MAX_POSITIONS_FILE_BYTES = 5 * 1024 * 1024;
+type NodeFs = typeof import("fs/promises");
 
 /**
  * Reads a positions file the terminal was given as a path. Node modules load
@@ -29,5 +28,5 @@ export async function readPositionsFilePath(rawPath: string): Promise<{ text: st
     throw error;
   }
   if (size > MAX_POSITIONS_FILE_BYTES) throw new Error(`${unquoted} is too large to be a positions export.`);
-  return { text: await fs.readFile(resolved, "utf-8"), name: path.basename(resolved) };
+  return { text: decodePositionsFile(await fs.readFile(resolved)), name: path.basename(resolved) };
 }
