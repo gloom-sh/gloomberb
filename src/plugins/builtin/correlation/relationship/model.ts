@@ -40,8 +40,8 @@ export interface RelationshipRegressionStats {
 }
 
 export interface RelationshipAnalysis {
-  unavailableReason?: string;
   correlationUnavailableReason?: string;
+  /** Bars left out of the window because their prices contradict each other, as the source reported them. */
   integrity?: { left: PriceHistoryIntegrity[]; right: PriceHistoryIntegrity[] };
   aligned: RelationshipAlignedPoint[];
   returns: RelationshipReturnPoint[];
@@ -156,12 +156,8 @@ export function buildRelationshipAnalysis(
   const issues = (points: PricePoint[]) => points.flatMap((point) => {
     const issue = pricePointIntegrity(point); return issue ? [issue] : [];
   });
+  // Bars whose prices contradict each other are gaps, as history leaves them blank (dailyCloses); kept for the export.
   const integrity = { left: issues(leftPoints), right: issues(rightPoints) };
-  if (integrity.left.length || integrity.right.length) return {
-    aligned: [], returns: [], ratioPoints: [], correlationPoints: [], scatterPoints: [],
-    stats: null, latestRatio: null, latestCorrelation: null, integrity,
-    unavailableReason: "Inconsistent OHLC history; relationship calculations are unavailable for this window.",
-  };
   const aligned = alignRelationshipPrices(leftPoints, rightPoints);
   const returns = buildRelationshipReturns(aligned);
   const correlationPoints = buildRollingCorrelationPoints(returns, correlationWindow);
@@ -186,6 +182,7 @@ export function buildRelationshipAnalysis(
     latestRatio: aligned.at(-1)?.ratio ?? null,
     latestCorrelation,
     ...(correlationUnavailableReason ? { correlationUnavailableReason } : {}),
+    ...(integrity.left.length || integrity.right.length ? { integrity } : {}),
   };
 }
 

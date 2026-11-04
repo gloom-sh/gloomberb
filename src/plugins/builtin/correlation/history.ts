@@ -38,6 +38,36 @@ export function unfinishedBarFreshness(
   return null;
 }
 
+/** Below this many shared daily returns a correlation says why it has so few. */
+export const CORRELATION_EXPLAINED_RETURNS = 20;
+
+interface CorrelationSide {
+  label: string;
+  /** Daily closes the side has in the range, contradictory bars left out. */
+  closes: number;
+}
+
+/**
+ * Why a pair has fewer than CORRELATION_EXPLAINED_RETURNS shared daily
+ * returns: the side with no daily bars in the range, or, when both have bars,
+ * how many each has. Null when there are enough.
+ */
+export function thinCorrelationNote(left: CorrelationSide, right: CorrelationSide, returns: number, range: string): string | null {
+  if (returns >= CORRELATION_EXPLAINED_RETURNS) return null;
+  const empty = [...new Set([left, right].filter((side) => side.closes === 0).map((side) => side.label))];
+  if (empty.length > 0) return `${empty.join(" and ")} ${empty.length === 1 ? "has" : "have"} no daily bars in the ${range} range`;
+  const bars = (count: number) => `${count} daily ${count === 1 ? "bar" : "bars"}`;
+  const sides = left.label === right.label ? `${left.label} has ${bars(left.closes)}`
+    : `${left.label} has ${bars(left.closes)} and ${right.label} ${bars(right.closes)}`;
+  return `${sides} in the ${range} range; ${returns === 0 ? "no" : returns} daily ${returns === 1 ? "return falls" : "returns fall"} between dates both have`;
+}
+
+/** "3046:HKEX: 8 of 245 bars have contradictory prices in the source data; left out, as history leaves them blank", or null. */
+export function contradictoryBarsNote(label: string, left: number, total: number): string | null {
+  if (left <= 0) return null;
+  return `${label}: ${left} of ${total} ${left === 1 && total === 1 ? "bar" : "bars"} ${left === 1 ? "has" : "have"} contradictory prices in the source data; left out, as history leaves them blank`;
+}
+
 export const CORRELATION_RETURN_BASIS = "Local-price close-to-close returns between shared UTC dates; cash distributions and FX conversion are excluded, and exchange closing times may differ.";
 
 export const GEO_CORRELATION_CHANGE_BASIS = "Map series (GEO:) use the change in daily value between the same shared UTC dates, because counts such as transits can be zero.";

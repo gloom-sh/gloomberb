@@ -13,7 +13,7 @@ export const MATRIX_CELL_WIDTH = 15;
 export const MIN_MATRIX_CELL_WIDTH = 7;
 const MIN_CORRELATION_OBSERVATIONS = 5;
 
-export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "error" | "invalid";
+export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "error";
 
 export interface CorrelationSeries {
   symbol: string;
@@ -22,6 +22,7 @@ export interface CorrelationSeries {
   basis?: ChangeBasis;
   status: SeriesStatus;
   observationCount: number;
+  /** Bars left out because their prices contradict each other, kept as the source reported them. */
   integrity?: PriceHistoryIntegrity[];
   loading?: boolean;
   refreshError?: string;
@@ -82,14 +83,19 @@ export function getSeriesForEntry(
   };
 }
 
+/**
+ * A ticker's daily closes as `history` reads them: a bar whose prices
+ * contradict each other is a gap (dailyCloses), not a reason to drop the
+ * whole series, and is kept in `integrity` as the source reported it.
+ */
 export function buildCorrelationSeries(symbol: string, history: readonly PricePoint[]): CorrelationSeries {
   const integrity = history.flatMap((point) => { const issue = pricePointIntegrity(point); return issue ? [issue] : []; });
-  if (integrity.length) return { symbol, prices: [], observationCount: 0, status: "invalid", integrity };
   const prices = dailyCloses(history);
   const observationCount = Math.max(0, prices.length - 1);
   return {
     symbol, prices, observationCount,
     status: observationCount < MIN_CORRELATION_OBSERVATIONS ? "insufficient" : "ready",
+    ...(integrity.length ? { integrity } : {}),
   };
 }
 
@@ -106,7 +112,6 @@ export function rowHeaderColor(status: SeriesStatus): string {
   switch (status) {
     case "loading":
       return colors.textDim;
-    case "invalid":
     case "error":
     case "empty":
       return colors.negative;
@@ -142,10 +147,7 @@ export function buildCorrelationMatrix(
       results.set(pairKey(rowSym, colSym), result);
       if (rowIndex < colIndex) {
         if (result.sampleSize > 0) sampleSizes.push(result.sampleSize);
-        if (rowSeries?.status !== "invalid" && colSeries?.status !== "invalid"
-          && result.correlation == null && result.sampleSize < MIN_CORRELATION_OBSERVATIONS) {
-          hasThinPair = true;
-        }
+        if (result.correlation == null && result.sampleSize < MIN_CORRELATION_OBSERVATIONS) hasThinPair = true;
       }
     }
   }
@@ -171,16 +173,14 @@ export function buildStatusSummary(
   const loading = symbols.filter((symbol) => seriesBySymbol.get(symbol)?.status === "loading" || seriesBySymbol.get(symbol)?.loading);
   const errors = [...byStatus("error"), ...byStatus("empty")];
   const insufficient = byStatus("insufficient");
-  const invalid = byStatus("invalid");
 
-  if (invalid.length > 0) parts.push(`Inconsistent OHLC: ${formatSeriesSymbolList(invalid, seriesBySymbol)}`);
   if (loading.length > 0) parts.push(`Loading: ${formatSeriesSymbolList(loading, seriesBySymbol)}`);
   if (errors.length > 0) parts.push(`No data: ${formatSeriesSymbolList(errors, seriesBySymbol)}`);
   if (insufficient.length > 0) parts.push(`Need history: ${formatSeriesSymbolList(insufficient, seriesBySymbol, true)}`);
 
   if (sampleMin != null && sampleMax != null) {
     parts.push(sampleMin === sampleMax ? `obs ${sampleMin}` : `obs ${sampleMin}-${sampleMax}`);
-  } else if (symbols.length >= 2 && invalid.length === 0) {
+  } else if (symbols.length >= 2) {
     parts.push("No paired dates yet");
   }
 

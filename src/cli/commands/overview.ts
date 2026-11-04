@@ -58,7 +58,7 @@ import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOpti
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
-import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
+import { contradictoryBarsNote, CORRELATION_RETURN_BASIS, loadCorrelationHistory, thinCorrelationNote } from "../../plugins/builtin/correlation/history";
 import { coinListingNotes, EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
@@ -886,15 +886,21 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
-    const loadSeries = async (listing: CliListing) => buildCorrelationSeries(
-      listing.key,
-      await loadForListing(
+    const loadSeries = async (listing: CliListing) => {
+      const bars = await loadForListing(
         listing, services, ctx,
         () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
-      ),
-    );
+      );
+      return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length };
+    };
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
+    // The series history reads: contradictory bars are gaps, and a thin pair says which side is short.
+    const seriesNotes = [
+      ...[leftSeries, rightSeries].filter((series, index) => index === 0 || left !== right)
+        .map((series) => contradictoryBarsNote(series.symbol, series.integrity?.length ?? 0, series.bars)),
+      thinCorrelationNote({ label: left, closes: leftSeries.prices.length }, { label: right, closes: rightSeries.prices.length }, sampleSize, "1Y"),
+    ].filter((note) => note != null);
     // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
     const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => loadListingQuote(services.dataProvider, listing)));
     const sessionNote = mixedSessionCloseNote(
@@ -914,6 +920,7 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       ...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!),
       ...coinListingNotes(leftListing!, leftQuote), ...coinListingNotes(rightListing!, rightQuote),
       ...sessionNote ? [sessionNote] : [],
+      ...seriesNotes,
     ];
     ctx.printResult({
       data: [{ left, right, samples: sampleSize, correlation }],

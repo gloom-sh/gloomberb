@@ -238,7 +238,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     registrationId: "relationship-warnings", focused,
     notices: [
       ...(error ? [`${error}${data && updatedAt ? ` Retained history retrieved ${new Date(updatedAt).toISOString()}.` : ""}`] : []),
-      ...(analysis?.unavailableReason ? [analysis.unavailableReason] : []),
       ...(analysis?.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : []),
     ],
   });
@@ -275,7 +274,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {queryBar}
-        <PaneStatusBody loading={loading} error={loading ? null : analysis?.unavailableReason ?? error} subject="relationship history" empty emptyTitle="No overlapping price history." />
+        <PaneStatusBody loading={loading} error={loading ? null : error} subject="relationship history" empty emptyTitle="No overlapping price history." />
       </Box>
     );
   }
