@@ -9,6 +9,7 @@ import { usePaneFooterScopeActive } from "./layout/pane/footer/registration";
 import { Button } from "./ui/button";
 import { DialogFrame } from "./ui/frame";
 import { Prose } from "./ui/prose";
+import { logFailure } from "../utils/log-failure";
 
 export interface UsePaneNoticeFooterOptions {
   registrationId: string;
@@ -99,7 +100,7 @@ export function usePaneNoticeFooter({
         dismissRef.current = context.dismiss;
         return <NoticeDialog {...context} title={title} notices={currentNotices} />;
       },
-    }).catch(() => {}).finally(() => {
+    }).catch(logFailure("pane-notice-footer", "Open data warnings dialog failed")).finally(() => {
       openingRef.current = false;
       dismissRef.current = undefined;
     });

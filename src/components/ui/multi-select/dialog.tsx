@@ -36,6 +36,7 @@ import {
   toggleMultiSelectValue,
   type MultiSelectOption,
 } from "./index";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * One action on the highlighted row, shown beside Done: editing a value the
@@ -398,13 +399,13 @@ export function MultiSelectDialogContent({
       if (isDesktopWeb && !searchable) releaseFocusOutsideList();
       setSelectedOptionId(visibleOptions[move(visibleOptions, selectedIndex)]?.value ?? selectedOptionId);
     } else if (isSpaceKey(event)) {
-      void toggleOption(selectedOption).catch(() => {});
+      void toggleOption(selectedOption).catch(logFailure("ui.multi-select", "Toggle multi-select option failed"));
     } else if (event.name === "[" && ordered) {
-      void moveOption("up").catch(() => {});
+      void moveOption("up").catch(logFailure("ui.multi-select", "Move multi-select option failed"));
     } else if (event.name === "]" && ordered) {
-      void moveOption("down").catch(() => {});
+      void moveOption("down").catch(logFailure("ui.multi-select", "Move multi-select option failed"));
     } else if (rowAction && event.name === rowActionShortcut && !event.ctrl && !event.meta && !event.alt) {
-      void runRowAction().catch(() => {});
+      void runRowAction().catch(logFailure("ui.multi-select", "Run multi-select row action failed"));
     } else if (event.name === "enter" || event.name === "return" || event.name === "escape" || isDetailBackNavigationKey(event)) {
       dismiss();
     }
@@ -441,7 +442,7 @@ export function MultiSelectDialogContent({
           onSelect={(index) => setSelectedOptionId(visibleOptions[index]?.value ?? selectedOptionId)}
           onToggle={(id) => {
             setSelectedOptionId(id);
-            void toggleOption(optionByValue.get(id)).catch(() => {});
+            void toggleOption(optionByValue.get(id)).catch(logFailure("ui.multi-select", "Toggle multi-select option failed"));
           }}
         />
         <Box
@@ -452,8 +453,8 @@ export function MultiSelectDialogContent({
         >
           {ordered && (
             <>
-              <Button label="Move Up" shortcut="[" variant="ghost" disabled={!canMoveUp} onPress={() => { void moveOption("up").catch(() => {}); }} />
-              <Button label="Move Down" shortcut="]" variant="ghost" disabled={!canMoveDown} onPress={() => { void moveOption("down").catch(() => {}); }} />
+              <Button label="Move Up" shortcut="[" variant="ghost" disabled={!canMoveUp} onPress={() => { void moveOption("up").catch(logFailure("ui.multi-select", "Move multi-select option failed")); }} />
+              <Button label="Move Down" shortcut="]" variant="ghost" disabled={!canMoveDown} onPress={() => { void moveOption("down").catch(logFailure("ui.multi-select", "Move multi-select option failed")); }} />
             </>
           )}
           {rowAction && (
@@ -462,7 +463,7 @@ export function MultiSelectDialogContent({
               shortcut={rowActionShortcut ?? rowAction.shortcut}
               variant="ghost"
               disabled={!canRunRowAction}
-              onPress={() => { void runRowAction().catch(() => {}); }}
+              onPress={() => { void runRowAction().catch(logFailure("ui.multi-select", "Run multi-select row action failed")); }}
             />
           )}
           <Button label="Done" shortcut="Enter" variant="primary" onPress={dismiss} />
@@ -523,7 +524,7 @@ function MultiSelectDialogButtonInner({
           searchable={searchable}
         />
       ),
-    }).catch(() => {}).finally(() => onOpenChange?.(false));
+    }).catch(logFailure("ui.multi-select", "Open multi-select dialog failed")).finally(() => onOpenChange?.(false));
   }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, searchable, selectedValues, title]);
 
   const closePopover = useCallback(() => {

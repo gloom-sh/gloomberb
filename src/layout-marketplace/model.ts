@@ -14,6 +14,7 @@ import type { CloudLayoutEntry } from "./cloud";
 import { linkedLayoutStatus, type LinkedLayoutStatus } from "./linked";
 import type { LayoutMarketplaceEntry } from "../shares/portable-layout";
 import { paneImagery, type PaneImagery } from "./pane-imagery";
+import { logFailure } from "../utils/log-failure";
 
 type PanePlacement = "docked" | "floating" | "detached";
 
@@ -93,8 +94,8 @@ function derivedPaneTitle(def: PaneDef | undefined, instance: PaneInstanceConfig
   try {
     const title: unknown = def.instanceTitle(instance);
     return typeof title === "string" && title.trim() ? title.trim() : null;
-  } catch {
-    return null;
+  } catch (error) {
+    return logFailure("layout-marketplace.model", "Read derived pane title failed", null)(error);
   }
 }
 

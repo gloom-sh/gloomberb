@@ -13,6 +13,7 @@ import type { AppState } from "../../../../state/app/context";
 import type { LayoutConfig } from "../../../../types/config";
 import { useNativeRenderer } from "../../../../ui";
 import { readRenderableBounds } from "../cursor-occlusion";
+import { logFailure } from "../../../../utils/log-failure";
 
 interface ShellPaneAskOptions {
   focusedPaneId: string | null;
@@ -57,8 +58,9 @@ function activePaneTabs(paneId: string, remoteUi: RemoteUiRegistry | null, nativ
       const label = metadata?.tabs?.find((tab) => tab.value === metadata.activeValue)?.label;
       if (typeof label === "string" && label.trim() && !tabs.includes(label.trim())) tabs.push(label.trim());
     }
-  } catch {
+  } catch (error) {
     // A node that fails to describe itself leaves the tab out.
+    logFailure("layout.pane-ask", "Read pane tabs for Ask Gloom failed")(error);
   }
   return tabs;
 }
@@ -112,7 +114,8 @@ export function useShellPaneAsk({
     let visibleText: string | null = null;
     try {
       visibleText = nativePaneChrome ? domPaneText(paneId) : readTerminalText(paneId, options.cover);
-    } catch {
+    } catch (error) {
+      logFailure("layout.pane-ask", "Read pane text for Ask Gloom failed")(error);
       visibleText = null;
     }
     const attachment = buildAskGloomPaneAttachment({

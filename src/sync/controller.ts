@@ -14,6 +14,7 @@ import {
   type SyncTransport,
 } from "./types";
 import type { LocalMarketDataLookup } from "./local-only";
+import { logFailure } from "../utils/log-failure";
 
 type CloudSyncPhase = "idle" | "disabled" | "syncing" | "synced" | "error";
 
@@ -453,9 +454,10 @@ export class CloudSyncController {
           memo: this.memoFor(runtime, entry.contributor.id),
           launch,
         });
-      } catch {
+      } catch (error) {
         // A contributor that cannot date an edit leaves it undated, which only
         // makes it lose a conflict it might have won.
+        logFailure("sync.controller", "Observe sync contributor edit failed")(error);
       }
     }
   }

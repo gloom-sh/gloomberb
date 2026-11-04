@@ -8,6 +8,7 @@ import {
   getPluginCommandShortcutArgKind,
   type RootShortcutArgKind,
 } from "../routes/root/shortcuts";
+import { logFailure } from "../../../utils/log-failure";
 
 /** Server cap on `/assist/command` inventories. */
 const ASSIST_INVENTORY_LIMIT = 150;
@@ -40,8 +41,8 @@ function readArgOptions(
     return values
       .filter((option) => typeof option?.value === "string" && typeof option?.label === "string")
       .map(({ value, label }) => ({ value, label }));
-  } catch {
-    return undefined;
+  } catch (error) {
+    return logFailure("command-bar.assist", "Read command argument options failed")(error);
   }
 }
 

@@ -6,6 +6,7 @@ import type {
   CommandBarSearchProvider,
 } from "../../../../types/plugin";
 import type { ResultItem } from "../../list/model";
+import { logFailure } from "../../../../utils/log-failure";
 
 const DEFAULT_MIN_QUERY_LENGTH = 3;
 const DEFAULT_DEBOUNCE_MS = 300;
@@ -125,8 +126,8 @@ function useProviderMatchItems({
       let results: CommandBarResultDef[];
       try {
         results = provider.match(trimmed, context);
-      } catch {
-        return [];
+      } catch (error) {
+        return logFailure("command-bar.search-providers", "Match command bar search provider failed", [])(error);
       }
       return results.map((result) => toProviderResultItem(provider, result, () => onExecutedRef.current()));
     });

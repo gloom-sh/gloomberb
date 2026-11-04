@@ -7,6 +7,7 @@ import { isPlainKey } from "../../utils/keyboard";
 import { Button, type ButtonVariant } from "./button";
 import { DialogActions } from "./dialog-actions";
 import { DialogFrame, fitDialogWidth } from "./frame";
+import { logFailure } from "../../utils/log-failure";
 
 export interface ConfirmDialogProps extends PromptContext<boolean> {
   title: string;
@@ -158,7 +159,7 @@ export async function confirmDialog(
   const confirmed = await dialog.prompt<boolean>({
     closeOnClickOutside,
     content: (context) => <ConfirmDialog {...context} {...props} />,
-  }).catch(() => false);
+  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed", false));
   return confirmed === true;
 }
 

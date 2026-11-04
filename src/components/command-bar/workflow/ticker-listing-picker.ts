@@ -23,6 +23,7 @@ export function buildTickerListingPicker(
   try {
     tokens = fieldId === "tickers" ? parseTickerListInput(readValue(fieldId)) : [readValue(fieldId).trim().toUpperCase()];
   } catch {
+    // Intentional ignore: a field value the list parser rejects offers no listing choice, so the submit error stands.
     return null;
   }
   if (!tokens.includes(error.query) || error.listings.length < 2) return null;

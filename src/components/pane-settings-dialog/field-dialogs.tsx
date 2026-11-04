@@ -12,6 +12,7 @@ import { listCursorMove } from "../ui/list-view";
 import { DesktopDialogSurface, desktopText } from "./desktop";
 import { TuiDialogList, useTuiDialogListRows } from "./tui";
 import { coerceSelectedPaneSettingValues, isSpaceKey } from "./value";
+import { logFailure } from "../../utils/log-failure";
 
 type SelectPaneSettingField = Extract<PaneSettingField, { type: "select" }>;
 type MultiSelectPaneSettingField = Extract<PaneSettingField, { type: "multi-select" | "ordered-multi-select" }>;
@@ -39,7 +40,7 @@ function useSelectFieldDialogController({
   const pageSize = useTuiDialogListRows() - 1;
 
   const applyOption = (value: string) => {
-    void onApply(value).then(() => dismiss()).catch(() => {});
+    void onApply(value).then(() => dismiss()).catch(logFailure("pane-settings-dialog.field-dialogs", "Apply pane setting choice failed"));
   };
 
   useDialogKeyboard((event) => {

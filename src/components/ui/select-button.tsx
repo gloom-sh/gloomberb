@@ -7,6 +7,7 @@ import { ChoiceDialog } from "./choice-dialog";
 import { SelectField, openSelectField, type SelectFieldHandle } from "./select-field";
 import { Button } from "./button";
 import { WEB_CELL_WIDTH } from "../../theme/font-scale";
+import { logFailure } from "../../utils/log-failure";
 
 /** A form field's label on the desktop: bold, as TextField draws it. */
 const FORM_LABEL_STYLE = { fontWeight: "var(--gloom-weight-bold)" } as const;
@@ -139,7 +140,7 @@ export function SelectButton<T extends string = string>({
           }))}
         />
       ),
-    }).then((next) => selectValueRef.current(next)).catch(() => {});
+    }).then((next) => selectValueRef.current(next)).catch(logFailure("ui.select-button", "Choose select option failed"));
   }, [dialog, disabled, isDesktopWeb, label, onFocus, options, title, value]);
 
   useImperativeHandle(controlRef, () => ({ open: openDialog }), [openDialog]);

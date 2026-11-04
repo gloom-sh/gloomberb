@@ -87,7 +87,7 @@ function FormTextarea({
       try {
         onChangeRef.current(textarea.editBuffer.getText());
       } catch {
-        // The buffer can go away with the dialog.
+        // Intentional ignore: a buffer destroyed with its dialog has no text left to report.
       }
     };
     return () => {

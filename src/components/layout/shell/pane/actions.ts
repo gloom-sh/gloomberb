@@ -191,7 +191,10 @@ export function useShellPaneActions({
     shot.start();
     const request = desktopWindowBridge.popOutPane(focusedPaneId);
     fireAndForget(request, "desktop.popOutPane");
-    void Promise.resolve(request).then(() => undefined, () => undefined).finally(() => shot.end());
+    void Promise.resolve(request).then(() => undefined, () => {
+      // Intentional ignore: fireAndForget above reports this request's failure; this only waits for it to settle.
+      return undefined;
+    }).finally(() => shot.end());
     return true;
   }, [desktopWindowBridge, focusedPaneId, shots, visibleLayout]);
 

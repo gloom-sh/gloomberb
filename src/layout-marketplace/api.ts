@@ -60,6 +60,7 @@ export function parseMarketplaceLayoutId(pathname: string): string | null {
     const id = decodeURIComponent(match[1] ?? "");
     return isMarketplaceLayoutId(id) ? id : null;
   } catch {
+    // Intentional ignore: a malformed percent escape in the path names no layout id.
     return null;
   }
 }

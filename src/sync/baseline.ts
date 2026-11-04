@@ -1,5 +1,6 @@
 import type { AppPluginStateStorePort } from "../core/app-service-ports";
 import type { SyncBaselineStore } from "./types";
+import { logFailure } from "../utils/log-failure";
 
 const BASELINE_PLUGIN_ID = "core.sync";
 const BASELINE_KEY = "last-synced-payloads";
@@ -18,15 +19,16 @@ export function createSyncBaselineStore(pluginState: Pick<AppPluginStateStorePor
   const load = (key: string) => {
     try {
       return pluginState.get<Record<string, unknown>>(BASELINE_PLUGIN_ID, key)?.value ?? null;
-    } catch {
-      return null;
+    } catch (error) {
+      return logFailure("sync.baseline", "Load sync baseline failed", null)(error);
     }
   };
   const save = (key: string, value: Record<string, unknown>) => {
     try {
       pluginState.set(BASELINE_PLUGIN_ID, key, value);
-    } catch {
+    } catch (error) {
       // Persistence is best effort; keep the in-memory merge history usable.
+      logFailure("sync.baseline", "Save sync baseline failed")(error);
     }
   };
   return {
