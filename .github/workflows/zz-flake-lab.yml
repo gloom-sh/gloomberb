@@ -1,0 +1,30 @@
+name: zz-flake-lab
+
+on:
+  push:
+    branches:
+      - fix/gloom-d40a6d988991
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - name: Tools
+        run: |
+          sudo apt-get install -y strace >/dev/null
+          nproc; free -m; ulimit -a | head -20; cat /proc/sys/kernel/core_pattern; bun --version; uname -a
+      - name: Plain, one at a time
+        run: bun lab/flake-lab.ts plain 1500 1
+      - name: Plain, four at a time with CPU load
+        run: |
+          for i in 1 2 3 4; do (while :; do :; done) & done
+          bun lab/flake-lab.ts plain 1500 4
+          kill $(jobs -p) || true
+      - name: Under strace
+        run: bun lab/flake-lab.ts strace 600 2

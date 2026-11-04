@@ -291,22 +291,39 @@ describe("serializeCliError", () => {
 });
 
 test("large research reports remain complete through a pipe after stdout initialization", async () => {
-  const child = Bun.spawn([process.execPath, "-e", `
+  // LAB: loops the child in the suite's own process to measure the flake.
+  const script = `
     import { printCliResult } from ${JSON.stringify(new URL("./result.ts", import.meta.url).pathname)};
     import { DEFAULT_CLI_OPTIONS } from ${JSON.stringify(new URL("./options.ts", import.meta.url).pathname)};
     // CLI color/terminal detection initializes the stream before reports print.
     void process.stdout;
     printCliResult({ data: { rows: Array.from({ length: 6000 }, (_, id) => ({ id, name: "東京 — research report" })) } },
       { ...DEFAULT_CLI_OPTIONS, format: "json" });
-  `], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, status] = await Promise.all([
-    new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
-  ]);
-  expect({ status, stderr }).toEqual({ status: 0, stderr: "" });
-  const report = JSON.parse(stdout);
-  expect(report.data.rows).toHaveLength(6000);
-  expect(report.data.rows.at(-1)).toEqual({ id: 5999, name: "東京 — research report" });
-});
+  `;
+  const read = (path: string) => { try { return require("node:fs").readFileSync(path, "utf8").trim().replace(/\n+/g, " | ").slice(0, 300); } catch { return "n/a"; } };
+  const failures: string[] = [];
+  const iterations = 400;
+  for (let index = 0; index < iterations; index++) {
+    const started = performance.now();
+    const child = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, status] = await Promise.all([
+      new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+    ]);
+    let problem = "";
+    if (status !== 0 || stderr !== "") problem = `status=${status} signal=${child.signalCode} stderr=${JSON.stringify(stderr.slice(0, 200))} stdout=${stdout.length}`;
+    else { try { if (JSON.parse(stdout).data.rows.length !== 6000) problem = "short rows"; } catch { problem = `bad json stdout=${stdout.length}`; } }
+    if (!problem) continue;
+    failures.push(`#${index} ${(performance.now() - started).toFixed(0)}ms ${problem} head=${JSON.stringify(stdout.slice(0, 120))} tail=${JSON.stringify(stdout.slice(-120))}`);
+    console.log("LABFAIL", failures.at(-1), JSON.stringify({
+      loadavg: read("/proc/loadavg"), threads: read("/proc/self/status").match(/Threads:\s*\d+/)?.[0],
+      pids: read("/sys/fs/cgroup/pids.current"), mem: read("/sys/fs/cgroup/memory.current"), rss: process.memoryUsage().rss,
+      cwd: process.cwd(), execPath: process.execPath,
+      env: Object.keys(process.env).filter((key) => /^(GLOOMBERB|HOME$|PATH$|NO_COLOR|TERM$|COLUMNS|TMPDIR|BUN)/.test(key)).map((key) => `${key}=${String(process.env[key]).slice(0, 60)}`),
+    }));
+  }
+  console.log(`LABRESULT in-suite iterations=${iterations} failures=${failures.length}`);
+  expect(failures).toEqual([]);
+}, 600_000);
 
 test("a narrow --width wraps a report's heading, summary, notes and warnings, keeping the gaps between its facts", async () => {
   const data = [{ date: "2026-10-29", close: 28.89 }, { date: "2026-10-30", close: 28.36 }];
