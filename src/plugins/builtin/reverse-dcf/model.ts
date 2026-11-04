@@ -3,8 +3,8 @@ import { atRegularSessionPrice } from "../../../market-data/quotes/regular-sessi
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { formatCompactCurrency } from "../../../utils/format";
-import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
-  enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { BANK_ENTERPRISE_VALUE, enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
+  enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -187,7 +187,10 @@ export function projectReverseDcf(
   options: { symbol: string; discountRate: number; fcfMargin?: number },
 ): ReverseDcfModel {
   // The enterprise value at the regular session price, as `valuation` measures it: after the close, the close's.
-  const fundamentals = financials ? atRegularSessionPrice(financials).fundamentals : undefined;
+  // A bank's reads n/m: its deposits are funding, not debt, so no growth rate prices an EV of it.
+  const fundamentals = financials
+    ? atRegularSessionPrice({ ...financials, fundamentals: withBankEnterpriseValue(financials.fundamentals, financials.profile) }).fundamentals
+    : undefined;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
   const enterpriseValue = reportedEnterpriseValue(fundamentals) ?? null;
   const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
@@ -208,7 +211,7 @@ export function projectReverseDcf(
   }
   // An EV at or below zero is N/M here as in `valuation` and RV, with the same reason: no growth rate prices it.
   if (enterpriseValueNotMeaningful(fundamentals)) {
-    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals)! };
+    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals) ?? `EV ${BANK_ENTERPRISE_VALUE}.` };
   }
   // A withdrawn EV is unavailable here as in `valuation`, which says why.
   if (enterpriseValueWithdrawn(fundamentals)) {

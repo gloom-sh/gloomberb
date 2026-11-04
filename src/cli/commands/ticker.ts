@@ -2,8 +2,9 @@ import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote,
-  fundamentalsCurrency, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote,
+  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
@@ -582,6 +583,8 @@ function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string |
  * withdrawn, N/M at or below zero as a P/E over a loss is.
  */
 function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
+  // A bank's: its deposits are funding, not debt.
+  if (isBankEnterpriseValue(fundamentals)) return { text: BANK_ENTERPRISE_VALUE, value: "N/M", unit: figure.unit };
   const label = enterpriseValueLabel(fundamentals);
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
@@ -789,7 +792,7 @@ function fundamentalsMetrics(
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
   return [
     { label: "Market Cap", ...marketCap },
-    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, fundamentals) },
+    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withBankEnterpriseValue(fundamentals, profile)) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
     { label: "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
     // Next fiscal year's consensus, named by its year: `Forward P/E FY27`.
@@ -905,7 +908,8 @@ function fundamentalsNotes(
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
   // Why the EV is labelled, withdrawn or N/M; for an insurer's, what Gloom Cloud computed it from.
-  const enterpriseValue = shown("Enterprise Value")
+  // A bank's EV line says why it is n/m.
+  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => metric.text === BANK_ENTERPRISE_VALUE)
     ? enterpriseValueReconciliationNote(fundamentals) ?? computedEnterpriseValueNote(fundamentals)
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.

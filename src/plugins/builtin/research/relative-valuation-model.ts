@@ -1,7 +1,10 @@
 import { formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
-import { enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
+import {
+  BANK_ENTERPRISE_VALUE, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, isBankEnterpriseValue,
+  reportedEnterpriseValue, withBankEnterpriseValue,
+} from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
@@ -79,7 +82,8 @@ function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualSta
  */
 export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const reported = snapshot?.quote;
-  const financials = snapshot ? atRegularSessionPrice(snapshot) : null;
+  // A bank's EV, and so its EV/S, reads n/m: its deposits are funding, not debt.
+  const financials = snapshot ? atRegularSessionPrice({ ...snapshot, fundamentals: withBankEnterpriseValue(snapshot.fundamentals, snapshot.profile) }) : null;
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
@@ -172,7 +176,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     evSalesUnavailable: evSalesWithdrawn
       ? enterpriseValueReconciliationNote(fundamentals) ?? "EV unavailable." : null,
     /** Why EV/S is N/M, as `valuation` says it: "EV N/M: cash and short-term investments exceed ..."; null otherwise. */
-    evSalesNote: evSalesNotMeaningful ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
+    evSalesNote: evSalesNotMeaningful
+      ? enterpriseValueReconciliationNote(fundamentals) ?? (isBankEnterpriseValue(fundamentals) ? `EV ${BANK_ENTERPRISE_VALUE}.` : null) : null,
     fcfYield,
     revenueGrowth,
     operatingMargin,

@@ -23,6 +23,45 @@ export function redactUnavailableFundamentals(value: Fundamentals | undefined): 
   return result;
 }
 
+/**
+ * What a bank's enterprise value reads wherever one is shown: its deposits are
+ * its funding, not debt, so market cap + debt - cash measures nothing of it.
+ * Its reported cash flow stays as reported.
+ */
+export const BANK_ENTERPRISE_VALUE = "n/m for banks";
+
+/** A bank by its industry ("Banks - Diversified", "Banks - Regional"), as the Bank section and its EV read one. */
+export function isBankIndustry(industry: string | null | undefined): boolean {
+  return /\bbanks?\b/i.test(industry ?? "");
+}
+
+/**
+ * A bank's fundamentals with its EV and EV/revenue not meaningful
+ * (`BANK_ENTERPRISE_VALUE`), the source's figure kept on the check: every view
+ * that reads an EV then reads N/M. Any other company's as they are.
+ */
+export function withBankEnterpriseValue<F extends Fundamentals | undefined>(
+  fundamentals: F,
+  profile: { industry?: string | null } | null | undefined,
+): F {
+  if (!fundamentals || !isBankIndustry(profile?.industry)) return fundamentals;
+  const { enterpriseValue: _value, enterpriseToRevenue: _ratio, ...rest } = fundamentals;
+  const source = reportedEnterpriseValue(fundamentals) ?? fundamentals.enterpriseValueCheck?.source;
+  // Only where an EV would be shown: a bank the source gave none for shows no line, as before.
+  if (!finiteNumber(source)) return fundamentals;
+  const withdrawn = new Set([...fundamentals.unavailableFields ?? [], "enterpriseValue" as const, "enterpriseToRevenue" as const]);
+  return {
+    ...rest,
+    unavailableFields: [...withdrawn],
+    enterpriseValueCheck: { status: "not-meaningful", ...finiteNumber(source) ? { source } : {}, reason: BANK_ENTERPRISE_VALUE },
+  } as F;
+}
+
+/** Whether a not meaningful EV is so because the company is a bank (`withBankEnterpriseValue`). */
+export function isBankEnterpriseValue(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
+  return enterpriseValueNotMeaningful(fundamentals) === BANK_ENTERPRISE_VALUE;
+}
+
 /** A source's enterprise value, or undefined when it has none: banks and insurers come back as 0, which is a gap, not a value. */
 export function reportedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
   const value = fundamentals?.enterpriseValue;
@@ -98,6 +137,8 @@ export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseV
  */
 export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
   const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
+  // A bank's EV line says it all: "n/m for banks".
+  if (notMeaningful === BANK_ENTERPRISE_VALUE) return undefined;
   if (notMeaningful) return `EV N/M: ${notMeaningful.charAt(0).toLowerCase()}${notMeaningful.slice(1)}.`;
   const check = enterpriseValueCheck(fundamentals);
   if (!check && enterpriseValueWithdrawn(fundamentals)) return "EV unavailable: the provider's figure failed validation.";

@@ -75,7 +75,7 @@ import {
   requirePortfolio,
   takeCollectionName,
 } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, listAddLookups, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
@@ -248,7 +248,9 @@ async function addTickerToPortfolioCommand(
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withCollectionMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
-    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
+    // Reading the names and looking the symbols up share their answers, so nothing is asked twice.
+    const lookups = listAddLookups(market.dataProvider);
+    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, lookups));
     if (list.single) {
       await addTickerToPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, market);
       return;
@@ -259,7 +261,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       symbols: list.symbols,
       exchange,
       store: market.store,
-      dataProvider: market.dataProvider,
+      dataProvider: lookups,
       reject: cashRefusal(portfolio, exchange),
       suggest: true,
       dryRun,

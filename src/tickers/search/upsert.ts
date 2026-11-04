@@ -8,7 +8,7 @@ import {
   getSearchResultSymbol,
   shouldReplaceTickerName,
 } from "./result";
-import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey, usShareClassSpellings } from "../../utils/exchanges";
 import { scopedBrokerContractIdentityKey } from "../../utils/instrument-identity";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { coinPairQuoteCurrency, exchangeLineCoinListing, isCoinRowType } from "../../utils/crypto-pair";
@@ -58,6 +58,13 @@ export async function upsertTickerFromSearchResult(
     // A venue code the exchange table does not know (IST) is the one the suffix names.
     const exchange = canonicalExchange(listingVenue(result)) === venue.exchange ? result.exchange : venue.exchange;
     result = { ...result, symbol: venue.symbol, exchange };
+  }
+  // BRK.B and BRK-B are one US share class: the row saved under either spelling, else a new one under the dotted.
+  const spellings = options.tickerSymbol || result.brokerContract ? null : usShareClassSpellings(symbol, listingVenue(result));
+  if (spellings) {
+    const saved = await firstSavedSpelling(tickerRepository, spellings);
+    symbol = saved ?? spellings[0]!;
+    result = { ...result, symbol };
   }
   let ticker = await tickerRepository.loadTicker(symbol);
   const otherListingKey = otherListingTickerKey(result, symbol, ticker);
@@ -119,6 +126,14 @@ async function venueKeyedRow(tickerRepository: AppTickerRepositoryPort, result: 
   if (!exchange || parsePublicTickerKey(symbol).exchange) return null;
   const row = await tickerRepository.loadTicker(publicTickerKey(symbol, exchange));
   return row && canonicalExchange(row.metadata.exchange) === exchange ? row : null;
+}
+
+/** The first of a share class's spellings a row is saved under, or null. */
+async function firstSavedSpelling(tickerRepository: AppTickerRepositoryPort, spellings: readonly string[]): Promise<string | null> {
+  for (const spelling of spellings) {
+    if (await tickerRepository.loadTicker(spelling)) return spelling;
+  }
+  return null;
 }
 
 function listingVenue(result: InstrumentSearchResult): string | undefined {

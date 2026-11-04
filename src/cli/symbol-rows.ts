@@ -289,6 +289,25 @@ function choiceNeeded(
   return { message: history ? `${history.note}; ${found}` : found, successor: history?.successor ?? null };
 }
 
+/**
+ * Why a listing that cannot quote (`CliTicker.noQuote`: ZION:IEX, FRC:BMV) is
+ * not stored as it matched, when the input did not name it: a bare symbol, or
+ * a company's name read as it. What its company trades as now leads, when the
+ * symbol's history says. A listing the input named is stored, its row saying
+ * it has no quote (`quotelessNote`).
+ */
+function quotelessChoice(resolution: CliTicker): { message: string; successor: string | null } | null {
+  if (!resolution.noQuote || (!resolution.bareSymbol && !resolution.readAs)) return null;
+  const history = successorOf(resolution);
+  const found = `${savedListingName(resolution.ticker).label} has no quote`;
+  return { message: history ? `${history.note}; ${found}` : found, successor: history?.successor ?? null };
+}
+
+/** "no quote": what the row of a named listing that cannot quote (ZION:IEX) says, so it is never stored silently. */
+function quotelessNote(resolution: CliTicker): string | null {
+  return resolution.noQuote ? "no quote" : null;
+}
+
 /** "RAD stopped trading 2023-10-17, now RADCQ", the company named first when known: a symbol whose line ended as its company moved. */
 function stoppedTradingLine(symbol: string, moved: MovedTickerChange): string {
   const who = moved.issuer ? `${moved.issuer} (${symbol})` : symbol;
@@ -372,7 +391,7 @@ async function settleAdd(
       : { row: failedRow(input, error), error };
   }
   const abroad = await settleAbroad(lookup, { store: staged, dataProvider });
-  const choice = choiceNeeded(lookup, abroad);
+  const choice = choiceNeeded(lookup, abroad) ?? quotelessChoice(lookup);
   if (choice) {
     // The lookup saved the listing it matched; one that is in no list of this run is not kept.
     if (!added.has(lookup.ticker.metadata.ticker)) staged.discard(lookup.ticker.metadata.ticker);
@@ -393,8 +412,9 @@ async function settleAdd(
   added.add(result.ticker.metadata.ticker);
   // Another company had the symbol: the row says which, and what it trades as now.
   const history = successorOf(lookup);
+  const quoteless = quotelessNote(lookup);
   return { row: listingRow(input, result.changed ? "added" : "already_listed", result.ticker, {
-    notes: lookup.notes, ended: lookup.ended, hint: lookup.coinNote, readAs: lookup.readAs,
+    notes: quoteless ? [...lookup.notes, quoteless] : lookup.notes, ended: lookup.ended ?? quoteless, hint: lookup.coinNote, readAs: lookup.readAs,
     extra: { ...history ? { changeNote: history.note, tradesAs: history.successor } : {}, ...abroad.abroad ? { abroad: abroad.abroad } : {} },
   }), error: null };
 }

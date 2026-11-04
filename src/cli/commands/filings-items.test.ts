@@ -52,6 +52,40 @@ test("filings names an 8-K's items; exports keep the codes in items and add the 
   expect(tenQ).toContain(",https://www.sec.gov/100,,,,");
 });
 
+// `filings WFC` listed 15 pricing supplements where `fn SEC WFC` hid them.
+test("filings hides a bank's pricing supplements by default, says how many, and --all lists them", async () => {
+  const supplement = (day: number, form: string): SecFilingItem => ({
+    accessionNumber: `0001839882-26-${day}${form}`, form, filingDate: new Date(`2026-11-${String(day).padStart(2, "0")}`),
+    cik: "72971", companyName: "WELLS FARGO & COMPANY/MN", filingUrl: `https://www.sec.gov/s${day}${form}`,
+  });
+  const all = [supplement(4, "FWP"), supplement(3, "424B2"), supplement(2, "424B2"), ...FILINGS];
+  const asked: number[] = [];
+  const run = async (args: string[]) => {
+    const cli = createTestCliContext({
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "WFC", name: "Wells Fargo & Company", listingExchangeName: "NYSE" }),
+        getSecFilings: async (_symbol, count) => {
+          asked.push(count);
+          return all.slice(0, count);
+        },
+      }),
+    }, { format: "json" });
+    await marketDataCliCommands.find((command) => command.name === "filings")!.execute(args, cli.context);
+    const printed = cli.printed[0]!;
+    return JSON.parse(serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, printed.options));
+  };
+
+  const latest = await run(["WFC", "--count", "2"]);
+  expect(latest.data.map((filing: SecFilingItem) => filing.form)).toEqual(["8-K", "10-Q"]);
+  expect(latest.metadata.pricingSupplementsHidden).toBe(3);
+  // Read a few hundred deep, as fn SEC reads: a bank's last rows can all be supplements.
+  expect(asked.at(-1)).toBeGreaterThan(2);
+
+  const everything = await run(["WFC", "--count", "2", "--all"]);
+  expect(everything.data.map((filing: SecFilingItem) => filing.form)).toEqual(["FWP", "424B2"]);
+  expect(everything.metadata).not.toHaveProperty("pricingSupplementsHidden");
+});
+
 // `filings NST.AX` was "Unknown ticker NST.AX", and NST:ASX ended on "files no SEC reports" with nowhere to go.
 test("filings reads a venue suffix and, for a company abroad that files nothing with the SEC, lists its exchange's announcements or links its page", async () => {
   const VENUES: Record<string, { venue: string; name: string }> = {

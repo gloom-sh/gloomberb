@@ -49,7 +49,7 @@ import {
   runPaneScreenshot,
 } from "./pane-functions";
 import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
-import { exportCommandPointer } from "./known-gaps";
+import { bankFigurePointer, exportCommandPointer } from "./known-gaps";
 import { catalogFredSeriesIds } from "./series-search";
 import { primeBoardCoins } from "./board-coins";
 
@@ -387,6 +387,9 @@ async function unknownCommandPointers(
  */
 function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
   if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
+  // A bank figure's name (`nim JPM`, `deposits WFC`) is where it is: the Bank section of fundamentals, NIM in EQS.
+  const bank = bankFigurePointer(token, pointers.args[0] ?? "");
+  if (bank) fail(`Unknown command "${token}": a bank's figures are in the Bank section of fundamentals.`, bank.details);
   const ticker = tickerPointer(token);
   const suggestion = nearCommand(token, commands);
   if (!suggestion && pointers.nearFn) {

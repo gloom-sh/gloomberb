@@ -1,6 +1,8 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
-import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } from "../tickers/company-name-listing";
+import { companyNameQueries, findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } from "../tickers/company-name-listing";
+import { batchedListLookups } from "../tickers/batched-lookups";
+import { mapWithConcurrency } from "../utils/concurrency";
 import { isNotATickerMessage } from "./not-a-ticker";
 import { splitSymbolWords } from "./symbol-args";
 import { isNumberCell } from "./symbol-cells";
@@ -24,9 +26,16 @@ import { unknownBloombergMarket } from "../tickers/terminal-codes";
  */
 export async function readNameEntries(
   entries: readonly string[],
-  dataProvider: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
+  source: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
 ): Promise<string[]> {
-  const read = await Promise.all(entries.map(async (entry) => {
+  // A pasted list's names are searched in batches and their quotes asked together, a few entries at a time: a list
+  // of hundreds of names is a few requests, never hundreds at once.
+  const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry));
+  const full = source as DataProvider;
+  const dataProvider = names.length > 1 && full.searchBatch
+    ? (await batchedListLookups(full, names.map((name) => ({ searches: companyNameQueries(name), changes: null })))).dataProvider
+    : source;
+  const read = await mapWithConcurrency(entries, NAME_LOOKUPS_AT_ONCE, async (entry) => {
     // A terminal's code for a listing ("JPM US Equity", "VOD LN") is one entry, like a company's name, and so is a
     // line written as one whose market code is unknown ("AAPL GP"): its lookup refuses it, never AAPL and GP.
     if (unknownBloombergMarket(entry) || await readTerminalCodeArg(dataProvider, entry)) return [entry];
@@ -36,9 +45,12 @@ export async function readNameEntries(
     if (named && !busy) return [entry];
     const words = splitSymbolWords([entry]);
     return await wordsAreSymbols(words, dataProvider, { quoteEvery: busy }) ? words : [entry];
-  }));
+  });
   return read.flat();
 }
+
+/** Entries of a list read at once: their quotes still go out together, gathered into batches. */
+const NAME_LOOKUPS_AT_ONCE = 16;
 
 /** A word typed as a ticker is: in capitals (AAPL, 7203.T), with a venue or class mark (brk.b, bf-b, SAN:EPA), or after a $. */
 function writtenAsSymbol(word: string): boolean {

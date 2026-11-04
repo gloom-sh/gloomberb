@@ -381,3 +381,51 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
       .toEqual({ retries: [], ticker: "OLDCO", error: null });
   }
 });
+
+// A bank paste stored ZION:IEX, FRC:BMV and SBNY as if they quoted, and BRK.B beside BRK-B.
+test("a list add never stores a listing that cannot quote or stopped trading silently, and one share class is one row", async () => {
+  const day = 24 * 60 * 60_000;
+  const row = (symbol: string, exchange: string, name: string) => ({ providerId: "test", symbol, name, exchange, currency: "USD", type: "Common Stock" });
+  const rows: Record<string, ReturnType<typeof row>[]> = {
+    // Search lists a quote-less IEX line first; the symbol's own quote names its NASDAQ listing.
+    QLES: [row("QLES", "IEX", "Quoteless Bancorp")],
+    "ZION:IEX": [row("ZION", "IEX", "Zions Bancorporation N.A.")],
+    ZION: [row("ZION", "IEX", "Zions Bancorporation N.A.")],
+    // A failed bank: search still lists its old NASDAQ line, while the symbol's own quote is an OTC line that stopped.
+    DEADB: [row("DEADB", "NASDAQ", "Dead Bank-New York NY")],
+    // Merged away: search answers its old name with the company it went to.
+    COMERICA: [{ ...row("FITB", "NASDAQ", "Fifth Third Bancorp"), searchAliases: ["COMERICA INC"],
+      formerIssuer: { symbol: "CMA", name: "COMERICA INC", until: "2026-02-02", successor: { symbol: "FITB", name: "Fifth Third Bancorp" } } }],
+  };
+  const quotes: Record<string, Quote> = {
+    "DEADB|": createTestQuote({ symbol: "DEADB", price: 0.95, lastUpdated: Date.now() - 270 * day, stale: true, listingExchangeName: "OTC", exchangeName: "OTC" }),
+    "DEADB|NASDAQ": createTestQuote({ symbol: "DEADB", price: 0.18, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" }),
+    "BRK.B|": createTestQuote({ symbol: "BRK.B", name: "Berkshire Hathaway Inc.", listingExchangeName: "NYSE", exchangeName: "NYSE" }),
+    "BRK-B|": createTestQuote({ symbol: "BRK-B", name: "Berkshire Hathaway Inc.", listingExchangeName: "NYSE", exchangeName: "NYSE" }),
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => rows[query.toUpperCase()] ?? [],
+    getQuote: async (symbol, exchange = "") => {
+      const quote = quotes[`${symbol}|${exchange}`];
+      if (!quote) throw createProviderMiss(`No quote provider available for ${symbol}`);
+      return quote;
+    },
+  });
+  const store = tickerStore();
+  const listed = new Set<string>();
+  const added = await addSymbols({
+    symbols: ["QLES", "ZION:IEX", "DEADB", "Comerica", "BRK.B", "BRK-B"], store, dataProvider,
+    add: (ticker) => ({ ticker, changed: !listed.has(ticker.metadata.ticker) && !!listed.add(ticker.metadata.ticker) }),
+  });
+  expect(added.map((entry) => [entry.input, entry.status, entry.message ?? null, entry.tradesAs ?? null])).toEqual([
+    ["QLES", "needs_choice", "QLES:IEX (Quoteless Bancorp) has no quote", null],
+    // A listing named on purpose is kept, its row saying it has no quote.
+    ["ZION:IEX", "added", "no quote", null],
+    ["DEADB", "needs_choice", expect.stringMatching(/^DEADB: no longer trading since \d{4}-\d{2}-\d{2} \(last price \$0\.95\)$/), null],
+    ["Comerica", "needs_choice", 'No ticker match found for "COMERICA". CMA was COMERICA until 2026, now Fifth Third Bancorp: FITB.', "FITB"],
+    ["BRK.B", "added", null, null],
+    ["BRK-B", "already_listed", null, null],
+  ]);
+  // Nothing that needs a choice is stored; BRK-B is BRK.B's row.
+  expect((await store.loadAllTickers()).map(({ metadata }) => `${metadata.ticker}:${metadata.exchange}`).sort()).toEqual(["BRK.B:NYSE", "ZION:IEX"]);
+});

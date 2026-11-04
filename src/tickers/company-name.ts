@@ -223,7 +223,11 @@ export function cleanListingName(name: string): string {
   return (cut || trimmed).replace(/\s+/g, " ");
 }
 
-/** A company's name without its legal form, for sentences: "Avis Budget Group, Inc." is "Avis Budget Group". */
+/**
+ * A company's name without its legal form, for sentences: "Avis Budget Group,
+ * Inc." is "Avis Budget Group", and "Wells Fargo & Company" is "Wells Fargo",
+ * never cut at its "&".
+ */
 export function shortCompanyName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   const legal = (word: string) => {
@@ -231,7 +235,8 @@ export function shortCompanyName(name: string): string {
     // "Public Limited Company" is a legal form too, though "Public" alone can be a name.
     return NAME_NOISE.has(plain) || SHARE_NOISE.has(plain) || (plain === "public" && words.length > 2);
   };
-  while (words.length > 1 && legal(words[words.length - 1]!)) words.pop();
+  const joining = (word: string) => word === "&" || word.toLowerCase() === "and";
+  while (words.length > 1 && (legal(words[words.length - 1]!) || joining(words[words.length - 1]!))) words.pop();
   if (words.length > 1 && words[0]!.toLowerCase() === "the") words.shift();
   return words.join(" ").replace(/[,;]+$/, "");
 }

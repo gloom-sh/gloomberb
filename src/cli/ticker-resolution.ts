@@ -35,6 +35,7 @@ import {
   type ListingDeps,
 } from "./listing-arg";
 import { listingChangeLine, loadListingFate, noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
+import { delistingLabel } from "../market-data/quotes/delisting";
 import {
   describeFormerIssuer,
   describeTickerChange,
@@ -54,7 +55,8 @@ import { providerSearchQueries } from "../tickers/search";
 import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints";
 import { NotASymbolError, notASymbolError } from "./symbol-cells";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
-import { normalizeTickerSymbol } from "../tickers/search/ranking";
+import { classifyInstrumentKind, normalizeTickerSymbol } from "../tickers/search/ranking";
+import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput } from "../tickers/company-name-listing";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -106,12 +108,18 @@ export interface CliTicker {
    */
   otherVenues: string[] | null;
   /**
-   * A bare US-style symbol whose quote could not be read (the service refused
-   * or failed it): whether the listing still trades is unknown, so an add
+   * A bare US-style symbol, or a company's name read as a listing, whose quote
+   * could not be read (the service refused or failed it): whether the listing still trades is unknown, so an add
    * cannot tell a live match from a dead one (`choiceNeeded`). A list looks
    * it up again with the symbols that failed.
    */
   unchecked?: true;
+  /**
+   * The stored listing's own quote was answered with none (a venue no source
+   * prices, ZION:IEX, FRC:BMV): it cannot quote, which a list add never
+   * stores silently (`settleAdd`).
+   */
+  noQuote?: true;
 }
 
 export interface CliTickerOptions {
@@ -236,7 +244,8 @@ export async function resolveCliTicker(
   if (listing.saved) {
     const saved = options.refreshName === false ? { ticker: listing.saved, quote: null } : await nameFromListingQuote(listing.saved, store, dataProvider, null);
     // A saved line that stopped trading is the old line, not something listed under the symbol now.
-    return withChange({ ...withEnded(saved, read), ...uncheckedIf(listing, saved) }, saved.quote ? tradingListing(saved.quote) : { name: saved.ticker.metadata.name });
+    const ended = withEnded(saved, read);
+    return withChange({ ...ended, ...uncheckedIf(listing, saved, ended.ended) }, saved.quote ? tradingListing(saved.quote) : { name: saved.ticker.metadata.name });
   }
   // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
   // blocks a listing the quote knows. Search is asked after, for the venues a note names, and may fail.
@@ -291,13 +300,19 @@ export async function resolveCliTicker(
     const change = describeTickerChange(listing.symbol, payload, null);
     const changeLine = tickerChangeLine(change);
     const formerIssuer = changeLine ? null : describeFormerIssuer(listing.symbol, payload, null);
-    const line = changeLine ?? formerIssuer?.note;
-    const successor = changeLine ? change?.tradesAs ?? null : formerIssuer?.successor.symbol ?? null;
+    // A company's old name ("Comerica") that search finds on the row of the company it merged into (FITB). A word
+    // a US ticker can be (NVDA) is not asked after: its own search just answered it.
+    const typed = listing.typed || listing.symbol;
+    const merged = changeLine || formerIssuer || !/\p{Ll}|\s|^\p{L}{6,}$/u.test(typed) ? null
+      : await findFormerIssuerOfName(dataProvider, typed).catch(logFailure("cli.ticker-resolution", "Search a former issuer's name failed", null));
+    const line = changeLine ?? formerIssuer?.note ?? merged?.note;
+    const successor = changeLine ? change?.tradesAs ?? null : formerIssuer?.successor.symbol ?? merged?.successor ?? null;
     throw new TickerNotFoundError(line ? `${message} ${line}.` : message, successor);
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
+    const ended = withEnded(local, [...read, ...bareNote ? [bareNote] : []]);
+    return withChange({ ...ended, otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local, ended.ended) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
@@ -310,7 +325,10 @@ export async function resolveCliTicker(
     ? listingChoiceNote(listing.symbol, saved, await listingVenues(listing.symbol, deps).catch(logFailure("cli.ticker-resolution", "Read resolved ticker listing venues failed", [])))
       ?? chosenListingNote(listing.symbol, saved.exchange, others)
     : null);
-  const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
+  // A row search marks as delisted (UBSH, no venue, no quote) says so when its quote cannot.
+  const listed = resolved.result.delisting;
+  const ended = (named.quote ? noLongerTradingNote(saved.label, named.quote) : listed ? `${saved.label}: ${delistingLabel(listed)}` : null)
+    ?? (listing.exchange ? null : await ownLineEnded(listing, saved.exchange, dataProvider));
   // Search listed it, so something trades there; its quote says whether that is the issuer that left.
   const current = named.quote ? tradingListing(named.quote) : { name: named.ticker.metadata.name };
   return withChange({
@@ -318,13 +336,26 @@ export async function resolveCliTicker(
     notes: [...read, venueNote, ended].filter((note): note is string => !!note),
     ended,
     otherVenues: bareNote ? bareVenues : others,
-    ...uncheckedIf(listing, named),
+    ...uncheckedIf(listing, named, ended),
   }, current);
 }
 
-/** `unchecked` for a bare US-style symbol whose quote could not be read (`CliTicker.unchecked`). */
-function uncheckedIf(listing: Pick<CliListing, "symbol" | "exchange">, read: { failed?: true }): { unchecked?: true } {
-  return read.failed && !listing.exchange && tickerChangeSymbol(listing.symbol) ? { unchecked: true } : {};
+/**
+ * `unchecked` for a bare US-style symbol or a company's name whose quote could
+ * not be read (`CliTicker.unchecked`), and `noQuote` for a company's listing whose quote
+ * was answered with none, unless it is known to have stopped trading (`ended`).
+ */
+function uncheckedIf(
+  listing: Pick<CliListing, "symbol" | "exchange" | "readAs">,
+  read: { ticker: TickerRecord; failed?: true; missing?: true },
+  ended: string | null = null,
+): { unchecked?: true; noQuote?: true } {
+  // Shares and funds only: a pair, a future or an index is quoted by its own source, or not at all.
+  const kind = classifyInstrumentKind(read.ticker.metadata.assetCategory ?? "");
+  if (read.missing && !ended && (kind === "equity" || kind === "fund")) return { noQuote: true };
+  // A company's name read as a listing whose quote failed ("First Republic Bank" as FRC:BMV while the source was
+  // rate limited) may be a line that cannot quote: it is checked again too, never stored unchecked.
+  return read.failed && ((!listing.exchange && tickerChangeSymbol(listing.symbol)) || !!listing.readAs) ? { unchecked: true } : {};
 }
 
 /**
@@ -334,10 +365,11 @@ function uncheckedIf(listing: Pick<CliListing, "symbol" | "exchange">, read: { f
  * future, an index or a coin, which search types; search then looks it up. So
  * is a named US venue: the US exchanges share one symbol, and a quote asked
  * for on any of them answers as that venue (AAPL:NYSE), where search says
- * AAPL trades on NASDAQ.
+ * AAPL trades on NASDAQ, unless search named that venue for a company's name.
  */
 async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider): Promise<{ result: InstrumentSearchResult; quote: Quote } | null> {
-  if (listing.sharedCode || kindFromListingSyntax(listing.key, listing.exchange) || (listing.exchange && isUsSymbolVenue(listing.exchange))) return null;
+  if (listing.sharedCode || kindFromListingSyntax(listing.key, listing.exchange)) return null;
+  if (listing.exchange && isUsSymbolVenue(listing.exchange) && !listing.venueFromSearch) return null;
   let quote: Quote;
   try {
     quote = await dataProvider.getQuote(listing.request.symbol, listing.request.exchange);
@@ -364,6 +396,25 @@ async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider
       type: quote.instrumentType || "",
     },
   };
+}
+
+/**
+ * A bare US symbol is the line its own quote names, as `quote` reads it. When
+ * that line stopped trading on another US venue than the row search listed
+ * first (SBNY on OTC since 2026-02-05, where search lists SBNY on NASDAQ), the
+ * venues share the symbol, so the row is that line: "SBNY: no longer trading
+ * since 2026-02-05 (last price $0.95)". Null otherwise. The quote was read
+ * already (`listingOfOwnQuote`), so this asks nothing new.
+ */
+async function ownLineEnded(listing: CliListing, venue: string, dataProvider: DataProvider): Promise<string | null> {
+  if (!isUsSymbolVenue(venue)) return null;
+  const quote = await dataProvider.getQuote(listing.request.symbol, listing.request.exchange).catch(() => {
+    // Intentional ignore: with no quote of its own, the row search listed stands.
+    return null;
+  });
+  const own = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  if (!quote || !own || own === venue || !isUsSymbolVenue(own) || normalizeTickerSymbol(quote.symbol ?? "") !== listing.symbol) return null;
+  return noLongerTradingNote(listing.symbol, quote);
 }
 
 type ResolvedListing = Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs" | "bareSymbol" | "otherVenues"> & { otherVenues?: string[] | null };
@@ -416,7 +467,7 @@ async function nameFromListingQuote(
   store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   known: Quote | null,
-): Promise<{ ticker: TickerRecord; quote: Quote | null; failed?: true }> {
+): Promise<{ ticker: TickerRecord; quote: Quote | null; failed?: true; missing?: true }> {
   const { metadata } = ticker;
   try {
     const quote = known ?? await dataProvider.getQuote(metadata.ticker, metadata.exchange);
@@ -433,7 +484,8 @@ async function nameFromListingQuote(
   } catch (error) {
     // Without a quote the catalogue name stands. Refused, whether the listing still trades is unknown; answered
     // with an error of the listing's own, a later look would answer the same, so the match stands as it is.
-    return { ticker, quote: null, ...quoteRefused(error) ? { failed: true as const } : {} };
+    // Only a source's answer that it has no quote says the listing cannot quote; a failure of its own says nothing.
+    return { ticker, quote: null, ...quoteRefused(error) ? { failed: true as const } : isNoSourceAnswer(error) ? { missing: true as const } : {} };
   }
 }
 
@@ -547,13 +599,18 @@ function lookAgain(entry: CliTickerResolution): boolean {
 function listLookupPlan(input: string, exchange: string | undefined): ListLookupPlan {
   // What cannot be a symbol is refused without a request.
   if (notASymbolError(input)) return { searches: [], changes: null };
+  // A company's name searches what its reading searched (`readNameEntries`), answered by the same batch.
+  if (isCompanyNameInput(input)) return { searches: companyNameQueries(input), changes: null };
   try {
     // GARAN.IS names its venue, as GARAN:BIST does: it is looked up as a named listing is.
     const listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true });
     const searchable = !listing.exchange && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(listing.symbol);
+    // A named US venue (ZION:NASDAQ, as a company's name reads) is looked up by search (`listingOfOwnQuote`).
+    const usVenue = !!listing.exchange && !listing.sharedCode && isUsSymbolVenue(listing.exchange);
     return {
-      searches: searchable ? providerSearchQueries(listing.symbol) : [],
+      searches: searchable ? providerSearchQueries(listing.symbol) : usVenue ? providerSearchQueries(listing.key) : [],
       changes: tickerChangeSymbol(listing.symbol, listing.exchange),
+      quote: searchable ? listing.symbol : null,
     };
   } catch {
     // Intentional ignore: an input that is not a listing fails its own lookup, which says why.

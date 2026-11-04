@@ -29,6 +29,7 @@ import {
   isKnownExchangeCode,
   isSharedExchangeCode,
   isUsListingExchange,
+  usShareClassSpellings,
   parsePublicTickerKey,
   publicTickerKey,
   typedExchangeCode,
@@ -116,6 +117,11 @@ export interface ListingArg {
    * became GETYQ. Other bare symbols say where the data service chose instead.
    */
   readFromName?: true;
+  /**
+   * The venue is the one search lists the company's name on (`companyListingArg`), so a quote that answers
+   * there is the listing's own, even on a US venue, whose quote answers as whichever one is asked.
+   */
+  venueFromSearch?: true;
 }
 
 /** "Did you mean JPM (JPMorgan Chase & Co.)?", for a name read as a fund or an index; empty for any other listing. */
@@ -491,7 +497,8 @@ export async function listCoinNotes(
 export async function listingChoiceNotes(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs" | "readFromName">,
   deps: ListingDeps,
-  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType" | "stale" | "delisting"> | null | undefined,
+  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType" | "stale" | "delisting" | "isDepositaryReceipt">
+    | null | undefined,
   /** The venues `loadBareVenues` already started; looked up here when not given. */
   venues?: Promise<ListingVenue[]> | null,
 ): Promise<string[]> {
@@ -501,7 +508,9 @@ export async function listingChoiceNotes(
   if (listing.readFromName) return [...listingReadNotes(listing), ...coin];
   if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return coin;
   const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  if (!exchange) return coin;
+  // A bare symbol read on a company's own US line (JPM on NYSE) is what it means: companies abroad sharing the
+  // letters are not named. A US receipt (SAN, Banco Santander's) may still be meant for another (Sanofi's SAN:EPA).
+  if (!exchange || (isUsListingExchange(exchange) && quote.isDepositaryReceipt !== true)) return coin;
   const listed = await (venues ?? loadBareVenues(listing, deps) ?? []);
   const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
   return [...note ? [note] : [], ...coin];
@@ -1031,6 +1040,17 @@ type ListingForLoad = Pick<ListingArg, "symbol" | "exchange"> & Partial<Pick<Cli
 
 /** The saved ticker for a listing: under its own key, or a saved symbol whose venue it is. */
 export async function loadSavedListing(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {
+  const saved = await loadSavedSpelling(store, listing);
+  // A US share class is one row whichever spelling saved it (BRK.B, BRK-B).
+  const spellings = saved || listing.sharedCode ? null : usShareClassSpellings(listing.symbol, listing.exchange);
+  for (const symbol of spellings?.filter((spelling) => spelling !== listing.symbol) ?? []) {
+    const other = await loadSavedSpelling(store, { ...listing, symbol, key: listing.exchange ? `${symbol}:${listing.exchange}` : symbol });
+    if (other) return other;
+  }
+  return saved;
+}
+
+async function loadSavedSpelling(store: ListingStore, listing: ListingArg): Promise<TickerRecord | null> {
   if (!listing.exchange) return store.loadTicker(listing.symbol);
   if (listing.sharedCode) {
     // 7203:TSE is the row saved on any venue TSE names.
@@ -1470,7 +1490,7 @@ function companyListingArg(typed: string, found: CompanyNameListing): ListingArg
   const moved = found.moved ? ` ${found.moved}.` : "";
   return {
     ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${moved}${question}`,
-    ...meant ? { meant } : {}, ...found.exchange ? {} : { readFromName: true as const },
+    ...meant ? { meant } : {}, ...found.exchange ? { venueFromSearch: true as const } : { readFromName: true as const },
   };
 }
 

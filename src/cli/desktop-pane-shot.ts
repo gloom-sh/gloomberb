@@ -90,6 +90,8 @@ export interface DesktopPaneShotPayload {
   tapeSnapshots?: TapeCapture[];
   /** What each scanner pane's feed answered the capture process, which the page replays since its own socket cannot ask. */
   scannerSnapshots?: ScannerCapture[];
+  /** Rows of a list whose read failed: shown without figures, and named on the capture's status line. */
+  unreadRows?: string[];
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;

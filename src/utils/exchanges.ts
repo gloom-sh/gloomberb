@@ -164,6 +164,18 @@ export function isUsListingExchange(value?: string): boolean {
   return US_LISTING_EXCHANGES.has(canonicalExchange(value));
 }
 
+/**
+ * A US share class's spellings, the dotted one first: BRK.B, BRK-B and BRK/B
+ * are one listing, and so one row. Null for any other symbol, and for one on
+ * a venue abroad (RCI-B on TSX is that venue's own code).
+ */
+export function usShareClassSpellings(symbol: string, exchange?: string | null): string[] | null {
+  const match = /^([A-Z]{1,5})[.\-/]([A-Z])$/.exec(symbol.trim().toUpperCase());
+  const venue = canonicalExchange(exchange ?? "");
+  if (!match || (venue && !isUsEquityExchange(venue))) return null;
+  return [`${match[1]}.${match[2]}`, `${match[1]}-${match[2]}`, `${match[1]}/${match[2]}`];
+}
+
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES: ReadonlySet<string> = new Set([
   ...US_LISTING_EXCHANGES,

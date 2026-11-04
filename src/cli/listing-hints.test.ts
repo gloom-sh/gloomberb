@@ -89,8 +89,8 @@ test("every command a hint suggests runs on the listing it names", async () => {
   expect((await resolveCliListing(forms[2]!, forms[3], deps)).key).toBe("SAN:LSE");
 });
 
-// Decided per command: `fn` reports are titled by function and symbol, so a bare
-// symbol several companies list gets quote's line; `news` heads its table with the listing.
+// Decided per command: `fn` reports are titled by function and symbol, so a bare symbol several companies list
+// gets quote's line (none on the company's own US line); `news` heads its table with the listing.
 test("a bare symbol several companies list is named once per report: fn by quote's line, news by its heading", async () => {
   const provider = createTestDataProvider({
     search: dataProvider.search,
@@ -100,8 +100,8 @@ test("a bare symbol several companies list is named once per report: fn by quote
     getNews: async () => [createTestArticle("avis", { title: "Avis results", tickers: ["CAR"] })],
   });
   const market = { ...deps, dataProvider: provider };
-  expect(await quotedListingChoiceNotes(await resolveCliListing("CAR", undefined, market), market))
-    .toEqual(["CAR = Avis Budget Group, NASDAQ (a different company on Xetra)"]);
+  // Read on the company's own US line: what CAR means, so the companies sharing it abroad go unnamed.
+  expect(await quotedListingChoiceNotes(await resolveCliListing("CAR", undefined, market), market)).toEqual([]);
   expect(await quotedListingChoiceNotes(await resolveCliListing("CAR:ASX", undefined, market), market)).toEqual([]);
 
   const run = createTestCliContext({ dataProvider: provider });

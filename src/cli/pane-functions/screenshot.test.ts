@@ -5,7 +5,7 @@ import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
 import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
-import { shotFreshness, shotHasStatusLine, shownReportTab } from "./screenshot-render";
+import { shotFreshness, shotHasStatusLine, shownReportTab, unreadRowsNote } from "./screenshot-render";
 import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
 import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
@@ -1267,13 +1267,52 @@ describe("portfolio screenshot members", () => {
     // Captured with nothing, so the page shows the row unpriced rather than fetching it.
     expect(shot.financials.find(([symbol]) => symbol === "AAA")?.[1]).toMatchObject({ priceHistory: [], annualStatements: [] });
     expect(shot.financials.find(([symbol]) => symbol === "AAA")?.[1].quote).toBeUndefined();
-    // A read the service rate limited may answer when taken again: the capture fails rather than show the row unpriced.
-    await expect(capture({
+    expect(shot.unreadRows).toBeUndefined();
+    // A read the service refused is a row too, unpriced, and named on the capture's status line: it never fails the
+    // capture of the rest (a portfolio's shot failed for one OTC name the service did not answer for).
+    const refused = await capture({
       getTickerFinancials: async (symbol) => {
         if (symbol === "AAA") throw noProviderError("No provider available for AAA", { failure: new ApiRequestError("Too many requests", 429) }, "AAA");
-        return quotes.get(symbol)!;
+        const financials = quotes.get(symbol);
+        if (!financials) throw new Error(`No provider available for ${symbol}`);
+        return financials;
       },
-    }, [unmarked, ...MARGIN_TICKERS.slice(1)])).rejects.toThrow("No provider available for AAA");
+    }, [unmarked, ...MARGIN_TICKERS.slice(1)]);
+    expect(refused.tickers.map(({ metadata }) => metadata.ticker)).toEqual(["AAA", "BBB", option.metadata.ticker]);
+    expect(refused.unreadRows).toEqual(["AAA"]);
+    expect(unreadRowsNote(refused.unreadRows)).toBe("AAA did not load");
+  });
+
+  test("a named portfolio's capture reads that portfolio's rows only, never another list's", async () => {
+    const other = { metadata: { ...MARGIN_TICKERS[1]!.metadata, ticker: "OTHER", portfolios: [], watchlists: ["elsewhere"], positions: [] } };
+    const asked: string[] = [];
+    await capture({
+      getTickerFinancials: async (symbol) => {
+        asked.push(symbol);
+        const financials = quotes.get(symbol);
+        if (!financials) throw new Error(`No provider available for ${symbol}`);
+        return financials;
+      },
+    }, [...MARGIN_TICKERS, other as never]);
+    expect(asked).toContain("OTHER");
+    asked.length = 0;
+    const named = await buildDesktopShotPayload(request, {
+      config: { ...createDefaultConfig("/tmp/portfolio-shot-test"), portfolios: [MARGIN_PORTFOLIO], watchlists: [{ id: "elsewhere", name: "Elsewhere" }] },
+      store: {
+        loadAllTickers: async () => [...MARGIN_TICKERS, other],
+        loadTicker: async (symbol: string) => [...MARGIN_TICKERS, other].find(({ metadata }) => metadata.ticker === symbol) ?? null,
+      },
+      dataProvider: createTestDataProvider({
+        getTickerFinancials: async (symbol) => {
+          asked.push(symbol);
+          const financials = quotes.get(symbol);
+          if (!financials) throw new Error(`No provider available for ${symbol}`);
+          return financials;
+        },
+      }),
+    } as unknown as MarketContext, MARGIN_PORTFOLIO.name, {}, 1200, 800, null, 1, null);
+    expect(asked).not.toContain("OTHER");
+    expect(named.tickers.map(({ metadata }) => metadata.ticker)).not.toContain("OTHER");
   });
 });
 

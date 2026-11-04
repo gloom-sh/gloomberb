@@ -356,18 +356,23 @@ test("a bare symbol whose listing stopped asks after the live company search nam
   }
 });
 
-test("a bare symbol several companies list names, in one line, the company it was read as and where the others are", async () => {
-  const avis = createTestQuote({ symbol: "CAR", name: "Avis Budget Group, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
-  const names = { XETRA: "Carrefour SA", NASDAQ: "Avis Budget Group Inc.", BYMA: "Avis Budget Group, Inc. CEDEAR", ASX: "CAR Group Limited" };
-  const source = venueSource("CAR", ["XETRA", "NASDAQ", "BYMA", "ASX"], { CAR: avis, "CAR:ASX": avis }, names);
+test("a bare symbol read on a US receipt names, in one line, the company it was read as and where the others are; a company's own US line does not", async () => {
+  const santander = createTestQuote({ symbol: "SAN", name: "Banco Santander, S.A.", listingExchangeName: "NYSE", exchangeName: "NYSE", isDepositaryReceipt: true });
+  const names = { EPA: "Sanofi", NYSE: "Banco Santander, S.A.", MCE: "Banco Santander, S.A.", LSE: "Santos Ltd" };
+  const source = venueSource("SAN", ["EPA", "NYSE", "MCE", "LSE"], { SAN: santander, "SAN:EPA": santander }, names);
 
-  const bare = await runQuote(["CAR"], source);
-  expect(bare.rows.map((row) => row.target.symbol)).toEqual(["CAR"]);
-  expect(bare.warnings).toEqual(["CAR = Avis Budget Group, NASDAQ (different companies on Xetra, the Australian Securities Exchange)"]);
+  const bare = await runQuote(["SAN"], source);
+  expect(bare.rows.map((row) => row.target.symbol)).toEqual(["SAN"]);
+  expect(bare.warnings).toEqual(["SAN = Banco Santander, New York Stock Exchange (different companies on Euronext Paris, the London Stock Exchange)"]);
   // A named venue is the user's choice: nothing to say, and no search.
   const searched = source.searches();
-  expect((await runQuote(["CAR:ASX"], source)).warnings).toEqual([]);
+  expect((await runQuote(["SAN:EPA"], source)).warnings).toEqual([]);
   expect(source.searches()).toBe(searched);
+
+  // JPM read on its own NYSE line is what JPM means, whoever shares the letters abroad: and "& Co." is never cut to "&".
+  const jpm = createTestQuote({ symbol: "JPM", name: "JP Morgan Chase & Co.", listingExchangeName: "NYSE", exchangeName: "NYSE" });
+  const own = venueSource("JPM", ["NYSE", "BMV", "SIX"], { JPM: jpm }, { NYSE: "JP Morgan Chase & Co.", BMV: "Jpm Mexico", SIX: "JPM Swiss Fund" });
+  expect((await runQuote(["JPM"], own)).warnings).toEqual([]);
 });
 
 test("a company's name whose US line moved to another symbol is quoted there, never on a line abroad, and says why", async () => {
