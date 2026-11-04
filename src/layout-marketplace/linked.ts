@@ -3,6 +3,7 @@ import type { LayoutConfig, LayoutOrigin, SavedLayout } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { layoutContentFingerprint, type CloudLayoutEntry } from "./cloud";
 import { publishableMarketplaceLayout } from "../shares/portable-layout";
+import { logFailure } from "../utils/log-failure";
 
 export interface LinkedLayoutStatus {
   origin: LayoutOrigin;
@@ -29,8 +30,8 @@ function fingerprintSavedLayout(
 ): string | null {
   try {
     return layoutContentFingerprint(publishableMarketplaceLayout(layout, paneState, panes), derivesTitle(panes));
-  } catch {
-    return null;
+  } catch (error) {
+    return logFailure("layout-marketplace.linked", "Fingerprint linked layout failed", null)(error);
   }
 }
 

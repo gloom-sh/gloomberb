@@ -37,6 +37,7 @@ import {
   publishableMarketplaceLayout,
 } from "../shares/portable-layout";
 import { useLayoutMarketplace, useTeamLayouts } from "./use-marketplace";
+import { logFailure } from "../utils/log-failure";
 
 export interface LayoutGalleryController {
   query: string;
@@ -198,7 +199,7 @@ export function LayoutMarketplaceGallery({
           width={40}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("layout-marketplace.gallery", "Open layout name prompt failed"));
     return typeof name === "string" ? name.trim() : "";
   }, [dialog]);
 
@@ -269,7 +270,7 @@ export function LayoutMarketplaceGallery({
           selectedChoiceId={defaultId ?? undefined}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("layout-marketplace.gallery", "Open team choice failed"));
     return teams.find((team) => team.id === id) ?? null;
   }, [dialog, pluginRegistry, teams]);
 
@@ -332,7 +333,7 @@ export function LayoutMarketplaceGallery({
           selectedChoiceId="copy"
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("layout-marketplace.gallery", "Open layout conflict choice failed"));
     return choice === "copy" || choice === "overwrite" || choice === "discard" ? choice : null;
   }, [dialog]);
 

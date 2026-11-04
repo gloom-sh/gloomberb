@@ -161,11 +161,16 @@ test("ignore reasons need four words and cannot share their handler with logging
   ]);
 });
 
-test("built-in plugins are in scope except chat", () => {
+test("everything is in scope except the chat plugin and the renderers", () => {
   const scope = (file: string) => scanSilentCatches(file, "job.catch(() => {});").sites[0]!.scope;
   expect(scope("src/plugins/builtin/cloud/askg/pane.tsx")).toBe("in");
   expect(scope("src/plugins/builtin/broker-manager/footer.ts")).toBe("in");
   expect(scope("src/plugins/builtin/plugin-module.ts")).toBe("in");
   expect(scope("src/plugins/builtin/chat/controller/index.ts")).toBe("out");
   expect(scope("src/plugins/builtin/chatter/index.ts")).toBe("in");
+  expect(scope("src/components/ui/confirm-dialog.tsx")).toBe("in");
+  expect(scope("src/layout-marketplace/linked.ts")).toBe("in");
+  expect(scope("src/sync/baseline.ts")).toBe("in");
+  expect(scope("src/app.tsx")).toBe("in");
+  expect(scope("src/renderers/opentui/dialog-host.tsx")).toBe("out");
 });

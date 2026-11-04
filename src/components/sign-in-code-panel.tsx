@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { FigureText } from "./ui/figure";
 import { renderQrLines, renderQrSvgDataUri } from "../ui/qr";
 import { isPlainKey } from "../utils/keyboard";
+import { logFailure } from "../utils/log-failure";
 
 // Phone cameras need dark-on-light no matter what the terminal theme is.
 const QR_FG = "#000000";
@@ -83,13 +84,13 @@ export function SignInCodePanel(props: SignInCodePanelProps) {
   useShortcut((event) => {
     if (!isPlainKey(event, "b") || !url) return;
     event.preventDefault(); event.stopPropagation();
-    void renderer.openExternal(url).catch(() => {});
+    void renderer.openExternal(url).catch(logFailure("sign-in-code-panel", "Open browser hand-off failed"));
   }, { scope: shortcutScope, phase: "before", enabled: browserKey });
 
   const button = url
     ? (
       <Button label="Continue in browser" shortcut="b" variant="primary" onPress={() => {
-        void renderer.openExternal(url).catch(() => {});
+        void renderer.openExternal(url).catch(logFailure("sign-in-code-panel", "Open browser hand-off failed"));
       }} />
     )
     : null;

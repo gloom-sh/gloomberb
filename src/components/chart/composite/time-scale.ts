@@ -99,7 +99,7 @@ function formatSessionDate(timestamp: number, timeZone: string): string {
     const day = parts.find((part) => part.type === "day")?.value;
     if (year && month && day) return `${year}-${month}-${day}`;
   } catch {
-    // Invalid or unsupported IANA zones fall back to UTC below.
+    // Intentional ignore: an invalid or unsupported IANA zone falls back to the UTC date below.
   }
   return new Date(timestamp).toISOString().slice(0, 10);
 }

@@ -40,6 +40,7 @@ import { Checkbox } from "./ui/checkbox";
 import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "./ui/fields";
 import { DialogFrame } from "./ui/frame";
 import { TERMINAL_MESSAGE_KEYS } from "./textarea-keys";
+import { logFailure } from "../utils/log-failure";
 
 /** What the person typed, kept when the dialog closes without sending. */
 const draft = { message: "" };
@@ -294,7 +295,8 @@ export function FeedbackDialogHost() {
         try {
           const frame = nativeRenderer.captureFrame?.();
           if (frame) terminalScreenshot = terminalFrameScreenshot(frame);
-        } catch {
+        } catch (error) {
+          logFailure("feedback-dialog", "Capture terminal screenshot for feedback failed")(error);
           terminalScreenshot = null;
         }
         const buildReport = ({ message, screenshot }: { message: string; screenshot: FeedbackScreenshot | null }): FeedbackSubmitRequest => ({

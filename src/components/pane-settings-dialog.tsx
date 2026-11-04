@@ -21,6 +21,7 @@ import {
 } from "./pane-settings-dialog/tui";
 import { isPaneSettingDisabled, isSpaceKey, stepPaneSettingSelect } from "./pane-settings-dialog/value";
 import { useRowNotes } from "./ui/row-notes";
+import { logFailure } from "../utils/log-failure";
 
 const fieldKey = (field: PaneSettingField) => field.key;
 /** What an action row shows of its own state: a note on it goes once that moves on (it connected elsewhere, say). */
@@ -176,12 +177,12 @@ export function PaneSettingsDialogContent({
     if (!field || !descriptor) return;
     const currentValue = descriptor.context.settings[field.key];
     if (field.type === "toggle") {
-      void applyAndRefresh(field, currentValue !== true).catch(() => {});
+      void applyAndRefresh(field, currentValue !== true).catch(logFailure("pane-settings-dialog", "Toggle pane setting failed"));
       return;
     }
     if (field.type !== "select") return;
     const value = stepPaneSettingSelect(field, currentValue, direction);
-    if (value !== null) void applyAndRefresh(field, value).catch(() => {});
+    if (value !== null) void applyAndRefresh(field, value).catch(logFailure("pane-settings-dialog", "Step pane setting failed"));
   };
 
   useDialogKeyboard((event) => {
@@ -201,7 +202,7 @@ export function PaneSettingsDialogContent({
     } else if (event.name === "escape") dismiss();
     else if (event.name === "enter" || event.name === "return" || isSpaceKey(event)) {
       event.preventDefault();
-      void openFieldEditor(fields[selectedIndex]).catch(() => {});
+      void openFieldEditor(fields[selectedIndex]).catch(logFailure("pane-settings-dialog", "Open pane setting failed"));
     }
   });
 
@@ -225,11 +226,11 @@ export function PaneSettingsDialogContent({
       onSelectRef={setDesktopSelectRef}
       onEdit={(field, index) => {
         setSelectedIndex(index);
-        void openFieldEditor(field).catch(() => {});
+        void openFieldEditor(field).catch(logFailure("pane-settings-dialog", "Open pane setting failed"));
       }}
       onApply={(field, value, index) => {
         setSelectedIndex(index);
-        void applyAndRefresh(field, value).catch(() => {});
+        void applyAndRefresh(field, value).catch(logFailure("pane-settings-dialog", "Apply pane setting failed"));
       }}
     />
   ) : (
@@ -241,7 +242,7 @@ export function PaneSettingsDialogContent({
       noteFor={noteFor}
       onSelect={setSelectedIndex}
       onActivate={(field) => {
-        void openFieldEditor(field).catch(() => {});
+        void openFieldEditor(field).catch(logFailure("pane-settings-dialog", "Open pane setting failed"));
       }}
     />
   );

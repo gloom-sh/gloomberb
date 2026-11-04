@@ -4,10 +4,7 @@ import { join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
 const ROOT = resolve(import.meta.dir, "..");
-const EXCLUDED = [
-  "src/plugins/builtin/chat/", "src/sync/", "src/renderers/", "src/components/",
-  "src/layout-marketplace/", "src/app.tsx",
-];
+const EXCLUDED = ["src/plugins/builtin/chat/", "src/renderers/"];
 
 type SilentCatch = {
   file: string;

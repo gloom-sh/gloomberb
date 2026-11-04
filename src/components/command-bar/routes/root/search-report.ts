@@ -152,11 +152,11 @@ export function useCommandSearchReport({
           // The setting or automation may have changed since the choice.
           if (allowed()) apiClient.reportCommandSearch(report);
         } catch {
-          /* A report must never get in the way of the command bar. */
+          /* Intentional ignore: the client logs its own report failures, and a report never blocks the command bar. */
         }
       }, 0);
     } catch {
-      /* A report must never get in the way of the command bar. */
+      /* Intentional ignore: an optional search report must never get in the way of the command bar. */
     }
   }, []);
 

@@ -27,6 +27,7 @@ import { resolveCollectionTicker } from "../workflow/collection-ticker";
 import { withCollectionMembership } from "../workflow/tickers";
 import type { CommandBarRoute } from "../workflow/types";
 import type { CollectionCommandId } from "../helpers";
+import { logFailure } from "../../../utils/log-failure";
 
 type Notify = (body: string, options?: { type?: "info" | "success" | "error"; duration?: number }) => void;
 
@@ -151,8 +152,8 @@ async function namesOneCompany(words: readonly string[], dataProvider: DataProvi
       const named = new Set((result.name ?? "").toLowerCase().split(/[^\p{L}\p{N}]+/u));
       return wanted.every((word) => named.has(word));
     });
-  } catch {
-    return false;
+  } catch (error) {
+    return logFailure("command-bar.collection-list", "Check pasted words for a company name failed", false)(error);
   }
 }
 

@@ -27,6 +27,7 @@ import {
   withOnboardingProgress,
   type BrokerOption,
 } from "./wizard-model";
+import { logFailure } from "../../utils/log-failure";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -48,7 +49,9 @@ export function useOnboardingProgress({
     if (finishingRef.current) return stateRef.current.config;
     setPersistenceError(null);
     const operation = progressSaveQueueRef.current
-      .catch(() => {})
+      .catch(() => {
+        // Intentional ignore: the queue only holds settled saves, and each save reports its own failure.
+      })
       .then(async () => {
         if (finishingRef.current) return stateRef.current.config;
         const nextConfig = withOnboardingProgress(baseConfig ?? stateRef.current.config, patch);
@@ -66,7 +69,9 @@ export function useOnboardingProgress({
           throw error;
         }
       });
-    progressSaveQueueRef.current = operation.then(() => {}, () => {});
+    progressSaveQueueRef.current = operation.then(() => {}, () => {
+      // Intentional ignore: this save's caller receives its rejection; the queue only orders the next save.
+    });
     return operation;
   }, [dispatch, stateRef]);
 
@@ -74,7 +79,7 @@ export function useOnboardingProgress({
     patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
     baseConfig?: AppConfig,
   ) => {
-    void persistProgress(patch, baseConfig).catch(() => {});
+    void persistProgress(patch, baseConfig).catch(logFailure("onboarding.progress", "Save onboarding progress failed"));
   }, [persistProgress]);
 
   return {
@@ -304,7 +309,9 @@ export function useOnboardingCompletion({
     setIsFinishing(true);
     setPersistenceError(null);
     try {
-      await progressSaveQueueRef.current.catch(() => {});
+      await progressSaveQueueRef.current.catch(() => {
+        // Intentional ignore: the queue only holds settled saves, and each save reports its own failure.
+      });
       const { desks: picked, rerun } = getOnboardingProgress(stateRef.current.config);
       const desks = picked?.filter(isDeskKey);
       const nextConfig: AppConfig = {

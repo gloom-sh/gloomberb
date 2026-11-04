@@ -7,6 +7,7 @@ import { safeExternalUrl, systemOpenCommand } from "../../utils/external-url";
 import { linkContextMenuItems, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { usePaneMenuItems } from "../layout/pane/footer/registration";
+import { logFailure } from "../../utils/log-failure";
 
 export function openUrl(rawUrl: string) {
   const url = safeExternalUrl(rawUrl);
@@ -27,7 +28,9 @@ export function openUrl(rawUrl: string) {
     try {
       const child = Bun.spawn(command, { stdio: ["ignore", "ignore", "ignore"] });
       child.unref();
-    } catch {}
+    } catch (error) {
+      logFailure("ui.external-link", "Open link with the system opener failed")(error);
+    }
   }
 }
 

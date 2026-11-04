@@ -7,6 +7,7 @@ import type { CloudBillingInterval } from "../../account/billing";
 import { loadUpgradeOffer, type UpgradeOffer } from "../../account/upgrade-dialog";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { usePlanAccess } from "../../api-client/plan-access";
+import { logFailure } from "../../utils/log-failure";
 
 export function useOnboardingUpgrade({
   stage, progress, saveProgressInBackground, persistProgress,
@@ -40,7 +41,7 @@ export function useOnboardingUpgrade({
     if (stage !== "upgrade" || !progress.checkoutOpenedAt || !appActive) return;
     void apiClient.getSession()
       .then(() => chatController.refreshSession())
-      .catch(() => {});
+      .catch(logFailure("onboarding.upgrade", "Refresh session after checkout failed"));
   }, [appActive, progress.checkoutOpenedAt, stage]);
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export function useOnboardingUpgrade({
           stage: "upgrade",
           accountStatus: progress.accountStatus,
           checkoutOpenedAt: new Date().toISOString(),
-        }).catch(() => {});
+        }).catch(logFailure("onboarding.upgrade", "Save checkout progress failed"));
       },
     });
   }, [billingInterval, openUpgrade, persistProgress, progress.accountStatus]);

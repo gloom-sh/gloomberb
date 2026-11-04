@@ -76,6 +76,7 @@ export function buildPluginCommandFormRoute(
     try {
       defaults = command.shortcutArg?.parse?.("", { activeTicker: getFocusedTickerSymbol(state) });
     } catch {
+      // Intentional ignore: a parser that rejects an empty argument leaves the form at its field defaults.
       defaults = undefined;
     }
   }

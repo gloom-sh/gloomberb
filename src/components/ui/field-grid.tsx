@@ -231,7 +231,7 @@ export function GridFieldView({
       input?.focus?.();
       if (!text) input?.setCursorOffset?.(0);
     } catch {
-      // Renderer teardown can race queued focus attempts.
+      // Intentional ignore: a focus queued before renderer teardown has no input left to focus.
     }
   }, [text]);
   const toneColor = field.tone === "positive"

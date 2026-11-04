@@ -27,6 +27,7 @@ import {
   listOnboardingPositions,
   type OnboardingPositionRow,
 } from "./wizard-model";
+import { logFailure } from "../../utils/log-failure";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -156,7 +157,8 @@ export function useOnboardingPositions({
       try {
         const exchange = resolved.kind === "provider" ? resolved.result.exchange : resolved.ticker.metadata.exchange;
         quote = await pluginRegistry.marketData.getQuote(resolved.symbol, exchange);
-      } catch {
+      } catch (error) {
+        logFailure("onboarding.positions", "Load position quote failed")(error);
         quote = null;
       }
     }

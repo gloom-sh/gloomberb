@@ -22,6 +22,7 @@ import {
   type PaneFooterSegment,
   type PaneHint,
 } from "./model";
+import { logFailure } from "../../../../utils/log-failure";
 
 export {
   ageFooterSegment,
@@ -230,7 +231,7 @@ function FooterOverflowMenu({ hints, width, label }: { hints: PaneHint[]; width:
       ),
     }).then((selected) => {
       if (selected) hints[Number(selected)]?.onPress?.();
-    }, () => {});
+    }, logFailure("layout.pane-footer", "Open pane actions menu failed"));
   };
   return (
     <>

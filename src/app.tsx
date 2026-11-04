@@ -76,6 +76,7 @@ import { apiClient } from "./api-client";
 import { reportTelemetryConfig } from "./telemetry/live-config";
 import { AttentionCountsNotice } from "./app/attention-notice";
 import { recordFunctionOpen } from "./telemetry/usage-counts";
+import { logFailure } from "./utils/log-failure";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
@@ -229,7 +230,7 @@ function AppInner({
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
   const focusDetachedPane = useMemo(() => {
     const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
-    return focus ? (paneId: string) => { void focus(paneId).catch(() => {}); } : undefined;
+    return focus ? (paneId: string) => { void focus(paneId).catch(logFailure("app", "Focus detached pane window failed")); } : undefined;
   }, [desktopWindowBridge]);
   const [desktopDockPreview, setDesktopDockPreview] = useState<DesktopDockPreviewState | null>(null);
   const [commandBarNativeOccluder, setCommandBarNativeOccluder] = useState<LayoutBounds | null>(null);

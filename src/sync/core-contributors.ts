@@ -55,6 +55,7 @@ import {
   withLocalOnlyEntries,
   type LocalOnlyScope,
 } from "./local-only";
+import { logFailure } from "../utils/log-failure";
 
 /**
  * What a saved layout mirrors from the live session rather than from the
@@ -642,7 +643,7 @@ async function loadHoldingExchangeRates(
   const currencies = fxRateCurrencies(held).filter((currency) => currency !== "USD");
   await Promise.all(currencies.map(async (currency) => {
     // A failed FX load must not hold back the rest of the push.
-    await coordinator.loadFxRate(currency).catch(() => {});
+    await coordinator.loadFxRate(currency).catch(logFailure("sync.core-contributors", "Load holding FX rate for sync failed"));
     const rate = resolveEntryValue(coordinator.getFxEntry(currency));
     if (rate != null) rates.set(currency, rate);
   }));

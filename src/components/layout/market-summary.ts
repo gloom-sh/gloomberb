@@ -13,6 +13,7 @@ import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../mar
 import { getSessionMoveDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 import type { Quote } from "../../types/financials";
 import { useDelayedMarkMinutes } from "../ui/delayed-mark";
+import { logFailure } from "../../utils/log-failure";
 
 /**
  * SPY rides the shared feed. The snapshot poll only runs while the feed has
@@ -146,7 +147,7 @@ export function useMarketSummary(): MarketSummary {
       const quote = spyQuoteRef.current;
       const streamedAt = quote?.delivery === "stream" && quote.stale !== true ? quote.receivedAt ?? 0 : 0;
       if (Date.now() - streamedAt < SPY_FALLBACK_REFRESH_MS) return;
-      void coordinator.loadQuote({ symbol: "SPY" }).catch(() => {});
+      void coordinator.loadQuote({ symbol: "SPY" }).catch(logFailure("layout.market-summary", "Refresh SPY summary quote failed"));
     };
     topUp();
     const id = setInterval(topUp, SPY_FALLBACK_REFRESH_MS);
