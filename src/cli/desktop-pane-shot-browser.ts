@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import type { Readable, Writable } from "node:stream";
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { logFailure } from "../utils/log-failure";
@@ -182,46 +180,64 @@ interface LaunchedChrome {
   stderr(): Promise<string>;
 }
 
-/** Chrome with DevTools on fds 3 (to the browser) and 4 (from it): messages are JSON, each ended by a NUL. */
+/** Hands `onText` what `stream` carries, as text, until it ends; a read that fails ends it too. */
+async function drain(stream: ReadableStream<Uint8Array>, onText: (text: string) => void): Promise<void> {
+  const decoder = new TextDecoder();
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      onText(decoder.decode(value, { stream: true }));
+    }
+  } catch {
+    // Intentional ignore: a read that fails says the browser has gone, as the end of the stream does.
+  }
+}
+
+/**
+ * Chrome with DevTools on fds 3 (to the browser) and 4 (from it): messages are JSON, each ended by a NUL.
+ *
+ * The pipes are the browser's stdin and stdout, which `sh` moves to fds 3 and 4 and replaces with /dev/null, so
+ * the browser is started by `Bun.spawn` like every other child. Handed to it through `node:child_process`
+ * (`stdio: [..., "pipe", "pipe"]`), Bun closes those descriptors more than once as the browser exits, and goes on
+ * to use them. By then another child's pipes can hold the same numbers, and that child sees its own pipes closed
+ * under it: a stdout that cannot be registered (EBADF), a read that never ends, or a second browser start that
+ * finds its connection closed. `exec` keeps the browser's pid the child's, so `kill` reaches the browser itself.
+ */
 function launchOverPipe(chrome: string, args: string[]): LaunchedChrome {
-  const child = spawn(chrome, [...args, "--remote-debugging-pipe", "about:blank"], {
-    stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
-  });
+  const child = Bun.spawn(
+    ["sh", "-c", 'exec "$0" "$@" 3<&0 4>&1 </dev/null >/dev/null', chrome, ...args, "--remote-debugging-pipe", "about:blank"],
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+  );
   // Read to the end, so a chatty browser never blocks on a full pipe; only the start is kept.
   let stderrText = "";
-  const fromStderr = child.stderr!;
-  fromStderr.setEncoding("utf8");
-  fromStderr.on("data", (chunk: string) => {
-    if (stderrText.length < STDERR_KEPT_BYTES) stderrText += chunk.slice(0, STDERR_KEPT_BYTES - stderrText.length);
+  const stderrDone = drain(child.stderr, (text) => {
+    if (stderrText.length < STDERR_KEPT_BYTES) stderrText += text.slice(0, STDERR_KEPT_BYTES - stderrText.length);
   });
-  const stderrDone = new Promise<void>((resolve) => {
-    fromStderr.once("close", () => resolve());
-    fromStderr.once("error", () => resolve());
+  const connection = new CdpConnection((text) => {
+    child.stdin.write(`${text}\0`);
+    // Writes after the browser has gone fail; the connection already says it closed.
+    Promise.resolve(child.stdin.flush()).catch(() => connection.close());
   });
-  const toChrome = child.stdio[3] as Writable;
-  const fromChrome = child.stdio[4] as Readable;
-  const connection = new CdpConnection((text) => toChrome.write(`${text}\0`));
+  const closed = () => connection.close();
   let buffered = "";
-  fromChrome.setEncoding("utf8");
-  fromChrome.on("data", (chunk: string) => {
-    buffered += chunk;
+  void drain(child.stdout, (text) => {
+    buffered += text;
     for (let end = buffered.indexOf("\0"); end >= 0; end = buffered.indexOf("\0")) {
       const message = buffered.slice(0, end);
       buffered = buffered.slice(end + 1);
       connection.receive(message);
     }
-  });
-  const closed = () => connection.close();
-  fromChrome.on("close", closed);
-  fromChrome.on("error", closed);
-  // Writes after the browser has gone fail; the connection already says it closed.
-  toChrome.on("error", closed);
-  child.on("error", closed);
-  const exited = new Promise<void>((resolve) => {
-    if (child.exitCode !== null || child.signalCode !== null) resolve();
-    else child.once("exit", () => resolve());
-  });
-  child.once("exit", closed);
+  }).then(closed);
+  const exited = (async () => {
+    try {
+      await child.exited;
+    } catch {
+      // Intentional ignore: a browser that cannot be waited for has gone, and the connection says so.
+    }
+  })();
+  void exited.then(closed);
   return {
     connection,
     stop: async () => {

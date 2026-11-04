@@ -47,9 +47,7 @@ test("Chrome keeps its sandbox unless it says it cannot have one", () => {
 
 // A stand-in browser: without --no-sandbox it fails as Chrome does with no kernel support for its sandbox; with it, it
 // answers the three DevTools calls a start makes.
-test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a browser that cannot have its sandbox is started again without it, and only then", async () => {
-  const folder = await mkdtemp(join(tmpdir(), "gloom-shot-sandbox-"));
-  const starts = join(folder, "starts.log");
+async function writeFakeChrome(folder: string, starts: string): Promise<string> {
   const fakeChrome = join(folder, "chrome");
   await writeFile(fakeChrome, `#!/usr/bin/env bun
 import { appendFileSync, createReadStream, createWriteStream } from "fs";
@@ -72,6 +70,13 @@ if (sandboxed) {
 }
 `);
   await chmod(fakeChrome, 0o755);
+  return fakeChrome;
+}
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a browser that cannot have its sandbox is started again without it, and only then", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-shot-sandbox-"));
+  const starts = join(folder, "starts.log");
+  const fakeChrome = await writeFakeChrome(folder, starts);
   try {
     const browser = await launchShotBrowser(fakeChrome, { widthPx: 400, heightPx: 300, userDataDir: join(folder, "profile") });
     await browser.close();
@@ -81,3 +86,39 @@ if (sandboxed) {
   }
 }, 30_000);
 
+// Handed to a browser through node:child_process, the pipes of the DevTools protocol were closed by Bun more than once
+// as it exited, and used after. The next child could hold those descriptor numbers by then: its stdout failed to
+// register (EBADF), its read never ended, or the next browser start found its connection closed. Once the same
+// process's next test, which spawns a child and reads its output, failed that way.
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a browser that has exited leaves the pipes of the children started after it alone", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-shot-fds-"));
+  const fakeChrome = await writeFakeChrome(folder, join(folder, "starts.log"));
+  const problems: string[] = [];
+  const printsALot = async () => {
+    const child = Bun.spawn([process.execPath, "-e", 'process.stdout.write("x".repeat(400_000))'], { stdout: "pipe", stderr: "pipe" });
+    let hung: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const [stdout, stderr, status] = await Promise.race([
+        Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]),
+        new Promise<never>((_, reject) => { hung = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("its output never ended")); }, 8_000); }),
+      ]);
+      if (status !== 0 || stderr !== "" || stdout.length !== 400_000) problems.push(`status ${status}, ${stdout.length} bytes, stderr ${JSON.stringify(stderr)}`);
+    } finally {
+      clearTimeout(hung);
+    }
+  };
+  try {
+    for (let round = 0; round < 20; round++) {
+      try {
+        const browser = await launchShotBrowser(fakeChrome, { widthPx: 400, heightPx: 300, userDataDir: join(folder, `profile${round}`) });
+        await browser.close();
+        for (let child = 0; child < 3; child++) await printsALot();
+      } catch (error) {
+        problems.push(`round ${round}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    expect(problems).toEqual([]);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+}, 60_000);
