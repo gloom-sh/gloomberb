@@ -9,6 +9,7 @@ import { notASymbolError } from "../../../../cli/symbol-cells";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
 import { shellWord } from "../../../../utils/shell-word";
+import { logFailure } from "../../../../utils/log-failure";
 import { parsePublicTickerKey } from "../../../../utils/exchanges";
 import { dryRunNote } from "../../../../cli/helpers";
 import {
@@ -237,10 +238,14 @@ export async function addOneSymbol(
 /**
  * The data provider a list add reads through: reading its names and looking
  * its symbols up share their answers, and signed out, its requests keep to
- * the service's allowance, waiting for room rather than being refused.
+ * the service's allowance, waiting for room rather than being refused. The
+ * CLI holds only the saved session's token, so the session is checked first:
+ * a verified account is not paced as a signed-out caller.
  */
-export function listAddLookups(dataProvider: DataProvider): DataProvider {
-  return listLookups(dataProvider, { allowances: apiClient.isVerified() ? null : signedOutAllowances() });
+export async function listAddLookups(dataProvider: DataProvider): Promise<DataProvider> {
+  const verified = await apiClient.ensureVerifiedSession()
+    .catch(logFailure("portfolio-list.bulk-symbols", "Checking the session before a list add failed", null));
+  return listLookups(dataProvider, { allowances: verified ? null : signedOutAllowances() });
 }
 
 /** A line on standard error while a long add waits to look symbols up again, so it never looks stuck. */

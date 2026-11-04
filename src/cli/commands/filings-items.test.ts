@@ -53,7 +53,7 @@ test("filings names an 8-K's items; exports keep the codes in items and add the 
 });
 
 // `filings WFC` listed 15 pricing supplements where `fn SEC WFC` hid them.
-test("filings hides a bank's pricing supplements by default, says how many, and --all lists them", async () => {
+test("filings hides by default what fn SEC hides, a bank's pricing supplements and a trust's other funds, says how many, and --all lists them", async () => {
   const supplement = (day: number, form: string): SecFilingItem => ({
     accessionNumber: `0001839882-26-${day}${form}`, form, filingDate: new Date(`2026-11-${String(day).padStart(2, "0")}`),
     cik: "72971", companyName: "WELLS FARGO & COMPANY/MN", filingUrl: `https://www.sec.gov/s${day}${form}`,
@@ -84,6 +84,18 @@ test("filings hides a bank's pricing supplements by default, says how many, and 
   const everything = await run(["WFC", "--count", "2", "--all"]);
   expect(everything.data.map((filing: SecFilingItem) => filing.form)).toEqual(["FWP", "424B2"]);
   expect(everything.metadata).not.toHaveProperty("pricingSupplementsHidden");
+
+  // A fund's trust files for each of its funds; the fund's own series is marked, the others' left out as fn SEC leaves them.
+  const series = (day: number, own: boolean): SecFilingItem => ({
+    ...supplement(day, "NPORT-P"), accessionNumber: `0000036405-26-${day}${own}`, fundSeries: own,
+  });
+  all.splice(0, all.length, series(9, false), series(8, true), series(7, false), ...FILINGS);
+  const fund = await run(["WFC", "--count", "2"]);
+  expect(fund.data.map((filing: SecFilingItem) => [filing.form, filing.fundSeries ?? null])).toEqual([["NPORT-P", true], ["8-K", null]]);
+  expect(fund.metadata).toMatchObject({ otherFundFilingsHidden: 2 });
+  // Nothing hidden is no count at all, not a zero.
+  all.splice(0, all.length, ...FILINGS);
+  expect((await run(["WFC", "--count", "2"])).metadata).not.toHaveProperty("pricingSupplementsHidden");
 });
 
 // `filings NST.AX` was "Unknown ticker NST.AX", and NST:ASX ended on "files no SEC reports" with nowhere to go.

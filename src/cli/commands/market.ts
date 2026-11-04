@@ -339,8 +339,8 @@ import {
   loadIndexedHolders,
   withIndexedHolders,
 } from "../../plugins/builtin/holders/index-holders";
-import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
-import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
+import { loadShownSecFilings } from "../../plugins/builtin/sec/forms";
+import { currentReportItemsLabel, hiddenFilingsMetadata, hiddenFilingsNote, type HiddenFilings } from "../../utils/sec-filings";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
 import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "../../plugins/builtin/insider/issuer";
 import { buildInsiderSummary } from "../../plugins/builtin/insider/model";
@@ -2473,7 +2473,8 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchangeOption = takeOption(args, "--exchange");
   const form = takeOption(args, "--form")?.trim() || null;
-  // As in fn SEC: a bank's pricing supplements stay out unless --all, and the list says how many it left out.
+  // As in fn SEC: a bank's pricing supplements and a trust's other funds stay out unless --all, and the list
+  // says how many it left out.
   const all = takeFlag(args, "--all");
   const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>] [--all]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
@@ -2492,14 +2493,12 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const load = (rows: number) => market.dataProvider.getSecFilings(symbol, rows, exchange, context);
       let hidden: HiddenFilings | null = null;
       const [filings, quote] = await Promise.all([
-        loadForListing(listing, market, ctx, () => form
-          // A form filter searches every filing the service lists for the issuer, as the SEC pane does.
-          ? load(SEC_FILING_FETCH_LIMIT).then((found) => found.filter((filing) => filingFormMatches(filing.form, form)).slice(0, count))
-          : all ? load(count)
-          : loadLatestFilings(load, count).then((latest) => {
-            hidden = latest.hidden;
-            return latest.filings;
-          }),
+        // What fn SEC shows: a form filter searches every filing listed for the issuer; without one, what fn SEC
+        // leaves out by default stays out unless --all.
+        loadForListing(listing, market, ctx, () => loadShownSecFilings(load, count, { form, all }).then((shown) => {
+          hidden = shown.hidden;
+          return shown.filings;
+        }),
         (found) => found.length === 0),
         quotePromise,
       ]);
@@ -2516,7 +2515,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         metadata: {
           ...listingMetadata(resolved), ...(form ? { form } : {}),
           ...(page ? { announcementsPage: page.url } : {}),
-          ...(hidden ? { pricingSupplementsHidden: (hidden as HiddenFilings).pricingSupplements } : {}),
+          ...hiddenFilingsMetadata(hidden),
         },
         freshness: rowsFreshness(filingRows(filings), SEC_FILING_ROWS),
         ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -3864,7 +3863,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       options: [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
         { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
-        { flags: "--all", description: "Also list the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, left out by default as in fn SEC" },
+        { flags: "--all", description: "Also list what fn SEC leaves out by default: the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, and a fund trust's filings for its other funds" },
         EXCHANGE_OPTION,
       ],
       examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],

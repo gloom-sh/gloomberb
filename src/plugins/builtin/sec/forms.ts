@@ -1,4 +1,5 @@
 import type { SecFilingItem } from "../../../types/data-provider";
+import { loadLatestFilings, SEC_FILING_FETCH_LIMIT, type HiddenFilings } from "../../../utils/sec-filings";
 
 /**
  * Registered fund forms: registration statements and their post-effective
@@ -72,4 +73,22 @@ export function filingFormMatches(form: string, wanted: string): boolean {
   const target = compactFilingForm(wanted);
   const actual = compactFilingForm(form);
   return !!target && (actual === target || actual === `${target}A`);
+}
+
+/**
+ * The filings a list of an issuer's filings shows, `fn SEC` and `filings`
+ * alike. With `form`, the latest `limit` of that form and its amendments from
+ * every filing listed for the issuer, supplements included when it names
+ * them. With `all`, the latest `limit` as filed. Otherwise the latest `limit`
+ * without what `loadLatestFilings` leaves out (a bank's pricing supplements,
+ * a fund trust's filings for its other funds), with how many it left out.
+ */
+export async function loadShownSecFilings(
+  load: (count: number) => Promise<SecFilingItem[]>,
+  limit: number,
+  { form = null, all = false }: { form?: string | null; all?: boolean } = {},
+): Promise<{ filings: SecFilingItem[]; hidden: HiddenFilings | null }> {
+  if (form) return { filings: (await load(SEC_FILING_FETCH_LIMIT)).filter((filing) => filingFormMatches(filing.form, form)).slice(0, limit), hidden: null };
+  if (all) return { filings: (await load(limit)).slice(0, limit), hidden: null };
+  return loadLatestFilings(load, limit);
 }

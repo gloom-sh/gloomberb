@@ -229,7 +229,7 @@ class QuoteGatherer {
  */
 const SIGNED_OUT_ALLOWANCE = {
   shared: { units: 280, windowMs: 60_000 },
-  listLookups: { units: 580, windowMs: 60_000 },
+  listLookups: { units: 280, windowMs: 60_000 },
 } as const;
 
 /** The allowances a list's lookups keep to (`SIGNED_OUT_ALLOWANCE`). */
@@ -274,10 +274,29 @@ function gathered<T>(send: (keys: string[]) => Promise<Map<string, T> | null>, s
   });
 }
 
+/** Waits `ms`, or less when `signal` aborts first: no timer is left behind to hold the process open. */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
 /**
  * Spends a sliding window's allowance in the order asked: a request waits
  * until its cost fits rather than being sent to be refused. A cost above the
- * whole allowance waits for an empty window.
+ * whole allowance waits for an empty window. A take whose `signal` aborts
+ * stops waiting at once, spends nothing and rejects with the signal's reason,
+ * so its request is never sent; the takes behind it keep their turn.
  */
 export class RequestAllowance {
   private spent: Array<{ at: number; cost: number }> = [];
@@ -287,13 +306,14 @@ export class RequestAllowance {
     private readonly units: number,
     private readonly windowMs: number,
     private readonly now: () => number = Date.now,
-    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void> = sleepUnlessAborted,
   ) {}
 
-  take(cost: number): Promise<void> {
+  take(cost: number, signal?: AbortSignal): Promise<void> {
     const wanted = Math.min(Math.max(1, cost), this.units);
     const next = this.turn.then(async () => {
       for (;;) {
+        signal?.throwIfAborted();
         const now = this.now();
         this.spent = this.spent.filter((hit) => hit.at + this.windowMs + ALLOWANCE_MARGIN_MS > now);
         let excess = this.spent.reduce((total, hit) => total + hit.cost, wanted) - this.units;
@@ -308,10 +328,12 @@ export class RequestAllowance {
           until = hit.at + this.windowMs + ALLOWANCE_MARGIN_MS;
           if (excess <= 0) break;
         }
-        await this.sleep(Math.max(1, until - now));
+        await this.sleep(Math.max(1, until - now), signal);
       }
     });
-    this.turn = next;
+    this.turn = next.catch(() => {
+      // Intentional ignore: the take's own caller gets its rejection; the takes behind it only wait their turn.
+    });
     return next;
   }
 }
@@ -330,8 +352,8 @@ export function listLookups(dataProvider: DataProvider, { allowances = null }: {
   if (!dataProvider) return dataProvider;
   const searches = new Map<string, { limit: number; rows: InstrumentSearchResult[] }>();
   const quotes = new Map<string, Quote>();
-  const paced = async <T>(cost: number, ask: () => Promise<T>, allowance: "shared" | "listLookups" = "shared"): Promise<T> => {
-    await allowances?.[allowance].take(cost);
+  const paced = async <T>(cost: number, ask: () => Promise<T>, allowance: "shared" | "listLookups" = "shared", signal?: AbortSignal): Promise<T> => {
+    await allowances?.[allowance].take(cost, signal);
     return ask();
   };
   const known = (query: string, limit: number) => {
@@ -366,8 +388,15 @@ export function listLookups(dataProvider: DataProvider, { allowances = null }: {
       const limit = options?.limit ?? DEFAULT_SEARCH_LIMIT;
       const asked = [...new Set(queries.map(searchKey))].filter((query) => !known(query, limit));
       // A request per hundred queries, each spending its own share, so the first answers while the rest wait.
+      // One that fails (refused for the rate) settles the batch: the chunks still waiting their turn are dropped,
+      // never sent later for an answer nobody reads, nor left waiting to hold the command open.
+      const failed = new AbortController();
       const answered = await Promise.all(chunked(asked, SEARCH_BATCH_SIZE).map((chunk) =>
-        paced(chunk.length, () => dataProvider.searchBatch!(chunk, options), "listLookups")));
+        paced(chunk.length, () => dataProvider.searchBatch!(chunk, options), "listLookups", failed.signal)
+          .catch((error: unknown) => {
+            failed.abort(error);
+            throw error;
+          })));
       if (asked.length > 0 && answered.every((answer) => !answer)) return null;
       for (const answer of answered) for (const [query, rows] of answer ?? []) keep(query, limit, rows);
       const rowsOf = (query: string) => known(query, limit)
@@ -403,12 +432,12 @@ export function listLookups(dataProvider: DataProvider, { allowances = null }: {
     overrides.getTickerChanges = async (symbol, options) => {
       // A lookup given up on (its signal) leaves the batch's answer unread.
       const batched = await gatheredChanges?.(symbol.trim().toUpperCase());
-      return batched !== undefined ? batched : paced(1, () => dataProvider.getTickerChanges!(symbol, options));
+      return batched !== undefined ? batched : paced(1, () => dataProvider.getTickerChanges!(symbol, options), "shared", options?.signal);
     };
   }
   if (dataProvider.getTickerChangesBatch) {
     overrides.getTickerChangesBatch = (symbols, options) =>
-      paced(Math.ceil(new Set(symbols.map(searchKey)).size / TICKER_CHANGES_PER_UNIT), () => dataProvider.getTickerChangesBatch!(symbols, options), "listLookups");
+      paced(Math.ceil(new Set(symbols.map(searchKey)).size / TICKER_CHANGES_PER_UNIT), () => dataProvider.getTickerChangesBatch!(symbols, options), "listLookups", options?.signal);
   }
   return withOverrides(dataProvider, overrides);
 }

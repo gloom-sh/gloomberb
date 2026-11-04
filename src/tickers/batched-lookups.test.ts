@@ -61,3 +61,22 @@ test("a list's lookups ask each search and quote once, gather single asks into b
   // Batched searches spend the list's own allowance, quotes and single searches the shared one.
   expect(spent).toEqual([["listLookups", 2], ["listLookups", 3], ["shared", 1], ["shared", 2]]);
 });
+
+test("a batched search refused for one chunk drops the chunks still waiting for the allowance: nothing is sent after, nothing holds the command", async () => {
+  const sent: number[] = [];
+  const queries = Array.from({ length: 250 }, (_, index) => `Q${index}`);
+  const source = createTestDataProvider({ search: async () => [] });
+  source.searchBatch = async (chunk) => {
+    sent.push(chunk.length);
+    throw Object.assign(new Error("Anonymous market rate limit exceeded"), { status: 429 });
+  };
+  // A minute's allowance of 120: the first chunk goes at once, the others wait for the window, on real timers.
+  const listAllowance = new RequestAllowance(120, 60_000);
+  const lookups = listLookups(source, { allowances: { shared: new RequestAllowance(280, 60_000), listLookups: listAllowance } });
+  const started = Date.now();
+  await expect(lookups.searchBatch!(queries, { limit: 10 })).rejects.toThrow("rate limit");
+  // The waiting chunks were dropped, not sent a minute later; the allowance's next taker is not held behind them.
+  await listAllowance.take(1);
+  expect(Date.now() - started).toBeLessThan(1_000);
+  expect(sent).toEqual([100]);
+});

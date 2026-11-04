@@ -249,7 +249,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
   await withCollectionMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     // Reading the names and looking the symbols up share their answers, so nothing is asked twice.
-    const lookups = listAddLookups(market.dataProvider);
+    const lookups = await listAddLookups(market.dataProvider);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, lookups));
     if (list.single) {
       await addTickerToPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, market);
