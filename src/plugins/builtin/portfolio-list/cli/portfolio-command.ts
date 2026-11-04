@@ -48,6 +48,7 @@ import { findCachedPortfolioAccount } from "../cached-account";
 import { apiClient } from "../../../../api-client";
 import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImportLine } from "./import-13f";
 import { importedFromText } from "../imported-from";
+import { importPositionsFileCommand, POSITIONS_IMPORT_HELP, POSITIONS_IMPORT_USAGE, type PositionsImportOptions } from "./import-positions";
 import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { ambiguousQuantityProblem } from "../../../../portfolio/position-quantity";
@@ -84,7 +85,7 @@ const POSITION_USAGE = "Usage: gloom portfolio position set <portfolio> <ticker>
 const REMOVE_USAGE = "Usage: gloom portfolio remove <portfolio> <symbols...> [--file <path>]";
 const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
 const TARGET_USAGE = "Usage: gloom portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
-const IMPORT_USAGE = "Usage: gloom portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
+const IMPORT_USAGE = "Usage: gloom portfolio import <file> [--name <portfolio>] [--merge | --replace] [--dry-run] | portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
 const IMPORT_DEFAULT_TOP = 10;
 const IMPORT_MAX_TOP = 100;
 const IMPORT_DEFAULT_NOTIONAL = 100_000;
@@ -763,14 +764,7 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
   const name = takeImportValue(args, "--name", ctx);
   const notional = takeImportValue(args, "--notional", ctx);
   const replace = takeFlag(args, "--replace");
-  // `portfolio import holdings.csv` is a list of symbols, which add reads.
-  const path = args.find((arg) => /\.(csv|tsv|txt)$/i.test(arg));
-  if (!query && path) {
-    ctx.fail(
-      `portfolio import reads a manager's 13F filing. To add the symbols in ${path}, run: gloom portfolio add <portfolio> --file ${path}`,
-      IMPORT_USAGE,
-    );
-  }
+  if (takeFlag(args, "--merge")) ctx.fail("--merge is an option of portfolio import <file>; a 13F import fills an empty portfolio or replaces one with --replace.", IMPORT_USAGE);
   if (!query) ctx.fail("portfolio import needs a manager: --13f <CIK|fund name>.", IMPORT_USAGE);
   if (args.length > 0) {
     ctx.fail(`portfolio import takes its manager and portfolio as options; got ${args.join(" ")}.`, `Quote a name with spaces, as in --13f "Berkshire Hathaway".\n${IMPORT_USAGE}`);
@@ -786,6 +780,23 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
   }
   if (!Number.isFinite(amount) || amount <= 0) ctx.fail("--notional must be an amount above zero, such as --notional 250000.");
   return { query, top: count, name: name || undefined, notional: amount, replace };
+}
+
+/** `portfolio import <file>`: the file, the portfolio to fill and how; a 13F's options are refused. */
+function parsePositionsImportOptions(args: string[], ctx: CliCommandContext): PositionsImportOptions {
+  const name = takeImportValue(args, "--name", ctx);
+  const merge = takeFlag(args, "--merge");
+  const replace = takeFlag(args, "--replace");
+  if (merge && replace) ctx.fail("Give --merge or --replace, not both.", POSITIONS_IMPORT_USAGE);
+  const thirteenF = args.find((arg) => /^--(?:top|notional)(?:=|$)/.test(arg));
+  if (thirteenF) ctx.fail(`${thirteenF.split("=")[0]} is an option of portfolio import --13f.`, IMPORT_USAGE);
+  const flag = args.find((arg) => arg.startsWith("--"));
+  if (flag) ctx.fail(`Unknown option ${flag.split("=")[0]} for portfolio import.`, POSITIONS_IMPORT_USAGE);
+  if (args.length === 0) ctx.fail("portfolio import needs a positions file (CSV), or a manager with --13f <CIK|fund name>.", IMPORT_USAGE);
+  if (args.length > 1) {
+    ctx.fail(`portfolio import reads one file; got ${args.join(" ")}.`, `Quote a path with spaces, and name the portfolio with --name.\n${POSITIONS_IMPORT_USAGE}`);
+  }
+  return { path: args[0]!, name: name || undefined, mode: merge ? "merge" : replace ? "replace" : null };
 }
 
 /**
@@ -901,7 +912,7 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
   });
 }
 
-const IMPORT_FLAGS = new Set(["--13f", "--top", "--name", "--notional", "--replace"]);
+const IMPORT_FLAGS = new Set(["--13f", "--top", "--name", "--notional", "--replace", "--merge"]);
 
 /** The actions `portfolio` takes; any other first word names a portfolio to show. */
 const KNOWN_ACTIONS = new Set(["list", "show", "create", "delete", "rm", "add", "remove", "position", "cash", "target", "targets", "import"]);
@@ -968,6 +979,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio target set <portfolio> <symbol|CASH> <weight%>",
       "portfolio target clear <portfolio> [symbol|CASH]",
       "portfolio target show <portfolio>",
+      "portfolio import <file> [--name <portfolio>] [--merge | --replace] [--dry-run]",
       "portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]",
     ],
     options: [
@@ -979,9 +991,10 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
       { flags: "--13f <CIK|name>", description: "portfolio import: the 13F manager whose latest filing to import" },
       { flags: "--top <n>", description: `portfolio import: how many of its largest common-stock lines (default ${IMPORT_DEFAULT_TOP}, at most ${IMPORT_MAX_TOP})` },
-      { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
+      { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the broker's name for a file, the manager's name and 13F for --13f)" },
       { flags: "--notional <amount>", description: "portfolio import: the USD total the shares add up to at the filing's prices (default 100,000)" },
-      { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
+      { flags: "--merge", description: "portfolio import <file>: update a portfolio that holds tickers with the file's positions, keeping the rest" },
+      { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name (a file's: remove holdings it does not list)" },
       { flags: "--currency <code>", description: "portfolio create: the currency the portfolio totals in, whatever the base currency (a name's last word in capitals, such as THB, is read as one too)" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
@@ -1006,16 +1019,24 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio show Research --csv",
       "portfolio show Research --explain",
       "portfolio show Research --drip --years 3 --withholding 15",
+      "portfolio import Portfolio_Positions.csv --dry-run",
+      "portfolio import ~/Downloads/positions.csv --name Research --merge",
       "portfolio import --13f 0001067983 --top 10",
     ],
-    sections: [VALUE_HELP, POSITION_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
+    sections: [VALUE_HELP, POSITION_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP, POSITIONS_IMPORT_HELP],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
     const action = args[0];
     if (action === "import") {
-      if (ctx.cliOptions.dryRun) ctx.fail("portfolio import has no --dry-run; it creates or fills the portfolio when it runs.");
-      await importThirteenFCommand(parseImportOptions(args.slice(1), ctx), ctx);
+      const rest = args.slice(1);
+      // A 13F names its manager with --13f; anything else is a broker's positions file.
+      if (!rest.some((arg) => arg === "--13f" || arg.startsWith("--13f="))) {
+        await importPositionsFileCommand(parsePositionsImportOptions(rest, ctx), ctx);
+        return;
+      }
+      if (ctx.cliOptions.dryRun) ctx.fail("portfolio import --13f has no --dry-run; it creates or fills the portfolio when it runs.");
+      await importThirteenFCommand(parseImportOptions(rest, ctx), ctx);
       return;
     }
     const exchange = takeOption(args, "--exchange");
