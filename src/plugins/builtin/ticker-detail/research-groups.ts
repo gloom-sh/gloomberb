@@ -9,8 +9,7 @@ export interface TickerResearchTabSummary {
 
 interface TickerResearchGroupDef {
   id: string;
-  /** Omitted for a view that stands alone: the strip names it by the view. */
-  name?: string;
+  name: string;
   /** Research tab ids, in the order the group offers them. */
   views: readonly string[];
 }
@@ -21,17 +20,17 @@ interface TickerResearchGroupDef {
  * else (saved layouts, a locked pane, `?tab=`, `--tab`, links between tabs,
  * the views people stay on), so the grouping is only how the strip reads.
  *
- * Trade and ADR vs Home are in no group: they show only for a ticket a
- * connected broker can place or a listing with a known receipt pair, and keep
- * the place they had beside Overview. A plugin's own tab is in none either:
- * it gets its own top tab after these (`groupTickerResearchTabs`).
+ * Trade is Chart with the ticket beside it, and closing the ticket goes back
+ * to Chart (`ResearchTradeWorkspace`), so it is Chart's second view. ADR vs
+ * Home, the receipt's price against its home line, is the last of
+ * Financials. Both show only for some tickers, so each comes after the views
+ * every ticker has. A plugin's own tab is in no group: it gets its own top
+ * tab after these (`groupTickerResearchTabs`).
  */
 const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "overview", name: "Overview", views: ["overview"] },
-  { id: "trade", views: ["broker-trade"] },
-  { id: "adr", views: [ADR_PAIR_TAB_ID] },
-  { id: "chart", name: "Chart", views: ["chart"] },
-  { id: "financials", name: "Financials", views: ["financials", "revenue", "equity-diagnostic", "dividend-yield"] },
+  { id: "chart", name: "Chart", views: ["chart", "broker-trade"] },
+  { id: "financials", name: "Financials", views: ["financials", "revenue", "equity-diagnostic", "dividend-yield", ADR_PAIR_TAB_ID] },
   { id: "analysts", name: "Analysts", views: ["analyst-research", "earnings-calls"] },
   { id: "options", name: "Options", views: ["options"] },
   { id: "events", name: "Events", views: ["corporate-actions", "catalysts", "mna"] },
@@ -65,7 +64,7 @@ export function groupTickerResearchTabs(tabs: readonly TickerResearchTabSummary[
   for (const group of TICKER_RESEARCH_GROUPS) {
     const views = group.views.flatMap((id) => byId.get(id) ?? []);
     for (const view of views) grouped.add(view.id);
-    if (views.length > 0) groups.push({ id: group.id, name: group.name ?? views[0]!.name, views });
+    if (views.length > 0) groups.push({ id: group.id, name: group.name, views });
   }
   const own = tabs.filter((tab) => !grouped.has(tab.id)).sort((left, right) => left.order - right.order);
   for (const tab of own) groups.push({ id: `${OWN_GROUP_PREFIX}${tab.id}`, name: tab.name, views: [tab] });
