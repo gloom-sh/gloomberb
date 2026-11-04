@@ -1,5 +1,5 @@
 import { t } from "../../../i18n";
-import type { PluginRegistry } from "../../registry";
+import { getSharedRegistry, type PluginRegistry } from "../../registry";
 import { resolvePaneInstance } from "../../../types/config";
 
 const BROKERS_PANE_ID = "brokers";
@@ -31,4 +31,13 @@ export function openBrokerAddFlow(registry: BrokerAddLauncher): void {
   // The pane just shown: the layout is current the moment showPane placed it.
   const pane = resolvePaneInstance(registry.getLayout(), BROKERS_PANE_ID);
   if (pane) registry.updatePaneRuntimeState(pane.instanceId, { [BROKER_ADD_REQUEST_KEY]: Date.now() });
+}
+
+/**
+ * Add Broker Account from another pane's empty state (Orders, Portfolio
+ * Analytics): the command bar's own action, so a detached window says to
+ * open it from the main window, as the command bar does there.
+ */
+export function startBrokerAdd(): void {
+  getSharedRegistry()?.openBuiltInWorkflow("add-broker-account");
 }

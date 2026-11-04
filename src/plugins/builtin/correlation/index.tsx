@@ -1,12 +1,10 @@
-import { Box, ScrollBox, Text, TextAttributes, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Box, type InputRenderable } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { afterLayout } from "../../../components/ui/reveal-in-scroll-box";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import { colors } from "../../../theme/colors";
 import { usePluginAppActions, usePluginTickerActions } from "../../runtime";
 import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { useChartQueries } from "../../../market-data/hooks";
@@ -18,7 +16,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cloudGeoRequest } from "../world-venue-map/client";
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
-import { formatCorrelation, type DailyClose } from "./compute";
+import type { DailyClose } from "./compute";
 import {
   CORRELATION_RANGE_OPTIONS,
   DEFAULT_CORRELATION_SYMBOLS,
@@ -27,7 +25,6 @@ import {
   getCorrelationPaneSettings,
   type CorrelationRangePreset,
 } from "./settings";
-import { resolveHeatCellColors } from "../../../theme/heat-colors";
 import {
   buildRelationshipGraphSettingsDef,
   createRelationshipPaneTemplate,
@@ -35,20 +32,16 @@ import {
   RelationshipGraphPane,
 } from "./relationship/pane";
 import {
-  MATRIX_CELL_WIDTH,
-  MIN_MATRIX_CELL_WIDTH,
-  ROW_HEADER_WIDTH,
   buildCorrelationMatrix,
   buildCorrelationPaneTitle,
   buildGeoCorrelationSeries,
   buildStatusSummary,
   type CorrelationSeries,
-  displaySymbol,
   getSeriesForEntry,
   pairKey,
   rowHeaderColor,
 } from "./matrix/model";
-import { SymbolLabelCell } from "./matrix/symbol-cell";
+import { CorrelationMatrixGrid, correlationMatrixLayout } from "./matrix/grid";
 import { correlationHeadless, relationshipHeadless } from "./headless";
 import { CORRELATION_HISTORY_RESOLUTION } from "./history";
 import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixSelection, moveMatrixCursor, type MatrixCursor } from "./matrix/selection";
@@ -83,8 +76,6 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const symbolsBeforeEditRef = useRef(symbolsText);
   // Remounts the query bar so the field drops the draft Esc threw away.
   const [queryBarRevision, setQueryBarRevision] = useState(0);
-  const matrixScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const horizontalScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const entries = settings.symbolsError ? [] : settings.symbols;
   const geoEntries = entries.filter((entry) => geoSeriesToken(entry));
@@ -263,38 +254,11 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     setCursorState((current) => current.hoveredSymbol === symbol ? { ...current, hoveredSymbol: null } : current);
   }, []);
 
-  const headerBg = colors.panel;
-  const labelWidth = Math.max(0, ...symbols.map((symbol) => displaySymbol(symbol).length));
-  const rowHeaderWidth = Math.max(ROW_HEADER_WIDTH, Math.min(12, labelWidth + 2));
-  // A map series label (SUEZ.TANKER) is wider than a ticker's: columns keep room for it and the matrix scrolls instead.
-  const minCellWidth = Math.max(MIN_MATRIX_CELL_WIDTH, labelWidth + 2);
-  const cellCount = Math.max(1, symbols.length);
-  const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, cellCount * minCellWidth)) / cellCount);
-  const cellWidth = Math.max(minCellWidth, Math.min(MATRIX_CELL_WIDTH, availableCellWidth));
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
-  const matrixRowWidth = 1 + rowHeaderWidth + symbols.length * cellWidth;
+  const matrixRowWidth = correlationMatrixLayout(symbols, width).rowWidth;
   const chartRows = pair ? matrixChartRows(width, height, symbols.length, matrixRowWidth) : 0;
   const matrixHeight = Math.max(1, height - 1 - (chartRows > 0 ? chartRows + 1 : 0));
-  const horizontalBarRows = matrixRowWidth > width - 1 ? 1 : 0;
-
-  // Scroll after React commits a movement, including several keys in one input batch.
-  useEffect(() => afterLayout(() => {
-    const scroll = matrixScrollRef.current;
-    if (scroll) {
-      const viewportHeight = Math.max(1, scroll.viewport?.height ?? 1);
-      if (cursor.row < scroll.scrollTop) scroll.scrollTo(cursor.row);
-      else if (cursor.row + 1 > scroll.scrollTop + viewportHeight) scroll.scrollTo(cursor.row + 1 - viewportHeight);
-    }
-    const horizontal = horizontalScrollRef.current;
-    if (!horizontal) return;
-    const left = cursor.column < 0 ? 0 : 1 + rowHeaderWidth + cursor.column * cellWidth;
-    const right = left + (cursor.column < 0 ? rowHeaderWidth : cellWidth);
-    const scrollLeft = horizontal.scrollLeft ?? 0;
-    const viewportWidth = horizontal.viewport?.width || width;
-    if (left < scrollLeft) horizontal.scrollTo({ x: left, y: 0 });
-    else if (right > scrollLeft + viewportWidth) horizontal.scrollTo({ x: right - viewportWidth, y: 0 });
-  }), [cursor.row, cursor.column, matrixHeight, rowHeaderWidth, cellWidth, width]);
   const bodyStatus = settings.symbolsError
     ? <PaneStatusBody error={settings.symbolsError} />
     : symbols.length < 2
@@ -335,79 +299,19 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       />
       {bodyStatus ?? (
         <>
-          <ScrollBox ref={horizontalScrollRef} height={matrixHeight} flexShrink={1} minHeight={Math.min(matrixHeight, symbols.length + 1, 5)} scrollX scrollY={false} focusable={false}>
-            <Box flexDirection="column" width={Math.max(width - 1, matrixRowWidth)} height={matrixHeight - horizontalBarRows}>
-              {/* Column header row */}
-              <Box flexDirection="row" paddingLeft={1} height={1} flexShrink={0} width={matrixRowWidth} backgroundColor={headerBg}>
-                <Box width={rowHeaderWidth} flexShrink={0} />
-                {symbols.map((sym) => (
-                  <SymbolLabelCell
-                    key={sym}
-                    symbol={sym}
-                    width={cellWidth}
-                    align="flex-end"
-                    color={colors.textDim}
-                    hovered={hoveredSymbol === sym || selection?.[1] === sym}
-                    onHover={hoverSymbol}
-                    onLeave={clearHoveredSymbol}
-                    onOpen={openSymbol}
-                  />
-                ))}
-              </Box>
-
-              {/* Matrix rows */}
-              <ScrollBox ref={matrixScrollRef} flexGrow={1} flexBasis={0} minHeight={0} scrollY scrollX={false} focusable={false}>
-                <Box flexDirection="column">
-                  {symbols.map((rowSym, rowIndex) => (
-                    <Box key={rowSym} flexDirection="row" paddingLeft={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
-                      {/* Row header */}
-                      <Box
-                        width={rowHeaderWidth}
-                        flexShrink={0}
-                        overflow="hidden"
-                      >
-                        <SymbolLabelCell
-                          symbol={rowSym}
-                          width={rowHeaderWidth}
-                          color={rowHeaderColor(seriesBySymbol.get(rowSym)?.status ?? "loading")}
-                          hovered={hoveredSymbol === rowSym || selection?.[0] === rowSym}
-                          onHover={hoverSymbol}
-                          onLeave={clearHoveredSymbol}
-                          onOpen={openSymbol}
-                        />
-                      </Box>
-                      {/* Cells */}
-                      {symbols.map((colSym, colIndex) => {
-                        const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                        const cellColors = resolveHeatCellColors(r, { quiet: rowSym === colSym });
-                        const text = formatCorrelation(r);
-                        const selected = cursor.row === rowIndex && cursor.column === colIndex;
-                        return (
-                          <Box
-                            key={colSym}
-                            width={cellWidth}
-                            flexShrink={0}
-                            flexDirection="row"
-                            justifyContent="flex-end"
-                            paddingRight={1}
-                            backgroundColor={cellColors.background}
-                            style={{ cursor: "pointer" }}
-                            onMouseDown={(event: any) => {
-                              event.preventDefault?.();
-                              event.stopPropagation?.();
-                              setCursorState({ cursor: { row: rowIndex, column: colIndex }, hoveredSymbol: null });
-                            }}
-                          >
-                            <Text fg={cellColors.foreground} attributes={selected ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.NONE}>{text}</Text>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  ))}
-                </Box>
-              </ScrollBox>
-            </Box>
-          </ScrollBox>
+          <CorrelationMatrixGrid
+            symbols={symbols}
+            width={width}
+            height={matrixHeight}
+            correlation={(row, column) => matrix.results.get(pairKey(row, column))?.correlation ?? null}
+            cursor={cursor}
+            hoveredSymbol={hoveredSymbol}
+            rowColor={(symbol) => rowHeaderColor(seriesBySymbol.get(symbol)?.status ?? "loading")}
+            onSelectCell={(next) => setCursorState({ cursor: next, hoveredSymbol: null })}
+            onHoverSymbol={hoverSymbol}
+            onLeaveSymbol={clearHoveredSymbol}
+            onOpenSymbol={openSymbol}
+          />
           {chartRows > 0 && pair && pairHistory ? (
             <MatrixPairChart
               pair={pair}

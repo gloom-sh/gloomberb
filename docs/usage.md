@@ -2524,10 +2524,26 @@ The return rows and tracking error are measured against SPY (`60D benchmark retu
 - `--weights current` (the pane's **Since-filing weights** setting) holds today's weights fixed over the same sessions instead.
 - Pane settings give independent index-percent, 10Y-basis-point and VIX-point stress shifts, each a share of the basket.
 - `--fx-shift TRY -20` (the lira 20% weaker against USD) and `--asset-shift BTC-USD -30` reprice every holding and the cash at once, through each line's currency and price; the Stress view lists each line they move and the book total, cash included. Several go in one flag, separated by commas (`--fx-shift TRY -20, EUR 5`). The pane's FX shift and Asset shift settings take the same text.
+- The Stress view also replays four past selloffs on today's basket at its current weights, each holding moving as its own daily closes did between the two dates, a foreign listing converted at the FX closes of the same dates. Each runs from the last close before the shock to SPY's lowest close of the move:
+
+  | Episode | Window | SPY |
+  | --- | --- | --- |
+  | Covid crash Feb-Mar 2020 | 19 Feb to 23 Mar 2020 | -34.1% |
+  | Rate shock Jan-Oct 2022 | 3 Jan to 12 Oct 2022 | -25.4% |
+  | Carry unwind Aug 2024 | 31 Jul to 5 Aug 2024 | -6.1% |
+  | Tariff drop Apr 2025 | 2 Apr to 8 Apr 2025 | -12.1% |
+
+  A holding with no closes over a window (listed later, or its history did not load) moves by its beta to SPY over the trailing 126 sessions times SPY's move. The row's evidence names it and its share of the book (`PLTR by beta proxy, 21% of book`), and a note gives its beta.
+
+### Correlation
+
+The Correlation view draws the heat matrix `CORR` uses, largest holding first, while every basket holding fits the pane; Enter on a pair opens it in `GR`. A basket too large for the matrix lists its pairs, the strongest correlation first, either sign.
 
 ### Performance and attribution evidence
 
 Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence). The pane does not derive account cashflows from current holdings. Evidence stays private and must match the portfolio ID and currency.
+
+Without it, each view says what it is missing: Performance the account's daily values and the money paid in and out, Attribution the sector weights and returns of the account and its benchmark, Greeks option positions. Where a broker would bring them (account history, option positions) and the portfolio has none linked, **Add Broker Account** opens the Brokers flow; **Import evidence** reads the JSON from the clipboard.
 
 ```sh
 gloom fn PORT main --json

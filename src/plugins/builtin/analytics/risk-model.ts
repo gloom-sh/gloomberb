@@ -11,6 +11,7 @@ import type { CloudQuotePayload } from "../../../api-client/types";
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
 import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import type { DatedReturn } from "./metrics";
+import { episodeEvidence, episodeWindowText, replayEpisodes, RISK_EPISODES } from "./risk-episodes";
 import {
   computeWeightedPortfolioReturns,
   syntheticPositionUnsupportedReason,
@@ -960,6 +961,23 @@ export function buildPortfolioRisk(
       value: regression ? regression.beta * stress.shock * 100 : null,
     };
   });
+  // Past selloffs replayed on today's basket at its current weights, each
+  // holding from its own daily closes or, without them, by its beta to SPY.
+  const episodeState = market.episodes;
+  const episodes = episodeState && !("pending" in episodeState) && members.length
+    ? replayEpisodes(
+        episodeState,
+        members.map((row) => ({
+          id: row.id,
+          symbol: row.symbol,
+          weight: row.weight ?? 0,
+          value: row.value ?? 0,
+          convertedFrom: row.convertedFrom,
+          returns: row.returns,
+        })),
+        { spyReturns: spy, accountCurrency: portfolio.currency, bookValue: marketValue },
+      )
+    : null;
   // The given currency and price shocks reprice every line of the book, cash included, at once.
   const bookLines: RiskBookLine[] = [
     ...holdings.map((row) => ({
@@ -1071,15 +1089,18 @@ export function buildPortfolioRisk(
     ]
       .sort((a, b) => (b.size ?? -1) - (a.size ?? -1))
       .map(({ row }) => row),
-    correlation: correlation.map((row) => ({
-      id: `${row.left}/${row.right}`,
-      label: row.label,
-      value: row.value,
-      unit: "correlation",
-      percentile: null,
-      asOf: row.asOf ?? null,
-      detail: `${row.samples ?? 0} matched daily returns`,
-    })),
+    // Strongest first, either sign: the pairs that move the basket together or against each other lead.
+    correlation: correlation
+      .map((row) => ({
+        id: `${row.left}/${row.right}`,
+        label: row.label,
+        value: row.value,
+        unit: "correlation",
+        percentile: null,
+        asOf: row.asOf ?? null,
+        detail: `${row.samples ?? 0} matched daily returns`,
+      }))
+      .sort((left, right) => (right.value == null ? -1 : Math.abs(right.value)) - (left.value == null ? -1 : Math.abs(left.value))),
     stress: [
       // A regression scenario moves the basket by its beta; it is a share of the basket, not of the book.
       ...stresses.map((row) => ({
@@ -1091,6 +1112,23 @@ export function buildPortfolioRisk(
         asOf: row.regression?.asOf ?? null,
         detail: `% of basket; ${row.regression?.samples ?? 0} sessions; R² ${row.regression?.rSquared?.toFixed(2) ?? "--"}; ${row.source}`,
       })),
+      // Dated as the index scenario is: the weights and betas are today's, the window is in the label and the evidence.
+      ...(episodeState
+        ? RISK_EPISODES.map((episode, index) => {
+            const replay = episodes?.[index];
+            return {
+              id: `episode:${episode.id}`,
+              label: episode.label,
+              value: replay?.value == null ? null : replay.value * 100,
+              unit: "%",
+              percentile: null,
+              asOf: stresses[0]?.regression?.asOf ?? basket.at(-1)?.dateKey ?? null,
+              detail: replay
+                ? episodeEvidence(replay, portfolio.currency)
+                : `% of basket; ${"pending" in episodeState ? episodeState.pending : "no basket to replay"}; ${episodeWindowText(episode)} closes`,
+            };
+          })
+        : []),
       ...(repricing ? repricingRows(repricing, portfolio.currency, market.fetchedAt) : []),
     ],
     performance: performance
@@ -1235,6 +1273,7 @@ export function buildPortfolioRisk(
     factors,
     correlation,
     stresses,
+    episodes,
     performance,
     attribution,
     greeks,

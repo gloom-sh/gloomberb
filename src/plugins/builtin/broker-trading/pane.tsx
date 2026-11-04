@@ -1,7 +1,9 @@
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPlainKey } from "../../../utils/keyboard";
-import { Button, EmptyState, Notice, PaneFooterScope, SelectButton, confirmDialog, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
+import { Button, EmptyState, Notice, PaneFooterScope, PaneStatusBody, SelectButton, confirmDialog, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
+import { startBrokerAdd } from "../broker-manager/add-request";
+import { t } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
 import { useDialog, useDialogState } from "../../../ui/dialog";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -575,6 +577,7 @@ export function BrokerTradeTab({ width, height, focused, onCapture, docked, onCl
 export function BrokerOrdersPane({ width, height, focused }: PaneProps) {
   const config = usePaneAppConfig();
   const { getBrokerAdapter } = usePluginBrokerActions();
+  const { showPane } = usePluginAppActions();
   const [selected, setSelected] = useState<string>();
   const profileControl = useRef<SelectControl>(null);
   const profiles = config.brokerInstances.filter((instance) => instance.enabled !== false && !!getBrokerAdapter(instance.brokerType)?.listOpenOrders);
@@ -584,6 +587,11 @@ export function BrokerOrdersPane({ width, height, focused }: PaneProps) {
   const instance = profiles.find((value) => value.id === selected) ?? (profiles.length === 1 ? profiles[0] : undefined);
   const broker = instance ? getBrokerAdapter(instance.brokerType) : null;
   const contract = useMemo(() => ({ brokerId: broker?.id ?? "", brokerInstanceId: instance?.id, symbol: "", currency: "USD", secType: "STK" }), [broker?.id, instance?.id]);
+  // Nothing to choose: the Brokers pane's own empty state, with the way to add one; a profile that
+  // cannot list orders (off, or a broker without them) is changed in Brokers.
+  if (!profiles.length) return config.brokerInstances.length === 0
+    ? <PaneStatusBody empty emptyTitle={t("No broker profiles.")} actions={<Button label="Add Broker Account" onPress={startBrokerAdd} />} />
+    : <PaneStatusBody empty emptyTitle="No enabled broker profile lists orders." actions={<Button label="Open Brokers" onPress={() => showPane("brokers")} />} />;
   return <Box flexGrow={1} flexDirection="column">
     <Box paddingX={1}><SelectButton label="Broker profile" controlRef={profileControl} emphasized={focused && !instance} value={instance?.id ?? ""}
       options={[{ value: "", label: "Choose a profile", disabled: true }, ...profiles.map((value) => ({ value: value.id, label: value.label }))]} onChange={setSelected} /></Box>
