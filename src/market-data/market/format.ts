@@ -53,7 +53,7 @@ export function quoteFormatOptions(
 }
 
 /** A hundredth of a cent, one basis point of a dollar peg: the decimals CRYP prints a stablecoin to. */
-export const NEAR_PAR_COIN_PRICE_DIGITS = 4;
+const NEAR_PAR_COIN_PRICE_DIGITS = 4;
 
 /**
  * The decimals a coin trading near a dollar prints to, a dollar stablecoin's
