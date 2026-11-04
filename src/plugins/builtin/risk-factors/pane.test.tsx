@@ -11,7 +11,7 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import { Box, useRendererHost } from "../../../ui";
 import { attachRiskFactorsPersistence, resetRiskFactorsPersistence } from "./data";
 import { RiskFactorsPane } from "./pane";
-import { list, report } from "./test-fixtures";
+import { list, noRiskFactorsReport, report } from "./test-fixtures";
 
 blockExternalNetwork();
 
@@ -206,6 +206,21 @@ test("a ticker without a 10-K report shows the empty state, not a load error", a
   expect(empty).not.toContain("Report list:");
   expect(empty).not.toContain("Could not load risk reports");
   expect(requests).toEqual(["/cloud/risks/ACME"]);
+});
+
+test("a 10-K that lists no risk factors says so, with its filing date and the filing to open", async () => {
+  transport((path) => path.endsWith("/ACME") ? Response.json(list([2026])) : Response.json(noRiskFactorsReport(2026)));
+
+  await mount();
+  const none = frame();
+  expect(none).toContain("This 10-K lists no risk factors (the company is not required to).");
+  expect(none).toContain("2026 10-K · Filed 2026-02-03");
+  // Nothing to list or compare: no section headings, no prior-year note.
+  expect(none).not.toContain("What Dominates");
+  expect(none).not.toContain("All Risk Factors");
+  expect(none).not.toContain("no prior year on file");
+  await click("[o]pen filing");
+  expect(opened.at(-1)).toBe(noRiskFactorsReport(2026).docUrl);
 });
 
 test("changing ticker while a historical report is pending cannot adopt the old security or year", async () => {
