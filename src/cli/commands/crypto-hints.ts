@@ -5,6 +5,7 @@ import { isCryptoPairSymbol, TOP_COIN_NAMES } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { groupByCompany } from "../../tickers/company-name";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
+import { serviceDidNotAnswerMessage } from "../../sources/provider-errors";
 import type { TickerRecord } from "../../types/ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
@@ -101,6 +102,11 @@ function failureReason(message: string, symbol: string): string {
   return at > 0 ? `${line.slice(0, at)}${line.slice(at + suffix.length)}` : line;
 }
 
+/** A reason that says the data service gave no answer at all, not what it found: the symbol was never checked. */
+function unanswered(reason: string): boolean {
+  return reason === DATA_SERVICE_UNREACHABLE_MESSAGE || reason.startsWith(serviceDidNotAnswerMessage().split(".")[0]!);
+}
+
 /**
  * Text-mode notes under a quote table: one line per distinct failure reason (with the crypto board
  * pointer when a failed symbol is a crypto pair, unless nothing could be reached), then the perpetual futures line.
@@ -118,7 +124,8 @@ export function quoteNotes(results: QuoteNoteResult[]): string[] {
     // "Not a ticker: APPLE." already names its symbol.
     isNotATickerMessage(reason)
       ? reason
-      : `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) && reason !== DATA_SERVICE_UNREACHABLE_MESSAGE ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
+      // Nothing answered for the symbol, so it is no more a typo than a ticker: the line says it went unchecked.
+      : `${unanswered(reason) ? "Could not check " : ""}${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) && reason !== DATA_SERVICE_UNREACHABLE_MESSAGE ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
   ));
   const perpetuals = results
     .filter((result) => result.quote && isCryptoVenuePerpetual(result.quote.instrumentType, result.quote.name))

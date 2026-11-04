@@ -733,3 +733,26 @@ test("GIP ends a closed session on its official close, says when it is still to 
   // A coin has no session to close: its one quote dates the footer alone.
   expect((await run("BTC-USD:CCC", "2026-10-30T20:10:00Z", { marketState: "REGULAR", listingExchangeName: "CCC" })).calls).toBe(1);
 });
+
+/** G printed USDT-USD at 0.99886 where `quote` printed $0.9989; a coin near a dollar reads to four decimals in both. */
+test("fn G prints a coin's dollar price near par to four decimals, as quote and CRYP do, and keeps every digit in JSON", async () => {
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const closes = [0.99838, 0.99891, 0.99886];
+  const bars = closes.map((close, index) => ({ date: new Date(`2026-11-0${index + 1}T00:00:00Z`), open: close, high: close, low: close, close }));
+  const quote = { symbol: "USDT-USD", name: "Tether USDt", price: 0.99886, previousClose: 0.99838, change: 0.00048, changePercent: 0.05,
+    currency: "USD", instrumentType: "CRYPTOCURRENCY" as const, lastUpdated: Date.parse("2026-11-03T21:46:00Z") };
+  const marketData = createTestDataProvider({
+    getTickerFinancials: async () => ({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getQuote: async () => quote,
+    getPriceHistoryForResolution: async () => bars,
+    getDetailedPriceHistory: async () => bars,
+  });
+  const chartSpec = buildCustomChartPreset("USDT-USD");
+  chartSpec.viewport.dateWindow = { start: "2026-11-01", end: "2026-11-04" };
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "USDT-USD", rawArgument: "USDT-USD", symbols: [], options: {} };
+  const result = await definition.load(args, createTestHeadlessContext({ marketData, settings: { chartSpec } })) as ChartPaneModel;
+  expect(result.series[0]).toMatchObject({ textDecimals: 4 });
+  expect(result.series[0]!.points.at(-1)!.value).toBe(0.99886);
+  expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/ 0\.9989 +USD/);
+});

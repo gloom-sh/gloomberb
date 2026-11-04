@@ -233,6 +233,26 @@ export function quotePreviousCloseDate(quote: Quote | null | undefined): string 
   return previousSession(quote, sessionDate)?.date ?? null;
 }
 
+/**
+ * Whether the quote's print is older than what its move is measured from, so
+ * the move, labelled as of now, is not one: a coin whose last print is
+ * before today's 00:00 UTC (TUSD-USD's 29 Oct print read on 3 Nov, "0.00%
+ * since 00:00 UTC"), or a move over 24 hours whose print is older than that.
+ * A move from a dated close is measured from the print's own session, so it
+ * never is.
+ */
+export function printPredatesChangeBasis(
+  quote: Pick<Quote, "lastUpdated"> | null | undefined,
+  basis: QuoteChangeBasis | null | undefined,
+  now = Date.now(),
+): boolean {
+  const printed = quote?.lastUpdated;
+  if (!basis || !isFiniteNumber(printed) || printed <= 0 || printed > now) return false;
+  if (basis.kind === "utc day") return printed < Math.floor(now / DAY_MS) * DAY_MS;
+  if (basis.kind === "24h") return printed < now - DAY_MS;
+  return false;
+}
+
 /** `Fri 16 Oct`, with the year when it is not `now`'s. */
 function sessionDay(date: string, now: number): string {
   return formatUtcDayTime({ time: Date.parse(`${date}T00:00:00Z`), dateOnly: true }, now);

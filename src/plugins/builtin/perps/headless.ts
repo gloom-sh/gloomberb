@@ -1,4 +1,4 @@
-import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DEPTH_COLUMN_IDS, depthBandTotals, depthCellText, depthColumnLabel, depthFreshness, depthStaleNote, downStreams, LIQUIDATION_COLUMN_IDS, liquidationCellText, liquidationColumnLabel, liquidationFreshness,
@@ -108,6 +108,11 @@ const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === ar
 const TITLES: Record<typeof PERP_TABS[number], string> = { board: "Perpetual markets", rankings: "Perpetual rankings", compare: "Perpetual contracts across venues",
   liquidations: "Perpetual liquidations across venues", depth: "Perpetual order book depth across venues", history: "Perpetuals", evidence: "Perpetual evidence" };
 const copy = (rows: readonly PerpBoardRow[]) => rows.map((row) => ({ ...row }));
+/** The days the liquidations read back from their time (`from` to `asOf`), as a heading names them: `7 days`; null without both. */
+const windowDays = (data: Pick<PerpLiquidationsPayload, "from" | "asOf">) => {
+  const days = Math.round((Date.parse(data.asOf) - Date.parse(data.from)) / 86_400_000);
+  return Number.isFinite(days) && days > 0 ? `${days} ${days === 1 ? "day" : "days"}` : null;
+};
 const more = (count: number, noun: string) => `${count.toLocaleString("en-US")} more ${noun} need Gloom Pro`;
 // A table the free view leaves empty is locked: the report leaves it out and its one Pro line says what Pro adds.
 const lockedTable = (locked: unknown) => locked ? { locked: true } : {};
@@ -206,7 +211,8 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
         return { sections: [{ title: "Totals", entries: [...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }] },
           { title: "By contract", columns: LIQUIDATION_TEXT_COLUMNS, rows: data.markets.map((row) => ({ ...row })) },
           { title: "Hourly", columns: HOURLY_COLUMNS, rows: data.hourly.map((row) => ({ ...row })), ...locked },
-          { title: "Largest prints", columns: printTextColumns(data.baseAsset), rows: data.largest.map((row) => ({ ...row })) }],
+          // The prints are the window's, not the 24 hours beside them: the heading says which.
+          { title: "Largest prints", textTitle: windowDays(data) ? `Largest prints, ${windowDays(data)}` : "Largest prints", columns: printTextColumns(data.baseAsset), rows: data.largest.map((row) => ({ ...row })) }],
           complete: !data.locked && data.status === "ok" && !downStreams(data).length, notes: data.notes,
           errors: data.locked ? [freePreviewNote({ shows: "liquidation totals and the three largest prints", adds: "the hourly series and the twenty largest prints" })] : [],
           freshness: liquidationFreshness(data),

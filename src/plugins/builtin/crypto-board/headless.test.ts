@@ -90,3 +90,34 @@ test("the coin report dates the board as the pane footer does: its time and age,
   expect(report).toBe("11:59 UTC · oldest 1 min");
   expect(pane).toBe(report);
 });
+
+/**
+ * The worst coin was row 17 of 24 in market-cap order, and Bond USD0 at 0.9762 read as a 238bp depeg.
+ * `--sort offpeg` puts the furthest off first, either side of par; a bond token has no par to be off, so it is last.
+ */
+test("--sort offpeg lists the stablecoins furthest off their peg first, a bond token by its kind, and the shot opens on that order", async () => {
+  const board = cryptoFixture();
+  const usdt = board.assets.find((asset) => asset.code === "USDT")!;
+  const coin = (code: string, price: number, rank: number, peg = usdt.peg!) => ({
+    ...usdt, symbol: `${code}-USD`, code, name: code, price, rank, marketCap: usdt.marketCap! / (rank + 1), peg,
+  });
+  board.assets.push(
+    coin("BUSD0", 0.9762, 2, { currency: "USD", accrues: true, kind: "bond", price: null, asOf: null }),
+    coin("USDE", 1.0021, 3),
+    coin("FDUSD", 0.9955, 4),
+  );
+  const apiClient = { getCloudCryptoMarkets: async () => board, getCloudStablecoinSupply: async () => stablecoinSupplyFixture() };
+  const ctx = { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext;
+  const args = { ...ARGS, options: { list: "stablecoin", sort: "offpeg" } };
+  const result = await cryptoBoardHeadless.load(args, ctx);
+  expect(result.rows.map((row) => [row.code, row.offPegBp ?? null, row.pegText])).toEqual([
+    ["FDUSD", -45, "USD"], ["USDE", 21, "USD"], ["USDT", -2, "USD"], ["BUSD0", null, "USD bond"],
+  ]);
+  expect(result.metadata).toMatchObject({ sort: "offpeg" });
+  const byCap = await cryptoBoardHeadless.load(ARGS, ctx);
+  expect(byCap.rows.map((row) => row.code)).toEqual(["USDT", "BUSD0", "USDE", "FDUSD"]);
+  // The pane opens on the order asked for, which it reads back as its header's sort.
+  expect(cryptoBoardHeadless.shotState!(args as never, null as never, new Set(["list", "sort"])))
+    .toEqual({ pluginState: { "market-overview": { sort: { columnId: "offPegBp", direction: "desc" } } } });
+  await expect(cryptoBoardHeadless.load({ ...ARGS, options: { sort: "offpeg" } }, ctx)).rejects.toThrow("add --list stablecoin");
+});

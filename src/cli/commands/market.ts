@@ -16,9 +16,9 @@ import type {
   Quote,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, penceFigure, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
-import { changeBasisJson, changeBasisLabel, changeBasisNote, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -510,6 +510,8 @@ const QUOTE_LEAD_COLUMNS = [
     header: "Chg%",
     align: "right" as const,
     format: (value: unknown, row: QuoteRow) => {
+      // A print older than what the move is from has no move as of now.
+      if (row.predatesChangeBasis) return "—";
       const move = row.yieldIndex ? yieldChangeCell(row) : formatChangePercentCell(value);
       // Keep a rolling move's short label with the value when narrow tables drop Chg Basis.
       return move && row.changeBasis === "24h" ? `${move} ${cliStyles.muted("24h")}` : move;
@@ -520,7 +522,8 @@ const QUOTE_LEAD_COLUMNS = [
   extendedColumn("POST"),
   extendedColumn("OVERNIGHT"),
   // An export keeps the market state (PRE-MKT); the table names the close a pre-market with no trade stands at (Thu close).
-  { key: "session", header: "Session", shrink: false, format: (_value: unknown, row: QuoteRow) => row.sessionLabel },
+  // A print older than its move's basis has no session of its own either.
+  { key: "session", header: "Session", shrink: false, format: (_value: unknown, row: QuoteRow) => row.predatesChangeBasis ? "—" : row.sessionLabel },
 ];
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
@@ -618,6 +621,7 @@ function pairExportUnit(symbol: string, currency: string): string | null {
 
 function quoteExportStatus(row: QuoteRow): string {
   if (row.rawPrice == null || !Number.isFinite(row.rawPrice)) return row.error || "Last: no price";
+  if (row.predatesChangeBasis) return row.predatesChangeBasis;
   if (row.changePercent == null || !Number.isFinite(row.changePercent)) return "Chg%: no previous close";
   return "";
 }
@@ -698,21 +702,6 @@ function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "stale" | 
   return quote.dataSource === "live" || quote.dataSource === "delayed" ? quote.dataSource : "";
 }
 
-/** A hundredth of a cent, one basis point of a dollar peg: the decimals CRYP prints a stablecoin to. */
-const STABLECOIN_PRICE_DIGITS = 4;
-
-/**
- * A coin trading near a dollar, a dollar stablecoin, prints to four decimals
- * either side of par (0.9987, 1.0003), as CRYP does, whatever digits its
- * source sent (0.99874, 0.99968725); below a dollar a coin otherwise keeps up to eight.
- */
-function nearParCoin(quote: QuoteCliRecord["quote"]): boolean {
-  if (!quote || resolveAssetDisplayKind({ assetCategory: quote.instrumentType }) !== "crypto") return false;
-  if ((quote.currency ?? "USD").trim().toUpperCase() !== "USD") return false;
-  const reference = [quote.previousClose, quote.price].find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
-  return reference != null && reference >= 0.9 && reference < 1.1;
-}
-
 /** What a row's move is measured from, worded as its Chg Basis cell: empty without a move. */
 function rowChangeBasis(result: Pick<QuoteCliRecord, "quote" | "futuresContract">) {
   return quoteChangeBasis(result.quote, { terms: result.futuresContract });
@@ -750,6 +739,10 @@ function quoteSessionFields(quote: Quote | null | undefined) {
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
+    // A print older than what its move is from (a coin's last trade before 00:00 UTC) has no move as of now,
+    // and the session the market is in is not its own: both read "—", and the Feed cell says it is stale.
+    const basis = rowChangeBasis(result);
+    const predates = printPredatesChangeBasis(quote, basis, now);
     // Last and Chg% are the regular session, as `ticker` and the quote monitor read it; a
     // pre-market or after-hours print is its own column, measured from that session's close.
     const display = quoteSessionFields(quote);
@@ -759,10 +752,12 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const indexPoints = isIndexLevel(quote?.instrumentType);
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
     // Points have no minor unit, so a yen-listed index still pads to two.
+    const nearParDigits = nearParCoinPriceDigits(quote);
     const options = {
       ...quoteFormatOptions(quote),
       minimumFractionDigits: indexPoints ? 2 : currencyPriceMinDigits(quote?.currency),
-      ...nearParCoin(quote) ? { fixedFractionDigits: STABLECOIN_PRICE_DIGITS } : {},
+      // A coin near a dollar prints to four decimals, as `ticker`, `G` and CRYP print it.
+      ...nearParDigits != null ? { fixedFractionDigits: nearParDigits } : {},
     };
     const price = (value: number | null | undefined) => (
       quote && value != null
@@ -781,8 +776,10 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       rawPrice: display.price,
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
-      change: display.change,
-      changePercent: roundedPercent(display.changePercent ?? undefined),
+      change: predates ? null : display.change,
+      changePercent: predates ? null : roundedPercent(display.changePercent ?? undefined),
+      // Why Chg% is empty when it is for that reason, for an export's status column.
+      predatesChangeBasis: !predates ? "" : basis?.kind === "24h" ? "Chg%: last print over 24h old" : "Chg%: last print before 00:00 UTC",
       // A Cboe yield index is read as a yield in percent and moves in basis points.
       yieldIndex,
       changeBasisPoints: yieldIndex && display.change != null ? toBasisPoints(display.change, 1) : null,
@@ -793,8 +790,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       extendedChangePercent: roundedPercent(extended?.changePercent),
       // The extended price is the session's bid and ask midpoint, nothing having traded in it.
       extendedMark: extended?.mark === true,
-      session: quoteSessionStateLabel(quote, now) ?? "",
-      sessionLabel: quoteSessionLabel(quote, now) ?? "",
+      session: predates ? "" : quoteSessionStateLabel(quote, now) ?? "",
+      sessionLabel: predates ? "" : quoteSessionLabel(quote, now) ?? "",
       // The close the shown move is measured from: the one before the session Last is.
       previousClose: price(previousClose),
       rawPreviousClose: previousClose ?? null,
@@ -813,7 +810,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       error: result.error ?? "",
       // Last, so a row read by position keeps every field where it was.
-      changeBasis: basisLabel(result, now),
+      changeBasis: predates ? "" : basisLabel(result, now),
       changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
     };
   });

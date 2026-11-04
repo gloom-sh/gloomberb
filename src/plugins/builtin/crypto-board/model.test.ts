@@ -15,6 +15,7 @@ import {
   formatPegTarget,
   nextCryptoSort,
   offPegBasisPoints,
+  offPegSeverity,
   sortCryptoRows,
 } from "./model";
 import { CRYPTO_FIXTURE_NOW, cryptoFixture } from "./test-fixture";
@@ -145,7 +146,7 @@ test("prices show four significant digits and at least two decimals", () => {
   expect(formatCryptoPrice(null)).toBe("—");
 });
 
-test("a stablecoin is off its own target: a dollar, a euro at EUR/USD, and never a coin that accrues yield", () => {
+test("a stablecoin is off its own target: a dollar, a euro at EUR/USD, and never a coin that accrues yield or a bond token", () => {
   const usd = { currency: "USD", accrues: false, price: 1, asOf: null };
   expect(offPegBasisPoints(0.99871, usd)).toBe(-12.9);
   expect(formatOffPeg(offPegBasisPoints(1.0003, usd))).toBe("+3.0bp");
@@ -159,6 +160,11 @@ test("a stablecoin is off its own target: a dollar, a euro at EUR/USD, and never
   expect(offPegBasisPoints(1.1497, yieldCoin)).toBeNull();
   expect(formatOffPeg(null)).toBe("");
   expect(formatPegTarget(yieldCoin)).toBe("USD yield");
+  // Bond USD0 at 0.9762 is a bond priced toward par at maturity, not 238bp off a peg.
+  const bond = { currency: "USD", accrues: true, kind: "bond" as const, price: null, asOf: null };
+  expect(formatPegTarget(bond)).toBe("USD bond");
+  expect(offPegBasisPoints(0.9762, bond)).toBeNull();
+  expect(offPegSeverity(offPegBasisPoints(0.9762, bond))).toBe("none");
   // A euro coin whose rate could not be read keeps its currency and reads no deviation.
   expect(offPegBasisPoints(1.12, { ...eur, price: null })).toBeNull();
   expect(formatPegTarget({ ...eur, price: null })).toBe("EUR");

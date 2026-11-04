@@ -54,10 +54,11 @@ test("a failed quote says why in text mode, and points crypto pairs at the crypt
   expect((json.data as Array<{ error: string }>)[0]!.error).toBe(`${none} for BTC-USD`);
 });
 
-test("the data service failing for several listings is one line naming each, and still says to try again", () => {
+test("the data service failing for several listings is one line naming each as unchecked, and still says to try again", () => {
   const failed = (symbol: string) => ({ target: { symbol }, quote: null, error: serviceDidNotAnswerMessage(symbol) });
+  // Unchecked, not missing: a typo and a real ticker read alike until the service answers.
   expect(quoteNotes([failed("YAR:OSL"), failed("GNC:ASX")]))
-    .toEqual(["YAR:OSL, GNC:ASX: Gloom's data service did not answer. Try again in a moment."]);
+    .toEqual(["Could not check YAR:OSL, GNC:ASX: Gloom's data service did not answer. Try again in a moment."]);
 });
 
 test("a sentence the data service wrote keeps its own ending, before the crypto board pointer too", () => {

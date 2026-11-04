@@ -54,6 +54,7 @@ import {
   formatOffPeg,
   nextCryptoSort,
   offPegSeverity,
+  readCryptoSort,
   sortCryptoRows,
   withCryptoSupply,
   type CryptoColumn,
@@ -78,6 +79,9 @@ const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
 const SUPPLY_REFRESH_MS = 30 * 60_000;
 
 const SUPPLY_RANGE_OPTIONS = SUPPLY_RANGES.map(({ value, label }) => ({ value, label }));
+
+/** The most of the stablecoin tab the supply chart takes, under the rows. */
+const STABLECOIN_SUPPLY_CHART_SHARE = 1 / 3;
 
 const cryptoTickerKey = (row: CryptoRow) => publicTickerKey(row.asset.symbol, "CCC");
 
@@ -190,7 +194,12 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const liveStreaming = useLiveStreamingSetting();
   const [activeTab, setActiveTab] = usePluginPaneState<CryptoTab>("activeTab", "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
-  const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
+  // Kept with the pane, so `shot CRYP --sort offpeg` opens on the order it asked for.
+  const [savedSort, setSavedSort] = usePluginPaneState<unknown>("sort", DEFAULT_CRYPTO_SORT);
+  const sort = useMemo(() => readCryptoSort(savedSort), [savedSort]);
+  const setSort = useCallback((update: (current: CryptoSortPreference) => CryptoSortPreference) => (
+    setSavedSort((current: unknown) => update(readCryptoSort(current)))
+  ), [setSavedSort]);
   const [visibleRange, setVisibleRange] = useState(INITIAL_STREAM_RANGE);
   const paneVisible = usePaneVisible();
   const reloadBoard = resource.load;
@@ -395,7 +404,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           renderCell={renderCell}
           selectedTextOverridesCellColor
           emptyStateTitle="No crypto assets returned."
-          rootBefore={stablecoins ? (
+          // The pegs are what the tab is read for: the rows come first, the supply under them in at most a third.
+          rootAfter={stablecoins ? (
             <ChartTableHeader
               width={width}
               height={bodyHeight}
@@ -410,6 +420,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
                 remoteKind: "stablecoin-supply-history",
                 loading: supplyResource.loading && !supply,
                 empty: supplyError ? "Stablecoin supply is unavailable right now." : "No stablecoin supply history yet.",
+                maxShare: STABLECOIN_SUPPLY_CHART_SHARE,
               }}
             />
           ) : undefined}

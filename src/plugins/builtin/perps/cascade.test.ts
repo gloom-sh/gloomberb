@@ -83,6 +83,8 @@ test("fn PERP --tab liquidations and depth: totals, contracts and prints free, t
   expect(liq.text).toMatch(/Longs liquidated 24h\s+3\.2k USD/);
   expect(liq.text).toMatch(/Binance\s+ETHUSDT\s+3\.1k\s+29\.2k\s+3\.1k\s+29\.2k\s+10\s+10-26 07:10/);
   expect(liq.text).toMatch(/10-26 07:00:49\s+Binance\s+ETHUSDC\s+Short\s+32\.0k\s+2,321\.94\s+Fill/);
+  // The prints are the week's, beside 24h totals; the heading names the window, the JSON keeps its section name.
+  expect(liq.text).toContain("Largest prints, 7 days\n");
   expect(liq.text).toContain("Binance sends at most one liquidation per contract each second");
   expect(liq.text).toContain("Pro: Free shows liquidation totals and the three largest prints. Gloom Pro adds the hourly series and the twenty largest prints");
   expect(liq.text).not.toMatch(/Hourly|undefined|NaN/);

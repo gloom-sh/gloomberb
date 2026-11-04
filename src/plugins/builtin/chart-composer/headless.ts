@@ -38,6 +38,7 @@ import { isAlwaysOpenExchange, isRegularSessionTime } from "../../../market-data
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
+import { nearParCoinPriceDigits } from "../../../market-data/market/format";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, DAILY_CLOSES, quoteObservation, REPORTED_DATA } from "../shared/report-freshness";
@@ -227,11 +228,14 @@ export async function loadChartPaneModel(
         source.instrument.symbol,
       ).map((row) => [row.date, row.growth])) : null;
       // A formula or a converted price prints at its legs' decimals in text; JSON keeps every digit.
+      // A coin's dollar price near par prints to four decimals, as `quote`, `ticker` and CRYP print it.
       const { valueDecimals, ...reported } = series;
+      const textDecimals = valueDecimals ?? (source?.kind === "security" && series.unitGroup === "price:USD"
+        ? nearParCoinPriceDigits(financials.get(snapshotInstrumentKey(source.instrument))?.quote) : undefined);
       return {
         ...reported,
         ...name ? { name } : {},
-        ...valueDecimals !== undefined ? { textDecimals: valueDecimals } : {},
+        ...textDecimals !== undefined ? { textDecimals } : {},
         // A company's reported total (revenue, market cap) reads as 63.33B in the report, as in the legend and the tables.
         ...series.unitGroup.split(":")[0] === "currency-total" ? { textCompact: true } : {},
         derived: !ids.has(series.id),

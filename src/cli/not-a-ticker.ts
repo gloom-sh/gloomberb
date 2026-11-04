@@ -45,7 +45,7 @@ export type FredSeriesCheck = (seriesId: string) => boolean;
  * "APPLE" as AAPL:NASDAQ") is put back in the user's spelling too.
  */
 export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
-  const named = withTypedNames(text, args);
+  const named = withCoinHints(withTypedNames(text, args), args);
   return named.includes("Not a ticker: ")
     ? named.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
@@ -58,6 +58,31 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       return `${sentence} ${tenor ? treasuryYieldHint(tenor) : currencyNameHint(typed) ?? searchHint(typed)}`;
     })
     : named;
+}
+
+// "Could not check USDT, FOOBARX: ..." as `quote` says the symbols the data service did not answer for, and "Could not
+// look up USDT: ..." as a command that resolves one says it; a hint already given is not given twice.
+const UNCHECKED_LINE = /^((?:.*?\b)?Could not (?:check|look up) ([^\s,]+(?:, [^\s,]+)*): [^\n]*?)(?<! Did you mean [^\n]*)$/gm;
+
+/**
+ * The coin a bare word the data service could not check may be, after the
+ * line that says so: "Did you mean USDT-USD (Tether USDt)?", "... for USDT"
+ * when the line names several. The coins come from the crypto board, or when
+ * it cannot be read either (the same service is down), the largest coins this
+ * build knows (`boardCoinFor`), so the hint stands in an outage.
+ */
+function withCoinHints(text: string, args: readonly string[]): string {
+  if (!text.includes("Could not ")) return text;
+  return text.replace(UNCHECKED_LINE, (line, _whole, list: string) => {
+    const symbols = list.split(",").map((symbol) => symbol.trim()).filter(Boolean);
+    const hints = symbols.flatMap((symbol) => {
+      const coin = boardCoinFor(typedSymbol(symbol, args).toUpperCase());
+      if (!coin) return [];
+      const name = coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : "";
+      return [`${coin.symbol}${name}${symbols.length > 1 ? ` for ${symbol}` : ""}`];
+    });
+    return hints.length ? `${line}${/[.!?]$/.test(line) ? "" : "."} Did you mean ${hints.join(", or ")}?` : line;
+  });
 }
 
 // "Read "APPLE" as AAPL:NASDAQ (Apple Inc.)." as a list reads a one-word name, upper-cased like a symbol.
