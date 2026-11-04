@@ -570,6 +570,8 @@ export interface HostQueryBarProps {
     value: string;
     options: { value: string; label: string; hint?: string; disabled?: boolean }[];
     onChange(value: string): void;
+    /** Drawn first, where a tab row starts: a nested tab strip. */
+    start?: boolean;
   };
   onClearAll?: () => void;
   /** Muted context at the right edge, e.g. the selected row's date. */

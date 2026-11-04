@@ -1943,7 +1943,7 @@ A broker whose terms restrict redistributing its market data sets `localMarketDa
 ## Tips
 
 - Look at the built-in plugins in `src/plugins/builtin/` for real-world examples
-- Use `order` on Ticker Research tabs to control position (core tabs use 10, 20, 30)
+- A plugin's Ticker Research tab gets a top tab of its own after the built-in groups (Overview through Notes); `order` sorts plugin tabs among themselves
 - Toggleable plugins can be enabled/disabled by users from settings (`Ctrl+,`)
 - The terminal renderer is backed by [OpenTUI](https://opentui.com/) packages such as `@opentui/core` and `@opentui/react`; plugin UI should stay on `gloomberb/ui` and `gloomberb/components`
 - Use `ctx.persistence` for cached resources, `ctx.resume` for state panes render, `ctx.configState` for configuration, and `ctx.teamState` for data shared with a team

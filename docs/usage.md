@@ -249,7 +249,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `SEAS <ticker>` | Seasonality: monthly returns by year, average and hit rate, year overlays, weekday and turn-of-month returns |
 | `RIPL [tickers]` | Earnings Ripple: customers and suppliers of your holdings (or the named tickers) reporting in the next 30 days, with the disclosed revenue share. Pro adds companies two hops away |
-| `ADR <ticker>` | A depositary receipt beside its home listing (GGAL and GGAL.BA, TSM and 2330.TW): the ratio, both prices with their times, the implied dollar rate (home × ratio / ADR, the CCL rate for an Argentine pair), spot and the premium or discount. Opens DES on its ADR vs Home tab, which shows for listings with a known pair |
+| `ADR <ticker>` | A depositary receipt beside its home listing (GGAL and GGAL.BA, TSM and 2330.TW): the ratio, both prices with their times, the implied dollar rate (home × ratio / ADR, the CCL rate for an Argentine pair), spot and the premium or discount. Opens DES on ADR vs Home, under Financials, which shows for listings with a known pair |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
 | `PEB <ticker>` | P/E band: weekly price against round multiples of trailing EPS, today's P/E and its percentile |
 | `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs, FOMC and Brazil IPCA days against a normal day, with each day's actual, forecast and prior |
@@ -285,7 +285,25 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 #### Which tabs Ticker Research shows
 
-Ticker Research shows the tabs that can have data for the instrument.
+A company's page has eleven tabs, and a tab with several views shows them as choices under the strip (a second row in the terminal):
+
+| Tab | Views |
+|-----|-------|
+| Overview | Overview |
+| Chart | Chart, Trade (with a connected broker) |
+| Financials | Financials, Revenue, Diagnostic, Dividends, ADR vs Home (for a listing with a known receipt pair) |
+| Analysts | Analyst, Calls |
+| Options | Options |
+| Events | Events, Catalysts, M&A |
+| Filings | SEC, 8-K, Risks |
+| Ownership | Holders, Insider, 13F, Congress, Short Interest |
+| People | Exec, Hiring, Hiring momentum |
+| Buzz | News, Tweets, Apps |
+| Notes | Thesis, Notes |
+
+`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
+
+Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 
 | Instrument | Tabs |
 |------------|------|

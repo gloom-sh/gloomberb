@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
@@ -36,6 +36,7 @@ import { shortInterestModule } from "../short-interest";
 import { thirteenFModule } from "../thirteenf";
 import { tickerDetailModule } from ".";
 import { buildVisibleTickerResearchTabs } from "./settings";
+import { groupTickerResearchTabs } from "./research-groups";
 
 const modules: PluginModule[] = [
   tickerDetailModule, chartComposerModule, optionsModule, congressResearchModule,
@@ -95,12 +96,15 @@ const scenarios: Scenario[] = [
   { label: "existing statements remain visible for a fund", ticker: createTestTicker("VFIAX"), financials: { ...quoted("MUTUALFUND"), annualStatements: [{ date: "2025-12-31", totalAssets: 100 }] }, kind: "fund", visible: [...mutualFund, "financials"] },
 ];
 
-test("research visibility follows instrument and listing rules without hiding available fund or plugin research", async () => {
-  const config = createDefaultConfig(":memory:");
-  const tabs: TickerResearchTabDef[] = [];
-  // Collect shipping definitions without booting the catalog or reading data.
-  // Notes and Thesis subscribe during setup, so keep their collection signed out.
-  const signedOut = spyOn(apiClient, "isVerified").mockReturnValue(false);
+const config = createDefaultConfig(":memory:");
+const tabs: TickerResearchTabDef[] = [];
+const started: PluginModule[] = [];
+let signedOut: ReturnType<typeof spyOn> | null = null;
+
+// Collect shipping definitions without booting the catalog or reading data.
+// Notes and Thesis subscribe during setup, so keep their collection signed out.
+beforeAll(async () => {
+  signedOut = spyOn(apiClient, "isVerified").mockReturnValue(false);
   const context: Partial<GloomPluginContext> = {
     registerTickerResearchTab: (tab: TickerResearchTabDef) => { tabs.push(tab); },
     persistence: new MemoryPluginPersistence(),
@@ -115,23 +119,79 @@ test("research visibility follows instrument and listing rules without hiding av
     notify() {},
     on: () => () => {},
   };
-  const started: PluginModule[] = [];
-  try {
-    for (const module of modules) {
-      started.push(module);
-      await module.setup?.(context as GloomPluginContext);
-    }
-    tabs.push({ id: "external", name: "External", order: 100, component: () => null });
-    for (const scenario of scenarios) {
-      expect(resolveTickerInstrumentKind(scenario.ticker, scenario.financials), scenario.label).toBe(scenario.kind);
-      const visible = buildVisibleTickerResearchTabs(tabs, scenario.ticker, scenario.financials, {
-        config,
-        hasOptionsChain: scenario.hasOptionsChain ?? true,
-      });
-      expect(visible.map((tab) => tab.id).sort(), scenario.label).toEqual([...scenario.visible].sort());
-    }
-  } finally {
-    for (const module of started.reverse()) module.dispose?.();
-    signedOut.mockRestore();
+  for (const module of modules) {
+    started.push(module);
+    await module.setup?.(context as GloomPluginContext);
   }
+  tabs.push({ id: "external", name: "External", order: 100, component: () => null });
+});
+
+afterAll(() => {
+  for (const module of started.reverse()) module.dispose?.();
+  signedOut?.mockRestore();
+});
+
+function visibleFor(scenario: Scenario) {
+  return buildVisibleTickerResearchTabs(tabs, scenario.ticker, scenario.financials, {
+    config,
+    hasOptionsChain: scenario.hasOptionsChain ?? true,
+  });
+}
+
+test("research visibility follows instrument and listing rules without hiding available fund or plugin research", () => {
+  for (const scenario of scenarios) {
+    expect(resolveTickerInstrumentKind(scenario.ticker, scenario.financials), scenario.label).toBe(scenario.kind);
+    expect(visibleFor(scenario).map((tab) => tab.id).sort(), scenario.label).toEqual([...scenario.visible].sort());
+  }
+});
+
+test("each asset type gets only the groups it has views for, and a one-view group is that view", () => {
+  const groupsOf = (label: string) => groupTickerResearchTabs(visibleFor(scenarios.find((scenario) => scenario.label === label)!))
+    .map((group) => `${group.name}: ${group.views.map((view) => view.id).join(" ")}`);
+  expect(groupsOf("AAPL equity")).toEqual([
+    "Overview: overview",
+    "Chart: chart",
+    "Financials: revenue equity-diagnostic dividend-yield",
+    "Analysts: analyst-research earnings-calls",
+    "Options: options",
+    "Events: corporate-actions catalysts mna",
+    "Filings: sec filing-events risk-factors",
+    "Ownership: holders insider thirteenf congress short-interest",
+    "People: executives jobs hiring-momentum",
+    "Buzz: news ticker-tweets app-attention",
+    "Notes: thesis notes",
+    // A plugin's own tab, after the built-in groups.
+    "External: external",
+  ]);
+  expect(groupsOf("SPY ETF")).toEqual([
+    "Overview: overview",
+    "Chart: chart",
+    "Financials: dividend-yield",
+    "Options: options",
+    "Events: corporate-actions",
+    "Ownership: thirteenf congress",
+    "Buzz: news ticker-tweets",
+    "Notes: thesis notes",
+    "External: external",
+  ]);
+  expect(groupsOf("7203.T foreign equity")).toEqual([
+    "Overview: overview",
+    "Chart: chart",
+    "Financials: equity-diagnostic dividend-yield",
+    "Analysts: analyst-research earnings-calls",
+    "Options: options",
+    "Events: corporate-actions catalysts mna",
+    "Ownership: holders",
+    "People: jobs hiring-momentum",
+    "Buzz: news app-attention",
+    "Notes: thesis notes",
+    "External: external",
+  ]);
+  expect(groupsOf("BTC-USD crypto")).toEqual([
+    "Overview: overview",
+    "Chart: chart",
+    "Buzz: news",
+    "Notes: thesis notes",
+    "External: external",
+  ]);
 });

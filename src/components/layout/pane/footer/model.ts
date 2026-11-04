@@ -244,6 +244,13 @@ export interface PaneHint {
    * listed in the pane menu without a key.
    */
   yieldsKey?: boolean;
+  /**
+   * For a hint a shared component adds to every pane that nests it, such as
+   * `{}` for a nested strip's views: drawn only beside the pane's own hints.
+   * With none, the pane keeps the footer it had (none, or its status alone);
+   * the component's `keys` stay bound.
+   */
+  besideOthers?: boolean;
 }
 
 export interface CombinedPaneFooter {
@@ -493,7 +500,8 @@ export function combinePaneFooterRegistrations(registrations: Map<string, PaneFo
       if (!hint.disabled && onPress) menu.push({ id: `pane-hint:${hint.id}`, label: paneHintTitle(hint), onSelect: () => onPress() });
     }
   }
-  const shown = yielded.length > 0 ? hints.filter((hint) => !yielded.includes(hint)) : hints;
+  const kept = yielded.length > 0 ? hints.filter((hint) => !yielded.includes(hint)) : hints;
+  const shown = kept.some((hint) => !hint.besideOthers && !hint.disabled) ? kept : kept.filter((hint) => !hint.besideOthers);
 
   if (info.length === 0 && shown.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
   return { info: savedCopyFirst(info), hints: shown, menu, keys };

@@ -76,7 +76,7 @@ test("Research opens beside either chart surface, falls back at 90 columns, and 
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
   await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
   await tui.waitForFrameToContain("PRICE CONTEXT 140");
-  await tui.emitKeypress({ name: "h" }, { trackPropagation: true });
+  await f.tab("overview");
   // One key opens the ticket from Overview too; the side is chosen in it.
   await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Buy 1 AAPL");
@@ -240,6 +240,19 @@ test("Chart stays the chart alone, Trade puts the ticket beside it, and the divi
   await tui.waitForFrameToContain("PRICE CONTEXT 140");
   await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("PRICE CONTEXT 96");
+});
+
+test("coming back to Chart shows the chart: only an explicit action opens the ticket", async () => {
+  await mount();
+  await tui.emitKeypress({ name: "t" });
+  await tui.waitForFrameToContain("Buy 1 AAPL");
+  // F6 gives the keys back to the chart, and h and l leave Chart and come back to it.
+  await tui.emitKeypress({ name: "f6" });
+  await tui.emitKeypress({ name: "h" });
+  await tui.waitForFrameToContain("OVERVIEW");
+  await tui.emitKeypress({ name: "l" });
+  await tui.waitForFrameToContain("PRICE CONTEXT 140");
+  expect(tui.frame()).not.toContain("Buy 1 AAPL");
 });
 
 test("Overview lists the ticker's working orders and fills without the ticket, and an order opens Trade to change it", async () => {

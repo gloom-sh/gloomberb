@@ -680,7 +680,15 @@ header, with the detail's height.
 - A strip inside content that already has a title-bar strip (a Ticker
   Research tab, a stack detail) becomes a `QueryBar` view (`usePaneTabs`
   with `queryBarWidth`) or inline filter on the desktop; the terminal keeps
-  its `Tabs` row.
+  its `Tabs` row. Right under the title bar (a research tab's views, a Fixed
+  Income section's) the view starts its bar, where the terminal's row
+  starts; a level deeper (Holders' Table and Chart under Ownership's views)
+  it is the view's own switch and sits at the right. A stack detail takes
+  the pane's place (`NestedPaneTabs detail`), so its strip is the view's
+  own, and one under it is that strip's choices. `{` and `}` walk the
+  choices of the outermost focused strip inside `NestedPaneTabs`, either
+  kind; the pane adds nothing. Their `[{}]view` hint joins the pane's own
+  hints and never adds a footer row of its own.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
@@ -796,7 +804,7 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
+  pane or field, `h`/`l` tabs, `{`/`}` a nested strip's views, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
