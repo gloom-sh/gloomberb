@@ -232,7 +232,7 @@ export interface CompositeChartXAxis {
   /** Evenly spread labels drawn instead of date ticks. */
   labels?: readonly string[];
   /** Labels positioned on a numeric domain rather than evenly spread. */
-  ticks?: readonly { label: string; ratio: number }[];
+  ticks?: readonly { label: string; ratio: number; pinned?: boolean }[];
   /** Vertical guide lines through the plot, captioned below the axis. */
   markers?: readonly CompositeChartXMarker[];
   formatCursor?: (xRatio: number) => string;

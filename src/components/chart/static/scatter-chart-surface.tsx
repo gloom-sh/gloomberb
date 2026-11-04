@@ -163,7 +163,7 @@ export function StaticScatterChartSurface({
     markers: model.markers,
     ticks: [
       ...trailAxisTicks(model.xMin, model.xMax),
-      ...(xLabel ? [{ label: `${xLabel} →`, ratio: 1 }] : []),
+      ...(xLabel ? [{ label: `${xLabel} →`, ratio: 1, pinned: true }] : []),
     ],
   } : undefined, [model, xLabel]);
 
