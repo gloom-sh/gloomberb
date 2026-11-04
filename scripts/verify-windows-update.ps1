@@ -98,12 +98,13 @@ function Get-BuildHash {
 # The release the build asks for updates: the copy served here. And, for a
 # build in a release, the build's id.
 function Set-BuildSource {
-  param([string]$AppFolder, [string]$Hash)
+  param([string]$AppFolder, [string]$Hash, [string]$Version = "")
 
   $Path = Join-Path $AppFolder "Resources\version.json"
   $Info = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
   $Info.baseUrl = $BaseUrl
   if ($Hash) { $Info.hash = $Hash }
+  if ($Version) { $Info.version = $Version }
   [IO.File]::WriteAllText($Path, ($Info | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding $false))
 }
 
@@ -376,17 +377,31 @@ function Write-SeededConfig {
     onboardingComplete = $true
     # Plugin restoration has its own tests and must not add network installs here.
     seededPlugins = @((& bun -e 'import { EXTRACTED_PLUGINS } from "./src/plugins/extracted-plugins"; console.log(JSON.stringify(EXTRACTED_PLUGINS.map(plugin => plugin.id)))') | ConvertFrom-Json)
+    # The apps this check opens are not people's installs: nothing they run
+    # into goes to the crash and usage reports.
+    telemetry = @{ crashReports = $false; usage = $false }
     layout = $Layout
     layouts = @(@{ name = "Verification"; layout = $Layout; paneState = @{}; focusedPaneId = "portfolio-list:main" })
     activeLayoutIndex = 0
   } | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $DataDir "config.json") -Encoding UTF8
 }
 
+# The next patch release after $Version: the stable channel only takes a
+# release newer than the one it runs.
+function Get-NewerVersion {
+  param([string]$Version)
+
+  if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw "This build's version, '$Version', is not major.minor.patch" }
+  "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+}
+
 # The release as the app reads it: this build, asking this machine for its
-# next update, with the DevTools port open; under $Hash when given, a build
-# other than this one, with a file of its own in it.
+# next update, with the DevTools port open; under $Hash and $Version when
+# given, a newer build than this one, with a file of its own in it. Electrobun
+# 2 installs it only when the archive's version.json names the manifest's
+# version and hash.
 function Write-Release {
-  param([string]$ReleaseDir, [string]$Hash)
+  param([string]$ReleaseDir, [string]$Hash, [string]$Version = "")
 
   $Unpacked = Join-Path $WorkRoot "release-build"
   Remove-Item -Recurse -Force $Unpacked -ErrorAction SilentlyContinue
@@ -401,7 +416,7 @@ function Write-Release {
   if ($Top.Count -ne 1) { throw "$ArchivePath should hold one folder; it holds $($Top.Name -join ', ')" }
   $Build = $Top[0].FullName
 
-  Set-BuildSource $Build $Hash
+  Set-BuildSource $Build $Hash $Version
   Open-DevToolsPort $Build
   if ($Hash) {
     Set-Content -Path (Join-Path $Build "Resources\verify-added-by-update.txt") -Value "added by the update"
@@ -416,6 +431,7 @@ function Write-Release {
 
   $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
   if ($Hash) { $Manifest.hash = $Hash }
+  if ($Version) { $Manifest.version = $Version }
   [IO.File]::WriteAllText((Join-Path $ReleaseDir "stable-$Platform-update.json"), ($Manifest | ConvertTo-Json -Depth 8 -Compress), (New-Object System.Text.UTF8Encoding $false))
   [string]$Manifest.hash
 }
@@ -509,7 +525,8 @@ try {
   #    update manager. The release changes under the running app, which
   #    checks again when it opens.
   Stop-ProcessesUnder @($AppDir)
-  $null = Write-Release -ReleaseDir $ReleaseDir -Hash $UpdateHash
+  $UpdateVersion = Get-NewerVersion (Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json).version
+  $null = Write-Release -ReleaseDir $ReleaseDir -Hash $UpdateHash -Version $UpdateVersion
   Open-App $StartMenuShortcut $AppDir "update-start"
   Restart-IntoUpdate -Folder $AppDir -Hash $UpdateHash -Label "update"
   $Updated = Wait-Until 240 {

@@ -43,6 +43,13 @@ const STRICT_LIMIT_MS = 1_000;
 /** Electrobun 2 takes a release hash of 13 letters and digits at most. */
 const UPDATE_HASH = "respupdate1";
 
+/** The next patch release after `version`: the stable channel only takes a newer release. */
+function newerVersion(version: string): string {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!match) throw new Error(`The installed version, "${version}", is not major.minor.patch`);
+  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+}
+
 interface Sample { at: number; ms: number }
 
 /** Asks the app's thread for an answer every 50 ms, one question at a time. */
@@ -577,6 +584,7 @@ async function serveUpdate(app: string, work: string): Promise<{ stop(): void; b
   await writeFile(join(release, "stable-win-x64-update.json"), JSON.stringify({
     ...info,
     channel: "stable",
+    version: newerVersion(String(info.version)),
     hash: UPDATE_HASH,
     schemaVersion: 1,
     platform: "win",

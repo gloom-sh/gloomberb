@@ -9,8 +9,8 @@
  *    the command bar's "Update ready, restart to apply" restarts it into
  *    this build, in the same place.
  * 2. This build updates the same way to a newer one (the same build under
- *    another hash, with a file of its own), with Electrobun 2's own update
- *    manager.
+ *    another hash and the next patch version, with a file of its own), with
+ *    Electrobun 2's own update manager.
  *
  * `--app` is the installed app: `/Applications/Gloom.app` on macOS, the
  * `app` folder under `~/.local/share/<identifier>/<channel>` on Linux, where
@@ -77,10 +77,20 @@ async function installedBuild(): Promise<Build> {
   return { version: version?.version, hash: version?.hash, electrobun: build?.electrobunVersion ?? null };
 }
 
-async function setUpdateSource(versionJson: string, baseUrl: string, hash?: string): Promise<void> {
+/** A release this build updates to: another hash and version than its own. */
+interface NewerBuild { hash: string; version: string }
+
+async function setUpdateSource(versionJson: string, baseUrl: string, newer?: NewerBuild): Promise<void> {
   const info = await readJson<Record<string, unknown>>(versionJson);
   if (!info) throw new Error(`No version.json at ${versionJson}`);
-  await writeFile(versionJson, JSON.stringify({ ...info, baseUrl, ...(hash ? { hash } : {}) }));
+  await writeFile(versionJson, JSON.stringify({ ...info, baseUrl, ...newer }));
+}
+
+/** The next patch release after `version`: the stable channel only takes a newer release. */
+function newerVersion(version: string): string {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!match) throw new Error(`This build's version, "${version}", is not major.minor.patch`);
+  return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
 }
 
 function run(command: string[], cwd?: string): string {
@@ -190,8 +200,10 @@ async function restartIntoUpdate(hash: string, label: string): Promise<void> {
 async function writeRelease(hash?: string): Promise<string> {
   await rm(served, { recursive: true, force: true });
   await mkdir(served, { recursive: true });
-  const manifest = await readJson<Record<string, unknown> & { hash: string; artifact?: { file?: string } }>(join(releaseDir!, `${prefix}-update.json`));
+  const manifest = await readJson<Record<string, unknown> & { hash: string; version: string; artifact?: { file?: string } }>(join(releaseDir!, `${prefix}-update.json`));
   if (!manifest) throw new Error(`No ${prefix}-update.json in ${releaseDir}`);
+  // Electrobun 2 installs it only when the archive's version.json names the manifest's version and hash.
+  const newer = hash ? { hash, version: newerVersion(manifest.version) } : undefined;
   const archive = manifest.artifact?.file ?? `${prefix}-Gloom${mac ? ".app" : ""}.tar.zst`;
   const unpacked = join(work, "release-build");
   await rm(unpacked, { recursive: true, force: true });
@@ -201,11 +213,11 @@ async function writeRelease(hash?: string): Promise<string> {
   const top = readdirSync(unpacked);
   if (top.length !== 1) throw new Error(`${archive} should hold one folder; it holds ${top.join(", ")}`);
   const buildResources = mac ? join(unpacked, top[0]!, "Contents", "Resources") : join(unpacked, top[0]!, "Resources");
-  await setUpdateSource(join(buildResources, "version.json"), baseUrl, hash);
+  await setUpdateSource(join(buildResources, "version.json"), baseUrl, newer);
   if (hash) await writeFile(join(buildResources, "verify-added-by-update.txt"), "added by the update\n");
   run(["tar", "-cf", join(work, "release.tar"), "-C", unpacked, top[0]!], undefined);
   await writeFile(join(served, archive), Bun.zstdCompressSync(await Bun.file(join(work, "release.tar")).bytes(), { level: 3 }));
-  await writeFile(join(served, `${prefix}-update.json`), JSON.stringify({ ...manifest, ...(hash ? { hash } : {}) }));
+  await writeFile(join(served, `${prefix}-update.json`), JSON.stringify({ ...manifest, ...newer }));
   // The earlier release's patch to this build, as the release carries it.
   if (!hash) {
     for (const name of readdirSync(releaseDir!)) {
