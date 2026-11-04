@@ -158,6 +158,19 @@ function gitExecutable(): string {
   return executable;
 }
 
+/** Ends a Windows process and every process it started; `fallback` when taskkill cannot run. */
+function stopWindowsTree(pid: number, fallback: () => void): void {
+  const killer = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore", windowsHide: true });
+  killer.once("error", () => {
+    try {
+      fallback();
+    } catch {
+      // Intentional ignore: it exited between the check and the signal.
+    }
+  });
+  killer.unref();
+}
+
 /**
  * Runs a command without blocking the event loop: a fetch or `bun install`
  * takes seconds, and the terminal UI and the desktop's Bun process keep
@@ -166,8 +179,9 @@ function gitExecutable(): string {
  *
  * With `timeoutMs`, a command still running then is stopped and the result
  * says so at once: a clone whose connection stalls would otherwise hold its
- * install for good. Off Windows it runs in a process group of its own, so the
- * helpers git starts for the transfer are stopped with it.
+ * install for good. The helpers git starts for the transfer are stopped with
+ * it: off Windows it runs in a process group of its own, and on Windows
+ * `taskkill /T` ends its process tree, where a signal reaches only git.
  */
 function run(
   command: string,
@@ -191,6 +205,7 @@ function run(
     const stop = (signal: NodeJS.Signals) => {
       try {
         if (group && child.pid) process.kill(-child.pid, signal);
+        else if (timeoutMs !== undefined && process.platform === "win32" && child.pid) stopWindowsTree(child.pid, () => child.kill(signal));
         else child.kill(signal);
       } catch {
         // Intentional ignore: it exited between the check and the signal.
@@ -469,7 +484,7 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
       if (missing.length > 0) throw new Error(`${name}'s dependencies did not install: ${missing.join(", ")}.`);
     }
   } catch (error) {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeStaging(stagingDir);
     const timedOut = (error as { timedOut?: unknown } | null)?.timedOut === true;
     fail(error instanceof Error ? error.message : String(error), undefined, timedOut ? INSTALL_TIMED_OUT : undefined);
   }
@@ -478,11 +493,11 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   try {
     moved = await moveIntoPlace(stagingDir, targetDir);
   } catch (error) {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeStaging(stagingDir);
     fail(error instanceof Error ? error.message : String(error));
   }
   if (!moved) {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeStaging(stagingDir);
     // Another install of it finished first: the app beside this one, or a second click.
     alreadyInstalled();
   }
@@ -512,12 +527,36 @@ function processRunning(pid: number): boolean {
   }
 }
 
-/** Drops what installs left behind when their process ended mid-way. */
+/**
+ * Removes an install's staging folder. A folder that will not go (a git
+ * helper that outlived its stop still holds it on Windows, a read-only file)
+ * never replaces the reason the install failed: it carries a name the loader
+ * passes over, and a later install clears it once its process has ended.
+ */
+function removeStaging(stagingDir: string): void {
+  try {
+    rmSync(stagingDir, { recursive: true, force: true });
+  } catch (error) {
+    logFailure("plugin-installer", "Could not remove an unfinished plugin install")(error);
+  }
+}
+
+/**
+ * Drops what installs left behind when their process ended mid-way. Best
+ * effort: one that cannot be removed stays, and never stops this install.
+ */
 function removeAbandonedInstalls(): void {
-  for (const entry of readdirSync(PLUGINS_DIR)) {
+  let entries: string[];
+  try {
+    entries = readdirSync(PLUGINS_DIR);
+  } catch (error) {
+    logFailure("plugin-installer", "Could not list the plugins folder for unfinished installs")(error);
+    return;
+  }
+  for (const entry of entries) {
     const pid = Number(STAGING_NAME.exec(entry)?.[1]);
     if (!pid || pid === process.pid || processRunning(pid)) continue;
-    rmSync(join(PLUGINS_DIR, entry), { recursive: true, force: true });
+    removeStaging(join(PLUGINS_DIR, entry));
   }
 }
 
