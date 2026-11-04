@@ -65,19 +65,46 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   expect(protocols.text).toContain("Total DeFi TVL 92.40B · 7D +2.01B (+2.22%) · 30D -1.06B (-1.13%) · as of 2026-09-23 · DefiLlama, daily since 2026-09-19");
   expect(protocols.text).toMatch(/1\s+Aave\s+Lending\s+17\.88B\s+-0\.40%\s+-580\.00M\s+-3\.14%\s+—\s+—\s+18/);
   expect(protocols.result.notes).toEqual(["Protocols as of 2026-09-22 16:17 UTC, the source's latest; their versions are counted together."]);
+  // A server before fees and revenue has no columns for them.
+  expect(protocols.text).not.toContain("Fees");
   // Daily figures from a publisher, dated by their day: never a live feed.
   expect(protocols.freshness).toMatchObject({ status: "not-a-feed", publisher: "DefiLlama", asOf: "2026-09-23" });
 
   const chains = await defi("chain");
-  expect(chains.text).toMatch(/Chain\s+Token\s+TVL\s+7D\s+7D %\s+30D\s+30D %\s+Share/);
+  expect(chains.text).toMatch(/Chain\s+Token\s+TVL USD\s+7D\s+7D %\s+30D\s+30D %\s+Share/);
   expect(chains.text).toMatch(/1\s+Ethereum\s+ETH\s+55\.40B .* 59\.96%/);
   expect(chains.result.notes).toBeUndefined();
 
   const csv = renderReportCsv(headlessReportTables(cryptoBoardHeadless, chains.result, chains.args, "CRYP", chains.freshness, { complete: true, unavailableSymbols: [] }), chains.freshness);
   expect(csv).toContain("# section: DeFi TVL by protocol");
+  // Every row names its unit (the export's own header stays "TVL"); before, currency_or_unit was empty.
+  const header = csv.split("\n").find((line) => line.startsWith('"#"'))!.split(",");
+  const ethereum = csv.split("\n").find((line) => line.startsWith("1,Ethereum,"))!.split(",");
+  expect(ethereum[header.indexOf("currency_or_unit")]).toBe("USD");
   const history = csv.slice(csv.indexOf("# section: Total DeFi TVL")).split("\n");
   expect(history[1]).toStartWith("Date,TVL,");
   expect(history.slice(2, 5).map((line) => line.split(",").slice(0, 2).join(","))).toEqual(["2026-09-19,90000000000", "2026-09-20,91000000000", "2026-09-21,"]);
+});
+
+test("a protocol list read at the day's close has one date, and its fees and revenue in USD beside TVL", async () => {
+  // Wed 4 Nov 2026: the note said "as of 2026-11-04 00:00 UTC" under a source line dated Tue 3 Nov.
+  const board = {
+    ...defiTvlFixture(),
+    asOf: "2026-11-03", fetchedAt: "2026-11-04T00:00:13.311Z", protocolsAsOf: "2026-11-04T00:00:13.311Z", incomeAsOf: "2026-11-04T00:00:13.311Z",
+  };
+  board.protocols[0] = { ...board.protocols[0]!, fees24h: 1_350_000, fees7d: 9.26e6, fees30d: 37.06e6, revenue24h: 135_200, revenue7d: 926_000, revenue30d: null };
+  const args = { rawArgument: "", argument: null, symbols: [], options: { list: "defi" } };
+  const apiClient = { getCloudDefiTvl: async () => board };
+  const result = await cryptoBoardHeadless.load(args, { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+  expect(result.notes).toEqual(["Protocols are read at the day's close; their versions are counted together."]);
+  expect(result.rows[0]).toMatchObject({ name: "Aave", unit: "USD", fees24h: 1_350_000, fees30d: 37.06e6, revenue30d: null });
+  expect(result.rows[1]).toMatchObject({ name: "Lido", fees24h: null, revenue24h: null });
+  const freshness = deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW);
+  const csv = renderReportCsv(headlessReportTables(cryptoBoardHeadless, result, args, "CRYP", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+  const header = csv.split("\n").find((line) => line.startsWith('"#"'))!.split(",");
+  const aave = csv.split("\n").find((line) => line.startsWith("1,Aave,"))!.split(",");
+  expect([header.indexOf("Fees 24h") >= 0, aave[header.indexOf("Fees 30D")], aave[header.indexOf("Revenue 30D")], aave[header.indexOf("currency_or_unit")]])
+    .toEqual([true, "37060000", "", "USD"]);
 });
 
 test("the coin report dates the board as the pane footer does: its time and age, with no feed label", async () => {
