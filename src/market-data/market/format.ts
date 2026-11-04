@@ -16,6 +16,13 @@ export interface AssetDisplayContext {
   multiplier?: number;
   priceBasis?: PriceBasis | null;
   quantityCurrency?: string;
+  /**
+   * The tick table the listing trades on, when its tick is finer than its
+   * currency's minor unit: `hkex-reduced`, the spread table Hong Kong's
+   * exchange traded products trade on (0.002 from 1 to 5, 0.005 from 5 to 10),
+   * whose prices under 10 print to three decimals (5.325, not 5.33).
+   */
+  listingTickTable?: "hkex-reduced";
 }
 
 export interface MarketFormatOptions extends AssetDisplayContext {
@@ -34,10 +41,28 @@ export interface MarketFormatOptions extends AssetDisplayContext {
   referencePrice?: number;
 }
 
+/** Hong Kong's exchange traded products (ETFs, leveraged and inverse products) trade on its reduced spread table. */
+const HKEX_REDUCED_SPREAD_TYPES = new Set(["ETF", "ETN", "ETP", "FUND"]);
+const HKEX_VENUES = new Set(["HKEX", "HKG", "HKSE", "SEHK"]);
+
+/** The tick table a quote's listing trades on, when its tick is finer than its currency's minor unit (see `listingTickTable`). */
+export function quoteListingTickTable(
+  quote: Partial<Pick<Quote, "instrumentType" | "exchangeName" | "listingExchangeName">> | null | undefined,
+): AssetDisplayContext["listingTickTable"] {
+  const venue = (quote?.listingExchangeName || quote?.exchangeName || "").trim().toUpperCase();
+  return HKEX_VENUES.has(venue) && HKEX_REDUCED_SPREAD_TYPES.has(normalizeType(quote?.instrumentType)) ? "hkex-reduced" : undefined;
+}
+
+/** The decimals a listing's tick asks for at a price, beyond its currency's; undefined when the currency's are enough. */
+export function listingTickDigits(table: AssetDisplayContext["listingTickTable"], price: number | undefined): number | undefined {
+  if (table !== "hkex-reduced" || price === undefined || !Number.isFinite(price)) return undefined;
+  return Math.abs(price) < 10 ? 3 : undefined;
+}
+
 /** Current price fields use the quote's source metadata; stored cost/mark
  * conventions and independent history must not supply its missing basis. */
 export function quoteFormatOptions(
-  quote: Pick<Quote, "instrumentType" | "priceBasis" | "providerPriceDivisor"> | null | undefined,
+  quote: (Pick<Quote, "instrumentType" | "priceBasis" | "providerPriceDivisor"> & Partial<Pick<Quote, "exchangeName" | "listingExchangeName">>) | null | undefined,
   fallbackAssetCategory?: string,
   metadataInstrumentType?: string,
 ): MarketFormatOptions {
@@ -45,10 +70,12 @@ export function quoteFormatOptions(
   // never turn a saved bond into a monetary quote or supply a par declaration.
   const fallback = metadataInstrumentType?.trim().toUpperCase() === "BOND" ? "BOND" : fallbackAssetCategory;
   const divisor = quote?.providerPriceDivisor;
+  const tickTable = quoteListingTickTable(quote);
   return {
     assetCategory: quote?.instrumentType?.trim() || fallback,
     priceBasis: quote?.priceBasis,
     ...(divisor != null && Number.isFinite(divisor) && divisor > 1 ? { quotedUnitDivisor: divisor } : {}),
+    ...(tickTable ? { listingTickTable: tickTable } : {}),
   };
 }
 
@@ -387,6 +414,8 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
         ? getBasePriceMaxFractionDigits(kind, value, options.currency) + quotedUnitDigits
         : marketPriceFractionDigitCeiling(reference, options) + quotedUnitDigits;
     let digits = Math.max(0, Math.min(fixedFractionDigits, maxFractionDigits));
+    const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, reference ?? value) : undefined;
+    if (tick !== undefined) digits = Math.max(digits, tick);
     // A live price keeps its instrument's decimals, but a trade finer than the
     // session prices showed (a half-yen print after whole-yen closes) is not
     // rounded to a price that never traded.
@@ -396,9 +425,12 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
       ? fitted
       : scientificPrice(value, options.maxWidth);
   }
+  // A listing whose tick is finer than its currency's minor unit keeps the tick's decimals (an HKEX ETF's 5.325).
+  const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, value) : undefined;
   const minimumFractionDigits = Math.max(
     0,
     Math.min(options.minimumFractionDigits ?? 0, getBasePriceMaxFractionDigits(kind, value, options.currency)),
+    tick ?? 0,
   );
   const maxFractionDigits = Math.max(
     getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0, quotedUnitDigits, options.currency),
@@ -461,6 +493,13 @@ export function formatMarketChangeWithCurrency(
     return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, {
       ...options, minimumFractionDigits: Math.max(2, options.minimumFractionDigits ?? 0),
     })}`;
+  }
+  // A move on a listing whose tick is finer than cents is written to the tick's decimals (+HK$0.030 on an HKEX ETF).
+  const tick = listingTickDigits(options.listingTickTable, referencePrice);
+  if (tick !== undefined && resolveAssetDisplayKind(options) !== "crypto") {
+    const rounded = Math.abs(value) < 0.5 * 10 ** -tick;
+    const body = formatMarketPriceWithCurrency(rounded ? 0 : Math.abs(value), currency, { ...options, minimumFractionDigits: tick });
+    return rounded ? body : `${value > 0 ? "+" : "-"}${body}`;
   }
   // Cents hide the whole move of a sub-cent asset (-$0.00 for a SHIB day change).
   const unitDigits = currencyPriceDigits(currency);
@@ -570,7 +609,9 @@ export function stablePriceFractionDigits(context: StablePriceContext): number {
   } else if (kind === "equity" || kind === "other") {
     // A sub-unit price keeps four decimals of the major unit, pence lines
     // included; above one unit the currency's minor unit (and pence) apply.
-    digits = below(1) ? 4 : currencyPriceMinDigits(context.currency) + unitDigits;
+    // A listing whose tick is finer than its currency's minor unit prints to the tick (an HKEX ETF's 5.325 and 0.676).
+    digits = listingTickDigits(context.listingTickTable, reference)
+      ?? (below(1) ? 4 : currencyPriceMinDigits(context.currency) + unitDigits);
   } else if (kind === "cash") {
     digits = below(10) ? 4 : 2;
   } else if (kind === "crypto") {

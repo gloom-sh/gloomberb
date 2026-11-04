@@ -10,7 +10,8 @@ import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-overview-change-basis-unused");
 const tui = createOpenTuiTestHarness();
-// 3042.HK's Tue 20 Oct move ran from Fri 16 Oct's close: HKEX was shut Mon 19 Oct.
+// 3042.HK's Tue 20 Oct move ran from Fri 16 Oct's close: HKEX was shut Mon 19 Oct. An HKEX
+// fund under 10 prints its tick's three decimals.
 const hk = createTestQuote({
   symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF", currency: "HKD", instrumentType: "ETF", listingExchangeName: "HKEX", exchangeName: "HKEX",
   price: 9.88, change: -0.06, changePercent: -0.6, previousClose: 9.94, changeSessionDate: "2026-10-20", marketState: "CLOSED",
@@ -35,11 +36,11 @@ test("the headline says what its move is from, beside it or on the line under it
   setSystemTime(new Date("2026-10-21T00:30:00Z"));
   try {
     const wide = await headline(100);
-    expect(wide[1]).toStartWith("HK$9.88  -0.06 (-0.60%) vs Fri 16 Oct close");
+    expect(wide[1]).toStartWith("HK$9.880  -0.060 (-0.60%) vs Fri 16 Oct close");
     expect(wide[2]).toStartWith("HKEX closed Mon 19 Oct, holiday");
     // Narrower than the whole line: the price and its move keep their row, the words take the next.
     const narrow = await headline(44);
-    expect(narrow[1]).toStartWith("HK$9.88  -0.06 (-0.60%)");
+    expect(narrow[1]).toStartWith("HK$9.880  -0.060 (-0.60%)");
     expect(narrow[1]).not.toContain("vs");
     expect(narrow[2]).toStartWith("vs Fri 16 Oct close");
     expect(narrow[3]).toStartWith("HKEX closed Mon 19 Oct, holiday");

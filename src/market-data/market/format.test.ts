@@ -382,3 +382,20 @@ test("a London line's price reads in the pence it trades in, to the decimals its
   expect(penceFigure(6.308, { currency: "USD", providerPriceDivisor: 100 }, 3)).toBeNull();
   expect(penceFigure(null, london, 3)).toBeNull();
 });
+
+test("an HKEX exchange traded product keeps its tick's three decimals under 10, its moves too; a stock and a fund over 10 keep cents", () => {
+  // `quote 3046.HK` printed HK$5.33 +HK$0.03 for a fund at 5.325, up from 5.295.
+  const fund = { instrumentType: "ETF", exchangeName: "HKEX", price: 5.325, previousClose: 5.295 };
+  const options = quoteFormatOptions(fund);
+  expect(formatMarketPriceWithCurrency(5.325, "HKD", { ...options, minimumFractionDigits: 2 })).toBe("HK$5.325");
+  expect(formatMarketPriceWithCurrency(5.3, "HKD", { ...options, minimumFractionDigits: 2 })).toBe("HK$5.300");
+  expect(formatMarketChangeWithCurrency(0.03, "HKD", options, 5.295)).toBe("+HK$0.030");
+  const live = liveQuoteFormatOptions(fund, "HKD");
+  expect([formatMarketPriceWithCurrency(5.325, "HKD", live), formatMarketPriceWithCurrency(0.68, "USD", liveQuoteFormatOptions({ ...fund, previousClose: 0.676 }, "USD"))])
+    .toEqual(["HK$5.325", "$0.680"]);
+  const tracker = quoteFormatOptions({ ...fund, price: 25.32 });
+  expect([formatMarketPriceWithCurrency(25.32, "HKD", { ...tracker, minimumFractionDigits: 2 }), formatMarketChangeWithCurrency(0.22, "HKD", tracker, 25.1)])
+    .toEqual(["HK$25.32", "+HK$0.22"]);
+  expect(formatMarketPriceWithCurrency(5.33, "HKD", { ...quoteFormatOptions({ ...fund, instrumentType: "EQUITY" }), minimumFractionDigits: 2 })).toBe("HK$5.33");
+  expect(formatMarketPriceWithCurrency(5.33, "USD", { ...quoteFormatOptions({ ...fund, exchangeName: "NYSEArca" }), minimumFractionDigits: 2 })).toBe("$5.33");
+});
