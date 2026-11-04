@@ -232,7 +232,7 @@ export interface CompositeChartXAxis {
   /** Evenly spread labels drawn instead of date ticks. */
   labels?: readonly string[];
   /** Labels positioned on a numeric domain rather than evenly spread. */
-  ticks?: readonly { label: string; ratio: number }[];
+  ticks?: readonly { label: string; ratio: number; pinned?: boolean }[];
   /** Vertical guide lines through the plot, captioned below the axis. */
   markers?: readonly CompositeChartXMarker[];
   formatCursor?: (xRatio: number) => string;
@@ -281,6 +281,14 @@ export interface CompositeChartProps {
   interactive?: boolean;
   /** False keeps the hover and keyboard cursor but removes pan, zoom, tools, and their keys. */
   navigable?: boolean;
+  /**
+   * A hairline across the chart, gutters included, on the line between two
+   * stacked panels (desktop and web), so each panel's axis reads as its own
+   * scale instead of one column of numbers. Default: on for a chart that
+   * cannot be navigated, whose panels are a fixed set of scales; off for one
+   * the user arranges, which has its resize line.
+   */
+  panelRules?: boolean;
   /**
    * Overrides the unit-derived tick and cursor labels on both value axes. It
    * reads only the value and the axis: what it labels is kept per formatter

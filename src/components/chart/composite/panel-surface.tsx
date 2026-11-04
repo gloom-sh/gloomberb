@@ -152,6 +152,8 @@ interface CompositePanelSurfaceProps {
   valueScalable: boolean;
   onSetValueScale: (panelId: string, side: CompositeAxisSide, key: string, range: CompositeValueRange) => void;
   onResetValueScale: (panelId: string) => void;
+  /** A hairline on the line above this panel (desktop and web), as the chart's `panelRules` asks. */
+  ruleAbove?: boolean;
   /** The line above this panel, which a drag moves (desktop and web): null for the top panel. */
   dividerAbove?: { active: boolean; gestures: PanelDividerGestures } | null;
   /** A double click on bare plot gives this panel the whole chart, or gives the others back. */
@@ -176,6 +178,16 @@ const PANEL_DIVIDER_STYLE = {
   width: "auto",
   top: "calc(-1 * var(--gloom-space-xs))",
   height: "calc(2 * var(--gloom-space-xs) + 1px)",
+} as const;
+
+/** The chart's rule between two panels: the border colour, a pixel thick, over the plot and both gutters, never taking the pointer. */
+const PANEL_RULE_STYLE = {
+  left: 0,
+  right: 0,
+  width: "auto",
+  height: "1px",
+  background: "var(--gloom-border)",
+  pointerEvents: "none",
 } as const;
 
 export function CompositePanelSurface({
@@ -219,6 +231,7 @@ export function CompositePanelSurface({
   valueScalable,
   onSetValueScale,
   onResetValueScale,
+  ruleAbove = false,
   dividerAbove = null,
   onToggleMaximized,
 }: CompositePanelSurfaceProps) {
@@ -1125,6 +1138,17 @@ export function CompositePanelSurface({
       // follows it by CSS. At rest, the size the cells give it.
       style={isDesktopWeb ? { width: "100%", flex: `${panel.height} 1 calc(${panel.height} * var(--cell-h))`, height: "auto", minHeight: 0 } : undefined}
     >
+      {ruleAbove && isDesktopWeb ? (
+        <Box
+          position="absolute"
+          left={0}
+          top={0}
+          height={1}
+          zIndex={6}
+          style={PANEL_RULE_STYLE}
+          data-gloom-role="composite-chart-panel-rule"
+        />
+      ) : null}
       {dividerAbove && isDesktopWeb ? (
         // A line too thin to grab, so the handle straddles it, as a pane
         // sidebar's does; it draws only while the pointer is on it.

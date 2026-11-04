@@ -5,6 +5,8 @@ import type { CompositeChartXMarker } from "./types";
 export interface StaticChartXAxisLabel {
   label: string;
   ratio: number;
+  /** An axis's name rather than a value: kept whole, and the ticks that would run into it give way. */
+  pinned?: boolean;
   /** Cells the label covers in the fixed-width axis text, end inclusive. */
   start?: number;
   end?: number;
@@ -31,6 +33,7 @@ function alignAxisLabel(label: string, width: number, index: number, count: numb
 interface LabelPlacement {
   start: number;
   end: number;
+  pinned?: boolean;
 }
 
 /**
@@ -45,10 +48,17 @@ const DESKTOP_LABEL_GAP = 0.5;
 /**
  * Neighbouring ticks that land within `gap` cells of each other would print as
  * one word ("930D", "1020"). Keep the first tick, then each one clear of the
- * last kept, holding room for the final tick.
+ * last kept, holding room for the final tick. A pinned label (an axis's name)
+ * always stays: the ticks that would run into it are dropped first.
  */
 function dropCollidingLabels<T extends LabelPlacement>(placements: readonly T[], gap: number): T[] {
-  const sorted = [...placements].sort((left, right) => left.start - right.start);
+  const pinned = placements.filter((placement) => placement.pinned);
+  const clear = (placement: T) => pinned.every((pin) => placement.start >= pin.end + 1 + gap || placement.end + 1 + gap <= pin.start);
+  const sorted = placements.filter((placement) => !placement.pinned && clear(placement)).sort((left, right) => left.start - right.start);
+  return [...keepApart(sorted, gap), ...pinned].sort((left, right) => left.start - right.start);
+}
+
+function keepApart<T extends LabelPlacement>(sorted: readonly T[], gap: number): T[] {
   const final = sorted[sorted.length - 1];
   const kept: T[] = [];
   let lastEnd = Number.NEGATIVE_INFINITY;
@@ -249,7 +259,7 @@ export function StaticXAxisLabels({
       edgeStyle = { left: `${ratio * 100}%`, transform: "translateX(-50%)" };
     }
     if (!clearOfBadges(start, start + labelWidth)) return [];
-    return [{ entry, index, edgeStyle, start, end: start + labelWidth - 1 }];
+    return [{ entry, index, edgeStyle, start, end: start + labelWidth - 1, pinned: entry.pinned }];
   });
   const positionedPlacements = dropCollidingLabels(placedPositionedLabels, isDesktop ? DESKTOP_LABEL_GAP : TERMINAL_LABEL_GAP);
   const segmentWidths = visibleLabels.map((_, index) => baseWidth + (index < remainder ? 1 : 0));

@@ -5,6 +5,7 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import { CompositeChart } from "../composite/composite-chart";
 import type { CompositeChartXMarker } from "../composite/types";
 import { scalarPoint, staticSeries } from "./series";
+import { trailAxisTicks } from "./trail-chart-model";
 
 export interface ScatterChartPoint {
   x: number;
@@ -32,7 +33,9 @@ export interface StaticScatterChartSurfaceProps {
   height: number;
   colors?: ScatterChartColors;
   regression?: ScatterRegressionLine | null;
+  /** What x measures: named at the end of the x axis, after its values. */
   xLabel?: string;
+  /** What y measures: named above the y axis, whose values stand beside the plot. */
   yLabel?: string;
 }
 
@@ -49,6 +52,9 @@ function timeForX(x: number): Date {
 export interface ScatterChartModel {
   series: ResolvedSeries[];
   markers: CompositeChartXMarker[];
+  /** The x values the plot spans, which its axis labels read against. */
+  xMin: number;
+  xMax: number;
 }
 
 export function buildScatterChartModel(
@@ -116,7 +122,7 @@ export function buildScatterChartModel(
       { id: "highlight", color: chartColors.highlightColor, style: "points", calendarSpaced: true },
     ));
   }
-  return { series, markers };
+  return { series, markers, xMin, xMax };
 }
 
 const PANELS = [{ id: "main" }];
@@ -138,8 +144,7 @@ export function StaticScatterChartSurface({
 }: StaticScatterChartSurfaceProps) {
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(4, Math.floor(height));
-  const labelRows = (yLabel ? 1 : 0) + (xLabel ? 1 : 0);
-  const plotHeight = Math.max(2, totalHeight - labelRows);
+  const titleRows = yLabel ? 1 : 0;
   const model = useMemo(
     () => buildScatterChartModel(points, regression, chartColors),
     [chartColors, points, regression],
@@ -152,7 +157,15 @@ export function StaticScatterChartSurface({
     textDim: chartColors.axisColor,
     negative: colors.negative,
   }), [chartColors]);
-  const xAxis = useMemo(() => model ? { markers: model.markers } : undefined, [model]);
+  // x is not time here: the axis row carries round x values and, last, the
+  // axis's name, which wins over a value that would run into it.
+  const xAxis = useMemo(() => model ? {
+    markers: model.markers,
+    ticks: [
+      ...trailAxisTicks(model.xMin, model.xMax),
+      ...(xLabel ? [{ label: `${xLabel} →`, ratio: 1, pinned: true }] : []),
+    ],
+  } : undefined, [model, xLabel]);
 
   if (!model) {
     return (
@@ -164,21 +177,24 @@ export function StaticScatterChartSurface({
 
   return (
     <Box flexDirection="column" width={totalWidth} height={totalHeight}>
-      {yLabel ? <Text fg={colors.textDim}>{yLabel}</Text> : null}
+      {yLabel ? (
+        // Over the y axis's values at the right edge, which the arrow points up from.
+        <Box flexDirection="row" height={1} flexShrink={0} paddingRight={1} justifyContent="flex-end">
+          <Text fg={chartColors.axisColor}>{`${yLabel} ↑`}</Text>
+        </Box>
+      ) : null}
       <CompositeChart
         series={model.series}
         panels={PANELS}
         width={totalWidth}
-        height={plotHeight}
+        height={Math.max(3, totalHeight - titleRows)}
         colors={compositeColors}
         interactive={false}
         navigable={false}
         showLegend={false}
-        showTimeAxis={false}
-        axisWidth={0}
+        showTimeAxis
         xAxis={xAxis}
       />
-      {xLabel ? <Text fg={colors.textDim}>{xLabel}</Text> : null}
     </Box>
   );
 }
