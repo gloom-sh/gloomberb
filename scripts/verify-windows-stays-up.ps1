@@ -17,6 +17,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# The app opened here is not a person's install: nothing it runs into goes to
+# the crash and usage reports. It inherits this from the script.
+$env:GLOOMBERB_NO_TELEMETRY = "1"
+$env:DO_NOT_TRACK = "1"
 $Evidence = Join-Path $EvidenceDir $Label
 New-Item -ItemType Directory -Force -Path $Evidence | Out-Null
 $Report = Join-Path $Evidence "stays-up.txt"
