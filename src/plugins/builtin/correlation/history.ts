@@ -39,7 +39,7 @@ export function unfinishedBarFreshness(
 }
 
 /** Below this many shared daily returns a correlation says why it has so few. */
-export const CORRELATION_EXPLAINED_RETURNS = 20;
+const CORRELATION_EXPLAINED_RETURNS = 20;
 
 interface CorrelationSide {
   label: string;

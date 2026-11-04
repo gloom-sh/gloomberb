@@ -46,7 +46,7 @@ const HKEX_REDUCED_SPREAD_TYPES = new Set(["ETF", "ETN", "ETP", "FUND"]);
 const HKEX_VENUES = new Set(["HKEX", "HKG", "HKSE", "SEHK"]);
 
 /** The tick table a quote's listing trades on, when its tick is finer than its currency's minor unit (see `listingTickTable`). */
-export function quoteListingTickTable(
+function quoteListingTickTable(
   quote: Partial<Pick<Quote, "instrumentType" | "exchangeName" | "listingExchangeName">> | null | undefined,
 ): AssetDisplayContext["listingTickTable"] {
   const venue = (quote?.listingExchangeName || quote?.exchangeName || "").trim().toUpperCase();
@@ -54,7 +54,7 @@ export function quoteListingTickTable(
 }
 
 /** The decimals a listing's tick asks for at a price, beyond its currency's; undefined when the currency's are enough. */
-export function listingTickDigits(table: AssetDisplayContext["listingTickTable"], price: number | undefined): number | undefined {
+function listingTickDigits(table: AssetDisplayContext["listingTickTable"], price: number | undefined): number | undefined {
   if (table !== "hkex-reduced" || price === undefined || !Number.isFinite(price)) return undefined;
   return Math.abs(price) < 10 ? 3 : undefined;
 }
