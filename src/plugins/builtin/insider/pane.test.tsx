@@ -229,8 +229,8 @@ test("Trades and Insiders are a choice in INS's query bar; Insiders lists each i
   expect(frame).toMatch(/Window\s+7D\s+30D\s+90D/);
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
   // Each on the side their trades net to: the buyer's dollars first, the seller's after.
-  expect(frame).toMatch(/Anna B\. Smith\s+Director\s+3rd\s+2\.5x\s+\+12%\s+\$1\.0k\s+--\s+10\/14\/26/);
-  expect(frame).toMatch(/Bob Jones\s+CFO\s+2nd\s+--\s+-40%\s+--\s+\$52\.0k\s+10\/9\/26/);
+  expect(frame).toMatch(/Anna B\. Smith\s+Director\s+3rd\s+2\.5x\s+\+12%\s+\$1\.0k\s+--\s+2026-10-14/);
+  expect(frame).toMatch(/Bob Jones\s+CFO\s+2nd\s+--\s+-40%\s+--\s+\$52\.0k\s+2026-10-09/);
   expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
   // The sold column sorts the sellers first.
   await tui.clickFrameText("SOLD");

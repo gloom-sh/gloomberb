@@ -27,6 +27,13 @@ test("an id, a label or a FRED series id is spelled, not read", () => {
   expect(read("personal-spending")).toEqual({ id: "personal-spending", readAs: null });
 });
 
+test("a group the catalog lists reads as its first statistic, before the start of a name", () => {
+  expect(read("inflation")).toEqual({ id: "cpi-yoy", readAs: 'Read "inflation" as CPI (CPI y/y), the first inflation statistic.' });
+  // consumer-sentiment starts with the word, but the group's first statistic is retail sales.
+  expect(read("Consumer")?.id).toBe("retail-sales");
+  expect(read("rates & money")?.id).toBe("fed-funds");
+});
+
 test("the start of a name is read too, and nothing else is guessed", () => {
   expect(read("unemp")).toEqual({ id: "unemployment", readAs: 'Read "unemp" as Unemployment Rate (Unemployment).' });
   expect(readStatArg("zzz")).toBeNull();

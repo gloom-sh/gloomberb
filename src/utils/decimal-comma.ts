@@ -194,15 +194,18 @@ export function readCurrencyAmount(value: unknown, label: string, currency: stri
 }
 
 /**
- * A labelled amount to convert (`fx 81,000 EUR/USD`) as `alerts add` reads a
- * price: a comma and exactly three digits could be thousands or a decimal
- * comma whatever the currency's minor units, so it throws naming both
- * readings, the same string read the same way in both commands. Anything else
- * reads as `readCurrencyAmount` reads it.
+ * A labelled amount to convert (`fx 81,000 EUR/USD`): a single comma or dot
+ * and exactly three digits (`1,234`, `1.234`) could be thousands or a decimal
+ * mark whatever the currency's minor units, so it throws naming both
+ * readings, as `alerts add` refuses `1,234` for a price. A dot-decimal reader
+ * typing `1.234` is never handed 1234. Anything else reads as
+ * `readCurrencyAmount` reads it.
  */
 export function readConvertedAmount(value: unknown, label: string, currency: string): number {
   const read = parseTypedNumber(value);
-  if (read.kind === "ambiguous") throw ambiguousAmountError(value, read, label, currency.trim().toUpperCase());
+  const dotted = read.kind === "number" ? thousandsDotReadings(withoutUnderscores(value)) : null;
+  const reading = read.kind === "ambiguous" ? read : dotted;
+  if (reading) throw ambiguousAmountError(value, reading, label, currency.trim().toUpperCase());
   return readCurrencyAmount(value, label, currency);
 }
 

@@ -1,6 +1,6 @@
 import { formatNumber } from "../../../utils/format";
 import { TREASURY_CURVE_CUTOFF } from "../shared/treasury-cutoffs";
-import type { StatDef } from "./defs";
+import { STAT_CATEGORIES, type StatDef } from "./defs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY = 6 * DAY_MS;
@@ -652,9 +652,11 @@ interface StatArgRead {
 /**
  * Reads a shortcut argument like `ECST cpi` as a statistic. What it is called
  * comes before what FRED files it under: a statistic's id, its label, one of
- * its common names (`PCE`, `gdp`), then a FRED series id, then the start of an
- * id or a label. A name or a start says what it read, and a name that is also
- * another statistic's FRED series (`PCE` is personal spending there) points at it.
+ * its common names (`PCE`, `gdp`), then a FRED series id, then a group the
+ * catalog lists (`inflation` is its first statistic, CPI y/y), then the start
+ * of an id or a label. A name, a group or a start says what it read, and a
+ * name that is also another statistic's FRED series (`PCE` is personal
+ * spending there) points at it.
  */
 export function readStatArg(arg: string | null | undefined): StatArgRead | null {
   const query = arg?.trim().toLowerCase();
@@ -665,6 +667,10 @@ export function readStatArg(arg: string | null | undefined): StatArgRead | null 
   const named = STATS.find((entry) => entry.aliases?.some((alias) => alias.toLowerCase() === query));
   const series = STATS.find((entry) => entry.seriesId.toLowerCase() === query);
   if (!named && series) return { stat: series, readAs: null };
+  // A group's word (the catalog lists them as keywords) reads as the group's first statistic.
+  const group = named ? undefined : STAT_CATEGORIES.find((entry) => entry.id === query || entry.label.toLowerCase() === query);
+  const first = group ? STATS.find((entry) => entry.category === group.id) : undefined;
+  if (first) return { stat: first, readAs: `Read "${arg!.trim()}" as ${first.label} (${first.shortLabel}), the first ${group!.label.toLowerCase()} statistic.` };
   const stat = named ?? STATS.find((entry) =>
     entry.id.startsWith(query)
     || entry.label.toLowerCase().startsWith(query)

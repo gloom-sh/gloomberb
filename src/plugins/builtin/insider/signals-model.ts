@@ -456,10 +456,9 @@ export function formatSignalValue(value: number): string {
   return `$${formatCompact(value)}`;
 }
 
-/** A trade day as m/d/yy, as the INS table writes a transaction date. */
+/** A trade day as ISO, 2026-11-04, as the Filed column beside it: 11/4/26 reads as 11 April to a day-first reader. */
 export function formatSignalDay(day: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  return match ? `${Number(match[2])}/${Number(match[3])}/${match[1]!.slice(2)}` : "--";
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "--";
 }
 
 export function insiderSignalsEmptyTitle(window: number, side: InsiderSignalSide = "buy", filtered = false): string {
@@ -559,7 +558,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     stake: fitWidth(lines.map((line) => line.stake.text), "Stake", 10),
     bought: fitWidth(dollars((line) => line.bought), "Bought", 8),
     sold: fitWidth(dollars((line) => line.sold), "Sold", 8),
-    last: fitWidth(lines.map((line) => line.last), "Last", 8),
+    last: fitWidth(lines.map((line) => line.last), "Last", 10),
   };
   const show = { usual: true, nth: true, last: true, role: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
@@ -654,7 +653,7 @@ export function buildInsiderSignalColumns(
     stake: fitWidth(facts.map((fact) => fact.stake.text), "Stake", 10),
     insiders: fitWidth(rows.map((row) => String(row.insiders)), words.insiders, 4),
     value: fitWidth(rows.map((row) => formatSignalValue(row.value)), words.traded, 8),
-    lastBuy: fitWidth(rows.map((row) => formatSignalDay(row.lastBuy)), words.last, 8),
+    lastBuy: fitWidth(rows.map((row) => formatSignalDay(row.lastBuy)), words.last, 10),
   };
   const show = { usual: true, nth: true, company: true, insiders: true, lastBuy: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
