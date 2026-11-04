@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-31",
+ "updatedAt": "2026-11-03",
  "categories": [
   {
    "id": "research",
@@ -243,8 +243,7 @@
    "description": "Screen stocks by criteria",
    "detail": "Filter covered stocks on valuation, growth, margins, liquidity, short interest, insider activity, and 13F holders, then rank the matches by any metric. Exports to CSV; saving a screen needs a verified email.",
    "category": "research",
-   "shot": "https://gloom.sh/screenshots/fn/EQS.png",
-   "lesson": "/academy/compare-screen-follow-money/compare-and-screen/screener"
+   "shot": "https://gloom.sh/screenshots/fn/EQS.png"
   },
   {
    "code": "OMON",
@@ -820,7 +819,7 @@
    "code": "CTM",
    "name": "Futures curve",
    "description": "Futures term structure",
-   "detail": "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest, and volume.",
+   "detail": "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest, and volume. CTM VIX is the VIX futures curve from Cboe's daily settlements, with spot VIX and the front month's premium to it.",
    "category": "markets",
    "arg": "GC",
    "shot": "https://gloom.sh/screenshots/fn/CTM.png",
@@ -1026,7 +1025,7 @@
    "code": "VIX",
    "name": "VIX term structure",
    "description": "30-day vs 3-month VIX",
-   "detail": "Daily 30-day and three-month VIX closes from FRED, so you can see whether the curve is in contango or inverted.",
+   "detail": "Daily Cboe VIX closes from 9 days to a year out, with the three-month to 30-day ratio and its history, so you can see whether the term structure is in contango or inverted. The VIX futures curve, with spot VIX and the front month's premium to it, is CTM VIX.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/VIX.png",
    "lesson": "/academy/options-and-volatility/reading-volatility/vix-and-vol-indices"
@@ -1046,6 +1045,7 @@
    "description": "Session highs and lows",
    "detail": "A live count of stocks printing new session highs and lows over 30-second, one-minute, and five-minute windows. Real-time on Pro, 15-minute delayed on Free.",
    "category": "markets",
+   "shot": "https://gloom.sh/screenshots/fn/HILO.png",
    "lesson": "/academy/macro-markets-and-news/markets/movers-highs-halts"
   },
   {
@@ -1628,7 +1628,7 @@
    "code": "DESK",
    "name": "Trading desks",
    "description": "Add a ready-made desk",
-   "detail": "Adds a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading. Also offered on first run, as 'What do you trade?'.",
+   "detail": "Adds a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading. Also asked on first run: 'What do you trade most?'.",
    "category": "app",
    "arg": "options",
    "lesson": "/academy/terminal-and-workspace/how-the-terminal-works/layouts-and-desks"
@@ -6969,7 +6969,7 @@
     "developer api",
     "market news"
    ],
-   "updatedAt": "2026-10-30",
+   "updatedAt": "2026-11-03",
    "blocks": [
     {
      "type": "heading",
@@ -7003,7 +7003,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Real-time news: from $99 a month with the [News and our own data plan](/datasets/pricing#news). Unlimited is no longer sold; existing Unlimited subscriptions keep real-time access."
+     "text": "Real-time news: from $199 a month with the [News and our own data plan](/datasets/pricing#news). Unlimited is no longer sold; existing Unlimited subscriptions keep real-time access."
     },
     {
      "type": "heading",
@@ -7227,7 +7227,7 @@
     "cftc",
     "cot"
    ],
-   "updatedAt": "2026-10-14",
+   "updatedAt": "2026-11-03",
    "blocks": [
     {
      "type": "heading",
@@ -7272,11 +7272,11 @@
     },
     {
      "type": "paragraph",
-     "text": "Gloom Datasets keys start with `gds_`. They come with a plan and are created in the [console](/datasets/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
+     "text": "Gloom Datasets keys start with `gds_`. They come with a plan, Free included, and are created in the [console](/datasets/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
     },
     {
      "type": "paragraph",
-     "text": "They are different keys from the Gloom API's. A Gloom Pro key (`gloom_mcp_`) or a News API key (`gloom_news_`) gets `401 wrong_key` on a dataset route, and a `gds_` key gets `401` on the Gloom API's own routes, such as the [REST API](/docs/rest-api), but reads the [News API](/docs/news-api) at no credit cost."
+     "text": "They are different keys from the Gloom API's. A Gloom Pro key (`gloom_mcp_`) or a News API key (`gloom_news_`) gets `401 wrong_key` on a dataset route, and a `gds_` key gets `401` on the Gloom API's own routes, such as the [REST API](/docs/rest-api), but a paid plan's key reads the [News API](/docs/news-api) at no credit cost."
     },
     {
      "type": "heading",
@@ -7285,7 +7285,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Paid plans only: an account without a plan has no key. A plan reads one band of datasets, or all of them, for personal or company use."
+     "text": "Free reads every dataset on 10 popular tickers (AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA, AMD, NFLX and JPM), the last 30 days, with Gloom's own data 7 days behind: 100 calls a day and one key, started in the [console](/datasets/console) with no card. A paid plan reads one band of datasets, or all of them, for personal or company use."
     },
     {
      "type": "table",
@@ -7297,23 +7297,23 @@
      "rows": [
       [
        "Reference: prices, fundamentals, calendars, macro, futures, crypto",
-       "$29/month",
-       "$249/month"
+       "$49/month",
+       "$149/month"
       ],
       [
        "Filings and research: SEC and insiders, transcripts, congress, M&A, KPIs, estimates",
-       "$59/month",
-       "$499/month"
+       "$99/month",
+       "$299/month"
       ],
       [
        "News and our own data: news, options flow, GPU, supply chain, hiring, power",
-       "$99/month",
-       "$999/month"
+       "$199/month",
+       "$799/month"
       ],
       [
        "Everything",
-       "$200/month",
-       "$1,999/month"
+       "$299/month",
+       "$1,199/month"
       ]
      ]
     },
@@ -7327,7 +7327,7 @@
     },
     {
      "type": "paragraph",
-     "text": "A key reads its plan's datasets; any other answers `402 dataset_not_included`, naming the plan that has it. Credits, rate limits and the founding offer (40% off every plan for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing)."
+     "text": "A key reads its plan's datasets; any other answers `402 dataset_not_included`, naming the plan that has it. Launch pricing: a subscription keeps the price it started at. Credits, rate limits and the founding offer (25% off every plan for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing). Gloom's own datasets (GPU prices, supply chain, hiring, attention, social mentions, options flow, power and exposure) are in early access."
     },
     {
      "type": "heading",
@@ -7461,9 +7461,9 @@
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/panes-and-linking",
    "title": "Panes, focus and linking (WIN, GL, PS, LMA)",
-   "summary": "Every function opens in a pane, one pane at a time has the focus and receives your keys, and panes can be moved, tidied and linked so they follow a list.",
+   "summary": "Every function opens in a pane, one pane at a time has the focus and receives your keys, and panes can be moved, stacked as tabs, tidied, given a new ticker and linked so they follow a list.",
    "chapter": "The terminal and your workspace",
-   "minutes": 4
+   "minutes": 6
   },
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/layouts-and-desks",
@@ -7484,7 +7484,7 @@
    "title": "Free, Pro and how fresh your data is (UPGRADE, CONN)",
    "summary": "Every number has an age (real-time, 15 minutes behind, daily or on release), and the help card's Data line and the clock mark on a quote tell you which.",
    "chapter": "The terminal and your workspace",
-   "minutes": 5
+   "minutes": 6
   },
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/the-cli",
@@ -7729,7 +7729,7 @@
    "title": "Analyst ratings and price targets (ANR)",
    "summary": "ANR shows sell-side ratings and 12-month price targets: the average target and its history, the upside to it, and every recent action by firm.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/fundamentals-and-earnings/events-and-deals/dividends-and-corporate-actions",
@@ -7788,6 +7788,27 @@
    "minutes": 5
   },
   {
+   "url": "/academy/compare-screen-follow-money/compare-and-screen/value-quality-garp",
+   "title": "Value, quality and GARP screens (EQS)",
+   "summary": "Three of the ready screens in EQS write three styles of stock picking as rules: Value looks for cash bought cheaply, Quality for businesses that earn a high return on their capital, and GARP for steady growth at a price the growth can carry.",
+   "chapter": "Compare, screen and follow the money",
+   "minutes": 5
+  },
+  {
+   "url": "/academy/compare-screen-follow-money/compare-and-screen/classic-scores",
+   "title": "Classic value and quality scores (EQS)",
+   "summary": "Four classic scores each turn the statements into one number: Piotroski's F-score (getting stronger?), Altman's Z (how far from distress?), the Graham number (the most a careful buyer pays) and the Magic Formula (good businesses at cheap prices).",
+   "chapter": "Compare, screen and follow the money",
+   "minutes": 5
+  },
+  {
+   "url": "/academy/compare-screen-follow-money/compare-and-screen/sector-grades",
+   "title": "Grades within a sector (EQS)",
+   "summary": "EQS grades every covered company from F to A+ on Value, Growth, Profitability, Momentum and Revisions against the other companies in its sector, and blends the five into a composite from Bottom to Top.",
+   "chapter": "Compare, screen and follow the money",
+   "minutes": 5
+  },
+  {
    "url": "/academy/compare-screen-follow-money/compare-and-screen/live-scanner",
    "title": "Your own intraday scan (SCAN)",
    "summary": "SCAN watches US stocks through the trading day and lists the ones that match your intraday conditions right now (a fast move, a burst of volume, a new high or low, a VWAP cross, a gap), and can alert you when a new one appears.",
@@ -7813,7 +7834,7 @@
    "title": "Congress trades (CG)",
    "summary": "CG lists the trades members of Congress must disclose within 45 days, with the member, the asset, buy or sell, the amount band, the owner and how late it was reported.",
    "chapter": "Compare, screen and follow the money",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/compare-screen-follow-money/who-owns-it/short-interest",
@@ -7960,7 +7981,7 @@
    "title": "Futures from zero (FUT)",
    "summary": "A futures contract is a standard, exchange-traded promise to buy or sell a set quantity on a set month at a price agreed today, settled with daily margin, and FUT shows each market's front month.",
    "chapter": "Futures, commodities and energy",
-   "minutes": 5
+   "minutes": 6
   },
   {
    "url": "/academy/futures-commodities-energy/curves-and-rolling",
@@ -7993,9 +8014,9 @@
   {
    "url": "/academy/futures-commodities-energy/gpu-prices",
    "title": "GPU rental prices (GPU)",
-   "summary": "GPU collects published hourly rental prices for AI chips by model and price basis, with list indexes, medians and history, so compute can be tracked like a commodity.",
+   "summary": "GPU collects published hourly rental prices for AI chips by model and price basis, with list indexes, medians, history and a daily settle, so compute can be tracked like a commodity.",
    "chapter": "Futures, commodities and energy",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/futures-commodities-energy/macro-days",
@@ -8093,7 +8114,7 @@
    "title": "Currencies and cross rates (FXC)",
    "summary": "FXC is a matrix of exchange rates between the major currencies, each cell saying how many units of the column currency one unit of the row currency buys.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 3
+   "minutes": 4
   },
   {
    "url": "/academy/macro-markets-and-news/markets/world-indices-and-venues",
@@ -8231,9 +8252,9 @@
   {
    "url": "/academy/special-datasets/infrastructure",
    "title": "The AI infrastructure map (TBO)",
-   "summary": "TBO opens a partner's research database on the physical build-out of AI and semiconductors: curated lists of companies by niche, physical sites, and dated research notes.",
+   "summary": "TBO opens a partner's research database on the physical build-out of AI and semiconductors: a board of themes, the companies in each, physical sites and dated research notes. TBOC follows one company's power deals, suppliers, customers and sites.",
    "chapter": "Special datasets",
-   "minutes": 3
+   "minutes": 6
   },
   {
    "url": "/academy/special-datasets/research-search",
