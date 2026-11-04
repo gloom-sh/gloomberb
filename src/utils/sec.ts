@@ -69,6 +69,17 @@ export function mayBeUsEquityOrFundTicker(ticker: TickerRecord | null | undefine
   return mayBeUsListingOfType(ticker, (type) => isEquityType(type) || isFundType(type));
 }
 
+/**
+ * Whether the fund view (ETF) can open on the ticker: `mayBeUsEquityOrFundTicker`,
+ * or an equity or fund known to be listed abroad (3046.HK), which the view
+ * gives its issuer's figures where Gloom reads them, and its issuer's page
+ * otherwise. Before this `ETF 3046.HK` opened nothing.
+ */
+export function mayBeFundViewTicker(ticker: TickerRecord | null | undefined): boolean {
+  if (mayBeUsEquityOrFundTicker(ticker)) return true;
+  return isTickerOfType(ticker, (type) => isEquityType(type) || isFundType(type)) && isKnownNonUsListing(ticker);
+}
+
 function isTickerOfType(ticker: TickerRecord | null | undefined, acceptsType: (type?: string) => boolean): boolean {
   if (!ticker) return false;
   const primaryContract = ticker.metadata.broker_contracts?.[0];
@@ -141,8 +152,17 @@ export function listingAbroadVenue(key: string): string | null {
   return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
 }
 
-/** What `ticker` and ETF say of a fund listed abroad: the facts Gloom collects are the US-listed funds'. */
-export const US_FUND_FACTS_ONLY = "Fund facts (fee, NAV, premium) cover US-listed funds only.";
+/** What `ticker` and ETF say of a fund listed abroad: the facts Gloom collects are the US-listed funds' and Hong Kong's spot coin funds'. */
+export const US_FUND_FACTS_ONLY = "Fund facts (fee, NAV, premium) cover US-listed funds and Hong Kong's spot bitcoin and ether ETFs only.";
+
+/**
+ * Whether a fund on this venue abroad can have facts: Hong Kong, whose spot
+ * bitcoin and ether ETFs Gloom reads from their issuers. The server says which
+ * of its funds are covered.
+ */
+export function hasFundFactsAbroad(exchange?: string | null): boolean {
+  return canonicalExchange(exchange ?? undefined) === "HKEX";
+}
 
 /**
  * The symbol data that covers US listings only reads a listing by: AAPL for

@@ -76,7 +76,7 @@ import {
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { getFormDescription } from "../../plugins/builtin/sec/model";
 import { ownerNames, rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
-import { isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
+import { hasFundFactsAbroad, isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
@@ -756,7 +756,9 @@ export async function loadReportFundFacts(
   tickerFile: TickerRecord | null = null,
   load: (symbol: string) => Promise<FundFactsPayload> = (ticker) => readFundFacts(ticker),
 ): Promise<FundFactsPayload | null> {
-  if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund" || (exchange && !isUsListingExchange(exchange))) return null;
+  // A fund abroad has none, but for Hong Kong's spot coin funds, which the server answers for.
+  if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund"
+    || (exchange && !isUsListingExchange(exchange) && !hasFundFactsAbroad(exchange))) return null;
   try {
     return await load(symbol);
   } catch (error) {
@@ -959,7 +961,7 @@ function fundFactsNote(
   facts: FundFactsPayload | null = null,
 ): string | null {
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund") return null;
-  if (exchange && !isUsListingExchange(exchange)) return US_FUND_FACTS_ONLY;
+  if (exchange && !isUsListingExchange(exchange) && !facts?.covered) return US_FUND_FACTS_ONLY;
   if (!facts?.covered) return null;
   const figures = [facts.expenseRatio && "fee", facts.nav && "NAV", facts.premiumDiscount && "premium", facts.netAssets && "net assets"]
     .filter((figure): figure is string => !!figure);

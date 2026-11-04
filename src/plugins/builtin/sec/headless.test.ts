@@ -348,10 +348,58 @@ test("the filings-only view still says what a trust files", () => {
   expect(fundFilingsEmpty("IBIT", { count: 0, complete: true })).toBe("No SEC filings found for IBIT.");
 });
 
+const CHINAAMC_PAGE = "https://www.chinaamc.com.hk/detail?fundId=HKVAETH";
+/** 3046:HKEX as the server reads ChinaAMC's own figures for Tue 3 Nov 2026: its HKD counter, closed at 5.295. */
+const CHINAAMC_ETHER_HKD: FundFactsPayload = {
+  ticker: "3046:HKEX", covered: true, status: "covered", name: "ChinaAMC Ether ETF (HKD counter)", structure: null, currency: "HKD",
+  expenseRatio: { value: 0.99, asOf: "2026-11-04", source: "ChinaAMC (Hong Kong)", url: CHINAAMC_PAGE, kind: "management-fee" },
+  nav: { value: 5.2842, asOf: "2026-11-03", source: "ChinaAMC (Hong Kong)", url: CHINAAMC_PAGE, period: "day" },
+  closingPrice: { value: 5.295, asOf: "2026-11-03", source: "Gloom Cloud" },
+  premiumDiscount: { value: 0.2043828772567219, asOf: "2026-11-03", source: "Gloom Cloud", basis: "computed" },
+  netAssets: null, sponsor: { value: "ChinaAMC (Hong Kong)", asOf: null, source: "ChinaAMC (Hong Kong)", url: CHINAAMC_PAGE },
+  inception: null, leverage: null, index: null, bond: null,
+  sharesOutstanding: { value: 60_200_000, asOf: "2026-11-03", source: "ChinaAMC (Hong Kong)", url: CHINAAMC_PAGE },
+  coinHoldings: { asset: "ETH", coins: 18_453, unitsPerCoin: 3262.342166585379, asOf: "2026-11-03", source: "ChinaAMC (Hong Kong)", url: CHINAAMC_PAGE },
+  flows: null, stale: false, fetchedAt: "2026-11-04T03:18:26.551Z",
+};
+
+test("ETF for a Hong Kong spot coin fund gives its issuer's figures in the counter's currency, with units per coin, and asks the SEC nothing", async () => {
+  const asked: string[] = [];
+  const headless = createFundHeadless({
+    loadFacts: async (symbol) => { asked.push(symbol); return CHINAAMC_ETHER_HKD; },
+    loadFilings: async () => { throw new Error("Must not read SEC filings"); },
+    loadAbroadProfile: async () => { throw new Error("Must not read the profile"); },
+  });
+  const result = await headless.load(fundArgs("3046:HKEX"), createTestHeadlessContext());
+  expect(asked).toEqual(["3046:HKEX"]);
+  expect(result.sections).toHaveLength(1);
+  expect(result.sections[0]!.entries!.map((entry) => [entry.label, entry.formatted, entry.unit])).toEqual([
+    ["Name", "ChinaAMC Ether ETF (HKD counter)", undefined],
+    ["Management fee", "0.99% · 2026-11-04 · ChinaAMC (Hong Kong)", "%"],
+    ["NAV", "HK$5.2842 · 2026-11-03 · ChinaAMC (Hong Kong)", "HKD"],
+    ["Closing price", "HK$5.295 · 2026-11-03 · Gloom Cloud", "HKD"],
+    ["Premium/discount", "+0.20% · 2026-11-03 · closing price vs NAV · Gloom Cloud", "%"],
+    ["Shares outstanding", "60,200,000 · 2026-11-03 · ChinaAMC (Hong Kong)", "shares"],
+    ["Units per ETH", "3,262 · 2026-11-03 · ChinaAMC (Hong Kong)", "units per ETH"],
+    ["Coins held", "18,453 ETH · 2026-11-03 · ChinaAMC (Hong Kong)", "ETH"],
+    ["Sponsor", "ChinaAMC (Hong Kong)", undefined],
+    ["Issuer page", CHINAAMC_PAGE, undefined],
+  ]);
+  expect(result.freshness).toMatchObject({ source: "ChinaAMC (Hong Kong)", asOf: "2026-11-03" });
+  // A Hong Kong fund the server has no figures for keeps its issuer link.
+  const other = await createFundHeadless({
+    loadFacts: async () => ({ ...CHINAAMC_ETHER_HKD, ticker: "2800:HKEX", covered: false, status: "not-published" }),
+    loadFilings: async () => [],
+    loadAbroadProfile: async () => ({ page: "https://www.trahk.com.hk" }),
+  }).load(fundArgs("2800:HKEX"), createTestHeadlessContext());
+  expect(other.metadata).toMatchObject({ venue: "HKEX", usListedOnly: true, issuerPage: "https://www.trahk.com.hk" });
+});
+
 test("ETF for a fund listed abroad says what ticker says, with its issuer's page, and asks the SEC nothing", async () => {
   let asked = 0;
   const headless = createFundHeadless({
-    loadFacts: async () => { asked++; return SPY_FACTS; },
+    // A server before Hong Kong's figures, or a fund it has none for.
+    loadFacts: async () => { throw new Error("Unknown ticker"); },
     loadFilings: async () => { asked++; return []; },
     loadAbroadProfile: async (key) => ({
       name: `${key} fund`,
@@ -361,7 +409,7 @@ test("ETF for a fund listed abroad says what ticker says, with its issuer's page
   });
   for (const key of ["3042.HK", "3042:HKEX"]) {
     const result = await headless.load(fundArgs(key), createTestHeadlessContext());
-    expect(result.sections[0]).toMatchObject({ title: "Fund facts", rows: [], empty: "Fund facts (fee, NAV, premium) cover US-listed funds only." });
+    expect(result.sections[0]).toMatchObject({ title: "Fund facts", rows: [], empty: "Fund facts (fee, NAV, premium) cover US-listed funds and Hong Kong's spot bitcoin and ether ETFs only." });
     expect(result.sections[1]!.entries!.map((entry) => [entry.label, entry.value])).toEqual([
       ["Name", `${key} fund`],
       ["Issuer page", "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT"],

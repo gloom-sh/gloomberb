@@ -422,7 +422,8 @@ test("a fund listed abroad shows what fn ETF prints of it: its name, its issuer'
   paneSettings = { forms: ETF_FORMS_SETTING };
   firstSymbol = "3042.HK";
   firstListing = { exchange: "HKEX", currency: "HKD", assetCategory: "ETF" };
-  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => IVV_FACTS);
+  // Hong Kong is asked: the server has figures for its spot coin funds, and none for this one.
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({ ...IVV_FACTS, ticker: "3042.HK", covered: false, status: "not-published" }));
   const filings: string[] = [];
   try {
     await mount(createTestDataProvider({
@@ -440,18 +441,45 @@ test("a fund listed abroad shows what fn ETF prints of it: its name, its issuer'
       }),
     }));
     const shown = (await tui.waitForFrameToContain("Description from")).replace(/\s+/g, " ");
-    expect(shown).toContain("Fund facts (fee, NAV, premium) cover US-listed funds only.");
+    expect(shown).toContain("Fund facts (fee, NAV, premium) cover US-listed funds and Hong Kong's spot bitcoin and ether ETFs only.");
     expect(shown).toContain("ChinaAMC Bitcoin ETF (HKD counter)");
     expect(shown).toContain("Issuer page: chinaamc.com.hk");
     expect(shown).toContain("Description from: ChinaAMC (Hong Kong), Product Key Facts on HKEXnews");
     // No SEC request for a listing the SEC does not know. `o` opens the issuer page; the pane menu lists both links.
     expect(filings).toEqual([]);
-    expect(facts).not.toHaveBeenCalled();
+    expect(facts).toHaveBeenCalledTimes(1);
     expect(footer.hints?.map((hint) => hint.id)).toContain("open");
     expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual([
       "Open chinaamc.com.hk",
       "Open ChinaAMC (Hong Kong), Product Key Facts on HKEXnews",
     ]);
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "3046.HK";
+  firstListing = { exchange: "HKEX", currency: "HKD", assetCategory: "ETF" };
+  const page = "https://www.chinaamc.com.hk/detail?fundId=HKVAETH";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ...IVV_FACTS, ticker: "3046:HKEX", name: "ChinaAMC Ether ETF (HKD counter)", structure: null, currency: "HKD",
+    expenseRatio: { value: 0.99, asOf: "2026-11-04", source: "ChinaAMC (Hong Kong)", url: page, kind: "management-fee" },
+    nav: { value: 5.2842, asOf: "2026-11-03", source: "ChinaAMC (Hong Kong)", url: page, period: "day" },
+    closingPrice: { value: 5.295, asOf: "2026-11-03", source: "Gloom Cloud" },
+    premiumDiscount: { value: 0.2044, asOf: "2026-11-03", source: "Gloom Cloud", basis: "computed" },
+    netAssets: null, inception: null, index: null,
+    sponsor: { value: "ChinaAMC (Hong Kong)", asOf: null, source: "ChinaAMC (Hong Kong)", url: page },
+    coinHoldings: { asset: "ETH", coins: 18_453, unitsPerCoin: 3262.34, asOf: "2026-11-03", source: "ChinaAMC (Hong Kong)", url: page },
+  }));
+  const filings: string[] = [];
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
+    const shown = (await tui.waitForFrameToContain("Units per ETH")).replace(/\s+/g, " ");
+    for (const text of ["HK$5.2842", "+0.20%", "Management fee", "0.99%", "Units per ETH 3,262 18,453 ETH"]) expect(shown).toContain(text);
+    expect(filings).toEqual([]);
+    expect(footer.hints?.map((hint) => hint.id)).toContain("open");
   } finally {
     facts.mockRestore();
   }

@@ -432,7 +432,7 @@ test("a US fund's report points to the fund facts it has, and only when it has s
   }
   const london: TickerFinancials = { ...ibit, quote: { ...ibit.quote!, symbol: "VUSA", exchangeName: "LSE" } };
   expect(plain(renderFundamentalsReport({ ...london, symbol: "VUSA", exchange: "LSE" }, "fundamentals")))
-    .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) cover US-listed funds only.");
+    .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) cover US-listed funds and Hong Kong's spot bitcoin and ether ETFs only.");
   expect(await report({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).not.toContain("Fund facts");
 });
 

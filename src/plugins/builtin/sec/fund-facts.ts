@@ -1,12 +1,12 @@
 import { apiClient } from "../../../api-client";
-import type { FundFactsPayload, FundLeverage, FundMetalHoldings, FundStructure } from "../../../api-client/fund-facts";
+import type { FundCoinHoldings, FundFactsPayload, FundLeverage, FundMetalHoldings, FundStructure } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, formatCurrency } from "../../../utils/format";
 import { bondClassText, bondFigures, DV01_FROM_DURATION, durationDv01PerShare, formatDv01PerShare } from "../../../market-data/bond-funds";
 import { readFundFacts, validateFundFacts } from "../../../market-data/fund-facts";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -54,6 +54,25 @@ function formatPremiumPercent(value: number): string {
 function formatNav(value: number): string {
   return `$${value.toFixed(value < 1 ? 4 : 2)}`;
 }
+
+/**
+ * A NAV or closing price in the fund's own currency: a Hong Kong counter's
+ * (HK$5.2842, $0.6736) to the four decimals its issuer states, a US fund's
+ * as before.
+ */
+function fundPrice(facts: Pick<FundFactsPayload, "currency">, value: number): string {
+  return facts.currency ? formatCurrency(value, facts.currency, 4) : formatNav(value);
+}
+
+/** Units in issue per coin held, whole (`3,262`), under the label that names the coin. */
+const unitsPerCoinText = (holdings: FundCoinHoldings) => Math.round(holdings.unitsPerCoin).toLocaleString("en-US");
+
+/** `Units per ETH`, `Units per BTC`. */
+const unitsPerCoinLabel = (holdings: FundCoinHoldings) => tf("Units per {asset}", { asset: holdings.asset });
+
+/** Coins held as the issuer states them: `18,453 ETH`. */
+const coinsText = (holdings: FundCoinHoldings) =>
+  `${holdings.coins.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${holdings.asset}`;
 
 function formatNetAssets(value: number): string {
   return `$${formatCompact(value)}`;
@@ -107,7 +126,8 @@ const metalLabel = (holdings: FundMetalHoldings) => holdings.metal === "gold" ? 
  * call a fee a sponsor fee.
  */
 function expenseRatioLabel(facts: Pick<FundFactsPayload, "expenseRatio">): string {
-  return facts.expenseRatio?.kind === "sponsor-fee" ? "Sponsor fee" : "Expense ratio";
+  const kind = facts.expenseRatio?.kind;
+  return kind === "sponsor-fee" ? "Sponsor fee" : kind === "management-fee" ? "Management fee" : "Expense ratio";
 }
 
 function feeBasis(facts: FundFactsPayload): "net" | "gross" | null {
@@ -220,7 +240,7 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
     const estimate = facts.nav.estimate;
     const nav = estimate && dated.nav.detail
       ? { ...dated.nav, detail: `${dated.nav.detail} · ${tf("est. {range}", { range: estimateRange(estimate) })}` } : dated.nav;
-    items.push(cell("nav", "NAV", formatNav(facts.nav.value), nav));
+    items.push(cell("nav", "NAV", fundPrice(facts, facts.nav.value), nav));
   }
   if (facts.premiumDiscount) items.push(cell("premium", "Premium/discount", formatPremiumPercent(facts.premiumDiscount.value), dated.premium));
   if (facts.expenseRatio) items.push(cell("fee", expenseRatioLabel(facts), formatFeePercent(facts.expenseRatio.value), dated.fee));
@@ -229,6 +249,12 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   if (facts.sharesOutstanding) {
     items.push(cell("shares", "Shares outstanding", formatCompact(facts.sharesOutstanding.value),
       { detail: facts.sharesOutstanding.asOf ?? undefined, marked: facts.stale }));
+  }
+  // A spot coin fund's units per coin, with the coins it holds that day.
+  const coins = facts.coinHoldings;
+  if (coins) {
+    items.push(cell("units-per-coin", unitsPerCoinLabel(coins), unitsPerCoinText(coins),
+      { detail: `${coinsText(coins)} · ${coins.asOf}`, marked: facts.stale }));
   }
   if (facts.flows) {
     // In dollars with the shares beside them; in shares alone when a day had no NAV to value them at.
@@ -305,7 +331,7 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
     const forms = figure.detail ? [figure.detail, withoutYear(figure.detail), ...(short ? [short, withoutYear(short)] : [])] : [];
     return { label, value, ...(forms.length ? { detail: [...new Set(forms)] } : {}), ...(figure.marked ? { warn: true } : {}) };
   };
-  if (facts.nav) fields.push(field("NAV", formatNav(facts.nav.value), dated.nav));
+  if (facts.nav) fields.push(field("NAV", fundPrice(facts, facts.nav.value), dated.nav));
   if (facts.premiumDiscount) fields.push(field("Prem/Disc", formatPremiumPercent(facts.premiumDiscount.value), dated.premium, facts.premiumDiscount.asOf ?? undefined));
   if (facts.netAssets) {
     // N-PORT's long form gives way to the month end alone before the bare date.
@@ -313,8 +339,9 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
     fields.push(field(wholeFund(facts) ? "Fund Assets" : "Net Assets", formatNetAssets(facts.netAssets.value), dated.netAssets, monthEnd));
   }
   if (facts.expenseRatio) {
-    const fee = facts.expenseRatio.kind === "sponsor-fee";
-    fields.push(field(fee ? "Sponsor Fee" : "Exp Ratio", formatFeePercent(facts.expenseRatio.value), dated.fee, facts.expenseRatio.asOf ?? undefined));
+    const kind = facts.expenseRatio.kind;
+    const label = kind === "sponsor-fee" ? "Sponsor Fee" : kind === "management-fee" ? "Mgmt Fee" : "Exp Ratio";
+    fields.push(field(label, formatFeePercent(facts.expenseRatio.value), dated.fee, facts.expenseRatio.asOf ?? undefined));
   }
   if (facts.inception) fields.push({ label: "Inception", value: facts.inception.value });
   return fields;
@@ -345,10 +372,10 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   if (facts.nav) {
     const date = facts.nav.asOf && monthEndNav(facts) ? `${facts.nav.asOf} month-end` : facts.nav.asOf;
     const estimate = facts.nav.estimate ? `estimate ${estimateRange(facts.nav.estimate)}` : null;
-    add("nav", "NAV", facts.nav.value, provenance(formatNav(facts.nav.value), date, estimate, facts.nav.source), "USD");
+    add("nav", "NAV", facts.nav.value, provenance(fundPrice(facts, facts.nav.value), date, estimate, facts.nav.source), facts.currency ?? "USD");
   }
   if (facts.closingPrice) add("closingPrice", "Closing price", facts.closingPrice.value,
-    provenance(formatNav(facts.closingPrice.value), facts.closingPrice.asOf, facts.closingPrice.source), "USD");
+    provenance(fundPrice(facts, facts.closingPrice.value), facts.closingPrice.asOf, facts.closingPrice.source), facts.currency ?? "USD");
   if (facts.premiumDiscount) {
     const basis = facts.premiumDiscount.basis !== "computed" ? null
       : facts.premiumDiscount.estimate ? "closing price vs NAV estimate midpoint" : "closing price vs NAV";
@@ -364,6 +391,12 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   if (facts.sharesOutstanding) {
     add("sharesOutstanding", "Shares outstanding", facts.sharesOutstanding.value,
       provenance(facts.sharesOutstanding.value.toLocaleString("en-US"), facts.sharesOutstanding.asOf, facts.sharesOutstanding.source), "shares");
+  }
+  if (facts.coinHoldings) {
+    const holdings = facts.coinHoldings;
+    add("unitsPerCoin", `Units per ${holdings.asset}`, holdings.unitsPerCoin,
+      provenance(unitsPerCoinText(holdings), holdings.asOf, holdings.source), `units per ${holdings.asset}`);
+    add("coinsHeld", "Coins held", holdings.coins, provenance(coinsText(holdings), holdings.asOf, holdings.source), holdings.asset);
   }
   if (facts.flows) {
     // JSON keeps the dollar figure (null when a day had no NAV); `fundFacts.flows` has the shares.
@@ -399,7 +432,7 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   if (facts.index) add("index", BENCHMARK_LABEL, facts.index.value, provenance(facts.index.value, facts.index.source));
   const url = facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url;
   // The figures' own page: the sponsor's, or the SEC filing they were read from (a prospectus, an N-PORT, an 8-K).
-  if (url) add("url", /^https:\/\/www\.sec\.gov\//.test(url) ? "SEC filing" : "Sponsor page", url, url);
+  if (url) add("url", /^https:\/\/www\.sec\.gov\//.test(url) ? "SEC filing" : facts.expenseRatio?.kind === "management-fee" ? "Issuer page" : "Sponsor page", url, url);
   return entries;
 }
 
@@ -415,7 +448,8 @@ export function listNames(names: readonly string[]): string {
  */
 export function fundFactPublishers(facts: FundFactsPayload): string[] {
   return [...new Set([...[facts.nav, facts.expenseRatio, facts.netAssets, facts.sharesOutstanding, facts.flows, facts.leverage, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
-    .flatMap((value) => value ? [value.source] : []), ...facts.metalHoldings ? [facts.metalHoldings.source.publisher] : []])];
+    .flatMap((value) => value ? [value.source] : []), ...facts.metalHoldings ? [facts.metalHoldings.source.publisher] : [],
+    ...facts.coinHoldings ? [facts.coinHoldings.source] : []])];
 }
 
 /** The newest NAV is stale: one line saying since when, as the report's note says it. */

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { homeInsiderReportsNote, isKnownNonUsEquityTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker } from "./sec";
+import { homeInsiderReportsNote, isKnownNonUsEquityTicker, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker } from "./sec";
 import { createTestTicker } from "../test-support/ticker";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]>) => createTestTicker("AAPL", "Apple Inc.", overrides);
@@ -52,6 +52,24 @@ describe("SEC pane eligibility", () => {
     expect(mayBeUsEquityOrFundTicker(ticker)).toBe(equityOrFund);
     expect(isKnownNonUsEquityTicker(ticker)).toBe(!equity);
   });
+});
+
+test("the fund view (ETF) opens on a fund listed abroad, which it gives its issuer's figures or page; never on a coin or an option", () => {
+  // `ETF 3046.HK` in the command bar opened nothing.
+  const abroad: Array<Partial<TickerRecord["metadata"]>> = [
+    { ticker: "3046.HK", exchange: "HKEX", currency: "HKD", assetCategory: "ETF" },
+    { ticker: "3046.HK", exchange: "", currency: "", assetCategory: "ETF" },
+    { ticker: "3046", exchange: "HKEX", currency: "HKD", assetCategory: "" },
+    { ticker: "VUSA", exchange: "LSE", currency: "GBP", assetCategory: "ETF" },
+  ];
+  for (const metadata of abroad) {
+    const ticker = makeTicker(metadata);
+    expect(mayBeUsEquityOrFundTicker(ticker)).toBe(false);
+    expect(mayBeFundViewTicker(ticker)).toBe(true);
+  }
+  expect(mayBeFundViewTicker(makeTicker({ assetCategory: "ETF", exchange: "NYSEARCA" }))).toBe(true);
+  expect(mayBeFundViewTicker(makeTicker({ assetCategory: "CRYPTOCURRENCY", exchange: "CCC" }))).toBe(false);
+  expect(mayBeFundViewTicker(makeTicker({ assetCategory: "OPT", exchange: "HKEX", currency: "HKD" }))).toBe(false);
 });
 
 test("a company from abroad names its home market's insider reports as not covered, by its country, else its venue", () => {
