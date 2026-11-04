@@ -71,6 +71,8 @@ function RiskLine({
   );
 }
 
+const NO_RISK_FACTORS = "This 10-K lists no risk factors.";
+
 const RISK_WALL: ProFeatureWallCopy = {
   placement: "risk-wall",
   action: "read risk factors",
@@ -170,14 +172,17 @@ function RiskFactorsReader({
   if (year === null) return <EmptyState title={`No 10-K risk factors on file for ${ticker}.`} />;
 
   const diff = report?.diff ?? null;
+  // A smaller reporting company's 10-K need not list risk factors. Its report
+  // has none to read or compare, only the filing to open.
+  const listsNone = report ? report.listsNoRiskFactors === true || report.riskCount === 0 : false;
   // A choice of years names the year in the tabs or the filter; a single
   // report says which one it is here.
   const meta = report
     ? [
         years.length > 1 ? null : `${report.reportYear} 10-K`,
         `Filed ${report.filedAt?.slice(0, 10) || "unavailable"}`,
-        `updated ${report.updatedAt?.slice(0, 10) || "unavailable"}`,
-        diff ? null : "no prior year on file",
+        listsNone ? null : `updated ${report.updatedAt?.slice(0, 10) || "unavailable"}`,
+        diff || listsNone ? null : "no prior year on file",
       ].filter(Boolean).join(" · ")
     : "";
 
@@ -208,7 +213,9 @@ function RiskFactorsReader({
         scrollY
         paddingX={1}
       >
-        {report ? (
+        {report && listsNone ? (
+          <PaneStatusBody empty emptyTitle={report.overview || NO_RISK_FACTORS} />
+        ) : report ? (
           <Box
             flexDirection="column"
             width={nativePaneChrome ? "100%" : bodyWidth}

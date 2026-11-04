@@ -126,6 +126,12 @@ interface CloudRiskReportSummaryPayload {
   removedCount: number | null;
   rewordedCount: number | null;
   overview: string | null;
+  /**
+   * The 10-K lists no risk factors (a smaller reporting company need not):
+   * no risks, and `overview` says so. Older servers leave it out and send a
+   * risk count of 0.
+   */
+  listsNoRiskFactors?: boolean;
 }
 
 export interface CloudRiskReportPayload extends CloudRiskReportSummaryPayload {

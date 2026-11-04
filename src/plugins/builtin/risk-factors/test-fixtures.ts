@@ -26,6 +26,20 @@ export function report(year: number): CloudRiskReportPayload {
   };
 }
 
+/** A 10-K that lists no risk factors, as the server reports it. */
+export function noRiskFactorsReport(year: number): CloudRiskReportPayload {
+  return {
+    ...report(year),
+    riskCount: 0,
+    groupCount: 0,
+    wordCount: 0,
+    overview: "This 10-K lists no risk factors (the company is not required to).",
+    listsNoRiskFactors: true,
+    groups: [],
+    risks: [],
+  };
+}
+
 export function list(years: number[]): CloudRiskReportListPayload {
   return { company, reports: years.map(report) };
 }
