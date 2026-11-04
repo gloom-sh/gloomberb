@@ -24,6 +24,22 @@ interface CachedPluginStateRecord {
   rawValue: string;
 }
 
+/** A stored plugin state row this build cannot read: damaged JSON, or written under another schema version. */
+class UnreadablePluginStateError extends Error {
+  constructor() {
+    super("Stored plugin state could not be read.");
+    this.name = "UnreadablePluginStateError";
+  }
+}
+
+/** What a row holds for a reader: its record, nothing, or content this build cannot read (queued or stored). */
+type PluginStateLookup<T> =
+  | { record: PluginStateRecord<T> }
+  | { absent: true }
+  | { unreadable: "queued" | "stored" };
+
+const ABSENT = { absent: true } as const;
+
 /** A queued write's record (null for a delete), one object per write. */
 interface PendingPluginState {
   pluginId: string;
@@ -51,10 +67,32 @@ export class PluginStateStore {
   ) {}
 
   get<T>(pluginId: string, key: string, schemaVersion = DEFAULT_PLUGIN_STATE_SCHEMA_VERSION): PluginStateRecord<T> | null {
+    const found = this.lookup<T>(pluginId, key, schemaVersion);
+    if ("record" in found) return found.record;
+    // A stored row this build cannot read is dropped; a queued write in another version is left to land.
+    if ("unreadable" in found && found.unreadable === "stored") this.delete(pluginId, key);
+    return null;
+  }
+
+  /**
+   * Like `get`, except that a row this build cannot read throws `UnreadablePluginStateError` and stays stored,
+   * instead of being dropped and read as absent. Null still means nothing is stored.
+   */
+  getStrict<T>(pluginId: string, key: string, schemaVersion = DEFAULT_PLUGIN_STATE_SCHEMA_VERSION): PluginStateRecord<T> | null {
+    const found = this.lookup<T>(pluginId, key, schemaVersion);
+    if ("record" in found) return found.record;
+    if ("unreadable" in found) throw new UnreadablePluginStateError();
+    return null;
+  }
+
+  private lookup<T>(pluginId: string, key: string, schemaVersion: number): PluginStateLookup<T> {
     const cacheKey = stateKey(pluginId, key);
     const pending = this.pending.get(rowKey(pluginId, key));
     if (pending) {
-      return pending.record?.schemaVersion === schemaVersion ? pending.record as PluginStateRecord<T> : null;
+      if (!pending.record) return ABSENT;
+      return pending.record.schemaVersion === schemaVersion
+        ? { record: pending.record as PluginStateRecord<T> }
+        : { unreadable: "queued" };
     }
     const row = this.access.run("load plugin state", () => (
       this.db
@@ -65,24 +103,22 @@ export class PluginStateStore {
     ));
     if (!row) {
       this.cache.delete(cacheKey);
-      return null;
+      return ABSENT;
     }
     if (row.schema_version !== schemaVersion) {
       this.cache.delete(cacheKey);
-      this.delete(pluginId, key);
-      return null;
+      return { unreadable: "stored" };
     }
 
     const cached = this.cache.get(cacheKey);
     if (cached && cached.schemaVersion === row.schema_version && cached.updatedAt === row.updated_at && cached.rawValue === row.value) {
-      return cached as PluginStateRecord<T>;
+      return { record: cached as PluginStateRecord<T> };
     }
 
     const value = safeParseJson<T>(row.value);
     if (value == null) {
       this.cache.delete(cacheKey);
-      this.delete(pluginId, key);
-      return null;
+      return { unreadable: "stored" };
     }
 
     const record: CachedPluginStateRecord = {
@@ -92,7 +128,7 @@ export class PluginStateStore {
       rawValue: row.value,
     };
     this.cache.set(cacheKey, record);
-    return record as PluginStateRecord<T>;
+    return { record: record as PluginStateRecord<T> };
   }
 
   set(pluginId: string, key: string, value: unknown, schemaVersion = DEFAULT_PLUGIN_STATE_SCHEMA_VERSION): void {

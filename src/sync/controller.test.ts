@@ -1,4 +1,4 @@
-import { expect, setSystemTime, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import {
   appReducer,
   createInitialState,
@@ -16,6 +16,8 @@ import {
 import { CloudSyncController } from "./controller";
 import { createSyncBaselineStore } from "./baseline";
 import { subscribeToCloudVerification } from "./auth-transition";
+import { AppPersistence } from "../data/app-persistence";
+import { createTempDbPath, removeTempDbFiles } from "../test-support/temp-db";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
   SyncRevisionConflictError,
@@ -26,8 +28,19 @@ import {
   type SyncTransport,
 } from "./types";
 
+afterEach(removeTempDbFiles);
+
+type SyncRuntimeOptions = Parameters<typeof syncRuntime>[0];
+
 /** A controller syncing through `transport`; state and dispatch default to an idle app. */
-function startController({
+function startController(options: SyncRuntimeOptions): CloudSyncController {
+  const controller = new CloudSyncController();
+  controller.setRuntime(syncRuntime(options));
+  return controller;
+}
+
+/** The runtime an app hands the controller; each call is a new runtime, as when the app re-creates it. */
+function syncRuntime({
   transport,
   contributors = [],
   getState = () => ({} as AppState),
@@ -43,9 +56,8 @@ function startController({
   baselineStore?: SyncBaselineStore;
   getSessionIdentity?: () => object | null;
   getAccountId?: () => string | null;
-}): CloudSyncController {
-  const controller = new CloudSyncController();
-  controller.setRuntime({
+}): Parameters<CloudSyncController["setRuntime"]>[0] {
+  return {
     getState,
     dispatch,
     tickerRepository: {} as TickerRepository,
@@ -54,8 +66,7 @@ function startController({
     getAccountId,
     getContributors: () => contributors.map((contributor) => ({ pluginId: "test", contributor })),
     getTransport: () => ({ pluginId: "test", transport }),
-  });
-  return controller;
+  };
 }
 
 /** Another client's snapshot holding one schema 1 contributor payload, written at `createdAt`. */
@@ -456,12 +467,15 @@ test("keeps workspace edits made while the app was closed and uploads them", asy
   expect((stored["core.config"] as { portfolios: Array<{ id: string }> }).portfolios).toHaveLength(2);
 });
 
-/** Merge history kept in plugin state that refuses reads or writes while `readable` or `writable` is false. */
+/**
+ * Merge history kept in plugin state that refuses reads while `readable` is false or for `unreadableKeys`, and
+ * writes while `writable` is false.
+ */
 function failingHistoryStorage(stored: Map<string, unknown>) {
-  const storage = { readable: true, writable: true, writes: [] as string[] };
+  const storage = { readable: true, writable: true, unreadableKeys: new Set<string>(), writes: [] as string[] };
   const store = () => createSyncBaselineStore({
     get: <T,>(pluginId: string, key: string) => {
-      if (!storage.readable) throw new Error("database is locked");
+      if (!storage.readable || storage.unreadableKeys.has(key)) throw new Error("database is locked");
       return stored.has(key) ? { pluginId, key, value: stored.get(key) as T, schemaVersion: 1, updatedAt: 0 } : null;
     },
     set: (_pluginId, key, value) => {
@@ -555,11 +569,10 @@ test("a sync history storage could not save is saved before it decides a later m
     },
   };
   let state = createInitialState({ ...syncedConfig, portfolios: ["main", "research"].map(portfolio) });
-  const start = () => startController({
+  const controller = startController({
     transport, contributors: [coreConfigSyncContributor], getState: () => state,
     dispatch: (action) => { state = appReducer(state, action); }, baselineStore: storage.store(),
   });
-  let controller = start();
   try {
     storage.writable = false;
     await controller.requestSync({ reason: "startup" });
@@ -575,14 +588,253 @@ test("a sync history storage could not save is saved before it decides a later m
     await controller.requestSync({ reason: "poll" });
     expect(pushes).toBe(2);
     expect(controller.getStatus().phase).toBe("synced");
-
-    // After a restart, another device's removal is merged against what this device really pushed.
+    expect(portfolioIds((stored.get("last-synced-payloads") as Record<string, unknown>)["core.config"]))
+      .toEqual(["main", "research", "growth"]);
+  } finally {
     controller.clearRuntime();
-    remote = remoteSnapshot("core.config", payloadWith(["main", "growth"]), "2026-08-23T11:00:00.000Z");
-    revision += 1;
-    controller = start();
+  }
+});
+
+test.each([
+  ["a damaged merge baseline", "last-synced-payloads", "UPDATE plugin_state SET value = '{\"core.config\":' WHERE plugin_id = 'core.sync' AND key = ?"],
+  ["edit memos from another schema version", "contributor-memos", "UPDATE plugin_state SET schema_version = 2 WHERE plugin_id = 'core.sync' AND key = ?"],
+])("%s pauses sync and stays stored instead of reading as never synced", async (_row, key, damage) => {
+  const persistence = new AppPersistence(createTempDbPath("sync-history-row"));
+  const syncedConfig = createDefaultConfig("/tmp/gloomberb-sync-damaged-history-test");
+  syncedConfig.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+  const syncedPayload = __syncContributorInternalsForTests.collectCoreConfigPayload(syncedConfig);
+  const baselineStore = createSyncBaselineStore(persistence.pluginState);
+  const writeHistory = () => {
+    baselineStore.save({ "core.config": syncedPayload });
+    baselineStore.saveMemos!({});
+  };
+  baselineStore.saveAccountId!("account-a");
+  writeHistory();
+  persistence.database.connection.query(damage).run(key);
+  const rows = () => persistence.database.connection
+    .query<{ count: number }, [string]>("SELECT COUNT(*) AS count FROM plugin_state WHERE plugin_id = 'core.sync' AND key = ?")
+    .get(key)!.count;
+  let state = createInitialState({
+    ...syncedConfig,
+    portfolios: [...syncedConfig.portfolios, { id: "research", name: "Research", currency: "USD" }],
+  });
+  let dispatched = 0;
+  const pushes: SyncSnapshot[] = [];
+  const transport: SyncTransport = {
+    id: "damaged-history",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({
+      snapshot: remoteSnapshot("core.config", syncedPayload, "2026-08-23T10:00:00.000Z"),
+      revision: 4,
+      updatedAt: "2026-08-23T10:00:00.000Z",
+    }),
+    pushSnapshot: async (snapshot) => {
+      pushes.push(snapshot);
+      return { revision: 5, updatedAt: "2026-08-23T10:00:05.000Z" };
+    },
+  };
+  const controller = startController({
+    transport, contributors: [coreConfigSyncContributor], getState: () => state,
+    dispatch: (action) => { dispatched += 1; state = appReducer(state, action); },
+    baselineStore, getAccountId: () => "account-a",
+  });
+  try {
     await controller.requestSync({ reason: "startup" });
-    expect(state.config.portfolios.map((entry) => entry.id)).toEqual(["main", "growth"]);
+    expect(state.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "research"]);
+    expect(dispatched).toBe(0);
+    expect(pushes).toEqual([]);
+    expect(controller.getStatus().phase).toBe("error");
+    expect(rows()).toBe(1);
+
+    writeHistory();
+    await controller.requestSync({ reason: "poll" });
+    expect(pushes.map((snapshot) => portfolioIds(snapshot.contributors["core.config"]!.payload))).toEqual([["main", "research"]]);
+    expect(controller.getStatus().phase).toBe("synced");
+  } finally {
+    controller.clearRuntime();
+    persistence.close();
+  }
+});
+
+test("history the cloud already holds is saved again first, and a new runtime merges against it without reading it back", async () => {
+  const syncedConfig = createDefaultConfig("/tmp/gloomberb-sync-held-history-test");
+  const portfolio = (id: string) => ({ id, name: id, currency: "USD" });
+  const payloadWith = (ids: string[]) => __syncContributorInternalsForTests.collectCoreConfigPayload({
+    ...syncedConfig, portfolios: ids.map(portfolio),
+  });
+  const stored = new Map<string, unknown>([["last-synced-payloads", { "core.config": payloadWith(["main"]) }]]);
+  const storage = failingHistoryStorage(stored);
+  const baselineStore = storage.store();
+  // The cloud already holds this device's edit, as after a push whose history save was lost.
+  let remote = remoteSnapshot("core.config", payloadWith(["main", "research"]), "2026-08-23T10:00:00.000Z");
+  let revision = 4;
+  let pushes = 0;
+  const transport: SyncTransport = {
+    id: "held-history",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: remote, revision, updatedAt: remote.createdAt }),
+    pushSnapshot: async (snapshot) => {
+      pushes += 1;
+      remote = snapshot;
+      return { revision: ++revision, updatedAt: snapshot.createdAt };
+    },
+  };
+  let state = createInitialState({ ...syncedConfig, portfolios: ["main", "research"].map(portfolio) });
+  const runtime = () => syncRuntime({
+    transport, contributors: [coreConfigSyncContributor], getState: () => state,
+    dispatch: (action) => { state = appReducer(state, action); }, baselineStore,
+  });
+  const controller = new CloudSyncController();
+  controller.setRuntime(runtime());
+  try {
+    storage.writable = false;
+    await controller.requestSync({ reason: "startup" });
+    expect(pushes).toBe(0);
+    expect(controller.getStatus().phase).toBe("error");
+
+    // The app hands over a new runtime on the same store; the history it could not save is still the one to use.
+    controller.setRuntime(runtime());
+    storage.writable = true;
+    storage.unreadableKeys.add("last-synced-payloads");
+    state = { ...state, config: { ...state.config, portfolios: [...state.config.portfolios, portfolio("growth")] } };
+    await controller.requestSync({ reason: "state-change" });
+    expect(pushes).toBe(1);
+    expect(portfolioIds(remote.contributors["core.config"]!.payload)).toEqual(["main", "research", "growth"]);
+    expect(portfolioIds((stored.get("last-synced-payloads") as Record<string, unknown>)["core.config"]))
+      .toEqual(["main", "research", "growth"]);
+    expect(controller.getStatus().phase).toBe("synced");
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("edit memos storage could not save are pushed by a new runtime without reading them back", async () => {
+  const stored = new Map<string, unknown>();
+  const storage = failingHistoryStorage(stored);
+  const baselineStore = storage.store();
+  let note = "draft";
+  const contributor: SyncContributor = {
+    id: "test.notes",
+    schemaVersion: 1,
+    observe: ({ memo }) => {
+      if (!memo.get()) memo.set({ editedAt: "2026-08-23T09:00:00.000Z" });
+    },
+    collect: ({ memo }) => ({ note, edit: memo?.get() ?? null }),
+  };
+  const pushed: unknown[] = [];
+  const transport: SyncTransport = {
+    id: "unsaved-memos",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: null, revision: null, updatedAt: null }),
+    pushSnapshot: async (snapshot) => {
+      pushed.push(snapshot.contributors["test.notes"]!.payload);
+      return { revision: pushed.length, updatedAt: snapshot.createdAt };
+    },
+  };
+  const runtime = () => syncRuntime({ transport, contributors: [contributor], baselineStore });
+  const controller = new CloudSyncController();
+  controller.setRuntime(runtime());
+  try {
+    storage.writable = false;
+    await controller.requestSync({ reason: "startup" });
+    expect(controller.getStatus().phase).toBe("error");
+
+    controller.setRuntime(runtime());
+    storage.writable = true;
+    storage.unreadableKeys.add("contributor-memos");
+    note = "final";
+    await controller.requestSync({ reason: "state-change" });
+    expect(pushed).toEqual([
+      { note: "draft", edit: { editedAt: "2026-08-23T09:00:00.000Z" } },
+      { note: "final", edit: { editedAt: "2026-08-23T09:00:00.000Z" } },
+    ]);
+    expect(stored.get("contributor-memos")).toEqual({ "test.notes": { editedAt: "2026-08-23T09:00:00.000Z" } });
+    expect(controller.getStatus().phase).toBe("synced");
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("a push that lands after its sync was retired is recorded as this device's history, unless the account changed", async () => {
+  const stored = new Map<string, unknown>();
+  const storage = failingHistoryStorage(stored);
+  let value = "signed-out";
+  const contributor: SyncContributor = { id: "test.data", schemaVersion: 1, collect: () => ({ value }) };
+  let landing = Promise.withResolvers<void>();
+  let land = Promise.withResolvers<void>();
+  let revision = 0;
+  const transport: SyncTransport = {
+    id: "retired-push",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: null, revision: null, updatedAt: null }),
+    pushSnapshot: async () => {
+      landing.resolve();
+      await land.promise;
+      return { revision: ++revision, updatedAt: "2026-08-23T10:00:00.000Z" };
+    },
+  };
+  const controller = startController({ transport, contributors: [contributor], baselineStore: storage.store() });
+  try {
+    // Signed out while the push was on its way: the cloud holds it, so the history must too.
+    const signedOut = controller.requestSync({ reason: "startup" });
+    await landing.promise;
+    controller.retireSession();
+    land.resolve();
+    await signedOut;
+    expect(stored.get("last-synced-payloads")).toEqual({ "test.data": { value: "signed-out" } });
+
+    // Another account signed in while the push was on its way: its history stays empty.
+    value = "account-switch";
+    landing = Promise.withResolvers<void>();
+    land = Promise.withResolvers<void>();
+    const switched = controller.requestSync({ reason: "state-change" });
+    await landing.promise;
+    controller.resetAccount("account-b");
+    land.resolve();
+    await switched;
+    expect(stored.get("last-synced-payloads")).toEqual({});
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("history a store could not save is written by a new runtime on that store, never into another store", async () => {
+  const storedA = new Map<string, unknown>();
+  const storedB = new Map<string, unknown>();
+  const storageA = failingHistoryStorage(storedA);
+  const storageB = failingHistoryStorage(storedB);
+  const storeA = storageA.store();
+  let available = true;
+  let value = "first";
+  const contributor: SyncContributor = { id: "test.data", schemaVersion: 1, collect: () => ({ value }) };
+  let revision = 0;
+  const transport: SyncTransport = {
+    id: "store-change",
+    isAvailable: () => available,
+    pullSnapshot: async () => ({ snapshot: null, revision: null, updatedAt: null }),
+    pushSnapshot: async () => ({ revision: ++revision, updatedAt: "2026-08-23T10:00:00.000Z" }),
+  };
+  const runtime = (baselineStore: SyncBaselineStore) => syncRuntime({ transport, contributors: [contributor], baselineStore });
+  const controller = new CloudSyncController();
+  try {
+    storageA.writable = false;
+    controller.setRuntime(runtime(storeA));
+    await controller.requestSync({ reason: "startup" });
+    controller.setRuntime(runtime(storeA));
+    storageA.writable = true;
+    available = false;
+    await controller.requestSync({ reason: "poll" });
+    expect(storedA.get("last-synced-payloads")).toEqual({ "test.data": { value: "first" } });
+
+    storageA.writable = false;
+    available = true;
+    value = "second";
+    await controller.requestSync({ reason: "state-change" });
+    controller.setRuntime(runtime(storageB.store()));
+    available = false;
+    await controller.requestSync({ reason: "poll" });
+    expect(storageB.writes).toEqual([]);
+    expect(storedA.get("last-synced-payloads")).toEqual({ "test.data": { value: "first" } });
   } finally {
     controller.clearRuntime();
   }

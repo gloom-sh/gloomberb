@@ -12,14 +12,20 @@ const ACCOUNT_KEY = "account";
  * newer" from "local changed while the app was closed". Without it every launch
  * treats local state as pristine and the cloud overwrites CLI/offline edits.
  *
- * A read or write the storage refuses throws `SyncHistoryUnavailableError`
- * (without the storage's own error), so it is never mistaken for a device
- * that has not synced yet; the controller pauses sync until storage works.
+ * A read or write the storage refuses, and a stored row it cannot read
+ * (damaged, or written under another schema version), throw
+ * `SyncHistoryUnavailableError` (without the storage's own error), so they are
+ * never mistaken for a device that has not synced yet; the controller pauses
+ * sync until storage works. Only a row that is not there reads as null.
  */
-export function createSyncBaselineStore(pluginState: Pick<AppPluginStateStorePort, "get" | "set">): SyncBaselineStore {
+export function createSyncBaselineStore(pluginState: Pick<AppPluginStateStorePort, "get" | "set" | "getStrict">): SyncBaselineStore {
   const load = (key: string) => {
     try {
-      return pluginState.get<Record<string, unknown>>(BASELINE_PLUGIN_ID, key)?.value ?? null;
+      // `get` drops a row it cannot read and answers null, which would read as never synced.
+      const record = pluginState.getStrict
+        ? pluginState.getStrict<Record<string, unknown>>(BASELINE_PLUGIN_ID, key)
+        : pluginState.get<Record<string, unknown>>(BASELINE_PLUGIN_ID, key);
+      return record?.value ?? null;
     } catch (error) {
       logFailure("sync.baseline", "Load sync baseline failed")(error);
       throw new SyncHistoryUnavailableError();

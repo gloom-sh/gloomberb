@@ -109,6 +109,10 @@ export class CloudSyncController {
   private accountId: string | null = null;
   private accountRead = false;
   private unsaved: UnsavedHistory | null = null;
+  /** The store this device's merge history lives in; `unsaved` belongs to it. */
+  private historyStore: SyncBaselineStore | undefined = undefined;
+  /** Bumped when the merge history in use stops being the one a sync merged with: another account or store. */
+  private historyEpoch = 0;
   private lastSignature: string | null = null;
   /**
    * The content signature of the cloud's copy, with the revision and the
@@ -166,6 +170,12 @@ export class CloudSyncController {
     if (this.runtime !== runtime) {
       this.resetOperations();
       this.runtime = runtime;
+      if (runtime.baselineStore !== this.historyStore) {
+        // History another store refused to write is that store's device's, never this one's to write.
+        this.historyStore = runtime.baselineStore;
+        this.historyEpoch += 1;
+        this.unsaved = null;
+      }
       this.accountId = null;
       this.accountRead = false;
       // An account storage refuses to read now is read again by the next sync, which waits for it.
@@ -195,6 +205,7 @@ export class CloudSyncController {
   /** Account revisions, merge baselines and edit provenance never carry into another account. */
   resetAccount(accountId?: string): void {
     this.resetOperations();
+    this.historyEpoch += 1;
     this.accountId = accountId ?? null;
     this.accountRead = true;
     this.baseline = {};
@@ -312,11 +323,17 @@ export class CloudSyncController {
       }
 
       this.setStatus({ phase: "syncing", transportId: transport.id, error: null });
+      const historyEpoch = this.historyEpoch;
       try {
         // The revision this snapshot was merged with. The cloud refuses the
         // write if another device wrote since, instead of losing that write.
         const result = await transport.pushSnapshot(snapshot, { baseRevision: pulled.revision });
-        if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
+        if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) {
+          // The cloud holds this push even though the sync was retired (a sign-out, a new runtime). While the history
+          // it merged with is still in use, record it, or the next merge reads this push as another device's edit.
+          if (this.historyEpoch === historyEpoch) this.saveBaseline(runtime, snapshot);
+          return;
+        }
         this.lastSignature = signature;
         this.appliedRevision = result.revision;
         const saved = this.saveBaseline(runtime, snapshot);
@@ -462,10 +479,10 @@ export class CloudSyncController {
   }
 
   private loadBaseline(runtime: SyncRuntime): Record<string, unknown> | null {
-    if (this.unsaved?.baseline) return this.unsaved.baseline;
     if (!this.baselineLoaded) {
-      // Marked loaded only once read: a refused read is asked again, never taken for "never synced".
-      this.baseline = runtime.baselineStore?.load() ?? null;
+      // History storage refused to write is newer than its stored copy. Marked loaded only once read: a refused
+      // read is asked again, never taken for "never synced".
+      this.baseline = this.unsaved?.baseline ?? runtime.baselineStore?.load() ?? null;
       this.baselineLoaded = true;
     }
     return this.baseline;
@@ -517,7 +534,7 @@ export class CloudSyncController {
       if (error instanceof SyncHistoryUnavailableError) return false;
       throw error;
     }
-    if (this.unsaved === unsaved) this.unsaved = null;
+    this.unsaved = null;
     return true;
   }
 
@@ -567,9 +584,9 @@ export class CloudSyncController {
   }
 
   private loadMemos(runtime: SyncRuntime): Record<string, unknown> {
-    if (this.unsaved?.memos) return this.unsaved.memos;
     if (!this.memosLoaded) {
-      this.memos = runtime.baselineStore?.loadMemos?.() ?? null;
+      // Read once per reset, so a sync that has read them never reads storage again mid-merge.
+      this.memos = this.unsaved?.memos ?? runtime.baselineStore?.loadMemos?.() ?? null;
       this.memosLoaded = true;
     }
     return this.memos ?? {};
