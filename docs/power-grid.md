@@ -42,6 +42,8 @@ The backend supports US grid queues, historical US queue benchmarks, US generati
 gloom fn POWER --json
 gloom fn POWER NEE --tab queue --json
 gloom fn POWER --region PJM --fuel storage --status active --json
+gloom fn POWER --offset 500 --json
+gloom fn POWER --limit 20000 --json
 gloom fn POWER --tab history --historical --json
 gloom fn POWER --tab outcomes --country US --json
 gloom fn POWER --tab utilities --json
@@ -49,6 +51,6 @@ gloom fn POWER --tab coverage --json
 gloom shot POWER --tab queue --width 1280 --height 540 --output power-queue.png
 ```
 
-The headless report traverses all available pages for the selected table. JSON keeps primary URLs, raw evidence, dates, entity confidence, revision identifiers, coverage and access limitations. Preview accounts receive only the server-authorized subset.
+On the Queue, Loads and Capacity tabs the headless report lists the first 500 records in the table's order, largest first. `--offset` pages past them and `--limit` lists more, up to 100,000, read 500 at a time; a report that stops short of the total says how many records there are and the flags that list the rest, and its JSON metadata carries `total`, `offset` and `nextOffset`. History, Outcomes, Utilities and Coverage list every row. JSON keeps primary URLs, raw evidence, dates, entity confidence, revision identifiers, coverage and access limitations. Preview accounts receive only the server-authorized subset.
 
 Cloud routes are `GET /cloud/power/board`, `GET /cloud/power/history`, `GET /cloud/power/projects/:id` and `GET /cloud/power/coverage`. Board filters are `country`, `region`, `fuel`, `status`, `kind`, `symbol`, `search`, `sourceId`, `loadClass`, `historical`, `offset` and `limit`; sorting uses `sort` and `direction`, including native generation, sales, retail-sales revenue and peak-demand metrics. History also accepts `from` and `to` against published periods or observed dates as appropriate. Project revision evidence accepts `offset` and `limit` and reports the full revision count. URL-encode project identifiers, including colons. Project revision history and the full dataset require Pro. Cloud authentication and entitlement rules apply equally to pane and REST requests.
