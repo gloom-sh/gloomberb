@@ -420,6 +420,26 @@ describe("desktop update channels", () => {
     // A stable install takes the same manifest as before channels existed.
     await expect(desktop.check("0.17.0", "stable")).resolves.toMatchObject({ kind: "available", release: { version: "0.18.0" } });
   });
+
+  // Electrobun compares build hashes only. A stable install whose build is not
+  // the published one of its own version (or a latest release that lags
+  // behind it) was offered its own version, or an older one, and downloaded
+  // the whole app again at launch.
+  test.each([
+    ["the version it runs", "0.18.0"],
+    ["an older version", "0.17.9"],
+    ["a version that does not compare", "latest"],
+  ])("stable never downloads %s, and says it is current", async (_, manifestVersion) => {
+    const { updater, calls } = createFakeUpdater({ manifestVersion });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.18.0" });
+
+    await expect(desktop.check("0.18.0", "stable")).resolves.toEqual({ kind: "current" });
+    const { progress, onProgress } = collect();
+    await desktop.download(STABLE, onProgress);
+
+    expect(calls).toEqual(["check", "check"]);
+    expect(progress.at(-1)).toEqual({ phase: "done", message: "Already on the latest version" });
+  });
 });
 
 // It deletes folders beside the installed app, so it must take only the

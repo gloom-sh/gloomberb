@@ -464,12 +464,11 @@ export function createElectrobunDesktopUpdater(
     }
   }
 
-  async function releaseInfo(updateInfo: { version?: string; hash?: string }, currentVersion: string): Promise<ReleaseInfo> {
+  async function releaseInfo(version: string): Promise<ReleaseInfo> {
     const [channel, baseUrl] = await Promise.all([
       updater.localInfo.channel(),
       updater.localInfo.baseUrl(),
     ]);
-    const version = updateInfo.version || currentVersion;
     return {
       version,
       tagName: `v${version}`,
@@ -549,15 +548,21 @@ export function createElectrobunDesktopUpdater(
       if (!info.updateAvailable) {
         return { kind: "current" };
       }
-      // A nightly build back on stable keeps running until a stable release
-      // passes it, rather than installing an older one.
-      if (isPrereleaseVersion(currentVersion) && (compareSemver(info.version, currentVersion) ?? -1) <= 0) {
-        return { kind: "current", notice: stableHoldNotice(currentVersion) };
+      // Electrobun offers any build whose hash is not the installed one's. A
+      // release that is not newer than this one is not an update: the same
+      // version built again would be a full download and a restart into what
+      // already runs, and an older one a downgrade. A version that does not
+      // compare is not taken either. A nightly build back on stable keeps
+      // running until a stable release passes it, and says so.
+      if ((compareSemver(info.version, currentVersion) ?? -1) <= 0) {
+        return isPrereleaseVersion(currentVersion)
+          ? { kind: "current", notice: stableHoldNotice(currentVersion) }
+          : { kind: "current" };
       }
 
       return {
         kind: "available",
-        release: await releaseInfo(info, currentVersion),
+        release: await releaseInfo(info.version),
       };
     } catch (error) {
       const code = error instanceof DesktopUpdateError ? error.code : classifyUpdateError(error);
