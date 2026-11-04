@@ -282,6 +282,14 @@ export interface CompositeChartProps {
   /** False keeps the hover and keyboard cursor but removes pan, zoom, tools, and their keys. */
   navigable?: boolean;
   /**
+   * A hairline across the chart, gutters included, on the line between two
+   * stacked panels (desktop and web), so each panel's axis reads as its own
+   * scale instead of one column of numbers. Default: on for a chart that
+   * cannot be navigated, whose panels are a fixed set of scales; off for one
+   * the user arranges, which has its resize line.
+   */
+  panelRules?: boolean;
+  /**
    * Overrides the unit-derived tick and cursor labels on both value axes. It
    * reads only the value and the axis: what it labels is kept per formatter
    * and axis, so one that reads anything else (a currency, a setting) is a new
