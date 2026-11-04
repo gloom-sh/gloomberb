@@ -75,6 +75,7 @@ export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
 /**
  * `{` and `}` on a focused nested strip with choices, cycling past either end.
  * Only the outermost focused one in the pane has them (`usePaneViewKeys`).
+ * Their hint joins the pane's own; it never adds a footer row of its own.
  */
 function useNestedViewKeys(options: PaneTabsOptions | null) {
   const scopeActive = usePaneFooterScopeActive();
@@ -93,7 +94,7 @@ function useNestedViewKeys(options: PaneTabsOptions | null) {
   const registrationId = `nested-view-keys:${useId()}`;
   usePaneFooter(registrationId, () => owns ? {
     order: VIEW_KEYS_FOOTER_ORDER,
-    hints: [{ id: "nested-view", key: `${PREVIOUS_VIEW_KEY}${NEXT_VIEW_KEY}`, label: "view", title: "Next View", onPress: () => step(1) }],
+    hints: [{ id: "nested-view", key: `${PREVIOUS_VIEW_KEY}${NEXT_VIEW_KEY}`, label: "view", title: "Next View", onPress: () => step(1), besideOthers: true }],
     keys: [
       { id: "previous-view", key: PREVIOUS_VIEW_KEY, label: "", title: "Previous View", onPress: () => step(-1) },
       { id: "next-view", key: NEXT_VIEW_KEY, label: "", title: "Next View", onPress: () => step(1) },

@@ -687,7 +687,8 @@ header, with the detail's height.
   the pane's place (`NestedPaneTabs detail`), so its strip is the view's
   own, and one under it is that strip's choices. `{` and `}` walk the
   choices of the outermost focused strip inside `NestedPaneTabs`, either
-  kind, with `[{}]view` in the footer; the pane adds nothing.
+  kind; the pane adds nothing. Their `[{}]view` hint joins the pane's own
+  hints and never adds a footer row of its own.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
