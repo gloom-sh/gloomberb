@@ -683,7 +683,9 @@ header, with the detail's height.
   its `Tabs` row. Right under the title bar (a research tab's views, a Fixed
   Income section's) the view starts its bar, where the terminal's row
   starts; a level deeper (Holders' Table and Chart under Ownership's views)
-  it is the view's own switch and sits at the right. `{` and `}` walk the
+  it is the view's own switch and sits at the right. A stack detail takes
+  the pane's place (`NestedPaneTabs detail`), so its strip is the view's
+  own, and one under it is that strip's choices. `{` and `}` walk the
   choices of the outermost focused strip inside `NestedPaneTabs`, either
   kind, with `[{}]view` in the footer; the pane adds nothing.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a

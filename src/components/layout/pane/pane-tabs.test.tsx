@@ -43,13 +43,13 @@ function Section({ width, choices, viewNested }: { width: number; choices: strin
   return <Box flexDirection="column">{strip}{viewNested ? <NestedPaneTabs><View width={width} /></NestedPaneTabs> : <View width={width} />}</Box>;
 }
 
-async function render(choices: string[], viewNested = true): Promise<void> {
+async function render(choices: string[], viewNested = true, detail = false): Promise<void> {
   const config = createTestPaneConfig("/tmp/gloomberb-test", { instanceId: PANE_ID, paneId: "test-pane", binding: { kind: "none" } });
   const state = createInitialState(config);
   state.focusedPaneId = PANE_ID;
   await tui.render(
     <TestPaneFrame state={state} paneId={PANE_ID} pluginId="test" runtime={runtime} width={60} height={8} footerKeys>
-      {({ width }) => <NestedPaneTabs><Section width={width} choices={choices} viewNested={viewNested} /></NestedPaneTabs>}
+      {({ width }) => <NestedPaneTabs detail={detail}><Section width={width} choices={choices} viewNested={viewNested} /></NestedPaneTabs>}
     </TestPaneFrame>,
     { width: 60, height: 8 },
   );
@@ -86,4 +86,11 @@ test("with nothing to choose above it, the view's own switch has { and }", async
   expect(shown).toEqual({ section: "only", view: "chart" });
   // One hint, never one per strip.
   expect(tui.frame().split("[{}]view").length - 1).toBe(1);
+});
+
+test("a stack detail takes the pane's place: its strip stays the view's own, and the one under it has { and }", async () => {
+  // DES opened as a detail: its groups keep h and l, its group's views take { and }.
+  await render(["a", "b", "c"], true, true);
+  await press("}");
+  expect(shown).toEqual({ section: "a", view: "chart" });
 });
