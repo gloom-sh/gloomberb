@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { withoutQuietColumns } from "../shared/research-cells";
+import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes } from "./client";
 import { powerQuery } from "./query";
 import { loadPowerPricesReport } from "./prices-headless";
@@ -19,6 +20,22 @@ const GRAPHIC_COLUMNS = new Set(["outcome", "pipeline"]);
 const QUIET_COLUMNS: Record<string, readonly string[]> = { scope: ["Project"], unknownCapacity: ["0"], unknown: ["0"], fuel: ["Load"], role: ["Direct"], kind: ["Queue"] };
 const text = (value: unknown) => value == null || value === "" ? "-" : String(value);
 const coded = (value: unknown) => typeof value === "string" && value ? titleCase(value) : "-";
+
+/** The tabs that list records, a page at a time. */
+const RECORD_TABS: readonly PowerTab[] = ["queue", "loads", "capacity"];
+/** The most records the server returns in one page, and what a report lists without `--limit`. */
+const POWER_PAGE_ROWS = 500;
+/** The most records `--limit` lists, read a page at a time: above every register's full table. */
+const POWER_ROW_LIMIT = 100_000;
+/** The furthest `--offset` the server pages to. */
+const POWER_MAX_OFFSET = 500_000;
+
+/** What a report of some of the records says of the rest: where they start, and the flags that list them. */
+function moreRecordsNote(offset: number, shown: number, total: number, nextOffset: number): string {
+  const range = offset > 0 ? `${powerNumber(offset + 1)}-${powerNumber(offset + shown)}` : powerNumber(shown);
+  const all = offset === 0 && total <= POWER_ROW_LIMIT ? `, or --limit ${total} for all of them` : "";
+  return `Showing ${range} of ${powerNumber(total)} records. More: --offset ${nextOffset}${all}.`;
+}
 
 /**
  * The pane's columns for a tab, printed as the pane prints them: MW and MWh
@@ -57,6 +74,8 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "context", type: "enum", settingKey: "context", values: [{ value: "capacity" }, { value: "generation" }, { value: "utility" }], defaultValue: "capacity", description: "Generation capacity, monthly generation or utility context on the Capacity tab." },
     { key: "loadClass", aliases: ["load-class"], type: "enum", settingKey: "loadClass", values: [{ value: "datacenter" }], description: "Only loads explicitly classified as datacenters." },
     { key: "historical", type: "boolean", settingKey: "historical", defaultValue: false, description: "Use historical benchmark queues separately from direct observations." },
+    { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: POWER_ROW_LIMIT, description: `Records to list on the queue, loads and capacity tabs, in the table's order: ${POWER_PAGE_ROWS} unless given, up to ${powerNumber(POWER_ROW_LIMIT)}.`, example: "--limit 20000" },
+    { key: "offset", shot: REPORT_PAGE, type: "integer", minimum: 0, maximum: POWER_MAX_OFFSET, description: "Records to skip before the first one listed, to page past --limit.", example: "--offset 500" },
   ],
   discovery: { aliases: ["POWER"], dataRequirements: ["Gloom Cloud power queues and large-load disclosures"],
     limitations: ["Pro dataset; free accounts see three rows per section and limited history.", "Proposed projects are not committed supply; requests and approvals are distinct.", "Coverage varies by jurisdiction; missing MW and unavailable sources remain explicit."] },
@@ -65,17 +84,28 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = powerTab(args.options.tab);
     const symbol = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument)?.trim();
     // Prices are their own board (EPWR); a typed market narrows it, a ticker does not apply.
-    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) || isCarbonQuery(symbol) || isGasQuery(symbol) ? symbol : undefined, ctx.apiClient);
-    const filter = { ...powerQuery(args.options, symbol), limit: 500 };
+    const recordTab = RECORD_TABS.includes(tab);
+    // A flag the tab does not use is named, never dropped without a word.
+    const unused = recordTab ? [] : ["limit", "offset"].filter((key) => args.options[key] != null).map((key) => `--${key}`);
+    const warnings = unused.length ? [`${unused.join(" and ")} ${unused.length > 1 ? "apply" : "applies"} to the queue, loads and capacity tabs only; ignored here.`] : [];
+    if (tab === "prices") {
+      const prices = await loadPowerPricesReport(powerPriceMarket(symbol) || isCarbonQuery(symbol) || isGasQuery(symbol) ? symbol : undefined, ctx.apiClient);
+      return warnings.length ? { ...prices, warnings: [...prices.warnings ?? [], ...warnings] } : prices;
+    }
+    // The records the report lists: one page unless --limit asks for more, from --offset.
+    const limit = recordTab && typeof args.options.limit === "number" ? args.options.limit : POWER_PAGE_ROWS;
+    const start = recordTab && typeof args.options.offset === "number" ? args.options.offset : 0;
+    const query = powerQuery(args.options, symbol);
+    const filter = { ...query, limit: Math.min(limit, POWER_PAGE_ROWS), ...(start ? { offset: start } : {}) };
     const board = await fetchPowerBoard(filter, ctx.apiClient);
     const projects = [...board.projects];
     const ids = new Set(projects.map((row) => row.id));
     let offset = board.nextOffset;
     let hasMore = board.hasMore;
-    // Export traverses every page; a stuck cursor fails visibly instead of silently truncating.
-    while (["queue", "loads", "capacity"].includes(tab) && hasMore) {
-      if (offset === null || offset < projects.length) throw new Error("Power pagination did not advance.");
-      const page = await fetchPowerBoard({ ...filter, offset }, ctx.apiClient);
+    // A --limit past one page reads the next pages up to it; a stuck cursor fails visibly instead of silently truncating.
+    while (recordTab && hasMore && projects.length < limit) {
+      if (offset === null || offset < start + projects.length) throw new Error("Power pagination did not advance.");
+      const page = await fetchPowerBoard({ ...filter, offset, limit: Math.min(limit - projects.length, POWER_PAGE_ROWS) }, ctx.apiClient);
       if (page.hasMore && (page.nextOffset === null || page.nextOffset <= offset)) throw new Error("Power pagination did not advance.");
       if (page.projects.some((row) => ids.has(row.id))) throw new Error("Power records changed during export; retry the request.");
       for (const row of page.projects) ids.add(row.id);
@@ -98,7 +128,8 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
       (row, id) => columns.find((column) => column.key === id)!.format!(row[id], row), QUIET_COLUMNS).map((column) => column.id);
     // A ticker with nothing on this tab says where its records are instead; a narrower filter is the filters' doing.
     const narrowed = ["country", "region", "fuel", "status", "search", "sourceId", "from", "to", "loadClass", "historical"].some((key) => !!args.options[key]);
-    const empty = !rows.length && symbol && !narrowed && tab !== "coverage" ? await fetchPowerTickerScopes(symbol, tab, String(args.options.context ?? "capacity"), ctx.apiClient)
+    const empty = !rows.length && start > 0 && board.total > 0 ? `No records past --offset ${start}: there are ${powerNumber(board.total)}.`
+      : !rows.length && symbol && !narrowed && tab !== "coverage" ? await fetchPowerTickerScopes(symbol, tab, String(args.options.context ?? "capacity"), ctx.apiClient)
       .then((scopes) => {
         const message = powerTickerEmpty(symbol, tab, String(args.options.context ?? "capacity"), scopes);
         const where = message.found.map((scope) => `${powerNumber(scope.total)} ${scope.label} (${powerScopeOptions(scope)})`).join(", ");
@@ -108,9 +139,16 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
       }) : "No reported records match these filters.";
     // Missing or unsupported sources are coverage, not failures: one plain line, details in --tab coverage.
     const coverageNote = tab === "capacity" ? null : powerCoverageNote(board.coverage);
+    // The records past --limit are a page away, not missing: the report is complete as asked and says how to read on.
+    const nextOffset = recordTab && hasMore ? offset : null;
+    const moreNote = nextOffset !== null && board.access === "full" ? moreRecordsNote(start, projects.length, board.total, nextOffset) : null;
+    const notes = [moreNote, coverageNote].filter((note): note is string => !!note);
     return { complete: locked === 0, sections: [{ title: POWER_TABS.find((t) => t.value === tab)!.label, columns: columns.filter((column) => shown.includes(column.key)), rows, empty }],
-      metadata: { generatedAt: board.generatedAt, access: board.access, locked, total: board.total, units: "MW unless specified", filters: filter, aggregates: board.aggregates, coverage: board.coverage },
-      ...(coverageNote ? { notes: [coverageNote] } : {}),
+      metadata: { generatedAt: board.generatedAt, access: board.access, locked, total: board.total, units: "MW unless specified",
+        filters: recordTab ? { ...query, limit, ...(start ? { offset: start } : {}) } : filter,
+        ...(recordTab ? { offset: start, nextOffset } : {}), aggregates: board.aggregates, coverage: board.coverage },
+      ...(notes.length ? { notes } : {}),
+      ...(warnings.length ? { warnings } : {}),
       ...(locked ? { errors: ["Additional records and history need Gloom Pro."] } : {}) };
   },
 };

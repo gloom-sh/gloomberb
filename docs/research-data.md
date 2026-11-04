@@ -103,7 +103,7 @@ The Weekdays tab reads daily bars instead: every session of the last five years,
 
 ## ADR vs home
 
-`ADR <ticker>` opens DES on its **ADR vs Home** tab, which a listing has only when Gloom Cloud pairs it with a depositary receipt (GGAL and GGAL.BA, TSM and 2330.TW, BHP and BHP.AX). Either side works: the receipt compares with its first home line, a home line with its receipt.
+`ADR <ticker>` opens DES on **ADR vs Home**, under Financials, which a listing has only when Gloom Cloud pairs it with a depositary receipt (GGAL and GGAL.BA, TSM and 2330.TW, BHP and BHP.AX). Either side works: the receipt compares with its first home line, a home line with its receipt.
 
 - **Ratio.** How many ordinary shares one receipt holds, from Gloom Cloud's depositary reference, which checks each ratio against the depositary's notice and both lines' prices. `ticker`, `quote` and DES's Overview state it on both sides: `1 ADR = 10 ordinary shares of GGAL.BA` on the receipt, `1 GGAL ADR = 10 of these shares` on the home line.
 - **Prices.** Each line's regular-session price through the same quote path as `quote` (an after-hours print never moves it), dated by its last trade, or by the close once the session is over. A price in a minor unit (pence) is read in its currency.

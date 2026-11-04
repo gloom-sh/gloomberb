@@ -698,7 +698,7 @@ export function WebPageStackView({
         style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, minHeight: 0, overflow: "hidden" }}
       >
         <StackHeaderContext.Provider value={slot}>
-          <NestedPaneTabs>{detailContent}</NestedPaneTabs>
+          <NestedPaneTabs detail>{detailContent}</NestedPaneTabs>
         </StackHeaderContext.Provider>
       </div>
     </Box>

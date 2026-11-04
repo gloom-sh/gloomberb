@@ -1,32 +1,13 @@
 import type { TickerRecord } from "../types/ticker";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, exchangeLabel, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone, US_LISTING_EXCHANGES } from "./exchanges";
+import { canonicalExchange, exchangeLabel, isUsEquityExchange, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "./exchanges";
 import { shortListingTitle } from "../tickers/company-name";
-
-/** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
-const US_EQUITY_EXCHANGES = new Set([
-  ...US_LISTING_EXCHANGES,
-  "BYX",
-  "IEX",
-  "OTC",
-  "PINK",
-  // Listing codes for the OTC Markets tiers.
-  "PNK",
-  "OQB",
-  "OQX",
-  "OEM",
-  "OBB",
-]);
 
 /** Order-routing destinations, not listings. */
 const ROUTING_EXCHANGES = new Set(["SMART"]);
 
 function normalize(value?: string): string {
   return (value ?? "").trim().toUpperCase();
-}
-
-function isUsExchange(value?: string): boolean {
-  return US_EQUITY_EXCHANGES.has(canonicalExchange(value));
 }
 
 function isEquityType(value?: string): boolean {
@@ -108,9 +89,9 @@ export function isKnownNonUsListing(ticker: TickerRecord | null | undefined): bo
   const venues = [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
     .map(normalize)
     .filter((exchange) => exchange.length > 0 && !ROUTING_EXCHANGES.has(exchange));
-  if (venues.length > 0) return !venues.some((exchange) => isUsExchange(exchange));
+  if (venues.length > 0) return !venues.some((exchange) => isUsEquityExchange(exchange));
   const symbol = parsePublicTickerKey(ticker.metadata.ticker ?? "");
-  if (symbol.exchange) return !ROUTING_EXCHANGES.has(symbol.exchange) && !isUsExchange(symbol.exchange);
+  if (symbol.exchange) return !ROUTING_EXCHANGES.has(symbol.exchange) && !isUsEquityExchange(symbol.exchange);
   return tickerHasListingSuffix(symbol.symbol);
 }
 
@@ -132,7 +113,7 @@ export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined
  */
 export function nonUsSecListingVenue(ticker: string, exchange?: string): string | null {
   const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
-  if (!venue || ROUTING_EXCHANGES.has(venue) || isUsExchange(venue)) return null;
+  if (!venue || ROUTING_EXCHANGES.has(venue) || isUsEquityExchange(venue)) return null;
   return venue;
 }
 

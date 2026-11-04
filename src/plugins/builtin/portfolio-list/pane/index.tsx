@@ -16,7 +16,7 @@ import { useTickerSourceActivate } from "../../../../react/ticker-source";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
 import { useAppActive, useAppVisible, usePaneVisible } from "../../../../state/app/activity";
-import { tf } from "../../../../i18n";
+import { t, tf } from "../../../../i18n";
 import { useDialog } from "../../../../ui/dialog";
 import {
   useAppDispatch,
@@ -82,6 +82,7 @@ import {
   tickerRemovalSummary,
 } from "./remove-ticker";
 import { QUICK_ADD_KEY, QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
+import { usePositionsImport } from "../positions-import";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
@@ -664,6 +665,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     }
   }, [appStateRef, dialog, dispatch, notify, removalCollection, selectedTicker, setCursorSymbol]);
 
+  // A broker's positions export, previewed and then saved to a portfolio; the new one is shown.
+  const positionsImport = usePositionsImport({
+    activePortfolio: currentPortfolio,
+    onImported: setCurrentCollectionId,
+  });
+  usePaneMenuItems("portfolio-list-import", () => [
+    { id: "import-positions", label: t("Import Positions…"), onSelect: positionsImport.start },
+  ], [positionsImport.start]);
+
   // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens. A row that is a
   // perpetual market opens its own, as Enter does.
   const cursorPerpetual = showsPerpetuals && cursorSymbol ? perpetuals.markets.get(cursorSymbol) ?? null : null;
@@ -834,6 +844,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       )}
 
       {quickAddRow}
+      {positionsImport.picker}
 
       {drawerHeight > 0 && accountState && (
         <Box height={drawerHeight} paddingX={1}>

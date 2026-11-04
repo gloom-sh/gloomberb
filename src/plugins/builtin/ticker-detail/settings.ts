@@ -6,8 +6,7 @@ import type { PriceSparklinePeriod } from "../../../components/price-sparkline/v
 import { getSharedRegistry } from "../../registry";
 import { formatTickerListInput, MAX_TICKER_LIST_SIZE, parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
-
-type TickerResearchTabSummary = { id: string; name: string; order: number };
+import { groupTickerResearchTabs, type TickerResearchTabSummary } from "./research-groups";
 
 export interface TickerResearchPaneSettings {
   hideTabs: boolean;
@@ -49,9 +48,11 @@ function getAvailableSettingsTabs(): TickerResearchTabSummary[] {
     ? [...registry.tickerResearchTabs.values()].map((tab) => ({ id: tab.id, name: tab.name, order: tab.order }))
     : [];
 
-  return pluginTabs
+  const tabs = pluginTabs
     .sort((left, right) => left.order - right.order)
     .filter((tab, index, allTabs) => allTabs.findIndex((candidate) => candidate.id === tab.id) === index);
+  // In the order the strip shows them: group by group.
+  return groupTickerResearchTabs(tabs).flatMap((group) => group.views);
 }
 
 export function buildTickerResearchSettingsDef(settings: TickerResearchPaneSettings): PaneSettingsDef {
