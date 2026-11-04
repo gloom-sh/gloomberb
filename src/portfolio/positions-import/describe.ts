@@ -3,9 +3,12 @@
  * and in the app's preview: where the file comes from, the portfolio it
  * makes, and each row's shares, cost and status.
  */
-import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../market-data/market/format";
+import { formatMarketCost, formatMarketCostWithCurrency, formatMarketQuantity, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { POSITIONS_LAYOUT_NAMES, type PositionsLayoutId } from "./parse";
-import type { PositionsImportRow } from "./plan";
+import { sameCost, type PositionsImportRow } from "./plan";
+
+/** The rows a preview lists of each kind; past this many, a line counts the rest. */
+export const PREVIEW_ROWS_SHOWN = 100;
 
 /** The broker a recognised export comes from, which names the portfolio it makes. */
 const LAYOUT_PORTFOLIO_NAMES: Readonly<Record<Exclude<PositionsLayoutId, "generic">, string>> = {
@@ -38,15 +41,49 @@ export function positionsImportShares(row: PositionsImportRow): string {
   return formatMarketQuantity(row.shares, { assetCategory: row.ticker.metadata.assetCategory });
 }
 
-/** Per share in the position's currency; a cost the holding keeps says so, and none is a dash. */
-export function positionsImportCost(row: PositionsImportRow): string {
+/**
+ * Per share in the position's currency: as PF's Avg Cost prints it (158.57,
+ * the currency in its own column), or with the currency's sign as `portfolio
+ * show` prints it ($158.57). A cost the holding keeps says so, and none is a
+ * dash.
+ */
+export function positionsImportCost(row: PositionsImportRow, { withCurrency = false }: { withCurrency?: boolean } = {}): string {
   if (row.avgCost === null) return "—";
-  const cost = formatMarketCostWithCurrency(row.avgCost, row.currency, { assetCategory: row.ticker.metadata.assetCategory });
+  const options = { assetCategory: row.ticker.metadata.assetCategory };
+  const cost = withCurrency
+    ? formatMarketCostWithCurrency(row.avgCost, row.currency, options)
+    : formatMarketCost(row.avgCost, withCurrencyMinorDigits(options, row.currency));
   return row.keptCost ? `${cost} (kept)` : cost;
 }
 
-/** New, or what the portfolio held before. */
+/**
+ * Whether the rows need a currency column: some are in another currency
+ * than the portfolio totals in. A portfolio with no positions yet takes its
+ * first position's, so one currency across the rows needs none.
+ */
+export function positionsImportShowsCurrency(rows: readonly PositionsImportRow[], portfolioCurrency: string | null): boolean {
+  const currencies = new Set(rows.map((row) => row.currency));
+  return currencies.size > 1 || (portfolioCurrency !== null && currencies.size === 1 && !currencies.has(portfolioCurrency));
+}
+
+/** What the import does to a holding: new, its lots made one, its shares, cost or date changed, or nothing. */
 export function positionsImportStatus(row: PositionsImportRow): string {
   if (row.heldShares === null) return "new";
-  return row.heldShares === row.shares ? "same shares" : `was ${formatMarketQuantity(row.heldShares)}`;
+  if (row.heldLots > 1) return `${row.heldLots} lots → 1`;
+  if (row.heldShares !== row.shares) return `was ${formatMarketQuantity(row.heldShares)}`;
+  if (!row.keptCost && row.avgCost !== null && (row.heldAvgCost === null || !sameCost(row.heldAvgCost, row.avgCost))) return "new cost";
+  if (row.dateAcquired && row.dateAcquired !== row.heldDate) return "new date";
+  return "unchanged";
+}
+
+/** The line under a skipped list cut at `PREVIEW_ROWS_SHOWN`, or null when it lists them all. */
+export function moreSkippedLine(total: number): string | null {
+  const more = total - PREVIEW_ROWS_SHOWN;
+  return more > 0 ? `and ${more.toLocaleString("en-US")} more row${more === 1 ? "" : "s"} skipped` : null;
+}
+
+/** The line under a positions list cut at `PREVIEW_ROWS_SHOWN`: the rest are imported all the same. */
+export function morePositionsLine(total: number): string | null {
+  const more = total - PREVIEW_ROWS_SHOWN;
+  return more > 0 ? `and ${more.toLocaleString("en-US")} more position${more === 1 ? "" : "s"}, imported with these` : null;
 }

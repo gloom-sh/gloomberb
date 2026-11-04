@@ -46,12 +46,18 @@ export interface FilePosition {
   lines: number[];
 }
 
+/** Why a row is not imported: one of `SKIP_REASONS`, or a symbol that did not resolve to a listing. */
+export type SkipKind = keyof typeof SKIP_REASONS | "lookup";
+
 /** A row that names something but is not imported, and why. */
 export interface SkippedFileRow {
   line: number;
   /** The symbol, else the description, as the file writes it. */
   label: string;
   reason: string;
+  kind: SkipKind;
+  /** The row's symbol, cleaned, when it has one: a holding of it is never removed by a replace. */
+  symbol: string | null;
 }
 
 export interface PositionsFile {
@@ -60,12 +66,21 @@ export interface PositionsFile {
   skipped: SkippedFileRow[];
 }
 
+/** Why a file has no positions to import: no positions table, only activity, too many positions, or none. */
+export type PositionsFileProblem = "no-table" | "activity" | "too-many" | "empty";
+
 export class PositionsFileError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly problem: PositionsFileProblem) {
     super(message);
     this.name = "PositionsFileError";
   }
 }
+
+/** The largest export read: a brokerage's positions file is kilobytes, so anything bigger is the wrong file. */
+export const MAX_POSITIONS_FILE_BYTES = 5 * 1024 * 1024;
+
+/** The most positions one import takes: every symbol is looked up, and the preview lists each. */
+export const MAX_IMPORT_POSITIONS = 1000;
 
 /** The reasons a row is skipped, as they are shown. */
 export const SKIP_REASONS = {
@@ -125,10 +140,19 @@ const ROLE_NAMES: Readonly<Record<Role, readonly string[]>> = {
 const ROLES = Object.keys(ROLE_NAMES) as Role[];
 
 /** Columns of an activity export (trades, dividends, transfers): its rows are not holdings. */
-const ACTIVITY_COLUMN = /transaction|^action$|^activity$|^settlement date$|^process date$|^run date$/;
+const ACTIVITY_COLUMN = /transaction|^trans code$|^action$|^activity$|^side$|^buy\/sell$|^b\/s$|^trade type$|^order type$|^settlement date$|^process date$|^run date$/;
+/** A plain Type column is a trade's side in a trade history, and a holding's account type (Cash, Margin) in Fidelity's positions. */
+const TYPE_COLUMN = new Set(["type", "kind"]);
+/** A trade's side or an activity's kind. Not Short: Fidelity's Type says a holding is short. */
+const TRADE_SIDE = /^(?:buy|sell|bought|sold|you bought|you sold|b|s|buy to (?:open|close|cover)|sell (?:short|to (?:open|close))|short sell|dividend|reinvest(?:ment)?|interest|deposit|withdrawal|transfer)$/i;
 
 /** The broker exports' default currency: their positions are in US dollars. */
 const US_LAYOUTS: ReadonlySet<PositionsLayoutId> = new Set(["fidelity", "schwab", "vanguard", "etrade", "merrill"]);
+
+/** A US brokerage's export, whose accounts hold US listings in US dollars. */
+export function isUsBrokerLayout(layout: PositionsLayoutId): boolean {
+  return US_LAYOUTS.has(layout);
+}
 
 const TOTAL_ROW = /^(?:account|grand|positions|portfolio|overall)?\s*totals?\b|\btotals?:?$/i;
 const PENDING_ROW = /^pending\b/i;
@@ -147,8 +171,25 @@ const BOND_TYPE = /^(?:fixed income|bonds?|treasur(?:y|ies)|cds?|certificates? o
 /** A CUSIP where a ticker should be: a security with no ticker, which a broker's export means a bond or CD. */
 const CUSIP = /^[0-9]{3}[0-9A-Z]{5}[0-9]$/;
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.\-=^:]{0,19}$/;
+/** A symbol cell with nothing else on its row, read as a ticker only when written as one: upper case and short. */
+const LONE_TICKER = /^[A-Z][A-Z0-9.\-/]{0,9}$/;
+
+/**
+ * The longest cell each reading looks at. A file can hold anything; past
+ * these lengths a cell is no column name, number, date or ticker, and is not
+ * searched, so no cell costs more than its length.
+ */
+const MAX_HEADER_CELL = 80;
+const MAX_NUMBER_CELL = 40;
+const MAX_SYMBOL_CELL = 40;
+const MAX_LABEL = 60;
+
+function clip(text: string): string {
+  return text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL - 1).trimEnd()}…` : text;
+}
 
 function headerNames(cell: string): string[] {
+  if (cell.length > MAX_HEADER_CELL) return [];
   const raw = cell.replace(/\s+/g, " ").trim().toLowerCase();
   // A percent column (Gain %) is never a share count, a cost or a value.
   if (!raw || raw.includes("%")) return [];
@@ -172,27 +213,51 @@ interface Header {
   /** Every name the header's cells go by, for telling the layouts apart. */
   names: Set<string>;
   activity: boolean;
+  /** A plain Type column, which makes the table a trade history when it holds buys and sells. */
+  typeColumn: number | null;
+}
+
+/**
+ * Each role's column is the one with its most specific name, wherever it
+ * stands: Trade Date before Date, Average Cost before Cost. A column serves
+ * one role.
+ */
+function assignRoles(cellNames: readonly (readonly string[])[]): Partial<Record<Role, number>> {
+  const columns: Partial<Record<Role, number>> = {};
+  const taken = new Set<number>();
+  for (const role of ROLES) {
+    let best = -1;
+    let bestRank = Infinity;
+    for (let index = 0; index < cellNames.length; index += 1) {
+      if (taken.has(index)) continue;
+      for (const name of cellNames[index]!) {
+        const rank = ROLE_NAMES[role].indexOf(name);
+        if (rank >= 0 && rank < bestRank) {
+          best = index;
+          bestRank = rank;
+        }
+      }
+    }
+    if (best >= 0) {
+      columns[role] = best;
+      taken.add(best);
+    }
+  }
+  return columns;
 }
 
 function readHeader(cells: readonly string[]): Header | null {
   const filled = cells.filter((cell) => cell.trim());
   if (filled.length < 2 || filled.some((cell) => readNumber(cell, false) !== null)) return null;
-  const columns: Partial<Record<Role, number>> = {};
-  const names = new Set<string>();
-  cells.forEach((cell, index) => {
-    const cellNames = headerNames(cell);
-    for (const name of cellNames) names.add(name);
-    for (const role of ROLES) {
-      if (columns[role] === undefined && cellNames.some((name) => ROLE_NAMES[role].includes(name))) {
-        columns[role] = index;
-        break;
-      }
-    }
-  });
+  const cellNames = cells.map(headerNames);
+  const names = new Set(cellNames.flat());
+  const columns = assignRoles(cellNames);
+  const typeIndex = cellNames.findIndex((list) => list.some((name) => TYPE_COLUMN.has(name)));
+  const typeColumn = typeIndex >= 0 ? typeIndex : null;
   // An activity table starts a section of its own, so its rows never read as holdings of the table above it.
-  if (filled.length >= 3 && [...names].some((name) => ACTIVITY_COLUMN.test(name))) return { columns, names, activity: true };
+  if (filled.length >= 3 && [...names].some((name) => ACTIVITY_COLUMN.test(name))) return { columns, names, activity: true, typeColumn };
   const holdings = (columns.symbol !== undefined || columns.description !== undefined) && columns.quantity !== undefined;
-  return holdings ? { columns, names, activity: false } : null;
+  return holdings ? { columns, names, activity: false, typeColumn } : null;
 }
 
 function layoutOf(names: ReadonlySet<string>, schwabTitle: boolean): PositionsLayoutId {
@@ -266,6 +331,7 @@ function readRecords(text: string, delimiter: string): CsvRecord[] {
  * `n/a`, `Incomplete` and anything else that is not a number.
  */
 function readNumber(text: string, decimalComma: boolean): number | null {
+  if (text.length > MAX_NUMBER_CELL) return null;
   let value = text.trim();
   if (!value) return null;
   let negative = false;
@@ -292,20 +358,26 @@ function readNumber(text: string, decimalComma: boolean): number | null {
   return negative ? -number : number;
 }
 
+/** No date is longer: a longer cell is not one, and is not searched. */
+const MAX_DATE_CELL = 40;
+const SLASHED_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
+
 /**
- * A purchase date as YYYY-MM-DD. The US exports write the month first
- * (1/15/2025), which a day over 12 corrects (15/1/2025). A day after today
+ * A purchase date as YYYY-MM-DD. A slashed date is read month first
+ * (1/15/2025) or, in a file that writes the day first, day first
+ * (15/1/2025); a part over 12 says which it is either way. A day after today
  * is no purchase date.
  */
-function readFileDate(text: string, now: Date): string | null {
+function readFileDate(text: string, now: Date, dayFirst: boolean): string | null {
+  if (text.length > MAX_DATE_CELL) return null;
   const value = text.trim().split(/\s+(?=\d{1,2}:\d{2})/)[0] ?? "";
   if (!value) return null;
-  const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(value);
+  const slashed = SLASHED_DATE.exec(value);
   let date: string | null;
   if (slashed) {
     const [first, second] = [Number(slashed[1]), Number(slashed[2])];
     const year = slashed[3]!.length === 2 ? 2000 + Number(slashed[3]) : Number(slashed[3]);
-    const [month, day] = first > 12 ? [second, first] : [first, second];
+    const [month, day] = first > 12 || (dayFirst && second <= 12) ? [second, first] : [first, second];
     date = readCalendarDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   } else {
     date = readCalendarDate(value);
@@ -315,7 +387,7 @@ function readFileDate(text: string, now: Date): string | null {
 
 function readCurrency(text: string): string | null {
   const raw = text.trim();
-  if (!raw) return null;
+  if (!raw || raw.length > 8) return null;
   const code = normalizeHeldCurrencyCode(raw);
   // Pence (GBp, GBX) are a unit of the pound, kept as the file writes them.
   if (resolveCurrencyUnit(code).divisor !== 1) return code;
@@ -324,6 +396,8 @@ function readCurrency(text: string): string | null {
 
 /** The symbol cleaned of the marks exports add: Fidelity's `**` core money market, Schwab's `BRK/B`. */
 function cleanSymbol(text: string): string {
+  // Too long for a ticker: kept as written, so it is skipped as not one.
+  if (text.length > MAX_SYMBOL_CELL) return text.trim().toUpperCase();
   const symbol = text.trim().replace(/\*+$/, "").toUpperCase();
   if (!symbol || /^-+$/.test(symbol) || /^n\/?a$/i.test(symbol)) return "";
   return symbol.replace(/\//g, ".");
@@ -341,43 +415,50 @@ interface ReadRow {
 
 type RowReading = { kind: "position"; row: ReadRow } | { kind: "skipped"; skipped: SkippedFileRow } | { kind: "ignored" };
 
-function readRow(
-  record: CsvRecord,
-  header: Header,
-  options: { decimalComma: boolean; defaultCurrency: string | null; now: Date },
-): RowReading {
+interface RowOptions {
+  decimalComma: boolean;
+  dayFirst: boolean;
+  defaultCurrency: string | null;
+  now: Date;
+}
+
+function readRow(record: CsvRecord, header: Header, options: RowOptions): RowReading {
   const { cells, line } = record;
   const cell = (role: Role) => {
     const index = header.columns[role];
     return index === undefined ? "" : (cells[index] ?? "").trim();
   };
   const filled = cells.filter((value) => value.trim() && !/^-+$/.test(value.trim()));
-  // Blank rows, account titles ("Individual ...321") and footers fill one cell at most.
-  if (filled.length < 2) return { kind: "ignored" };
   const rawSymbol = cell("symbol");
+  // Blank rows, account titles ("Individual ...321") and footers fill one cell at most. A ticker
+  // alone (KO with -- for its shares) is a holding the file could not count, skipped as one.
+  if (filled.length < 2 && !(filled.length === 1 && filled[0] === rawSymbol && LONE_TICKER.test(rawSymbol))) return { kind: "ignored" };
   const description = cell("description") || null;
   const type = cell("securityType");
   const lead = rawSymbol || filled[0]!.trim();
   if (TOTAL_ROW.test(lead) || (!rawSymbol && description && TOTAL_ROW.test(description))) return { kind: "ignored" };
-  const label = (cleanSymbol(rawSymbol) ? rawSymbol : description) || lead;
-  const skip = (reason: string): RowReading => ({ kind: "skipped", skipped: { line, label, reason } });
-  if (PENDING_ROW.test(rawSymbol) || (!rawSymbol && description && PENDING_ROW.test(description))) return skip(SKIP_REASONS.pending);
+  const symbol = cleanSymbol(rawSymbol);
+  const label = clip((symbol ? rawSymbol : description) || lead);
+  const skip = (kind: keyof typeof SKIP_REASONS): RowReading => ({
+    kind: "skipped",
+    skipped: { line, label, reason: SKIP_REASONS[kind], kind, symbol: symbol && symbol.length <= MAX_SYMBOL_CELL ? symbol : null },
+  });
+  if (PENDING_ROW.test(rawSymbol) || (!rawSymbol && description && PENDING_ROW.test(description))) return skip("pending");
   const upper = rawSymbol.trim().toUpperCase();
   if (/\*\*$/.test(rawSymbol) || CASH_SYMBOL.test(rawSymbol) || CASH_TYPE.test(type) || (description && CASH_DESCRIPTION.test(description))) {
-    return skip(SKIP_REASONS.cash);
+    return skip("cash");
   }
   if (OPTION_TYPE.test(type) || OPTION_SYMBOLS.some((pattern) => pattern.test(upper))
     || (description && /\b(?:call|put)\b/i.test(description) && /\d/.test(upper) && upper.length > 6)) {
-    return skip(SKIP_REASONS.option);
+    return skip("option");
   }
-  const symbol = cleanSymbol(rawSymbol);
   const coupon = !!description && /\d(?:\.\d+)?\s*%/.test(description) && /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(description);
-  if (BOND_TYPE.test(type) || CUSIP.test(symbol) || (!symbol && coupon)) return skip(SKIP_REASONS.bond);
-  if (!symbol) return skip(SKIP_REASONS.noTicker);
-  if (!SYMBOL.test(symbol)) return skip(SKIP_REASONS.notSymbol);
+  if (BOND_TYPE.test(type) || CUSIP.test(symbol) || (!symbol && coupon)) return skip("bond");
+  if (!symbol) return skip("noTicker");
+  if (!SYMBOL.test(symbol)) return skip("notSymbol");
   const shares = readNumber(cell("quantity"), options.decimalComma);
-  if (shares === null) return skip(SKIP_REASONS.noShares);
-  if (shares === 0) return skip(SKIP_REASONS.zero);
+  if (shares === null) return skip("noShares");
+  if (shares === 0) return skip("zero");
   const magnitude = Math.abs(shares);
   const perShare = readNumber(cell("costPerShare"), options.decimalComma);
   const total = readNumber(cell("costTotal"), options.decimalComma);
@@ -397,7 +478,7 @@ function readRow(
       shares,
       avgCost,
       currency: readCurrency(cell("currency")) ?? options.defaultCurrency,
-      dateAcquired: readFileDate(cell("date"), options.now),
+      dateAcquired: readFileDate(cell("date"), options.now, options.dayFirst),
     },
   };
 }
@@ -410,11 +491,13 @@ function tidy(value: number): number {
 /** Several accounts or lots of one symbol are one position: shares added up, cost by shares, the earliest date. */
 function mergeRows(rows: readonly ReadRow[]): { position: FilePosition } | { skipped: SkippedFileRow[] } {
   const first = rows[0]!;
-  const skipAll = (reason: string) => ({ skipped: rows.map((row) => ({ line: row.line, label: row.symbol, reason })) });
+  const skipAll = (kind: SkipKind, reason: string) => ({
+    skipped: rows.map((row) => ({ line: row.line, label: row.symbol, reason, kind, symbol: row.symbol })),
+  });
   const currencies = new Set(rows.map((row) => row.currency ?? ""));
-  if (currencies.size > 1) return skipAll(`${SKIP_REASONS.currencies} (${[...currencies].map((code) => code || "none").join(", ")})`);
+  if (currencies.size > 1) return skipAll("currencies", `${SKIP_REASONS.currencies} (${[...currencies].map((code) => code || "none").join(", ")})`);
   const shares = tidy(rows.reduce((sum, row) => sum + row.shares, 0));
-  if (shares === 0) return skipAll(SKIP_REASONS.netZero);
+  if (shares === 0) return skipAll("netZero", SKIP_REASONS.netZero);
   const held = rows.reduce((sum, row) => sum + Math.abs(row.shares), 0);
   const costed = rows.every((row) => row.avgCost !== null);
   const avgCost = rows.length === 1 ? first.avgCost
@@ -465,11 +548,88 @@ function pickDelimiter(text: string): { delimiter: string; records: CsvRecord[] 
   return fallback!;
 }
 
-/** Whether a file split by something other than commas writes its numbers with a decimal comma (1.234,56). */
+const NUMBER_ROLES: readonly Role[] = ["quantity", "costTotal", "costPerShare", "value", "gain"];
+/** Numbers only a decimal comma reads: 12,5, 0,125, 1,2345, 1.234,56, 1.234.567. */
+const DECIMAL_COMMA_ONLY = /^\d+,\d{1,2}$|^0,\d+$|^\d+,\d{4,}$|^\d{1,3}(?:\.\d{3})+,\d+$|^\d{1,3}(?:\.\d{3}){2,}$/;
+/** Numbers only a decimal point reads: 12.5, 0.125, 1.2345, 1,234.56, 1,234,567. */
+const DECIMAL_POINT_ONLY = /^\d*\.\d{1,2}$|^0\.\d+$|^\d*\.\d{4,}$|^\d{1,3}(?:,\d{3})+\.\d+$|^\d{1,3}(?:,\d{3}){2,}$/;
+
+function numberBody(cell: string): string {
+  return cell.trim().replace(/^\((.*)\)$/, "$1").replace(/[$€£¥\s]/g, "").replace(/^[+-]/, "");
+}
+
+/**
+ * Whether a file split by tabs or semicolons writes its numbers with a
+ * decimal comma (1.234,56). Only a number no decimal point could mean says
+ * so: 1,500 is read as fifteen hundred, as a US export means it, unless the
+ * file also writes 12,5 or 1.234,56 and never 12.50.
+ */
 function usesDecimalComma(delimiter: string, sections: readonly Section[]): boolean {
   if (delimiter === ",") return false;
-  return sections.some((section) => section.records.some((record) => record.cells.some((cell) =>
-    /^[-+]?[$€£]?\s?\d{1,3}(?:\.\d{3})*,\d+$/.test(cell.trim()))));
+  let comma = false;
+  for (const section of sections) {
+    const indexes = NUMBER_ROLES.flatMap((role) => section.header.columns[role] ?? []);
+    for (const record of section.records) {
+      for (const index of indexes) {
+        const body = numberBody(record.cells[index] ?? "");
+        if (!body) continue;
+        if (DECIMAL_POINT_ONLY.test(body)) return false;
+        if (DECIMAL_COMMA_ONLY.test(body)) comma = true;
+      }
+    }
+  }
+  return comma;
+}
+
+/**
+ * Whether the file's slashed dates put the day first. A part over 12 says
+ * which; a file whose dates never do follows its numbers (a decimal comma
+ * writes the day first) and its currencies (a table in none of them USD).
+ */
+function writesDayFirst(sections: readonly Section[], decimalComma: boolean, layout: PositionsLayoutId): boolean {
+  let dayFirst = false;
+  let monthFirst = false;
+  let usd = false;
+  let otherCurrency = false;
+  for (const section of sections) {
+    const { date, currency } = section.header.columns;
+    for (const record of section.records) {
+      const slashed = date === undefined ? null : SLASHED_DATE.exec((record.cells[date] ?? "").trim().split(/\s/)[0] ?? "");
+      if (slashed) {
+        if (Number(slashed[1]) > 12) dayFirst = true;
+        if (Number(slashed[2]) > 12) monthFirst = true;
+      }
+      const code = currency === undefined ? null : readCurrency(record.cells[currency] ?? "");
+      if (code === "USD") usd = true;
+      else if (code) otherCurrency = true;
+    }
+  }
+  if (dayFirst !== monthFirst) return dayFirst;
+  return decimalComma || (layout === "generic" && otherCurrency && !usd);
+}
+
+/** A table whose Type column holds buys and sells is a trade history, whatever its other columns. */
+function listsTrades(section: Section): boolean {
+  const index = section.header.typeColumn;
+  if (index === null) return false;
+  const values = section.records.map((record) => (record.cells[index] ?? "").trim()).filter(Boolean);
+  return values.length > 0 && values.filter((value) => TRADE_SIDE.test(value)).length * 2 >= values.length;
+}
+
+/**
+ * A file's bytes as text: UTF-16 by its byte order mark (Excel's Unicode
+ * text) or its zero bytes, UTF-8, else Windows-1252 (Excel's CSV on Windows).
+ */
+export function decodePositionsFile(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes.subarray(2));
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes.subarray(2));
+  if (bytes.length >= 4 && bytes[0] !== 0 && bytes[1] === 0 && bytes[2] !== 0 && bytes[3] === 0) return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes.length >= 4 && bytes[0] === 0 && bytes[1] !== 0 && bytes[2] === 0 && bytes[3] !== 0) return new TextDecoder("utf-16be").decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
 }
 
 /**
@@ -481,15 +641,17 @@ function usesDecimalComma(delimiter: string, sections: readonly Section[]): bool
 export function parsePositionsFile(text: string, now = new Date()): PositionsFile {
   const { delimiter, records } = pickDelimiter(text.replace(/^\uFEFF/, ""));
   const { sections, schwabTitle } = readSections(records);
-  const holdings = sections.filter((section) => !section.header.activity);
+  const holdings = sections.filter((section) => !section.header.activity && !listsTrades(section));
   if (holdings.length === 0) {
-    throw new PositionsFileError(sections.length > 0
-      ? "This is an activity history (trades and transfers), not a positions export. Download the positions or holdings page instead."
-      : "No positions table found: the file needs a header row with a Symbol (or Ticker) column and a Quantity (or Shares) column.");
+    throw sections.length > 0
+      ? new PositionsFileError("This is an activity history (trades and transfers), not a positions export. Download the positions or holdings page instead.", "activity")
+      : new PositionsFileError("No positions table found: the file needs a header row with a Symbol (or Ticker) column and a Quantity (or Shares) column.", "no-table");
   }
   const layout = layoutOf(holdings[0]!.header.names, schwabTitle);
-  const options = {
-    decimalComma: usesDecimalComma(delimiter, holdings),
+  const decimalComma = usesDecimalComma(delimiter, holdings);
+  const options: RowOptions = {
+    decimalComma,
+    dayFirst: writesDayFirst(holdings, decimalComma, layout),
     defaultCurrency: US_LAYOUTS.has(layout) ? "USD" : null,
     now,
   };
@@ -505,13 +667,16 @@ export function parsePositionsFile(text: string, now = new Date()): PositionsFil
       bySymbol.set(reading.row.symbol, rows);
     }
   }
+  if (bySymbol.size > MAX_IMPORT_POSITIONS) {
+    throw new PositionsFileError(`The file lists ${bySymbol.size.toLocaleString("en-US")} positions, and an import takes at most ${MAX_IMPORT_POSITIONS.toLocaleString("en-US")}. Import each account's export on its own.`, "too-many");
+  }
   const positions: FilePosition[] = [];
   for (const rows of bySymbol.values()) {
     const merged = mergeRows(rows);
     if ("position" in merged) positions.push(merged.position);
     else skipped.push(...merged.skipped);
   }
-  if (positions.length === 0 && skipped.length === 0) throw new PositionsFileError("The positions table has no rows.");
+  if (positions.length === 0 && skipped.length === 0) throw new PositionsFileError("The positions table has no rows.", "empty");
   skipped.sort((left, right) => left.line - right.line);
   return { layout, positions, skipped };
 }

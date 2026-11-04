@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { parsePositionsFile, PositionsFileError, SKIP_REASONS, type PositionsFile } from "./parse";
+import { decodePositionsFile, MAX_IMPORT_POSITIONS, parsePositionsFile, PositionsFileError, SKIP_REASONS, type PositionsFile } from "./parse";
 
 const NOW = new Date("2025-02-01T12:00:00Z");
 
@@ -133,10 +133,53 @@ describe("files", () => {
     });
   });
 
-  test("an activity history and a file with no positions table say so", () => {
+  test("a tab file of US numbers keeps its thousands; only a number no decimal point could mean makes a file decimal-comma", () => {
+    // 1,500 is fifteen hundred and 1,200.50 a cost, as a US export writes them; a slashed date is month first.
+    expect(positions(parsePositionsFile("Symbol\tQuantity\tCost Basis\tDate Acquired\nAAPL\t1,500\t\"1,200.50\"\t04/03/2024\nMSFT\t2\t600\t\n", NOW))).toEqual({
+      AAPL: [1500, 0.800333333333333, null, "2024-04-03"],
+      MSFT: [2, 300, null, null],
+    });
+    // 12,5 makes 1,500 a decimal comma too, and such a file writes the day first.
+    expect(positions(parsePositionsFile("Symbol;Quantity;Avg Cost;Date Acquired\nSAP;1,500;12,5;04/03/2024\n", NOW))).toEqual({
+      SAP: [1.5, 12.5, null, "2024-03-04"],
+    });
+    // A table in pounds writes the day first; one date past the 12th settles the rest, in either order.
+    expect(positions(parsePositionsFile("Symbol,Quantity,Currency,Purchase Date\nVOD.L,100,GBP,04/03/2024\nBP.L,10,GBP,\n", NOW))["VOD.L"]![3]).toBe("2024-03-04");
+    expect(positions(parsePositionsFile("Symbol,Quantity,Currency,Purchase Date\nVOD.L,100,GBP,04/03/2024\nBP.L,10,GBP,01/25/2024\n", NOW))["VOD.L"]![3]).toBe("2024-04-03");
+  });
+
+  test("each role takes its most specific column wherever it stands: Trade Date over Date, Average Cost over Cost", () => {
+    const file = parsePositionsFile("Date,Symbol,Cost,Quantity,Trade Date,Average Cost\n01/31/2025,AAPL,1500,10,03/01/2024,140\n", NOW);
+    expect(positions(file)).toEqual({ AAPL: [10, 140, null, "2024-03-01"] });
+  });
+
+  test("an activity or trade history and a file with no positions table say so", () => {
     expect(() => parsePositionsFile("Run Date,Action,Symbol,Description,Quantity,Price,Amount\n01/02/2025,YOU BOUGHT,AAPL,APPLE INC,5,190,-950\n", NOW))
       .toThrow(/activity history/);
+    // Buys and sells are not holdings, even under a plain Type column.
+    expect(() => parsePositionsFile("Date,Type,Symbol,Quantity,Price\n2024-01-02,Buy,AAPL,10,190\n2024-02-02,Sell,AAPL,4,200\n", NOW))
+      .toThrow(/activity history/);
+    expect(() => parsePositionsFile("Date,Side,Symbol,Quantity,Price\n2024-01-02,B,AAPL,10,190\n", NOW)).toThrow(/activity history/);
     expect(() => parsePositionsFile("Name,Weight\nApple,50%\n", NOW)).toThrow(PositionsFileError);
+  });
+
+  test("a UTF-16 file reads by its byte order mark, and a file not in UTF-8 as Windows-1252", () => {
+    const text = "Symbol\tQuantity\tDescription\nAIR.PA\t3\tAirbus Société\n";
+    const utf16 = new Uint8Array([0xff, 0xfe, ...[...text].flatMap((char) => [char.charCodeAt(0) & 0xff, char.charCodeAt(0) >> 8])]);
+    expect(decodePositionsFile(utf16)).toBe(text);
+    expect(decodePositionsFile(new Uint8Array([...Buffer.from("Name,Société\n", "latin1")]))).toBe("Name,Société\n");
+    expect(positions(parsePositionsFile(decodePositionsFile(utf16), NOW))).toEqual({ "AIR.PA": [3, null, null, null] });
+  });
+
+  test("a cell of any length is read in time, and a file of more positions than an import takes is refused", () => {
+    const long = (fill: string) => `"${fill.repeat(100_000)}x"`;
+    const started = performance.now();
+    const file = parsePositionsFile(`Symbol,Quantity,Avg Cost,Date Acquired\nAAPL,${long("1")},${long("(")},2024-01-01${" ".repeat(100_000)}1\n${long("*")},1,1,\n`, NOW);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(file.skipped.map((row) => [row.label.length <= 60, row.reason])).toEqual([[true, SKIP_REASONS.noShares], [true, SKIP_REASONS.notSymbol]]);
+
+    const rows = Array.from({ length: MAX_IMPORT_POSITIONS + 1 }, (_, index) => `S${index},1`);
+    expect(() => parsePositionsFile(`Symbol,Quantity\n${rows.join("\n")}\n`, NOW)).toThrow(/at most 1,000/);
   });
 
   test("a row whose symbol is not a ticker, one without shares, and rows of one symbol in two currencies are skipped", () => {
