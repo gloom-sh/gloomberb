@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -172,14 +172,16 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       indexSymbol ? loadCurveSpotCloses(indexSymbol, ctx.marketData, ctx.refresh === true) : null,
     ]);
     const spotPremium = closes ? curveSpotPremium(data, closes) : null;
-    const bases = spot && bars ? curveBasisRows(data.contracts, bars) : null;
+    // The server's spot in each print's own minute fills what the reader's bars do not reach yet.
+    const spotBars = curveSpotBars(bars, data.contracts);
+    const bases = spot && spotBars ? curveBasisRows(data.contracts, spotBars) : null;
     const unit = curveUnitLabel(data);
     const terms = specEntries(data);
     const source = spot ? curveSpotSource(spot) : null;
     const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`],
       ...spot ? [`Basis against ${spot.symbol} spot in each last trade's own minute${source ? ` (${source})` : ""}; not the CME reference rate.`] : []];
     // The footnotes under the table: the convention, why a cell is blank, and where a short-dated rate is not to be trusted.
-    const basisNotes = bases ? [BASIS_CONVENTION, blankBasisNote(data.contracts, bases), shortDatedBasisNote(data.contracts, bases)]
+    const basisNotes = bases ? [BASIS_CONVENTION, blankBasisNote(data.contracts, bases, curveCache(data, now)), shortDatedBasisNote(data.contracts, bases)]
       .filter((note): note is string => !!note) : [];
     // A blank Change says why, as a blank basis does; a past curve has no session change to blank.
     const changeNote = date ? null : noTradeChangeNote(data.contracts, data);

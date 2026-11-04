@@ -307,6 +307,17 @@ async function chartWindow(cdp: Cdp): Promise<ChartWindow> {
 
 const day = (time: number) => new Date(time).toISOString().slice(0, 16);
 
+const AXIS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The ISO day a chart's time-axis tag names, as `2026-11-03` (with a time of day, intraday) or `Nov 3 2026`. */
+function tagDay(label: string | null): string | undefined {
+  const iso = label?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (iso) return iso;
+  const words = label?.match(/([A-Z][a-z]{2}) (\d{1,2}) (\d{4})/);
+  const month = words ? AXIS_MONTHS.indexOf(words[1]!) + 1 : 0;
+  return words && month > 0 ? `${words[3]}-${String(month).padStart(2, "0")}-${words[2]!.padStart(2, "0")}` : undefined;
+}
+
 /** Waits for the chart composer to draw its bars (they arrive after a short delay) and returns its plot. */
 async function loadedChartPlot(cdp: Cdp): Promise<Rect> {
   if (!await waitFor(cdp, `!!document.querySelector("[data-gloom-role=composite-chart]")?.dataset.gloomView && !!document.querySelector("[data-gloom-role=composite-chart-panel] canvas")`, 10_000)) {
@@ -1345,7 +1356,7 @@ const steps: Step[] = [
       const intraday = await plotRect(cdp, "chart-composer:a");
       const latest = await evaluate<State>(cdp, state("chart-composer:b"));
       if (latest.line) fail("the daily chart drew a crosshair before any pointer was on a chart", latest);
-      const day = (label: string | null) => label?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+      const day = tagDay;
       const seen: State[] = [];
       for (const share of [0.3, 0.7]) {
         await mouse(cdp, "mouseMoved", intraday.x + intraday.width * share, intraday.y + intraday.height * 0.5, false);
@@ -1444,7 +1455,7 @@ const steps: Step[] = [
       const rest = await waitFor<Charts | null>(cdp, `(() => { const c = ${charts}; return ${JSON.stringify(panes)}.every((id) => c[id].length > 0) && c["fear-greed:a"].length > 1 ? c : null; })()`, 10_000)
         ?? fail("a pane did not draw its charts", await evaluate(cdp, charts));
       if (Object.values(rest).flat().some((chart) => chart.line)) fail("a chart drew a crosshair before any pointer was on a chart", rest);
-      const day = (label: string | null) => label?.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+      const day = (label: string | null) => tagDay(label) ?? null;
       // Every chart shows the crosshair as the one under the pointer does: the line, its time and
       // its series tagged on its axis, and in a legend of moving series (not the macro chart's flat
       // mean) the values at that time. Only the chart under the pointer adds the level line and the

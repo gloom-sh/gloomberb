@@ -39,6 +39,23 @@ describe("browser social share handoff", () => {
     expect(replaced).toEqual(["/?theme=dark"]);
   });
 
+  test("hands a function link to the runtime once and consumes it from the address", () => {
+    const replaced: string[] = [];
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        location: { search: "?fn=perp&arg=BTC-USD&theme=dark", pathname: "/", hash: "" },
+        history: { state: null, replaceState(_state: unknown, _title: string, url: string) { replaced.push(url); } },
+        addEventListener() {},
+        removeEventListener() {},
+      },
+    });
+    const seen: string[] = [];
+    createBrowserDeepLinkBridge().subscribe((deeplink) => seen.push(deeplink.url));
+    expect(seen).toEqual(["gloomberb://fn/PERP?arg=BTC-USD"]);
+    expect(replaced).toEqual(["/?theme=dark"]);
+  });
+
   test("prefers a shared layout query", () => {
     const id = "fedcba9876543210fedcba9876543210";
     Object.defineProperty(globalThis, "window", {

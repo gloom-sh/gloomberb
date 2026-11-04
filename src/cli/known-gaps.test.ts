@@ -209,6 +209,15 @@ test("an income or reinvestment query names portfolio show --drip; a statement o
   expect(commandPointer("light theme")).toBe("Themes: gloom config themes");
 });
 
+test("a perpetual query names fn PERP for the coin it names, or the board; a perpetual bond or preferred does not", () => {
+  const btc = "BTC perpetuals by venue, with funding, open interest and premium: gloom fn PERP BTC";
+  for (const query of ["btc perpetual", "BTC perp", "btc perpetual futures", "binance btc perp funding rate"]) expect(commandPointer(query), query).toBe(btc);
+  expect(commandPointer("eth perps")).toBe("ETH perpetuals by venue, with funding, open interest and premium: gloom fn PERP ETH");
+  expect(commandPointer("bitcoin perpetual")).toBe("Bitcoin perpetuals by venue, with funding, open interest and premium: gloom fn PERP bitcoin");
+  expect(commandPointer("perpetual funding rates")).toBe("Perpetual markets by venue, with funding, open interest and premium: gloom fn PERP");
+  for (const query of ["perpetual bonds", "hsbc perpetual preferred", "btc", "tesla stock perpetual growth"]) expect(commandPointer(query), query).toBeNull();
+});
+
 test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its letters start; a PEG ratio does not", () => {
   const line = "Stablecoins against their peg, off peg in bp, 24h low and high: gloom fn CRYP --list stablecoin";
   for (const query of ["tether", "USDT", "usdc", "depeg", "peg", "USDC peg", "stablecoin depeg check"]) expect(commandPointer(query), query).toBe(line);

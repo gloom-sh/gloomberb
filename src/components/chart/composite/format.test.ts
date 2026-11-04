@@ -5,6 +5,7 @@ import {
   compositeAxisTicks,
   formatChartLegendValue,
   formatCompositeAxisValue,
+  formatCompositeCursorAxisDate,
   formatCompositeCursorDate,
   formatCompositeCursorValue,
   formatCompositePointDetails,
@@ -73,6 +74,17 @@ describe("composite chart timestamp formatting", () => {
     expect(formatCompositeTimeAxisDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
     expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 1");
     expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 8");
+  });
+
+  test("the desktop's cursor tag on a daily axis reads as its end labels do, and keeps a time of day", () => {
+    const year = scene("2025-01-01T00:00:00Z", "2025-12-31T00:00:00Z");
+    const cursor = new Date("2025-11-03T00:00:00Z");
+    const tag = (words: boolean, intradayBars = false) => formatCompositeCursorAxisDate(cursor, year.startTime, year.endTime, undefined, intradayBars, words);
+
+    expect(tag(true)).toBe("Nov 3 2025");
+    // Cells keep the ISO date, which no tick is written in.
+    expect(tag(false)).toBe("2025-11-03");
+    expect(tag(true, true)).toBe("2025-11-03 00:00 UTC");
   });
 
   test("renders recovery-shell dates directly from a viewport", () => {

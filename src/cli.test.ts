@@ -585,8 +585,8 @@ describe("CLI search helpers", () => {
   });
 
   test("an empty search points at the catalog, which holds functions and terms rather than tickers", () => {
-    const report = buildSearchReport({ query: "bitcoin perpetual", candidates: [] });
+    const report = buildSearchReport({ query: "rolling correlation", candidates: [] });
 
-    expect(report).toContain('Try: gloom catalog "bitcoin perpetual"');
+    expect(report).toContain('Try: gloom catalog "rolling correlation"');
   });
 });

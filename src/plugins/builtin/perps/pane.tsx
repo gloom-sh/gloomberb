@@ -62,6 +62,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
   // Grouped as a trader reads a contract; a stock reference only for a market that has one.
   const groups: Array<[string, EvidenceField[]]> = [
     ["Market", [["Venue", venueLabel(row)], ["Contract symbol", row.symbol], ["Observed", time(row.observedAt)], ["Source as of", time(row.sourceAsOf)],
+      // Where the figures were read; `o` opens it.
+      ["Source", row.sourceUrl],
       ["Mark", `${price(row.markPrice)} ${row.quoteCurrency}`], ["Oracle", `${price(row.oraclePrice)} ${row.quoteCurrency}`], ["Premium vs oracle", percent(row.premium)]]],
     ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
       ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`, row.fundingIntervalHours ? `APR = current ${aprFormula(row.fundingIntervalHours)}` : undefined],

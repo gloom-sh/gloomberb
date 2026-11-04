@@ -418,6 +418,24 @@ export interface SpotBar {
   price: number;
 }
 
+/**
+ * The spot bars a basis is read from: the pair's one-minute bars as the
+ * reader's history serves them, and the spot the server read for each
+ * contract's own print minute, which a delayed reader's bars do not reach
+ * yet (a front month prints ten minutes behind, delayed spot fifteen). The
+ * server's wins where both have a minute. Null while the reader's bars are
+ * unknown, so a blank is never explained before they answer.
+ */
+export function curveSpotBars(bars: readonly SpotBar[] | null, contracts: readonly Pick<FuturesContract, "spot">[]): SpotBar[] | null {
+  if (!bars) return null;
+  const byMinute = new Map(bars.map((bar) => [bar.minute, bar.price]));
+  for (const { spot } of contracts) {
+    const time = spot ? Date.parse(spot.minute) : Number.NaN;
+    if (spot && Number.isFinite(time) && positive(spot.price)) byMinute.set(minuteOf(time), spot.price);
+  }
+  return [...byMinute].sort((a, b) => a[0] - b[0]).map(([minute, price]) => ({ minute, price }));
+}
+
 /** One-minute bars as the spot by minute, oldest first; a bar with no usable time or close is left out. */
 export function spotBarsFromHistory(points: readonly { date: Date | string | number; close: number }[]): SpotBar[] {
   const byMinute = new Map<number, number>();
@@ -624,11 +642,35 @@ function pairTimes(print: number, spot: number): string {
   return printDate === spotDate ? `print ${printTime}, nearest spot ${spotTime} UTC` : `print ${printDate} ${printTime}, nearest spot ${spotDate} ${spotTime} UTC`;
 }
 
+/**
+ * A curve the server served from a copy it kept, because its source failed:
+ * when that copy was read, and the clock its age is measured against.
+ */
+export interface CurveCache {
+  fetchedAt: string;
+  now: number;
+}
+
+/** The cache a curve was served from, when the server says it was; null for a curve read now. */
+export function curveCache(data: Pick<FuturesCurvePayload, "cached" | "fetchedAt">, now: number): CurveCache | null {
+  return data.cached === true && Number.isFinite(Date.parse(data.fetchedAt)) ? { fetchedAt: data.fetchedAt, now } : null;
+}
+
+/** `cached curve read 21:55 UTC, 9 h old`, with the date when the copy is not from the clock's day. */
+function cachedCurveReason(cache: CurveCache): string {
+  const read = Date.parse(cache.fetchedAt);
+  const stamp = curveTimestamp(new Date(read).toISOString());
+  const today = new Date(cache.now).toISOString().slice(0, 10);
+  const minutes = Math.max(0, Math.floor((cache.now - read) / MINUTE_MS));
+  return `cached curve read ${stamp.startsWith(today) ? stamp.slice(11) : stamp} UTC, ${gapText(minutes)} old`;
+}
+
 /** Why one priced-or-not contract has no basis against known spot bars, in the order `contractBasis` decides it. */
-function blankReason(row: Pick<FuturesContract, "price" | "stale">, basis: ContractBasis): string | null {
+function blankReason(row: Pick<FuturesContract, "price" | "stale">, basis: ContractBasis, cache: CurveCache | null): string | null {
   if (basis.vsSpotPct != null) return null;
   if (!positive(row.price)) return "no price";
-  if (row.stale) return "price over two sessions old";
+  // A cached copy marks every contract stale for being a copy, not for its prices' age.
+  if (row.stale) return cache ? cachedCurveReason(cache) : "price over two sessions old";
   const unpaired = basis.unpaired;
   if (!unpaired) return null;
   if (unpaired.print == null) return "last trade has no time of day";
@@ -641,11 +683,12 @@ function blankReason(row: Pick<FuturesContract, "price" | "stale">, basis: Contr
  * The contracts whose basis cells are blank against known spot bars, grouped by cause and named, so a blank is
  * never unexplained: the far months of a curve print rarely, and a trade no spot bar shares a minute with is not read.
  */
-export function blankBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "stale">[], basis: CurveBasisRows): string | null {
+export function blankBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "stale">[], basis: CurveBasisRows,
+  cache: CurveCache | null = null): string | null {
   const groups = new Map<string, string[]>();
   for (const row of rows) {
     const cell = basis.get(row.symbol);
-    const reason = cell ? blankReason(row, cell) : null;
+    const reason = cell ? blankReason(row, cell, cache) : null;
     if (reason) groups.set(reason, [...groups.get(reason) ?? [], curveContractCode(row.symbol)]);
   }
   return groups.size ? `Basis blank for ${[...groups].map(([reason, codes]) => `${codes.join(", ")} (${reason})`).join("; ")}.` : null;

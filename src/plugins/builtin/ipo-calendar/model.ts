@@ -29,15 +29,30 @@ export const IPO_STATUSES: readonly IpoStatus[] = ["filed", "upcoming", "priced"
  * What the board says a deal is: its status, except for an upcoming deal
  * whose dates have come. One whose book has opened with no listing date named
  * yet is `offering`; one whose listing day has passed at its venue with no
- * pricing or first session reported is `overdue` (pulled, postponed, or late
- * to be reported). Neither is a status the server sends.
+ * pricing or first session reported is `overdue` (late to be reported, or
+ * pulled), and `delayed` once DELAYED_AFTER_BUSINESS_DAYS more weekdays have
+ * passed: no longer upcoming, kept until its source stops listing it. None of
+ * these is a status the server sends.
  */
-export type IpoBoardStatus = IpoStatus | "offering" | "overdue";
+export type IpoBoardStatus = IpoStatus | "offering" | "overdue" | "delayed";
 
 /** Every word the board shows, in the order a deal moves through them. */
 const IPO_BOARD_STATUSES: readonly IpoBoardStatus[] = [
-  "filed", "upcoming", "offering", "overdue", "priced", "listed", "postponed", "withdrawn",
+  "filed", "upcoming", "offering", "overdue", "delayed", "priced", "listed", "postponed", "withdrawn",
 ];
+
+/** Weekdays past its listing date after which a deal not yet priced or trading is delayed. */
+const DELAYED_AFTER_BUSINESS_DAYS = 3;
+
+/** `date` plus `days` weekdays, YYYY-MM-DD. */
+function addWeekdays(date: string, days: number): string {
+  const day = new Date(`${date}T00:00:00Z`);
+  for (let left = days; left > 0;) {
+    day.setUTCDate(day.getUTCDate() + 1);
+    if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6) left -= 1;
+  }
+  return day.toISOString().slice(0, 10);
+}
 
 const venueDays = new Map<string, Intl.DateTimeFormat | null>();
 
@@ -68,7 +83,10 @@ function venueToday(timeZone: string, now = new Date()): string {
 export function ipoBoardStatus(deal: IpoDeal, now = new Date()): IpoBoardStatus {
   if (deal.status !== "upcoming") return deal.status;
   const today = venueToday(deal.timezone, now);
-  if (deal.listingDate) return deal.listingDate < today ? "overdue" : "upcoming";
+  if (deal.listingDate) {
+    if (deal.listingDate >= today) return "upcoming";
+    return addWeekdays(deal.listingDate, DELAYED_AFTER_BUSINESS_DAYS) < today ? "delayed" : "overdue";
+  }
   const opened = deal.subscriptionOpen ?? deal.subscriptionClose;
   return opened && opened <= today ? "offering" : "upcoming";
 }
@@ -241,9 +259,11 @@ export function calendarDate(deal: IpoDeal): string | null {
 /**
  * Upcoming deals: the ones in their offer now, then the ones still ahead
  * soonest first, then undated ones, then the overdue ones most recent first,
- * so the board opens on what is next. Everything after them most recent first.
+ * so the board opens on what is next. Everything after them most recent first,
+ * a delayed deal among the ones that stopped.
  */
 function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus): (a: IpoDeal, b: IpoDeal) => number {
+  const groupOf = (deal: IpoDeal) => boardStatus(deal) === "delayed" ? calendarGroup("postponed") : calendarGroup(deal.status);
   const upcomingRank = (deal: IpoDeal) => {
     const status = boardStatus(deal);
     if (status === "offering") return 0;
@@ -251,9 +271,9 @@ function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus): (a: IpoD
     return calendarDate(deal) === null ? 2 : 1;
   };
   return (a, b) => {
-    const group = calendarGroup(a.status) - calendarGroup(b.status);
+    const group = groupOf(a) - groupOf(b);
     if (group !== 0) return group;
-    const upcoming = a.status === "upcoming";
+    const upcoming = a.status === "upcoming" && boardStatus(a) !== "delayed";
     const rank = upcoming ? upcomingRank(a) - upcomingRank(b) : 0;
     if (rank !== 0) return rank;
     const ascending = upcoming && upcomingRank(a) < 3;

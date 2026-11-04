@@ -72,6 +72,12 @@ export interface ExportIdentity {
   /** The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`. */
   interval?: string | null;
   /**
+   * Who this row is cited to, where a table's rows come from different
+   * publishers (each venue's own contract): blank leaves the closing lines'
+   * source, which names them all.
+   */
+  source?: string | null;
+  /**
    * When this row was observed, where a table's rows are dated apart (each
    * ticker's price in a ranking): an ISO date or instant. Null leaves `as_of`
    * blank; absent, it is the closing lines' observation date.
@@ -102,7 +108,7 @@ export function exportIdentityCells(freshness: ReportFreshness, identity: Export
     identity.symbolOrSeries?.trim() ?? "",
     identity.currencyOrUnit?.trim() ?? "",
     identity.interval?.trim() ?? "",
-    source.name,
+    identity.source?.trim() || source.name,
     identity.asOf !== undefined ? rowAsOf(identity.asOf) : source.observationDate ?? "",
   ];
 }

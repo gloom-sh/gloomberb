@@ -15,11 +15,10 @@ import { scalarPoint, staticSeries } from "../../../../components/chart/static/s
 import { usePaneRefreshKey } from "../../../../components/data-table/table-pane";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
-import { colors } from "../../../../theme/colors";
 import { formatTickerListInput } from "../../../../tickers/list";
 import type { ResolvedSeries } from "../../../../time-series/types";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
-import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { Box, useUiCapabilities } from "../../../../ui";
 import { formatNumber } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginPaneState } from "../../../runtime";
@@ -76,7 +75,7 @@ const REGRESSION_COLOR = "#ffd43b";
 const RATIO_COLOR = "#e599f7";
 /** Legend and time axis around the stacked panels. */
 const CHART_CHROME_ROWS = 2;
-/** The scatter's two label rows around a readable plot. */
+/** The scatter's y-axis title row and x-axis row around a readable plot. */
 const MIN_SCATTER_ROWS = 8;
 const MIN_PANEL_ROWS = 3;
 
@@ -302,15 +301,15 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         />
       </Box>
       {layout.scatterRows > 0 ? (
-        <Box flexDirection="column" height={layout.scatterRows} flexShrink={0}>
-          <Box paddingX={1} height={1}><Text fg={colors.textDim}>{`${leftSymbol} returns (%)`}</Text></Box>
+        <Box height={layout.scatterRows} flexShrink={0}>
           <StaticScatterChartSurface
             points={scatterPoints}
             width={width}
-            height={layout.scatterRows - 2}
+            height={layout.scatterRows}
             regression={stats ? { slope: stats.beta, intercept: stats.alpha, color: REGRESSION_COLOR } : null}
+            xLabel={`${rightSymbol} returns (%)`}
+            yLabel={`${leftSymbol} returns (%)`}
           />
-          <Box paddingX={1} height={1}><Text fg={colors.textDim}>{`${rightSymbol} returns (%)`}</Text></Box>
         </Box>
       ) : null}
     </Box>

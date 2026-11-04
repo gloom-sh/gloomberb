@@ -203,6 +203,7 @@ function ThemedCompositeChart({
   colors,
   interactive = true,
   navigable = true,
+  panelRules = !navigable,
   formatAxisValue,
   xAxis,
   remoteKind,
@@ -1021,6 +1022,7 @@ function ThemedCompositeChart({
         baseScene.endTime,
         baseScene.timeZone,
         intradayBars,
+        isDesktopWeb,
       ),
       color: toolSpan.color,
     }]
@@ -1177,6 +1179,7 @@ function ThemedCompositeChart({
           valueScalable={interactive}
           onSetValueScale={setValueScale}
           onResetValueScale={resetPanelValueScale}
+          ruleAbove={index > 0 && panelRules}
           dividerAbove={index > 0 && panelDividerGestures
             ? { active: resizingPanelIndex === index, gestures: panelDividerGestures(index) }
             : null}
@@ -1283,13 +1286,14 @@ function CursorTimeAxis({
   cellWidthPx: number;
 }) {
   const scene = useCursorScene(cursor);
+  const words = useUiCapabilities().nativePaneChrome === true;
   const cursorColumn = scene.cursorXRatio === null
     ? null
     : scene.cursorXRatio * Math.max(width - 1, 0);
   const cursorLabel = formatCursor && scene.cursorXRatio !== null
     ? formatCursor(scene.cursorXRatio)
     : scene.cursorDate
-      ? formatCompositeCursorAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone, intradayBars)
+      ? formatCompositeCursorAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone, intradayBars, words)
       : null;
   return (
     <StaticXAxisLabels

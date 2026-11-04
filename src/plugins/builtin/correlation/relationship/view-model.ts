@@ -21,18 +21,27 @@ function formatNullableNumber(value: number | null | undefined, decimals: number
   return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";
 }
 
+/** A figure in percentage points of daily return, as alpha reads: `1.997%`, or a bare dash when there is none. */
+function formatNullablePercent(value: number | null | undefined, decimals: number): string {
+  const text = formatNullableNumber(value, decimals);
+  return text === "-" ? text : `${text}%`;
+}
+
 /**
  * A ratio's legend value at four significant digits, so a ratio of 0.000566
  * does not read 0.001. Whole index points and correlations keep their own fixed decimals.
  */
-export const formatRatioValue = (value: number) => formatSignificant(value);
+export const formatRatioValue = (value: number) => `${formatSignificant(value)}x`;
 
-/** Ratio axis ticks need decimals that tell neighbours apart: 0.00040, 0.00045, 0.00050 where 0.001 would repeat. */
+/**
+ * Ratio axis ticks need decimals that tell neighbours apart: 0.00040, 0.00045, 0.00050 where 0.001 would repeat.
+ * They end in `x` as a ratio does everywhere else in the app, which also tells the panel from the prices over it.
+ */
 export function formatRatioAxisValue(value: number, domain: Pick<CompositeAxisDomain, "min" | "max">): string {
-  if (Math.abs(value) >= 10) return formatNumber(value, 1);
+  if (Math.abs(value) >= 10) return `${formatNumber(value, 1)}x`;
   const span = Math.abs(domain.max - domain.min);
   const decimals = Number.isFinite(span) && span > 0 ? Math.min(10, Math.max(3, 1 - Math.floor(Math.log10(span)))) : 3;
-  return formatNumber(value, decimals);
+  return `${formatNumber(value, decimals)}x`;
 }
 
 export function buildIndexedPriceSeries(
@@ -118,6 +127,6 @@ export function buildRelationshipStatItems(stats: RelationshipRegressionStats | 
     { id: "beta", label: "Beta", value: formatNullableNumber(stats.beta, 3) },
     { id: "alpha", label: "Alpha", value: `${formatNullableNumber(stats.alpha, 3)}%`, detail: "daily" },
     { id: "r", label: "R", value: formatNullableNumber(stats.r, 3), detail: `R² ${formatNullableNumber(stats.rSquared, 3)}` },
-    { id: "stdErr", label: "Std err", value: formatNullableNumber(stats.stdError, 3) },
+    { id: "stdErr", label: "Std err", value: formatNullablePercent(stats.stdError, 3), detail: "daily" },
   ];
 }

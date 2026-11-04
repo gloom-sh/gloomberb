@@ -1,7 +1,7 @@
 import { marketplaceLayoutIdFromSearch } from "../../layout-marketplace/api";
 import { paneShareIdFromSearch } from "../../shares/location";
 import type { DesktopDeepLinkBridge } from "../../types/desktop-deeplink";
-import { researchEntryFromSearch } from "./research-entry";
+import { functionEntryFromSearch, researchEntryFromSearch } from "./research-entry";
 
 /**
  * A hand-off parameter is consumed once. Leaving it in the address would open
@@ -39,6 +39,13 @@ export function createBrowserDeepLinkBridge(): DesktopDeepLinkBridge {
         if (shareId) {
           consumeHandoffParams(search, ["share"]);
           listener({ url: `gloomberb://share/${shareId}` });
+          return;
+        }
+        const fn = functionEntryFromSearch(search);
+        if (fn) {
+          // The pane stays in the saved workspace; a reload must not open a second one.
+          consumeHandoffParams(search, ["fn", "arg"]);
+          listener({ url: `gloomberb://fn/${fn.code}${fn.arg ? `?arg=${encodeURIComponent(fn.arg)}` : ""}` });
           return;
         }
         const entry = researchEntryFromSearch(search);

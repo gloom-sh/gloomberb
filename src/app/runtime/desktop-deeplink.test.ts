@@ -190,6 +190,36 @@ describe("desktop deeplinks", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://layout/not-valid").type).toBe("unsupported");
   });
 
+  test("function links open only a code that opens a pane, on one argument", () => {
+    expect(resolveDesktopDeepLinkAction("gloomberb://fn/ern?arg=nvda")).toMatchObject({ type: "open-function", code: "ERN", arg: "NVDA" });
+    expect(resolveDesktopDeepLinkAction("gloomberb://fn/PERP?arg=BTC-USD")).toMatchObject({ code: "PERP", arg: "BTC-USD" });
+    expect(resolveDesktopDeepLinkAction("gloomberb://fn/13F")).toMatchObject({ code: "13F", arg: null });
+    expect(resolveDesktopDeepLinkAction("gloomberb://fn/ERN?arg=")).toMatchObject({ code: "ERN", arg: null });
+    // One word: a link never carries a second command.
+    for (const link of ["gloomberb://fn/ERN?arg=NVDA%20QUIT", "gloomberb://fn/ERN?arg=NVDA;QUIT", "gloomberb://fn/ERN%20NVDA", "gloomberb://fn?arg=NVDA"]) {
+      expect(resolveDesktopDeepLinkAction(link).type).toBe("unsupported");
+    }
+
+    const ran: string[] = [];
+    const notices: Array<{ body: string; type: string }> = [];
+    const registry = {
+      paneTemplates: new Map([
+        ["earnings-pane", { shortcut: { prefix: "ERN" } }],
+        ["perps-pane", { shortcut: { prefix: "PERP", aliases: ["FUND"] } }],
+        ["no-shortcut", {}],
+      ]),
+      runCommandBarQuery: (query: string) => { ran.push(query); },
+      notify: (notice: { body: string; type: string }) => { notices.push(notice); },
+    } as unknown as PluginRegistry;
+    const options = { pluginRegistry: registry, dispatch: () => {}, stateRef: { current: {} as AppState } };
+    handleDesktopDeepLink("gloomberb://fn/ERN?arg=nvda", options);
+    handleDesktopDeepLink("gloomberb://fn/fund?arg=BTC", options);
+    // A command's code (settings, sign out) is not a pane: refused, never run.
+    handleDesktopDeepLink("gloomberb://fn/LOGOUT", options);
+    expect(ran).toEqual(["ERN NVDA", "FUND BTC"]);
+    expect(notices).toEqual([{ body: "LOGOUT is not a function this version of Gloom opens from a link.", type: "error" }]);
+  });
+
   test("rejects command-bar, non-gloomberb, and malformed links", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://command?query=profile").type).toBe("unsupported");
     expect(resolveDesktopDeepLinkAction("gloomberb://search/NVDA").type).toBe("unsupported");

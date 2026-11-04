@@ -706,16 +706,31 @@ export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTi
  * The crosshair's place on the time axis. Intraday bars keep their time of
  * day however wide the chart is: a three-month chart of 30-minute bars has
  * thirteen under each date, and the cursor sits on one of them.
+ *
+ * A day with no time of day reads as the axis's own end labels do (`Nov 3
+ * 2026`) when `words` is set, as the desktop and the web set it: their tag is
+ * a badge apart from the ticks. In cells the tag has no other mark, so it
+ * keeps the ISO date no tick is written in.
  */
 export function formatCompositeCursorAxisDate(
-  date: Date, startTime: number, endTime: number, timeZone: string | undefined, intradayBars: boolean,
+  date: Date, startTime: number, endTime: number, timeZone: string | undefined, intradayBars: boolean, words = false,
 ): string {
+  if (words && !intradayBars && !isIntradaySpan(startTime, endTime)) return formatCompositeAxisDay(onClock(date, timeZone).wall);
   if (!intradayBars || isIntradaySpan(startTime, endTime)) return formatCompositeTimeAxisDate(date, startTime, endTime, timeZone);
   const { wall, zone } = onClock(date, timeZone);
   return `${utcDate(wall)} ${utcTime(wall)} ${zone}`;
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * A day as the time axis words its end labels, `Nov 3 2026`, so the tag the
+ * crosshair puts on the axis reads like the ticks beside it. `wall` is
+ * already on the chart's clock.
+ */
+function formatCompositeAxisDay(wall: Date): string {
+  return `${MONTH_NAMES[wall.getUTCMonth()]} ${wall.getUTCDate()} ${wall.getUTCFullYear()}`;
+}
 
 /** A dataset observation's day as the axis words it, `Oct 4`, with the year when the chart ends in another. */
 export function formatCompositeDatasetDate(date: Date, endTime: number | undefined): string {

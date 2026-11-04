@@ -19,6 +19,13 @@ const rank = (value: unknown) => value === null || typeof value === "number" && 
 const optionalDate = (value: unknown) => value === undefined || value === null || date(value);
 /** Contract terms the pane computes with; a curve from before the server sent them has none. */
 const validSpec = (spec: unknown) => spec === undefined || spec === null || isFuturesContractSpec(spec);
+/** A contract's spot in its print's minute; absent from other roots and older servers. */
+function validContractSpot(spot: unknown): boolean {
+  if (spot === undefined || spot === null) return true;
+  if (typeof spot !== "object") return false;
+  const { symbol, price, minute } = spot as Record<string, unknown>;
+  return typeof symbol === "string" && typeof price === "number" && Number.isFinite(price) && price > 0 && timestamp(minute);
+}
 
 export function validateFuturesCurve(data: FuturesCurvePayload, root: string): FuturesCurvePayload {
   if (!data || data.root !== root || !Array.isArray(data.contracts) || !Array.isArray(data.ghosts)
@@ -39,7 +46,7 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
       || row.asOf !== null && !timestamp(row.asOf)
       || ![row.volume, row.openInterest, row.delayMinutes].every((value) => finiteOrNull(value) && (value === null || value >= 0))
       || row.settlement !== undefined && !finiteOrNull(row.settlement) || !optionalDate(row.lastTrade) || !optionalDate(row.firstNotice)
-      || row.inDelivery !== undefined && typeof row.inDelivery !== "boolean") {
+      || row.inDelivery !== undefined && typeof row.inDelivery !== "boolean" || !validContractSpot(row.spot)) {
       throw new Error("The server returned an invalid futures contract");
     }
     symbols.add(row.symbol);
