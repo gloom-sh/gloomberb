@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { LayoutConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { layoutContentFingerprint, type CloudLayoutEntry } from "./cloud";
-import { linkedLayoutStatus, originFromEntry, rehashedOrigin } from "./linked";
+import { decideLinkedAction, linkedLayoutStatus, originFromEntry, rehashedOrigin } from "./linked";
 
 const workspace: PaneDef = {
   id: "commodities-energy", name: "Commodities & Energy", component: () => null, defaultPosition: "right",
@@ -36,4 +36,21 @@ test("a linked tab an older build hashed is hashed again from its revision, so t
   // Hashed alike already, or linked to another revision than the team's: nothing to redo.
   expect(rehashedOrigin(rehashed, entry, panes)).toBeNull();
   expect(rehashedOrigin({ ...linked, revision: 3 }, entry, panes)).toBeNull();
+});
+
+test("a linked tab that cannot be fingerprinted counts as edited, so a newer team revision asks instead of replacing it", () => {
+  const entry = {
+    id: "b".repeat(32), name: "Curves", owner: { kind: "team", id: "org-1" }, revision: 4,
+    layout: curveLayout("Curve \u00b7 BZ"), paneState: {},
+  } as unknown as CloudLayoutEntry;
+  const saved = { layout: curveLayout("Curve \u00b7 BZ"), paneState: {}, origin: originFromEntry(entry, panes)! };
+  expect(decideLinkedAction(linkedLayoutStatus(saved, panes, 5))).toBe("pull");
+
+  const unprojectable = new Map<string, PaneDef>([["commodities-energy", {
+    ...workspace,
+    portableShare: { prepare: () => { throw new Error("unavailable"); } },
+  }]]);
+  const status = linkedLayoutStatus(saved, unprojectable, 5);
+  expect(status?.dirty).toBe(true);
+  expect(decideLinkedAction(status)).toBe("ask");
 });
