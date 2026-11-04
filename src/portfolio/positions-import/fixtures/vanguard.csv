@@ -1,0 +1,16 @@
+Account Number,Investment Name,Symbol,Shares,Share Price,Total Value,
+00000001,VANGUARD TOTAL STOCK MARKET ETF,VTI,30.000,285.10,8553.00,
+00000001,VANGUARD FEDERAL MONEY MARKET FUND,VMFXX,1250.400,1.00,1250.40,
+
+00000002,VANGUARD TOTAL INTL STOCK INDEX FUND ETF,VXUS,80.000,61.20,4896.00,
+00000002,VANGUARD 500 INDEX ADMIRAL,VFIAX,10.500,520.11,5461.16,
+
+
+
+Account Number,Trade Date,Settlement Date,Transaction Type,Transaction Description,Investment Name,Symbol,Shares,Share Price,Principal Amount,Commission Fees,Net Amount,Accrued Interest,Account Type,
+00000001,01/10/2025,01/13/2025,Buy,Buy,VANGUARD TOTAL STOCK MARKET ETF,VTI,5.0,283.00,-1415.00,0.0,-1415.00,0.0,CASH,
+00000002,12/27/2024,12/27/2024,Reinvestment,Dividend Reinvestment,VANGUARD TOTAL INTL STOCK INDEX FUND ETF,VXUS,1.2,60.10,-72.12,0.0,-72.12,0.0,CASH,
+
+
+Plan Number,Plan Name,Fund Name,Shares,Price,Total Value,
+000001,EXAMPLE CO 401(K) PLAN,Vanguard Target Retirement 2050 Trust,120.500,55.10,6639.55,
