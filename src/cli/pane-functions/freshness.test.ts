@@ -113,12 +113,12 @@ describe("report freshness", () => {
       { dataSource: "delayed", delayMinutes: 20, stale: true, sessionExchange: "ASX", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-07T05:10:00Z") },
     ] }, Date.parse("2026-10-10T13:00:00Z"));
     expect(formatStatusLine(freshness))
-      .toBe("US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · markets closed until Mon");
+      .toBe("US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET");
     expect(statusLineVariants(freshness)).toEqual([
-      "US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · markets closed until Mon",
-      "US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · reopens Mon",
-      "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 of 2 stale · reopens Mon",
-      "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 stale · reopens Mon",
+      "US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET",
+      "US trading day Fri 9 Oct 2026 close (oldest Wed 7 Oct 2026) · 15-20 min delayed, 1 of 2 stale · regular opens Sun 23:00 UTC",
+      "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 of 2 stale · regular opens Sun 23:00 UTC",
+      "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 stale · regular opens Sun 23:00 UTC",
       "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 stale",
     ]);
   });
@@ -213,7 +213,7 @@ describe("report freshness", () => {
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
     ] }, SAT);
     expect(quoted.lagDays).toBeUndefined();
-    expect(formatStatusLine(quoted)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon");
+    expect(formatStatusLine(quoted)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     // Undeclared, dated data is not a dataset.
     expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
   });
@@ -226,7 +226,7 @@ describe("report freshness", () => {
     const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
     // Each market opens at its own time, which the line gives each, the soonest first.
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
-      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 07:00 UTC · EPA 07:00 UTC · US 13:30 UTC");
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · XETRA opens 07:00 UTC, 09:00 CET · EPA 07:00 UTC, 09:00 CET · US 13:30 UTC, 09:30 ET");
     // A venue whose newest row is a day older says so beside the others.
     const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
@@ -245,12 +245,12 @@ describe("report freshness", () => {
     const TUE = Date.parse("2026-10-27T02:00:00Z");
     const mixed = { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-26T16:48:00Z"), quote("LSE", "2026-10-26T16:35:00Z")] };
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), mixed, TUE)))
-      .toBe("Source: Gloom Cloud · US and LSE Mon 26 Oct 2026 close · 15 min delayed · markets closed · LSE opens 08:00 UTC · US 13:30 UTC");
+      .toBe("Source: Gloom Cloud · US and LSE Mon 26 Oct 2026 close · 15 min delayed · markets closed · LSE opens 08:00 UTC, 08:00 UK · US 13:30 UTC, 09:30 ET");
     // London trading, the US yet to open: each says its own.
     const morning = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [
       quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("LSE", "2026-10-27T10:00:00Z", "REGULAR"),
     ] }, Date.parse("2026-10-27T10:15:00Z"));
-    expect(formatFreshnessLine(morning)).toMatch(/ · LSE open · US pre-market, opens 13:30 UTC$/);
+    expect(formatFreshnessLine(morning)).toMatch(/ · LSE open · US pre-market, opens 13:30 UTC, 09:30 ET$/);
     // A market whose open the line cannot name (an index publisher it has no calendar for, a futures venue)
     // keeps each venue's dating and the one market state, as before.
     const index = deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NASDAQ", "2026-10-26T23:31:00Z"), quote("FTSE INDEX", "2026-10-26T16:35:00Z")] }, TUE);
@@ -269,10 +269,11 @@ describe("report freshness", () => {
     expect(formatStatusLine({ ...tuesday, markets: [
       closed("LSE", "2026-10-27T08:00:00.000Z"), closed("CME", "2026-10-27T22:00:00.000Z", true), closed("US", "2026-10-27T13:30:00.000Z"),
     ] })).toMatch(/ · markets closed · LSE opens 08:00 UTC · US 13:30 UTC · CME reopens 22:00 UTC$/);
-    // Both closed for the weekend reads as one line, as it did.
+    // Both closed for the weekend, each names its own Monday open.
     const SAT = Date.parse("2026-10-31T12:00:00Z");
     const weekend = { rows: [quote("NASDAQ", "2026-10-30T23:31:00Z"), quote("LSE", "2026-10-30T16:35:00Z")] };
-    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), weekend, SAT))).toMatch(/ · markets closed until Mon$/);
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), weekend, SAT)))
+      .toMatch(/ · markets closed · LSE opens Mon 08:00 UTC, 08:00 UK · US Mon 14:30 UTC, 09:30 ET$/);
   });
 
   test("a capture of a pane whose quotes trade on several markets dates each, and says its note's shorter forms before leaving it out", () => {
@@ -309,7 +310,7 @@ describe("report freshness", () => {
     const status = (quote: ReturnType<typeof index>) => formatStatusLine(deriveHeadlessFreshness(rows(), { rows: [quoteObservation(quote, WED)] }, WED));
     const gspc = index("^GSPC", "SNP", "PRE", "2026-10-13T20:33:00Z", "America/New_York", window("2026-10-14", "13:30", "20:00"), window("2026-10-13", "13:30", "20:00"));
     // A prior close under a pre-market chip says whose close it is and when the market opens, as the equity lines do.
-    expect(status(gspc)).toBe("US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC");
+    expect(status(gspc)).toBe("US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC, 09:30 ET");
     // Without the sessions the line is the bare print, as before.
     expect(status({ ...gspc, indexSession: undefined })).toBe("Tue 13 Oct 2026 20:33 UTC \u00b7 15 min delayed \u00b7 pre-market open");
     // A print from before the last session opened is no close of it.
@@ -348,7 +349,7 @@ describe("report freshness", () => {
     const at = (time: string) => Date.parse(`${time}Z`);
     // Before the open, on the day of it: pre-market, waiting for the open.
     expect(footer(gspc("2026-10-15", "2026-10-14T20:00:00Z"), at("2026-10-15T12:30:00")))
-      .toBe("Source: Gloom Cloud \u00b7 US trading day Wed 14 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC");
+      .toBe("Source: Gloom Cloud \u00b7 US trading day Wed 14 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC, 09:30 ET");
     // In the session: open, and the open is behind it.
     expect(footer(gspc("2026-10-15", "2026-10-15T13:50:00Z"), at("2026-10-15T14:05:00")))
       .toBe("Source: Gloom Cloud \u00b7 Thu 15 Oct 2026 13:50 UTC \u00b7 15 min delayed \u00b7 markets open");
@@ -357,7 +358,7 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud \u00b7 US trading day Thu 15 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed");
     // A weekend is closed, not pre-market, until the day of the open.
     expect(footer(gspc("2026-10-19", "2026-10-16T20:00:00Z"), at("2026-10-17T12:30:00")))
-      .toBe("Source: Gloom Cloud \u00b7 US trading day Fri 16 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon");
+      .toBe("Source: Gloom Cloud \u00b7 US trading day Fri 16 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed \u00b7 regular session opens Mon 13:30 UTC, 09:30 ET");
     // A state the quote does state wins over the calendar.
     expect(footer({ ...gspc("2026-10-15", "2026-10-14T20:00:00Z"), marketState: "CLOSED" }, at("2026-10-15T12:30:00")))
       .toContain("\u00b7 markets closed \u00b7 regular session opens 13:30 UTC");
@@ -405,7 +406,7 @@ describe("report freshness", () => {
     const rendered = deriveHeadlessFreshness(rows(), { rows: [] }, SUN);
     const delayedClose = { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") };
     const quoted = deriveHeadlessFreshness(rows(), { rows: [delayedClose] }, SUN);
-    const marketLine = "US trading day Fri 9 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon";
+    const marketLine = "US trading day Fri 9 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed \u00b7 regular session opens Mon 13:30 UTC, 09:30 ET";
     const pick = (inputs: Partial<Parameters<typeof captureStatusLine>[0]>) => captureStatusLine({ selfDated: false, rendered: () => rendered, ...inputs });
     // The footer ends as `fn` does, then gives up the oldest observation, then its source.
     // It dates the pane's own data, so the pane's own `as of` goes.
@@ -437,7 +438,7 @@ describe("report freshness", () => {
     // A board whose figures are a session's close names no feed but still dates the capture by that close.
     const closedBoard = deriveCaptureReport(rows(), { rows: [], metadata: { asOf: "2026-10-09T20:00:00Z", sessionExchange: "NYSE" } }, SUN);
     expect(closedBoard.freshness.status).toBe("unreported");
-    expect(pick({ report: closedBoard }).variants[0]).toBe("Source: Gloom Cloud \u00b7 US trading day Fri 9 Oct 2026 close \u00b7 markets closed until Mon");
+    expect(pick({ report: closedBoard }).variants[0]).toBe("Source: Gloom Cloud \u00b7 US trading day Fri 9 Oct 2026 close \u00b7 markets closed \u00b7 regular session opens Mon 13:30 UTC, 09:30 ET");
     // A report that cannot tell falls back to the rendered view.
     expect(pick({ report: silent, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC"] });
     // A dataset's report dates it whatever else the capture shows.
@@ -548,12 +549,12 @@ describe("report freshness", () => {
     const friday = "2026-10-23T21:00:00Z";
     // Sunday 05:35 UTC, the Futures pane's capture: stale rows still reading REGULAR were "markets open".
     expect(status("2026-10-25T05:35:00Z", "REGULAR", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC");
+      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
     expect(status("2026-10-25T05:35:00Z", "CLOSED", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC");
+      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
     // Saturday: the weekday of the open, as every other market names its Monday.
     expect(status("2026-10-24T12:00:00Z", "REGULAR", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (15 hours old) · markets closed until Sun");
+      .toBe("Fri 23 Oct 2026 close · stale (15 hours old) · markets closed · reopens Sun 22:00 UTC, 17:00 CT");
     // Just after the Sunday open, a board whose source says open is open; so is Monday's.
     expect(status("2026-10-25T22:05:00Z", "REGULAR", "2026-10-25T22:00:00Z", false))
       .toBe("22:00 UTC · 15 min delayed · markets open");
@@ -695,7 +696,7 @@ describe("report freshness", () => {
       const close = at("2026-10-10T13:00:00Z", undefined, { rows: [
         { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
       ] });
-      expect(formatStatusLine(close)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon");
+      expect(formatStatusLine(close)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET (Mon 12 Oct 22:30 Asia/Tokyo)");
       expect(formatStatusLine(at("2026-10-10T13:00:00Z", { status: "not-a-feed", basis: "auction results", observedKey: "auctionDate", tradingDayMarket: "US" }, {
         rows: [{ auctionDate: "2026-10-08" }],
       }))).toBe("US trading day Thu 8 Oct 2026 · not a live feed (auction results)");

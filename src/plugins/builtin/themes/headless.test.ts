@@ -32,7 +32,7 @@ test("outside the regular session the report is as of the close with the snapsho
   // Sunday 11 Oct 2026 19:47 UTC, a snapshot put together 12 minutes before.
   setSystemTime(new Date("2026-10-11T19:47:00Z"));
   const { result, line } = await load(closed, [lmt, member("HII", 264.8)]);
-  expect(line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon · snapshot 12m ago");
+  expect(line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET · snapshot 12m ago");
   expect(result.metadata).toMatchObject({ asOf: "2026-10-09T20:00:00.000Z", snapshotAssembledAt: "2026-10-11T19:35:00.000Z", snapshotAgeMinutes: 12,
     regularSessionDate: "2026-10-09", snapshotId: "s", stale: false });
   expect(result.columns?.map((column) => column.header)).toEqual(["Ticker", "Name", "Price $", "1D", "After Hours", "1W", "1M", "3M", "YTD vs 31 Dec close"]);
@@ -42,7 +42,7 @@ test("outside the regular session the report is as of the close with the snapsho
   expect(after.format!(hii!.extendedPrice, hii!)).toBe("--");
   expect(hii).toMatchObject({ symbol: "HII", extendedSession: null, extendedPrice: null, extendedChangePercent: null });
   // The board of themes is dated the same way.
-  expect((await load(closed, [], "")).line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon · snapshot 12m ago");
+  expect((await load(closed, [], "")).line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET · snapshot 12m ago");
 });
 
 test("a snapshot over 30 minutes old, a trading session and an older server date the report by the snapshot", async () => {
@@ -69,7 +69,7 @@ test("a Pro account's report is live only while a session trades: as of the clos
   };
   // The evening after Friday's close and the Sunday after it, for one theme and for the board of themes.
   const pro = { Fri: "Source: Gloom Cloud · Fri 23 Oct 2026 20:00 UTC · after hours · snapshot 12m ago",
-    Sun: "Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed until Mon · snapshot 12m ago" };
+    Sun: "Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET · snapshot 12m ago" };
   for (const [now, expected] of [["2026-10-23T21:30:00Z", pro.Fri], ["2026-10-25T14:00:00Z", pro.Sun]]) {
     for (const argument of ["defense", ""]) {
       expect(await line(now!, { ...friday, access: "realtime" }, argument)).toBe(expected!);

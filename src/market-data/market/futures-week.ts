@@ -35,6 +35,8 @@ export interface FuturesWeekendClosure {
   closedAt: number;
   /** The Sunday open that ends it, when the venue's contracts all open then or later. */
   reopensAt?: number;
+  /** The zone that open is kept in, beside it. */
+  timeZone?: string;
   /** That open's local date, `YYYY-MM-DD` (always a Sunday). */
   reopensOn?: string;
 }
@@ -63,6 +65,6 @@ export function futuresWeekendClosure(exchange: string | undefined, time: number
   if (time < closedAt || time >= reopensAt) return null;
   return {
     closedAt,
-    ...(venue.reopens ? { reopensAt, reopensOn: new Date((friday + 2) * MS_PER_DAY).toISOString().slice(0, 10) } : {}),
+    ...(venue.reopens ? { reopensAt, timeZone: WEEK_ZONE, reopensOn: new Date((friday + 2) * MS_PER_DAY).toISOString().slice(0, 10) } : {}),
   };
 }

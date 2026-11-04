@@ -7,27 +7,34 @@ import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
 
 function overview(fundamentals: Fundamentals, financialCurrency?: string) {
-  return Object.fromEntries(buildOverviewStats({
-    quote: undefined, fundamentals, financialCurrency, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
-  }).map(({ label, value }) => [label, value]));
+  return Object.fromEntries(overviewFields(fundamentals, financialCurrency).map(({ label, value }) => [label, value]));
 }
 
-test("summary money keeps unknown units explicit without borrowing listing currency or changing source values", () => {
+function overviewFields(fundamentals: Fundamentals, financialCurrency?: string) {
+  return buildOverviewStats({
+    quote: undefined, fundamentals, financialCurrency, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
+  });
+}
+
+test("summary money with no sourced currency is bare, says so once, and never borrows the listing's", () => {
   const fundamentals: Fundamentals = {
     eps: 4.22, revenue: 1.22e12, netIncome: 85.7e9, freeCashFlow: -96.6e9,
     sharesOutstanding: 19.19e9, profitMargin: 0.0704, trailingPE: 25.3,
   };
   const original = structuredClone(fundamentals);
   expect(overview(fundamentals)).toMatchObject({
-    EPS: "4.22 (ccy?)", Revenue: "1.22T (ccy?)", "Net Income": "85.7B (ccy?)", FCF: "-96.6B (ccy?)",
+    EPS: "4.22", Revenue: "1.22T", "Net Income": "85.7B", FCF: "-96.6B",
     "Shares Out": "19.19B", "Profit Marg": "7.04%", "P/E (TTM)": "25.3",
   });
   expect(fundamentals).toEqual(original);
+  // The first amount says it, once for the rest.
+  expect(overviewFields(fundamentals).filter((field) => field.detail).map(({ label, detail }) => [label, detail]))
+    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]]]);
   expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });
   expect(overview({ financialCurrency: " ", eps: 0, revenue: 0, netIncome: NaN, freeCashFlow: Infinity }))
-    .toEqual({ "P/E (TTM)": "N/M", EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
+    .toEqual({ "P/E (TTM)": "N/M", EPS: "0.00", Revenue: "0", "Net Income": "—", FCF: "—" });
   expect(overview({})).toEqual({});
 });
 
@@ -36,14 +43,14 @@ test("summary money falls back to the statements' reporting currency, and a zero
   // The quote's HKD never stands in: the statements' currency is the only fallback.
   expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B ZAR" });
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
-  expect(overview(figures, " ")).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
+  expect(overview(figures, " ")).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
   // A listing quoted in another currency than the statements: an unlabelled block's currency is unknown.
   const listed = (currency: string, fundamentals: Fundamentals) => Object.fromEntries(buildOverviewStats({
     quote: { symbol: "YPFD", price: 8350, currency, change: 0, changePercent: 0, lastUpdated: 0 }, fundamentals, financialCurrency: "USD",
     quoteCurrency: currency, baseCurrency: "USD", toBase: (value) => value,
   }).map(({ label, value }) => [label, value]));
-  expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
+  expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(listed("ARS", { ...figures, financialCurrency: "ARS" })).toMatchObject({ EPS: "ARS\u00a031.43", Revenue: "202.08B ARS" });
   expect(listed("USD", figures)).toMatchObject({ EPS: "$31.43", Revenue: "202.08B USD" });
 });

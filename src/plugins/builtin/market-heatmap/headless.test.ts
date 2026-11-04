@@ -47,11 +47,11 @@ describe("fn HM report", () => {
       fetchedAt: SUN - 60_000, session: "CLOSED", regularSessionDate: "2026-10-09", regularSessionClosedAt: Date.UTC(2026, 9, 9, 20),
     });
     expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, closed, SUN)))
-      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · delayed · markets closed until Mon");
+      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     // An older server names the session without its close: the trading day still dates it.
     const undated = await load(board(0, 40), false, { fetchedAt: SUN - 60_000, regularSessionDate: "2026-10-09" });
     expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, undated, SUN)))
-      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 · delayed · markets closed until Mon");
+      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 · delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     // While the session trades, the snapshot is as of when it was put together.
     const MON = Date.UTC(2026, 9, 12, 15, 42);
     const trading = await load(board(0, 40), false, { fetchedAt: MON - 60_000, session: "REGULAR", regularSessionDate: null });

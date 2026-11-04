@@ -258,6 +258,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { currencyNameMiss, currencyNameStop } from "../currency-name-hint";
+import { liveCompanyQuestion } from "../company-name-hint";
 import { bareListingNote, listingFateNotes, loadNoQuoteLastTraded, noLongerTradingNote, noQuoteLastTraded, noQuoteLastTradeNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing, usVenueOf } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
@@ -1101,6 +1102,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const lastTraded = await Promise.all(answers.map(({ result, listing }) => !result.quote && !isNetworkFailure(result.error)
       && answers.length <= MAX_CHOICE_LOOKUPS ? loadNoQuoteLastTraded(listing.request, market.dataProvider, now) : null));
     const endedNotes = answers.map(({ listing }, index) => lastTraded[index] ? `${noQuoteLastTradeNote(listing.symbol, lastTraded[index]!)}.` : null);
+    // A bare symbol whose listing stopped asks after the company by that name that still trades (DBS: D05 on SGX).
+    const liveCompanies = await Promise.all(answers.map(({ result, listing }) => result.quote && !listing.exchange
+      && answers.length <= MAX_CHOICE_LOOKUPS && noLongerTradingNote(listing.symbol, result.quote, now)
+      ? liveCompanyQuestion(listing.typed ?? listing.symbol, market, now) : null));
     if (symbols.length === 1 && endedNotes[0]) ctx.fail(endedNotes[0], quoteChangeLine(tickerChanges[0], formerIssuers[0]) || undefined);
     const failed = answers[0]?.failure;
     if (symbols.length === 1 && failed) {
@@ -1157,10 +1162,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...answers.flatMap((answer) => answer.notes),
       // A row that stopped trading long ago reads as a quote that is merely stale, and one with
       // nothing printed in a session the calendar has open (a feed that stalled, a typhoon day) says since when.
-      ...data.flatMap((row) => {
+      ...data.flatMap((row, index) => {
         if (!row.quote) return [];
         const label = `${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`;
-        const ended = noLongerTradingNote(label, row.quote, now);
+        const stopped = noLongerTradingNote(label, row.quote, now);
+        const ended = stopped && liveCompanies[index] ? `${stopped}. ${liveCompanies[index]}` : stopped;
         const quiet = ended ? null : noPrintsTodayText(row.quote, now);
         return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
       }),

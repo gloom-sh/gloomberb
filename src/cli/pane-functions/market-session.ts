@@ -22,6 +22,8 @@ export interface ReportMarket {
   reopensAt?: string;
   /** That open's date at its venue, so a Monday open in Sydney reads Monday. */
   reopensOn?: string;
+  /** The venue's time zone, so the open reads on its own clock too (`09:00 SGT`). */
+  reopensTimeZone?: string;
   /**
    * The reopen is the week's first trade (a futures venue's Sunday evening),
    * not a regular session's open: `reopens 22:00 UTC`, never a session's name.
@@ -80,7 +82,7 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
   }
   // A futures venue's weekend gap closes every contract, so it outranks the state a quote stamped before the Friday close.
   const weekend = futuresWeekendClosure(exchange, now);
-  if (weekend) return { state: "closed", ...(weekend.reopensAt != null && weekend.reopensOn ? { next: { date: weekend.reopensOn, open: weekend.reopensAt, firstTrade: true as const } } : {}) };
+  if (weekend) return { state: "closed", ...(weekend.reopensAt != null && weekend.reopensOn ? { timeZone: weekend.timeZone, next: { date: weekend.reopensOn, open: weekend.reopensAt, firstTrade: true as const } } : {}) };
   if (marketState === "REGULAR") return { state: "open" };
   const stated = marketState === "PRE" ? "pre-market" : marketState === "POST" ? "after-hours" : marketState && CLOSED_STATES.has(marketState) ? "closed" : null;
   if (!calendar) return stated ? { state: stated } : null;
@@ -248,6 +250,7 @@ export function reportVenueMarkets(observations: readonly SessionObservation[], 
     ...(session.next && session.state !== "open" && session.state !== "after-hours" ? {
       reopensAt: new Date(session.next.open).toISOString(),
       reopensOn: session.next.date,
+      ...(session.timeZone ? { reopensTimeZone: session.timeZone } : {}),
       ...(session.next.firstTrade ? { firstTrade: true as const } : {}),
     } : {}),
   }));
@@ -279,16 +282,22 @@ export function reportMarketSession(
   const states = new Set([...sessions.values()].map((session) => session.state));
   if (states.size !== 1 || states.has("always")) return { market: null, closeDate: null, closeMarket: null };
   const state = [...states][0] as ReportMarketState;
-  const reopen = state === "closed" || state === "pre-market"
-    ? [...sessions.values()].reduce<NonNullable<VenueSession["next"]> | null>((first, session) => (
-      session.next && (!first || session.next.open < first.open) ? session.next : first
+  const reopening = state === "closed" || state === "pre-market"
+    ? [...sessions.values()].reduce<VenueSession | null>((first, session) => (
+      session.next && (!first?.next || session.next.open < first.next.open) ? session : first
     ), null)
     : null;
+  const reopen = reopening?.next ?? null;
   const closeDate = (state === "closed" || state === "pre-market") && newest ? closeDateOf(newest.observation, newest.session, now) : null;
   return {
     market: {
       state,
-      ...(reopen ? { reopensAt: new Date(reopen.open).toISOString(), reopensOn: reopen.date, ...(reopen.firstTrade ? { firstTrade: true as const } : {}) } : {}),
+      ...(reopen ? {
+        reopensAt: new Date(reopen.open).toISOString(),
+        reopensOn: reopen.date,
+        ...(reopening?.timeZone ? { reopensTimeZone: reopening.timeZone } : {}),
+        ...(reopen.firstTrade ? { firstTrade: true as const } : {}),
+      } : {}),
     },
     closeDate,
     closeMarket: closeDate && newest ? closeMarketOf(newest.exchange, newest.session) : null,
