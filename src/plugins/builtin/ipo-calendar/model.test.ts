@@ -18,6 +18,7 @@ import {
   sortIpoDeals,
   type IpoColumnId,
 } from "./model";
+import { ipoDetailSentences } from "./listing-ipo";
 import { ipoDeal } from "./test-fixture";
 
 const ids = (deals: readonly IpoDeal[]) => deals.map((deal) => deal.id);
@@ -90,21 +91,41 @@ describe("IPO calendar order", () => {
     ipoDeal({ id: "upcoming-undated" }),
     // In its offer since mid-month, no listing date named: under way now.
     ipoDeal({ id: "offering", subscriptionOpen: "2026-09-14" }),
-    // Past its listing day and not priced: after everything still ahead, the latest first.
-    ipoDeal({ id: "overdue-old", listingDate: "2026-09-10" }),
+    // Past its listing day and not priced: after everything still ahead; three weekdays on, delayed among the deals that stopped.
+    ipoDeal({ id: "delayed", listingDate: "2026-09-10" }),
     ipoDeal({ id: "overdue", listingDate: "2026-09-24", dateKind: "expected" }),
     ipoDeal({ id: "listed-new", status: "listed", listingDate: "2026-09-25" }),
     // Priced with no listing date yet: its book dates it, not the foot of the board.
     ipoDeal({ id: "priced-undated", status: "priced", subscriptionOpen: "2026-09-26", subscriptionClose: "2026-09-26" }),
   ];
 
-  test("books open now, then upcoming soonest first, overdue last, then priced and listed most recent first, then filings, then stopped deals", () => {
+  test("books open now, then upcoming soonest first, overdue last, then priced and listed most recent first, then filings, then stopped and delayed deals", () => {
     expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, new Date("2026-09-29T15:00:00Z")))).toEqual([
-      "offering", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "overdue", "overdue-old",
+      "offering", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "overdue",
       "priced", "priced-undated", "listed-new", "listed-old",
       "filed",
-      "withdrawn",
+      "withdrawn", "delayed",
     ]);
+  });
+
+  test("a deal still not trading three weekdays past its listing day is delayed, at its venue's date, and leaves the upcoming deals", () => {
+    const hongKong = { mic: "XHKG", exchange: "HKEX", venue: "HKEX", country: "HK", region: "apac", timezone: "Asia/Hong_Kong" } as const;
+    // 6157 on HKEX: its announcement expected dealings on Friday 23 October 2026.
+    const deal = ipoDeal({ id: "6157", symbol: "6157", ...hongKong, subscriptionOpen: "2026-10-14", listingDate: "2026-10-23", dateKind: "expected" });
+    const at = (iso: string) => ipoBoardStatus(deal, new Date(iso));
+    expect(at("2026-10-22T08:00:00Z")).toBe("upcoming");
+    // Three weekdays past Friday is Wednesday 28th: overdue through it, delayed from Thursday in Hong Kong.
+    expect(at("2026-10-26T02:00:00Z")).toBe("overdue");
+    expect(at("2026-10-28T15:59:00Z")).toBe("overdue");
+    expect(at("2026-10-28T16:00:00Z")).toBe("delayed");
+    expect(at("2026-11-04T07:00:00Z")).toBe("delayed");
+    const now = new Date("2026-11-04T07:00:00Z");
+    const ahead = ipoDeal({ id: "ahead", ...hongKong, listingDate: "2026-11-12", dateKind: "expected" });
+    expect(ids(filterIpoDeals([deal, ahead], "all", "upcoming", now))).toEqual(["ahead"]);
+    expect(ids(filterIpoDeals([deal, ahead], "all", "delayed", now))).toEqual(["6157"]);
+    expect(ids(sortIpoDeals([deal, ahead, ipoDeal({ id: "filed", status: "filed", filedDate: "2026-10-01" })], DEFAULT_IPO_SORT, now)))
+      .toEqual(["ahead", "filed", "6157"]);
+    expect(ipoDetailSentences(deal, null, [], now)[0]).toBe("6157 is delayed: it was expected to list 2026-10-23 on HKEX.");
   });
 
   test("an upcoming deal is overdue once its listing day is over at its own venue, and offering once its book opened with no listing date", () => {

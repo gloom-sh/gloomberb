@@ -167,7 +167,8 @@ export interface PerpRankingsPayload {
   fundingPositive: PerpBoardRow[]; fundingNegative: PerpBoardRow[]; oiSurges: PerpBoardRow[];
   premiumDislocations: PerpBoardRow[]; closedMarketDislocations: PerpBoardRow[];
 }
-export type PerpBoardQuery = { assetClass?: string; search?: string; sort?: string; includeDelisted?: boolean };
+/** `venue` narrows the board to one venue's markets, its own free preview included; the pane filters venues itself, to list them all. */
+export type PerpBoardQuery = { assetClass?: string; venue?: string; search?: string; sort?: string; includeDelisted?: boolean };
 export type PerpHistoryQuery = { marketId: string; from?: string; to?: string; resolution?: "auto" | "minute" | "hour" | "day"; limit?: number };
 
 export interface PerpMarketPayload extends PerpBoardPayload {

@@ -32,6 +32,7 @@ import {
 import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
+import { FUNCTION_HELP } from "./function-help";
 import { quotedSearchCommand } from "../commands/news-search";
 
 /**
@@ -650,6 +651,15 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
   return cliStyles.muted(label);
 }
 
+/**
+ * How its report reads, and `Pro` after it for a function only Gloom Pro opens (CALLS), which a signed-out or free
+ * run reads locked. A free preview of the same data (PERP) is not marked: free runs read it.
+ */
+function reportCell(entry: PaneCatalogEntry): string {
+  const readiness = readinessCell(entry.capability.reportReadiness);
+  return FUNCTION_HELP[entry.token]?.access === "pro" ? `${readiness} · ${cliStyles.warning("Pro")}` : readiness;
+}
+
 function optionDescription(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option);
   const parts = [option.description.replace(/\.$/, "")];
@@ -700,7 +710,7 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   ];
   const stats: CliStatEntry[] = [
     ["Argument", argument || cliStyles.muted("none")],
-    ["Report", readinessCell(capability.reportReadiness)],
+    ["Report", reportCell(entry)],
     ["Screenshot", readinessCell(capability.screenshotReadiness)],
     ["Bot safe", capability.botSafe ? "yes" : "no"],
     ["Pane", entry.paneId],
@@ -760,7 +770,7 @@ function renderMatchesTable(shown: readonly PaneCatalogEntry[]): string {
       cliStyles.command(entry.token),
       entry.label,
       argumentHint(entry),
-      readinessCell(entry.capability.reportReadiness),
+      reportCell(entry),
       entry.description,
     ]),
   );

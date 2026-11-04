@@ -109,8 +109,12 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
         shares: position != null && sharePrice != null ? Math.floor(position / sharePrice) : null,
       };
     });
+    // A fraction over the whole bankroll is a levered position.
+    const levered = rows.filter((row) => (row.fraction as number) > 1)
+      .map((row) => `${row.kelly} ${formatPct(row.fraction as number, 2)} is ${(row.fraction as number).toFixed(2)}x the bankroll`);
     const notes = [
       ...(solve.warning ? [solve.warning] : []),
+      ...(levered.length ? [`Over 100% of bankroll means leverage, borrowing or margin beyond what you hold: ${levered.join(", ")}.`] : []),
       ...(solve.fraction === 0 ? ["No positive edge over this window: every Kelly fraction sizes nothing."] : []),
       ...(bankroll == null ? [`Add --bankroll <amount> to size each fraction in ${baseCurrency}.`] : []),
     ];
