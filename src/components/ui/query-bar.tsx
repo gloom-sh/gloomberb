@@ -127,13 +127,18 @@ export interface QueryBarView<T extends string = string> {
   shortcutScope?: string;
   /** The options are a chart's range; see `QueryBarSelectFilter.chartRange`. */
   chartRange?: boolean;
+  /**
+   * The choice is which view the body shows, a nested tab strip
+   * (`usePaneTabs`): drawn first, where a tab row starts, not at the right.
+   */
+  start?: boolean;
 }
 
 export interface QueryBarProps {
   width: number;
   search?: QueryBarSearch;
   filters?: QueryBarFilter[];
-  /** Presentation that does not narrow the list: sort, range, interval. Right aligned. */
+  /** Presentation that does not narrow the list: sort, range, interval. Right aligned unless `start`. */
   view?: QueryBarView<any>;
   /** Muted context at the right edge (the selected row's date). Not for status. */
   meta?: string;
@@ -464,6 +469,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
             if (value !== view.value) view.onChange(value);
             else if (view.chartRange) resetChartView();
           },
+          start: view.start,
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
         meta={meta}
@@ -473,8 +479,21 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
     );
   }
 
+  const viewStrip = view ? (
+    <Box flexShrink={view.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
+      <TerminalChoiceStrip
+        options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
+        value={view.value}
+        onChange={(value) => choose(view, value)}
+        focused={view.focused}
+        shortcutScope={view.shortcutScope}
+      />
+    </Box>
+  ) : null;
+  const viewAtEnd = !!view && !view.start;
   return (
     <Box height={1} width={width} flexDirection="row" gap={2} paddingX={1} overflow="hidden" flexShrink={0}>
+      {view?.start ? viewStrip : null}
       {leading ? <Box flexShrink={0} height={1}>{leading}</Box> : null}
       {searchNode}
       {filters.map((filter) => {
@@ -531,24 +550,14 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
       {narrowingCount >= 2 && (
         <Box onMouseDown={resetAll} cursor="pointer"><Text fg={colors.textDim}>clear</Text></Box>
       )}
-      {(view || meta) && <Box flexGrow={1} />}
+      {(viewAtEnd || meta) && <Box flexGrow={1} />}
       {/* Context gives way before the controls when the row runs short. */}
       {meta && (
         <Box flexShrink={1} minWidth={0} height={1} overflow="hidden">
           <Text fg={colors.textMuted} wrapMode="none" truncate flexShrink={1} minWidth={0}>{meta}</Text>
         </Box>
       )}
-      {view && (
-        <Box flexShrink={view.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
-          <TerminalChoiceStrip
-            options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
-            value={view.value}
-            onChange={(value) => choose(view, value)}
-            focused={view.focused}
-            shortcutScope={view.shortcutScope}
-          />
-        </Box>
-      )}
+      {viewAtEnd ? viewStrip : null}
     </Box>
   );
 }

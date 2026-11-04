@@ -287,6 +287,27 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
     );
   }
 
+  // A nested tab strip's choices start the bar, as a tab row does; any other view sits at its right.
+  const viewNode = view ? (
+    <div className="gloom-qb-view" role="radiogroup" data-placement={view.start ? "start" : undefined}>
+      {view.options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={option.value === view.value}
+          title={option.hint ? `${option.label} (${option.hint})` : undefined}
+          disabled={option.disabled}
+          data-active={option.value === view.value ? "true" : undefined}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => view.onChange(option.value)}
+        >
+          <span className="gloom-qb-text">{option.label}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div
       ref={rootRef}
@@ -312,6 +333,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
           {stack.title ? <span className="gloom-qb-title" title={stack.title}>{stack.title}</span> : null}
         </>
       )}
+      {view?.start ? viewNode : null}
       {leading ? <div className="gloom-qb-leading">{leading}</div> : null}
       {searchNode}
       {items.length > 0 && (
@@ -327,25 +349,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
         </div>
       )}
       {meta && <span className="gloom-qb-meta">{meta}</span>}
-      {view && (
-        <div className="gloom-qb-view" role="radiogroup">
-          {view.options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={option.value === view.value}
-              title={option.hint ? `${option.label} (${option.hint})` : undefined}
-              disabled={option.disabled}
-              data-active={option.value === view.value ? "true" : undefined}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => view.onChange(option.value)}
-            >
-              <span className="gloom-qb-text">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {view && !view.start ? viewNode : null}
       </div>
     </div>
   );

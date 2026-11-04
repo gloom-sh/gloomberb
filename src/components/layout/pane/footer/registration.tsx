@@ -69,14 +69,17 @@ export function PaneFooterProvider({
   const [arrowClaims, setArrowClaim] = useMemberSet();
   const [strips, setStrip] = useMemberSet();
   const [holds, setArrowHold] = useMemberSet();
+  const [viewKeyClaims, setViewKeysClaim] = useMemberRanks();
   const arrowValue = useMemo<PaneArrowState>(() => ({
     claimed: arrowClaims.size > 0,
     strip: strips.size > 0,
     held: holds.size > 0,
+    viewKeysOwner: outermost(viewKeyClaims),
     setArrowClaim,
     setStrip,
     setArrowHold,
-  }), [arrowClaims, holds, setArrowClaim, setArrowHold, setStrip, strips]);
+    setViewKeysClaim,
+  }), [arrowClaims, holds, setArrowClaim, setArrowHold, setStrip, setViewKeysClaim, strips, viewKeyClaims]);
 
   return (
     <PaneFooterContext.Provider value={value}>
@@ -101,6 +104,37 @@ function useMemberSet(): [ReadonlySet<string>, (id: string, member: boolean) => 
   return [members, setMember];
 }
 
+/** Each member's rank. */
+function useMemberRanks(): [ReadonlyMap<string, number>, (id: string, rank: number | null) => void] {
+  const [members, setMembers] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const setMember = useCallback((id: string, rank: number | null) => {
+    setMembers((current) => {
+      if ((current.get(id) ?? null) === rank) return current;
+      const next = new Map(current);
+      if (rank === null) next.delete(id);
+      else next.set(id, rank);
+      return next;
+    });
+  }, []);
+  return [members, setMember];
+}
+
+/** The member with the lowest rank. */
+function outermost(members: ReadonlyMap<string, number>): string | null {
+  let owner: string | null = null;
+  let ownerRank = Infinity;
+  for (const [id, rank] of members) {
+    if (rank < ownerRank) {
+      owner = id;
+      ownerRank = rank;
+    }
+  }
+  return owner;
+}
+
+/** Taken by each strip on its first render, which runs a parent before its children. */
+let nextViewKeysRank = 0;
+
 interface PaneArrowState {
   /** A focused tab strip owns Left, Right, h and l. */
   claimed: boolean;
@@ -108,9 +142,12 @@ interface PaneArrowState {
   strip: boolean;
   /** Content the user moved into (a chart) holds the strip's keys until Esc. */
   held: boolean;
+  /** The nested strip that has `{` and `}` (`usePaneViewKeys`). */
+  viewKeysOwner: string | null;
   setArrowClaim(id: string, claimed: boolean): void;
   setStrip(id: string, present: boolean): void;
   setArrowHold(id: string, held: boolean): void;
+  setViewKeysClaim(id: string, rank: number | null): void;
 }
 
 const PaneArrowContext = createContext<PaneArrowState | null>(null);
@@ -138,6 +175,28 @@ export function usePaneTabStripKeys(navigates: boolean, focused: boolean): { act
   usePaneArrowMember(context?.setStrip, navigates);
   usePaneArrowMember(context?.setArrowClaim, active);
   return { active, held: navigates && held };
+}
+
+/**
+ * A nested strip's `{` and `}` (`usePaneTabs` under another strip). Of the
+ * focused ones that ask, the outermost has them: a strip mounts before the
+ * content under it, so the first to mount. In a research tab they walk the
+ * tab's views, not the Table and Chart switch of the view under them; in a
+ * Fixed Income section, the section's views, not an auction's Bills and
+ * Notes. Returns whether this strip has them now.
+ */
+export function usePaneViewKeys(wanted: boolean): boolean {
+  const context = useContext(PaneArrowContext);
+  const id = useId();
+  const rank = useRef<number | null>(null);
+  if (rank.current === null) rank.current = ++nextViewKeysRank;
+  const set = context?.setViewKeysClaim;
+  useEffect(() => {
+    if (!set) return;
+    set(id, wanted ? rank.current : null);
+    return () => set(id, null);
+  }, [id, set, wanted]);
+  return wanted && context?.viewKeysOwner === id;
 }
 
 /** Whether a tab strip in this pane owns Left and Right. */

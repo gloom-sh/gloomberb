@@ -1089,6 +1089,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset 1px 0 0 var(--qb-hairline);
 }
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
+/* A nested tab strip's choices start the bar, where the terminal's tab row starts. */
+.gloom-qb-view[data-placement="start"] { margin-left: 0; box-shadow: none; }
 /* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
    does, so its label and the controls beside it stay in view. It narrows with
    its group and has no floor of its own: a floor wider than the room the bar
@@ -1557,6 +1559,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* Band text starts one cell in, on the same edge as the table columns and
    body text below it; segments after the first keep their 8px (--gloom-space-sm). */
 .gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search, .gloom-player-toggle):first-child,
+.gloom-qb-scroll > .gloom-qb-view[data-placement="start"]:first-child > button:first-child,
 .gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
 .gloom-stack-bar > .gloom-stack-back,

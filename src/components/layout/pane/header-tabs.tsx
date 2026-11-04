@@ -54,13 +54,25 @@ export function PaneHeaderTabsProvider({ value, children }: { value: PaneHeaderT
   return <PaneHeaderTabsContext.Provider value={value}>{children}</PaneHeaderTabsContext.Provider>;
 }
 
+/** How many `NestedPaneTabs` a strip sits in: 0 for the pane's own. */
+const NestedTabsDepthContext = createContext(0);
+
+export function useNestedTabsDepth(): number {
+  return useContext(NestedTabsDepthContext);
+}
+
 /**
  * Content nested inside a pane that owns the title bar (a research tab, a
  * stack detail) keeps its own tab strip in its body: only the pane's primary
  * strip goes to the header.
  */
 export function NestedPaneTabs({ children }: { children: ReactNode }) {
-  return <PaneHeaderTabsContext.Provider value={null}>{children}</PaneHeaderTabsContext.Provider>;
+  const depth = useNestedTabsDepth();
+  return (
+    <PaneHeaderTabsContext.Provider value={null}>
+      <NestedTabsDepthContext.Provider value={depth + 1}>{children}</NestedTabsDepthContext.Provider>
+    </PaneHeaderTabsContext.Provider>
+  );
 }
 
 /** One id per artwork element, so a strip redraws when a tab's `leading` is a new element and not otherwise. */
