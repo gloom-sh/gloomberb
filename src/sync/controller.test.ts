@@ -456,6 +456,138 @@ test("keeps workspace edits made while the app was closed and uploads them", asy
   expect((stored["core.config"] as { portfolios: Array<{ id: string }> }).portfolios).toHaveLength(2);
 });
 
+/** Merge history kept in plugin state that refuses reads or writes while `readable` or `writable` is false. */
+function failingHistoryStorage(stored: Map<string, unknown>) {
+  const storage = { readable: true, writable: true, writes: [] as string[] };
+  const store = () => createSyncBaselineStore({
+    get: <T,>(pluginId: string, key: string) => {
+      if (!storage.readable) throw new Error("database is locked");
+      return stored.has(key) ? { pluginId, key, value: stored.get(key) as T, schemaVersion: 1, updatedAt: 0 } : null;
+    },
+    set: (_pluginId, key, value) => {
+      if (!storage.writable) throw new Error("disk is full");
+      storage.writes.push(key);
+      stored.set(key, value);
+    },
+  });
+  return Object.assign(storage, { store });
+}
+
+function portfolioIds(payload: unknown): string[] {
+  return (payload as { portfolios: Array<{ id: string }> }).portfolios.map((portfolio) => portfolio.id);
+}
+
+test("a sync history storage cannot read is not taken for a device that never synced", async () => {
+  const syncedConfig = createDefaultConfig("/tmp/gloomberb-sync-unreadable-history-test");
+  syncedConfig.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+  const syncedPayload = __syncContributorInternalsForTests.collectCoreConfigPayload(syncedConfig);
+  const stored = new Map<string, unknown>([
+    ["account", { id: "account-a" }],
+    ["last-synced-payloads", { "core.config": syncedPayload }],
+  ]);
+  const storage = failingHistoryStorage(stored);
+  storage.readable = false;
+  // Edited while the app was closed; the cloud still holds what this device last pushed.
+  let state = createInitialState({
+    ...syncedConfig,
+    portfolios: [...syncedConfig.portfolios, { id: "research", name: "Research", currency: "USD" }],
+  });
+  let dispatched = 0;
+  const pushes: SyncSnapshot[] = [];
+  const transport: SyncTransport = {
+    id: "unreadable-history",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({
+      snapshot: remoteSnapshot("core.config", syncedPayload, "2026-08-23T10:00:00.000Z"),
+      revision: 4,
+      updatedAt: "2026-08-23T10:00:00.000Z",
+    }),
+    pushSnapshot: async (snapshot) => {
+      pushes.push(snapshot);
+      return { revision: 5, updatedAt: "2026-08-23T10:00:05.000Z" };
+    },
+  };
+  const controller = startController({
+    transport, contributors: [coreConfigSyncContributor], getState: () => state,
+    dispatch: (action) => { dispatched += 1; state = appReducer(state, action); },
+    baselineStore: storage.store(), getAccountId: () => "account-a",
+  });
+  try {
+    await controller.requestSync({ reason: "startup" });
+    expect(state.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "research"]);
+    expect(dispatched).toBe(0);
+    expect(pushes).toEqual([]);
+    expect(storage.writes).toEqual([]);
+    expect(controller.getStatus().phase).toBe("error");
+
+    storage.readable = true;
+    await controller.requestSync({ reason: "poll" });
+    expect(state.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "research"]);
+    expect(pushes.map((snapshot) => portfolioIds(snapshot.contributors["core.config"]!.payload))).toEqual([["main", "research"]]);
+    expect(portfolioIds((stored.get("last-synced-payloads") as Record<string, unknown>)["core.config"])).toEqual(["main", "research"]);
+    expect(stored.get("account")).toEqual({ id: "account-a" });
+    expect(controller.getStatus().phase).toBe("synced");
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("a sync history storage could not save is saved before it decides a later merge", async () => {
+  const syncedConfig = createDefaultConfig("/tmp/gloomberb-sync-unsaved-history-test");
+  syncedConfig.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+  const portfolio = (id: string) => ({ id, name: id, currency: "USD" });
+  const payloadWith = (ids: string[]) => __syncContributorInternalsForTests.collectCoreConfigPayload({
+    ...syncedConfig, portfolios: ids.map(portfolio),
+  });
+  const stored = new Map<string, unknown>([["last-synced-payloads", { "core.config": payloadWith(["main"]) }]]);
+  const storage = failingHistoryStorage(stored);
+  let remote = remoteSnapshot("core.config", payloadWith(["main"]), "2026-08-23T10:00:00.000Z");
+  let revision = 4;
+  let pushes = 0;
+  const transport: SyncTransport = {
+    id: "unsaved-history",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: remote, revision, updatedAt: remote.createdAt }),
+    pushSnapshot: async (snapshot) => {
+      pushes += 1;
+      remote = snapshot;
+      return { revision: ++revision, updatedAt: snapshot.createdAt };
+    },
+  };
+  let state = createInitialState({ ...syncedConfig, portfolios: ["main", "research"].map(portfolio) });
+  const start = () => startController({
+    transport, contributors: [coreConfigSyncContributor], getState: () => state,
+    dispatch: (action) => { state = appReducer(state, action); }, baselineStore: storage.store(),
+  });
+  let controller = start();
+  try {
+    storage.writable = false;
+    await controller.requestSync({ reason: "startup" });
+    expect(portfolioIds(remote.contributors["core.config"]!.payload)).toEqual(["main", "research"]);
+    expect(controller.getStatus().phase).toBe("error");
+
+    // Until the history is saved, a later edit waits instead of moving the cloud further from it.
+    state = { ...state, config: { ...state.config, portfolios: [...state.config.portfolios, portfolio("growth")] } };
+    await controller.requestSync({ reason: "state-change" });
+    expect(pushes).toBe(1);
+
+    storage.writable = true;
+    await controller.requestSync({ reason: "poll" });
+    expect(pushes).toBe(2);
+    expect(controller.getStatus().phase).toBe("synced");
+
+    // After a restart, another device's removal is merged against what this device really pushed.
+    controller.clearRuntime();
+    remote = remoteSnapshot("core.config", payloadWith(["main", "growth"]), "2026-08-23T11:00:00.000Z");
+    revision += 1;
+    controller = start();
+    await controller.requestSync({ reason: "startup" });
+    expect(state.config.portfolios.map((entry) => entry.id)).toEqual(["main", "growth"]);
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
 test("does not push local state when the initial pull fails", async () => {
   let pushes = 0;
   const transport: SyncTransport = {

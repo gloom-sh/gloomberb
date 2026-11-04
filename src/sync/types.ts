@@ -110,6 +110,17 @@ export class SyncRevisionConflictError extends Error {
   }
 }
 
+/**
+ * This device's merge history could not be read or written. A history that cannot be read is not one that is
+ * missing: the controller pauses sync instead of merging as if this device never synced.
+ */
+export class SyncHistoryUnavailableError extends Error {
+  constructor(message = "This device's sync history could not be stored or read.") {
+    super(message);
+    this.name = "SyncHistoryUnavailableError";
+  }
+}
+
 export interface SyncSettings {
   syncEnabled: boolean;
   weeklyRoundupEnabled: boolean;
@@ -119,7 +130,10 @@ export interface SyncSettings {
   lastRoundupEmailAt?: string | null;
 }
 
-/** Durable record of the payloads this device last pushed to the cloud. */
+/**
+ * Durable record of the payloads this device last pushed to the cloud. A read or write the storage refuses
+ * throws `SyncHistoryUnavailableError`; null means nothing was ever stored.
+ */
 export interface SyncBaselineStore {
   /** Account that owns this merge history; absent on stores written before account tracking. */
   loadAccountId?(): string | null;
