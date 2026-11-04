@@ -12,7 +12,7 @@ import type { GloomPlugin } from "../types/plugin";
 export type AppPluginStateStorePort = Pick<
   PluginStateStore,
   "get" | "set" | "delete" | "keys" | "clear"
->;
+> & Partial<Pick<PluginStateStore, "getStrict">>;
 
 export type AppResourceStorePort = Pick<ResourceStore, "get" | "list" | "set" | "delete">;
 export type AppSessionStorePort = Pick<SessionStore, "get" | "set" | "delete">;
