@@ -207,6 +207,26 @@ describe("pane-manager split-tree drops", () => {
     expect(getLeafRect(next, "sectors:main", BOUNDS)).toEqual({ x: 60, y: 0, width: 60, height: 40 });
   });
 
+  // At 52 columns Tidy made a 4x2 grid of eight panes about eleven columns wide.
+  test("below 80 columns Tidy puts every pane at the full width, in one column of at most two stacks", () => {
+    const ids = Array.from({ length: 8 }, (_, index) => `chat:${index}`);
+    const floating = ids.map((instanceId, index) => ({ instanceId, x: (index % 4) * 13, y: Math.floor(index / 4) * 20, width: 13, height: 20 }));
+    const layout: LayoutConfig = {
+      dockRoot: null, instances: ids.map((instanceId) => createPaneInstance("chat", { instanceId })), floating, detached: [],
+    };
+    const narrow = { x: 0, y: 0, width: 52, height: 40 };
+    const leaves = getDockLeafLayouts(gridlockAllPanes(layout, narrow), narrow);
+    // Reading order: the top row of windows is the upper stack.
+    expect(leaves.map((leaf) => [leaf.stack, leaf.rect.width, leaf.rect.height >= 18])).toEqual([
+      [ids.slice(0, 4), 52, true],
+      [ids.slice(4), 52, true],
+    ]);
+    // Too short for two, one stack holds them all; from 80 columns the grid stays.
+    const short = { x: 0, y: 0, width: 52, height: 20 };
+    expect(getDockLeafLayouts(gridlockAllPanes(layout, short), short).map((leaf) => leaf.stack)).toEqual([ids]);
+    expect(getDockLeafLayouts(gridlockAllPanes(layout, BOUNDS), BOUNDS)).toHaveLength(8);
+  });
+
   test("gridlock infers a matching tiled layout from arranged windows", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     let layout: LayoutConfig = {

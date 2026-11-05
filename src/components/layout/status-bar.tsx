@@ -99,12 +99,21 @@ function compactChordLabel(chord: KeyChord, mode: ShortcutDisplayMode, digit?: n
   return formatChordForHost(named, mode, undefined, { compact: true });
 }
 
+/** A name cut to `width` keeps its start and ends in an ellipsis: `FX Desk - …`. */
 function truncate(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
-  if (width <= 2) return ".".repeat(width);
-  return `${text.slice(0, width - 2)}..`;
+  return `${text.slice(0, width - 1).trimEnd()}…`;
 }
+
+/**
+ * The longest a layout tab's name runs; the shortest a narrow bar cuts every
+ * name to, and then the other tabs' names and the one in front, before its
+ * tabs scroll.
+ */
+const LAYOUT_NAME_MAX = 14;
+const LAYOUT_NAME_MIN = 8;
+const LAYOUT_NAME_CUT_MIN = 3;
 
 const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
   openFormModal({ kind: "builtin", actionId });
@@ -160,14 +169,14 @@ export function StatusBar() {
     () => buildStatusBarTabGroups(layouts, activeLayoutIdx, teamSnapshot.teams, teamSnapshot.focus, teamSnapshot.toggledGroups),
     [activeLayoutIdx, layouts, teamSnapshot.focus, teamSnapshot.teams, teamSnapshot.toggledGroups],
   );
-  const layoutTab = (index: number) => {
+  const layoutTab = (index: number, nameWidth: number, activeNameWidth = nameWidth) => {
     const layout = layouts[index]!;
     // Linked tabs show `*` when edited locally and `↓` when the team is ahead.
     const marker = layout.origin && registry
       ? linkedLayoutMarker(linkedLayoutStatus(layout, registry.panes, remoteRevisions.get(layout.origin.layoutId)))
       : "";
     return {
-      label: `${tabKey(index)}${truncate(layout.name, 14)}${marker}`,
+      label: `${tabKey(index)}${truncate(layout.name, index === activeLayoutIdx ? activeNameWidth : nameWidth)}${marker}`,
       value: String(index),
       reorderable: true,
     };
@@ -175,8 +184,8 @@ export function StatusBar() {
   // Tabs grouped by owner: personal first, then one marker per team in its
   // accent followed by that team's tabs. A collapsed group keeps its marker
   // with the tab count. The digit keys stay positional through the index labels.
-  const savedLayoutTabs = tabGroups.length <= 1
-    ? layouts.map((_, index) => layoutTab(index))
+  const savedLayoutTabsAt = (nameWidth: number, activeNameWidth = nameWidth) => tabGroups.length <= 1
+    ? layouts.map((_, index) => layoutTab(index, nameWidth, activeNameWidth))
     : tabGroups.flatMap((group) => {
       const marker = group.team
         ? {
@@ -190,9 +199,36 @@ export function StatusBar() {
           : null;
       return [
         ...(marker ? [marker] : []),
-        ...(group.collapsed ? [] : group.indexes.map(layoutTab)),
+        ...(group.collapsed ? [] : group.indexes.map((index) => layoutTab(index, nameWidth, activeNameWidth))),
       ];
     });
+  const tidyWindowsKey = actionKey("tidy-windows");
+  const controlsWidth = (TERMINAL_NEW_LAYOUT_LABEL.length + 1)
+    + (showTidyWindows ? terminalTidyWindowsLabel(tidyWindowsKey).length + 1 : 0);
+  const feedbackWidth = displayWidth(t("Feedback")) + 1;
+  // In the terminal the tabs get what the row has left once New Layout, Tidy
+  // Windows, Feedback and the widgets' columns are counted, and scroll past
+  // that, so a long list of layouts never pushes those controls off screen.
+  const tabsRoom = Math.max(0, termWidth - 1 - controlsWidth - feedbackWidth - STATUS_WIDGET_COLUMNS);
+  const tabsWidthOf = (tabs: readonly { label: string }[]) => tabs.reduce((sum, tab) => sum + tab.label.length + 2, 0);
+  // Before they scroll, the names are cut to fit, each keeping its start: all
+  // of them, then the other tabs' and the one in front's further when that
+  // fits them all. A strip that still scrolls keeps the names at the first
+  // cut, the one in front no wider than the strip. A scrolled strip showed
+  // the end of a name (`CIO` of `FX Desk - CIO`).
+  let nameWidth = LAYOUT_NAME_MAX;
+  let activeNameWidth = LAYOUT_NAME_MAX;
+  const overflows = () => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(nameWidth, activeNameWidth)) > tabsRoom;
+  while (overflows() && nameWidth > LAYOUT_NAME_MIN) activeNameWidth = nameWidth -= 1;
+  const scrolledWidth = nameWidth;
+  while (overflows() && nameWidth > LAYOUT_NAME_CUT_MIN) nameWidth -= 1;
+  while (overflows() && activeNameWidth > LAYOUT_NAME_CUT_MIN) activeNameWidth -= 1;
+  if (overflows()) {
+    nameWidth = activeNameWidth = scrolledWidth;
+    const activeTabWidth = () => (layouts[activeLayoutIdx] ? layoutTab(activeLayoutIdx, nameWidth, activeNameWidth).label.length + 2 : 0);
+    while (!nativePaneChrome && activeTabWidth() > tabsRoom && activeNameWidth > 1) activeNameWidth -= 1;
+  }
+  const savedLayoutTabs = savedLayoutTabsAt(nameWidth, activeNameWidth);
   const layoutTabs = transientLayout
     ? [
       ...savedLayoutTabs,
@@ -205,7 +241,7 @@ export function StatusBar() {
       },
     ]
     : savedLayoutTabs;
-  const layoutTabsWidth = layoutTabs.reduce((sum, tab) => sum + tab.label.length + 2, 0);
+  const layoutTabsWidth = tabsWidthOf(layoutTabs);
   const activeLayoutValue = transientLayout?.active ? transientLayout.id : String(activeLayoutIdx);
   const handleLayoutSelect = (value: string) => {
     const groupId = groupIdFromMarkerValue(value);
@@ -401,16 +437,7 @@ export function StatusBar() {
   };
 
   const claimedWidgetColumns = useClaimedStatusWidgetColumns();
-  const tidyWindowsKey = actionKey("tidy-windows");
-  const controlsWidth = (TERMINAL_NEW_LAYOUT_LABEL.length + 1)
-    + (showTidyWindows ? terminalTidyWindowsLabel(tidyWindowsKey).length + 1 : 0);
-  const feedbackWidth = displayWidth(t("Feedback")) + 1;
-  // In the terminal the tabs get what the row has left once New Layout, Tidy
-  // Windows, Feedback and the widgets' columns are counted, and scroll past
-  // that, so a long list of layouts never pushes those controls off screen.
-  const tabsWidth = nativePaneChrome
-    ? layoutTabsWidth
-    : Math.min(layoutTabsWidth, Math.max(0, termWidth - 1 - controlsWidth - feedbackWidth - STATUS_WIDGET_COLUMNS));
+  const tabsWidth = nativePaneChrome ? layoutTabsWidth : Math.min(layoutTabsWidth, tabsRoom);
   const leftWidth = 1 + (hasMultipleLayouts ? tabsWidth : 0) + controlsWidth;
   usePublishStatusWidgetRoom(statusBarVisible ? Math.max(0, termWidth - leftWidth - feedbackWidth) : 0);
 

@@ -19,6 +19,10 @@ import {
 const BURIED_VISIBLE_RATIO = 0.2;
 const TITLE_BAR_HEIGHT_RATIO = 0.12;
 const TIDY_FLOATING_THRESHOLD = 3;
+/** Below this many columns Tidy stacks the panes in one column instead of tiling a grid of slivers. */
+const NARROW_TIDY_WIDTH = 80;
+/** Rows a pane needs to show its header and a screen of rows; a shorter terminal shows one stack. */
+const NARROW_TIDY_MIN_ROWS = 12;
 
 type Rect = Pick<FloatingPaneEntry, "x" | "y" | "width" | "height">;
 
@@ -101,6 +105,27 @@ function withStacks(node: DockLayoutNode | null, stacks: ReadonlyMap<string, rea
   return { ...node, first: withStacks(node.first, stacks)!, second: withStacks(node.second, stacks)! };
 }
 
+/**
+ * A narrow terminal's Tidy: every pane at the full width, in one column of
+ * at most two stacks, one above the other, each holding its share of the
+ * panes as tabs in reading order. A grid of eight panes at 52 columns was
+ * eleven-column tiles no table could be read in.
+ */
+function narrowDockTree(rects: readonly GridlockRect[], stacks: ReadonlyMap<string, readonly string[]>, height: number): DockLayoutNode | null {
+  const order = [...rects]
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .flatMap((rect) => stacks.get(rect.instanceId) ?? [rect.instanceId]);
+  if (order.length <= 1 || height < NARROW_TIDY_MIN_ROWS * 2) return buildDockStack(order);
+  const split = Math.ceil(order.length / 2);
+  return {
+    kind: "split",
+    axis: "vertical",
+    ratio: 0.5,
+    first: buildDockStack(order.slice(0, split))!,
+    second: buildDockStack(order.slice(split))!,
+  };
+}
+
 export function gridlockAllPanes(
   layout: LayoutConfig,
   bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
@@ -125,7 +150,9 @@ export function gridlockAllPanes(
 
   return finalizeLayout({
     ...visibleLayout,
-    dockRoot: withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks),
+    dockRoot: bounds.width < NARROW_TIDY_WIDTH
+      ? narrowDockTree(allRects, stacks, bounds.height)
+      : withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks),
     floating: [],
   });
 }

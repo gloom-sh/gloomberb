@@ -192,6 +192,28 @@ describe("StatusBar", () => {
     }
   });
 
+  // At 52 columns the bar showed `CIO` of the layout "FX Desk - CIO": the strip scrolled to the end of its name.
+  test("a layout name cut to fit a narrow bar keeps its start, with an ellipsis", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-status-bar-narrow");
+    config.layouts = ["Default", "FX Desk - CIO"].map((name) => ({ name, layout: cloneLayout(config.layout) }));
+    config.activeLayoutIndex = 1;
+    for (const width of [52, 44]) {
+      await tui.render(
+        <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
+          <StatusBar />
+        </AppContext>,
+        { width, height: 1 },
+      );
+      await tui.setup().renderOnce();
+      const line = tui.frame().split("\n")[0] ?? "";
+      expect(line).toContain("^2 FX D…");
+      // The other tab is cut to its start too where they both fit, never to the end of its name.
+      if (width === 52) expect(line).toContain("^1 De…");
+      expect(line).toContain("Feedback");
+      tui.destroy();
+    }
+  });
+
   // A dead link left every cell a dash with nothing saying the app was offline.
   test("says the data service is unreachable while it is, opens Connections from it, and drops it once it answers", async () => {
     const health = new ConnectionHealthRegistry();
