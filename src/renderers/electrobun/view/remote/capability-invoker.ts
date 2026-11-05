@@ -1,4 +1,5 @@
 import { withDeadline } from "../../../../utils/async-deadline";
+import { logFailure } from "../../../../utils/log-failure";
 
 type CapabilityRequest = <T>(method: string, payload: unknown) => Promise<T>;
 let nextCapabilityInvocationId = 1;
@@ -29,11 +30,13 @@ export function createCapabilityInvoker(options: {
       invocationId,
     });
     const cancel = () => {
-      void options.request<null>("capability.cancel", { invocationId }).catch(() => {});
+      void options.request<null>("capability.cancel", { invocationId }).catch(logFailure("desktop-capabilities", "Could not cancel a capability call"));
     };
     invokeOptions.signal?.addEventListener("abort", cancel, { once: true });
     if (invokeOptions.signal?.aborted) cancel();
-    void request.finally(() => invokeOptions.signal?.removeEventListener("abort", cancel)).catch(() => {});
+    void request.finally(() => invokeOptions.signal?.removeEventListener("abort", cancel)).catch(() => {
+      // Intentional ignore: the caller receives this request's rejection; this chain only removes the abort listener.
+    });
 
     const boundedRequest = options.shouldApplyDeadline(capabilityId)
       ? withDeadline(
@@ -49,7 +52,7 @@ export function createCapabilityInvoker(options: {
           inFlightRequests.delete(key);
         }
       }).catch(() => {
-        // The returned bounded request owns error delivery to the caller.
+        // Intentional ignore: the returned bounded request owns error delivery to the caller.
       });
     }
     return boundedRequest;

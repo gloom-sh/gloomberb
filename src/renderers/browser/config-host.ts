@@ -17,6 +17,7 @@ import {
 import { researchEntryFromSearch } from "./research-entry";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
 import { stopBootFrameRecorders } from "../dom/boot-frame";
+import { logFailure } from "../../utils/log-failure";
 
 export const BROWSER_DATA_DIR = "browser://local";
 
@@ -119,7 +120,7 @@ export function createBrowserConfigStore(storage: StorageLike, search = ""): Con
       // Before the keys go, or the frame saved as the page closes would bring the old layout back.
       stopBootFrameRecorders();
       for (const key of Object.values(BROWSER_STORAGE_KEYS)) {
-        try { storage.removeItem(key); } catch {}
+        try { storage.removeItem(key); } catch (error) { logFailure("web-config", "Could not remove saved browser data on reset")(error); }
       }
       data.set(createBrowserDefaultConfig(dataDir, search));
     },
@@ -137,6 +138,7 @@ export function hasSavedBrowserConfig(storage: StorageLike = localStorage): bool
   try {
     return storage.getItem(BROWSER_STORAGE_KEYS.config) !== null;
   } catch {
+    // Intentional ignore: storage the page cannot read holds no config to open, so the starter workspace opens.
     return false;
   }
 }

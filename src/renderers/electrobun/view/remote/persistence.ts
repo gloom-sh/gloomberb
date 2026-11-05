@@ -6,6 +6,7 @@ import {
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
 import { WriteThroughResourceStore } from "../../../../data/memory-resource-store";
 import { isBrokerAccountSnapshotKey } from "../../../../brokers/account-cache";
+import { logFailure } from "../../../../utils/log-failure";
 
 class RemoteSessionStore {
   private snapshot = getElectrobunBackendInitSnapshot()?.sessionSnapshot ?? null;
@@ -38,7 +39,7 @@ class RemoteSessionStore {
   delete(sessionId: string): void {
     if (sessionId === "app") this.snapshot = null;
     this.scheduler.cancel();
-    void backendRequest("session.delete", { sessionId }).catch(() => {});
+    void backendRequest("session.delete", { sessionId }).catch(logFailure("desktop-view-persistence", "Could not delete a saved session"));
   }
 
   flush(): Promise<void> {
@@ -120,7 +121,7 @@ class RemotePluginStateStore {
     // it yet, so only the first change arms one.
     if (this.unsaved.size === 0 && !immediate) this.saves.schedule();
     this.unsaved.set(`${change.pluginId}\u0000${change.key}`, change);
-    if (immediate) void this.saves.saveImmediately().catch(() => {});
+    if (immediate) void this.saves.saveImmediately().catch(logFailure("desktop-view-persistence", "Could not save plugin state right away"));
   }
 }
 
@@ -131,8 +132,8 @@ class RemotePluginStateStore {
  */
 function createViewResourceStore(): WriteThroughResourceStore {
   return new WriteThroughResourceStore(getElectrobunBackendInitSnapshot()?.savedResources ?? [], {
-    set: (record) => void backendRequest("resources.set", { record }).catch(() => {}),
-    delete: (key) => void backendRequest("resources.delete", { key }).catch(() => {}),
+    set: (record) => void backendRequest("resources.set", { record }).catch(logFailure("desktop-view-persistence", "Could not save a broker account snapshot")),
+    delete: (key) => void backendRequest("resources.delete", { key }).catch(logFailure("desktop-view-persistence", "Could not delete a broker account snapshot")),
   }, isBrokerAccountSnapshotKey);
 }
 

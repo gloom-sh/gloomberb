@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "fs/promises";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * PowerShell scripts the Windows app leaves to finish what it cannot do while
@@ -76,11 +77,14 @@ export async function runScriptAfterExit(script: string, log: string, cancel: st
     schtasks("/run", "/tn", taskName);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const answer = scriptAnswer(await readFile(log, "utf8").catch(() => ""));
+      const answer = scriptAnswer(await readFile(log, "utf8").catch(() => {
+        // Intentional ignore: the script has not written its log yet; the loop reads it again.
+        return "";
+      }));
       if (answer) return answer;
       await Bun.sleep(250);
     }
-    await writeFile(cancel, "").catch(() => {});
+    await writeFile(cancel, "").catch(logFailure("desktop-windows-script", "Could not write the script's cancel file"));
     throw new Error("the script did not start");
   } catch (error) {
     try { schtasks("/delete", "/tn", taskName, "/f"); } catch { /* Intentional ignore: never made, or the script removed it. */ }

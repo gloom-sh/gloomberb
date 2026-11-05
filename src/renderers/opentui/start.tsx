@@ -50,6 +50,7 @@ import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../..
 import { installAttentionCounter } from "../../telemetry/attention-counts";
 import { starPromptEnvironmentAllows } from "../../app/star-prompt/model";
 import { allowStarPrompt } from "../../app/star-prompt/runtime";
+import { logFailure } from "../../utils/log-failure";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -93,7 +94,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
 
       return () => {
         closed = true;
-        void serverPromise.then((server) => server.close()).catch(() => {});
+        void serverPromise.then((server) => server.close()).catch(logFailure("app", "Could not close the remote control endpoint"));
       };
     },
   };

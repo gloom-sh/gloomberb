@@ -28,6 +28,7 @@ function desktopAttention(): StallAttention {
       }
     }
   } catch {
+    // Intentional ignore: a window that cannot answer leaves visibility unknown, which the stall report records.
     visible = null;
   }
   return { active: sawFocusChange ? focusedWindowId !== null : null, visible };

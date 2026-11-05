@@ -35,6 +35,7 @@ function targetHasClosest(target: KeyboardTargetLike, selector: string): boolean
   try {
     return target.closest(selector) != null;
   } catch {
+    // Intentional ignore: a target that cannot run a selector match (a detached or foreign node) is not inside one.
     return false;
   }
 }

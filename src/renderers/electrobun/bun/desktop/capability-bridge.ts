@@ -3,6 +3,7 @@ import type { DesktopCapabilityRequest } from "../../shared/protocol";
 import { isBatchableQuoteOperation, QuoteEventBatcher } from "../../shared/quote-event-batch";
 import { encodeRpcValue } from "../../shared/rpc-codec";
 import { getServerClockOffsetMs } from "../../../../market-data/quotes/clock";
+import { logFailure } from "../../../../utils/log-failure";
 
 type CapabilityRegistry = AppServices["pluginRegistry"]["capabilities"];
 
@@ -27,8 +28,8 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
     for (const unsubscribe of this.subscriptions.values()) {
       try {
         unsubscribe();
-      } catch {
-        // ignore teardown failures
+      } catch (error) {
+        logFailure("desktop-capabilities", "Could not dispose a capability subscription")(error);
       }
     }
     this.subscriptions.clear();
@@ -42,8 +43,8 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
       if (!id.startsWith(scopedPrefix)) continue;
       try {
         unsubscribe();
-      } catch {
-        // ignore teardown failures
+      } catch (error) {
+        logFailure("desktop-capabilities", "Could not dispose a capability subscription")(error);
       }
       this.subscriptions.delete(id);
     }

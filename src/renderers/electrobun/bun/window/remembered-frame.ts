@@ -39,6 +39,7 @@ export function readRememberedDesktopWindow(path: string): RememberedDesktopWind
   try {
     return parseRememberedDesktopWindow(JSON.parse(readFileSync(path, "utf8")));
   } catch {
+    // Intentional ignore: most installs never had this legacy file, and a missing or unreadable one carries no old frame.
     return null;
   }
 }

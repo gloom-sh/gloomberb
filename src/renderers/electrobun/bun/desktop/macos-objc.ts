@@ -1,4 +1,5 @@
 import { dlopen, FFIType } from "bun:ffi";
+import { logFailure } from "../../../../utils/log-failure";
 
 const LIBOBJC = "/usr/lib/libobjc.A.dylib";
 
@@ -59,7 +60,8 @@ export function objcOrNull(): Objc | null {
   if (cachedObjc !== undefined) return cachedObjc;
   try {
     cachedObjc = loadObjc();
-  } catch {
+  } catch (error) {
+    logFailure("desktop-native", "Could not load the Objective-C runtime")(error);
     cachedObjc = null;
   }
   return cachedObjc;

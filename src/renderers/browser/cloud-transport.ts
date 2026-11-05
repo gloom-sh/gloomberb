@@ -44,7 +44,7 @@ function parseResponseHeaders(raw: string): Headers {
     try {
       headers.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
     } catch {
-      // A header the Headers class refuses is not one the client reads.
+      // Intentional ignore: a header the Headers class refuses is not one the client reads.
     }
   }
   return headers;

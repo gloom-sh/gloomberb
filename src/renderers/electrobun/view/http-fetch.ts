@@ -9,6 +9,7 @@ import {
 } from "../../../utils/http-proxy-response";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { backendRequest, onBackendMessage } from "./backend-rpc";
+import { logFailure } from "../../../utils/log-failure";
 
 const CLOUD_MARKET_HTTP_TIMEOUT_MS = 10_000;
 /**
@@ -122,7 +123,7 @@ async function electrobunCloudApiStreamFetch(url: string, init?: RequestInit): P
   // has nothing left in the Bun process to stop.
   const cancelUpstream = () => {
     if (!releaseListeners()) return;
-    void backendRequest("http.stream.cancel", { streamId }).catch(() => {});
+    void backendRequest("http.stream.cancel", { streamId }).catch(logFailure("desktop-http", "Could not cancel an HTTP stream"));
   };
   function onAbort(): void {
     cancelUpstream();

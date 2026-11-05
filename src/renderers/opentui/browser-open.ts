@@ -88,7 +88,8 @@ export async function runBrowserOpener(command: string[]): Promise<boolean> {
     }
     return result === 0;
   } catch {
-    // The command is not installed (xdg-open is missing on minimal Linux).
+    // Intentional ignore: a missing opener command (xdg-open on minimal Linux) answers false,
+    // and the caller tries the next opener or copies the link.
     return false;
   }
 }

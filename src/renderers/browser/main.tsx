@@ -35,6 +35,7 @@ import { installAttentionCounter } from "../../telemetry/attention-counts";
 import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
+import { logFailure } from "../../utils/log-failure";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -90,7 +91,7 @@ async function boot(): Promise<void> {
   // panes are registered by the time a saved layout asks for one. A failure
   // here must not stop the app: the built-in catalog is enough to run on, and
   // the marketplace reports what broke.
-  const bundledPlugins = loadWebBundledPlugins().catch(() => []);
+  const bundledPlugins = loadWebBundledPlugins().catch(logFailure("web-plugins", "Could not load the bundled plugins", []));
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
   // Nothing was restored on a first visit, only the starter workspace shown.

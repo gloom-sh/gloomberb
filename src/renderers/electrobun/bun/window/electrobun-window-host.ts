@@ -8,6 +8,7 @@ import type {
 } from "../../../desktop/window-host";
 import { getWindowFrame, updateWindowFrameCache } from "./events";
 import type { FocusableElectrobunWindow } from "./focus";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * Electrobun (2.0.5, as 1.18) has no event for displays coming and going, nor
@@ -65,8 +66,8 @@ function readElectrobunDisplays(read: () => ElectrobunDisplay[]): DesktopDisplay
         primary: display.isPrimary === true,
       };
     });
-  } catch {
-    return [];
+  } catch (error) {
+    return logFailure("desktop-window", "Could not list the displays", [])(error);
   }
 }
 
@@ -85,8 +86,8 @@ function canPlaceWindowsOn(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): b
 function read(call: () => boolean): boolean {
   try {
     return call() === true;
-  } catch {
-    return false;
+  } catch (error) {
+    return logFailure("desktop-window", "Could not read a native window state", false)(error);
   }
 }
 
@@ -206,8 +207,9 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
     try {
       if (maximized) window?.maximize();
       else window?.unmaximize();
-    } catch {
+    } catch (error) {
       // The window keeps the frame it has.
+      logFailure("desktop-window", "Could not maximize or restore a window")(error);
     }
   }
 
@@ -215,8 +217,9 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
     if (!this.canFullscreen) return;
     try {
       this.windows.get(id)?.setFullScreen(fullscreen);
-    } catch {
+    } catch (error) {
       // The window keeps the frame it has.
+      logFailure("desktop-window", "Could not change a window's fullscreen state")(error);
     }
   }
 
@@ -230,8 +233,9 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
     if (this.minimized.get(id)) {
       try {
         (window as unknown as BrowserWindow).unminimize();
-      } catch {
+      } catch (error) {
         // Focusing it still brings it forward where the system allows.
+        logFailure("desktop-window", "Could not unminimize a window")(error);
       }
     }
     if (window.activate) window.activate();
@@ -296,7 +300,8 @@ export class ElectrobunWindowHost implements DesktopWindowHost {
     let minimized: boolean;
     try {
       minimized = window.isMinimized() === true;
-    } catch {
+    } catch (error) {
+      logFailure("desktop-window", "Could not read a native window state")(error);
       return;
     }
     if (this.minimized.get(id) === minimized) return;

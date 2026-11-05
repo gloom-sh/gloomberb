@@ -30,7 +30,10 @@ const MANIFEST = ".electrobun-uninstall.json";
 const MANAGER = "uninstall";
 
 async function isFile(path: string): Promise<boolean> {
-  return lstat(path).then((stat) => stat.isFile(), () => false);
+  return lstat(path).then((stat) => stat.isFile(), () => {
+    // Intentional ignore: a missing or unreadable path is not a file, so the records are written again.
+    return false;
+  });
 }
 
 async function runQuietly(command: string[]): Promise<number> {

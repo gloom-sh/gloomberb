@@ -1,6 +1,7 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 import Electrobun from "electrobun/bun";
 import { wideString } from "./windows-native";
+import { logFailure } from "../../../../utils/log-failure";
 
 const WM_QUIT = 0x0012;
 /** The class Electrobun registers for its windows. */
@@ -30,7 +31,8 @@ export function quitWindowsEventLoopOnItsThread(window: { ptr: Pointer | null })
   let user32: ReturnType<typeof loadUser32>;
   try {
     user32 = loadUser32();
-  } catch {
+  } catch (error) {
+    logFailure("desktop-native", "Could not load user32 to end the event loop")(error);
     return;
   }
   const loopThread = user32.symbols.GetWindowThreadProcessId(window.ptr, null);

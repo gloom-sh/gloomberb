@@ -100,6 +100,7 @@ function isGloomberbDeepLink(rawUrl: string): boolean {
   try {
     return new URL(rawUrl).protocol === "gloomberb:";
   } catch {
+    // Intentional ignore: a URL that does not parse is no gloomberb: deep link.
     return false;
   }
 }

@@ -193,6 +193,7 @@ async function checkSession(
     const id = body?.user?.id;
     return typeof id === "string" && id.length > 0 ? { userId: id } : "invalid";
   } catch {
+    console.warn("[proxy-session] Could not check the session; the request counts as signed out");
     return "unavailable";
   }
 }

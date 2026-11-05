@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import type { CliRenderer, CliRendererStats } from "@opentui/core";
+import { logFailure } from "../../utils/log-failure";
 
 const SAFE_INTERACTION_KEYS = new Set([
   "up",
@@ -82,7 +83,8 @@ export function summarizeInteractionPerformance(
 function statsForFrame(renderer: CliRenderer): CliRendererStats {
   try {
     return renderer.getStats();
-  } catch {
+  } catch (error) {
+    logFailure("interaction-performance", "Could not read the renderer's frame stats")(error);
     return {
       fps: 0,
       frameCount: 0,

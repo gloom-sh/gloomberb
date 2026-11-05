@@ -26,7 +26,10 @@ const MAX_REFUSAL_LENGTH = 160;
  * status, never the raw body.
  */
 async function refusalMessage(response: Response): Promise<string> {
-  const body = await response.json().catch(() => null) as { error?: unknown } | null;
+  const body = await response.json().catch(() => {
+    // Intentional ignore: a refusal body that is not JSON gets the sentence for its status below.
+    return null;
+  }) as { error?: unknown } | null;
   const error = typeof body?.error === "string" ? body.error.trim() : "";
   if (error && error.length <= MAX_REFUSAL_LENGTH && !/[{}<>\n]/.test(error)) return error;
   if (response.status === 429) return "Too many requests right now. Try again in a minute.";
@@ -76,6 +79,7 @@ function needsProxy(url: string, hosts: readonly string[]): boolean {
     if (typeof location !== "undefined" && target.origin === location.origin) return false;
     return isProxiedHost(target.hostname, hosts);
   } catch {
+    // Intentional ignore: a URL that does not parse is no proxied host, and the direct fetch reports it.
     return false;
   }
 }
@@ -114,7 +118,10 @@ export function createBrowserHttpProxyTransport(
     if (!proxied.ok) throw new ProxyRefusedError(await refusalMessage(proxied), proxied.status);
     // A 200 that is not an envelope (an HTML page from a route that is not
     // the worker's) would otherwise surface as a JSON SyntaxError quoting it.
-    const answer = await proxied.json().catch(() => null);
+    const answer = await proxied.json().catch(() => {
+      // Intentional ignore: an answer that is not JSON is no envelope, so the refusal below reports it.
+      return null;
+    });
     if (!isEnvelope(answer)) throw new ProxyRefusedError(UNREADABLE, proxied.status);
     try {
       return createProxyResponse(answer);

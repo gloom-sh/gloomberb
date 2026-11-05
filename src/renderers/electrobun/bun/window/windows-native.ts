@@ -1,5 +1,6 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 import type { DesktopWindowResizeEdge } from "../../shared/protocol";
+import { logFailure } from "../../../../utils/log-failure";
 
 const WINDOWS_HANDLE_MAX_ATTEMPTS = 20;
 const WINDOWS_HANDLE_RETRY_DELAY_MS = 100;
@@ -71,7 +72,8 @@ function win32OrNull(): Win32 | null {
 
   try {
     cachedWin32 = loadWin32();
-  } catch {
+  } catch (error) {
+    logFailure("desktop-native", "Could not load the Windows native library")(error);
     cachedWin32 = null;
   }
   return cachedWin32;
