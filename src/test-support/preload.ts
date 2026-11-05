@@ -1,4 +1,5 @@
 import { beforeEach } from "bun:test";
+import { resetSeenPaneNoticesForTest } from "../components/pane-notice-seen";
 import { resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 
@@ -13,9 +14,13 @@ import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverr
  * Commands also keep output overrides for the process: a parity test that
  * runs --plain would otherwise make a later serializer test keep empty
  * columns. Start each test with the default output modes and terminal width.
+ *
+ * Data warnings the user has opened are remembered the same way, and would
+ * leave a later test's footer icon muted instead of warning yellow.
  */
 beforeEach(() => {
   resetCrashReporterForTests();
+  resetSeenPaneNoticesForTest();
   setCliAsciiLocaleOverride(null);
   setCliColorEnabledOverride(null);
   setCliPlainOverride(null);

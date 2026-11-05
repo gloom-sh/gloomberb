@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { DialogFrame } from "./ui/frame";
 import { Prose } from "./ui/prose";
 import { logFailure } from "../utils/log-failure";
+import { markPaneNoticesSeen, usePaneNoticesSeen } from "./pane-notice-seen";
 
 export interface UsePaneNoticeFooterOptions {
   registrationId: string;
@@ -65,7 +66,11 @@ function NoticeDialog({ notices, title, dismiss, dialogId }: AlertContext & {
   );
 }
 
-/** Active data limitations live in one footer disclosure, never a standing body banner. */
+/**
+ * Active data limitations live in one footer disclosure, never a standing body banner.
+ * The ⚠ is warning yellow until the user has opened these warnings, then muted;
+ * a new or changed warning is yellow again. See `./pane-notice-seen.ts`.
+ */
 export function usePaneNoticeFooter({
   registrationId,
   notices,
@@ -80,6 +85,7 @@ export function usePaneNoticeFooter({
   const noticeKey = JSON.stringify([...new Set(notices.map((notice) => notice.trim()).filter(Boolean))]);
   const currentNotices = useMemo<readonly string[]>(() => JSON.parse(noticeKey), [noticeKey]);
   const active = enabled && scopeActive && currentNotices.length > 0;
+  const seen = usePaneNoticesSeen(currentNotices);
   const openingRef = useRef(false);
   const dismissRef = useRef<(() => void) | undefined>(undefined);
 
@@ -93,6 +99,7 @@ export function usePaneNoticeFooter({
   const open = useCallback(() => {
     if (!active || dialogOpen || openingRef.current) return;
     openingRef.current = true;
+    markPaneNoticesSeen(currentNotices);
     void dialog.alert({
       size: "large",
       closeOnClickOutside: true,
@@ -122,8 +129,8 @@ export function usePaneNoticeFooter({
       label: title,
       title: `${title} (!)`,
       shortcut: "!",
-      parts: [{ text: "⚠", tone: "warning" }],
+      parts: [{ text: "⚠", tone: seen ? "muted" : "warning" }],
       onPress: open,
     }],
-  } : null, [active, open, title]);
+  } : null, [active, open, seen, title]);
 }

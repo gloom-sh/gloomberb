@@ -110,3 +110,39 @@ test("narrow panes keep warning disclosure visible beside overflowing action hin
   await controls.renderFrames(3);
   expect(tui.frame()).toContain("⚠");
 });
+
+test("the warning icon is muted once its warnings were opened, in any pane, and warns again for a new or changed one", async () => {
+  const tone = () => footer.info[0]?.parts[0]?.tone;
+  await act(async () => { await tui.render(<Harness />, { width: 80, height: 28 }); });
+  await controls.renderFrames(3);
+  expect(tone()).toBe("warning");
+  // Opening them marks them read, by click as well as by key.
+  await act(async () => { await tui.setup().mockMouse.click(tui.frame().split("\n")[0]!.indexOf("⚠"), 0); });
+  await controls.waitForFrameToContain("publication dates unavailable");
+  await key("escape");
+  expect(tone()).toBe("muted");
+  // A changed warning is unread; the one read before is still read when it returns.
+  await change({ notices: ["MSFT: stale provider observation."] });
+  expect(tone()).toBe("warning");
+  await change({ notices: ["AMD: publication dates unavailable."] });
+  expect(tone()).toBe("muted");
+  // One new warning beside a read one is unread until the set is opened.
+  await change({ notices: ["AMD: publication dates unavailable.", "MSFT: stale provider observation."] });
+  expect(tone()).toBe("warning");
+  await key("!");
+  await controls.waitForFrameToContain("stale provider observation");
+  await key("escape");
+  expect(tone()).toBe("muted");
+  await change({ notices: ["MSFT: stale provider observation."] });
+  expect(tone()).toBe("muted");
+  // The key and click still open it.
+  await key("!");
+  await controls.waitForFrameToContain("stale provider observation");
+  await key("escape");
+
+  // Another pane showing the same warning finds it read.
+  await act(async () => { await tui.render(<Harness notices={["MSFT: stale provider observation."]} />, { width: 80, height: 28 }); });
+  await controls.renderFrames(3);
+  expect(tone()).toBe("muted");
+  expect(tui.frame()).toContain("⚠");
+});
