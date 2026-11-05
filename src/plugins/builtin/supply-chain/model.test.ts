@@ -6,7 +6,7 @@ import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache,
 import { getThemeIds, getTheme, isDarkTheme, SUBTLE_TEXT_MIN, themeKeysDirection } from "../../../theme/themes";
 import { contrastRatio } from "../../../theme/color-utils";
 import { themedColorSet } from "../../../theme/series-colors";
-import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyRoleCounts } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyEmptyText, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -214,6 +214,17 @@ test("role colours read on every theme's page and stay apart in a colour-blind p
     // A dark theme without a palette of its own keeps the series colours as they were.
     if (isDarkTheme(id) && !themeKeysDirection(id)) expect(roles).toEqual(ROLE_SLOTS);
   }
+});
+
+test("an empty supply chain says SPLC does not read a company's filings only when its country is known to be outside them", () => {
+  const empty = (country: string | null) => supplyEmptyText(supplyPayload({ symbol: "X", entity: { ...supplyPayload().entity!, country }, says: [], names: [] }))!;
+  expect(empty("TW")).toContain("SPLC reads US (SEC) and Korean (DART) company filings");
+  // The server sends ISO codes or none: a missing or unreadable country is never read as an uncovered market.
+  for (const unknown of [null, "", "Taiwan"]) {
+    expect(empty(unknown)).not.toContain("SPLC reads");
+    expect(empty(unknown)).toContain("try the customer's side, such as SPLC AAPL.");
+  }
+  expect(empty("us")).toBe("No filing, announcement or call read so far names a relationship for X.");
 });
 
 test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
