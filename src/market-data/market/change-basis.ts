@@ -26,9 +26,9 @@ export type QuoteChangeBasis =
   | { kind: "utc day" }
   | { kind: "24h" };
 
-/** A move from a dated session's close, settlement or last trade. */
+/** A move from a dated session's close or settlement. */
 interface DatedChangeBasis {
-  kind: "close" | "settle" | "last trade";
+  kind: "close" | "settle";
   /** The exchange-local date of the session the move is measured from. */
   date: string;
   /** The venue, when its calendar dated the close. */
@@ -195,10 +195,38 @@ export function quoteChangeBasis(
   const sessionDate = (session === "active" ? quote.changeSessionDate : regularSessionDisplayDate(quote)) ?? tradingDayOf(quote);
   if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
     const basis = futuresChangeBasis(terms ?? { settlement: null }, { ...display, sessionDate }, quoteVenue(quote));
-    return basis ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
+    // A move nothing confirms names no session; futuresQuoteFromSettle measures it from the settlement instead.
+    return basis && basis.from == null ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
   }
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return { kind: "previous close" };
   return previousSession(quote, sessionDate) ?? { kind: "previous close" };
+}
+
+const roundMove = (value: number) => Math.round(value * 1e10) / 1e10;
+
+/**
+ * A futures quote whose move is measured from the last settlement its terms
+ * confirm when nothing confirms the reference the source measured it from
+ * (futuresChangeBasis): at the CME reopen, before the day's settlement is
+ * confirmed, a move from an unconfirmed close becomes the move from the
+ * settlement before it, with that settlement as the previous close and its
+ * session as the date. Every surface that shows a futures move with its
+ * terms reads it through this, so the move and its label never flip with
+ * the source's reference. Any other quote is returned as it is, as is one
+ * whose headline is a completed session's close rather than its price.
+ */
+export function futuresQuoteFromSettle<Q extends Quote | null | undefined>(
+  quote: Q,
+  terms: QuoteChangeBasisOptions["terms"],
+): Q {
+  if (!quote || !terms || quote.delisting || quote.changeBasis === "none" || !isFuturesInstrument(quote.symbol, quote.instrumentType)) return quote;
+  const display = getRegularSessionDisplay(quote);
+  if (!display || display.price !== quote.price || display.change !== quote.change) return quote;
+  const sessionDate = regularSessionDisplayDate(quote) ?? tradingDayOf(quote);
+  const basis = futuresChangeBasis(terms, { ...display, sessionDate }, quoteVenue(quote));
+  if (basis?.from == null || !(basis.from > 0)) return quote;
+  const change = roundMove(quote.price - basis.from);
+  return { ...quote, change, changePercent: (change / basis.from) * 100, previousClose: basis.from, previousCloseDate: basis.session };
 }
 
 /**
@@ -228,6 +256,9 @@ export function quotePreviousCloseDate(quote: Quote | null | undefined): string 
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return null;
   if (isSpotCoin(quote)) return dayBefore(sessionDate);
   if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
+    // A move measured from a settlement (futuresQuoteFromSettle) is dated by it.
+    const dated = quote.previousCloseDate;
+    if (dated && ISO_DATE.test(dated) && dated < sessionDate) return dated;
     return futuresChangeBasis({ settlement: null }, { price: quote.price, change: 0, sessionDate }, quoteVenue(quote))?.session ?? null;
   }
   return previousSession(quote, sessionDate)?.date ?? null;

@@ -255,14 +255,17 @@ function settlementTolerance(tick: number | null | undefined, price: number): nu
 }
 
 /**
- * What a futures move is measured from: a session's settlement, the last
- * trade of a session that settled elsewhere, or a session's close that the
- * settlement in the contract terms cannot confirm either way. `session` is
- * the date of that reference.
+ * What a futures move is measured from: a session's settlement, or a
+ * session's close the settlement in the contract terms cannot speak to.
+ * `session` is the date of that reference. `from` is set when the move as
+ * the source measured it cannot be confirmed: it is then measured again from
+ * the settlement of `session`, the last one confirmed, at that price
+ * (futuresQuoteFromSettle).
  */
 export interface FuturesChangeBasis {
-  kind: "settle" | "last trade" | "close";
+  kind: "settle" | "close";
   session: string;
+  from?: number;
 }
 
 /**
@@ -270,20 +273,22 @@ export interface FuturesChangeBasis {
  * after it ("vs Fri 16 Oct settle", quoteChangeBasis). `sessionDate` is the
  * session the move belongs to (regularSessionDisplayDate); a Saturday or
  * Sunday is Friday's, as no session is dated on one, and a holiday CME Globex
- * traded is the next trade date's. The basis is only what the numbers show,
- * against the one settlement the contract terms carry: a reference (the price
- * less the move) within half a tick of it is that settlement, of whichever
- * session it is. A reference that is not the settlement of the session just
- * before the move's is that session's last trade. Otherwise, when the terms
- * carry no settlement that old or one the reference can be checked against
- * (the move's own session has settled, and the one before is not in the
- * terms), it is the session before's close, left unnamed. The session before
- * is the trade date before the move's on the `exchange`'s published holiday
- * calendar (previousPublishedSession), so the Tuesday after Memorial Day
- * moves from Friday. On a venue without one, only a matching settlement is
- * named, by the date the terms give it. Null without a session date, a move
- * or terms, or when nothing but the calendar could date the reference and
- * there is none.
+ * traded is the next trade date's. A session is named only when the numbers
+ * show it: a reference (the price less the move) within half a tick of the
+ * settlement in the terms is that settlement, of whichever session it is.
+ * Any other reference while the terms' settlement is older than the move's
+ * session cannot be told from a last trade or an unconfirmed close, which
+ * is what read "vs Tue 3 Nov last trade" for a move from Wednesday's close at
+ * the CME reopen: the move is measured again from that settlement (`from`)
+ * and labelled by it, the same until the next settlement is confirmed.
+ * Without a settlement in the terms, or once the move's own session (or a
+ * later one) has settled and they no longer hold the one before, the
+ * reference is the session before's close, which nothing else checks; that
+ * session is the trade date before the move's on the `exchange`'s published
+ * holiday calendar (previousPublishedSession), so the Tuesday after Memorial
+ * Day moves from Friday. On a venue without one, only a settlement is named.
+ * Null without a session date, a move or terms, or when nothing but the
+ * calendar could date the reference and there is none.
  */
 export function futuresChangeBasis(
   terms: Pick<FuturesContractTermsPayload, "settlement"> & { spec?: Pick<FuturesContractSpec, "tick"> | null } | null | undefined,
@@ -295,14 +300,14 @@ export function futuresChangeBasis(
   const reference = move.price - move.change;
   if (!Number.isFinite(reference)) return null;
   const session = weekdayOnOrBefore(dated);
-  const previous = previousPublishedSession(exchange ?? undefined, dated, { closedDayRollsForward: true })?.date ?? null;
   const settled = terms.settlement;
   if (settled && settled.date <= session) {
     if (Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
       return { kind: "settle", session: settled.date };
     }
-    if (settled.date === previous) return { kind: "last trade", session: settled.date };
+    if (settled.date < session && Number.isFinite(move.price)) return { kind: "settle", session: settled.date, from: settled.price };
   }
+  const previous = previousPublishedSession(exchange ?? undefined, dated, { closedDayRollsForward: true })?.date ?? null;
   return previous ? { kind: "close", session: previous } : null;
 }
 

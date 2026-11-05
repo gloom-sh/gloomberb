@@ -41,7 +41,7 @@ import {
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   futuresContractLines, futuresPricePer, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
@@ -1232,7 +1232,8 @@ export async function buildTickerReport({
   /** What `recentSecFilings` left out. */
   hiddenSecFilings?: HiddenFilings;
 }): Promise<string> {
-  const quote = financials.quote;
+  // A future's move that nothing confirms is measured from its last confirmed settlement, as `quote` reads it.
+  const quote = futuresQuoteFromSettle(financials.quote, futuresContract);
   const fundamentals = financials.fundamentals;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const profile = financials.profile;
@@ -1514,7 +1515,7 @@ function buildTickerStructuredData({
   recentSecFilings: RecentFiling[];
   hiddenSecFilings: HiddenFilings;
 }) {
-  const quote = financials.quote;
+  const quote = futuresQuoteFromSettle(financials.quote, futuresContract);
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const identity = listingIdentity(listing, quote);
   // Market cap and the multiples at the regular session price, as the text report gives them.

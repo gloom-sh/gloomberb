@@ -113,14 +113,14 @@ test("a futures move names what it is measured from, as far as the settlement in
   expect(basis({ price: 5630, date: "2026-10-19" }, 5626, -19)).toEqual({ kind: "close", session: "2026-10-16" });
   // A move from Monday's own settlement is from Monday, whatever the date it carries.
   expect(basis({ price: 5630, date: "2026-10-19" }, 5640, 10)).toEqual({ kind: "settle", session: "2026-10-19" });
-  // From Friday's last trade, not its settlement.
-  expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -22)).toEqual({ kind: "last trade", session: "2026-10-16" });
-  // Friday has not settled yet: Friday's close, without claiming a settlement.
-  expect(basis({ price: 5600, date: "2026-10-15" }, 5626, -22)).toEqual({ kind: "close", session: "2026-10-16" });
+  // Not Friday's settlement: a last trade or a close nothing confirms, so the move is measured again from that settlement.
+  expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -22)).toEqual({ kind: "settle", session: "2026-10-16", from: 5645 });
+  // Friday has not settled yet: from Thursday's settlement, the last one confirmed, never an unconfirmed close.
+  expect(basis({ price: 5600, date: "2026-10-15" }, 5626, -22)).toEqual({ kind: "settle", session: "2026-10-15", from: 5600 });
   expect(basis(null, 5626, -22, "2026-10-21")).toEqual({ kind: "close", session: "2026-10-20" });
   // A source that rounds the move stays within half a tick of the settlement; a tick away is another price.
   expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -19.1)?.kind).toBe("settle");
-  expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -18.75)?.kind).toBe("last trade");
+  expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -18.75)?.from).toBe(5645.25);
   // Without a tick, half a basis point of the price: 311.9 - 6.3 is 305.59999999999997.
   expect(futuresChangeBasis({ settlement: { price: 305.6, date: "2026-10-16" } }, { price: 311.9, change: 6.3, sessionDate: "2026-10-19" }, "CBT")?.kind)
     .toBe("settle");

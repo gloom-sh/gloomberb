@@ -19,7 +19,7 @@ import type {
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
-import { changeBasisJson, changeBasisLabel, changeBasisNote, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -1116,6 +1116,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
+    // A future's move that nothing confirms is measured from its last confirmed settlement, in the row and in every line.
+    answers.forEach((answer, index) => {
+      const quote = futuresQuoteFromSettle(answer.result.quote, contracts[index]);
+      if (quote !== answer.result.quote) answers[index] = { ...answer, result: { ...answer.result, quote } };
+    });
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
     const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
     // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
