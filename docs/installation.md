@@ -2,130 +2,84 @@
 
 [Back to README](../README.md)
 
+The command is `gloom`. `gloomberb`, its name before 0.18.4, runs the same program.
+
 ## macOS
 
-Install the desktop app and the `gloom` terminal command:
+```bash
+curl -fsSL gloom.sh/install | bash
+```
+
+On Apple Silicon this installs the desktop app as `/Applications/Gloom.app` and links `gloom` into `~/.local/bin`. On an Intel Mac it installs the standalone terminal binary instead, because the desktop app is Apple Silicon only.
+
+With Homebrew (Apple Silicon):
 
 ```bash
 brew install --cask gloomberb
-# or
-curl -fsSL gloom.sh/install | bash
 ```
 
-The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, installs the same app. Both routes install `Gloom.app` and a `gloom` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
+The cask still installs the app as `Gloomberb.app` with the `gloomberb` command, and the app adds `gloom` beside it the first time it opens. You can also [download the disk image](https://gloom.sh/download/desktop).
 
-The app was called `Gloomberb.app` up to 0.18.4. An install from then updates as usual, and the first time the new version starts it renames itself to `Gloom.app` and opens again, moving the `gloom` and `gloomberb` links the install script made in `~/.local/bin` (or `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) along with it. A link it cannot rewrite, in a folder you cannot write to, keeps the old name until you can. A Homebrew install keeps the old name until `brew upgrade --cask gloomberb` installs `Gloom.app` in its place. Your settings and data stay where they are.
-
-The command was called `gloomberb` before 0.18.4. That name keeps working everywhere, and an install from before 0.18.4 gets `gloom` beside it when it updates: the terminal binary adds it next to itself the first time the new version runs, and the desktop app adds it next to the `gloomberb` link the installer or Homebrew made when it starts.
-
-`Gloom.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloom` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
-
-Prefer a direct download?
-
-- [Download Gloom for Mac](https://gloom.sh/download/desktop)
+An install from before 0.18.4 renames itself to `Gloom.app` on its first start after updating, and moves its `gloom` and `gloomberb` links with it. A Homebrew install keeps its name until the cask changes it. Your data stays where it is.
 
 ## Linux
-
-Install the standalone TUI binary:
 
 ```bash
 curl -fsSL gloom.sh/install | bash
 ```
 
-This installs `gloom` to `~/.local/bin` by default. A Linux desktop package is not published yet.
+This installs the standalone binary as `~/.local/bin/gloom`. There is no Linux desktop app yet. On Alpine and other musl distributions the script picks the musl build, which needs `libstdc++` (`apk add libstdc++`).
 
-On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g @gloom-sh/terminal` works there too.
+To install by hand, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (musl: [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz), [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gunzip`, make it executable and put it on your `PATH` as `gloom`.
 
 ## Windows
 
-Install the desktop app:
-
-- [Download the installer for Windows](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
-
-The installer is not code-signed yet, so Windows SmartScreen may stop it. Click **More info** on the "Windows protected your PC" screen, then **Run anyway**. To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).
-
-- **Folder:** `%LOCALAPPDATA%\com.vincelwt.gloomberb\stable\app`, the only folder the app updates itself in. Its first start there adds the Start menu and Desktop shortcuts and its entry in **Settings > Apps**, from which you uninstall it.
-- **Earlier installs:** earlier installers put the app in `%LOCALAPPDATA%\Programs\Gloom` (`Programs\Gloomberb` up to 0.18.4) or a folder you picked. Updating such an install from inside the app, or running a new installer over it, uninstalls it from there and points its shortcuts and the `gloom` PATH entry at the new folder. In a folder you picked, such as `C:\Tools` with its own `bin`, only the app's files go; the installer's own folder goes whole. If the old version is still open or its uninstaller fails, it stays listed in **Settings > Apps** and the app tries again at its next start.
-- **Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.
-- **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
-- **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
-- **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloom doctor` names them.
-- **Versions:** Windows 11 on x64 is the tested setup. On ARM PCs the x64 build runs through Windows' built-in emulation; CI checks that the desktop app opens and stays open on Windows 11 on Arm, and nothing more. Windows 10 is untested.
-
-For the terminal command alone, run this in PowerShell (no admin rights needed):
+For the terminal command, run this in PowerShell (no admin rights needed):
 
 ```powershell
 irm https://gloom.sh/install.ps1 | iex
 ```
 
-It downloads `gloomberb-windows-x64.exe.gz` from the latest release, checks its SHA-256 against the `.sha256` file the release publishes beside it (and installs nothing if that file cannot be read or does not match), installs it as `gloom.exe` in `%USERPROFILE%\.local\bin` (`GLOOM_INSTALL_DIR` picks another folder) and adds that folder to your user PATH; open a new terminal window afterwards. Running it again installs the latest release over it. On ARM PCs it installs the same x64 build. The script is [scripts/install.ps1](../scripts/install.ps1). Prefer to download it yourself? Unzip the `.gz` from the [release page](https://github.com/gloom-sh/gloomberb/releases/latest) with 7-Zip and put the `.exe` on your PATH.
+It installs `gloom.exe` in `%USERPROFILE%\.local\bin` (`GLOOM_INSTALL_DIR` picks another folder) and adds that folder to your user PATH, so open a new terminal afterwards. Running it again updates it. Under Git Bash, the `curl` line stops and points here.
 
-`curl -fsSL gloom.sh/install | bash` is for macOS and Linux: under Git Bash it stops and points to the PowerShell line. With Bun installed, `bun install -g @gloom-sh/terminal` works too.
+For the desktop app, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomSetup.exe). It is not code-signed yet: if Windows says "Windows protected your PC", click **More info**, then **Run anyway**. It installs to `%LOCALAPPDATA%\com.vincelwt.gloomberb\stable\app`, adds `gloom` to your PATH, and uninstalls from **Settings > Apps**. An install from an earlier installer, in `%LOCALAPPDATA%\Programs\Gloom` or a folder you picked, moves there when it updates.
 
-What Windows supports today:
+- **Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
+- **Git:** [some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, and `gloom doctor` names them.
+- **Versions:** Windows 11 on x64 is tested. ARM PCs run the x64 build through Windows' emulation, which CI only checks opens and stays open. Windows 10 is untested.
 
-| | x64 | ARM (x64 emulation) |
-|---|---|---|
-| Desktop app (installer) | Tested on Windows 11 | Opens and stays open on Windows 11 (CI), otherwise untested |
-| Terminal command (`install.ps1`, Bun) | Tested on Windows 11 | Untested |
-| Terminal charts | Text in Windows Terminal (no Kitty graphics) | Same |
+## Bun or npm
 
-## Terminal Package
-
-Already have Bun installed on any supported OS?
+On macOS, Linux or Windows with [Bun](https://bun.sh) installed:
 
 ```bash
 bun install -g @gloom-sh/terminal
 ```
 
-`npm install -g @gloom-sh/terminal` works too. An existing `gloomberb` install keeps updating as it is.
-
-Then run:
-
-```bash
-gloom
-```
-
-On macOS and Windows, desktop updates replace the installed app in place and keep the terminal command pointing at the updated runtime. Homebrew users can also update through `brew upgrade --cask gloomberb`.
-
-Updates never restart the app by themselves. The desktop app downloads a new version in the background and then shows **Update ready** in the header with a **Restart** button (`U` does the same, and so does the **Update ready, restart to apply** entry that replaces **Check for Updates** in the command bar). The new version is installed only when you press it, and the app relaunches into it. If you quit without restarting, the installed version stays as it was and the update is offered again at the next launch. The terminal binary downloads and swaps itself in the background the same way, shows **Update ready, restart to apply**, and runs the new version the next time you start it.
-
-### Release channels
-
-The app updates from **stable** releases. **Release Channel** in the command bar (desktop: **Release Channel...** in the app menu, terminal: `gloom config set updates.channel nightly`) switches to **nightly**, a daily build of main that gets fixes first and can break; stable releases still arrive when they are newer. Switching back to stable never installs an older version: a nightly build stays until a newer stable release is out. `GLOOMBERB_UPDATE_CHANNEL=nightly` overrides the setting for one run. npm and Bun installs, Homebrew and the install script always follow stable. Nightly builds are GitHub prereleases named `vX.Y.Z-nightly.<date>.<run>.g<sha>`, published by the Nightly workflow only for a main commit that passed Verify and Verify Windows.
-
-For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/)-compatible terminal such as Ghostty, Kitty, or WezTerm.
+`npm install -g @gloom-sh/terminal` works too, but the command still runs on Bun, so Bun must be on your `PATH`. An install of the older `gloomberb` package keeps working.
 
 ## What the install script does
 
-The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the `.sha256` file the release publishes beside each asset, and installs nothing if that file cannot be read or does not match. Both come from the release's download links, not the GitHub API, so its rate limit does not get in the way. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
+The [install script](../scripts/install.sh) (and [its PowerShell twin](../scripts/install.ps1)) downloads the latest release from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest) and checks its SHA-256 against the `.sha256` file published beside it. If that file cannot be read or does not match, it installs nothing. This catches a corrupt download; it does not prove who published the release.
 
-On Apple Silicon Macs it installs the desktop app as `/Applications/Gloom.app`. A `Gloom.app` that belongs to another program stays, and the app goes in as `Gloomberb.app` instead. A `Gloomberb.app` from before the rename is removed once the `gloom` and `gloomberb` links into it point at `Gloom.app`, unless Homebrew installed it or one of those links is in a folder you cannot write. The script links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.18.4, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
+The shell script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and asks for `sudo` only when a destination is not writable. `GLOOM_INSTALL_DIR` changes where the command goes and `GLOOM_APP_DIR` where the Mac app goes. A `gloom` or `Gloom.app` that belongs to another program is left alone, and Gloom installs as `gloomberb` or `Gloomberb.app` instead.
 
-To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
+On first start, Gloom clones a few official plugins from GitHub, which needs Git ([which ones](../PLUGINS.md#official-plugins-that-need-git)).
 
-The standalone binary unpacks its render library into the temp folder (`TMPDIR`, `/tmp` by default) when it starts. If that folder is full, read-only or mounted `noexec`, it copies the library once to `native-cache` beside the plugin cache (`~/.gloomberb/native-cache`, or `~/.cache/gloomberb/native-cache` on a new Linux install) and loads it from there. If that fails too, it says so and exits; start it with `TMPDIR` set to a writable folder that allows running programs.
+## Updates
 
-On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access ([which plugins](../PLUGINS.md#official-plugins-that-need-git)). Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
+The desktop app and the standalone binary download updates in the background, then show **Update ready**. Nothing restarts on its own: the desktop app installs the update when you press **Restart** (or `U`), and the terminal binary runs it the next time you start it. Homebrew installs update with `brew upgrade --cask gloomberb`, and Bun and npm installs by running their install command again.
+
+**Release Channel** in the command bar (or `gloom config set updates.channel nightly`) switches the desktop app and the standalone binary to nightly builds of `main`, which get fixes first and can break. Switching back never installs an older version.
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb`, `bun remove -g @gloom-sh/terminal` (or `gloomberb`, if that is what you installed), or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloomberb` or `bun remove -g @gloom-sh/terminal`, or remove the desktop app from **Settings > Apps** on Windows. For a script install, delete `~/.local/bin/gloom`, `~/.local/bin/gloomberb` and `/Applications/Gloom.app`, or `%USERPROFILE%\.local\bin\gloom.exe` on Windows. Your [data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 
-Gloom keeps its configuration, database, installed plugins, and plugin cache in `~/.gloomberb`. To keep that folder somewhere else, point `GLOOMBERB_HOME` at the location before launching the terminal or the desktop app:
+Settings, the database, plugins and logs live in `~/.gloomberb` (`%USERPROFILE%\.gloomberb` on Windows). `gloom version` prints the folder in use.
 
-```bash
-mv ~/.gloomberb ~/Documents/gloomberb
-export GLOOMBERB_HOME=~/Documents/gloomberb
-gloom
-```
+To keep it somewhere else, move the folder and set `GLOOMBERB_HOME` to the new path in your shell profile, or wherever the desktop app is launched from, so every launch finds it.
 
-The variable moves the whole folder. A `config.json` carried along that still names the old `~/.gloomberb` as its `dataDir` is corrected to the new home on the next launch, so nothing is recreated in your home directory. Set it in your shell profile, or in the environment of whatever launches the desktop app, so every launch finds the same folder.
-
-On Linux, a new install with no `~/.gloomberb` and no `GLOOMBERB_HOME` follows the XDG Base Directory spec instead: `config.json` in `~/.config/gloomberb`, the database and installed plugins in `~/.local/share/gloomberb`, and the plugin cache in `~/.cache/gloomberb` (or wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` point). An existing `~/.gloomberb` keeps being used and is never moved, and once the XDG `config.json` exists it stays in use even if a `~/.gloomberb` appears later.
-
-On macOS and Linux the data folder and the folder holding `config.json` are open to your account alone (mode 700), and `config.json`, which holds broker credentials, the database and the logs are readable by you alone (mode 600). Each launch sets these modes again, so a profile made by an older version is tightened too.
-
-`gloom version` prints the data directory in use.
+A new Linux install with no `~/.gloomberb` follows the XDG folders instead: `~/.config/gloomberb`, `~/.local/share/gloomberb` and `~/.cache/gloomberb`. On macOS and Linux the folder and `config.json`, which holds broker credentials, are readable by your account alone.
