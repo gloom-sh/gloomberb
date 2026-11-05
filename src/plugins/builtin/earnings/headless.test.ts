@@ -116,14 +116,14 @@ test("the next report keeps the basis Gloom Cloud names for its consensus when t
   const [next] = (await definition.load(args, context)).rows;
   expect(next).toMatchObject({ upcoming: true, epsEstimate: -1.53, epsBasis: "adjusted" });
   // Past the stored horizon the history has no row for it: the company's consensus basis labels it, and only an estimate.
-  const calendarOnly = (consensusBasis: "adjusted" | null, epsEstimate: number | null) => createEarningsHeadless({
+  const calendarOnly = async (consensusBasis: "adjusted" | null, epsEstimate: number | null) => (await createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
     history: async () => ({ ...history, consensusBasis, reports: history.reports.slice(1) }),
     upcoming: async () => [{
       symbol: "CRWV", name: "CoreWeave, Inc.", earningsDate: new Date(`${addDays(today, 30)}T00:00:00Z`), isDateEstimate: true,
       epsEstimate, epsAnalysts: null, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "AMC",
     }],
-  }).load(args, context).then((result) => result.rows[0]);
+  }).load(args, context)).rows[0];
   expect(await calendarOnly("adjusted", -1.53)).toMatchObject({ upcoming: true, epsBasis: "adjusted" });
   expect(await calendarOnly(null, -1.53)).toMatchObject({ upcoming: true, epsBasis: null });
   expect(await calendarOnly("adjusted", null)).toMatchObject({ upcoming: true, epsBasis: null });
