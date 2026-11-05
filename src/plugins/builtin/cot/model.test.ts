@@ -274,6 +274,13 @@ test("--since lists the history from that day with every report's release, and P
   // One publication time and one publisher: the metadata says what the export's footer says.
   expect(result).toMatchObject({ metadata: { publishedAt: "2026-09-18T19:30:00.000Z" },
     freshness: { publisher: "Commodity Futures Trading Commission (CFTC)", publishedAt: "2026-09-18T19:30:00.000Z" } });
+  // Corn under its 1998 code: the older reports are under the previous one, in bushels, not its first report.
+  const corn = { ...served, historyStart: "1998-01-06", history: [{ ...served.history[0]!, reportDate: "1998-01-06" }],
+    contract: { ...served.contract!, contractCode: "002602" } };
+  const early = await cotHeadless.load({ argument: "ZC", symbols: [], options: { since: "1990-01-01" } } as never,
+    { apiClient: { getCloudCotContract: async () => corn } } as never) as { notes?: string[] };
+  expect(early.notes?.join(" ")).toContain("previous code 002601, in thousands of bushels");
+  expect(early.notes?.join(" ")).not.toContain("first report");
 });
 
 test("--report tff and --positions combined read the TFF board and contracts with options, and refuse a reply for the other scope", async () => {

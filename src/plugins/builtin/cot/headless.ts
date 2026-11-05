@@ -63,6 +63,21 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 /**
+ * The grain markets the CFTC moved from thousands of bushels to contracts in
+ * January 1998, each under a new code: their Legacy reports before that are
+ * under the old code, a separate market here (not joined to the new one).
+ */
+const COT_CODES_BEFORE_1998: Readonly<Record<string, string>> = {
+  "001602": "001601", // wheat, CBOT
+  "001612": "001611", // wheat, Kansas City
+  "001626": "001621", // wheat, Minneapolis
+  "001627": "001624", // white wheat, Minneapolis
+  "002602": "002601", // corn
+  "004603": "004601", // oats
+  "005602": "005601", // soybeans
+};
+
+/**
  * What the weekly section says about how far back it reaches: the history
  * `--since` asked for begins after the market's first report, or the server
  * has none that old.
@@ -70,9 +85,11 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
 function cotHistoryNote(data: CotContractPayload, since: string | null): string | null {
   const first = data.history[0]?.reportDate;
   if (!since || !first || first <= since) return null;
-  return data.historyStart && data.historyStart > since
-    ? `The CFTC's first report of this market in Gloom Cloud is ${data.historyStart}; --since ${since} lists from there.`
-    : `Weekly positions before ${first} are not available yet.`;
+  if (!data.historyStart || data.historyStart <= since) return `Weekly positions before ${first} are not available yet.`;
+  const previous = data.reportFamily === "legacy" ? COT_CODES_BEFORE_1998[data.contract?.contractCode ?? ""] : undefined;
+  return previous
+    ? `Reports under CFTC code ${data.contract!.contractCode} start ${data.historyStart}, when the CFTC began counting this market in contracts; its earlier reports are under its previous code ${previous}, in thousands of bushels, and are not joined to these. --since ${since} lists from ${data.historyStart}.`
+    : `The CFTC's first report of this market in Gloom Cloud is ${data.historyStart}; --since ${since} lists from there.`;
 }
 
 export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
