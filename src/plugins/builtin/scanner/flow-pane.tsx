@@ -66,7 +66,6 @@ import {
   flowTideRows,
   formatFlowSessionDate,
   formatSignedFlowPremium,
-  formatStrikeExpiry,
   formatTideTime,
   loadFlowSession,
   sortFlowStrikes,
@@ -88,14 +87,15 @@ function flowTabs(symbol: string | null): Array<{ label: string; value: FlowTab 
 
 function buildColumns(width: number, dated: boolean, ticker: boolean): DataTableColumn[] {
   // Prints from earlier days carry their date ("09/22 15:04"), so the time
-  // column widens for them. One name's pane names it in its title, not a column.
-  const fixed = { time: dated ? 11 : 8, ticker: ticker ? 7 : 0, type: 8, strike: 8, exp: 6, side: 5, size: 7, prem: 7, volOi: 6 };
+  // column widens for them; an expiry past this year carries its year
+  // ("06/16/27"). One name's pane names it in its title, not a column.
+  const fixed = { time: dated ? 11 : 8, ticker: ticker ? 7 : 0, type: 8, strike: 8, exp: 8, side: 5, size: 7, prem: 7, volOi: 6 };
   const total = Object.values(fixed).reduce((sum, value) => sum + value, 0);
   // Table chrome is one gap per column, the table's extra gutter where
   // right-aligned EXP meets left-aligned SIDE, two cells of padding, and the scrollbar.
   const slack = Math.max(0, width - total - (ticker ? 9 : 8) - 1 - 2 - 1);
   return [
-    { id: "time", label: "TIME", width: fixed.time, align: "left" },
+    { id: "time", label: "TIME UTC", width: fixed.time, align: "left" },
     ...(ticker ? [{ id: "ticker", label: "TICKER", width: fixed.ticker + Math.min(4, slack), align: "left" as const }] : []),
     { id: "type", label: "TYPE", width: fixed.type + (ticker ? 0 : Math.min(4, slack)), align: "left" },
     { id: "strike", label: "STRIKE", width: fixed.strike, align: "right" },
@@ -108,7 +108,7 @@ function buildColumns(width: number, dated: boolean, ticker: boolean): DataTable
 }
 
 const TIDE_COLUMNS: DataTableColumn[] = [
-  { id: "time", label: "TIME", width: 6, align: "left" },
+  { id: "time", label: "TIME UTC", width: 8, align: "left" },
   { id: "netCalls", label: "NET CALLS", width: 10, align: "right" },
   { id: "netPuts", label: "NET PUTS", width: 10, align: "right" },
   { id: "net", label: "NET PREM", width: 10, align: "right" },
@@ -196,7 +196,7 @@ function renderTideCell(row: FlowTideRow, column: DataTableColumn): DataTableCel
 function renderStrikeCell(row: FlowStrikeRow, column: DataTableColumn): DataTableCell {
   switch (column.id) {
     case "expiry":
-      return { text: formatStrikeExpiry(row.expiry), value: row.expiry, color: colors.textDim };
+      return { text: formatFlowExpiry(row.expiry), value: row.expiry, color: colors.textDim };
     case "strike":
       return { text: formatNumber(row.strike, row.strike % 1 === 0 ? 0 : 2), value: row.strike, color: colors.textBright };
     case "net":
@@ -221,14 +221,13 @@ function formatPremiumAxis(value: number, domain: CompositeAxisDomain): string {
   return text.startsWith("-") ? `-$${text.slice(1)}` : `$${text}`;
 }
 
-/** The tide's lines read in the user's own clock, as the TIME columns do. */
-const LOCAL_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
 function tideSeries(rows: readonly FlowTideRow[], bucketMs: number): ResolvedSeries[] {
   const points = flowTidePoints(rows, bucketMs);
   const line = (id: string, label: string, color: string, value: (point: (typeof points)[number]) => number): ResolvedSeries => ({
     ...staticSeries(points.map((point) => scalarPoint(new Date(point.at), value(point))), { id, label, color }),
-    timeBasis: { kind: "market", timeZone: LOCAL_TIME_ZONE, cadenceMs: bucketMs },
+    // In UTC, as the TIME UTC columns read.
+    timeBasis: { kind: "market", timeZone: "UTC", cadenceMs: bucketMs },
     observationKind: "market",
   });
   // Named as the table's columns are; the net line is the tide itself.

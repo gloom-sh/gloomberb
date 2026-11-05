@@ -185,19 +185,24 @@ export function formatFlowVolOi(volOi: number | null | undefined): string {
   return volOi >= 10 ? `${Math.round(volOi)}x` : `${volOi.toFixed(1)}x`;
 }
 
-export function formatFlowExpiry(expiry: string): string {
-  const parts = expiry.split("-");
-  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : expiry;
+/** An expiry as the tape prints it, `06/16`, with its year when it is not this one: `06/16/27`. */
+export function formatFlowExpiry(expiry: string, now = Date.now()): string {
+  const [year, month, day] = expiry.split("-");
+  if (!year || !month || !day) return expiry;
+  return year === String(new Date(now).getUTCFullYear()) ? `${month}/${day}` : `${month}/${day}/${year.slice(2)}`;
 }
 
-/** Today's prints to the second; earlier days carry their date. */
+/**
+ * A print's time in UTC, as the TIME UTC header says (formatFeedTime's
+ * `utc`): today's to the second, an earlier day's with its date.
+ */
 export function formatFlowTime(at: number, now = Date.now()): string {
   const date = new Date(at);
   const pad = (value: number) => String(value).padStart(2, "0");
-  if (localDay(at) !== localDay(now)) {
-    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (utcDay(at) !== utcDay(now)) {
+    return `${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
   }
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
 }
 
 /** Rows per page of recorded prints below the live tape. */
@@ -281,15 +286,14 @@ export function flowSessionSearch(filters: FlowFilters, scope: FlowScope): strin
   return params.toString();
 }
 
-function localDay(at: number): string {
-  const date = new Date(at);
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+function utcDay(at: number): string {
+  return new Date(at).toISOString().slice(0, 10);
 }
 
-/** True when any row is from an earlier day, so the time column needs its date. */
+/** True when any row is from an earlier day in UTC, so the time column needs its date. */
 export function flowRowsSpanDays(events: readonly ScannerFlowEvent[], now = Date.now()): boolean {
-  const today = localDay(now);
-  return events.some((event) => localDay(event.at) !== today);
+  const today = utcDay(now);
+  return events.some((event) => utcDay(event.at) !== today);
 }
 
 /** The recorded-print query as the Cloud route reads it. */

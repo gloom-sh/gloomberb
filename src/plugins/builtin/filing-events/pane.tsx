@@ -42,6 +42,9 @@ const EK_WALL: ProFeatureWallCopy = {
   message: "Every 8-K classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each one said.",
 };
 
+/** Cells "8-K/A" takes, so the items of every row start in one column. */
+const FORM_WIDTH = 5;
+
 /** One filing: when it was filed, what it was about, and what it said. */
 function FilingEntry({
   entry,
@@ -62,11 +65,11 @@ function FilingEntry({
   // row ends, or a third item label runs off it mid-word.
   const items = nativePaneChrome
     ? entry.itemsLabel
-    : truncateToDisplayWidth(entry.itemsLabel, Math.max(4, proseWidth - entry.filedLabel.length - 2));
+    : truncateToDisplayWidth(entry.itemsLabel, Math.max(4, proseWidth - entry.filedLabel.length - FORM_WIDTH - 4));
   return (
     <Box
       flexDirection="column"
-      marginTop={1}
+      marginTop={entry.spaced ? 1 : 0}
       backgroundColor={selected ? hoverBg(colors) : undefined}
       data-gloom-role="filing-event"
       data-gloom-row="true"
@@ -80,6 +83,9 @@ function FilingEntry({
           color={selected ? colors.selectedText : colors.textDim}
           onOpen={onOpen}
         />
+        <Box width={FORM_WIDTH} flexShrink={0}>
+          <Text fg={selected ? colors.selectedText : colors.textMuted}>{entry.form}</Text>
+        </Box>
         <Text fg={selected ? colors.selectedText : entry.material ? colors.warning : colors.textDim}>
           {items}
         </Text>

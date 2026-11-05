@@ -22,7 +22,7 @@ function filingEvent(overrides: Partial<CloudFilingEventPayload> = {}): CloudFil
 }
 
 describe("buildFilingEventsFeed", () => {
-  test("keeps explicit filing and personnel calendar dates across time zones while legacy instants stay local", () => {
+  test("keeps filing and personnel calendar days in every time zone, a legacy instant read by its UTC day", () => {
     const event = filingEvent({
       filedAt: "2026-09-01T01:30:00Z",
       read: true,
@@ -34,19 +34,15 @@ describe("buildFilingEventsFeed", () => {
       event,
       { ...event, filingDate: "2026-02-29" },
     ];
-    for (const [timezone, filed] of [
-      ["America/Los_Angeles", "Aug 31, 26"],
-      ["Europe/Berlin", "Sep 01, 26"],
-      ["Pacific/Auckland", "Sep 01, 26"],
-    ]) {
+    for (const timezone of ["America/Los_Angeles", "Europe/Berlin", "Pacific/Auckland"]) {
       const result = Bun.spawnSync([process.execPath, "--eval", `
         import { buildFilingEventsFeed } from ${JSON.stringify(new URL("./feed.ts", import.meta.url).href)};
         console.log(JSON.stringify(buildFilingEventsFeed(${JSON.stringify(events)}, 80)));
-      `], { env: { ...process.env, TZ: timezone! } });
+      `], { env: { ...process.env, TZ: timezone } });
       expect(result.exitCode).toBe(0);
       const feed = JSON.parse(result.stdout.toString());
-      expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["Sep 01, 26", filed, filed]);
-      expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective Sep 01, 26");
+      expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["Sep 01, 2026", "Sep 01, 2026", "Sep 01, 2026"]);
+      expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective Sep 01, 2026");
     }
   });
 
@@ -58,9 +54,31 @@ describe("buildFilingEventsFeed", () => {
         { name: "Invalid", role: "CFO", action: "joined", effective: "2026-02-29" },
       ],
     })], 80);
-    expect(feed.entries[0]?.filedLabel).toBe("Feb 29, 24");
+    expect(feed.entries[0]?.filedLabel).toBe("Feb 29, 2024");
     expect(feed.entries[0]?.people.map((person) => person.detail)).toEqual([
-      "CEO, joined, effective Feb 29, 24", "CFO, joined, effective —",
+      "CEO, joined, effective Feb 29, 2024", "CFO, joined, effective —",
+    ]);
+  });
+
+  test("names each person once: a move between roles, roles taken together, and a shared date said once", () => {
+    const people = (feed: ReturnType<typeof buildFilingEventsFeed>) =>
+      feed.entries[0]!.people.map((person) => `${person.name}: ${person.detail}`);
+    const effective = "2026-09-01";
+    // Apple's April 2026 8-K, as the model reads it: a role per line, Tim Cook twice.
+    expect(people(buildFilingEventsFeed([filingEvent({
+      read: true, headline: "CEO transition",
+      people: [
+        { name: "Tim Cook", role: "Chief Executive Officer", action: "left", effective },
+        { name: "Tim Cook", role: "Executive Chair", action: "joined", effective },
+        { name: "John Ternus", role: "Chief Executive Officer", action: "joined", effective },
+        { name: "John Ternus", role: "Member of the Board", action: "appointed director", effective },
+        { name: "Art Levinson", role: "Chair of the Board", action: "left", effective: null },
+        { name: "Art Levinson", role: "Lead Independent Director", action: "joined", effective },
+      ],
+    })], 120))).toEqual([
+      "Tim Cook: Chief Executive Officer → Executive Chair, effective Sep 01, 2026",
+      "John Ternus: Chief Executive Officer, joined; Member of the Board, appointed director, effective Sep 01, 2026",
+      "Art Levinson: Chair of the Board → Lead Independent Director, effective Sep 01, 2026",
     ]);
   });
 
@@ -115,9 +133,9 @@ describe("buildFilingEventsFeed", () => {
     expect(news.top).toBe(headingLines - 1);
     expect(news.lines).toBe(2 + 2 + 2 + 1);
 
-    // The second section pays for its own heading before its first entry.
+    // The second section pays for its own heading; its filings are rows of a table, with no blank row between them.
     expect(feed.entries[1]!.top).toBe(news.top + news.lines + headingLines);
-    expect(feed.entries[1]!.lines).toBe(2);
+    expect(feed.entries[1]!.lines).toBe(1);
   });
 });
 

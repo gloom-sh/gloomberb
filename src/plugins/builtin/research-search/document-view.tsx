@@ -53,7 +53,7 @@ export function SearchDocumentView({
   return (
     <ArticleReader
       articleKey={`${document.docType}:${document.sourceId}`}
-      title={document.title || hit.title}
+      title={article.title}
       meta={article.meta}
       tickers={article.tickers}
       lead={article.lead}

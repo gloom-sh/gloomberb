@@ -123,17 +123,10 @@ export function formatSignedFlowPremium(value: number): string {
   return `${value > 0 ? "+" : "-"}${formatFlowPremium(Math.abs(value))}`;
 }
 
-/** An expiry as the table reads it: `10/30`, with the year when it is not this one. */
-export function formatStrikeExpiry(expiry: string, now = Date.now()): string {
-  const [year, month, day] = expiry.split("-");
-  if (!year || !month || !day) return expiry;
-  return year === String(new Date(now).getFullYear()) ? `${month}/${day}` : `${month}/${day}/${year.slice(2)}`;
-}
-
-/** A bucket's start as the local wall clock, `10:35`. */
+/** A bucket's start in UTC, `14:35`, as the prints' TIME UTC column reads. */
 export function formatTideTime(at: number): string {
   const date = new Date(at);
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 /** The session's date as the chart's legend names it: `Mon 26 Oct`. */

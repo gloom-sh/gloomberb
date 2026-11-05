@@ -9,6 +9,7 @@ import {
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CloudSearchParams } from "../../../api-client/paths";
 import type { PluginPersistence } from "../../../types/plugin";
+import { presentSearchHit } from "./model";
 
 const DOCUMENT_KIND = "document";
 const CACHE_SOURCE = "research-search";
@@ -41,11 +42,13 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-export function runDocumentSearch(
+/** Hits as the results and the command bar show them (presentSearchHit). */
+export async function runDocumentSearch(
   params: CloudSearchParams,
   signal?: AbortSignal,
 ): Promise<CloudSearchResponse> {
-  return apiClient.searchCloudDocuments(params, { signal });
+  const response = await apiClient.searchCloudDocuments(params, { signal });
+  return { ...response, hits: (response.hits ?? []).map(presentSearchHit) };
 }
 
 function documentKey(docType: CloudSearchDocType, sourceId: string): string {
