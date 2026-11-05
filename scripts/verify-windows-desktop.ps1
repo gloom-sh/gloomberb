@@ -753,31 +753,38 @@ function Capture-WindowScreenshotByTitle {
   throw "$Label window was not visible: $Title"
 }
 
+# Every pixel, not a grid of samples: the app's text is a pixel or two wide
+# and its lines sit about 20 pixels apart, so rows of samples that far apart
+# can fall between the lines all the way down and see only the flat fills.
 function Get-ScreenshotStats {
   param([string]$Path)
 
   $Bitmap = [System.Drawing.Bitmap]::FromFile($Path)
   try {
-    $StepX = [Math]::Max(1, [int][Math]::Floor($Bitmap.Width / 48))
-    $StepY = [Math]::Max(1, [int][Math]::Floor($Bitmap.Height / 32))
-    $UniqueColors = @{}
-    $Samples = 0
-    for ($Y = 0; $Y -lt $Bitmap.Height; $Y += $StepY) {
-      for ($X = 0; $X -lt $Bitmap.Width; $X += $StepX) {
-        $Color = $Bitmap.GetPixel($X, $Y).ToArgb()
-        $UniqueColors[[string]$Color] = $true
-        $Samples += 1
+    $Width = $Bitmap.Width
+    $Height = $Bitmap.Height
+    $Pixels = New-Object int[] ($Width * $Height)
+    $Data = $Bitmap.LockBits(
+      (New-Object System.Drawing.Rectangle 0, 0, $Width, $Height),
+      [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+      [System.Drawing.Imaging.PixelFormat]::Format32bppArgb
+    )
+    try {
+      for ($Y = 0; $Y -lt $Height; $Y += 1) {
+        [System.Runtime.InteropServices.Marshal]::Copy([IntPtr]::Add($Data.Scan0, $Y * $Data.Stride), $Pixels, $Y * $Width, $Width)
       }
-    }
-
-    [pscustomobject]@{
-      Width = $Bitmap.Width
-      Height = $Bitmap.Height
-      Samples = $Samples
-      UniqueColors = $UniqueColors.Count
+    } finally {
+      $Bitmap.UnlockBits($Data)
     }
   } finally {
     $Bitmap.Dispose()
+  }
+
+  [pscustomobject]@{
+    Width = $Width
+    Height = $Height
+    Pixels = $Pixels.Length
+    UniqueColors = [System.Collections.Generic.HashSet[int]]::new([System.Collections.Generic.IEnumerable[int]]$Pixels).Count
   }
 }
 
@@ -808,8 +815,10 @@ function Assert-ScreenshotHasContent {
     [string]$Label
   )
 
+  # A window of flat fills, its bars and outlines drawn but nothing in them,
+  # stays under 32 colors; anti-aliased text and icons put hundreds on screen.
   $Stats = Get-ScreenshotStats $Path
-  if ($Stats.Width -le 1 -or $Stats.Height -le 1 -or $Stats.UniqueColors -lt 8) {
+  if ($Stats.Width -le 1 -or $Stats.Height -le 1 -or $Stats.UniqueColors -lt 32) {
     throw "$Label screenshot appears blank: $($Stats | ConvertTo-Json -Compress)"
   }
 }
