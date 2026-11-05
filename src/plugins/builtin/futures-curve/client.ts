@@ -64,7 +64,10 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
     || ![slope.percentile, slope.rollPercentile].every(rank) || !Number.isInteger(slope.samples) || slope.samples < 0
     || slope.asOf !== null && !timestamp(slope.asOf)
     || slope.basis != null && slope.basis !== "last" && slope.basis !== "settle"
-    || slope.thinSymbol != null && typeof slope.thinSymbol !== "string") throw new Error("The server returned an invalid futures spread");
+    || slope.thinSymbol != null && typeof slope.thinSymbol !== "string"
+    || slope.skippedSymbols != null && !(Array.isArray(slope.skippedSymbols) && slope.skippedSymbols.every((symbol) => typeof symbol === "string"))) {
+    throw new Error("The server returned an invalid futures spread");
+  }
   return data;
 }
 

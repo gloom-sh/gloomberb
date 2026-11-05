@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -24,7 +24,9 @@ const basisValue = (value: number | null) => value == null ? null : Number(value
  * the latest trade and `settlement` the exchange settlement for the curve's
  * settlement session (a past curve's settled rows have no separate trade).
  * `change` is `price` less `settlement`; `noTradeSince` dates the settlement
- * a contract has not traded since, whose change is therefore blank. A crypto
+ * a contract has not traded since, whose change is therefore blank, and
+ * `settleShown` the one it is shown and plotted at (no trade since, or none
+ * at all). A crypto
  * root adds the basis: the spot in the minute of `price`'s trade and that
  * minute (`spot`, `spotTime`), the fractional days from the trade to final
  * settlement, and the premium and its yearly rate.
@@ -37,6 +39,8 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
     settlement: price(row.settlement), settlementDate: row.settlement != null ? data.settlementDate ?? null : null,
     price: past && row.settlement != null ? null : price(row.price), change: price(row.change),
     noTradeSince: past ? null : curveNoTradeSince(row, data),
+    // The settlement session a live contract is shown at, when it has no trade since (or none at all): its curve point is that settlement.
+    settleShown: past ? null : curveSettleShown(row, data),
     asOf: row.asOf, stale: row.stale, volume: row.volume, openInterest: row.openInterest, percentile: rank(row.percentile),
     samples: row.samples, historyStart: row.historyStart, historyEnd: row.historyEnd,
     currency: row.currency, quoteUnit: curveUnitLabel(data) ?? row.quoteUnit, delayMinutes: row.delayMinutes,
@@ -59,7 +63,9 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     // Cash-settled roots have no first notice day.
     ...options.notice ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : "--" }] : [],
-    { key: "settlement", header: settlementDate ? `Settle ${settlementDate}` : "Settle", align: "right", format: price },
+    // One header whatever the session: an export dates each settlement in its own column, the text in the header.
+    { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${settlementDate}` } : {}, align: "right", format: price },
+    ...options.text ? [] : [{ key: "settlementDate", header: "settle_date", literalHeader: true, shrink: false, format: date }],
     // A Cboe price is the settlement itself, with no separate last trade.
     ...options.last ? [{ key: "price", header: "Last", align: "right" as const, format: price }] : [],
     { key: "change", header: "Change", align: "right", format: (value) => typeof value === "number" ? curveChangeText(value, root) : "--" },
@@ -68,7 +74,9 @@ function contractColumns(root: string, settlementDate: string | null, options: {
       { key: "vsSpotPct", header: "Vs Spot", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 2) },
       { key: "daysToExpiry", header: "Days to Expiry", textHeader: "Days", align: "right" as const, format: (value: unknown) => typeof value === "number" ? value.toFixed(1) : "--" },
       { key: "annualisedBasisPct", header: "Ann Basis", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 1) }] : [],
-    { key: "asOf", header: "As Of UTC", shrink: false, format: (value) => typeof value === "string" ? curveTimestamp(value) : "--" },
+    // A month with no trade since the settlement it shows is dated by that settlement, never read as an old print.
+    { key: "asOf", header: "As Of UTC", shrink: false, format: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}`
+      : typeof value === "string" ? curveTimestamp(value) : "--" },
     { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
     { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
     { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },
@@ -82,12 +90,29 @@ function contractColumns(root: string, settlementDate: string | null, options: {
  */
 function fieldColumns(order: readonly string[], fields: object, formats: Record<string, HeadlessPaneColumn["textFormat"]> = {}): HeadlessPaneColumn[] {
   return [...order, ...Object.keys(fields).filter((key) => !order.includes(key))]
-    .map((key) => ({ key, header: key, ...formats[key] ? { textFormat: formats[key] } : {} }));
+    .map((key) => ({ key, header: key, ...SYMBOL_FIELDS.has(key) ? { format: contractCodeFormat } : {}, ...formats[key] ? { textFormat: formats[key] } : {} }));
 }
+
+/**
+ * The front spread's columns: every field in one order, the skipped months
+ * last as one cell (`GCF27`), which the text names in a note instead.
+ */
+function spreadColumns(row: Record<string, unknown>, formats: Record<string, HeadlessPaneColumn["textFormat"]>, text: boolean): HeadlessPaneColumn[] {
+  const fields = Object.fromEntries(Object.entries(row).filter(([key]) => key !== SKIPPED_FIELD));
+  return [...fieldColumns(FRONT_SPREAD_FIELDS, fields, formats),
+    ...text ? [] : [{ key: SKIPPED_FIELD, header: SKIPPED_FIELD, format: (value: unknown) => Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string").map(curveContractCode).join(" ") : "" }]];
+}
+
+/** The fields naming a contract, written in every section as the Contracts table writes it: CLZ26, never CLZ26.NYM. */
+const SYMBOL_FIELDS: ReadonlySet<string> = new Set(["symbol", "frontSymbol", "nextSymbol", "thinSymbol"]);
+const contractCodeFormat = (value: unknown) => typeof value === "string" && value ? curveContractCode(value) : "-";
 
 // `basis` says which prices the value subtracts: two last trades made together, or the settlements of the session in `asOf`.
 const FRONT_SPREAD_FIELDS = ["label", "frontSymbol", "nextSymbol", "value", "annualizedRollYield", "percentile", "rollPercentile",
   "samples", "historyStart", "historyEnd", "asOf", "basis", "state", "thinSymbol"];
+/** The months the spread passed over for their thin open interest: an export keeps them, the text names them in a note. */
+const SKIPPED_FIELD = "skippedSymbols";
 const GHOST_FIELDS = ["symbol", "expiration", "price", "asOf"];
 /** The annualized roll yield reads as the percent it is (+32.36%); an export keeps the number. */
 const ROLL_YIELD_FORMAT = { annualizedRollYield: (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : "--" };
@@ -186,7 +211,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A blank Change says why, as a blank basis does; a past curve has no session change to blank.
     const changeNote = date ? null : noTradeChangeNote(data.contracts, data);
     const thinSpread = thinSpreadNotice(data);
-    const notes = [...thinSpread ? [`${thinSpread}.`] : [], ...changeNote ? [changeNote] : [], ...basisNotes,
+    const skipped = skippedSpreadNotice(data);
+    const notes = [...thinSpread ? [`${thinSpread}.`] : [], ...skipped ? [`${skipped}.`] : [], ...changeNote ? [changeNote] : [], ...basisNotes,
       ...spotPremium?.reason ? [`Front premium blank: ${spotPremium.reason}.`] : []];
     const columnOptions = { basis: !!bases, last: data.source !== "cboe", notice: data.contracts.some((row) => row.firstNotice) };
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
@@ -195,19 +221,28 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       ? { status: "not-a-feed", basis: "settlement archive", asOf: date }
       : { ...(data.source === "cboe" ? { source: "Cboe", status: "not-a-feed", basis: "daily settlement", cadence: "daily" } as const : {}),
         asOf: newestReportTime(quoted), oldest: oldestReportTime(quoted) };
+    // No contract to list is no curve: the report says why once and fails, as `help fn` says an empty one does.
+    if (!data.contracts.length) {
+      return { freshness, sections: [], empty: `No ${root} contracts from the source.`, errors: data.gaps,
+        metadata: { ...data, quoteUnit: unit, complete: false, ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }) } };
+    }
+    const spreadRow = { label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
+      annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
+      percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile), [SKIPPED_FIELD]: data.slope.skippedSymbols ?? [] };
+    const spreadFormats = { ...ROLL_YIELD_FORMAT, ...thirtySecondsFormat(root, "value") };
     return {
       freshness,
       sections: [
         { title: "Contracts", columns: contractColumns(root, data.settlementDate ?? null, columnOptions),
-          ...bases ? { textColumns: contractColumns(root, data.settlementDate ?? null, { ...columnOptions, text: true }) } : {},
+          textColumns: contractColumns(root, data.settlementDate ?? null, { ...columnOptions, text: true }),
+          ...unit ? { unit } : {},
           rows: data.contracts.map((row) => contractRow(row, data, root, !!date, bases?.get(row.symbol))) },
-        { title: "Front spread", columns: fieldColumns(FRONT_SPREAD_FIELDS, data.slope, { ...ROLL_YIELD_FORMAT, ...thirtySecondsFormat(root, "value") }), rows: [{ label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
-          annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
-          percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile) }] },
+        { title: "Front spread", columns: spreadColumns(spreadRow, spreadFormats, false), textColumns: spreadColumns(spreadRow, spreadFormats, true),
+          rows: [spreadRow] },
         ...spotPremium ? [{ title: "Front vs spot", entries: spotPremiumEntries(spotPremium, root) }] : [],
         ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}, thirtySecondsFormat(root, "price")),
-          rows: ghost.points.map((point) => ({ ...point })) })),
+          ...unit ? { unit } : {}, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
       ...(notes.length ? { notes } : {}),
