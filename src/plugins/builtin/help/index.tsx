@@ -253,7 +253,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
           ? [entry("cmd-open", commandBarBadges, "Open command mode for actions, pane commands, and typed prefixes.")]
           : []),
         ...(tickerSearchBadges.length > 0
-          ? [entry("cmd-ticker-search", tickerSearchBadges, tf("Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.", { key: keyLabel("Shift+Enter") }))]
+          ? [entry("cmd-ticker-search", tickerSearchBadges, tf("Ticker search: {enter} changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.", { enter: keyLabel("Enter"), key: keyLabel("Shift+Enter") }))]
           : []),
         entry("cmd-des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
         entry("cmd-help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),

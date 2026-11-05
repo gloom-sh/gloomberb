@@ -575,7 +575,7 @@ export const ja: Record<string, string> = {
   "Commit pending changes or exit window mode.": "保留中の変更をコミットするか、ウィンドウ モードを終了します。",
   "Open command mode for actions, pane commands, and typed prefixes.": "アクション、ペイン コマンド、および入力されたプレフィックスのコマンド モードを開きます。",
   "Change the focused pane's ticker.": "選択中のペインの銘柄を変更します。",
-  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "銘柄検索: Enter で選択中のペインとリンクされたペインの銘柄を変更します。デスクトップと Web ではペインのタイトルの銘柄をクリックしても同じです。{key} で新しいペインを開きます。銘柄のないペインからは DES を開きます。",
+  "Ticker search: {enter} changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "銘柄検索: {enter} で選択中のペインとリンクされたペインの銘柄を変更します。デスクトップと Web ではペインのタイトルの銘柄をクリックしても同じです。{key} で新しいペインを開きます。銘柄のないペインからは DES を開きます。",
   "Open security details for a specific ticker.": "指定した銘柄の詳細を開きます。",
   "Move through command bar results.": "コマンド バーの結果を移動します。",
   "Run the selected result or its secondary action.": "選択した結果またはその二次アクションを実行します。",

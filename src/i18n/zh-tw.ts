@@ -575,7 +575,7 @@ export const zhTW: Record<string, string> = {
   "Commit pending changes or exit window mode.": "確認待處理的變更或結束視窗模式。",
   "Open command mode for actions, pane commands, and typed prefixes.": "開啟命令模式：操作、面板命令與字首輸入。",
   "Change the focused pane's ticker.": "變更目前面板的股票代號。",
-  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "股票搜尋：Enter 變更目前面板及其連結面板的股票代號，與在桌面版和網頁版中點擊面板標題中的代號相同。{key} 在新面板中開啟。在沒有代號的面板中則開啟 DES。",
+  "Ticker search: {enter} changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "股票搜尋：{enter} 變更目前面板及其連結面板的股票代號，與在桌面版和網頁版中點擊面板標題中的代號相同。{key} 在新面板中開啟。在沒有代號的面板中則開啟 DES。",
   "Open security details for a specific ticker.": "開啟指定股票的證券詳情。",
   "Move through command bar results.": "在命令列結果間移動。",
   "Run the selected result or its secondary action.": "執行所選結果或其次要操作。",

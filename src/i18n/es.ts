@@ -574,7 +574,7 @@ export const es: Record<string, string> = {
   "Commit pending changes or exit window mode.": "Confirmar cambios pendientes o salir del modo ventana.",
   "Open command mode for actions, pane commands, and typed prefixes.": "Abrir el modo comando para acciones, comandos de panel y prefijos.",
   "Change the focused pane's ticker.": "Cambia el ticker del panel activo.",
-  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "Búsqueda de tickers: Enter cambia el ticker del panel activo y de los paneles vinculados a él, como un clic en el ticker del título de un panel en el escritorio y la web. {key} abre un panel nuevo. Desde un panel sin ticker abre DES.",
+  "Ticker search: {enter} changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "Búsqueda de tickers: {enter} cambia el ticker del panel activo y de los paneles vinculados a él, como un clic en el ticker del título de un panel en el escritorio y la web. {key} abre un panel nuevo. Desde un panel sin ticker abre DES.",
   "Open security details for a specific ticker.": "Abrir los detalles de un ticker específico.",
   "Move through command bar results.": "Moverse por los resultados de la barra de comandos.",
   "Run the selected result or its secondary action.": "Ejecutar el resultado seleccionado o su acción secundaria.",
