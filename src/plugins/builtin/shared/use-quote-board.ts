@@ -44,7 +44,9 @@ export interface QuoteBoardOptions {
    * asked, and refresh the listed symbols in a few batches at once. A batch
    * is given up after `refreshTimeoutMs`, and so is each symbol it left to
    * be asked for alone, so one slow symbol cannot hold the rest. A row whose
-   * refresh fails or times out keeps its cached quote, marked stale.
+   * refresh fails or times out keeps its cached quote, marked stale; an
+   * answer that still comes in later paints then, unless a newer load has
+   * started.
    */
   cacheFirst?: boolean;
   /**
@@ -147,13 +149,18 @@ function overlayStreamQuote(base: BoardQuoteState, streamed: Quote | null): Boar
   return { quote: streamed, loading: base.loading, error: null, stale: streamed.stale === true };
 }
 
-/** `promise`, or a timeout error once `timeoutMs` has passed (never, without one); `onTimeout` runs first. */
-function within<T>(promise: Promise<T>, timeoutMs: number | undefined, onTimeout?: () => void): Promise<T> {
+/**
+ * `promise`, or a timeout error once `timeoutMs` has passed (never, without
+ * one). A result that arrives after the timeout is handed to `onLate`, so the
+ * caller can still use what it stopped waiting for; a failure then has
+ * nothing to add.
+ */
+function within<T>(promise: Promise<T>, timeoutMs: number | undefined, onLate?: (late: T) => void): Promise<T> {
   if (timeoutMs == null) return promise;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      onTimeout?.();
+      if (onLate) promise.then(onLate, () => {});
       reject(new Error("Quote refresh timed out"));
     }, timeoutMs);
   });
@@ -165,7 +172,9 @@ function within<T>(promise: Promise<T>, timeoutMs: number | undefined, onTimeout
  * once, then each symbol it left without a current quote, asked for alone
  * into its own row. Such a symbol whose own read fails shows the dated price
  * the batch had, flagged stale, when it had one. Each request is given
- * `timeoutMs`, when set. Throws only when the batch itself fails, before
+ * `timeoutMs`, when set; one that answers after it is applied then, over the
+ * timeout the caller recorded, so `apply` must drop what a newer load
+ * superseded. Throws only when the batch itself fails or times out, before
  * anything was applied.
  */
 async function requestBoardQuotes(
@@ -176,9 +185,11 @@ async function requestBoardQuotes(
   timeoutMs?: number,
 ): Promise<void> {
   const askAlone = async (symbol: string, context: MarketDataRequestContext | undefined, fallback: Quote | null = null) => {
+    const answered = (quote: Quote): BoardQuoteState => ({ quote, loading: false, error: null, stale: false });
     let state: BoardQuoteState;
     try {
-      state = { quote: await within(dataProvider.getQuote(symbol, "", context), timeoutMs), loading: false, error: null, stale: false };
+      const request = dataProvider.getQuote(symbol, "", context);
+      state = answered(await within(request, timeoutMs, (late) => apply(new Map([[symbol, answered(late)]]))));
     } catch (error: unknown) {
       state = { quote: fallback, loading: false, error: fallback ? null : errorMessage(error), stale: false };
     }
@@ -186,29 +197,33 @@ async function requestBoardQuotes(
   };
 
   if (dataProvider.getQuotesBatch) {
-    const controller = new AbortController();
+    const applyBatch = async (results: QuoteBatchResult[]) => {
+      const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
+      const answered: BoardQuoteMap = new Map();
+      const followUps: QuoteBatchResult[] = [];
+      for (const symbol of subset) {
+        const result = bySymbol.get(symbol);
+        if (result?.followUp) {
+          followUps.push(result);
+          continue;
+        }
+        answered.set(symbol, {
+          quote: result?.quote ?? null,
+          loading: false,
+          error: result?.error ? errorMessage(result.error) : null,
+          stale: false,
+        });
+      }
+      if (answered.size > 0) apply(answered);
+      await Promise.all(followUps.map((result) => askAlone(result.target.symbol, { cacheMode: result.followUp }, result.quote)));
+    };
     const results = await within(dataProvider.getQuotesBatch(
       subset.map((symbol) => ({ symbol, exchange: "" })),
-      { forceRefresh, deferFollowUps: true, signal: controller.signal },
-    ), timeoutMs, () => controller.abort());
-    const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
-    const answered: BoardQuoteMap = new Map();
-    const followUps: QuoteBatchResult[] = [];
-    for (const symbol of subset) {
-      const result = bySymbol.get(symbol);
-      if (result?.followUp) {
-        followUps.push(result);
-        continue;
-      }
-      answered.set(symbol, {
-        quote: result?.quote ?? null,
-        loading: false,
-        error: result?.error ? errorMessage(result.error) : null,
-        stale: false,
-      });
-    }
-    if (answered.size > 0) apply(answered);
-    await Promise.all(followUps.map((result) => askAlone(result.target.symbol, { cacheMode: result.followUp }, result.quote)));
+      { forceRefresh, deferFollowUps: true },
+    ), timeoutMs, (late) => {
+      applyBatch(late).catch(logFailure("shared.use-quote-board", "Apply late board quotes failed"));
+    });
+    await applyBatch(results);
     return;
   }
 
