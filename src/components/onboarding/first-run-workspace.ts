@@ -10,6 +10,7 @@ import {
 import type { TickerMetadata, TickerRecord } from "../../types/ticker";
 import { MAX_DESK_PICKS, type DeskKey } from "../../layout/desk-keys";
 import { DESKS, isDeskKey } from "../../layout/desks";
+import { buildDockStack } from "../../layout/pane-manager/dock-stack";
 
 /**
  * The watchlist a first run lands with: the two index ETFs and the names most
@@ -99,9 +100,10 @@ export function planFirstRunWatchlist(
 
 /**
  * The workspace a first run lands on: the holdings as a mark-to-market
- * heatmap, a watchlist, the largest position's chart, and the top news wire.
- * One small floating pane shows that panes are windows. Anything the host
- * cannot render is left out rather than shown as a placeholder.
+ * heatmap, a watchlist, the largest position's chart, the top news wire, and
+ * a market read beside it. Everything is docked, so the first screen reads at
+ * any window size. Anything the host cannot render is left out rather than
+ * shown as a placeholder.
  */
 export function buildFirstRunLayout({
   symbol,
@@ -155,29 +157,29 @@ export function buildFirstRunLayout({
         ? { instanceId: FIRST_RUN_PANE_IDS.indices, paneId: "world-indices", binding: { kind: "none" as const } }
         : null;
   if (secondary) instances.push(secondary);
-  const trending = hasPane("attention-trending");
-  if (trending) instances.push({ instanceId: FIRST_RUN_PANE_IDS.trending, paneId: "attention-trending", binding: { kind: "none" } });
-  const lower = secondary && trending ? { kind: "split" as const, axis: "horizontal" as const, ratio: 0.6,
-    first: { kind: "pane" as const, instanceId: secondary.instanceId }, second: { kind: "pane" as const, instanceId: FIRST_RUN_PANE_IDS.trending } }
-    : { kind: "pane" as const, instanceId: secondary?.instanceId ?? FIRST_RUN_PANE_IDS.trending };
 
-  // The float is a market read that stands on its own: the Fear & Greed
-  // gauge, else the indices where a host has no gauge. The shell clamps floats
-  // into the window, so an off-screen origin lands it in the bottom-right
-  // corner on any size, over the news list rather than the chart. The gauge
-  // takes 16 rows to reach its reading in the terminal, under the prior scores.
-  const floatingPaneId = hasPane("fear-greed")
+  // A market read that stands on its own: the Fear & Greed gauge, else the
+  // indices where a host has no gauge. It shares the spot beside the news with
+  // Trending, in front of it, as tabs: floated, the gauge covered half the
+  // news at 120x36 and most of the screen at 80x24, and a ticker opened from
+  // the command bar floated over it in turn. Its footer keeps the reading in
+  // view when the spot is too short for the dial.
+  const readPaneId = hasPane("fear-greed")
     ? "fear-greed"
     : secondary?.paneId !== "world-indices" && hasPane("world-indices")
       ? "world-indices"
       : null;
-  const floating: LayoutConfig["floating"] = [];
-  if (floatingPaneId) {
-    const gauge = floatingPaneId === "fear-greed";
-    const instanceId = gauge ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
-    instances.push({ instanceId, paneId: floatingPaneId, binding: { kind: "none" } });
-    floating.push({ instanceId, x: 9999, y: 9999, width: gauge ? 46 : 60, height: gauge ? 16 : 12 });
-  }
+  const readId = readPaneId === "fear-greed" ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
+  if (readPaneId) instances.push({ instanceId: readId, paneId: readPaneId, binding: { kind: "none" } });
+  const trending = hasPane("attention-trending");
+  if (trending) instances.push({ instanceId: FIRST_RUN_PANE_IDS.trending, paneId: "attention-trending", binding: { kind: "none" } });
+  const beside = buildDockStack([
+    ...(readPaneId ? [readId] : []),
+    ...(trending ? [FIRST_RUN_PANE_IDS.trending] : []),
+  ]);
+  const lower = secondary && beside ? { kind: "split" as const, axis: "horizontal" as const, ratio: 0.6,
+    first: { kind: "pane" as const, instanceId: secondary.instanceId }, second: beside }
+    : secondary ? { kind: "pane" as const, instanceId: secondary.instanceId } : beside;
 
   const layout: LayoutConfig = {
     dockRoot: {
@@ -191,7 +193,7 @@ export function buildFirstRunLayout({
         first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.heatmap },
         second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.watchlist },
       },
-      second: secondary || trending
+      second: lower
         ? {
           kind: "split",
           axis: "vertical",
@@ -202,7 +204,7 @@ export function buildFirstRunLayout({
         : { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.chart },
     },
     instances,
-    floating,
+    floating: [],
     detached: [],
   };
   return {

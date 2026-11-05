@@ -20,7 +20,7 @@ import { createReplay, liveSocket, replaySocket, routeDirectReads, seedScript, s
  *
  * - `web`: the real web build of each checkout (the browser renderer),
  *   signed out, with the workspace a first visit gets (a heat map, the
- *   watchlist, a chart, news, trending, the Fear & Greed gauge floating) and
+ *   watchlist, a chart, news, the Fear & Greed gauge and trending as tabs) and
  *   the watchlist's ticker floating over it, on the reads web-app.ts replays. `--stream live`
  *   streams quotes from Gloom Cloud as the web app does; `--stream replay`
  *   plays the quotes `--record-stream <s>` kept from it, at the pace they
@@ -242,9 +242,9 @@ const leaf = (instanceId: string) => ({ kind: "pane", instanceId });
 /**
  * The workspace a first visit gets from onboarding (first-run-workspace.ts):
  * the portfolio's heat map and the watchlist (its twelve starter names, two of
- * them crypto that trade all day), a chart, top news, trending and the Fear &
- * Greed gauge floating; with the watchlist's ticker opened over it, floating,
- * as a new pane opens.
+ * them crypto that trade all day), a chart, top news, and the Fear & Greed
+ * gauge in front of trending as tabs beside it; with the watchlist's ticker
+ * opened over it, floating, as a new pane opens.
  */
 const WEB_LAYOUT = {
   dockRoot: {
@@ -253,7 +253,10 @@ const WEB_LAYOUT = {
     second: {
       kind: "split", axis: "vertical", ratio: 0.62,
       first: leaf("chart-composer:home"),
-      second: { kind: "split", axis: "horizontal", ratio: 0.6, first: leaf("news-top:home"), second: leaf("attention-trending:home") },
+      second: {
+        kind: "split", axis: "horizontal", ratio: 0.6, first: leaf("news-top:home"),
+        second: { kind: "split", axis: "horizontal", ratio: 0.5, first: leaf("fear-greed:home"), second: leaf("attention-trending:home"), tabs: { active: "fear-greed:home" } },
+      },
     },
   },
   instances: [
@@ -267,7 +270,6 @@ const WEB_LAYOUT = {
   ],
   floating: [
     { instanceId: "ticker-research:float", x: 62, y: 6, width: 72, height: 26, zIndex: 61 },
-    { instanceId: "fear-greed:home", x: 9999, y: 9999, width: 46, height: 16, zIndex: 60 },
   ],
   detached: [],
 };
