@@ -2,6 +2,7 @@ import {
   createPersistScheduler,
   PLUGIN_STATE_SAVE_DEBOUNCE_MS,
   SESSION_SAVE_DEBOUNCE_MS,
+  type PersistScheduler,
 } from "../../../../state/persist-scheduler";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
 import { WriteThroughResourceStore } from "../../../../data/memory-resource-store";
@@ -10,16 +11,22 @@ import { logFailure } from "../../../../utils/log-failure";
 
 class RemoteSessionStore {
   private snapshot = getElectrobunBackendInitSnapshot()?.sessionSnapshot ?? null;
-  private readonly scheduler = createPersistScheduler<{
-    sessionId: string;
-    value: unknown;
-    schemaVersion: number;
-  }>({
-    delayMs: SESSION_SAVE_DEBOUNCE_MS,
-    save: async ({ sessionId, value, schemaVersion }) => {
-      await backendRequest("session.set", { sessionId, value, schemaVersion });
-    },
-  });
+  /** One debounced save per session, so a write or a delete of one session leaves another's pending save alone. */
+  private readonly schedulers = new Map<string, PersistScheduler<{ value: unknown; schemaVersion: number }>>();
+
+  private scheduler(sessionId: string): PersistScheduler<{ value: unknown; schemaVersion: number }> {
+    let scheduler = this.schedulers.get(sessionId);
+    if (!scheduler) {
+      scheduler = createPersistScheduler({
+        delayMs: SESSION_SAVE_DEBOUNCE_MS,
+        save: async ({ value, schemaVersion }) => {
+          await backendRequest("session.set", { sessionId, value, schemaVersion });
+        },
+      });
+      this.schedulers.set(sessionId, scheduler);
+    }
+    return scheduler;
+  }
 
   get<T>(sessionId = "app", schemaVersion = 1) {
     if (sessionId !== "app" || !this.snapshot) return null;
@@ -33,17 +40,17 @@ class RemoteSessionStore {
 
   set(sessionId: string, value: unknown, schemaVersion = 1): void {
     if (sessionId === "app") this.snapshot = value as typeof this.snapshot;
-    this.scheduler.schedule({ sessionId, value, schemaVersion });
+    this.scheduler(sessionId).schedule({ value, schemaVersion });
   }
 
   delete(sessionId: string): void {
     if (sessionId === "app") this.snapshot = null;
-    this.scheduler.cancel();
+    this.schedulers.get(sessionId)?.cancel();
     void backendRequest("session.delete", { sessionId }).catch(logFailure("desktop-view-persistence", "Could not delete a saved session"));
   }
 
-  flush(): Promise<void> {
-    return this.scheduler.flush();
+  async flush(): Promise<void> {
+    await Promise.all([...this.schedulers.values()].map((scheduler) => scheduler.flush()));
   }
 }
 
@@ -57,25 +64,42 @@ interface PluginStatePersistEntry {
 /** The latest unsaved change to one plugin key: its new value, or its removal. */
 type PluginStateChange = PluginStatePersistEntry | { pluginId: string; key: string; deleted: true };
 
+function changeKey({ pluginId, key }: PluginStateChange): string {
+  return `${pluginId}\u0000${key}`;
+}
+
 class RemotePluginStateStore {
   private readonly state = new Map<string, Map<string, unknown>>();
   private readonly unsaved = new Map<string, PluginStateChange>();
+  /** A save is armed or queued that has not taken the unsaved batch yet. */
+  private pending = false;
   // One batch for every key, armed by the first unsaved change and not pushed
   // back by later ones, so a key written on every frame cannot hold the others
   // back. Saves run one at a time and a key's latest change replaces its
-  // earlier one, so a delete and a later write cannot land out of order.
+  // earlier one, so a delete and a later write cannot land out of order. A
+  // change whose request failed goes back into the batch, unless a newer
+  // change to its key has replaced it, and goes out with the next save.
   private readonly saves = createPersistScheduler<void>({
     delayMs: PLUGIN_STATE_SAVE_DEBOUNCE_MS,
     save: async () => {
+      this.pending = false;
       const changes = [...this.unsaved.values()];
       this.unsaved.clear();
       const entries = changes.filter((change): change is PluginStatePersistEntry => !("deleted" in change));
-      await Promise.all([
+      const deletions = changes.filter((change) => "deleted" in change);
+      const [written, ...deleted] = await Promise.allSettled([
         entries.length > 0 ? backendRequest("pluginState.setMany", { entries }) : null,
-        ...changes
-          .filter((change) => "deleted" in change)
-          .map(({ pluginId, key }) => backendRequest("pluginState.delete", { pluginId, key })),
+        ...deletions.map(({ pluginId, key }) => backendRequest("pluginState.delete", { pluginId, key })),
       ]);
+      const failed = [
+        ...(written!.status === "rejected" ? entries : []),
+        ...deletions.filter((_, index) => deleted[index]!.status === "rejected"),
+      ];
+      for (const change of failed) {
+        if (!this.unsaved.has(changeKey(change))) this.unsaved.set(changeKey(change), change);
+      }
+      const failure = [written!, ...deleted].find((result) => result.status === "rejected");
+      if (failure) throw failure.reason;
     },
   });
 
@@ -113,15 +137,26 @@ class RemotePluginStateStore {
   }
 
   flush(): Promise<void> {
+    // Changes put back after a failed save have no save armed until this one.
+    if (this.unsaved.size > 0) this.arm();
     return this.saves.flush();
   }
 
   private record(change: PluginStateChange, immediate: boolean): void {
-    // A non-empty batch already has a save armed or queued that has not taken
-    // it yet, so only the first change arms one.
-    if (this.unsaved.size === 0 && !immediate) this.saves.schedule();
-    this.unsaved.set(`${change.pluginId}\u0000${change.key}`, change);
-    if (immediate) void this.saves.saveImmediately().catch(logFailure("desktop-view-persistence", "Could not save plugin state right away"));
+    this.unsaved.set(changeKey(change), change);
+    if (!immediate) {
+      this.arm();
+      return;
+    }
+    this.pending = true;
+    void this.saves.saveImmediately().catch(logFailure("desktop-view-persistence", "Could not save plugin state right away"));
+  }
+
+  /** Only the first change arms a save: one already armed or queued takes the whole batch when it runs. */
+  private arm(): void {
+    if (this.pending) return;
+    this.pending = true;
+    this.saves.schedule();
   }
 }
 
