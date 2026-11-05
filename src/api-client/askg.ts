@@ -85,6 +85,8 @@ export interface ASKGConversationTool {
   rowCount?: number;
   elapsedMs?: number;
   note?: string;
+  /** The number the answer cites this read by. */
+  ref?: number;
 }
 
 interface ASKGConversationMessage {

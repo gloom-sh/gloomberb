@@ -519,6 +519,16 @@ export interface PaneTemplateCreateOptions {
   listing?: TickerListingRef;
   /** Template-owned, validated data restored from a public pane share. */
   shareData?: unknown;
+  /**
+   * Pane settings set over the template's own, as `fn` and `shot` set a
+   * function's options: the view a source of an answer was read from.
+   */
+  settings?: Record<string, unknown>;
+  /**
+   * The pane's view state set the same way, for the options a pane keeps
+   * there rather than in its settings (FA's period and statement tab).
+   */
+  paneState?: Record<string, unknown>;
 }
 
 export interface PaneTemplateInstanceConfig {

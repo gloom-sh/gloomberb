@@ -39,10 +39,16 @@ export interface ASKGCapabilities {
    * repeats it, and a reopened conversation says it on its own response.
    */
   feedback?: 1;
+  /**
+   * 1: every read gets a source number (`ref` on its `tool-call` and
+   * `tool-executed` frames and in the stored transcript), and the answer cites
+   * it after each figure as `[n]`. Numbers run on across a conversation.
+   */
+  sources?: 1;
 }
 
 /** What this build offers at session start. */
-export const ASKG_CLIENT_CAPABILITIES: ASKGCapabilities = { scripts: 1, feedback: 1 };
+export const ASKG_CLIENT_CAPABILITIES: ASKGCapabilities = { scripts: 1, feedback: 1, sources: 1 };
 
 /** A thumbs up or down on one answer. */
 export type ASKGFeedbackRating = "up" | "down";
@@ -262,6 +268,8 @@ export interface ASKGToolCallEvent extends ASKGEventBase {
   preview: JsonValue;
   timeoutMs: number;
   expiresAt: string;
+  /** The number the answer cites this read by; absent on a write and from an older server. */
+  ref?: number;
 }
 
 /** Compact result information suitable for the tool timeline. */
@@ -301,6 +309,8 @@ interface ASKGToolExecutedEvent extends ASKGEventBase {
    * arguments were empty or too large to send.
    */
   args?: Record<string, JsonValue>;
+  /** The number the answer cites this read by, as on its `tool-call` frame. */
+  ref?: number;
 }
 
 /** Confirms that one client tool result was accepted by the turn loop. */

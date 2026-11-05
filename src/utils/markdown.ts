@@ -22,7 +22,9 @@ export interface InlineMarkdownOptions {
   links?: boolean | ((href: string) => boolean);
 }
 
-// A backslash escapes the punctuation markdown would read ("\\*" is a star).
+// A backslash escapes the punctuation markdown would read ("\\*" is a star),
+// a link's label included ("[\\[3\\]](href)" reads "[3]"). A bracket inside a
+// label is escaped: "[a [b](href)" links "b" only.
 // A bracket after a bang is a picture, which stays as written. A bare address
 // is read whole, so the underscores and stars in it are not marks. A mark
 // opens before a character and closes after one, so "2 * 3 * 4" is
@@ -30,7 +32,7 @@ export interface InlineMarkdownOptions {
 // An italic span may hold a bold one ("*covers **96%** of value*").
 const INLINE_RE = new RegExp([
   String.raw`\\(?<escaped>[\\` + "`" + String.raw`*_~#>[\]()-])`,
-  String.raw`(?<!!)\[(?<linkLabel>[^\]]+)\]\((?<linkHref>(?:[^()\s]|\([^()\s]*\))+)\)`,
+  String.raw`(?<!!)\[(?<linkLabel>(?:\\.|[^[\]\\])+)\]\((?<linkHref>(?:[^()\s]|\([^()\s]*\))+)\)`,
   String.raw`(?<url>\b(?:https?:\/\/|www\.)[^\s<>"']+)`,
   "(?<!`)(?<ticks>`{1,3})(?!`)(?<code>[^`]|[^`].*?[^`])\\k<ticks>(?!`)",
   String.raw`\*\*(?![\s*])(?<bold>[^*]+?)(?<!\s)\*\*`,

@@ -2263,6 +2263,8 @@ Unread also keeps the price alerts, catalyst alerts, economic release prints and
 
 Under each question, every source Gloom used is one line: what it read, for which portfolio or symbol, how many rows came back and how long it took. A result with gaps says the main one below (`3 of 94 positions had no price`). A click or `x` opens a row with everything it reported, and `o` opens the pane it came from.
 
+**Sources of an answer.** A figure in an answer is followed by the number of the read it came from, `[2]`, and the answer ends with its sources as the function, ticker and options that show the same data: `[1] QQ NVDA`, `[2] HP NVDA --range 6M`, `[3] FA NVDA --period quarterly`. A click on a number or a source opens it in its own pane, on that view. Once Esc has left the question field, `o` opens the answer's sources (a list when there are several), and the pane menu (`.`) lists each one. A read no function shows (a news search) is listed with `no pane` and opens nothing; an answer with figures that read no data says `No sources: this answer read no data`. A number is only ever a link to the read that carries it. The same words open the data from the command line: `gloom fn HP NVDA --range 6M`.
+
 **Watchlist changes.** Ask Gloom can add a ticker to one of your own watchlists (the one you name, else your first) or take one off. Team watchlists and portfolios it leaves alone. It asks first, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves it. Unanswered for about a minute, it closes and nothing changes.
 
 **Keys.** Esc leaves the question field for the answer, Enter goes back to the field.

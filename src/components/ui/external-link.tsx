@@ -165,6 +165,46 @@ export function ExternalLinkText(
   );
 }
 
+/**
+ * A link to something in the app (a pane, the source of a figure) rather than
+ * a web page: the look of `ExternalLinkText`, pressed by a click or Enter,
+ * without an address to copy.
+ */
+export function LinkText(
+  { label, onPress, color }: {
+    label: string;
+    onPress: () => void;
+    color?: string;
+  },
+) {
+  const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  const press = (event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    onPress();
+  };
+  return (
+    <Text
+      fg={color ?? (nativePaneChrome ? "inherit" : colors.textBright)}
+      attributes={TextAttributes.UNDERLINE}
+      cursor="pointer"
+      role="link"
+      data-gloom-link="true"
+      tabIndex={0}
+      onKeyDown={(event: any) => {
+        if (event.key === "Enter" || event.name === "return") press(event);
+      }}
+      onMouseDown={(event: any) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        press(event);
+      }}
+    >
+      {label}
+    </Text>
+  );
+}
+
 export function ExternalLink(
   { url, label, color, onOpen }: {
     url: string;

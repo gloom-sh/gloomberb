@@ -19,6 +19,19 @@ describe("parseInlineMarkdown", () => {
     ]);
   });
 
+  test("a link's label may escape its brackets, and an unescaped one starts the label anew", () => {
+    // Ask Gloom links a citation as "[\\[3\\]](gloom-source:3)" so it still reads "[3]".
+    expect(parseInlineMarkdown("up 2% [\\[3\\]](gloom-source:3)\\[5\\]", { links: true })).toEqual([
+      { text: "up 2% " },
+      { text: "[3]", link: "gloom-source:3" },
+      { text: "[5]" },
+    ]);
+    expect(parseInlineMarkdown("a [b\\](x) [c](d)", { links: true })).toEqual([
+      { text: "a [b](x) " },
+      { text: "c", link: "d" },
+    ]);
+  });
+
   // Each of these once read as a mark and swallowed the text after it.
   test.each([
     "2 * 3 * 4 = 24",

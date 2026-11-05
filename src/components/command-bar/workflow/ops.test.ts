@@ -158,6 +158,36 @@ describe("createPaneTemplateOrThrow", () => {
     }
   });
 
+  // An Ask Gloom source (`FA NVDA --period quarterly`) opens on the view its
+  // figure was read from: FA keeps the period in view state, HP its range in settings.
+  test("opens with the caller's settings over the template's and its view state on the new pane", async () => {
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-workflow-ops-test"));
+    const built: Array<Record<string, unknown> | undefined> = [];
+    const actions: unknown[] = [];
+    await createPaneTemplateOrThrow("fa-pane", {
+      symbol: "NVDA",
+      settings: { range: "6M" },
+      paneState: { financialPeriod: "quarterly" },
+    }, templateDeps(state, {
+      template: {
+        id: "fa-pane",
+        paneId: "financials",
+        label: "Financials",
+        description: "Financials",
+        createInstance: () => ({ binding: { kind: "fixed", symbol: "NVDA" }, settings: { range: "1Y", hideTabs: false } }),
+      },
+      pane: { id: "financials", name: "Financials", component: () => null, defaultPosition: "right" },
+      buildPaneInstance: (_paneId, options) => {
+        built.push(options?.settings);
+        return { instanceId: "financials:nvda", paneId: "financials" };
+      },
+      dispatch: (action) => { actions.push(action); },
+    }));
+
+    expect(built).toEqual([{ range: "6M", hideTabs: false }]);
+    expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId: "financials:nvda", patch: { financialPeriod: "quarterly" } });
+  });
+
   test("treats createInstance null as cancellation and does not create a pane", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
     const state = createInitialState(config);
