@@ -3,6 +3,10 @@ import type { CSSProperties } from "react";
 import type { DialogActionsProps, DialogHintsProps } from "../../../components/ui/dialog-actions";
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
+import { formatShortcutForHost, keyNotationFor } from "../../../app/keybindings/labels";
+import { ariaKeyShortcut } from "../../../app/keybindings/chord";
+
+export { ariaKeyShortcut };
 
 /** Keys a keycap draws as the symbol printed on the key; the rest keep their name. */
 const KEY_SYMBOLS: Record<string, string> = {
@@ -16,36 +20,18 @@ const KEY_SYMBOLS: Record<string, string> = {
   escape: "Esc",
 };
 
-/** `aria-keyshortcuts` names, from the UI Events key values. */
-const ARIA_KEYS: Record<string, string> = {
-  esc: "Escape",
-  escape: "Escape",
-  enter: "Enter",
-  return: "Enter",
-  left: "ArrowLeft",
-  right: "ArrowRight",
-  up: "ArrowUp",
-  down: "ArrowDown",
-  ctrl: "Control",
-  cmd: "Meta",
-  alt: "Alt",
-  option: "Alt",
-  shift: "Shift",
-};
-
-/** "Shift+Enter" reads ⇧↵ and "Enter" ↵; "Ctrl+G", "Esc" and "y" stay as they are. */
+/**
+ * On a Mac, the key in Apple's notation (formatShortcutForHost): "Shift+Enter"
+ * is ⇧↩ and "Ctrl+G" ⌃G. Elsewhere "Shift+Enter" reads ⇧↵ and "Enter" ↵, and
+ * "Ctrl+G", "Esc" and "y" stay as they are.
+ */
 function keycapText(key: string): string {
+  if (keyNotationFor("platform") === "mac") return formatShortcutForHost(key, "platform");
   return key
     .split("+")
     .map((part) => KEY_SYMBOLS[part.trim().toLowerCase()] ?? part.trim())
     .join("+")
     .replaceAll("⇧+", "⇧");
-}
-
-/** The `aria-keyshortcuts` value for one key chord, such as "Shift+Enter" or "Escape". */
-export function ariaKeyShortcut(key: string | undefined): string | undefined {
-  if (!key) return undefined;
-  return key.split("+").map((part) => ARIA_KEYS[part.trim().toLowerCase()] ?? part.trim()).join("+");
 }
 
 /**

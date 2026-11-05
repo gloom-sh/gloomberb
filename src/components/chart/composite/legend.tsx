@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { Box, ScrollBox, Span, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
@@ -236,6 +236,7 @@ export function CompositeLegend({
   onToggleCollapsed?: () => void;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
+  const foldKey = useShortcutLabel()("Shift+L");
   // Folded, the legend keeps its first series; the rest wait behind a count.
   const foldedCount = collapsed ? Math.max(0, allSeries.length - 1) : 0;
   const series = foldedCount > 0 ? allSeries.slice(0, 1) : allSeries;
@@ -526,8 +527,8 @@ export function CompositeLegend({
   );
   const lineCount = lines?.length ?? 1;
   const foldLabel = foldedCount > 0
-    ? `Show ${foldedCount} more series (Shift+L)`
-    : "Collapse the legend to its first series (Shift+L)";
+    ? `Show ${foldedCount} more series (${foldKey})`
+    : `Collapse the legend to its first series (${foldKey})`;
   const pressFold = (event: ChartMouseEvent) => {
     consumeChartMouseEvent(event);
     onToggleCollapsed?.();

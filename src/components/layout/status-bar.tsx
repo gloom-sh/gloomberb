@@ -16,17 +16,11 @@ import { useAppChromeShown } from "./presentation";
 import { useViewport } from "../../react/input";
 import {
   advertisedChord,
-  formatKeyChord,
-  primaryModifierFor,
+  formatChordForHost,
   useKeybindings,
   type KeyChord,
 } from "../../app/keybindings";
-import {
-  detectShortcutPlatform,
-  getShortcutDisplayMode,
-  type ShortcutDisplayMode,
-  type ShortcutPlatform,
-} from "../../utils/shortcut-labels";
+import { getShortcutDisplayMode, type ShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
   shouldShowTidyWindows,
@@ -97,30 +91,12 @@ type StatusBarViewProps = {
 };
 
 /**
- * A chord as short as a tab label allows: `^2`, `^⇧F`, and on the Mac desktop
- * `⌘2` or `⇧⌘F`, in the order its menus write them. A digit chord names the
- * one digit given.
+ * A chord as short as a tab label allows: `^2`, `^⇧F`, and on a Mac `⌘2` or
+ * `⇧⌘F`. A digit chord names the one digit given.
  */
-function compactChordLabel(
-  chord: KeyChord,
-  mode: ShortcutDisplayMode,
-  platform: ShortcutPlatform = detectShortcutPlatform(),
-  digit?: number,
-): string {
-  const mac = mode === "platform" && platform === "darwin";
-  const primaryIsCmd = primaryModifierFor(mode, platform) === "cmd";
-  const ctrl = chord.ctrl || (chord.primary && !primaryIsCmd);
-  const cmd = chord.cmd || (chord.primary && primaryIsCmd);
-  const key = chord.key === "digit" && digit !== undefined
-    ? String(digit)
-    : formatKeyChord({ key: chord.key, ctrl: false, cmd: false, primary: false, alt: false, shift: false }, { primaryModifier: "ctrl" });
-  return [
-    ctrl ? "^" : "",
-    chord.alt ? (mac ? "⌥" : "Alt+") : "",
-    chord.shift ? "⇧" : "",
-    cmd ? (mac ? "⌘" : "Super+") : "",
-    key,
-  ].join("");
+function compactChordLabel(chord: KeyChord, mode: ShortcutDisplayMode, digit?: number): string {
+  const named = chord.key === "digit" && digit !== undefined ? { ...chord, key: String(digit) } : chord;
+  return formatChordForHost(named, mode, undefined, { compact: true });
 }
 
 function truncate(text: string, width: number): string {
@@ -165,7 +141,7 @@ export function StatusBar() {
   // nine there is no digit, and a rebinding off the digits has none either.
   const switchChord = advertisedChord(keybindings, "switch-layout", shortcutMode);
   const tabKey = (index: number): string => (
-    switchChord?.key === "digit" && index < 9 ? `${compactChordLabel(switchChord, shortcutMode, undefined, index + 1)} ` : ""
+    switchChord?.key === "digit" && index < 9 ? `${compactChordLabel(switchChord, shortcutMode, index + 1)} ` : ""
   );
 
   const hasMultipleLayouts = layouts.length > 1 || !!transientLayout;

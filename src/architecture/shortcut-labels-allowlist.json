@@ -1,0 +1,11 @@
+{
+  "src/cli/commands/keybindings.ts": "CLI errors for `config set keybindings`: example chords in the config grammar the user types.",
+  "src/cli/commands/system.ts": "CLI help: example `config set keybindings` commands, written in the config grammar.",
+  "src/plugins/builtin/alerts/cli.ts": "`gloom alerts` output, which sends the reader to the terminal app (`gloom`), where Ctrl+P opens the command bar.",
+  "src/plugins/builtin/alerts/event-rows.ts": "needsSignInNote is printed by `gloom alerts` and the headless read only: it names the terminal app's Ctrl+P.",
+  "src/plugins/builtin/alerts/headless.ts": "Headless and CLI text that sends the reader to the terminal app (`gloom`), where Ctrl+P opens the command bar.",
+  "src/plugins/builtin/cloud/askg/lock-note.ts": "What `gloom fn ASKG` prints behind the sign-in wall: it names the terminal app's Ctrl+P.",
+  "src/plugins/builtin/cloud/thesis/prompts.tsx": "A TextPromptDialog footer, which only the terminal shows (desktopFooter is null; the desktop shows the keys on the buttons).",
+  "src/plugins/builtin/custom-view/pane.tsx": "A TextPromptDialog footer, which only the terminal shows (desktopFooter is null; the desktop shows the keys on the buttons).",
+  "src/plugins/builtin/shared/pro-lock-note.ts": "Lock notes `gloom fn` prints, which send the reader to the terminal app (`gloom`), where Ctrl+P opens the command bar."
+}

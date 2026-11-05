@@ -23,6 +23,7 @@ export {
   useCommandBarShortcut,
   useNativeRenderer,
   useRendererHost,
+  useShortcutLabel,
   useSyntaxStyleFactory,
   useUiCapabilities,
   useUiHost,

@@ -1,4 +1,4 @@
-import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
+import { Box, Span, Text, TextAttributes, useShortcutLabel, useUiCapabilities } from "../../../../ui";
 import { useRef } from "react";
 import { colors, blendHex } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
@@ -214,6 +214,7 @@ function OverflowHintNode({ hint }: { hint: PaneHint }) {
 
 function FooterOverflowMenu({ hints, width, label }: { hints: PaneHint[]; width: number; label: string }) {
   const dialog = useOptionalDialog();
+  const keyLabel = useShortcutLabel();
   const open = () => {
     if (!dialog || hints.length === 0) return;
     void dialog.prompt<string>({
@@ -224,7 +225,7 @@ function FooterOverflowMenu({ hints, width, label }: { hints: PaneHint[]; width:
           title={t("Pane actions")}
           choices={hints.map((hint, index) => ({
             id: String(index),
-            label: `[${hint.key}]${hint.label}`,
+            label: `[${keyLabel(hint.key)}]${hint.label}`,
             disabled: !hint.onPress,
           }))}
         />
@@ -260,13 +261,15 @@ function FooterContent({
   const backgroundColor = showBackground ? blendHex(colors.bg, dividerColor, focused ? 0.12 : 0.06) : undefined;
   const availableWidth = width && width > 0 ? Math.floor(width) : null;
   const iconReserve = footer.info.reduce((total, segment) => total + iconSegmentReserve(segment, focused, nativePaneChrome), 0);
+  // Measured as the keys show: `[⌃S]` on a Mac takes fewer cells than `[Ctrl+S]`.
+  const keyLabel = useShortcutLabel();
   const row = availableWidth !== null
-    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve)
+    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, keyLabel)
     : null;
   const shownHints = row?.hints ?? actionableHints;
   const overflowHints = row?.overflow ?? [];
   const hasHints = shownHints.length > 0 || overflowHints.length > 0;
-  const hintsWidth = hasHints ? (row?.hintsWidth ?? totalHintsWidth(shownHints)) : 0;
+  const hintsWidth = hasHints ? (row?.hintsWidth ?? totalHintsWidth(shownHints, keyLabel)) : 0;
   const infoWidth = availableWidth !== null && hasInfo
     ? (row?.infoWidth ?? Math.max(0, availableWidth - hintsWidth))
     : undefined;

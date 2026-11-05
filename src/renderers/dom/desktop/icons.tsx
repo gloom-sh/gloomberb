@@ -1,5 +1,7 @@
 /** @jsxImportSource react */
 import { releasePointerFocus } from "../host/focus-scope";
+import { formatShortcutForHost } from "../../../app/keybindings/labels";
+import { ariaKeyShortcut } from "./dialog-actions";
 import type { ReactNode } from "react";
 import type { IconButtonProps, IconName, IconProps } from "../../../components/ui/icon";
 
@@ -232,9 +234,9 @@ export function WebIconButton({
       className="gloom-icon-button"
       aria-label={label}
       aria-pressed={pressed}
-      aria-keyshortcuts={shortcut}
+      aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       aria-haspopup={hasPopup}
-      title={title ?? (shortcut ? `${label} (${shortcut})` : label)}
+      title={title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label)}
       disabled={disabled || !onPress}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
       data-gloom-role="icon-button"

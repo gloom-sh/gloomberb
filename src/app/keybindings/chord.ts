@@ -175,25 +175,169 @@ export function serializeKeyChord(chord: KeyChord): string {
   return parts.join("+");
 }
 
+/**
+ * How a host writes keys. `text` spells them out joined by `+` (`Ctrl+Shift+F`),
+ * as terminals, Windows and Linux do; `mac` is Apple's notation: the modifier
+ * symbols in the order its menus use, Control, Option, Shift, Command, then the
+ * key, with nothing between (`⇧⌘F`, `⌥↩`).
+ */
+export type KeyNotation = "text" | "mac";
+
 export interface FormatKeyChordOptions {
   /** What `CmdOrCtrl` reads as on this host. */
   primaryModifier: PrimaryModifier;
   /** The label for an explicit Command chord; Windows and Linux desktops call it Super. */
   cmdLabel?: string;
+  notation?: KeyNotation;
+  /**
+   * As short as a tab label allows, in text notation: `^` for Control and `⇧`
+   * for Shift (`^2`, `^⇧F`). Mac notation is already that short.
+   */
+  compact?: boolean;
 }
 
-/** The label users see: `Ctrl+Shift+F` in a terminal, `Cmd+Shift+F` on a Mac. */
-export function formatKeyChord(chord: KeyChord, options: FormatKeyChordOptions): string {
+const MAC_MODIFIER_SYMBOLS = { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘" } as const;
+
+/**
+ * Keys a Mac names by the symbol its menus print. The rest keep their names:
+ * `Esc`, `Space`, `Home` and `PageUp` read better spelled out than as ⎋, ↖ or ⇞.
+ */
+const MAC_KEY_SYMBOLS: Record<string, string> = {
+  return: "↩",
+  tab: "⇥",
+  backspace: "⌫",
+  delete: "⌦",
+  up: "↑",
+  down: "↓",
+  left: "←",
+  right: "→",
+};
+
+type ChordModifiers = Pick<KeyChord, "ctrl" | "cmd" | "primary" | "alt" | "shift">;
+
+function modifierPrefix(modifiers: ChordModifiers, options: FormatKeyChordOptions): string {
+  const ctrl = modifiers.ctrl || (modifiers.primary && options.primaryModifier === "ctrl");
+  const cmd = modifiers.cmd || (modifiers.primary && options.primaryModifier === "cmd");
+  if (options.notation === "mac") {
+    return (ctrl ? MAC_MODIFIER_SYMBOLS.ctrl : "")
+      + (modifiers.alt ? MAC_MODIFIER_SYMBOLS.alt : "")
+      + (modifiers.shift ? MAC_MODIFIER_SYMBOLS.shift : "")
+      + (cmd ? MAC_MODIFIER_SYMBOLS.cmd : "");
+  }
   const cmdLabel = options.cmdLabel ?? "Cmd";
+  if (options.compact) {
+    return (ctrl ? "^" : "") + (modifiers.alt ? "Alt+" : "") + (modifiers.shift ? "⇧" : "") + (cmd ? `${cmdLabel}+` : "");
+  }
+  // The primary modifier leads, as it always has: `Cmd+Ctrl+K` for a chord bound to both.
   const parts: string[] = [];
-  if (chord.primary) parts.push(options.primaryModifier === "cmd" ? cmdLabel : "Ctrl");
-  if (chord.ctrl) parts.push("Ctrl");
-  if (chord.cmd) parts.push(cmdLabel);
-  if (chord.alt) parts.push("Alt");
-  if (chord.shift) parts.push("Shift");
+  if (modifiers.primary) parts.push(options.primaryModifier === "cmd" ? cmdLabel : "Ctrl");
+  if (modifiers.ctrl) parts.push("Ctrl");
+  if (modifiers.cmd) parts.push(cmdLabel);
+  if (modifiers.alt) parts.push("Alt");
+  if (modifiers.shift) parts.push("Shift");
+  return parts.map((part) => `${part}+`).join("");
+}
+
+/**
+ * The label users see: `Ctrl+Shift+F` in a terminal and on Windows and Linux,
+ * `⇧⌘F` on a Mac.
+ */
+export function formatKeyChord(chord: KeyChord, options: FormatKeyChordOptions): string {
   const named = NAMED_KEY_BY_ALIAS.get(chord.key);
-  parts.push(named ? named.label : isLetter(chord.key) ? chord.key.toUpperCase() : chord.key);
-  return parts.join("+");
+  const key = options.notation === "mac" && MAC_KEY_SYMBOLS[chord.key]
+    ? MAC_KEY_SYMBOLS[chord.key]!
+    : named ? named.label : isLetter(chord.key) ? chord.key.toUpperCase() : chord.key;
+  return modifierPrefix(chord, options) + key;
+}
+
+/** Leading modifiers of a written shortcut, in the grammar parseKeyChord reads: `Ctrl+`, `Cmd/Ctrl+Shift+`, `Alt+`. */
+const WRITTEN_MODIFIERS = new RegExp(`^(?:(?:${Object.keys(MODIFIER_TOKENS).join("|")})\\+)+`, "i");
+
+/** A key written alone in Mac notation takes its symbol only when spelled as a label is (`Enter`, `Up`), never a code such as `UP`. */
+const TITLE_CASE = /^[A-Z][a-z]+$/;
+
+function macWrittenKey(written: string, modified: boolean): string {
+  const named = NAMED_KEY_BY_ALIAS.get(written.toLowerCase());
+  const symbol = named ? MAC_KEY_SYMBOLS[named.key] : undefined;
+  if (symbol && (modified || TITLE_CASE.test(written))) return symbol;
+  return modified && isLetter(written) ? written.toUpperCase() : written;
+}
+
+/**
+ * A shortcut written as text, as panes, menus and help rows name keys
+ * (`Ctrl+S`, `Shift+Enter`, `CmdOrCtrl+F`, `Shift+Left/Right`, `Ctrl+P/N`,
+ * `Alt+Drag`, `Up/Down`), in the host's notation. Text notation only says
+ * which modifier `CmdOrCtrl` is and leaves the rest as written. Mac notation
+ * writes the modifiers as symbols and the keys that have one as theirs
+ * (`⌃S`, `⇧↩`, `⌘F`, `⇧←/→`, `⌃P/N`, `⌥Drag`, `↑/↓`); text that names no
+ * modifier or key, such as `a`, `G`, `DES` or `Drag`, and a label already in
+ * Mac notation come back unchanged.
+ */
+export function formatShortcutText(text: string, options: FormatKeyChordOptions): string {
+  if (options.notation !== "mac") {
+    const primary = options.primaryModifier === "cmd" ? options.cmdLabel ?? "Cmd" : "Ctrl";
+    return text.replace(/Cmd\/Ctrl|CmdOrCtrl/g, primary);
+  }
+  // A modifier named alone ("Shift pans further") is its symbol.
+  const lone = MODIFIER_TOKENS[text.toLowerCase()];
+  if (lone && lone !== "primary" && TITLE_CASE.test(text)) return MAC_MODIFIER_SYMBOLS[lone];
+  const prefix = WRITTEN_MODIFIERS.exec(text)?.[0] ?? "";
+  const rest = text.slice(prefix.length);
+  if (!rest) return text;
+  const modifiers: ChordModifiers = { ctrl: false, cmd: false, primary: false, alt: false, shift: false };
+  for (const token of prefix.split(/\+/).filter(Boolean)) {
+    const modifier = MODIFIER_TOKENS[token.toLowerCase()];
+    if (modifier) modifiers[modifier] = true;
+  }
+  // `Left/Right` is either key; a lone `/` is the slash key, and `+/-` is plus or minus.
+  const pieces = rest.split("/");
+  const keys = pieces.every((piece) => piece.length > 0) ? pieces : [rest];
+  return modifierPrefix(modifiers, options) + keys.map((key) => macWrittenKey(key, prefix.length > 0)).join("/");
+}
+
+/** `aria-keyshortcuts` names, from the UI Events key values, for keys written out or as Mac symbols. */
+const ARIA_KEYS: Record<string, string> = {
+  esc: "Escape",
+  escape: "Escape",
+  enter: "Enter",
+  return: "Enter",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  up: "ArrowUp",
+  down: "ArrowDown",
+  ctrl: "Control",
+  cmd: "Meta",
+  alt: "Alt",
+  option: "Alt",
+  shift: "Shift",
+  "⌃": "Control",
+  "⌥": "Alt",
+  "⇧": "Shift",
+  "⌘": "Meta",
+  "↩": "Enter",
+  "⇥": "Tab",
+  "⌫": "Backspace",
+  "⌦": "Delete",
+  "←": "ArrowLeft",
+  "→": "ArrowRight",
+  "↑": "ArrowUp",
+  "↓": "ArrowDown",
+};
+
+/** Mac modifier symbols lead a label with no `+` between them: ⇧⌘↩ is Shift, Meta, Enter. */
+const MAC_MODIFIER_RUN = /^[⌃⌥⇧⌘]+/;
+
+/**
+ * The `aria-keyshortcuts` value for one key chord, such as "Shift+Enter" or
+ * "Escape", written out or as a Mac label (⇧⌘↩).
+ */
+export function ariaKeyShortcut(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+  const symbols = MAC_MODIFIER_RUN.exec(key)?.[0] ?? "";
+  const parts = symbols && !key.includes("+")
+    ? [...symbols, key.slice(symbols.length)]
+    : key.split("+");
+  return parts.map((part) => ARIA_KEYS[part.trim().toLowerCase()] ?? part.trim()).join("+");
 }
 
 export function keyChordsEqual(left: KeyChord, right: KeyChord): boolean {

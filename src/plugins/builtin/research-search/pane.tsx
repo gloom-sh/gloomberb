@@ -21,7 +21,7 @@ import {
 import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Box, useShortcutLabel, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -99,6 +99,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const openPlan = useCloudPlanAction();
   const openUpgrade = useCloudUpgradeAction("srch-wall");
   const dialog = useDialog();
+  const saveKey = useShortcutLabel()("Ctrl+S");
 
   const [seedQuery] = usePaneSettingValue("query", "");
   const [mode, setMode] = usePluginPaneState<PaneMode>("mode", "results");
@@ -520,7 +521,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
           height={Math.max(1, height - tabRows)}
           emptyTitle={savedStatus === "loading"
             ? "Loading saved searches..."
-            : "Run a search, then press Ctrl+S to save it and get keyword alerts."}
+            : `Run a search, then press ${saveKey} to save it and get keyword alerts.`}
         />
       </Box>
     );

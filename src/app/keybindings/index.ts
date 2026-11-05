@@ -4,7 +4,6 @@ export {
   type CoreKeybindingActionId,
 } from "./actions";
 export {
-  formatKeyChord,
   isTypingChord,
   keyChordFromEvent,
   matchesKeyChord,
@@ -31,6 +30,7 @@ export {
   formatActionChords,
   formatAdvertisedChord,
   formatChordForHost,
+  formatShortcutForHost,
   menuAcceleratorFor,
   primaryModifierFor,
   shortActionLabel,

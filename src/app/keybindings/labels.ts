@@ -4,7 +4,15 @@ import {
   type ShortcutPlatform,
 } from "../../utils/shortcut-labels";
 import { t, tf } from "../../i18n";
-import { formatKeyChord, serializeKeyChord, type KeyChord, type PrimaryModifier } from "./chord";
+import {
+  formatKeyChord,
+  formatShortcutText,
+  serializeKeyChord,
+  type FormatKeyChordOptions,
+  type KeyChord,
+  type KeyNotation,
+  type PrimaryModifier,
+} from "./chord";
 import type { ResolvedKeybindingAction, ResolvedKeybindings } from "./resolve";
 
 /** What `CmdOrCtrl` is on this host: Control in a terminal, Command on a Mac desktop. */
@@ -20,15 +28,50 @@ function cmdLabelFor(platform: ShortcutPlatform): string {
   return platform === "darwin" ? "Cmd" : "Super";
 }
 
+/**
+ * Apple's symbols on a Mac, in the desktop app and in a Mac browser; spelled-out
+ * keys in a terminal, which reads Control on a Mac too, and on Windows and Linux.
+ */
+export function keyNotationFor(
+  mode: ShortcutDisplayMode,
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+): KeyNotation {
+  return mode === "platform" && platform === "darwin" ? "mac" : "text";
+}
+
+function hostFormatOptions(mode: ShortcutDisplayMode, platform: ShortcutPlatform): FormatKeyChordOptions {
+  return {
+    primaryModifier: primaryModifierFor(mode, platform),
+    cmdLabel: cmdLabelFor(platform),
+    notation: keyNotationFor(mode, platform),
+  };
+}
+
+/**
+ * Every key label the app shows goes through here or {@link formatShortcutForHost}:
+ * `Ctrl+Shift+F` in a terminal and on Windows and Linux, `⇧⌘F` on a Mac.
+ * `compact` is the status bar's tab form (`^2`, `^⇧F`).
+ */
 export function formatChordForHost(
   chord: KeyChord,
   mode: ShortcutDisplayMode,
   platform: ShortcutPlatform = detectShortcutPlatform(),
+  { compact = false }: { compact?: boolean } = {},
 ): string {
-  return formatKeyChord(chord, {
-    primaryModifier: primaryModifierFor(mode, platform),
-    cmdLabel: cmdLabelFor(platform),
-  });
+  return formatKeyChord(chord, { ...hostFormatOptions(mode, platform), compact });
+}
+
+/**
+ * A key written as text (`Ctrl+S`, `Shift+Enter`, `CmdOrCtrl+F`,
+ * `Shift+Left/Right`) as this host shows keys: `⌃S`, `⇧↩`, `⌘F`, `⇧←/→` on a
+ * Mac, as written elsewhere, with `CmdOrCtrl` resolved to Ctrl.
+ */
+export function formatShortcutForHost(
+  text: string,
+  mode: ShortcutDisplayMode,
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+): string {
+  return formatShortcutText(text, hostFormatOptions(mode, platform));
 }
 
 /**
@@ -53,7 +96,7 @@ export function formatActionChords(
 /**
  * The one chord a host advertises for an action when there is room for a single
  * label. The terminal takes the first chord it can deliver; desktop hosts prefer
- * a chord on the platform modifier, so the header says Cmd+K on a Mac while the
+ * a chord on the platform modifier, so the header says ⌘K on a Mac while the
  * terminal keeps saying Ctrl+P. Empty when the action is unbound.
  */
 export function advertisedChord(
