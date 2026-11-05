@@ -290,7 +290,7 @@ export function TerminalPaneLinkChip({
 /**
  * A chip's lead square written inside a line of text: a figure's source
  * number in an Ask Gloom answer, which opens what the chip of the same number
- * opens. The terminal draws it as the chip's square (` 2 `); the desktop and
+ * opens. The terminal draws it as the chip's square (`▐2▌`); the desktop and
  * the web as the same square at the text's size, pressed to open.
  */
 export function PaneLinkMarker({
@@ -298,7 +298,7 @@ export function PaneLinkMarker({
   native,
   onOpen,
 }: {
-  /** What it stands for (`3`); the terminal pads it to the width of the `[3]` it replaces. */
+  /** What it stands for (`3`); the terminal pads it to the width of the `[3]` it replaces (`▐3▌`). */
   label: string;
   /** The desktop and the web, where part of a line can be pressed. */
   native: boolean;
@@ -308,8 +308,16 @@ export function PaneLinkMarker({
   const [hovered, setHovered] = useState(false);
   const text = label.trim();
   if (!native) {
-    // Padded with no-break spaces, so a line never wraps inside the square.
-    return <Span fg={colors.textBright} bg={leadSurface(colors.panel, colors.text)} attributes={TextAttributes.BOLD}>{`\u00a0${text}\u00a0`}</Span>;
+    // Half blocks in the square's colour pad it, not spaces: the terminal
+    // wraps at any space, and a line must never end inside the square.
+    const surface = leadSurface(colors.panel, colors.text);
+    return (
+      <>
+        <Span fg={surface}>{"\u2590"}</Span>
+        <Span fg={colors.textBright} bg={surface} attributes={TextAttributes.BOLD}>{text}</Span>
+        <Span fg={surface}>{"\u258c"}</Span>
+      </>
+    );
   }
   return (
     <Span

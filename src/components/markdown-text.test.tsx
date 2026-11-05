@@ -135,6 +135,21 @@ describe("MarkdownText links", () => {
     expect(await render(text, 80, () => {})).toEqual(["![Chart](https://gloom.sh/chart.png) and the docs."]);
   });
 
+  test("a link drawn as a chip's square never ends a line inside the square", async () => {
+    // The terminal wraps at any space, so the square is padded with half blocks.
+    await act(async () => {
+      await tui.render(
+        <MarkdownText text="aaaa bbbb cccc dddd [ 2 ](gloom-source:2). eeee" lineWidth={21} onOpenLink={() => {}} linkChips />,
+        { width: 21, height: 6 },
+      );
+    });
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    const lines = tui.frame().split("\n").map((line) => line.trimEnd()).filter(Boolean);
+    expect(lines).toEqual(["aaaa bbbb cccc dddd", "\u25902\u258c. eeee"]);
+  });
+
   test("lists the links a text reads, whole labels in reading order", () => {
     expect(markdownLinks([
       "- Read [the **keys**](/docs/keys), not `[code](/no)`, and ![a picture](/shot.png).",
