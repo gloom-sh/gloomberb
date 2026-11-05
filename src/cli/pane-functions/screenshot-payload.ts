@@ -412,6 +412,11 @@ export async function buildDesktopShotPayload(
       if (capture.chain) optionsChains.push(capture.chain);
     }
   }
+  // PF over a period draws the report's P&L between the two closes: the page reads no history of its own.
+  if (resolved.pane.id === "portfolio-list" && typeof resolved.options.from === "string" && resolved.options.from) {
+    const loaded = await loadModel();
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, periodPnlSnapshot: loaded.result.metadata?.periodPnl ?? null } };
+  }
   // A scanner pane reads one answer from the capture's own session: the page's socket is refused (see createSnapshotScannerClient).
   const scannerKind = SCANNER_PANE_KINDS[resolved.pane.id];
   const scannerSnapshots: ScannerCapture[] = scannerKind

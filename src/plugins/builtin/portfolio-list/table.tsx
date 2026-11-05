@@ -35,6 +35,8 @@ const TICKER_DOT_WIDTH = 2;
 const MAX_TICKER_COLUMN_WIDTH = 22;
 /** WEIGHT's header on a book that holds a short: its weights are shares of gross exposure. As wide as WEIGHT. */
 const GROSS_WEIGHT_LABEL = "GROSS WT";
+/** P&L%'s header over a period: each position's P&L as a share of the book at the start. */
+const CONTRIBUTION_LABEL = "CONTRIB";
 
 /** The widest a futures quantity grows the QTY column: `-12,000 × 5,000 bushels` fits. */
 const MAX_QUANTITY_COLUMN_WIDTH = 24;
@@ -227,8 +229,9 @@ export function PortfolioTickerTable({
     [columnContext, futuresFrontNotes, noteColumnId, sinceLastSeen],
   );
   const pnlColumn = columns.find((column) => column.id === "pnl" || column.id === "pnl_pct");
-  // Reads the same cached P&L cells the rows show; only changed rows recompute.
-  const pnlLabel = pnlColumn ? portfolioPnlLabel(sortedTickers.map((ticker) =>
+  const period = !!columnContext.periodPnl;
+  // Reads the same cached P&L cells the rows show; only changed rows recompute. A period's P&L is one basis: the closes.
+  const pnlLabel = pnlColumn && !period ? portfolioPnlLabel(sortedTickers.map((ticker) =>
     resolveCell(pnlColumn.id === "pnl" ? pnlColumn : { ...pnlColumn, id: "pnl" }, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).pnlBasis ?? "unavailable")) : "P&L";
   // Face amounts and futures contracts are not shares.
   const heldFutures = useMemo(() => sortedTickers.filter((ticker) => isFuturesTicker(ticker) && ticker.metadata.positions.some((position) =>
@@ -254,11 +257,12 @@ export function PortfolioTickerTable({
     ? { ...column, label: "QTY", ...(sharesWidth > column.width ? { width: sharesWidth } : {}) }
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
+    : column.id === "pnl_pct" && period ? { ...column, label: CONTRIBUTION_LABEL }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column).map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
-  [columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, pnlLabel, sharesWidth, tickerWidth]);
+  [columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, sharesWidth, tickerWidth]);
   // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
   const hiddenColumnIds = useMemo(() => {
     const shown = new Set(fitPortfolioColumns(sizedColumns, sortedTickers.map((ticker) => {

@@ -16,6 +16,13 @@ export interface PortfolioPaneSettings {
   hideCash: boolean;
   /** Value a portfolio at the regular close rather than the latest print (`fn PF --close`). */
   valueAtClose: boolean;
+  /**
+   * P&L over a period instead of since cost (`fn PF --from`, `portfolio show
+   * --from`): from the close before this date. Empty for P&L since cost.
+   */
+  pnlFrom: string;
+  /** The period's last day (`--to`); empty for the latest close. */
+  pnlTo: string;
   /** How long the pane is out of sight before coming back tints LAST by each row's move since then. */
   sinceLastSeen: SinceLastSeenAfter;
 }
@@ -217,6 +224,8 @@ export function getPortfolioPaneSettings(settings: Record<string, unknown> | und
     hideHeader: settings?.hideHeader === true,
     hideCash: settings?.hideCash === true,
     valueAtClose: settings?.valueAtClose === true,
+    pnlFrom: typeof settings?.pnlFrom === "string" ? settings.pnlFrom.trim() : "",
+    pnlTo: typeof settings?.pnlTo === "string" ? settings.pnlTo.trim() : "",
     sinceLastSeen: isSinceLastSeenAfter(settings?.sinceLastSeen) ? settings.sinceLastSeen : "2m",
   };
 }
@@ -356,6 +365,22 @@ export function buildPortfolioPaneSettingsDef(
       description: "Price holdings at the regular close instead of the latest print, which includes extended hours.",
       type: "toggle",
     });
+    fields.push({
+      key: "pnlFrom",
+      label: "P&L From",
+      description: "A date, such as 2026-10-26: P&L and each position's contribution then run from the close before it, as portfolio show --from reads them. Leave blank for P&L since cost.",
+      type: "text",
+      placeholder: "since cost",
+    });
+    if (settings.pnlFrom) {
+      fields.push({
+        key: "pnlTo",
+        label: "P&L To",
+        description: "The period's last day. Leave blank for the latest close.",
+        type: "text",
+        placeholder: "latest close",
+      });
+    }
   }
 
   if (settings.collectionScope === "custom") {

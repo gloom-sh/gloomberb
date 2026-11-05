@@ -843,6 +843,8 @@ In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` rem
 - In the add row, a symbol with a colon (`NET:`) opens that symbol's exchanges, and the one you pick joins the list.
 - The add row takes what `quote` and `watchlist add` take: `AAPL`, `EURUSD=X`, `eur/usd`, `^GSPC`, `BRK.B`. A list typed or pasted with commas or one per line (`usd/jpy, EUR/JPY, gbp-chf`) is read entry by entry: each pasted line or sheet cell is one entry, read in the case it was typed, so `Apple Inc` is a name and `VOD LN` a terminal's code. The row says how many it adds and which it leaves out and why (not found, already in the list, several listings), and Enter adds the rest. Entries that are one symbol (`EURUSD=X, eur/usd`) add it once, and a paste of more than 50 entries adds the first 50 and says so.
 
+The `PF` table leaves out a company column (MCAP, P/E, FWD P/E, DIV%, analyst and calendar columns, sector and industry) once every row has loaded and none has a figure in it, as in a book of futures and funds. A portfolio too narrow for its columns gives up FWD P/E, P/E, DIV% and MCAP first, then COST and the sparkline, so MKT VAL, DAY and P&L stay on screen; past that the table scrolls sideways. A watchlist keeps its columns.
+
 When the `PF` table comes back into sight after two minutes away, LAST is tinted for six seconds on each row whose price moved since you left (green above what LAST showed then, red below). A key or a click clears the tint. **Moves Since Last Seen** in the pane's settings sets the time away (30 seconds, 2 minutes, 10 minutes) or turns it off.
 
 `gloom fn PF <portfolio-or-watchlist> --json` returns a portfolio's positions, broker or manual, valued as `portfolio show` values them.
@@ -1877,6 +1879,17 @@ The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuatio
 
 - `portfolio show --json` adds `metadata.valuationBasis`, and with `--close` `dayChange` and `dayChangePercent` (in `metadata.totals` for `fn PF`). A future valued at its settlement adds `valuationPriceKind: "settle"`.
 - `# Observation date:` is the newest of those prices and `# Oldest observation:` the oldest when the rows differ (`source.oldestObservationDate` in JSON).
+
+## P&L over a period
+
+`gloom portfolio show <name> --from 2026-10-26 --to 2026-10-30` gives each position's P&L between two closes instead of since cost: from the close before `--from` (Fri 23 Oct) to the last close on or before `--to` (the latest close when `--to` is left out).
+
+- Each row has the start and end closes, the price's move, the P&L (the move times the units held now, a future's contracts times their size, at its settlements) and its contribution, the P&L as a share of the book's value at the start. A book that holds a short divides by its gross exposure, longs plus shorts at their absolute value; cash is left out.
+- A holding in another currency is converted at the end's rate, and the `FX` row under the positions is the currencies' move on the start values, with both rates named under the table. `TOTAL` is the positions and the FX row together.
+- The closes are the ones `fn RETURN <ticker> --from --to` reads, so the two agree to the cent. The P&L is on the holdings held now: a lot bought inside the window is named, and its P&L still runs from the start close.
+- `--json` and `--csv` carry the same rows, then `FX` and `TOTAL` as rows of their own. `--from` is refused with `--close` or `--drip`, and for a watchlist.
+- `fn PF <portfolio> --from <date> [--to <date>]` reads the same, and `shot PF` with them captures the pane that way.
+- In the `PF` pane, **P&L From** and **P&L To** in the settings switch it: P&L shows each position's P&L over the period, the next column (`CONTRIB`) its contribution, and the header `P&L 23 Oct–30 Oct -21.5k (-2.52%)` the total with its share of the book.
 
 ## Shorts and futures
 

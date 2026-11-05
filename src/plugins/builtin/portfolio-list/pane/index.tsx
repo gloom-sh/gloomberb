@@ -110,6 +110,8 @@ import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
 import { useFuturesFrontNotes } from "./futures-front";
 import { usePurchaseDateCostFx } from "./purchase-date-fx";
+import { periodPnlLabel, periodPnlNotices, usePanePeriodPnl } from "./period-pnl";
+import type { LoadedPeriodPnl } from "../period-pnl";
 import {
   allocationWeightBase,
   buildPortfolioAllocation,
@@ -206,6 +208,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => buildPortfolioFinancialsMap(tickers, cachedFinancials, marketFinancialsMap, financialsInstrumentOptions),
     [tickers, cachedFinancials, marketFinancialsMap, financialsInstrumentOptions],
   );
+  // P&L between two closes (the pane's P&L From), as portfolio show --from reads it; since cost without one.
+  const periodPnl = usePanePeriodPnl({
+    from: paneSettings.pnlFrom,
+    to: paneSettings.pnlTo,
+    enabled: isPortfolioTab,
+    portfolioId: activeCollectionId,
+    tickers: collectionTickers,
+    currency: totalsCurrency,
+    futures: futuresTerms.terms,
+    futuresVersion: futuresTerms.version,
+    financialsMap,
+    snapshot: (paneInstance?.settings?.periodPnlSnapshot ?? null) as LoadedPeriodPnl | null,
+  });
+  const periodColumns = periodPnl?.window ? periodPnl : null;
   const valueFlashingEnabled = useAppSelector((state) => state.config.valueFlashingEnabled);
   const flashSymbols = useQuoteFlashMap(financialsMap, valueFlashingEnabled);
 
@@ -313,11 +329,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     perpetualsVersion: perpetuals.version,
     futuresTerms: futuresTerms.terms,
     futuresTermsVersion: futuresTerms.version,
+    ...(periodColumns ? { periodPnl: { rows: periodColumns.rows, pending: periodColumns.pending }, periodPnlVersion: periodColumns.version } : {}),
   }), [
     activeCollectionId,
     exchangeRates,
     futuresTerms,
     isPortfolioTab,
+    periodColumns,
     perpetuals,
     portfolioTargets,
     portfolioWeightBase,
@@ -427,7 +445,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     manualCash,
     brokerPortfolio,
     valuationBasis,
-  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
+    period: periodColumns ? {
+      label: periodPnlLabel(periodColumns),
+      total: periodColumns.result?.total ?? null,
+      contribution: periodColumns.result?.totalContribution ?? null,
+    } : null,
+  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, periodColumns, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {
@@ -769,7 +792,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const delistedNotice = selectedDelisting ? `${cursorSymbol}: ${delistingLabel(selectedDelisting)}.` : undefined;
   usePaneNoticeFooter({
     registrationId: "portfolio-list-notices",
-    notices: [...summaryNotices, delistedNotice, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
+    notices: [...summaryNotices, ...periodPnlNotices(periodPnl), delistedNotice, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
     focused: focused && !quickAddFocused,
   });
   const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight);
