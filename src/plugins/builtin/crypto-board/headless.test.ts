@@ -69,6 +69,10 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   expect(protocols.text).not.toContain("Fees");
   // Daily figures from a publisher, dated by their day: never a live feed.
   expect(protocols.freshness).toMatchObject({ status: "not-a-feed", publisher: "DefiLlama", asOf: "2026-09-23" });
+  // A day's close is aged from the day's end: 23 Sep's is current until 36 hours after it, noon on the 25th.
+  const at = (time: string) => deriveHeadlessFreshness(cryptoBoardHeadless, protocols.result, Date.parse(time)).status;
+  expect(at("2026-09-25T11:00:00Z")).toBe("not-a-feed");
+  expect(at("2026-09-25T13:00:00Z")).toBe("stale");
 
   const chains = await defi("chain");
   expect(chains.text).toMatch(/Chain\s+Token\s+TVL USD\s+7D\s+7D %\s+30D\s+30D %\s+Share/);

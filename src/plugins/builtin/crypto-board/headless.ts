@@ -200,6 +200,9 @@ function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExpo
   ];
 }
 
+/** A day's close dated `YYYY-MM-DD` reads from that day's 00:00 UTC; it is stale 36 hours after the day ends. */
+const DEFI_CLOSE_STALE_MINUTES = (24 + 36) * 60;
+
 /**
  * `--list defi`: the largest protocols (or chains, `--by chain`) by TVL with
  * their 7D and 30D change, under the total's line. Dated by the total's day,
@@ -225,7 +228,8 @@ async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"
       status: "not-a-feed" as const,
       basis: "daily TVL",
       asOf: payload.asOf,
-      maxAgeMinutes: 36 * 60,
+      // The as-of day is a close: it is aged from the day's end, not its start, and stale 36 hours after it.
+      maxAgeMinutes: DEFI_CLOSE_STALE_MINUTES,
     },
     metadata: {
       list: "defi",
