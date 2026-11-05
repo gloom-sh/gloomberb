@@ -294,6 +294,25 @@ test("every cross moves from its legs' previous daily close, and the Move header
   expect(text).not.toContain("—");
 });
 
+// `fn FXC 2500000 EUR` refused the amount the pane, `FXC 2500000 EUR` and `fx 2500000 EUR/USD` take.
+test("fn FXC takes an amount as the pane does: its crosses first, each with the amount in its quote currency, the currency added", async () => {
+  const now = at("2026-10-14T14:00:00Z");
+  const board = readings(quotedRate("EUR", 1.2, 1.18, "2026-10-14T13:59:00Z"), quotedRate("JPY", 1 / 150, 1 / 151, "2026-10-14T13:50:00Z"));
+  const args = { rawArgument: "2500000 EUR/JPY", argument: "2500000 EUR/JPY", symbols: [], options: { currencies: "USD" } };
+  expect(fxMatrixHeadless.describe instanceof Function && fxMatrixHeadless.describe(args)).toBe("FX Cross Rates | USD EUR JPY | 2,500,000 EUR");
+  const result = projectFxCrosses(["USD", "EUR", "JPY"], board, { now, amount: { amount: 2_500_000, currency: "EUR" } });
+  expect(result.rows.map(({ pair, converted }) => [pair, converted])).toEqual([
+    ["EUR/USD", 3_000_000], ["EUR/JPY", expect.closeTo(450_000_000, 4)],
+    ["USD/EUR", null], ["USD/JPY", null], ["JPY/USD", null], ["JPY/EUR", null],
+  ]);
+  const text = renderHeadlessPaneText(fxMatrixHeadless, result, args, "FXC");
+  expect(text).toContain("3,000,000.00 USD");
+  expect(text).toContain("450,000,000 JPY");
+  expect(result.metadata).toMatchObject({ amount: { amount: 2_500_000, currency: "EUR" } });
+  // What the pane's field refuses, the report refuses with the same reason.
+  await expect(fxMatrixHeadless.load({ ...args, rawArgument: "100 XAU", argument: "100 XAU" }, {} as never)).rejects.toThrow("XAU is not on the board");
+});
+
 test("Ask Gloom's FXC tool takes the currencies as one string and gets every cross of all 45 within its result limit", () => {
   const pane = fxMatrixModule.panes![0]!;
   const template = fxMatrixModule.paneTemplates![0]!;
@@ -302,7 +321,7 @@ test("Ask Gloom's FXC tool takes the currencies as one string and gets every cro
     paneTemplates: new Map([[template.id, template]]),
     destroy() {},
   }).tools.find(({ name }) => name === "fxc");
-  expect(tool).toMatchObject({ source: "headless", writeTier: "read", shape: "rows", argument: { kind: "none" } });
+  expect(tool).toMatchObject({ source: "headless", writeTier: "read", shape: "rows", argument: { kind: "free-text", optional: true } });
   expect(tool?.options?.map(({ key, type }) => ({ key, type }))).toEqual([{ key: "currencies", type: "string" }]);
 
   const quoted = FX_CURRENCIES.filter((code) => code !== "USD").map((code, index) => (

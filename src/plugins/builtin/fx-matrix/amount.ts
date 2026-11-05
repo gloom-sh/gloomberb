@@ -70,6 +70,50 @@ export function formatAmountFigure(amount: number, currency: string): string {
   return amount.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+/**
+ * The amount as the board saves it: ungrouped, with a point for decimals
+ * (`5000 EUR`, `2500000.5 EUR`), so it reads back as itself. Grouped, `5,000
+ * EUR` read back as 5 or 5000 and dropped the column; the grouping is only
+ * for showing it (`formatFxBoardAmount`).
+ */
+export function storedFxBoardAmount({ amount, currency }: FxBoardAmount): string {
+  const figure = String(amount);
+  return `${/e/i.test(figure) ? amount.toFixed(20).replace(/\.?0+$/, "") : figure} ${currency}`;
+}
+
+const STORED_AMOUNT = /^(\d+(?:\.\d+)?) ([A-Z]{3})$/;
+
+/**
+ * The board's saved amount: as the board saves it (`storedFxBoardAmount`),
+ * else as `fx` reads a typed one. Null for none; the reason for one it
+ * cannot read.
+ */
+export function readFxBoardAmount(saved: unknown): FxBoardAmount | { error: string } | null {
+  if (typeof saved !== "string" || !saved.trim()) return null;
+  const stored = STORED_AMOUNT.exec(saved.trim());
+  if (stored) {
+    const currency = boardCurrency(stored[2]!, stored[2]!);
+    if (typeof currency !== "string") return currency;
+    const amount = Number(stored[1]);
+    return amount > 0 ? { amount, currency } : { error: "Type an amount above zero, such as 2,500,000 EUR." };
+  }
+  const typed = parseFxBoardAmount(saved);
+  return typed && !("error" in typed) ? { amount: typed.amount, currency: typed.currency } : typed;
+}
+
+/**
+ * An amount typed where the board's saved one stood: that amount, put back as
+ * it was saved, reads as saved (`1.234 EUR` is not asked about as 1234); any
+ * other text reads as `fx` reads an amount (`parseFxBoardAmount`).
+ */
+export function parseFxBoardAmountEdit(text: string, saved: unknown): FxBoardAmountRequest | { error: string } | null {
+  if (typeof saved === "string" && saved.trim() && text.trim() === saved.trim()) {
+    const kept = readFxBoardAmount(saved);
+    if (kept && !("error" in kept)) return { ...kept, to: null };
+  }
+  return parseFxBoardAmount(text);
+}
+
 /** The amount as the board's field and its column name it: `2,500,000 EUR`, whole amounts without cents. */
 export function formatFxBoardAmount({ amount, currency }: FxBoardAmount): string {
   const figure = Number.isInteger(amount)

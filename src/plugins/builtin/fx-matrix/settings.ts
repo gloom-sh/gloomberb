@@ -1,6 +1,6 @@
 import type { PaneReportOptionDef, PaneSettingsContext, PaneSettingsDef } from "../../../types/plugin";
 import { CURRENCY_SETS, FX_CURRENCIES, MAJOR_CURRENCIES, isFxCurrency, resolveCurrencies } from "./pairs";
-import { formatFxBoardAmount, parseFxBoardAmount, withAmountCurrencies } from "./amount";
+import { parseFxBoardAmountEdit, storedFxBoardAmount, withAmountCurrencies } from "./amount";
 
 const CUSTOM_SET = "custom";
 
@@ -66,11 +66,12 @@ export function fxMatrixSettings(context: PaneSettingsContext): PaneSettingsDef 
     ],
     applyValue: (settings, field, value) => {
       if (field.key === "amount") {
-        const request = parseFxBoardAmount(String(value ?? ""));
+        // Saved ungrouped (`storedFxBoardAmount`), so it reads back as itself; shown grouped on the board.
+        const request = parseFxBoardAmountEdit(String(value ?? ""), settings.amount);
         if (request && "error" in request) throw new Error(request.error);
         const { amount: _cleared, ...rest } = settings;
         return request
-          ? { ...rest, amount: formatFxBoardAmount(request), currencies: withAmountCurrencies(resolveCurrencies(settings.currencies), request) }
+          ? { ...rest, amount: storedFxBoardAmount(request), currencies: withAmountCurrencies(resolveCurrencies(settings.currencies), request) }
           : rest;
       }
       if (field.key !== "currencySet") return { ...settings, [field.key]: value };

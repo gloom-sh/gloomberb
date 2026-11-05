@@ -39,7 +39,10 @@ import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
 import { fxMatrixHeadless } from "./headless";
-import { formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, withAmountCurrencies, type FxBoardAmount } from "./amount";
+import {
+  formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, parseFxBoardAmountEdit, readFxBoardAmount, storedFxBoardAmount, withAmountCurrencies,
+  type FxBoardAmount,
+} from "./amount";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 const FX_MATRIX_TEMPLATE_ID = "fx-matrix-pane";
@@ -59,14 +62,20 @@ const FX_FALLBACK_REFRESH_MS = 60_000;
 const AMOUNT_FIELD_WIDTH = 18;
 
 /**
- * The amount field: typing edits a draft, Enter applies it to the board, and
- * leaving it without Enter puts back the amount the board shows.
+ * The amount field: it shows the amount grouped (`5,000 EUR`), and is edited
+ * as the board saves it (`5000 EUR`), which reads back as itself where `5,000`
+ * would ask which was meant. Typing edits a draft, Enter applies it to the
+ * board, and leaving it without Enter puts back the amount the board shows.
  */
-function useAmountField(applied: string) {
-  const [draft, setDraft] = useState(applied);
-  const [active, setActive] = useState(false);
+function useAmountField(shown: string, edited: string) {
+  const [draft, setDraft] = useState(shown);
+  const [active, setActiveState] = useState(false);
   const inputRef = useRef<InputRenderable>(null);
-  useEffect(() => { if (!active) setDraft(applied); }, [active, applied]);
+  useEffect(() => { if (!active) setDraft(shown); }, [active, shown]);
+  const setActive = useCallback((next: boolean) => {
+    setActiveState(next);
+    if (next) setDraft(edited);
+  }, [edited]);
   return { draft, setDraft, active, setActive, inputRef };
 }
 
@@ -79,12 +88,15 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   // An amount (2,500,000 EUR) is shown in every currency the board lists, at the board's rates.
   const [savedAmount] = usePaneSettingValue<string>("amount", "");
   const updateSettings = useUpdatePaneSettings();
-  const typedAmount = useMemo(() => parseFxBoardAmount(String(savedAmount ?? "")), [savedAmount]);
+  const typedAmount = useMemo(() => readFxBoardAmount(savedAmount), [savedAmount]);
   const amount: FxBoardAmount | null = typedAmount && !("error" in typedAmount) ? typedAmount : null;
-  const amountField = useAmountField(amount ? formatFxBoardAmount(amount) : String(savedAmount ?? ""));
+  const amountField = useAmountField(
+    amount ? formatFxBoardAmount(amount) : String(savedAmount ?? ""),
+    amount ? storedFxBoardAmount(amount) : String(savedAmount ?? ""),
+  );
   const [amountError, setAmountError] = useState<string | null>(null);
   const applyAmount = useCallback((text: string) => {
-    const request = parseFxBoardAmount(text);
+    const request = parseFxBoardAmountEdit(text, savedAmount);
     if (request && "error" in request) {
       setAmountError(request.error);
       return;
@@ -93,9 +105,9 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     amountField.setActive(false);
     // A currency the board does not list yet joins it, as `fx 100 ZAR/NGN` opens it on ZAR and NGN.
     updateSettings(request
-      ? { amount: formatFxBoardAmount(request), currencies: withAmountCurrencies(currencies, request) }
+      ? { amount: storedFxBoardAmount(request), currencies: withAmountCurrencies(currencies, request) }
       : { amount: undefined });
-  }, [amountField.setActive, currencies, updateSettings]);
+  }, [amountField.setActive, currencies, savedAmount, updateSettings]);
 
   const snapshotRates = useFxRatesMap(currencies);
   // Each non-USD currency streams its USD pair; the 28 crosses derive from
@@ -274,7 +286,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
 
     const quoteCurrency = column.id as FxCurrency;
-    if (row === quoteCurrency) return { text: formatRate(1), color: colors.textDim };
+    if (row === quoteCurrency) return { text: formatRate(1, quoteCurrency), color: colors.textDim };
 
     const base = rates.get(row);
     const quote = rates.get(quoteCurrency);
@@ -298,7 +310,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const backgroundColor = rowState.selected
       ? directionTint(level, { background: colors.selected, text: colors.selectedText })
       : directionTint(level, { background: colors.bg, text: colors.text });
-    return { text: formatRate(base / quote, reference), color: colors.text, backgroundColor };
+    return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text, backgroundColor };
   }, [amount?.currency, convertedAmount, directionReferences, flagged, rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
@@ -312,6 +324,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     if (unreadAmount) info.push({ id: "amount", parts: [{ text: unreadAmount, tone: "warning" }] });
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
+    // Every cross is read through each currency's dollar pair, the amount column too; `fx` reads a pair's own quote.
+    info.push({ id: "cross", parts: [{ text: "via USD", tone: "muted" }] });
     if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
     else if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
     return { info };
@@ -350,7 +364,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       rootHeight={height}
       rootBefore={queryBar}
       // A new amount brings its column, the first after the codes, into view.
-      resetScrollKey={amount ? formatFxBoardAmount(amount) : ""}
+      resetScrollKey={amount ? storedFxBoardAmount(amount) : ""}
       // A pane too narrow for every currency scrolls to the rest, as other wide tables do; the row's code stays.
       columns={allColumns}
       freezeFirstColumn
@@ -398,7 +412,7 @@ function createFxBoardInstance(context: PaneTemplateContext, options?: PaneTempl
   return {
     ...(open ? { instanceId: open.instanceId } : {}),
     settings: {
-      amount: formatFxBoardAmount(request),
+      amount: storedFxBoardAmount(request),
       currencies: withAmountCurrencies(resolveCurrencies(open?.settings?.currencies), request),
     },
   };
@@ -406,17 +420,25 @@ function createFxBoardInstance(context: PaneTemplateContext, options?: PaneTempl
 
 /** The words a conversion is asked with in the command bar: `fx 2500000 EUR/USD`, `convert 100 eur to usd`. */
 const CONVERT_WORDS = /^(?:fx|convert|converter|conversion)\s+(.+)$/i;
+/** The converter asked for by name, with no amount yet. */
+const CONVERTER_WORDS = /^(?:convert|converter|currency converter)$/i;
 
 /**
  * The command bar's conversions: `fx 2500000 EUR/USD`, `convert 100 eur to
  * usd` and `converter 2,500,000 EUR` open the board on the amount (FXC takes
- * it as its argument too). Text after those words that is no amount
- * (`fx forwards`) is left to the bar's own search, and `convert` or
- * `converter` alone finds the board by its keywords.
+ * it as its argument too), and `convert` or `converter` alone opens the
+ * board to type one. Only a figure is an amount: `fx EUR`, `fx usd/jpy`,
+ * `convert yen` and `fx forwards` are left to the bar's own search.
  */
 export function fxConvertRows(query: string, open: (options: PaneTemplateCreateOptions) => void): CommandBarResultDef[] {
+  if (CONVERTER_WORDS.test(query.trim())) {
+    return [{
+      id: "convert", label: t("Convert an amount"), detail: t("In every currency on FX Cross Rates"), right: "FXC",
+      keywords: ["fx", "convert", "converter"], execute: () => open({}),
+    }];
+  }
   const arg = CONVERT_WORDS.exec(query.trim())?.[1];
-  const request = arg ? parseFxBoardAmount(arg) : null;
+  const request = arg && /\d/.test(arg) ? parseFxBoardAmount(arg) : null;
   if (!arg || !request || "error" in request) return [];
   const amount = formatFxBoardAmount(request);
   return [{

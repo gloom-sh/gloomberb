@@ -98,7 +98,7 @@ describe("FxMatrixPane", () => {
 
     const frame = tui.frame();
     // EUR/USD is a real cross built from the two USD legs.
-    expect(frame).toContain("1.0800");
+    expect(frame).toContain("1.08000");
     // The terminal draws no flags: codes only, in the columns it always had.
     // Under the amount field.
     const [, header, usdRow] = frame.split("\n");
@@ -109,8 +109,8 @@ describe("FxMatrixPane", () => {
     // Regression: a currency with no rate rendered 1.0000 against everything.
     const jpyRow = frame.split("\n").find((line) => line.trimStart().startsWith("JPY"));
     expect(jpyRow).toBeDefined();
-    // Its own diagonal is the only 1.0000 in the row.
-    expect(jpyRow!.match(/1\.0000/g)).toHaveLength(1);
+    // Its own diagonal, at the yen's three decimals, is the only 1.000 in the row.
+    expect(jpyRow!.match(/1\.000\b/g)).toHaveLength(1);
     expect(jpyRow).toContain("—");
   });
 
