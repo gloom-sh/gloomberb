@@ -693,6 +693,7 @@ export function DataTableView<
     const nextLeft = tableScrollStep({
       columns: tableProps.columns,
       columnGap: tableProps.columnGap,
+      horizontalPadding: tableProps.horizontalPadding,
       frozenFirstColumn: tableProps.freezeFirstColumn,
       scrollLeft: currentLeft,
       direction,

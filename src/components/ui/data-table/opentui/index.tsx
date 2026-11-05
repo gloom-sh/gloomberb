@@ -387,7 +387,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   // A frozen board's rows run on past the last column, blank, so scrolled to its far end it starts a column
   // whole beside the frozen one, as each step does (tableScrollStep).
   const scrollContentWidth = contentWidth + (freezeFirstColumn && horizontalScrollbarVisible
-    ? tableFarEdgePad({ columns: displayColumns, columnGap, contentWidth, viewportWidth: measuredViewportWidth })
+    ? tableFarEdgePad({ columns: displayColumns, columnGap, horizontalPadding, contentWidth, viewportWidth: measuredViewportWidth })
     : 0);
   // Columns out of view past the right edge: the header row ends in "more →" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
@@ -494,13 +494,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     if (!body || viewportWidth <= 0) return;
     const maxLeft = Math.max(0, (body.scrollWidth ?? 0) - viewportWidth);
     body.scrollLeft = tableScrollStep({
-      columns: displayColumns, columnGap, frozenFirstColumn: freezeFirstColumn,
+      columns: displayColumns, columnGap, horizontalPadding, frozenFirstColumn: freezeFirstColumn,
       scrollLeft: body.scrollLeft ?? 0, direction: 1, viewportWidth, maxLeft,
     });
     syncHeaderScroll();
     setScrollLeft(body.scrollLeft ?? 0);
     nativeRenderer.requestRender();
-  }, [columnGap, displayColumns, freezeFirstColumn, nativeRenderer, scrollRef, syncHeaderScroll]);
+  }, [columnGap, displayColumns, freezeFirstColumn, horizontalPadding, nativeRenderer, scrollRef, syncHeaderScroll]);
   const handleBodySizeChange = useCallback(() => {
     measureContentWidth();
     setScrollVersion((current) => current + 1);
