@@ -5,20 +5,20 @@ import { BADGE_TINT, ClippedText, NATIVE_BADGE_STYLE } from "../../../../compone
 import { cardSurfaceStyle } from "../../../../components/ui/card";
 import { useShortcut } from "../../../../react/input";
 import { blendHex } from "../../../../theme/colors";
-import { SERIES_COLORS } from "../../../../theme/series-colors";
+import { currentThemeColorSet, SERIES_COLORS } from "../../../../theme/series-colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { displayWidth } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { ribbonY } from "../../supply-chain/flow-layout";
 import type { BuildoutCompanyProfile, BuildoutRelation, RelationRole } from "./model";
 
-/** Power and hosting gold, then the supply chain's own supplier, customer and competitor colours. */
-const RELATION_COLORS: Record<RelationRole, string> = {
-  power: SERIES_COLORS[2]!,
+/** Power and hosting gold, then the supply chain's own supplier, customer and competitor colours, as the drawing theme reads them. */
+const RELATION_COLORS = currentThemeColorSet<RelationRole>({
   supplier: SERIES_COLORS[0]!,
   customer: SERIES_COLORS[1]!,
   competitor: SERIES_COLORS[5]!,
-};
+  power: SERIES_COLORS[2]!,
+});
 
 const GROUP_LABELS: Record<RelationRole, string> = { power: "Power", supplier: "Suppliers", customer: "Customers", competitor: "Competitors" };
 const CARD_ROWS = 2;

@@ -3,7 +3,10 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyLabel, counterpartyName, disclosedValue, fitShareBasis, flowBands, percentage, receivablesConcentration, shareParts, sortRows, supplyRoleCounts } from "./model";
+import { getThemeIds, getTheme, isDarkTheme, SUBTLE_TEXT_MIN, themeKeysDirection } from "../../../theme/themes";
+import { contrastRatio } from "../../../theme/color-utils";
+import { themedColorSet } from "../../../theme/series-colors";
+import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -162,7 +165,7 @@ test("shares retain the reporter and distinguish tagged context from a prose den
   expect(shareParts(reverse, "AAPL")).toMatchObject({ value: "91%", basis: "of CRUS revenue" });
   expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toMatchObject({ value: "22%", basis: "of revenue" });
   expect(shareParts(supplyRow("seg", { sourceKind: "filing_text", pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
-  expect(shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
+  expect(shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables (owed to Focus)");
   expect(shareParts(supplyRow("none", { pctOfRevenue: null, pctBasis: null }), "FOCUS")).toBeNull();
   // A multi-hop disclosure always names its reporter, even when it is the focus company.
   expect(shareParts(supplyRow("path", { pctOfRevenue: 22.04, pctBasis: "revenue" }), "FOCUS", { includeReporter: true }))
@@ -175,14 +178,42 @@ test("shares retain the reporter and distinguish tagged context from a prose den
 
 test("a share's basis gives way to a shorter form and an ellipsis, never to nothing", () => {
   const prose = shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")!;
-  expect(prose.forms).toEqual(["of vendor non-trade receivables", "of receivables", "receivables"]);
-  expect([31, 14, 13, 11].map((cells) => fitShareBasis(prose, cells))).toEqual(["of vendor non-trade receivables", "of receivables", "receivables", "receivables"]);
+  expect(prose.forms).toEqual(["of vendor non-trade receivables (owed to Focus)", "of vendor non-trade receivables", "of receivables", "receivables"]);
+  expect([47, 31, 14, 13, 11].map((cells) => fitShareBasis(prose, cells))).toEqual(["of vendor non-trade receivables (owed to Focus)", "of vendor non-trade receivables", "of receivables", "receivables", "receivables"]);
   expect([10, 4, 1].map((cells) => fitShareBasis(prose, cells))).toEqual(["receivabl…", "rec…", "…"]);
-  // A tagged fact's context is dropped whole rather than cut: "context: T…" would claim a different context.
-  const tagged = shareParts(supplyRow("tagged", { sourceKind: "xbrl", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")!;
-  expect(tagged.forms).toEqual(["receivables · context: Vendor non-trade receivables", "receivables"]);
-  expect(fitShareBasis(tagged, 30)).toBe("receivables");
+  // A tagged dimension is dropped whole rather than cut: "(T…)" would claim a different one.
+  const tagged = shareParts(supplyRow("tagged", { sourceKind: "xbrl", pctOfRevenue: 47, pctScope: "Non Us" }), "FOCUS")!;
+  expect(tagged.forms).toEqual(["of revenue (non-US)", "revenue"]);
+  expect(fitShareBasis(tagged, 16)).toBe("revenue");
   expect(shareParts(supplyRow("plain", { pctOfRevenue: 22 }), "FOCUS")!.forms).toEqual(["of revenue", "revenue"]);
+});
+
+test("a tagged share and its period read as the filing says them, the same in every view", () => {
+  // Newmont's 10-K: Standard Chartered was 27% of total revenue, from gold sales. Apple's: two vendors
+  // owed 45% and 27% of its vendor non-trade receivables at the year end. No XBRL word reaches a reader.
+  const gold = supplyRow("stan", { sourceKind: "xbrl", pctOfRevenue: 27, pctScope: "Gold", periodMonths: 12, period: "2025-12-31", reportingEntity: entity("NEM", "NEWMONT Corp /DE/"),
+    quote: "ConcentrationRiskByBenchmark=RevenueFromContractWithCustomerProductAndServiceBenchmark;ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=StandardChartered;ProductOrService=Gold;" });
+  const vendor = supplyRow("vendor", { sourceKind: "xbrl", role: "supplier", pctOfRevenue: 45, pctBasis: "receivables", pctScope: "Vendor non-trade receivables", periodMonths: 0, period: "2026-09-26",
+    reportingEntity: entity("AAPL", "Apple Inc."), quote: "ConcentrationRiskByType=SupplierConcentrationRisk;" });
+  expect(shareParts(gold, "NEM")).toMatchObject({ value: "27%", basis: "of total revenue (gold sales)" });
+  expect(shareParts(vendor, "AAPL")).toMatchObject({ value: "45%", basis: "of vendor non-trade receivables (owed to Apple)" });
+  // From the other company's page, or in the graph, the share names whose it is.
+  expect(shareParts(gold, "STAN")?.basis).toBe("of NEM total revenue (gold sales)");
+  expect(disclosureText(gold)).toBe("Customer concentration: 27% of NEM total revenue (gold sales)");
+  expect([periodText(gold), periodText(vendor), periodText({ period: "2025-12-31", periodMonths: null })]).toEqual(["year to 31 Dec 2025", "as of 26 Sep 2026", "31 Dec 2025"]);
+  for (const words of [shareParts(gold, "NEM")!.forms, shareParts(vendor, "AAPL")!.forms, [disclosureText(gold), periodText(vendor)]].flat())
+    expect(words).not.toMatch(/context:|instant/);
+});
+
+test("role colours read on every theme's page and stay apart in a colour-blind palette", () => {
+  for (const id of getThemeIds()) {
+    const theme = getTheme(id);
+    const roles = themedColorSet(ROLE_SLOTS, id);
+    for (const color of Object.values(roles)) expect(Math.min(contrastRatio(color, theme.bg), contrastRatio(color, theme.panel))).toBeGreaterThanOrEqual(SUBTLE_TEXT_MIN);
+    if (themeKeysDirection(id)) expect(new Set(Object.values(roles)).size).toBe(Object.keys(roles).length);
+    // A dark theme without a palette of its own keeps the series colours as they were.
+    if (isDarkTheme(id) && !themeKeysDirection(id)) expect(roles).toEqual(ROLE_SLOTS);
+  }
 });
 
 test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
@@ -190,8 +221,8 @@ test("NVDA geographic XBRL facts do not invent a denominator or quarterly durati
   // total revenue from non-US customers over six months. Tags omit this prose.
   for (const [pctOfRevenue, pctScope, form] of [[76, "TW", "10-K"], [86, "TW", "10-Q"], [30, "Non Us", "10-Q"]] as const) {
     const row = supplyRow("nvda", { sourceKind: "xbrl", pctOfRevenue, pctScope, form });
-    expect(shareParts(row, "FOCUS")).toMatchObject({ value: `${pctOfRevenue}%`, basis: `revenue · context: ${pctScope === "TW" ? "TW" : "non-US"}` });
-    expect(shareParts(row, "OTHER")?.basis).toStartWith("FOCUS revenue · context:");
+    expect(shareParts(row, "FOCUS")).toMatchObject({ value: `${pctOfRevenue}%`, basis: `of revenue (${pctScope === "TW" ? "TW" : "non-US"})` });
+    expect(shareParts(row, "OTHER")?.basis).toStartWith("of FOCUS revenue (");
   }
   expect(shareParts(supplyRow("ytd", { form: "10-Q" }), "FOCUS")?.basis).toBe("of revenue");
   const scoped = [22, 14].map((pct, i) => supplyRow(`xbrl-${i}`, { sourceKind: "xbrl", pctScope: "TW", pctOfRevenue: pct }));

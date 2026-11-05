@@ -52,9 +52,9 @@ describe("supply chain graph headless integration", () => {
     const tags = "ConcentrationRiskByBenchmark=RevenueFromContractWithCustomerProductAndServiceBenchmark;ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=StandardChartered;ProductOrService=Gold;";
     Object.assign(payload.links[0]!.evidence[0]!, { sourceKind: "xbrl", tier: "structured", pctScope: "Gold", quote: tags });
     const report = await supplyChainHeadless.load(args({ tab: "graph" }), context(payload, []));
-    expect(report.sections.find(section => section.title === "Disclosure evidence")!.rows![0]).toMatchObject({ quote: tags, statement: "Customer, Gold, revenue" });
+    expect(report.sections.find(section => section.title === "Disclosure evidence")!.rows![0]).toMatchObject({ quote: tags, statement: "Customer concentration: 20% of A total revenue (gold sales)", share: "20% of A total revenue (gold sales)" });
     const text = renderHeadlessPaneText(supplyChainHeadless, report, args({ tab: "graph" }), "SPLC", deriveHeadlessFreshness(supplyChainHeadless, report));
-    expect(text).toContain("Customer, Gold, revenue");
+    expect(text).toContain("Customer concentration: 20% of A total revenue (gold sales)");
     expect(text).not.toContain("ConcentrationRiskByType");
   });
   test("CLI filters preserve validated values through settings and the graph request", async () => {
@@ -185,8 +185,8 @@ test("reports say how long a period is when the source states it, and keep older
   const result = await supplyChainHeadless.load(args, context);
   expect(result.sections[0]?.rows?.map((row) => [row.period, row.periodMonths])).toEqual([["2026-01-31", 6], ["2025-12-31", null]]);
   const text = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
-  expect(text).toContain("2026-01-31 half");
-  expect(text).not.toMatch(/2025-12-31 \S/);
+  expect(text).toContain("half to 31 Jan 2026");
+  expect(text).not.toMatch(/\S 31 Dec 2025/);
   const payload = graphPayload();
   payload.links[0]!.evidence[0]!.periodMonths = 12;
   payload.downstream[0]!.bestPath.exposure!.periodMonths = 12;

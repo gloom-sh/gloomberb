@@ -125,8 +125,8 @@ test("a share never shows without what it is a share of, at any pane width", asy
     await mount(width, 20);
     const frame = await tui.waitForFrameToContain("33%");
     const line = (figure: string) => frame.split("\n").find((entry) => entry.includes(figure)) ?? "";
-    expect(line("47%")).toMatch(/47%\s+receiv/);
-    expect(line("33%")).toMatch(/33%\s+(of\s+)?receiv/);
+    expect(line("47%")).toMatch(/47%\s+(of\s+)?(vendor\s+non-trade\s+)?receiv/);
+    expect(line("33%")).toMatch(/33%\s+(of\s+)?(vendor\s+non-trade\s+)?receiv/);
     await tui.destroy();
   }
 });

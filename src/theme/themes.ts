@@ -37,7 +37,8 @@ export interface Theme {
 }
 
 const BODY_TEXT_MIN = 4.5;
-const SUBTLE_TEXT_MIN = 3.6;
+/** What muted text and the up, down and warning colours keep against the page. */
+export const SUBTLE_TEXT_MIN = 3.6;
 const SELECTED_SURFACE_MIN = 1.75;
 
 function highestMinimumContrast(surfaces: readonly string[], candidates: readonly string[]): string {

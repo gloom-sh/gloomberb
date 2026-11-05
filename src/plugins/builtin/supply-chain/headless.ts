@@ -28,14 +28,14 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
     { key: "evidenceTier", header: "Evidence" },
     { key: "ticker", header: "Ticker" },
     { key: "role", header: "Role", format: cell((row) => roleLabel(row.role)) },
-    // Exports keep the share a number; the text says what it is a share of.
-    { key: "pct", header: "Share", format: cell((row) => shareParts(row, focusId)?.value ?? null),
+    // Exports keep the share a number, what it is a share of beside it in the Table's words ("% of total revenue (gold sales)").
+    { key: "pct", header: "Share", unitKey: "shareUnit", unitColumn: true, format: cell((row) => shareParts(row, focusId)?.value ?? null),
       textFormat: cell((row) => { const share = shareParts(row, focusId); return share ? `${share.value} ${share.basis}` : null; }) },
     ...(valued ? [{ key: "usd", header: "Value", align: "right" as const,
       format: cell((row) => nativeValue(row) === null && row.usd === null ? null : disclosedValue(row).replace(/ (disclosed|derived)$/, "")) }] : []),
-    // Exports keep the end date; the text adds the period's length when the source states it.
-    // A narrow table may cut the length as it cuts other text, never the date (eleven cells: the date and an ellipsis).
-    { key: "period", header: "Period", textFormat: cell(periodText), ...(lengths ? { minWidth: 11 } : {}) },
+    // Exports keep the end date; the text adds the period's length when the source states it ("year to 31 Dec
+    // 2025", "as of 26 Sep 2026"), and a narrow table never cuts it, so the date is never lost behind the length.
+    { key: "period", header: "Period", textFormat: cell(periodText), ...(lengths ? { minWidth: Math.max(...rows.map((row) => { const source = sources.get(row); return source ? periodText(source).length : 0; })) } : {}) },
     { key: "filed", header: "Published", format: cell(evidenceDate) },
   ];
 }
@@ -57,6 +57,12 @@ function graphStatement(item: GraphEvidence, siblings: readonly GraphEvidence[])
   return sentence?.quote ?? disclosureText(row);
 }
 
+/** A graph disclosure's share as the Table words it, naming the company it is a share of; null when none is disclosed. */
+function graphShare(item: GraphEvidence): string | null {
+  const share = shareParts(graphEvidenceRow(item), undefined, { includeReporter: true });
+  return share ? `${share.value} ${share.basis}` : null;
+}
+
 function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   const links = new Map(data.links.map(link => [link.id, link]));
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
@@ -75,13 +81,14 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     }));
   sections.push({ title: "Disclosure evidence", columns: [
     { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
-    { key: "role", header: "Role" }, { key: "pct", header: "% disclosed" }, { key: "denominator", header: "Denominator" },
+    // The share in the Table's words, its reporter named ("27% of NEM total revenue (gold sales)"); exports keep pct and denominator apart.
+    { key: "role", header: "Role" }, { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? "-") },
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.
     { key: "quote", header: "Quote", textFormat: (value, row) => row.statement == null ? String(value ?? "") : String(row.statement) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
-    statement: graphStatement(item, link.evidence),
+    statement: graphStatement(item, link.evidence), share: graphShare(item),
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
@@ -144,8 +151,9 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The pane's figures, per tab: Table shows one direction, Flow both.
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
+    const shareOf = (row: SupplyRow) => { const share = shareParts(row, data.entity?.id); return share ? `% ${share.basis}` : null; };
     const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
-      pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
+      pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
       nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
       jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
       evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
