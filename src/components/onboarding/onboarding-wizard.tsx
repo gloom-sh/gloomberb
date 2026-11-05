@@ -50,6 +50,8 @@ import {
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
   SKIP_PORTFOLIO_KEY,
+  CONTINUE_KEY,
+  BACK_KEY,
 } from "./onboarding-keyboard";
 import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
 import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
@@ -476,17 +478,19 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
               <OnboardingButton
                 label="Continue"
                 variant="primary"
+                shortcut={CONTINUE_KEY}
                 disabled={positionCount === 0 || positions.submitting}
                 onPress={continueFromPositions}
               />
             </>
           ) : (
             <>
-              <OnboardingButton label="Back" variant="ghost" disabled={isBrokerCommitting} onPress={backPortfolio} />
+              <OnboardingButton label="Back" variant="ghost" shortcut={BACK_KEY} disabled={isBrokerCommitting} onPress={backPortfolio} />
               {!desktop || portfolioSub !== "choose" ? (
                 <OnboardingButton
                   label={portfolioSub === "broker-sync" ? (isBrokerSyncing ? t("Importing...") : t("Retry")) : t("Continue")}
                   variant="primary"
+                  shortcut={CONTINUE_KEY}
                   disabled={isBrokerSyncing}
                   onPress={continuePortfolio}
                 />
@@ -539,6 +543,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           <OnboardingButton
             label="Continue"
             variant="primary"
+            shortcut={CONTINUE_KEY}
             disabled={chosenDesks.length === 0 || buildingDesks}
             onPress={() => finishDesks(chosenDesks)}
           />
@@ -636,12 +641,14 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           <OnboardingButton
             label="Back"
             variant="ghost"
+            shortcut={BACK_KEY}
             onPress={account.accountSub === "qr" || account.accountSub === "login" ? account.returnToAccountForm : goBack}
           />
           {account.accountSub !== "qr" ? (
             <OnboardingButton
               label={accountActionLabel}
               variant="primary"
+              shortcut={CONTINUE_KEY}
               disabled={account.accountSubmitting}
               onPress={continueAccount}
             />
@@ -681,7 +688,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
       error: persistenceError,
       actions: [
         ...(planAccess.hasProAccess ? [] : [terminalButtonColumns({ label: "Keep Free for now", shortcut: KEEP_FREE_KEY })]),
-        terminalButtonColumns({ label: primaryLabel }),
+        terminalButtonColumns({ label: primaryLabel, shortcut: CONTINUE_KEY }),
       ],
       descriptions: features.map((feature) => feature.description),
     });
@@ -738,6 +745,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           <OnboardingButton
             label={primaryLabel}
             variant="primary"
+            shortcut={CONTINUE_KEY}
             onPress={primaryUpgradeAction}
           />
         </OnboardingActions>
@@ -776,11 +784,13 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
         <OnboardingButton
           label="Back"
           variant="ghost"
+          shortcut={BACK_KEY}
           onPress={goBack}
         />
         <OnboardingButton
           label={isFinishing ? "Opening workspace..." : "Start exploring"}
           variant="primary"
+          shortcut={CONTINUE_KEY}
           disabled={isFinishing}
           onPress={() => { void finish(); }}
         />

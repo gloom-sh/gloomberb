@@ -43,8 +43,8 @@ describe("first-run workspace", () => {
     expect(kept.length + plan.create.length).toBe(7);
   });
 
-  test("lays out heatmap, watchlist, chart and top news, floating a market read", () => {
-    const panes = ["portfolio-list", "chart-composer", "news-top", "ticker-news", "world-indices", "fear-greed"];
+  test("lays out heatmap, watchlist, chart and top news, with a market read docked in front of Trending", () => {
+    const panes = ["portfolio-list", "chart-composer", "news-top", "ticker-news", "world-indices", "fear-greed", "attention-trending"];
     const build = (hasPane: (id: string) => boolean) => buildFirstRunLayout({
       symbol: "MSFT",
       portfolioId: "main",
@@ -58,11 +58,22 @@ describe("first-run workspace", () => {
     expect(byId.get(FIRST_RUN_PANE_IDS.chart)).toMatchObject({ paneId: "chart-composer", binding: { kind: "fixed", symbol: "MSFT" } });
     expect(byId.get(FIRST_RUN_PANE_IDS.news)).toMatchObject({ paneId: "news-top", binding: { kind: "none" } });
     expect(home.layout.instances.some((instance) => instance.paneId === "ticker-news")).toBe(false);
-    expect(home.layout.floating.map((entry) => entry.instanceId)).toEqual([FIRST_RUN_PANE_IDS.sentiment]);
+    // Nothing floats over the docked panes, whatever the window's size.
+    expect(home.layout.floating).toEqual([]);
+    const besideNews = (layout: SavedLayout) => {
+      const right = layout.layout.dockRoot?.kind === "split" ? layout.layout.dockRoot.second : null;
+      const lower = right?.kind === "split" ? right.second : null;
+      return lower?.kind === "split" ? lower.second : null;
+    };
+    expect(besideNews(home)).toMatchObject({
+      tabs: { active: FIRST_RUN_PANE_IDS.sentiment },
+      first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.sentiment },
+      second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.trending },
+    });
     expect(home.focusedPaneId).toBe(FIRST_RUN_PANE_IDS.chart);
-    // Without the gauge, the indices float instead.
+    // Without the gauge, the indices take its place.
     const withoutGauge = build((id) => id !== "fear-greed" && panes.includes(id));
-    expect(withoutGauge.layout.floating.map((entry) => entry.instanceId)).toEqual([FIRST_RUN_PANE_IDS.indices]);
+    expect(besideNews(withoutGauge)).toMatchObject({ tabs: { active: FIRST_RUN_PANE_IDS.indices } });
   });
 
   test("skips panes the host cannot render instead of leaving placeholders", () => {

@@ -1,4 +1,5 @@
 import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-modules";
+import { jsxDevFromJsx } from "../react/jsx-dev-fallback";
 
 /**
  * Serves `gloomberb/*` and `react` to external plugins from inside the
@@ -28,7 +29,7 @@ const JSX_RUNTIME = "react/jsx-runtime";
 
 let installed = false;
 
-type JsxFactory = (type: unknown, props: unknown, key?: unknown) => unknown;
+type JsxFactory = Parameters<typeof jsxDevFromJsx>[0];
 
 /**
  * A packaged host is built with `--production`, so its React is the
@@ -42,7 +43,7 @@ async function jsxDevRuntimeExports(): Promise<Record<string, unknown>> {
   const dev = { ...(await PLUGIN_HOST_RESOLVER_IMPORTERS[JSX_DEV_RUNTIME]!()) } as Record<string, unknown>;
   if (typeof dev.jsxDEV === "function") return dev;
   const prod = (await PLUGIN_HOST_RESOLVER_IMPORTERS[JSX_RUNTIME]!()) as { jsx: JsxFactory };
-  return { ...dev, jsxDEV: (type: unknown, props: unknown, key?: unknown) => prod.jsx(type, props, key) };
+  return { ...dev, jsxDEV: jsxDevFromJsx(prod.jsx) };
 }
 
 /** True when this process can register runtime resolvers. */

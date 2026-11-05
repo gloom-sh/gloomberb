@@ -1279,6 +1279,39 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).not.toContain(occ);
   });
 
+  test("a followed ticker's tile reads its price and move, and takes no more room than the smallest holding", async () => {
+    const portfolioId = "broker:ibkr-flex:DU12345";
+    const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID);
+    if (instance) instance.settings = { ...(instance.settings ?? {}), viewMode: "grid" };
+    // Added in setup without shares: in the portfolio, no position.
+    const followed = createTestTicker("MSFT", "Microsoft", { portfolios: [portfolioId] });
+
+    await tui.render(
+      <PortfolioHarness
+        config={config}
+        collectionId={portfolioId}
+        stateMutator={(state) => {
+          state.tickers.set("MSFT", followed);
+          state.financials.set("MSFT", createTestFinancials({
+            quote: makeQuote({ symbol: "MSFT", name: "Microsoft", price: 420, change: -8, changePercent: -1.87, marketCap: 3.1e12 }),
+          }));
+        }}
+      />,
+      { width: 100, height: 12 },
+    );
+    await flushFrame();
+
+    // The tiles, under the collection tabs and the account summary.
+    const tiles = tui.frame().split("\n").slice(2).join("\n");
+    expect(tiles).toContain("420.00");
+    expect(tiles).toContain("-1.87%");
+    expect(tiles).not.toContain("—");
+    // Sized by its market cap, the followed tile would leave the holding no room for its value.
+    expect(tiles).toContain("AAPL");
+    expect(tiles).toContain("1.3k");
+  });
+
   test("keeps the grid's arrows on its tiles and leaves h and l to the collection tabs", async () => {
     const portfolioId = "broker:ibkr-flex:DU12345";
     const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
