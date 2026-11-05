@@ -9,10 +9,12 @@ import {
 } from "../../../market-data/futures-board";
 import { FUTURES_SERIES } from "./series";
 import type { FuturesTermsMap } from "./use-board-terms";
-import type { FuturesColumnId, FuturesTableRow } from "./model";
+import { futuresBoardQuotes, type FuturesColumnId, type FuturesTableRow } from "./model";
+import type { FrontReturnsMap } from "./use-front-returns";
 import {
   createFuturesColumns,
   FUTURES_COLUMN_DEFS,
+  FUTURES_REPORT_COLUMNS,
   renderFuturesCell,
   resolveFuturesColumnIds,
   type FuturesColumn,
@@ -197,4 +199,59 @@ describe("futures catalog", () => {
     expect(new Set(symbols).size).toBe(symbols.length);
     for (const symbol of symbols) expect(symbol).toMatch(/^[A-Z0-9]+=F$/);
   });
+});
+
+describe("futures board exports and the reopen", () => {
+  const es = FUTURES_CONTRACTS.find((contract) => contract.symbol === "ES=F")!;
+  const cattle = FUTURES_CONTRACTS.find((contract) => contract.symbol === "LE=F")!;
+  const quote = (overrides: Partial<Quote> = {}): Quote => ({
+    symbol: "ES=F", name: "E-Mini S&P 500 Dec 2026", instrumentType: "FUTURE", listingExchangeName: "CME", exchangeName: "CME",
+    currency: "USD", price: 7734.5, change: 14, changePercent: 0.18, previousClose: 7720.5, changeSessionDate: "2026-11-05", volume: 6713,
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-04T21:59:00Z"), ...overrides,
+  } as Quote);
+  const board = (symbol: string, value: Quote): BoardQuoteMap => new Map([[symbol, { quote: value, loading: false, error: null, stale: false }]]);
+  const cell = (contract: FuturesContract, id: FuturesColumnId, quotes: BoardQuoteMap, now?: number, returns?: FrontReturnsMap) =>
+    renderFuturesCell({ type: "row", contract }, ([...createFuturesColumns(220), ...FUTURES_REPORT_COLUMNS]).find((column) => column.id === id)!,
+      quotes, { sessionText: true, now, returns });
+
+  test("JSON and CSV cells carry the numbers behind the text, the 3M, 6M and 1Y returns included", () => {
+    const quotes = board("ES=F", quote({ change: 137.75000000001 }));
+    const values = { "1W": -0.71, "1M": -0.63, "3M": 2.5, "6M": 7.25, "1Y": 14.1, YTD: 12 };
+    const returns: FrontReturnsMap = new Map([["ES=F", { loading: false, values }]]);
+    // The change at the precision the cell shows, never a difference's float noise.
+    expect(cell(es, "change", quotes)).toMatchObject({ text: "+137.75", value: 137.75 });
+    expect(cell(es, "volume", quotes).value).toBe(6713);
+    expect(cell(es, "prevClose", quotes).value).toBe(7720.5);
+    for (const [id, value] of [["return1w", -0.71], ["return3m", 2.5], ["return6m", 7.25], ["return1y", 14.1], ["returnYtd", 12]] as const) {
+      expect(cell(es, id, quotes, undefined, returns).value).toBe(value);
+    }
+    // The drawn table keeps its columns: the three are for the exports alone.
+    expect(createFuturesColumns(400).map((column) => column.id)).not.toContain("return3m");
+  });
+
+  test("a contract that trades Globex's whole day reads open from the 17:00 Central reopen, before its feed's first print", () => {
+    const reopened = Date.parse("2026-11-04T23:10:00Z");
+    // Its last print is from before the daily break, and the delayed feed still calls it closed.
+    expect(cell(es, "status", board("ES=F", quote()), reopened).text).toBe("OPEN");
+    // In the daily break it is closed, whatever its last print says.
+    expect(cell(es, "status", board("ES=F", quote({ marketState: "REGULAR" })), Date.parse("2026-11-04T22:30:00Z")).text).toBe("CLOSED");
+    // Live cattle keeps its own shorter hours: the quote's state stands.
+    expect(cell(cattle, "status", board("LE=F", quote({ symbol: "LE=F" })), reopened).text).toBe("CLOSED");
+    // Thanksgiving, whose Globex hours vary by contract, is the quote's to say too.
+    expect(cell(es, "status", board("ES=F", quote()), Date.parse("2026-11-26T15:00:00Z")).text).toBe("CLOSED");
+  });
+
+  test("each row's move is measured as quote measures it: from the session before's settlement of the same contract, else the source's", () => {
+    const quotes = board("ES=F", quote());
+    const terms = (settlement: { price: number; date: string }, deliveryMonth = "2026-12"): FuturesTermsMap =>
+      new Map([["ES=F", { loading: false, terms: { settlement, deliveryMonth, spec: { tick: 0.25 } } as never }]]);
+    const shown = futuresBoardQuotes(quotes, terms({ price: 7722.25, date: "2026-11-04" }));
+    expect(shown.get("ES=F")!.quote).toMatchObject({ change: 12.25, previousClose: 7722.25 });
+    expect(cell(es, "change", shown).text).toBe("+12.25");
+    // Tuesday's settlement is two sessions back, and March's is another contract: the source's +14 stands.
+    expect(futuresBoardQuotes(quotes, terms({ price: 7596.75, date: "2026-11-03" }))).toBe(quotes);
+    expect(futuresBoardQuotes(quotes, terms({ price: 7722.25, date: "2026-11-04" }, "2027-03"))).toBe(quotes);
+    expect(futuresBoardQuotes(quotes, new Map())).toBe(quotes);
+  });
+
 });

@@ -863,6 +863,72 @@ test("a continuous future's history is headed as the front month, flags the roll
   }
 });
 
+/** `history NG=F --back-adjust` over the roll above, NGX26's close on the roll day read from its own bars at 103. */
+async function backAdjusted(args: string[], contractBars: Record<string, PriceHistoryResult["points"]> = { "NGX26.NYM": sessionBars(["2026-10-26"], [1]).map((bar) => ({ ...bar, close: 103 })) }) {
+  const contracts = OCT_DAYS.map((day) => day < "2026-10-26" ? "NGX26" : "NGZ26");
+  const points = sessionBars(OCT_DAYS, QUIET_VOLUMES.map(() => 150_000), "T00:00:00Z", contracts);
+  const asked: string[] = [];
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "NG=F", name: "Natural Gas Dec 2026", listingExchangeName: "NYMEX", instrumentType: "Future", currency: "USD", marketState: "CLOSED" }),
+      getPriceHistory: async (symbol) => { asked.push(symbol); return contractBars[symbol] ?? []; },
+      // As the service serves a range: 1D in minutes, 5Y and ALL in weeks.
+      getPriceHistoryWithMetadata: async (_symbol, _exchange, range) => ({ resolution: range === "1D" ? "5m" : range === "5Y" || range === "ALL" ? "1wk" : "1d", points }),
+      getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution) => ({ resolution, points }),
+      getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => ({ resolution: interval, points }),
+    }),
+  }, { format: "json" });
+  await history.execute(args, cli.context);
+  const [{ result }] = cli.printed;
+  return { result: result as { data: Array<{ date: string; close: number }>; metadata: Record<string, unknown>; warnings?: string[] }, asked };
+}
+
+test("--back-adjust takes its method after it or with =, stitches the roll and lists it in metadata.backAdjust", async () => {
+  setSystemTime(new Date("2026-10-31T12:00:00Z"));
+  try {
+    const { result, asked } = await backAdjusted(["NG=F", "--range", "1M", "--back-adjust"]);
+    expect(asked.sort()).toEqual(["NGX26.NYM", "NGZ26.NYM"]);
+    // NGZ26 opened its roll day 2 over NGX26's 103: every close before it moves up 2, the newest as traded.
+    expect(result.data.map((row) => row.close)).toEqual([102, 103, 104, 105, 106, 105, 106, 107, 108, 109]);
+    expect(result.metadata.backAdjust).toEqual({ method: "difference", rolls: [
+      { date: "2026-10-26", from: "NGX26", to: "NGZ26", on: "2026-10-26", fromClose: 103, toClose: 105, adjustment: 2 }] });
+    const ratio = await backAdjusted(["NG=F", "--back-adjust", "ratio", "--range", "1M"]);
+    expect(ratio.result.metadata.backAdjust).toMatchObject({ method: "ratio", rolls: [{ adjustment: 105 / 103 }] });
+    expect((await backAdjusted(["NG=F", "--back-adjust=RATIO"])).result.metadata.backAdjust).toMatchObject({ method: "ratio" });
+    // Five years come weekly as a range: stitched, they are read as the daily window from five years back.
+    const years = await backAdjusted(["NG=F", "--range", "5Y", "--back-adjust"]);
+    expect(years.result.metadata).toMatchObject({ range: "5Y", interval: "1d", backAdjust: { method: "difference" } });
+    expect(years.result.metadata).not.toHaveProperty("requestedWindow");
+    await expect(backAdjusted(["NG=F", "--range", "ALL", "--back-adjust"])).rejects.toThrow("--back-adjust stitches daily bars");
+    // A word after the flag that is no method is the symbol, not swallowed.
+    expect((await backAdjusted(["--back-adjust", "NG=F"])).result.metadata.backAdjust).toMatchObject({ method: "difference" });
+    await expect(backAdjusted(["NG=F", "--back-adjust=log"])).rejects.toThrow('--back-adjust is by difference or ratio, not "log".');
+    // Without the flag the bars are as traded, and nothing is read for the contracts.
+    const raw = await backAdjusted(["NG=F", "--range", "1M"]);
+    expect(raw.result.data[0]!.close).toBe(100);
+    expect(raw.result.metadata.backAdjust).toBeUndefined();
+    expect(raw.asked).toEqual([]);
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("--back-adjust names a contract the source serves no bars of and leaves its roll as traded, and refuses a list and intraday bars", async () => {
+  setSystemTime(new Date("2026-10-31T12:00:00Z"));
+  try {
+    const { result } = await backAdjusted(["NG=F", "--range", "1M", "--back-adjust"], {});
+    expect(result.data[0]!.close).toBe(100);
+    expect(result.metadata.backAdjust).toEqual({ method: "difference", rolls: [], unstitched: [{ date: "2026-10-26", from: "NGX26", to: "NGZ26" }] });
+    expect(result.warnings).toContain("NG=F is not back-adjusted. NGX26 to NGZ26 on 2026-10-26 is left as traded: the source served no bars of NGX26 or NGZ26.");
+    await expect(backAdjusted(["NG=F", "CL=F", "--back-adjust"])).rejects.toThrow("--back-adjust stitches one continuous future, such as ES=F.");
+    await expect(backAdjusted(["NG=F", "--range", "1D", "--back-adjust"]))
+      .rejects.toThrow("--back-adjust stitches daily bars: ask for --range 5Y or less, or a --from window of up to five years.");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a range is read in any case and as other tools spell it", () => {
   for (const [typed, range] of [["1mo", "1M"], ["1m", "1M"], ["1 month", "1M"], ["3MO", "3M"], ["1wk", "1W"], ["5yr", "5Y"], ["ytd", "YTD"],
     ["max", "ALL"], ["all", "ALL"]] as const) expect(readHistoryRange(typed), typed).toBe(range);

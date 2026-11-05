@@ -7,6 +7,7 @@ import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, futuresContractByCode, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 import { previousPublishedSession } from "./market/freshness";
+import { globexPrintSession } from "./market/globex-day";
 import { minorUnitSign } from "../utils/currency-units";
 import { contractPriceUnit } from "../time-series/price-units";
 import { deliveryMonthLabel } from "../utils/contract-month";
@@ -255,54 +256,99 @@ function settlementTolerance(tick: number | null | undefined, price: number): nu
 }
 
 /**
- * What a futures move is measured from: a session's settlement, the last
- * trade of a session that settled elsewhere, or a session's close that the
- * settlement in the contract terms cannot confirm either way. `session` is
- * the date of that reference.
+ * What a futures move is measured from: a session's settlement or close.
+ * `session` is the date of that reference. `from` is set when the move is to
+ * be measured again from that session's settlement, at that price
+ * (futuresQuoteFromSettle): the source measured it from something else.
  */
 export interface FuturesChangeBasis {
-  kind: "settle" | "last trade" | "close";
+  kind: "settle" | "close";
   session: string;
+  from?: number;
 }
+
+/** "Nov 2026", "Nov 26" or "Futures,Nov-2026"; a hyphen takes only a whole year, since "Futures,Nov-20" is 2026 cut short. */
+export const CONTRACT_MONTH_NAME = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (\d{4}|\d{2})|-(\d{4}))$/i;
+const MONTH_ABBREVIATIONS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const CONTRACT_SYMBOL = /^[A-Z0-9]+?([FGHJKMNQUVXZ])(\d{2})(?:\.[A-Z]+)?$/i;
+const MONTH_CODES = "FGHJKMNQUVXZ";
+
+/**
+ * The delivery month a futures quote prices, `YYYY-MM`: from a listed
+ * contract's code (ESZ26.CME), else from the month a continuous symbol's name
+ * carries ("E-Mini S&P 500 Dec 26"). Null when neither says.
+ */
+export function futuresQuoteMonth(quote: Pick<Quote, "symbol" | "name"> | null | undefined): string | null {
+  const coded = CONTRACT_SYMBOL.exec(quote?.symbol?.trim() ?? "");
+  if (coded) return `20${coded[2]}-${String(MONTH_CODES.indexOf(coded[1]!.toUpperCase()) + 1).padStart(2, "0")}`;
+  const named = CONTRACT_MONTH_NAME.exec(quote?.name?.trim() ?? "");
+  if (!named) return null;
+  const written = named[2] ?? named[3]!;
+  const year = written.length === 2 ? 2000 + Number(written) : Number(written);
+  return `${year}-${String(MONTH_ABBREVIATIONS.indexOf(named[1]!.toLowerCase()) + 1).padStart(2, "0")}`;
+}
+
+/** The terms a futures move is checked against: the settlement, the tick it is rounded to and the contract's month. */
+export type FuturesChangeTerms = Pick<FuturesContractTermsPayload, "settlement"> & {
+  spec?: Pick<FuturesContractSpec, "tick"> | null;
+  deliveryMonth?: string | null;
+};
 
 /**
  * What the move a futures quote headlines is measured from, for the words
- * after it ("vs Fri 16 Oct settle", quoteChangeBasis). `sessionDate` is the
- * session the move belongs to (regularSessionDisplayDate); a Saturday or
- * Sunday is Friday's, as no session is dated on one, and a holiday CME Globex
- * traded is the next trade date's. The basis is only what the numbers show,
- * against the one settlement the contract terms carry: a reference (the price
- * less the move) within half a tick of it is that settlement, of whichever
- * session it is. A reference that is not the settlement of the session just
- * before the move's is that session's last trade. Otherwise, when the terms
- * carry no settlement that old or one the reference can be checked against
- * (the move's own session has settled, and the one before is not in the
- * terms), it is the session before's close, left unnamed. The session before
- * is the trade date before the move's on the `exchange`'s published holiday
- * calendar (previousPublishedSession), so the Tuesday after Memorial Day
- * moves from Friday. On a venue without one, only a matching settlement is
- * named, by the date the terms give it. Null without a session date, a move
- * or terms, or when nothing but the calendar could date the reference and
- * there is none.
+ * after it ("vs Fri 16 Oct settle", quoteChangeBasis). The move covers one
+ * session, the one before its own, and is labelled by it. Its session is
+ * `sessionDate` (regularSessionDisplayDate), a Saturday or Sunday being
+ * Friday's, unless the print (`tradedAt`) was made after the CME Globex
+ * reopen that opened a later trade date (globexPrintSession), whose move it
+ * then is, whatever date the source still gives it. The session before is
+ * the trade date before on the `exchange`'s published holiday calendar
+ * (previousPublishedSession), so the Tuesday after Memorial Day moves from
+ * Friday; a holiday Globex traded is the next trade date's.
+ *
+ * A reference (the price less the move) within half a tick of the settlement
+ * in the terms is that settlement. Any other reference:
+ * - with the session before's settlement in the terms, for the contract the
+ *   quote prices (`month` is the terms' `deliveryMonth`), is measured again
+ *   from it (`from`); around a roll the terms can name the month before, and
+ *   the gap between the two would read as the day's move, so for another
+ *   contract, or one the quote does not name, the source's move stands with
+ *   no session named (null, "vs prev close");
+ * - with an older settlement in the terms, is the session before's close in
+ *   the overnight hours after the reopen, before that session's settlement
+ *   is confirmed: Wednesday's 7,720.50 close at 23:18 UTC, "+14 vs Wed 4 Nov
+ *   close", never +137.75 from Tuesday's settlement, two sessions. At any
+ *   other time the terms are behind and nothing dates it (null);
+ * - without a settlement in the terms, or once the move's own session has
+ *   settled, is the session before's close, which nothing else checks.
+ * On a venue without a calendar only a settlement is named. Null without a
+ * session date, a move or terms.
  */
 export function futuresChangeBasis(
-  terms: Pick<FuturesContractTermsPayload, "settlement"> & { spec?: Pick<FuturesContractSpec, "tick"> | null } | null | undefined,
-  move: { price: number; change?: number | null; sessionDate?: string | null } | null | undefined,
+  terms: FuturesChangeTerms | null | undefined,
+  move: { price: number; change?: number | null; sessionDate?: string | null; tradedAt?: number | null; month?: string | null } | null | undefined,
   exchange: string | null | undefined,
 ): FuturesChangeBasis | null {
   const dated = move?.sessionDate;
   if (!terms || !move || !dated || !isoDate.test(dated) || move.change == null) return null;
   const reference = move.price - move.change;
   if (!Number.isFinite(reference)) return null;
-  const session = weekdayOnOrBefore(dated);
-  const previous = previousPublishedSession(exchange ?? undefined, dated, { closedDayRollsForward: true })?.date ?? null;
+  const sessionBefore = (date: string) => previousPublishedSession(exchange ?? undefined, date, { closedDayRollsForward: true })?.date ?? null;
+  // A print in the night after the session the source dates the move by opened the next trade date.
+  const print = globexPrintSession(exchange, move.tradedAt);
+  const reopened = !!print?.overnight && print.tradeDate > dated && (sessionBefore(print.tradeDate) ?? "") >= weekdayOnOrBefore(dated);
+  const moveDate = reopened ? print!.tradeDate : dated;
+  const session = weekdayOnOrBefore(moveDate);
+  const previous = sessionBefore(moveDate);
   const settled = terms.settlement;
-  if (settled && settled.date <= session) {
-    if (Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
-      return { kind: "settle", session: settled.date };
-    }
-    if (settled.date === previous) return { kind: "last trade", session: settled.date };
+  if (settled && settled.date <= session && Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
+    return { kind: "settle", session: settled.date };
   }
+  if (settled && previous && settled.date === previous) {
+    const sameContract = !!move.month && terms.deliveryMonth?.slice(0, 7) === move.month;
+    return sameContract && Number.isFinite(move.price) ? { kind: "settle", session: previous, from: settled.price } : null;
+  }
+  if (settled && previous && settled.date < previous) return print?.overnight && print.tradeDate === moveDate ? { kind: "close", session: previous } : null;
   return previous ? { kind: "close", session: previous } : null;
 }
 

@@ -4,6 +4,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import type { PricePoint } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
+import { PERIOD_BASE_MAX_GAP_DAYS, periodBaseDay } from "../../../market-data/market/period-return";
 import { coalescedBump } from "./coalesced-bump";
 import { readsInBatches } from "../../../market-data/batched-reads";
 import { boardReadGate } from "./board-reads";
@@ -44,9 +45,32 @@ const HISTORY_RETRY_MS = 60_000;
  */
 const historyCache = createTtlCache<readonly PricePoint[] | null>({ ttlMs: HISTORY_TTL_MS, rejectionMs: HISTORY_RETRY_MS });
 
+const DAY_MS = 86_400_000;
+function dayOf(point: PricePoint): string | null {
+  const time = new Date(point.date as Date | string | number).getTime();
+  return Number.isFinite(time) ? new Date(time).toISOString().slice(0, 10) : null;
+}
+
+/**
+ * A year's read starts on the day a year back, so when that day did not trade
+ * (a weekend, a holiday) it holds no close on or before it, and the 1Y return
+ * has no base. The weeks before it are read too, for a contract that traded
+ * from the start of the year; one listed since has no close a year back to find.
+ */
+async function withYearBackClose(provider: DataProvider, symbol: string, points: PricePoint[]): Promise<PricePoint[]> {
+  const read = provider.getDetailedPriceHistoryWithMetadata;
+  const first = points[0] ? dayOf(points[0]) : null;
+  const yearBack = periodBaseDay(new Date().toISOString().slice(0, 10), "1Y");
+  if (!read || !first || first <= yearBack || Date.parse(`${first}T00:00:00Z`) - Date.parse(`${yearBack}T00:00:00Z`) > 7 * DAY_MS) return points;
+  const start = new Date(Date.parse(`${yearBack}T00:00:00Z`) - PERIOD_BASE_MAX_GAP_DAYS * DAY_MS);
+  const earlier = await read.call(provider, symbol, "", start, new Date(`${first}T00:00:00Z`), "1d")
+    .then((result) => result.points.filter((point) => (dayOf(point) ?? first) < first), logFailure("futures", "Read a futures contract's close a year back failed", []));
+  return earlier.length > 0 ? [...earlier, ...points] : points;
+}
+
 /** `batch`: asked with every other row's, from a source that batches them (`DataProvider.batchesReads`). */
 function readHistory(provider: DataProvider, symbol: string, batch: boolean): Promise<readonly PricePoint[] | null> {
-  return provider.getPriceHistory(symbol, "", "1Y", batch ? { batch } : undefined).then((points) => points.length > 0 ? points : null, (error: unknown) => {
+  return provider.getPriceHistory(symbol, "", "1Y", batch ? { batch } : undefined).then(async (points) => points.length > 0 ? withYearBackClose(provider, symbol, points) : null, (error: unknown) => {
     if (isNoSourceAnswer(error)) return null;
     throw error;
   });

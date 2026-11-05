@@ -36,7 +36,8 @@ export function isPastPriceWindow(window: PriceWindow, now = new Date()): boolea
   return window.to < isoDateToday(now);
 }
 
-const FORMATS = "a year (2007) or a date (2008-09-15)";
+/** Both date forms a reader types: ISO, or day first with dots as most of Europe writes it. */
+const FORMATS = "a year (2007) or a date (2008-09-15, or day first as 15.9.2008)";
 
 function readBound(value: string, edge: "start" | "end", flag: string, now: Date): string {
   const text = value.trim();

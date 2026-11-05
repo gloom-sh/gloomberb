@@ -4,16 +4,19 @@ import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { minorUnitSign } from "../../../utils/currency-units";
-import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
+import { boardHeadlineQuote, isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
-import { FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
+import { FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresSessionQuote, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
 
+/** The columns the board can draw; the 3M, 6M and 1Y returns are only the exports' (FUTURES_REPORT_COLUMNS). */
+type DrawnColumnId = Exclude<FuturesColumnId, "return3m" | "return6m" | "return1y">;
+
 export interface FuturesColumnDef {
-  id: FuturesColumnId;
+  id: DrawnColumnId;
   label: string;
   description: string;
 }
@@ -58,7 +61,7 @@ const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
 const WIDE_UNIT_MIN_WIDTH = 200;
 const SESSION_TEXT_MIN_WIDTH = 100;
 
-const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
+const COLUMN_WIDTHS: Record<Exclude<DrawnColumnId, "name">, number> = {
   status: 1,
   code: 5,
   price: 12,
@@ -81,7 +84,7 @@ export function usesSessionText(width: number): boolean {
   return width >= SESSION_TEXT_MIN_WIDTH;
 }
 
-function columnWidth(id: Exclude<FuturesColumnId, "name">, paneWidth: number): number {
+function columnWidth(id: Exclude<DrawnColumnId, "name">, paneWidth: number): number {
   if (id === "status") return usesSessionText(paneWidth) ? 9 : 1;
   if (id === "unit" && paneWidth >= WIDE_UNIT_MIN_WIDTH) return 20;
   return COLUMN_WIDTHS[id];
@@ -91,7 +94,7 @@ export function createFuturesColumns(width: number, visibleIds?: readonly string
   const ids = resolveFuturesColumnIds(visibleIds)
     .filter((id) => width >= (COLUMN_MIN_PANE_WIDTH[id] ?? 0));
   const fixed = ids
-    .filter((id): id is Exclude<FuturesColumnId, "name"> => id !== "name")
+    .filter((id): id is Exclude<DrawnColumnId, "name"> => id !== "name")
     .reduce((total, id) => total + columnWidth(id, width), 0);
   // Leaves room for the pane border and scrollbar gutter; the name column grows
   // back into any slack because it is the flexible one.
@@ -114,7 +117,7 @@ export function createFuturesColumns(width: number, visibleIds?: readonly string
   });
 }
 
-const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
+const FUTURES_HEADER_LABELS: Record<DrawnColumnId, string> = {
   status: "",
   code: "SYM",
   name: "CONTRACT",
@@ -130,10 +133,20 @@ const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
   time: "TIME UTC",
 };
 
+/**
+ * Returns a script reads that the board has no room to draw: its JSON and CSV
+ * carry them beside the drawn 1W, 1M and YTD (DataTable `reportColumns`).
+ */
+export const FUTURES_REPORT_COLUMNS: readonly FuturesColumn[] = [
+  { id: "return3m", label: "3M", width: 8, align: "right" },
+  { id: "return6m", label: "6M", width: 8, align: "right" },
+  { id: "return1y", label: "1Y", width: 8, align: "right" },
+];
+
 /** Falls back to the full column set when the saved selection is empty or unknown. */
-export function resolveFuturesColumnIds(visibleIds?: readonly string[]): FuturesColumnId[] {
+export function resolveFuturesColumnIds(visibleIds?: readonly string[]): DrawnColumnId[] {
   const resolved = (visibleIds ?? [])
-    .filter((id): id is FuturesColumnId => DEFAULT_FUTURES_COLUMN_IDS.includes(id as FuturesColumnId));
+    .filter((id): id is DrawnColumnId => DEFAULT_FUTURES_COLUMN_IDS.includes(id as DrawnColumnId));
   return resolved.length > 0 ? resolved : [...DEFAULT_FUTURES_COLUMN_IDS];
 }
 
@@ -203,12 +216,13 @@ function formatContractPrice(quote: Quote, contract: FuturesContract): string {
  * magnitude, otherwise a four-tick move on an index future renders with six
  * decimals next to a price showing two.
  */
+function changeDecimals(quote: Quote, contract: FuturesContract): number {
+  return contract.tick || Number.isFinite(quote.price) ? priceDecimals(quote.previousClose ?? quote.price, contract) : 2;
+}
+
 function formatContractChange(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.change)) return "—";
-  const decimals = contract.tick || Number.isFinite(quote.price)
-    ? priceDecimals(quote.previousClose ?? quote.price, contract)
-    : 2;
-  const text = formatNumber(Math.abs(quote.change), decimals);
+  const text = formatNumber(Math.abs(quote.change), changeDecimals(quote, contract));
   const { prefix, suffix } = currencyMarks(quote.currency);
   return `${quote.change >= 0 ? "+" : "-"}${prefix}${text}${suffix}`;
 }
@@ -217,7 +231,7 @@ export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
   quotes: BoardQuoteMap,
-  options?: { sessionText?: boolean; returns?: FrontReturnsMap; terms?: FuturesTermsMap },
+  options?: { sessionText?: boolean; returns?: FrontReturnsMap; terms?: FuturesTermsMap; now?: number },
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 
@@ -245,15 +259,18 @@ export function renderFuturesCell(
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
         return { text: "—", color: colors.textDim };
       }
-      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: colors.textDim };
+      return { text: formatCompact(quote.volume, { fixedDecimals: true }), value: quote.volume, color: colors.textDim };
     case "return1w":
     case "return1m":
-    case "returnYtd": {
+    case "returnYtd":
+    case "return3m":
+    case "return6m":
+    case "return1y": {
       const returns = options?.returns?.get(contract.symbol);
       if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
       const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
       if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
-      return { text: formatPercentRaw(value), color: shownPriceColor(value, 2) };
+      return { text: formatPercentRaw(value), value, color: shownPriceColor(value, 2) };
     }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
@@ -262,8 +279,21 @@ export function renderFuturesCell(
       }
       return {
         text: formatContractPrice({ ...quote, price: quote.previousClose }, contract),
+        value: quote.previousClose,
         color: colors.textDim,
       };
+    case "change": {
+      const cell = renderQuoteBoardCell("change", state, { formatPrice: (quoted) => formatContractPrice(quoted, contract),
+        formatChange: (quoted) => formatContractChange(quoted, contract) });
+      // The JSON and CSV carry the move at the precision the cell shows it, never a difference's float noise.
+      const shown = state?.quote && !isBoardRowLoading(state) ? boardHeadlineQuote(state.quote) : null;
+      return shown && Number.isFinite(shown.change) ? { ...cell, value: Number(shown.change.toFixed(changeDecimals(shown, contract))) } : cell;
+    }
+    case "status":
+      // A contract that trades Globex's whole day reads open from the reopen, not from the first print its feed shows.
+      return renderQuoteBoardCell("status", state?.quote ? { ...state, quote: futuresSessionQuote(contract, state.quote, options?.now) ?? null } : state,
+        { sessionText: options?.sessionText, formatPrice: (quoted) => formatContractPrice(quoted, contract),
+          formatChange: (quoted) => formatContractChange(quoted, contract) });
     default:
       return renderQuoteBoardCell(column.id, state, {
         sessionText: options?.sessionText,

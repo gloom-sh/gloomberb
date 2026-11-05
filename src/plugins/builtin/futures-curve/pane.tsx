@@ -17,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -152,7 +152,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
   const newest = data ? newestQuote(data.contracts) : null;
   // A past curve is named by the session it holds: a weekend or holiday date shows the session before it.
-  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon,
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, settle: colors.text, ghosts: curveGhostColors(colors) }, horizon,
     requestedDate ? Date.parse(`${requestedDate}T00:00:00Z`) : Date.now(), requestedDate ? data.asOf ?? requestedDate : undefined) : [],
   [data, colors, horizon, requestedDate]);
   const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
@@ -178,6 +178,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const thin = data?.slope.state === "thin";
   const spreadRank = data && !thin ? curveRank(data.slope.percentile, data.slope.samples) : null;
   const thinSpread = data ? thinSpreadNotice(data) : null;
+  const skippedSpread = data ? skippedSpreadNotice(data) : null;
   // Until the closes first answer there is nothing to say.
   const spotPremium = useMemo(() => data && indexSymbol && spotCloses.data ? curveSpotPremium(data, spotCloses.data) : null,
     [data, indexSymbol, spotCloses.data]);
@@ -259,7 +260,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
     ? noTradeChangeNote(tableRows, data, { count: true }) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
-    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinSpread ? [thinSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
+    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinSpread ? [thinSpread] : [], ...skippedSpread ? [skippedSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
@@ -314,8 +315,11 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? "--" : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
     if (column.id === "volume") return { text: integer(row.volume) };
+    // A month with no trade since the settlement it shows is dated by that settlement, as the curve marks it.
+    const settled = data && !requestedDate ? curveSettleShown(row, data) : null;
+    if (settled) return { text: `settle ${settled}`, color: colors.textMuted };
     return { text: curveTimestamp(row.asOf), color: row.stale ? colors.warning : colors.textMuted };
-  }, [basis, changes, colors, curveTab, requestedDate, root]);
+  }, [basis, changes, colors, curveTab, data, requestedDate, root]);
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
     <QueryBar width={width} filters={[{

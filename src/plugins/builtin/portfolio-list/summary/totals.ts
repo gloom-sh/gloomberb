@@ -3,7 +3,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
-import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
+import { combinedChangeBasisLabel, futuresQuoteFromSettle, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { headlineQuoteDisplay } from "../../../../portfolio/column-values";
 import type { AllocationHolding } from "../../../../portfolio/allocation";
@@ -140,7 +140,9 @@ export function calculatePortfolioSummaryTotals(
 
   for (const ticker of tickers) {
     const financials = financialsMap.get(ticker.metadata.ticker);
-    const quote = financials?.quote;
+    const terms = futuresTerms?.get(ticker.metadata.ticker);
+    // A future's move as FUT and `quote` measure it with its terms.
+    const quote = futuresQuoteFromSettle(financials?.quote, terms);
     const displayedQuote = getActiveQuoteDisplay(quote);
     let activeQuote = displayedQuote && Number.isFinite(displayedQuote.price) ? displayedQuote : null;
     const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
@@ -151,7 +153,7 @@ export function calculatePortfolioSummaryTotals(
       if (changePercent != null) {
         watchlistChangeSum += changePercent;
         watchlistCount++;
-        dayBases.push(quoteChangeBasis(quote));
+        dayBases.push(quoteChangeBasis(quote, { terms }));
       }
       continue;
     }
@@ -159,7 +161,7 @@ export function calculatePortfolioSummaryTotals(
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
       currency: totalsCurrency, convert: toBase,
     }, quote);
-    activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, valuationBasis, futuresTerms?.get(ticker.metadata.ticker)?.settlement);
+    activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, valuationBasis, terms?.settlement);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;
     if (positionMetrics.positionCount === 0) {
       // Not held, so a missing rate is no gap in the totals: it only leaves the trade in units out.
@@ -226,7 +228,7 @@ export function calculatePortfolioSummaryTotals(
         if (!quote?.delisting) {
           dayBases.push(quoteChangeBasis(quote, {
             session: valuationBasis === "regular-close" ? "regular" : "active",
-            terms: futuresTerms?.get(ticker.metadata.ticker),
+            terms,
           }));
         }
       } else {

@@ -45,6 +45,28 @@ async function renderBoard(read: () => Promise<PricePoint[]>) {
   return { handle, asked, showAgain };
 }
 
+test("a year's read that starts on a day that did not trade reads the weeks before it, for the close the 1Y return is measured from", async () => {
+  // Sun 27 Sep 2026: a year back is Sat 27 Sep 2025, and the year's read starts on the Monday after it.
+  setSystemTime(new Date("2026-09-27T23:00:00Z"));
+  const asked: Array<{ start: string; end: string; barSize: string }> = [];
+  const provider = {
+    getPriceHistory: async () => bars(["2025-09-29", 90], ...[...history].map((point) => [point.date.toISOString().slice(0, 10), point.close] as [string, number])),
+    getDetailedPriceHistoryWithMetadata: async (_symbol: string, _exchange: string, start: Date, end: Date, barSize: string) => {
+      asked.push({ start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), barSize });
+      return { points: bars(["2025-09-25", 84], ["2025-09-26", 85]) };
+    },
+  } as unknown as DataProvider;
+  const handle = { returns: new Map() as FrontReturnsMap };
+  function Probe() {
+    handle.returns = useFrontContractReturns(crude, quotes, provider, true);
+    return null;
+  }
+  await act(async () => { await tui.render(<Probe />, { width: 10, height: 3 }); });
+  await act(async () => { await Bun.sleep(5); });
+  expect(asked).toEqual([{ start: "2025-09-13", end: "2025-09-29", barSize: "1d" }]);
+  expect(handle.returns.get("CL=F")!.values["1Y"]).toBeCloseTo((102 / 85 - 1) * 100, 10);
+});
+
 test("a history that failed to read is not kept as none: the row draws without returns, and is asked again once the retry delay has passed", async () => {
   let read: () => Promise<PricePoint[]> = async () => { throw new Error("Cloud chart data is unavailable"); };
   const { handle, asked, showAgain } = await renderBoard(() => read());

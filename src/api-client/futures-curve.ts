@@ -147,6 +147,12 @@ export interface FuturesCurvePayload {
     basis?: "last" | "settle" | null
     /** The leg that makes the spread thin (state "thin"): too few lots this session, or no trade in it. */
     thinSymbol?: string | null
+    /**
+     * The months between the front and `nextSymbol` the spread passed over:
+     * held too thinly to roll into (GCF27 beside GCG27). Absent from a server
+     * that does not say.
+     */
+    skippedSymbols?: string[] | null
     state: "contango" | "backwardation" | "flat" | "thin" | "unavailable"
   }
   gaps: string[]

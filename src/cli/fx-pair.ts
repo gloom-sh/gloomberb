@@ -96,10 +96,10 @@ function joinNameWords(args: readonly string[]): readonly string[] {
 /**
  * `fx` arguments: a currency or a pair (`EUR`, `USD/NGN`), or an amount and
  * what to convert it from and to (`1234.5 EUR/USD`, `1234,5 EUR USD`). The
- * amount is an amount of the first currency and reads as cash does
- * (`readConvertedAmount`): `1.234,5` and `1,234.5` are 1234.5, and `1.234` is
- * 1234 unless that currency has three decimals. A comma before exactly three
- * digits (`1,234`) is refused naming both readings, as `alerts add` refuses it.
+ * amount is an amount of the first currency (`readConvertedAmount`):
+ * `1.234,5` and `1,234.5` are 1234.5. A lone comma or dot before exactly three
+ * digits (`1,234`, `1.234`) is refused naming both readings, as `alerts add`
+ * refuses `1,234`.
  * An amount and one currency converts to USD (`toUsdByDefault`). The error
  * sentence otherwise.
  */
@@ -130,7 +130,7 @@ export function parseFxArgs(words: readonly string[], baseCurrency: string): FxA
   const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/");
   const request = parseFxRequest(codes.join("/"), "USD");
   if ("error" in request) return request;
-  // The amount is in the currency converted from, so its units say what 1.234 means; 1,234 could be either.
+  // 1,234 and 1.234 could each be either reading, whatever the currency.
   let amount: number;
   try {
     amount = readConvertedAmount(first, "The amount", request.currency);

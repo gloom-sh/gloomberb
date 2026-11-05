@@ -36,6 +36,7 @@ import { formatOptionTicker } from "../utils/options";
 import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../utils/forward-dividend";
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isIndexLevel, reportedQuoteVolume } from "../market-data/market/index-level";
+import { futuresQuoteFromSettle } from "../market-data/market/change-basis";
 import { perpetualDisplaySymbol, perpetualListing } from "../tickers/perpetual-listing";
 import { premiumToUnderlying, type PerpetualPremiumRow } from "../market-data/perpetual-premium";
 import { currentListingName } from "../tickers/listing-name";
@@ -477,13 +478,15 @@ export function getColumnValue(
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
 ): { text: string; color?: string; value?: number | null; pnlBasis?: PortfolioPositionPnl["basis"] } {
-  const quote = financials?.quote;
+  const sent = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
-  const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
+  const quoteCurrency = sent?.currency || ticker.metadata.currency || "USD";
 
-  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, quote);
+  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, sent);
   const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
+  // A future's move as FUT and `quote` measure it with its terms.
+  const quote = futuresQuoteFromSettle(sent, futures);
   // The latest print, which the quote columns read, and the price the position is valued at.
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
@@ -750,13 +753,15 @@ export function getSortValue(
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
 ): number | string | null {
-  const quote = financials?.quote;
+  const sent = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
-  const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
+  const quoteCurrency = sent?.currency || ticker.metadata.currency || "USD";
 
-  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, quote);
+  const { position: positionMetrics, base: baseMetrics } = rowPositionMetrics(ticker, ctx, quoteCurrency, sent);
   const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
+  // A future's move as FUT and `quote` measure it with its terms.
+  const quote = futuresQuoteFromSettle(sent, futures);
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);

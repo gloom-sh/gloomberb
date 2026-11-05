@@ -378,14 +378,14 @@ function thinVolumeBars(rows: readonly (Pick<HistoryRow, "volume" | "partial"> &
 }
 
 /** A roll of a continuous future: the bar it rolled at, and the contracts either side. */
-interface HistoryRoll {
+export interface HistoryRoll {
   date: string;
   from: string;
   to: string;
 }
 
 /** Every roll in a history's bars (`roll`), oldest first. */
-function historyRolls(rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): HistoryRoll[] {
+export function historyRolls(rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): HistoryRoll[] {
   let contract: string | null = null;
   const rolls: HistoryRoll[] = [];
   for (const row of rows) {

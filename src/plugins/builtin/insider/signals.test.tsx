@@ -138,7 +138,7 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   expect(frame).toMatch(/Window\s+7D\s+30D\s+90D.*Trades\s+Insiders/);
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
   // The same facts the ranking gives its lead insider: an older server's from the why facts.
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+2026-10-14/);
   expect(frame).not.toContain("Northwind Biologics");
   expect(asked.filter((params) => params.ticker)).toEqual([{ window: 30, ticker: "CTSO" }, { side: "sell", window: 30, ticker: "CTSO" }]);
   // The pane stays the ranking: no ticker, no new title.
@@ -394,11 +394,11 @@ test("why reads as columns: the lead insider's role and how many others, their n
 test("INS on a ticker lists its insiders on both sides in the ranking's terms: the lead's facts are the ranking's, the largest first", () => {
   const lines = insiderActivityLines({ buy: { rows: [BUYING[0]!] }, sell: { rows: [SELLING[1]!] } });
   expect(lines.map((line) => [line.side, line.name, line.role, line.nth.text, line.usual.text, line.stake.text, line.bought, line.sold, line.last])).toEqual([
-    ["sell", "Li Chen", "CFO", "--", "--", "-22% \u00b1", null, 700_000, "10/12/26"],
-    ["buy", "Ana Rivera", "CEO", "1st", "1.4x", "+12%", 496_000, null, "10/1/26"],
-    ["buy", "Li Chen", "CFO", "3rd", "2.8x", "+56%", 354_000, null, "10/9/26"],
-    ["buy", "Ben Okafor", "Director", "1st", "--", "NEW", 302_500, null, "10/14/26"],
-    ["sell", "Ana Rivera", "CEO", "1st", "0.6x", "-4%", null, 200_000, "10/10/26"],
+    ["sell", "Li Chen", "CFO", "--", "--", "-22% \u00b1", null, 700_000, "2026-10-12"],
+    ["buy", "Ana Rivera", "CEO", "1st", "1.4x", "+12%", 496_000, null, "2026-10-01"],
+    ["buy", "Li Chen", "CFO", "3rd", "2.8x", "+56%", 354_000, null, "2026-10-09"],
+    ["buy", "Ben Okafor", "Director", "1st", "--", "NEW", 302_500, null, "2026-10-14"],
+    ["sell", "Ana Rivera", "CEO", "1st", "0.6x", "-4%", null, 200_000, "2026-10-10"],
   ]);
   // Every ranked row's lead reads the same in the company's insiders, whichever server sent it.
   for (const [side, row] of [...BUYING.map((row) => ["buy", row] as const), ...SELLING.map((row) => ["sell", row] as const)]) {
@@ -437,7 +437,7 @@ test("every column sorts: NEW above any raise, EXITED as a whole stake, the dash
 test("Buying and Selling switch in the query bar, with the side's own words, in the table and the opened company", async () => {
   await mount(sided, 140, 24);
   let frame = tui.frame();
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+2026-10-14/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610\.0k/);
   expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720\.0k/);
   // No why column: its facts are the columns. No strip under the table: the insiders are the opened company.
@@ -448,9 +448,9 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   frame = tui.frame();
   // Its insiders in the ranking's columns, the buyers' dollars first.
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496\.0k\s+--\s+10\/1\/26/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354\.0k\s+--\s+10\/9\/26/);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496\.0k\s+--\s+2026-10-01/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354\.0k\s+--\s+2026-10-09/);
+  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+--\s+2026-10-14/);
   // The headers sort, as the ranking's do: stake largest first puts NEW on top.
   await tui.clickFrameText("STAKE");
   await settle();
@@ -478,8 +478,8 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   expect(frame).toContain("\u2190 Back WWIM \u00b7 Wide World Importers");
   // Opened from Selling: the sellers' dollars first.
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT\s+SOLD ▼\s+LAST/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+--\s+\$700k\s+10\/12\/26/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+--\s+\$200k\s+10\/10\/26/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+--\s+\$700k\s+2026-10-12/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+--\s+\$200k\s+2026-10-10/);
 });
 
 test("the filters narrow the request, and an empty answer says it is the filters", async () => {
@@ -513,7 +513,7 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   await mount(sided, 80, 24);
   let frame = tui.frame();
   expect(frame).toMatch(/TICKER\s+COMPANY\s+SCORE ▼\s+ROLE\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
-  expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+2026-10-14/);
   // The opened company keeps every column while the names fit.
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
@@ -521,7 +521,7 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+2026-10-14/);
 });
 
 test("the insiders' columns drop the size against usual, then the nth trade and the last day, as the ranking's do, then the role", () => {

@@ -10,7 +10,7 @@ import { formatPercentileRank } from "../../../utils/format";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
-import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
@@ -186,6 +186,24 @@ function thinSpreadReason(data: Pick<FuturesCurvePayload, "slope" | "contracts">
   return leg.asOf ? `${code} last traded ${leg.asOf.slice(0, 10)}` : `${code} has not traded`;
 }
 
+/**
+ * The months the front spread passed over for the next one a roll goes to,
+ * with the open interest each holds: "Front spread pairs GCZ26 with GCG27
+ * (77,624 open interest), skipping GCF27 (799)". Null when it skipped none.
+ */
+export function skippedSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+  const skipped = data.slope.skippedSymbols ?? [];
+  if (!skipped.length || !data.slope.frontSymbol || !data.slope.nextSymbol) return null;
+  const held = (symbol: string) => {
+    const interest = data.contracts.find((row) => row.symbol === symbol)?.openInterest;
+    return interest == null ? "" : interest.toLocaleString("en-US");
+  };
+  const next = held(data.slope.nextSymbol);
+  const months = skipped.map((symbol) => `${curveContractCode(symbol)}${held(symbol) ? ` (${held(symbol)})` : ""}`).join(", ");
+  return `Front spread pairs ${curveContractCode(data.slope.frontSymbol)} with ${curveContractCode(data.slope.nextSymbol)}`
+    + `${next ? ` (${next} open interest)` : ""}, skipping ${months}`;
+}
+
 /** The warning a thin front spread carries: why, and that its sign is no slope call. */
 export function thinSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
   const reason = thinSpreadReason(data);
@@ -270,13 +288,21 @@ function charted<T extends { expiration: string }>(rows: readonly T[], horizon: 
   return rows.filter((row) => Date.parse(row.expiration) <= end.getTime());
 }
 
-export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now(),
+export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette & { settle?: string }, horizon = DEFAULT_CURVE_HORIZON, now = Date.now(),
   currentLabel = data.source === "cboe" ? "Settlement" : "Latest"): CurveSeries[] {
   const contracts = charted(data.contracts, horizon, now);
+  const point = (row: FuturesContract) => ({ id: row.symbol, label: curveContractMonth(row.symbol, row.expiration), x: Date.parse(row.expiration),
+    value: curveShownPrice(row, data), asOf: curveSettleShown(row, data) ?? row.asOf });
+  // The months shown at a settlement beside months that traded since are marked on the line, which keeps their
+  // values for the cursor and the readout. A curve of settlements alone (a past date, a weekend) has nothing to tell apart.
+  const shownAtSettle = contracts.filter((row) => curveSettleShown(row, data));
+  const settled = shownAtSettle.length < contracts.length ? shownAtSettle : [];
   return [{
     id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
-    points: contracts.map((row) => ({ id: row.symbol, label: curveContractMonth(row.symbol, row.expiration), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
-  }, ...data.ghosts.map((ghost) => {
+    points: contracts.map(point),
+  }, ...settled.length ? [{ id: "settle", label: `Settle ${data.settlementDate!.slice(5)}, no trade since`, role: "marker" as const,
+    color: palette?.settle, points: settled.map(point) }] : [],
+  ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
     const points = charted(ghost.points, horizon, now);
     const asOf = newestQuote(points);
@@ -292,15 +318,17 @@ export type CurveContractChanges = ReadonlyMap<string, Readonly<Record<CurveLook
 
 /**
  * How far each contract moved since the week- and month-back curves, by
- * symbol: the latest price less the price then. A leg missing either side
- * stays null rather than reading as no move.
+ * symbol: the price it is shown at less its close then, a settlement against
+ * a settlement for a month with no trade since (curveShownPrice). A leg
+ * missing either side stays null rather than reading as no move.
  */
 export function curveContractChanges(data: FuturesCurvePayload): CurveContractChanges {
   const past = new Map(data.ghosts.map((ghost) => [ghost.label, new Map(ghost.points.map((point) => [point.symbol, point.price]))]));
   return new Map(data.contracts.map((row) => {
+    const shown = curveShownPrice(row, data);
     const change = (label: CurveLookback) => {
       const then = past.get(label)?.get(row.symbol);
-      return row.price == null || then == null ? null : row.price - then;
+      return shown == null || then == null ? null : shown - then;
     };
     return [row.symbol, { "1W": change("1W"), "1M": change("1M") }];
   }));
@@ -776,14 +804,19 @@ export function withTradedExpirations(data: FuturesCurvePayload): FuturesCurvePa
   };
 }
 
+/** From 18:00 New York a print belongs to the next trade date: six hours later it is that date there. */
+const NEXT_SESSION_SHIFT_MS = 6 * 3_600_000;
+
 /**
  * The trading date a print belongs to, as the server dates sessions: CME's
- * session for a date opens at 18:00 New York the evening before (22:00 or
- * 23:00 UTC), so a two-hour shift puts those evening trades on the next date
- * and leaves day-only venues as they are. A settlement's date is its session.
+ * session for a date opens at 18:00 New York the evening before, so a print
+ * from then on is the next date's, read on New York's clock. The session's
+ * close at 17:00 New York (22:00 UTC in winter, when a two-hour shift of UTC
+ * carried it into the next date) stays on its own date, and day-only venues
+ * are as they are. A settlement's date is its session.
  */
 function curveSessionDate(asOf: string): string {
-  return asOf.length === 10 ? asOf : new Date(Date.parse(asOf) + 2 * 3_600_000).toISOString().slice(0, 10);
+  return asOf.length === 10 ? asOf : zonedDateKey(Date.parse(asOf) + NEXT_SESSION_SHIFT_MS, "America/New_York");
 }
 
 /**
@@ -797,6 +830,26 @@ export function curveNoTradeSince(row: Pick<FuturesContract, "price" | "settleme
   const session = data.settlementDate;
   if (data.source === "cboe" || !session || row.price == null || row.settlement == null || !row.asOf) return null;
   return curveSessionDate(row.asOf) <= session ? session : null;
+}
+
+/**
+ * The session whose settlement a live contract is shown at: it has no trade
+ * since that settlement (curveNoTradeSince), or no last trade at all, as in a
+ * session that has just opened. Its row, its point on the curve and its 1W
+ * and 1M moves read the settlement, so a month with no trade today is never
+ * read as an old print beside months that traded. Null for a contract shown
+ * at its last trade, and on a Cboe curve, whose prices are settlements.
+ */
+export function curveSettleShown(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">): string | null {
+  if (data.source === "cboe" || !data.settlementDate || row.settlement == null) return null;
+  return row.price == null ? data.settlementDate : curveNoTradeSince(row, data);
+}
+
+/** The price a live contract is plotted and measured at: its settlement when it has not traded since (curveSettleShown), else its last trade. */
+function curveShownPrice(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">): number | null {
+  return curveSettleShown(row, data) ? row.settlement ?? null : row.price;
 }
 
 /**

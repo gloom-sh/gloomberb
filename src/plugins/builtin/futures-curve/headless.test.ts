@@ -147,9 +147,9 @@ describe("CTM report basis", () => {
     const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);
     const csv = renderReportCsv(headlessReportTables(futuresCurveHeadless, result, args, "CTM", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
     const header = csv.findIndex((line) => line.startsWith("Contract,"));
-    expect(csv[header]).toMatch(/^Contract,Last Trade,Settle,Last,Change,Spot,Spot Time UTC,Vs Spot \(%\),Days to Expiry,Ann Basis \(%\),As Of UTC,/);
-    expect(csv[header + 1]).toContain(`,80740,,80600,2026-10-24T01:33:00Z,${rows[0]!.vsSpotPct},${rows[0]!.daysToExpiry},${rows[0]!.annualisedBasisPct},2026-10-24T01:33:11Z,`);
-    expect(csv[header + 6]).toContain(",83035,,,,,,,2026-10-24T03:52:00Z,");
+    expect(csv[header]).toMatch(/^Contract,Last Trade,1st Notice,Settle,settle_date,Last,Change,Spot,Spot Time UTC,Vs Spot \(%\),Days to Expiry,Ann Basis \(%\),As Of UTC,/);
+    expect(csv[header + 1]).toContain(`,,80740,,80600,2026-10-24T01:33:00Z,${rows[0]!.vsSpotPct},${rows[0]!.daysToExpiry},${rows[0]!.annualisedBasisPct},2026-10-24T01:33:11Z,`);
+    expect(csv[header + 6]).toContain(",,83035,,,,,,,2026-10-24T03:52:00Z,");
   });
 
   test("the server's spot in a print's own minute gives the basis the reader's bars do not reach yet", async () => {
@@ -310,5 +310,80 @@ describe("CTM expiry", () => {
     } finally {
       setSystemTime();
     }
+  });
+});
+
+describe("CTM exports and the session that has just opened", () => {
+  const csvOf = (result: HeadlessBundleResult) => {
+    const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);
+    return renderReportCsv(headlessReportTables(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM", freshness,
+      { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  };
+  const load = (payload: FuturesCurvePayload) => futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: payload.root, argument: payload.root, symbols: [], options: {} }),
+    createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never })) as Promise<HeadlessBundleResult>;
+  const at = "2026-11-04T23:18:00.000Z";
+  // GC at the CME reopen: Z26 and G27 printed in the new session, U27 has not traded since its 11-03 settlement
+  // (stamped at the 16:00 Chicago close, 22:00 UTC in winter), and F27 holds too little to roll into.
+  const gc = (code: string, expiration: string, price: number | null, asOf: string | null, settlement: number, openInterest: number): FuturesContract =>
+    ({ ...contract("GC", code, 30, price, false, asOf ?? at), symbol: `GC${code}.CMX`, expiration, asOf, settlement, openInterest, currency: "USD", quoteUnit: "USD",
+      firstNotice: `${expiration.slice(0, 8)}01` });
+  const gold = (): FuturesCurvePayload => ({ ...curve("GC", [gc("Z26", "2026-12-29", 4072.1, "2026-11-04T23:17:00.000Z", 3940.4, 268_217),
+    gc("F27", "2027-01-27", 4090.4, "2026-11-04T21:35:00.000Z", 3957.8, 799), gc("G27", "2027-02-24", 4106, "2026-11-04T23:16:30.000Z", 3972.5, 77_624),
+    gc("U27", "2027-09-28", 4088.1, "2026-11-03T22:00:00.000Z", 4088.1, 10)]), settlementDate: "2026-11-03", currency: "USD", quoteUnit: "USD",
+    spec: { unit: "USD / troy oz", size: "100 troy oz", pointValue: 100, tick: 0.1, tickValue: 10, settlement: "physical" },
+    ghosts: [{ label: "1W", requestedDate: "2026-10-28", asOf: "2026-10-28", points: [{ symbol: "GCZ26.CMX", expiration: "2026-12-29", price: 4060, asOf: "2026-10-28" }] }],
+    slope: { ...curve("GC", []).slope, frontSymbol: "GCZ26.CMX", nextSymbol: "GCG27.CMX", skippedSymbols: ["GCF27.CMX"], value: 33.9, basis: "last", state: "contango" } });
+
+  test("every root exports one Settle header with the session in settle_date, one symbol form in every section and the unit on every price row", async () => {
+    setSystemTime(new Date(at));
+    try {
+      const crude = { ...curve("CL", [{ ...contract("CL", "Z26", 30, 88.15), symbol: "CLZ26.NYM", settlement: 88.12 }]), settlementDate: "2026-11-04",
+        ghosts: [{ label: "1W" as const, requestedDate: "2026-10-28", asOf: "2026-10-28", points: [{ symbol: "CLZ26.NYM", expiration: expiry(30), price: 102.78, asOf: "2026-10-28" }] }],
+        spec: { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" as const } };
+      const [cl, gcCsv] = [csvOf(await load(crude)), csvOf(await load(gold()))];
+      const headers = (csv: string[]) => csv.filter((line, index) => csv[index - 1]?.startsWith("# section:"));
+      // Settled on different sessions, and only gold with a first notice day, the two roots still share every header.
+      expect(headers(cl)).toEqual(headers(gcCsv));
+      expect(headers(cl)[0]).toStartWith("Contract,Last Trade,1st Notice,Settle,settle_date,Last,");
+      const clz26 = cl.find((line) => line.startsWith("CLZ26,2026"));
+      expect(clz26).toContain(",,88.12,2026-11-04,88.15,");
+      expect(clz26).toContain(",USD / barrel,");
+      // The history rows and the spread name contracts as the Contracts table does.
+      expect(gcCsv.join("\n")).not.toContain(".CMX");
+      expect(gcCsv.find((line) => line.startsWith("GCG27-GCZ26,"))).toContain("GCZ26,GCG27,");
+      // The text keeps the session in the header.
+      const text = renderHeadlessPaneText(futuresCurveHeadless, await load(crude), createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+      expect(text).toMatch(/Contract +Last Trade +Settle 2026-11-04 +Last/);
+      expect(text).not.toContain("settle_date");
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test("the spread names the thin month it skipped, and a month not traded since its settlement is dated by it", async () => {
+    setSystemTime(new Date(at));
+    try {
+      const result = await load(gold());
+      expect(result.notes).toContain("Front spread pairs GCZ26 with GCG27 (77,624 open interest), skipping GCF27 (799).");
+      const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+      // 22:00 UTC on 11-03 is the 16:00 Chicago close, the settlement's own session: no move since, and dated as the settlement.
+      expect(text).toMatch(/GCU27 .* 4088\.10 +4088\.10 +-- +settle 2026-11-03 /);
+      expect(text).toMatch(/GCZ26 .* 4072\.10 +\+131\.70 +2026-11-04 23:17 /);
+      expect(result.sections[0]!.rows!.find((row) => row.symbol === "GCU27.CMX")).toMatchObject({ change: null, noTradeSince: "2026-11-03", settleShown: "2026-11-03" });
+      // The CSV has no print to date it by: As Of UTC is empty, settle_date dates the settlement it shows.
+      const csv = csvOf(result);
+      const asOf = csv.find((line) => line.startsWith("Contract,"))!.split(",").indexOf("As Of UTC");
+      expect(csv.find((line) => line.startsWith("GCU27,"))!.split(",")[asOf]).toBe("");
+      expect(csv.find((line) => line.startsWith("GCZ26,"))!.split(",")[asOf]).toBe("2026-11-04T23:17:00Z");
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test("a curve with no contracts is an empty report that says why once", async () => {
+    const result = await load({ ...curve("NQ", []), status: "unavailable", gaps: ["The futures contract catalogue is unavailable."] });
+    expect(result.sections).toEqual([]);
+    expect(result.empty).toBe("No NQ contracts from the source.");
+    expect(result.errors).toEqual(["The futures contract catalogue is unavailable."]);
   });
 });

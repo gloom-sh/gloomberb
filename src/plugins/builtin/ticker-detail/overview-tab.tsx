@@ -24,7 +24,7 @@ import {
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { changeBasisLabel, changeBasisNote, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
+import { changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
 import {
   fitFuturesContractLines, futuresContractLines, isFuturesInstrument, futuresPricePer, usdPerMmbtu, usdPerMmbtuText,
   type FuturesContractLine,
@@ -259,7 +259,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // Price, change and ranges keep the instrument's decimals on every streamed tick.
   const moneyOptions = liveQuoteFormatOptions(quote, quote?.currency, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
   // The headline is the regular session, which stops at the close; extended trading is the line below it.
-  const sessionQuote = getRegularSessionDisplay(quote);
+  // A future's move that nothing confirms is measured from its last confirmed settlement, as `quote` reads it.
+  const movedQuote = futuresQuoteFromSettle(quote, contractTerms);
+  const sessionQuote = getRegularSessionDisplay(movedQuote);
   const extendedQuote = getExtendedSessionDisplay(quote);
   // A price in cents says what it is per (314.95¢/lb), and the move what it is measured from (vs Fri 16 Oct close).
   const quotePriceText = sessionQuote
@@ -267,7 +269,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // Nor a move: the close it ended on is where it stays.
   const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
-  const changeBasis = delisted ? null : quoteChangeBasis(quote, { terms: contractTerms });
+  const changeBasis = delisted ? null : quoteChangeBasis(movedQuote, { terms: contractTerms });
   const changeBasisText = changeBasis ? changeBasisLabel(changeBasis) : "";
   // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
   const changeBasisNoteText = changeBasisNote(changeBasis);
@@ -298,7 +300,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The exchange settlement, dated by its session: a futures price is its latest trade.
   const settleLabel = t("Settle");
   const settleText = contractTerms
-    ? truncateToDisplayWidth(quoteSettleText(quote, contractTerms),
+    ? truncateToDisplayWidth(quoteSettleText(movedQuote, contractTerms),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
     : "";
   // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", at the app's rate, a conversion that says so.

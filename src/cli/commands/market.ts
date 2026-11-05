@@ -19,7 +19,7 @@ import type {
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
-import { changeBasisJson, changeBasisLabel, changeBasisNote, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -152,16 +152,19 @@ import {
   historyNotes,
   historyReportsVolume,
   historyPriceDecimals,
+  historyRolls,
   historyRows,
   historyUnit,
   quotedPriceDivisor,
   historyVolume,
   historyVolumeBasis,
   historyVolumeNote,
+  type HistoryRoll,
   type HistoryRow,
   type HistoryUnit,
   type HistoryVolume,
 } from "../history-rows";
+import { backAdjustHistory, contractCloses, stitchedRollsNote, type BackAdjustMethod, type StitchedRoll } from "../history-back-adjust";
 import {
   historyExportColumns,
   historyExportStatus,
@@ -171,7 +174,7 @@ import {
   type HistoryListRow,
 } from "../history-export";
 import { fail, isCliFailure, NO_DATA_CODE } from "../errors";
-import { mapWithConcurrency } from "../../utils/concurrency";
+import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
@@ -1116,6 +1119,14 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
+    // A future's move the source measured from something other than the session before's settlement of the same contract is measured from it, in the row and in every line.
+    const sourceMoves = answers.map((answer, index) => {
+      const sent = answer.result.quote;
+      const quote = futuresQuoteFromSettle(sent, contracts[index]);
+      if (!sent || quote === sent) return null;
+      answers[index] = { ...answer, result: { ...answer.result, quote } };
+      return { change: sent.change, changePercent: sent.changePercent, previousClose: sent.previousClose };
+    });
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
     const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
     // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
@@ -1134,11 +1145,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
       listing: listingMetadata(listingIdentity(listing, result.quote)),
-      // The figures the table shows, beside the quote as the source sent it.
+      // The figures the table shows, beside the quote they come from: a future's move as the table measures it, and the source's own beside it when that differs.
       ...quoteSessionFields(result.quote),
       // What `change` is measured from, with the label and holiday note the table shows.
       changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
       quote: withPreviousCloseDate(result.quote),
+      ...sourceMoves[index] ? { sourceMove: sourceMoves[index] } : {},
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},
@@ -1672,10 +1684,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const rangeOption = takeOption(args, "--range");
   // --from 2007 --to 2009: those years' bars, daily up to five years, in place of a range ending now.
   const window = historyWindowOption(args, rangeOption, ctx);
-  const ask: HistoryAsk = { range: parseRange(rangeOption, ctx), window };
+  const range = parseRange(rangeOption, ctx);
   const requestedExchange = takeOption(args, "--exchange");
   // One row a date and a close column a symbol, as a spreadsheet lays several series side by side.
   const wide = takeFlag(args, "--wide");
+  // A continuous future stitched across its rolls, by difference unless `ratio` follows.
+  const backAdjust = takeBackAdjust(args, ctx);
+  // Stitching reads daily bars: five years, which come weekly as a range, are read as the window from five years back, which comes daily.
+  const ask: HistoryAsk = { range, window: window ?? (backAdjust && range === "5Y" ? yearsBackWindow(5) : null) };
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
@@ -1683,6 +1699,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+    if (backAdjust) ctx.fail("--back-adjust stitches one continuous future, such as ES=F.", `Usage: gloom ${HISTORY_USAGE}`);
     return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
   }
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
@@ -1694,7 +1711,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (currency) ctx.fail(currency.message, currency.details);
       throw error;
     });
-    const { identity, unit, data, interval, intraday, volume, freshness, notes } = history;
+    const { identity, unit, interval, intraday, volume, freshness } = history;
+    // Raw stays the default; --back-adjust stitches the contracts at the rolls the warning names, and lists them.
+    const stitched = backAdjust ? await backAdjustListingHistory(history, backAdjust, market, ctx) : null;
+    const data = stitched?.rows ?? history.data;
+    const notes = stitched ? [stitched.note, ...history.notes] : history.notes;
     const price = historyPrice(history.decimals);
     // A bar without volume in a history that reports it prints as missing.
     const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
@@ -1723,6 +1744,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
+        ...(stitched ? { backAdjust: { method: backAdjust, rolls: stitched.rolls, ...(stitched.unstitched.length > 0 ? { unstitched: stitched.unstitched } : {}) } } : {}),
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
@@ -1741,6 +1763,84 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       exportIdentity: { symbolOrSeries: history.listing.key, currencyOrUnit: historyExportUnit(unit), interval },
     });
   });
+}
+
+/** The window from `years` back to today. */
+function yearsBackWindow(years: number): PriceWindow | null {
+  const from = new Date();
+  from.setUTCFullYear(from.getUTCFullYear() - years);
+  return readPriceWindow(from.toISOString().slice(0, 10), undefined);
+}
+
+/** `--back-adjust` and the method after it (`ratio` or `difference`, the default); null without it. */
+function takeBackAdjust(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): BackAdjustMethod | null {
+  const methods = new Set(["difference", "ratio"]);
+  const equals = args.findIndex((arg) => arg.startsWith("--back-adjust="));
+  if (equals >= 0) {
+    const value = args.splice(equals, 1)[0]!.slice("--back-adjust=".length).toLowerCase();
+    if (!methods.has(value)) ctx.fail(`--back-adjust is by difference or ratio, not "${value}".`, `Usage: gloom ${HISTORY_USAGE}`);
+    return value as BackAdjustMethod;
+  }
+  const index = args.indexOf("--back-adjust");
+  if (index < 0) return null;
+  const next = args[index + 1]?.toLowerCase();
+  const method = next && methods.has(next) ? next as BackAdjustMethod : "difference";
+  args.splice(index, next && methods.has(next) ? 2 : 1);
+  return method;
+}
+
+/** Contract reads a back-adjusted history makes at once. */
+const BACK_ADJUST_READ_LIMIT = 4;
+/** How far before a roll a contract's bars must reach for its close: past a long holiday weekend. */
+const ROLL_READ_DAYS = 10;
+/** The ranges a contract's bars are read over, each with the days it spans at least. */
+const BACK_ADJUST_READ_RANGES: ReadonlyArray<readonly [TimeRange, number]> = [["1M", 28], ["3M", 89], ["6M", 181], ["1Y", 365], ["5Y", 1826]];
+
+/**
+ * A continuous future's daily bars back-adjusted at its rolls
+ * (backAdjustHistory): each outgoing and incoming contract's bars read
+ * around its roll, the stitched rolls and the warning that lists them. Fails
+ * for a symbol that is not a continuous future whose bars name their
+ * contracts, for bars coarser than daily, and when a roll cannot be priced.
+ */
+async function backAdjustListingHistory(
+  history: ListingHistory,
+  method: BackAdjustMethod,
+  market: MarketContext,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+): Promise<{ rows: HistoryRow[]; rolls: StitchedRoll[]; unstitched: HistoryRoll[]; note: string }> {
+  const symbol = history.listing.symbol;
+  const board = futuresBoardContract(symbol);
+  if (!/=F$/i.test(symbol) || !board || !history.data.some((row) => row.contract)) {
+    ctx.fail(`--back-adjust stitches a continuous future's contracts, such as ES=F; ${history.listing.key} is not one whose bars name them.`);
+  }
+  if (history.interval !== "1d") {
+    ctx.fail("--back-adjust stitches daily bars: ask for --range 5Y or less, or a --from window of up to five years.", `Usage: gloom ${HISTORY_USAGE}`);
+  }
+  const rolls = historyRolls(history.data);
+  // Each contract's daily bars over the shortest range that reaches back past its earliest roll.
+  const oldest = new Map<string, number>();
+  for (const roll of rolls) {
+    for (const contract of [roll.from, roll.to]) {
+      const at = Date.parse(`${roll.date.slice(0, 10)}T00:00:00Z`) - ROLL_READ_DAYS * 86_400_000;
+      oldest.set(contract, Math.min(oldest.get(contract) ?? at, at));
+    }
+  }
+  const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
+  // A few contracts at a time: five years of rolls is forty-odd contracts.
+  const read = createConcurrencyLimiter(BACK_ADJUST_READ_LIMIT);
+  const loaded = await Promise.all([...oldest].map(([contract, from]) => read(() => {
+    const range = BACK_ADJUST_READ_RANGES.find(([, days]) => Date.now() - days * 86_400_000 <= from)?.[0] ?? "5Y";
+    return market.dataProvider.getPriceHistory(`${contract}.${board!.venue}`, "", range, context)
+      .then((points) => ({ contract, closes: contractCloses(points) }))
+      .catch(logFailure("cli.commands-market", "Read a futures contract's bars to back-adjust failed", { contract, closes: new Map<string, number>() }));
+  })));
+  const closes = new Map(loaded.map(({ contract, closes: read }) => [contract, read]));
+  // A contract the source has no bars of leaves its rolls as traded, named in the warning, and the rest are stitched.
+  const unserved = new Set(loaded.flatMap(({ contract, closes: read }) => read.size === 0 ? [contract] : []));
+  const stitched = backAdjustHistory(history.data, method, (contract) => closes.get(contract));
+  const named = history.data.findIndex((row) => row.contract);
+  return { ...stitched, note: stitchedRollsNote(symbol, method, stitched.rolls, named > 0 ? history.data[named]!.date : null, stitched.unstitched, unserved) };
 }
 
 /** A symbol of a list: its bars, or why it has none. */
@@ -3611,6 +3711,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },
         { flags: "--wide", description: "One row per date and one close column per symbol, its unit in the header, in place of one long table" },
+        { flags: "--back-adjust [ratio]", description: "A continuous future (ES=F) stitched into one series at the rolls its bars name: every price before a roll moved by the gap between the two contracts that day (by difference, or scaled by their ratio with ratio), the rolls listed in a warning and in --json metadata.backAdjust. Daily bars, --range 5Y included; a roll whose contracts the source serves no bars of is left as traded and named. Raw front-month prices are the default" },
         EXCHANGE_OPTION,
       ],
       sections: [{
@@ -3911,7 +4012,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "Amounts",
         lines: [
-          "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1.234 EUR is thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. A comma before exactly three digits (fx 1,234 EUR) could be either, so fx asks which: type 1234 or 1.2340. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
+          "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5; 1.5 and 1,5 are 1.5). A lone comma or dot before exactly three digits (fx 1,234 EUR, fx 1.234 EUR) could be thousands or a decimal, so fx asks which: type 1234 or 1.2340. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
         ],
       }, {
         title: "A past day",

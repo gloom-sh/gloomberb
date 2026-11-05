@@ -367,19 +367,19 @@ test("the ranking's text fits 120 columns with the company wrapped, and on 80 th
       return renderHeadlessPaneText(headless, result, args, "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
     };
     const wide = text(120);
-    expect(wide).toContain("Ticker  Company                        Score  Role           Nth  Vs Usual   Stake  Buyers  Bought  Last Buy  Filed");
+    expect(wide).toContain("Ticker  Company                      Score  Role           Nth  Vs Usual   Stake  Buyers  Bought  Last Buy    Filed");
     // Every column stays; a long company name wraps in its cell, never cut.
-    expect(wide).toContain("NWBI    Northwind Biologics               78  10% owner +2  12th     100x+     25x       3  $1.15M  10/14/26  2026-10-14");
+    expect(wide).toContain("NWBI    Northwind Biologics             78  10% owner +2  12th     100x+     25x       3  $1.15M  2026-10-14  2026-10-14");
     expect(wide).toContain("        Incorporated");
     // Traded both ways: dashes for the nth trade and size, the stake marked.
-    expect(wide).toContain("TRNT    Tailspin Toys                     40  CFO             --        --  +12% \u00b1       1   $496k  10/4/26   2026-10-05");
+    expect(wide).toContain("TRNT    Tailspin Toys                   40  CFO             --        --  +12% \u00b1       1   $496k  2026-10-04  2026-10-05");
     // Each row's insiders are the opened company's, as in the pane; the exports keep them.
     expect(wide.join("\n")).not.toContain("Ana Rivera");
     expect(result.rows[0]!.buyers).toBe("Ana Rivera (10% owner) $796k 25x; Ben Okafor (Director) $356.5k NEW");
     expect(Math.max(...wide.map((line) => line.length))).toBeLessThanOrEqual(120);
     const narrow = text(80);
-    expect(narrow).toContain("Ticker  Score  Role           Stake  Buyers  Bought  Last Buy  Filed");
-    expect(narrow).toContain("TRNT       40  CFO           +12% \u00b1       1   $496k  10/4/26   2026-10-05");
+    expect(narrow).toContain("Ticker  Score  Role           Stake  Buyers  Bought  Last Buy    Filed");
+    expect(narrow).toContain("TRNT       40  CFO           +12% \u00b1       1   $496k  2026-10-04  2026-10-05");
     expect(narrow).toContain("  Company Northwind Biologics Incorporated  Nth 12th  Vs Usual 100x+");
     expect(Math.max(...narrow.map((line) => line.length))).toBeLessThanOrEqual(80);
 
@@ -419,8 +419,8 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
     setCliWidthOverride(120);
     const text = renderHeadlessPaneText(headless, result, args({}), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
     expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought   Sold  Last");
-    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k     --  10/14/26");
-    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --  $1.3M  10/9/26");
+    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k     --  2026-10-14");
+    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --  $1.3M  2026-10-09");
     expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.sold])).toEqual([["Ana Rivera", "buy", 12_000, null], ["Ben Okafor", "sell", null, 1_300_000]]);
     // --side sell: the sellers' dollars first.
     const selling = await headless.load(args({ side: "sell" }), createTestHeadlessContext({ apiClient }));

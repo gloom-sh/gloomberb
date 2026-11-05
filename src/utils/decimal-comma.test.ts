@@ -127,9 +127,12 @@ test("an amount to convert asks about a comma and three digits in every currency
     .toThrow("The amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.");
   // A three-decimal currency still says why both are amounts.
   expect(() => readConvertedAmount("1,234", "The amount", "kwd")).toThrow("and KWD has 3 decimals; type 1234 or 1.2340.");
+  // A dot and three digits reads two ways too: a dot-decimal reader's 1.234 is never 1234.
+  expect(() => readConvertedAmount("1.234", "The amount", "EUR"))
+    .toThrow("The amount 1.234 could be 1234 (thousands) or 1.234 (decimal point); type 1234 or 1.2340.");
   // Everything else reads as cash reads it.
-  expect(["81000", "81,000.5", "1.234,5", "1234,5", "12,5", "1.234"].map((text) => readConvertedAmount(text, "The amount", "EUR")))
-    .toEqual([81000, 81000.5, 1234.5, 1234.5, 12.5, 1234]);
+  expect(["81000", "81,000.5", "1.234,5", "1234,5", "12,5", "1.5", "1,5", "1.2345"].map((text) => readConvertedAmount(text, "The amount", "EUR")))
+    .toEqual([81000, 81000.5, 1234.5, 1234.5, 12.5, 1.5, 1.5, 1.2345]);
   expect(readConvertedAmount("abc", "The amount", "EUR")).toBeNaN();
 });
 
