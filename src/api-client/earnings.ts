@@ -99,6 +99,11 @@ interface EarningsHistoryReport extends EarningsReport {
   fiscalHalf?: number | null;
   /** The results announcement the figures were read from, a listing abroad's. */
   filing?: { url: string; title: string; publishedAt: string } | null;
+  /**
+   * A listing abroad's filed EPS's dilution: a basic EPS has no basis (it is
+   * not the statements' diluted figure) and says so here. Null or absent otherwise.
+   */
+  epsDilution?: "diluted" | "basic" | null;
 }
 
 /** One report whose fiscal quarter the company's calls name: every other quarter steps from it. */
@@ -117,6 +122,11 @@ export interface EarningsHistoryPayload {
   fiscalAnchor?: EarningsFiscalAnchor | null;
   /** The basis the company's next consensus is on, from its past year's reports; null when they do not agree. Absent from older servers. */
   consensusBasis?: EarningsEpsBasis | null;
+  /**
+   * A listing abroad's history is read for Pro accounts: `pro: false` says
+   * why there are no reports. Absent for US listings, open to everyone.
+   */
+  access?: { pro: boolean };
   /** Newest first; an upcoming report leads. */
   reports: EarningsHistoryReport[];
 }

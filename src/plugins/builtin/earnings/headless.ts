@@ -11,7 +11,7 @@ import type {
 import type { EarningsEvent } from "../../../types/data-provider";
 import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
-import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad } from "./client";
+import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, historyNeedsPro, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows, periodText } from "./history-model";
@@ -93,7 +93,7 @@ const LISTING_HISTORY_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 /** What a Hong Kong listing's ERN report's period, currency and filing are, in its metadata. */
-const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a report the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate.";
+const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a period the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate, its EPS diluted (basis GAAP) where the filing gives one, else basic (basis basic). Past reports for Hong Kong listings come with Gloom Pro.";
 
 interface EarningsHeadlessDependencies {
   calendar(query: { from: string; to: string; perDay: number; symbols: string[] }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
@@ -253,7 +253,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const next = upcoming.status === "fulfilled" ? upcoming.value[0] ?? null : null;
   const notice = abroad
     ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, logFailure("earnings.headless", "Load earnings company name failed", null)), context)
-    : null;
+    : historyNeedsPro(payload) ? `Past reports for Hong Kong listings come with Gloom Pro, so ${symbol} shows its next report.` : null;
   const rows = historyRows(payload, newYorkToday(), next, { abroad: ownAbroad }).map((row) => ({
     date: row.date,
     upcoming: row.upcoming,
@@ -273,7 +273,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
     epsActualProvisional: row.provisional,
-    epsBasis: showsEpsBasis(row) ? epsBasisName(row.epsBasis) : null,
+    epsBasis: !showsEpsBasis(row) ? null : !row.epsBasis && row.epsDilution === "basic" ? "basic" : epsBasisName(row.epsBasis),
     epsSurprise: row.epsSurprise,
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
@@ -285,7 +285,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   }));
   // An ETF, an index, a currency pair, a coin or a future has no earnings: that is the answer, not a gap in the data,
   // and a history that failed for one (a coin is no US ticker) is no error.
-  const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
+  const noEarnings = rows.length === 0 && !abroad && !historyNeedsPro(payload) ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
   return {
     columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,

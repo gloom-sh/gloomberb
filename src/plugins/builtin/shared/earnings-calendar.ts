@@ -124,8 +124,8 @@ interface ReportSlot {
 /** How one source's rows are read and rebuilt: corporate actions for events and EE, history for ERN. */
 export interface ReportRowAdapter<T> {
   slot(row: T): ReportSlot;
-  /** The row labelled reported, with `epsActual` when it has no figure of its own. */
-  reported(row: T, epsActual: number | null): T;
+  /** The row labelled reported, with `epsActual` (the calendar's `report`'s, when it has one) when it has no figure of its own. */
+  reported(row: T, epsActual: number | null, report?: CalendarReport): T;
   /** The calendar's report as a row: over `row` when it is the same report, else a new one. */
   fromCalendar(report: CalendarReport, row: T | null): T;
 }
@@ -179,7 +179,7 @@ function resolveReportRowsWithCalendar<T>(
   const row = resolved[index]!;
   const slot = adapter.slot(row);
   if (isOut(slot, today)) {
-    if (slot.epsActual == null && report.epsActual != null) resolved[index] = adapter.reported(row, report.epsActual);
+    if (slot.epsActual == null && report.epsActual != null) resolved[index] = adapter.reported(row, report.epsActual, report);
   } else if (report.dateStatus === "reported" || calendarDateWins(report.dateStatus, earningsDateStatus(slot.dateStatus))) {
     resolved[index] = adapter.fromCalendar(report, row);
   }

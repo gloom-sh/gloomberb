@@ -96,8 +96,18 @@ export function loadEarningsBoard(query: EarningsCalendarQuery, force = false) {
     { force, validate: validateEarningsCalendar });
 }
 
-export function cachedEarningsHistory(symbol: string) {
-  return cachedCloudResource(historyCache, symbol, (payload) => validateEarningsHistory(payload, symbol));
+/**
+ * A history's cache key. A listing abroad's history is the account's (Gloom
+ * Cloud reads it for Pro), so `accessKey` (the session and plan) keeps one
+ * account's apart from another's, and from the next sign-in's.
+ */
+const historyKey = (symbol: string, limit?: number, accessKey?: string) => {
+  const key = limit == null ? symbol : `${symbol}:${limit}`;
+  return accessKey ? `${key}|${accessKey}` : key;
+};
+
+export function cachedEarningsHistory(symbol: string, accessKey?: string) {
+  return cachedCloudResource(historyCache, historyKey(symbol, undefined, accessKey), (payload) => validateEarningsHistory(payload, symbol));
 }
 
 /**
@@ -115,8 +125,11 @@ export function noHistoryAbroad(error: unknown): null {
   throw error;
 }
 
-/** `limit` asks for more reports than the pane's default and is cached apart from it. */
-export function loadEarningsHistory(symbol: string, force = false, limit?: number) {
-  return loadCloudResource(historyCache, limit == null ? symbol : `${symbol}:${limit}`, () => fetchEarningsHistory(symbol, apiClient, limit),
+/** `limit` asks for more reports than the pane's default and is cached apart from it; `accessKey` as `cachedEarningsHistory`. */
+export function loadEarningsHistory(symbol: string, force = false, limit?: number, accessKey?: string) {
+  return loadCloudResource(historyCache, historyKey(symbol, limit, accessKey), () => fetchEarningsHistory(symbol, apiClient, limit),
     { force, validate: (payload) => validateEarningsHistory(payload, symbol) });
 }
+
+/** A listing abroad's history Gloom Cloud did not read for this account: its past reports are Pro's. */
+export const historyNeedsPro = (payload: EarningsHistoryPayload | null | undefined) => payload?.access?.pro === false;

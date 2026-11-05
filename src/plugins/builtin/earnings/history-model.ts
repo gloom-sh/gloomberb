@@ -39,6 +39,8 @@ export interface HistoryRow {
   provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
   epsBasis: EarningsEpsBasis | null;
+  /** A listing abroad's filed EPS that is basic: not the statements' diluted figure, so it has no basis and says so. */
+  epsDilution: "diluted" | "basic" | null;
   epsSurprise: number | null;
   revenueEstimate: number | null;
   revenueActual: number | null;
@@ -101,19 +103,24 @@ const wholeOrNull = (value: unknown) => (typeof value === "number" && Number.isI
 /** ERN's rows as the shared calendar resolver reads and rebuilds them. */
 const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<HistoryRow> => ({
   slot: (row) => ({ date: row.date, dateStatus: row.dateStatus, epsActual: row.epsActual }),
-  reported: (row, epsActual) => {
-    const actual = row.epsActual ?? epsActual;
+  reported: (row, epsActual, report) => {
+    // A listing abroad's row takes the calendar's figure only as a quarter's, in the currency its own figures are in.
+    const fits = !abroad || (row.periodKind === "quarter" && row.currency != null && report?.currency === row.currency);
+    const actual = row.epsActual ?? (fits ? epsActual : null);
     return { ...row, dateStatus: "reported", epsActual: actual, epsSurprise: surprise(actual, row.epsEstimate) };
   },
   fromCalendar(report, row) {
     // A listing abroad's consensus goes with its date only in the currency its figures are in: an unlabelled figure would read as dollars.
+    // The calendar's figures are a quarter's: a half's or a year's row keeps its own.
     const currency = abroad ? row?.currency ?? report.currency : null;
-    const estimate = report.epsEstimate != null && (!abroad || (report.currency != null && report.currency === currency));
+    const quarter = !row || row.periodKind === "quarter";
+    const inCurrency = !abroad || (report.currency != null && report.currency === currency);
+    const estimate = report.epsEstimate != null && quarter && inCurrency;
     const epsEstimate = estimate ? report.epsEstimate : row?.epsEstimate ?? null;
-    const epsActual = report.epsActual ?? row?.epsActual ?? null;
+    const epsActual = (quarter && inCurrency ? report.epsActual : null) ?? row?.epsActual ?? null;
     const move = row?.move ?? null;
     const dateStatus = report.dateStatus;
-    const revenueEstimate = !abroad || (report.revenueCurrency != null && report.revenueCurrency === currency) ? report.revenueEstimate : null;
+    const revenueEstimate = quarter && (!abroad || (report.revenueCurrency != null && report.revenueCurrency === currency)) ? report.revenueEstimate : null;
     return {
       key: report.date,
       date: report.date,
@@ -136,6 +143,7 @@ const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<Histor
       provisional: row?.provisional ?? false,
       // The consensus's basis is the company's (Gloom Cloud names it from the reports it was measured against).
       epsBasis: estimate ? report.epsBasis ?? row?.epsBasis ?? null : row?.epsBasis ?? null,
+      epsDilution: row?.epsDilution ?? null,
       epsSurprise: surprise(epsActual, epsEstimate),
       revenueEstimate: revenueEstimate ?? row?.revenueEstimate ?? null,
       revenueActual: row?.revenueActual ?? null,
@@ -195,6 +203,7 @@ export function historyRows(
       epsActual: report.epsActual,
       provisional: isProvisionalActual(report),
       epsBasis: earningsEpsBasis(report.epsBasis),
+      epsDilution: abroad && report.epsDilution === "basic" ? "basic" : null,
       epsSurprise: surprise(report.epsActual, report.epsEstimate),
       revenueEstimate: report.revenueEstimate,
       revenueActual: report.revenueActual,

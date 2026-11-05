@@ -105,9 +105,12 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
       // The company's press release's figure reads quieter until the calendar's replaces it.
       return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
+      // A listing abroad's basic EPS is not the statements' diluted figure: it says what it is.
       return !showsEpsBasis(row)
         ? { text: "--", color: dim }
-        : { text: epsBasisShort(row.epsBasis), color: row.epsBasis ? colors.textMuted : dim };
+        : !row.epsBasis && row.epsDilution === "basic"
+          ? { text: "basic", color: colors.textMuted }
+          : { text: epsBasisShort(row.epsBasis), color: row.epsBasis ? colors.textMuted : dim };
     case "epsSurprise":
       return signed(row.epsSurprise);
     case "revenueEstimate":

@@ -17,7 +17,10 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAssetData } from "../../runtime";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
 import { newYorkToday, reportMove } from "./board-model";
-import { cachedEarningsHistory, hasEarningsHistory, loadEarningsHistory, noHistoryAbroad } from "./client";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { cachedEarningsHistory, hasEarningsHistory, historyNeedsPro, loadEarningsHistory, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { chartAxis, chartPoints, chartRows, historyFigures, historyRows, type HistoryRow } from "./history-model";
 import { historyColumns, renderHistoryCell, type HistoryColumn, type LiveMove } from "./history-table";
@@ -44,11 +47,20 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const venueAbroad = listingAbroadVenue(symbol);
   const abroad = !hasEarningsHistory(venueAbroad);
   const ownAbroad = venueAbroad != null && !abroad;
+  // A Hong Kong listing's past reports are Pro's: without it the next report stands alone, and nothing is asked.
+  // What Gloom Cloud answers is the account's, so it is kept per session and plan.
+  const access = usePlanAccess();
+  const session = useResearchCloudSession();
+  const openUpgrade = useCloudUpgradeAction("ern");
+  const proOnly = ownAbroad && !access.hasProAccess;
+  const accessKey = ownAbroad ? `${session.requestKey}:${access.hasProAccess ? "pro" : "free"}` : undefined;
   const loader = useCallback(
-    (force: boolean) => (abroad ? Promise.resolve(null) : ownAbroad ? loadEarningsHistory(symbol, force).catch(noHistoryAbroad) : loadEarningsHistory(symbol, force)),
-    [abroad, ownAbroad, symbol],
+    (force: boolean) => (abroad || proOnly ? Promise.resolve(null)
+      : ownAbroad ? loadEarningsHistory(symbol, force, undefined, accessKey).catch(noHistoryAbroad)
+      : loadEarningsHistory(symbol, force)),
+    [abroad, accessKey, ownAbroad, proOnly, symbol],
   );
-  const resource = useAsyncResource(loader, { initialData: () => (abroad ? null : cachedEarningsHistory(symbol)) });
+  const resource = useAsyncResource(loader, { initialData: () => (abroad || proOnly ? null : cachedEarningsHistory(symbol, accessKey)) });
   // Past the stored calendar's horizon, and for listings it does not carry, the per-ticker calendar has the next date.
   const upcomingLoader = useCallback(
     (force: boolean) => loadEarningsCalendar(dataProvider, [symbol], { force }).then((result) => result.events[0] ?? null),
@@ -100,9 +112,10 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   } : null, [axis, cursorDate, link, series]);
   // A symbol with no reports on record may be one that never has any (an ETF, an index, a coin): its type says so.
   const bare = !resource.loading && rows.length === 0;
+  const needsPro = proOnly || historyNeedsPro(payload);
   const noEarningsLoader = useCallback(() => (dataProvider ? loadNoEarningsText(dataProvider, symbol, "pane") : Promise.resolve(null)), [dataProvider, symbol]);
-  const noEarnings = useAsyncResource(bare && !abroad ? noEarningsLoader : null);
-  const emptyTitle = noEarnings.data ?? "No earnings reports on record.";
+  const noEarnings = useAsyncResource(bare && !abroad && !needsPro ? noEarningsLoader : null);
+  const emptyTitle = noEarnings.data ?? (needsPro ? "Past reports for Hong Kong listings come with Pro." : "No earnings reports on record.");
   // A coin's history fails (it is no US ticker), which says nothing once its type has answered.
   const historyError = noEarnings.loading || noEarnings.data ? null : resource.error;
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
@@ -114,6 +127,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     error: historyError,
     stale: !!resource.data?.stale,
     info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
+      : needsPro ? [{ id: "hong-kong-pro", onPress: () => void openUpgrade(), capture: true, parts: [{ text: "past reports: Pro", tone: "muted" as const }] }]
       : payload && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
   });
 

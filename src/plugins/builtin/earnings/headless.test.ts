@@ -316,3 +316,73 @@ test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN'
   expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"] });
   await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloom fn EVTS CRWV --week last");
 });
+
+test("a Hong Kong half or year never takes the calendar's quarter figures, and no actual comes without its currency", async () => {
+  const smic = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "0981:HKEX", name: "SMIC", timing: null, timingSource: null, currency: "USD", dateStatus: "reported", ...fields });
+  const halfDay = addDays(today, -40);
+  const next = addDays(today, 6);
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0981:HKEX", name: "SMIC",
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: null, access: { pro: true },
+    reports: [
+      smic({ date: next, fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 0.05, dateStatus: "confirmed" }),
+      // Its interim's revenue alone: no EPS of its own.
+      smic({ date: halfDay, fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+        revenueActual: 5.511e9, revenueActualSource: "filing" }),
+    ],
+  };
+  const event = (date: string, fields: Record<string, unknown>) => ({
+    symbol: "0981:HKEX", name: "SMIC", earningsDate: new Date(`${date}T00:00:00Z`), isDateEstimate: false, timing: "",
+    epsEstimate: null, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, ...fields,
+  });
+  const load = async (upcoming: unknown) => (await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => payload,
+    upcoming: async () => [upcoming] as never,
+  }).load({ rawArgument: "0981:HKEX", argument: ["0981:HKEX"], symbols: ["0981:HKEX"], options: {} }, context)).rows;
+  // The calendar's reported quarter, dated by the half: its 0.06 is a quarter's, not the half's.
+  const half = await load(event(addDays(halfDay, 1), {
+    dateStatus: "reported", epsActual: 0.06, epsEstimate: 0.035,
+    estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 0.035, period: "0q", periodEndDate: "2026-06-30", currency: "USD" } },
+  }));
+  expect(half.find((row) => row.period === "H1 FY2026")).toMatchObject({ epsActual: null, epsEstimate: null, revenueActual: 5.511e9 });
+  // An actual the calendar gives with no currency is not shown under the listing's.
+  const bare = await load(event(next, { dateStatus: "reported", epsActual: 0.07 }));
+  expect(bare.find((row) => row.date === next)).toMatchObject({ currency: "USD", epsActual: null, epsEstimate: 0.05 });
+})
+
+test("a Hong Kong filed EPS that is basic says so instead of GAAP", async () => {
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0941:HKEX", name: "China Mobile", access: { pro: true },
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 },
+    reports: [
+      report({ symbol: "0941:HKEX", date: addDays(today, -200), timing: null, timingSource: null, currency: "CNY", dateStatus: "reported",
+        fiscalPeriod: "2025-12", periodKind: "year", periodMonths: 12, fiscalYear: 2025, epsActual: 6.6, epsActualSource: "filing",
+        epsBasis: null, epsDilution: "basic" }),
+    ],
+  };
+  const rows = (await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => payload,
+    upcoming: async () => [],
+  }).load({ rawArgument: "0941:HKEX", argument: ["0941:HKEX"], symbols: ["0941:HKEX"], options: {} }, context)).rows;
+  expect(rows.map((row) => [row.period, row.epsActual, row.epsBasis])).toEqual([["FY2025", 6.6, "basic"]]);
+})
+
+test("an account without Pro is told Hong Kong past reports come with it, and keeps the next report", async () => {
+  const next = addDays(today, 12);
+  const result = await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => ({ asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: null, fiscalAnchor: null, consensusBasis: null,
+      access: { pro: false }, reports: [] }),
+    upcoming: async () => [{
+      symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date(`${next}T08:10:00Z`), isDateEstimate: false, timing: "",
+      epsEstimate: 7.22, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null,
+      estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 7.22, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" } },
+    }],
+  }).load({ rawArgument: "0700:HKEX", argument: ["0700:HKEX"], symbols: ["0700:HKEX"], options: {} }, context);
+  expect(result.errors).toBeUndefined();
+  expect(result.rows.map((row) => [row.date, row.currency, row.epsEstimate])).toEqual([[next, "CNY", 7.22]]);
+  expect(result.metadata?.notices).toEqual(["Past reports for Hong Kong listings come with Gloom Pro, so 0700:HKEX shows its next report."]);
+})
