@@ -8,6 +8,7 @@ import { buildoutApi, getBuildoutProToken } from "../model";
 import { normalizeUpdate } from "../model/normalizers";
 import type { BuildoutUpdate, RawObject } from "../model/types";
 import { metricNumber, tickerSymbol } from "../format";
+import { parsePublicTickerKey } from "../../../../utils/exchanges";
 
 export type RelationRole = "power" | "supplier" | "customer" | "competitor";
 
@@ -223,13 +224,24 @@ export function normalizeCompanyProfile(raw: RawObject, access: "free" | "pro"):
 }
 
 /** The company under `symbol`, or null when the dataset has none. */
+/**
+ * A company's key as TheBuildout reads it: the venue first (TWSE:2330, NVDA).
+ * A Gloom key names it last (2330:TWSE), which the dataset reads as a venue
+ * named 2330 and refuses with a database error.
+ */
+export function buildoutCompanyKey(symbol: string): string {
+  const { symbol: code, exchange } = parsePublicTickerKey(symbol.trim());
+  return exchange ? `${exchange}:${code}` : code;
+}
+
 export async function fetchCompanyProfile(symbol: string): Promise<BuildoutCompanyProfile | null> {
   const token = await getBuildoutProToken();
   try {
-    const raw = await buildoutApi<RawObject>(`/companies/${encodeURIComponent(symbol)}`, token);
+    const raw = await buildoutApi<RawObject>(`/companies/${encodeURIComponent(buildoutCompanyKey(symbol))}`, token);
     return normalizeCompanyProfile(raw, token ? "pro" : "free");
   } catch (error) {
-    if (error instanceof Error && /not found|404/i.test(error.message)) return null;
+    // A venue the dataset has no name for is a company it does not cover, not an outage.
+    if (error instanceof Error && /not found|404|invalid input value for enum/i.test(error.message)) return null;
     throw error;
   }
 }

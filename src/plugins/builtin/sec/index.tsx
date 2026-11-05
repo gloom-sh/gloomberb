@@ -552,6 +552,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     return <FundAbroadNotice profile={abroad} />;
   }
   if (!eligibleTicker) {
+    // An equity listed abroad says where its announcements are, as `fn SEC` does; the footer opens the page.
+    if (!forms && announcements) {
+      const company = ticker.metadata.name?.trim() || ticker.metadata.ticker;
+      return renderFilingNotice(`SEC filings are shown for US listings. ${company} publishes its announcements on ${announcements.name}.`);
+    }
     return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");
   }
   const factsSummary = forms

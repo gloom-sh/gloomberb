@@ -156,7 +156,8 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatNumber(quote.bidSize, 0)} x ${bidPrice}` : bidPrice;
   const askText = quote.askSize != null && quote.askSize > 0 ? `${formatNumber(quote.askSize, 0)} x ${askPrice}` : askPrice;
   let spreadText = "—";
-  if (quote.bid != null && quote.ask != null) {
+  // A crossed book (a closing auction's last bid above its ask, Tencent's HK$430.80 / HK$430.40) has no spread to show.
+  if (quote.bid != null && quote.ask != null && quote.ask >= quote.bid) {
     const spread = quote.ask - quote.bid;
     const mid = (quote.ask + quote.bid) / 2;
     const spreadPercent = mid > 0 ? ` (${((spread / mid) * 100).toFixed(2)}%)` : "";
