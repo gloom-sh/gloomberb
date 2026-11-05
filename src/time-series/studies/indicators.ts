@@ -1,5 +1,6 @@
 import { mergePriceHistoryIntegrity } from "../../utils/price-history-integrity";
 import { isRealizedVolatilityEstimator, rollingRealizedVolatility } from "../../market-data/realized-volatility";
+import { INDEX_MEMBERS_VOLUME_LABEL } from "../../market-data/market/index-level";
 import { averageTrueRange } from "../trader-studies";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
@@ -273,8 +274,9 @@ export function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color
         ...(directional && isFiniteNumber(point.open) && isFiniteNumber(point.close) && point.close < point.open ? { fell: true } : {}),
       }]
       : []);
+  const label = input.volumeBasis === "index-members" ? INDEX_MEMBERS_VOLUME_LABEL : "Volume";
   return [outputSeries(spec, input, {
-    label: nameInput ? `Volume ${input.label}` : "Volume",
+    label: nameInput ? `${label} ${input.label}` : label,
     points,
     color: directional ? input.color : color,
     unit: input.volumeUnit ?? "",

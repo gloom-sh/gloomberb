@@ -416,7 +416,9 @@ export function layoutPaneFooterHintRow(
 ): PaneFooterHintRow {
   const width = Math.max(0, Math.floor(contentWidth));
   const hints = footer.hints.filter((hint) => !hint.disabled);
-  const warning = footer.info.some((segment) => segment.parts.some((part) => part.tone === "warning" || part.tone === "negative"));
+  // A warning icon keeps its room after it has been read and turned muted.
+  const warning = footer.info.some((segment) => segment.icon === "warning"
+    || segment.parts.some((part) => part.tone === "warning" || part.tone === "negative"));
   const infoChars = infoTextWidth(footer.info);
   const textFloor = footer.info.length === 0 ? 0
     : warning || infoChars <= WARNING_FLOOR_CHARS ? Math.min(WARNING_FLOOR_CHARS, infoChars)

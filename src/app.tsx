@@ -40,6 +40,7 @@ import { isPaneInLayout, type LayoutBounds } from "./layout/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
+import { attachSeenPaneNotices } from "./components/pane-notice-seen";
 import { attachNotificationLog } from "./notifications/notification-log";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
@@ -437,6 +438,10 @@ function AppInner({
   // keeps its own in memory rather than overwrite the main window's.
   useEffect(() => (
     appWideWorkElsewhere ? undefined : attachNotificationLog(pluginRegistry.persistence.pluginState)
+  ), [appWideWorkElsewhere, pluginRegistry]);
+  // Data warnings the user has opened stay muted across restarts, the same way.
+  useEffect(() => (
+    appWideWorkElsewhere ? undefined : attachSeenPaneNotices(pluginRegistry.persistence.pluginState)
   ), [appWideWorkElsewhere, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).

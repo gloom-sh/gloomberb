@@ -121,6 +121,17 @@ describe("footer hint row", () => {
     expect(long.hintsWidth).toBeGreaterThan(row.hintsWidth);
   });
 
+  test("a warning icon read and turned muted keeps the room it had, so the hints do not move", () => {
+    const status: PaneFooterSegment = { id: "line", parts: [{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min" }] };
+    const icon = (tone: "warning" | "muted"): PaneFooterSegment => ({ id: "notice", icon: "warning", parts: [{ text: "⚠", tone }], onPress: () => {} });
+    for (const width of [40, 52, 64]) {
+      const { hints: unseen, overflow, infoWidth, hintsWidth } = layoutPaneFooterHintRow(footer([icon("warning"), status]), width, 3);
+      const seen = layoutPaneFooterHintRow(footer([icon("muted"), status]), width, 3);
+      expect([seen.hints.map((hint) => hint.id), seen.overflow.length, seen.infoWidth, seen.hintsWidth])
+        .toEqual([unseen.map((hint) => hint.id), overflow.length, infoWidth, hintsWidth]);
+    }
+  });
+
   test("keeps every hint on a wide row", () => {
     const row = layoutPaneFooterHintRow(footer([{ id: "loading", parts: [{ text: "loading" }] }]), 120);
     expect(row.overflow).toEqual([]);
