@@ -18,6 +18,7 @@ import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
 import { tickerDisplayName } from "../../../portfolio/column-values";
 import { displayWidth } from "../../../utils/format";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
@@ -37,6 +38,51 @@ const GROSS_WEIGHT_LABEL = "GROSS WT";
 
 /** The widest a futures quantity grows the QTY column: `-12,000 × 5,000 bushels` fits. */
 const MAX_QUANTITY_COLUMN_WIDTH = 24;
+
+/**
+ * Columns that describe the company. A dash in every row means none of them
+ * has one (a book of futures, funds or currencies), so the column goes.
+ */
+const COMPANY_COLUMN_IDS: ReadonlySet<string> = new Set([
+  "market_cap", "pe", "forward_pe", "dividend_yield", "target", "target_pct", "rating", "ex_div", "next_earn", "sector", "industry",
+]);
+/**
+ * What a narrow book gives up, in order, so its value and P&L stay on screen:
+ * the valuation columns, then the cost (quantity times average cost), then the
+ * month's sparkline.
+ */
+const NARROW_BOOK_DROP_ORDER = ["forward_pe", "pe", "dividend_yield", "market_cap", "cost_basis", PRICE_SPARKLINE_COLUMN_ID];
+/** Columns of a held position: a list that shows one is a book, whose value outranks its valuation. */
+const POSITION_COLUMN_IDS: ReadonlySet<string> = new Set(["shares", "avg_cost", "cost_basis", "mkt_value", "weight", "day_pnl", "pnl", "pnl_pct"]);
+
+const isEmptyCell = (text: string) => /^[\s—–-]*$/.test(text);
+
+/**
+ * Whether a row's company columns say all they will: its quote is in, and so
+ * are its fundamentals for a listed company. Until then a dash may still fill in.
+ */
+function companyDataSettled(financials: TickerFinancials | undefined): boolean {
+  const quote = financials?.quote;
+  return !!quote && (!!financials.fundamentals || quote.instrumentType?.toUpperCase() !== "EQUITY");
+}
+
+/**
+ * The columns a book shows: a company column no row has a figure for is
+ * hidden, and a narrow book gives up its valuation columns before its value
+ * and P&L run off the edge.
+ */
+export function fitPortfolioColumns(
+  columns: readonly ColumnConfig[],
+  rows: readonly { cell: (column: ColumnConfig) => string; settled: boolean }[],
+  width: number | undefined,
+): ColumnConfig[] {
+  const settled = rows.length > 0 && rows.every((row) => row.settled);
+  const shown = settled
+    ? columns.filter((column) => !COMPANY_COLUMN_IDS.has(column.id) || rows.some((row) => !isEmptyCell(row.cell(column))))
+    : [...columns];
+  if (width == null || !shown.some((column) => POSITION_COLUMN_IDS.has(column.id))) return shown;
+  return dropColumnsToFit(shown, width - 1, NARROW_BOOK_DROP_ORDER);
+}
 
 /** A cell recomputes only when its row's records or a context input it reads change. */
 function buildCellVersion(
@@ -122,6 +168,7 @@ export function PortfolioTickerTable({
   addTickerShortcut,
   onOpenPerpetual,
   rootHeight,
+  width,
 }: {
   columns: ColumnConfig[];
   focused?: boolean;
@@ -150,6 +197,8 @@ export function PortfolioTickerTable({
   /** Opens PERP on a row's stock perpetual: its PERP% and FUND 8H cells link to it. */
   onOpenPerpetual?: (marketId: string) => void;
   rootHeight?: number;
+  /** The pane's width in cells: a narrow book gives up its valuation columns first. */
+  width?: number;
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue> & TickerTableCell>(5000));
   const openPerpetualRef = useRef(onOpenPerpetual);
@@ -201,7 +250,7 @@ export function PortfolioTickerTable({
   )), [sortedTickers]);
   // A book that holds a short weighs its positions against gross exposure, and the header says so.
   const grossWeights = columnContext.portfolioWeightBasis === "gross";
-  const displayColumns = useMemo(() => columns.map((column) => column.id === "shares" && hasNonShareQuantity
+  const sizedColumns = useMemo(() => columns.map((column) => column.id === "shares" && hasNonShareQuantity
     ? { ...column, label: "QTY", ...(sharesWidth > column.width ? { width: sharesWidth } : {}) }
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
@@ -210,6 +259,18 @@ export function PortfolioTickerTable({
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column).map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
   [columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, pnlLabel, sharesWidth, tickerWidth]);
+  // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
+  const hiddenColumnIds = useMemo(() => {
+    const shown = new Set(fitPortfolioColumns(sizedColumns, sortedTickers.map((ticker) => {
+      const financials = tableFinancialsMap.get(ticker.metadata.ticker);
+      return { cell: (column: ColumnConfig) => resolveCell(column, ticker, financials).text, settled: companyDataSettled(financials) };
+    }), width).map((column) => column.id));
+    return sizedColumns.filter((column) => !shown.has(column.id)).map((column) => column.id).join(",");
+  }, [resolveCell, sizedColumns, sortedTickers, tableFinancialsMap, width]);
+  const displayColumns = useMemo(() => {
+    const hidden = new Set(hiddenColumnIds.split(","));
+    return hiddenColumnIds ? sizedColumns.filter((column) => !hidden.has(column.id)) : sizedColumns;
+  }, [hiddenColumnIds, sizedColumns]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

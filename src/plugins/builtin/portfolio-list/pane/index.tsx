@@ -826,6 +826,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           addTickerShortcut={showQuickAdd ? QUICK_ADD_KEY : undefined}
           onOpenPerpetual={showsPerpetuals ? openPerpMarket : undefined}
           rootHeight={contentHeight}
+          width={width}
         />
       ) : (
         <PortfolioGrid
