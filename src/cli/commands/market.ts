@@ -200,13 +200,13 @@ import {
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
-import { formatUtcTime } from "../../utils/utc-time";
+import { formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { withBankEnterpriseValue } from "../../utils/fundamentals";
-import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { fxRateNotes, refreshedFxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
+import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
+import { fxPairListing, fxQuoteRateObservation, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
@@ -296,7 +296,7 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxRate, formatFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxRate, formatFxRate, FX_USAGE, fxRateAtPairPrecision, parseFxArgs } from "../fx-pair";
 import {
   describeShortRate,
   formatForwardPoints,
@@ -3393,7 +3393,7 @@ async function runFxOnDate(
     }
   }
   const from = legs.get(currency), into = legs.get(baseCurrency);
-  const rate = currency === baseCurrency ? 1 : crossRate(from?.rate, into?.rate);
+  const rate = currency === baseCurrency ? 1 : fxRateAtPairPrecision(request, crossRate(from?.rate, into?.rate));
   // A cross is as old as its older close; a weekend or holiday reads the trading day before it.
   const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
   const converted = amount == null ? null : amount * rate;
@@ -3465,49 +3465,42 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       (payload) => ({ payload }),
       (error: unknown) => ({ error: unavailableOnServer(error, "Forwards are not available from Gloom Cloud yet: it serves no short rates.") }),
     ) : null;
-    const reasons = new Map<string, string>();
-    const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
-      .load({ force: ctx.cliOptions.refresh }).catch((error) => {
-        const reason = providerMissReason(error);
-        if (reason) reasons.set(code, reason);
-        return null;
-      });
-    // Every rate is a cross of two USD legs; a code priced in itself needs none.
-    const codes = currency === baseCurrency ? [] : [currency, baseCurrency];
-    const legs = await Promise.all(codes.map(load));
-    const missing = codes.filter((_code, index) => !isUsableRate(legs[index]?.value));
-    if (missing.length > 0) {
-      // A reason the data service gave for the first missing leg says more than the generic line.
-      const reason = missing.map((code) => reasons.get(code)).find(Boolean);
+    // The pair's own quote, as `quote` and the FX board read it; a pair with none is crossed through the dollar.
+    const now = Date.now();
+    const read = await readFxQuoteRate(currency, baseCurrency, (targets, options) => market.dataProvider.getQuotesBatch(targets, options),
+      { forceRefresh: ctx.cliOptions.refresh, now });
+    if (read && "missing" in read) {
+      // A reason the data service gave for a missing quote (spot gold is not quoted) says more than the generic line;
+      // a symbol that names nothing (USDXYZ=X) does not.
+      const reason = read.errors.map((error) => providerMissReason(error)
+        ?? (typeof error === "string" && !/^Not a ticker\b|unavailable/i.test(error) ? error : undefined)).find(Boolean);
       if (reason) ctx.fail(reason);
       ctx.fail(
-        `Exchange rate unavailable for ${missing.join(" and ")}.`,
-        `${pair} is crossed from each currency's USD rate, and none came back for ${missing.join(" or ")}. Check the ISO code.`,
+        `Exchange rate unavailable for ${read.missing.join(" and ")}.`,
+        `No quote came back for ${fxPairListing(currency, baseCurrency).symbol}${currency !== "USD" && baseCurrency !== "USD" ? " or the dollar pairs it crosses from" : ""}. Check the ISO code.`,
       );
     }
-    const rate = codes.length === 0 ? 1 : crossRate(legs[0]?.value, legs[1]?.value);
-    // A cross rate is only as current as its older leg.
-    const observed = legs.flatMap((leg) => leg?.asOf ?? []);
-    const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
-    const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
+    const quoted = read && !("missing" in read) ? read : null;
+    // The rate a conversion uses is the pair's quote at its precision, and the rate line prints that figure.
+    const rate = quoted ? fxRateAtPairPrecision(request, quoted.rate) : 1;
+    const observation = quoted ? fxQuoteRateObservation(quoted, now) : null;
+    const asOf = observation && Number.isFinite(observation.updatedAt) ? new Date(observation.updatedAt).toISOString() : null;
+    // A rate older than its feed's delay is stale, as `quote` says of the same quote.
+    const stale = observation?.stale === true;
     const converted = amount == null ? null : amount * rate;
-    const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate, ...(amount == null ? {} : { amount, converted }) };
-    // The closing line dates the rate, and says when it is stale, as `fn FXC` does.
-    const loaded = new Map(codes.flatMap((code, index) => {
-      const leg = legs[index];
-      return leg ? [[code, {
-        rate: leg.value,
-        timing: {
-          asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes,
-          intradayBar: leg.intradayBar, staleReason: leg.staleReason,
-        },
-      }] as const] : [];
-    }));
-    const freshness = fxPairFreshness(loaded);
-    // A rate that is its pair's bar says which bar, and a stale one why it stands.
-    const timings = new Map([...loaded].map(([code, leg]) => [code, leg.timing]));
-    // --refresh read every leg again: one that is still stale says the data service has no newer rate.
-    const rateNotes = [...fxRateNotes(timings), ...ctx.cliOptions.refresh ? refreshedFxRateNotes(timings) : []];
+    const row = {
+      currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate,
+      ...(quoted ? { quotes: quoted.quotes.map(({ symbol }) => symbol), ...(quoted.viaUsd ? { via: "USD" } : {}) } : {}),
+      ...(amount == null ? {} : { amount, converted }),
+    };
+    // The closing line is the quote's own, as `quote` prints it: its time, and stale once older than the feed's delay.
+    const freshness = observation ? rowsFreshness([observation], undefined, undefined, now) : undefined;
+    // A rate that is its pair's bar says which bar, and a stale one why it stands; --refresh says when it found nothing newer.
+    const rateNotes = (quoted?.quotes ?? []).flatMap(({ symbol, quote }) => [
+      ...quoteBarNotes(symbol, quote, now),
+      ...ctx.cliOptions.refresh && !quote.staleReason && isQuoteStaleForCurrentSession(quote, now)
+        ? [`${symbol}: --refresh found no newer quote than ${formatUtcDayTime({ time: quote.lastUpdated, dateOnly: false }, now)} UTC.`] : [],
+    ]);
     if (tenor && shortRates && !("error" in tenor)) {
       const read = await shortRates;
       if ("error" in read) throw read.error;
@@ -3571,7 +3564,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       ? await loadPesoDollarRates((targets) => market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh }))
       : null;
     if (peso && peso.missing.length > 0) warnings.push(`No price for ${peso.missing.join(", ")}, so the rates from ${peso.missing.length === 1 ? "it are" : "them are"} left out.`);
-    const rateText = peso ? `${describeFxRate(request, rate)}  ·  ${peso.spotKind} rate` : describeFxRate(request, rate);
+    // A cross says so: the pair has no quote of its own.
+    const rateText = [describeFxRate(request, rate), ...quoted?.viaUsd ? ["via USD"] : [], ...peso ? [`${peso.spotKind} rate`] : []].join("  ·  ");
     ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
       text: () => [

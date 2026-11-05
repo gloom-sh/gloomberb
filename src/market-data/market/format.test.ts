@@ -59,10 +59,10 @@ describe("formatMarketPrice", () => {
   test("uses semantic precision for equities, cash, and crypto", () => {
     expect(formatMarketPrice(190.2, { assetCategory: "STK" })).toBe("190.2");
     expect(formatMarketPrice(259.7499, { assetCategory: "STK" })).toBe("259.75");
-    expect(formatMarketPrice(1.084567, { isCashBalance: true })).toBe("1.084567");
+    expect(formatMarketPrice(1.084567, { isCashBalance: true })).toBe("1.08457");
     expect(formatMarketPrice(1.17364, { assetCategory: "CURRENCY" })).toBe("1.17364");
-    // Float32 provider rates: the seventh significant digit ends the display.
-    expect(formatMarketPrice(157.8800048828125, { assetCategory: "CURRENCY" })).toBe("157.88");
+    // Float32 provider rates: the pair's precision ends the display.
+    expect(formatMarketPrice(157.8800048828125, { assetCategory: "CURRENCY" })).toBe("157.880");
     expect(formatMarketPrice(0.000123456789, { assetCategory: "CRYPTO" })).toBe("0.00012346");
   });
 
@@ -107,8 +107,8 @@ describe("formatMarketPrice", () => {
   });
 
   test("formats signed price changes without double signs", () => {
-    expect(formatSignedMarketPrice(0.123456, { isCashBalance: true })).toBe("+0.123456");
-    expect(formatSignedMarketPrice(-0.123456, { isCashBalance: true })).toBe("-0.123456");
+    expect(formatSignedMarketPrice(0.123456, { isCashBalance: true })).toBe("+0.12346");
+    expect(formatSignedMarketPrice(-0.123456, { isCashBalance: true })).toBe("-0.12346");
   });
 });
 
@@ -123,7 +123,7 @@ describe("formatMarketCost", () => {
 describe("formatMarketPriceWithCurrency", () => {
   test("renders price-like values with a symbol and variable decimals", () => {
     expect(formatMarketPriceWithCurrency(190.25, "USD", { assetCategory: "STK" })).toBe("$190.25");
-    expect(formatMarketPriceWithCurrency(1.084567, "EUR", { isCashBalance: true })).toBe("€1.084567");
+    expect(formatMarketPriceWithCurrency(1.084567, "EUR", { isCashBalance: true })).toBe("€1.08457");
     expect(formatMarketPriceWithCurrency(1.17364, "USD", { assetCategory: "CURRENCY" })).toBe("$1.17364");
   });
 
@@ -136,7 +136,7 @@ describe("formatMarketPriceWithCurrency", () => {
   test("keeps full price precision for legend-style values", () => {
     expect(formatMarketPriceWithCurrency(79_432.18, "USD", { assetCategory: "CRYPTO" })).toBe("$79,432.18");
     expect(formatMarketPriceWithCurrency(79_432.18, "USD", { assetCategory: "STK" })).toBe("$79,432.18");
-    expect(formatMarketPriceWithCurrency(1.084567, "USD", { isCashBalance: true })).toBe("$1.084567");
+    expect(formatMarketPriceWithCurrency(1.084567, "USD", { isCashBalance: true })).toBe("$1.08457");
   });
 
   test("an index level is points, with no currency symbol, wherever it is formatted", () => {
@@ -267,7 +267,7 @@ test("money prices pad to the currency's minor unit without cutting crypto, FX o
   expect(pad(309.9, "USD", { assetCategory: "EQUITY" })).toBe("$309.90");
   expect(pad(83859.3, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("$83,859.30");
   expect(pad(0.00000563, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("$0.00000563");
-  expect(pad(1.138045, "USD", { assetCategory: "CURRENCY" })).toBe("$1.138045");
+  expect(pad(1.138045, "USD", { assetCategory: "CURRENCY" })).toBe("$1.13805");
   expect(pad(3025, "JPY", { assetCategory: "EQUITY" })).toBe("¥3,025");
   expect(pad(87, "USD", { assetCategory: "BOND", priceBasis: "percent-of-par" })).toBe("87% par");
 });
@@ -340,6 +340,16 @@ describe("live quote precision", () => {
     expect(live([6012.25, 6012.5, 6013], { instrumentType: "FUTURE", previousClose: 6010.75 }))
       .toEqual(["6,012.25", "6,012.50", "6,013.00"]);
     expect(live([2.35, 2.4], { instrumentType: "OPTION", previousClose: 2.35 })).toEqual(["2.35", "2.40"]);
+  });
+
+  test("a currency pair prints to its pair's precision whatever its feed wrote: yen pairs to three decimals, the others to five", () => {
+    // A watchlist read 1.126253, 177.8210, 1.09815 and 6.66800 off closes written to four to seven digits.
+    expect(live([1.126253, 1.1270145], { instrumentType: "CURRENCY", previousClose: 1.12293, open: 1.1227125 })).toEqual(["1.12625", "1.12701"]);
+    expect(live([177.821, 177.8], { instrumentType: "CURRENCY", previousClose: 158.42712, open: 178.4 }, "JPY")).toEqual(["177.821", "177.800"]);
+    expect(live([6.668], { instrumentType: "CURRENCY", previousClose: 6.6712 }, "CNH")).toEqual(["6.66800"]);
+    // Without session prices or a currency, a print still takes its pair's decimals, and a large rate fewer.
+    expect(formatMarketPrice(1.0981532, quoteFormatOptions({ instrumentType: "CURRENCY" }))).toBe("1.09815");
+    expect(formatMarketPrice(16250.5, { ...quoteFormatOptions({ instrumentType: "CURRENCY" }), currency: "IDR" })).toBe("16,250.50");
   });
 
   test("takes decimals from the currency's minor unit and from session prices, never from the tick", () => {

@@ -86,11 +86,11 @@ export function looksLikeCurrencyPair(symbol: string): boolean {
 }
 
 /**
- * Which currency of a pair markets quote it per: EUR, GBP, AUD and NZD go
- * before the dollar, the dollar before CAD, CHF and the rest, and the yen goes
- * last (EUR/USD, USD/CAD, USD/JPY, EUR/CAD, CAD/JPY).
+ * Which currency of a pair markets quote it per: the metals first (XAU/USD),
+ * EUR, GBP, AUD and NZD before the dollar, the dollar before CAD, CHF and the
+ * rest, and the yen last (EUR/USD, USD/CAD, USD/JPY, EUR/CAD, CAD/JPY).
  */
-const PAIR_BASE_ORDER = ["EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF"];
+const PAIR_BASE_ORDER = ["XAU", "XAG", "XPT", "XPD", "EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF"];
 
 function pairBaseRank(code: string): number {
   const at = PAIR_BASE_ORDER.indexOf(code);
@@ -102,6 +102,26 @@ function pairBaseRank(code: string): number {
 export function dollarPairListing(code: string): string {
   const currency = code.trim().toUpperCase();
   return pairBaseRank(currency) < pairBaseRank("USD") ? `${currency}USD=X` : `USD${currency}=X`;
+}
+
+/**
+ * The decimals an FX rate is quoted to, its pair's precision: a rate in yen
+ * to three (EUR/JPY 177.861, TRY/JPY 3.712), any other rate from 50 up to
+ * three as well (USD/INR 88.735), from 1000 up to two (USD/IDR 16250.50),
+ * from 1 up to five (EUR/USD 1.12625), and below 1 to five significant
+ * digits with at least five decimals and at most eight (USD/EUR 0.88790,
+ * JPY/USD 0.0063353). `currency` is the currency the rate is in; `rate` is
+ * best a level that holds still (the previous close), so a rate ticking
+ * across 50 keeps its decimals.
+ */
+export function fxRateDigits(currency: string | undefined, rate: number | undefined): number {
+  if (currency?.trim().toUpperCase() === "JPY") return 3;
+  const size = rate == null || !Number.isFinite(rate) ? 0 : Math.abs(rate);
+  if (size === 0) return 5;
+  if (size >= 1000) return 2;
+  if (size >= 50) return 3;
+  if (size >= 1) return 5;
+  return Math.min(8, Math.max(5, 4 - Math.floor(Math.log10(size))));
 }
 
 /**

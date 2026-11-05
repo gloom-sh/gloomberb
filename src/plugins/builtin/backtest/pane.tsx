@@ -29,7 +29,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import type { BacktestTrade } from "./engine";
 import { backtestEquityCsv } from "./export";
-import { formatStat, PRICE_RETURN_NOTE, SUMMARY_ROWS, type SummaryRow } from "./format";
+import { formatStat, formatTradePrice, PRICE_RETURN_NOTE, SUMMARY_ROWS, type SummaryRow } from "./format";
 import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules, strategyPreset } from "./presets";
 import { backtestPriceUnit, backtestReport } from "./report";
 import { parseRule } from "./rules";
@@ -269,9 +269,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             exportCsv={exportCsv}
             renderCell={(trade, column) => ({
               text: column.id === "entryDate" ? trade.entryDate
-                : column.id === "entryPrice" ? trade.entryPrice.toFixed(2)
+                : column.id === "entryPrice" ? formatTradePrice(trade.entryPrice, symbol ?? "")
                   : column.id === "exitDate" ? (trade.open ? "open" : trade.exitDate!)
-                    : column.id === "exitPrice" ? (trade.exitPrice?.toFixed(2) ?? "--")
+                    : column.id === "exitPrice" ? formatTradePrice(trade.exitPrice, symbol ?? "")
                       : column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? "0.0%" : `${trade.returnPct > 0 ? "+" : ""}${trade.returnPct.toFixed(1)}%`)
                         : String(trade.sessions),
               color: column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? undefined : trade.returnPct > 0 ? colors.positive : colors.negative)

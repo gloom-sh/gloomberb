@@ -3,6 +3,7 @@ import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { CloudShortRate } from "../../api-client/types";
 import { createDefaultConfig } from "../../types/config";
+import type { Quote } from "../../types/financials";
 import { marketDataCliCommands } from "./market";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { describeFxRate, formatFxRate } from "../fx-pair";
@@ -13,174 +14,184 @@ afterEach(() => setSystemTime());
 
 const fx = marketDataCliCommands.find((command) => command.name === "fx")!;
 
-type Leg = number | {
-  rate: number; asOf: number; staleAt: number; delayMinutes?: number;
+/** A pair's quote as Gloom Cloud serves it: a price, when it printed, delayed 15 minutes unless said otherwise. */
+type PairQuote = number | {
+  price: number; minutesAgo?: number; lastUpdated?: number; dataSource?: "live" | "delayed"; stale?: boolean;
   intradayBar?: { start: number; minutes: number }; staleReason?: string;
 };
 
-function harness(baseCurrency: string, rates: Record<string, Leg>, cliOptions: { refresh?: boolean } = {}) {
+function pairQuote(symbol: string, given: PairQuote): Quote {
+  const fields = typeof given === "number" ? { price: given } : given;
+  const lastUpdated = fields.lastUpdated ?? Date.now() - (fields.minutesAgo ?? 1) * 60_000;
+  const { minutesAgo: _minutes, ...rest } = fields;
+  return {
+    symbol, name: symbol, currency: symbol.slice(3, 6), change: 0, changePercent: 0, exchangeName: "CCY", instrumentType: "CURRENCY",
+    providerId: "gloomberb-cloud", dataSource: "delayed", ...rest, lastUpdated,
+  } as Quote;
+}
+
+/** `fx` over the quotes `quote` reads, by listing; every batch asked for is kept, and whether it forced a refresh. */
+function harness(baseCurrency: string, quotes: Record<string, PairQuote | string>, cliOptions: { refresh?: boolean } = {}) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
   config.baseCurrency = baseCurrency;
-  const requests: string[] = [];
-  const forced: string[] = [];
+  const batches: string[][] = [];
+  const forced: boolean[] = [];
   const cli = createTestCliContext({
     config,
-    dataProvider: { getCachedQuery: (_method: string, [currency]: [string]) => ({ load: async (options?: { force?: boolean }) => {
-      // The router serves USD/USD as a static identity without a provider request.
-      if (currency === "USD") return { value: 1, fetchedAt: 0, staleAt: Infinity, expiresAt: Infinity, source: "static" };
-      requests.push(currency);
-      if (options?.force) forced.push(currency);
-      const leg = rates[currency];
-      if (leg == null) throw new Error(`Missing ${currency}/USD`);
-      return typeof leg === "number"
-        ? { value: leg, fetchedAt: Date.now(), staleAt: Infinity, expiresAt: Infinity, source: "fx" }
-        : { value: leg.rate, asOf: leg.asOf, delayMinutes: leg.delayMinutes, intradayBar: leg.intradayBar, staleReason: leg.staleReason,
-          fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
-    } }) },
+    dataProvider: {
+      getCachedQuery: () => ({ load: async () => { throw new Error("fx reads quotes, not exchange rates"); } }),
+      getQuotesBatch: async (targets: { symbol: string; exchange: string }[], options?: { forceRefresh?: boolean }) => {
+        batches.push(targets.map((target) => target.symbol));
+        forced.push(options?.forceRefresh === true);
+        return targets.map((target) => {
+          const given = quotes[target.symbol];
+          // A string is the reason the service gave for having no quote.
+          if (given == null || typeof given === "string") return { target, quote: null, error: given ?? `Not a ticker: ${target.symbol}.` };
+          return { target, quote: pairQuote(target.symbol, given) };
+        });
+      },
+    },
   }, cliOptions);
   /** What a text and a JSON run print, closing line included. */
   const output = (format: "text" | "json" | "csv") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
-  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, requests, forced, closed: cli.closeCount };
+  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, batches, forced, closed: cli.closeCount };
 }
 
-test("FX command converts both USD legs into the configured base currency", async () => {
-  const run = harness("EUR", { GBP: 1.5, EUR: 1.2 });
-  await fx.execute(["GBP"], run.context);
-  expect(run.rows()).toEqual([[{ currency: "GBP", baseCurrency: "EUR", rate: 1.25, asOf: null, stale: false, pair: "GBP/EUR", inverse: 0.8 }]]);
-  expect(run.requests.sort()).toEqual(["EUR", "GBP"]);
-  expect(run.closed()).toBe(1);
+// `fx USD/SGD` read 1.27654 at 03:31 "15 min delayed" while `quote USDSGD=X` read 1.27626 at 03:47.
+test("fx reads the pair's own quote, the one `quote` reads, dated by it and stale once older than the feed's delay", async () => {
+  setSystemTime(new Date("2026-11-05T04:03:00Z"));
+  const run = harness("USD", { "USDSGD=X": { price: 1.27626, lastUpdated: Date.parse("2026-11-05T03:47:00Z") } });
+  await fx.execute(["USD/SGD"], run.context);
+  expect(run.batches).toEqual([["USDSGD=X"]]);
+  expect(run.rows()[0]).toMatchObject([{ currency: "USD", baseCurrency: "SGD", rate: 1.27626, asOf: "2026-11-05T03:47:00.000Z", stale: false, quotes: ["USDSGD=X"] }]);
+  expect(run.output("text")[0]).toBe("1 USD = 1.27626 SGD  (SGD/USD 0.783539)\n\nSource: Gloom Cloud · Thu 5 Nov 2026 03:47 UTC · 15 min delayed · markets open");
+  // Once the service marks the print stale, as `quote` then shows it, so does fx, never "15 min delayed".
+  setSystemTime(new Date("2026-11-05T04:15:00Z"));
+  const later = harness("USD", { "USDSGD=X": { price: 1.27626, lastUpdated: Date.parse("2026-11-05T03:47:00Z"), stale: true } });
+  await fx.execute(["USD/SGD"], later.context);
+  expect(later.rows()[0]).toMatchObject([{ stale: true }]);
+  expect(later.output("text")[0]).toEndWith("Source: Gloom Cloud · Thu 5 Nov 2026 03:47 UTC · stale (28 min old) · markets open");
+  // The inverse reads the same quote.
+  const inverse = harness("USD", { "USDSGD=X": 1.27626 });
+  await fx.execute(["SGD/USD"], inverse.context);
+  expect(inverse.batches).toEqual([["USDSGD=X"]]);
+  expect(inverse.rows()[0][0].rate).toBeCloseTo(1 / 1.27626, 12);
+  expect(inverse.output("text")[0]).toStartWith("1 SGD = 0.783539 USD  (USD/SGD 1.27626)");
 });
 
-test("an FX export names the pair and the currency the rate is in, which is the base, not the currency asked for", async () => {
-  const now = Date.parse("2026-10-13T06:18:00Z");
-  const run = harness("USD", { ZAR: { rate: 0.06055468, asOf: now, staleAt: Infinity } });
-  await fx.execute(["ZAR"], run.context);
-  expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
-    "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
-  ]);
+// `fx EUR/JPY` was always EUR/USD x USD/JPY and never said so.
+test("a cross reads its own quote when it has one and crosses the dollar pairs only otherwise, saying so", async () => {
+  setSystemTime(new Date("2026-11-05T04:03:00Z"));
+  const quotes = { "EURJPY=X": 177.861, "EURUSD=X": 1.12625, "USDJPY=X": 157.973 };
+  const own = harness("USD", quotes);
+  await fx.execute(["EUR/JPY"], own.context);
+  expect(own.batches).toEqual([["EURJPY=X", "EURUSD=X", "USDJPY=X"]]);
+  expect(own.rows()[0]).toMatchObject([{ rate: 177.861, quotes: ["EURJPY=X"] }]);
+  expect(own.rows()[0][0].via).toBeUndefined();
+  expect(own.output("text")[0]).toStartWith("1 EUR = 177.861 JPY  (JPY/EUR 0.00562237)\n");
+  // A pair with no quote of its own is the cross of its dollar pairs, at the pair's precision, and says via USD.
+  const crossed = harness("USD", { "EURUSD=X": 1.12625, "USDJPY=X": 157.973 });
+  await fx.execute(["EUR/JPY"], crossed.context);
+  expect(crossed.rows()[0]).toMatchObject([{ rate: 177.917, via: "USD", quotes: ["EURUSD=X", "USDJPY=X"] }]);
+  expect(crossed.output("text")[0]).toStartWith("1 EUR = 177.917 JPY  (JPY/EUR 0.0056206)  ·  via USD\n");
+  // A stale own quote gives way to current dollar pairs; the cross is as old as its older pair.
+  const staleOwn = harness("USD", { ...quotes, "EURJPY=X": { price: 177.861, stale: true }, "USDJPY=X": { price: 157.973, minutesAgo: 4 } });
+  await fx.execute(["EUR/JPY"], staleOwn.context);
+  expect(staleOwn.rows()[0]).toMatchObject([{ rate: 177.917, via: "USD", asOf: "2026-11-05T03:59:00.000Z" }]);
+  // Neither is quoted: the currencies with no dollar pair are named, and the service's reason when it gave one.
+  await expect(fx.execute(["GBP/EUR"], harness("USD", { "GBPUSD=X": 1.35 }).context)).rejects.toThrow("Exchange rate unavailable for EUR.");
+  await expect(fx.execute(["USD/XYZ"], harness("USD", {}).context)).rejects.toThrow("Exchange rate unavailable for XYZ.");
+  await expect(fx.execute(["XAU"], harness("USD", { "XAUUSD=X": "Spot gold is not quoted; GC=F is the front-month future." }).context))
+    .rejects.toThrow("Spot gold is not quoted; GC=F is the front-month future.");
 });
 
-test("FX cross rate reports the older leg's observation time and any stale leg", async () => {
-  const now = Date.now();
-  const run = harness("EUR", {
-    GBP: { rate: 1.5, asOf: now - 60_000, staleAt: now + 60_000 },
-    EUR: { rate: 1.2, asOf: now - 3 * 86_400_000, staleAt: now - 1 },
-  });
-  await fx.execute(["GBP"], run.context);
-  expect(run.rows()).toEqual([[{ currency: "GBP", baseCurrency: "EUR", rate: 1.25,
-    asOf: new Date(now - 3 * 86_400_000).toISOString(), stale: true, pair: "GBP/EUR", inverse: 0.8 }]]);
-});
-
-test("FX command handles identity and USD inverses without requiring a USD quote", async () => {
+test("a currency priced in itself reads nothing and cites nothing", async () => {
   const identity = harness("EUR", {});
   await fx.execute(["EUR"], identity.context);
   expect(identity.rows()).toEqual([[{ currency: "EUR", baseCurrency: "EUR", rate: 1, asOf: null, stale: false, pair: "EUR/EUR", inverse: 1 }]]);
-  expect(identity.requests).toEqual([]);
-  const inverse = harness("EUR", { EUR: 1.25 });
-  await fx.execute(["USD"], inverse.context);
-  expect(inverse.rows()).toEqual([[{ currency: "USD", baseCurrency: "EUR", rate: 0.8, asOf: null, stale: false, pair: "USD/EUR", inverse: 1.25 }]]);
-  const usdBase = harness("USD", { JPY: 0.0065 });
-  await fx.execute(["JPY"], usdBase.context);
-  expect(usdBase.rows()).toMatchObject([[{ currency: "JPY", baseCurrency: "USD", rate: 0.0065, pair: "JPY/USD" }]]);
-});
-
-test("FX command names the code whose rate leg is unavailable and publishes nothing", async () => {
-  for (const [rates, missing] of [[{ GBP: 1.5 }, "EUR"], [{ EUR: 1.2 }, "GBP"], [{ GBP: 1.5, EUR: 0 }, "EUR"], [{ GBP: NaN, EUR: 1.2 }, "GBP"], [{}, "GBP and EUR"]] as const) {
-    const run = harness("EUR", rates);
-    await expect(fx.execute(["GBP"], run.context)).rejects.toThrow(`Exchange rate unavailable for ${missing}.`);
-    expect(run.rows()).toEqual([]);
-    expect(run.closed()).toBe(1);
-  }
-  // A pair never names the base currency it does not use.
-  await expect(fx.execute(["USD/XYZ"], harness("EUR", {}).context)).rejects.toThrow("Exchange rate unavailable for XYZ.");
-});
-
-test("a pair reads BASE/QUOTE as quote per base and crosses two non-USD codes through their USD legs", async () => {
-  const rates = { NGN: 1 / 1328.39, ZAR: 1 / 16.5 };
-  const usdNgn = harness("EUR", rates);
-  await fx.execute(["usd/ngn"], usdNgn.context);
-  expect(usdNgn.rows()[0]).toMatchObject([{ currency: "USD", baseCurrency: "NGN", pair: "USD/NGN" }]);
-  expect(usdNgn.rows()[0][0].rate).toBeCloseTo(1328.39, 6);
-  expect(usdNgn.rows()[0][0].inverse).toBeCloseTo(1 / 1328.39, 12);
-  expect(usdNgn.requests).toEqual(["NGN"]);
-
-  const zarNgn = harness("USD", rates);
-  await fx.execute(["ZAR/NGN"], zarNgn.context);
-  expect(zarNgn.rows()[0][0].rate).toBeCloseTo(1328.39 / 16.5, 9);
-  expect(zarNgn.rows()[0][0].inverse).toBeCloseTo(16.5 / 1328.39, 12);
-
-  for (const bad of ["US/NGN", "USD/NGN/EUR", "USD/"]) {
-    await expect(fx.execute([bad], harness("USD", rates).context)).rejects.toThrow(/not a currency/);
-  }
-});
-
-test("a pair ends with the source line a quote does, dated and held back as its rates are", async () => {
-  const hour = 3_600_000;
-  // Saturday: the FX week is shut, so the pair's print in the week's last minute reads as Friday's close.
-  setSystemTime(new Date("2026-10-10T18:45:00Z"));
-  const asOf = Date.parse("2026-10-09T20:59:00Z");
-  const weekend = harness("USD", { SAR: { rate: 0.2663, asOf, staleAt: Date.now() + hour, delayMinutes: 15 } });
-  await fx.execute(["USD/SAR"], weekend.context);
-  const line = "Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed";
-  // The line says the time and the state, so there is no separate "As of".
-  expect(weekend.output("text")[0]).toBe(`1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\n${line}`);
-  expect(JSON.parse(weekend.output("json")[0]!).metadata.freshness).toMatchObject({
-    source: "Gloom Cloud", asOf: "2026-10-09T20:59:00.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
-  });
-  // A rate from earlier in the day is no close: the line gives its own time (20:39Z, not the 20:59Z close).
-  const early = harness("USD", { EUR: { rate: 1.1168193, asOf: Date.parse("2026-10-09T20:39:00Z"), staleAt: Date.now() + hour, delayMinutes: 15 } });
-  await fx.execute(["EUR/USD"], early.context);
-  expect(early.output("text")[0]).toEndWith("Source: Gloom Cloud · Fri 9 Oct 2026 20:39 UTC · 15 min delayed · markets closed");
-  // A quiet Saturday print is no close: the line dates it.
-  const tick = harness("USD", { SAR: { rate: 0.2663, asOf: Date.parse("2026-10-10T03:09:15Z"), staleAt: Date.now() + hour, delayMinutes: 15 } });
-  await fx.execute(["USD/SAR"], tick.context);
-  expect(tick.output("text")[0]).toEndWith("Source: Gloom Cloud · Sat 10 Oct 2026 03:09 UTC · 15 min delayed · markets closed");
-
-  // Wednesday: a cross is as old as its older leg and as delayed as its most delayed.
-  setSystemTime(new Date("2026-10-14T14:00:00Z"));
-  const now = Date.now();
-  const leg = (rate: number, minutesAgo: number, delayMinutes: number) => ({ rate, asOf: now - minutesAgo * 60_000, staleAt: now + hour, delayMinutes });
-  const cross = harness("EUR", { GBP: leg(1.5, 5, 15), EUR: leg(1.2, 25, 20) });
-  await fx.execute(["GBP"], cross.context);
-  expect(cross.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · 20 min delayed · markets open");
-  // A real-time account's rates are live; a leg that missed its refresh makes the pair stale.
-  const live = harness("EUR", { GBP: leg(1.5, 5, 0), EUR: leg(1.2, 25, 0) });
-  await fx.execute(["GBP"], live.context);
-  expect(live.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · live · markets open");
-  const stale = harness("EUR", { GBP: leg(1.5, 5, 15), EUR: { ...leg(1.2, 25, 15), staleAt: now - 1 } });
-  await fx.execute(["GBP"], stale.context);
-  expect(stale.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · stale (25 min old) · markets open");
-  // A code priced in itself is no market data: nothing to cite.
-  const identity = harness("EUR", {});
-  await fx.execute(["EUR"], identity.context);
+  expect(identity.batches).toEqual([]);
   expect(identity.output("text")[0]).toBe("1 EUR = 1 EUR  (EUR/EUR 1)");
   expect(JSON.parse(identity.output("json")[0]!).metadata).toBeUndefined();
 });
 
-test("a rate that is its pair's bar says which bar, and a stale one why it stands", async () => {
-  // Fri 23 Oct 2026: BRLUSD=X printed nothing from 03:20 UTC while USD/BRL's five-minute bars ran on.
+test("an FX export names the pair and the currency the rate is in, which is the base, not the currency asked for", async () => {
+  setSystemTime(new Date("2026-10-13T06:20:00Z"));
+  const run = harness("USD", { "USDZAR=X": { price: 16.514, lastUpdated: Date.parse("2026-10-13T06:18:00Z") } });
+  await fx.execute(["ZAR"], run.context);
+  expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
+    "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
+    `ZAR,USD,${1 / 16.514},2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z`,
+  ]);
+});
+
+// `fx 2500000.50 EUR/USD` printed 2,815,633.06 USD beside `1 EUR = 1.12625 USD`, which gives 2,815,625.56.
+test("an amount converts at the rate the line prints: the pair as markets quote it, at its precision", async () => {
+  setSystemTime(new Date("2026-11-05T04:03:00Z"));
+  const run = harness("USD", { "EURUSD=X": 1.1262531, "USDJPY=X": 157.8481 });
+  await fx.execute(["2500000.50", "EUR/USD"], run.context);
+  expect(run.output("text")[0]).toStartWith("2,500,000.50 EUR = 2,815,625.56 USD\n1 EUR = 1.12625 USD  (USD/EUR 0.887902)\n");
+  expect(run.rows()[0]).toMatchObject([{ rate: 1.12625, amount: 2500000.5, converted: 2500000.5 * 1.12625 }]);
+  // Converted against the quote's direction, the amount is divided by the pair's printed rate.
+  await fx.execute(["1000000", "JPY/USD"], run.context);
+  expect(run.output("text")[1]).toStartWith("1,000,000 JPY = 6,335.21 USD\n1 JPY = 0.00633521 USD  (USD/JPY 157.848)\n");
+  expect(run.rows()[1][0].converted).toBeCloseTo(1_000_000 / 157.848, 9);
+});
+
+// `fx gbp-chf` asked for three letters; `fx eurusd` said to write EUR/USD.
+test("fx takes the pair spellings quote takes, and an amount before one converts into its quote currency", async () => {
+  const quotes = { "GBPCHF=X": 1.0982, "EURUSD=X": 1.12625, "USDJPY=X": 157.848 };
+  for (const [typed, pair] of [["gbp-chf", "GBP/CHF"], ["eurusd", "EUR/USD"], ["EURUSD=X", "EUR/USD"], ["JPY=X", "USD/JPY"], ["eur/usd", "EUR/USD"]] as const) {
+    const run = harness("USD", quotes);
+    await fx.execute([typed], run.context);
+    expect(run.rows()[0], typed).toMatchObject([{ pair }]);
+  }
+  const amount = harness("USD", quotes);
+  await fx.execute(["100", "GBPCHF"], amount.context);
+  expect(amount.rows()[0]).toMatchObject([{ pair: "GBP/CHF", amount: 100 }]);
+  expect(JSON.parse(amount.output("json")[0]!).warnings).toBeUndefined();
+  // A bare code still converts to USD and says so.
+  const bare = harness("USD", { "GBPUSD=X": 1.35 });
+  await fx.execute(["100", "GBP"], bare.context);
+  expect(JSON.parse(bare.output("json")[0]!).warnings).toEqual(["No target currency given, so GBP is converted to USD; for another, write fx 100 GBP/<to>."]);
+  for (const bad of ["US/NGN", "USD/NGN/EUR", "USD/", "USDUSD"]) {
+    await expect(fx.execute([bad], harness("USD", quotes).context)).rejects.toThrow(/not a currency/);
+  }
+});
+
+test("a pair ends with the source line a quote does, held back as its quote is", async () => {
+  // Saturday: the FX week is shut, so the pair's print in the week's last minute reads as Friday's close.
+  setSystemTime(new Date("2026-10-10T18:45:00Z"));
+  const weekend = harness("USD", { "USDSAR=X": { price: 3.75516, lastUpdated: Date.parse("2026-10-09T20:59:00Z") } });
+  await fx.execute(["USD/SAR"], weekend.context);
+  expect(weekend.output("text")[0]).toBe("1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\nSource: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  // A real-time account's quote is live.
+  setSystemTime(new Date("2026-10-14T14:00:00Z"));
+  const live = harness("EUR", { "EURGBP=X": { price: 0.8, minutesAgo: 1, dataSource: "live" } });
+  await fx.execute(["GBP"], live.context);
+  expect(live.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · live · markets open");
+});
+
+test("a rate that is its pair's bar says which bar, and a stale one why it stands; --refresh says when it found nothing newer", async () => {
+  // Fri 23 Oct 2026: USD/BRL's print stopped at 03:20 UTC while its five-minute bars ran on.
   setSystemTime(new Date("2026-10-23T06:53:00Z"));
-  const now = Date.now();
-  const bar = harness("USD", { BRL: {
-    rate: 1 / 5.05139, asOf: Date.parse("2026-10-23T06:35:00Z"), staleAt: now + 3_600_000, delayMinutes: 15,
-    intradayBar: { start: Date.parse("2026-10-23T06:30:00Z"), minutes: 5 },
+  const bar = harness("USD", { "USDBRL=X": {
+    price: 5.05139, lastUpdated: Date.parse("2026-10-23T06:35:00Z"), intradayBar: { start: Date.parse("2026-10-23T06:30:00Z"), minutes: 5 },
   } });
   await fx.execute(["USD/BRL"], bar.context);
-  const json = JSON.parse(bar.output("json")[0]!);
-  expect(json.warnings).toEqual(["BRL/USD: 06:30–06:35 UTC bar close, quotes paused"]);
-  expect(json.metadata.freshness).toMatchObject({ asOf: "2026-10-23T06:35:00.000Z", status: "delayed", delayMinutes: 15 });
-
+  expect(JSON.parse(bar.output("json")[0]!).warnings).toEqual(["USDBRL=X: 06:30–06:35 UTC bar close, quotes paused"]);
   const reason = "no newer bar yet";
-  const stale = harness("USD", { BRL: {
-    rate: 1 / 5.0523, asOf: Date.parse("2026-10-23T03:20:00Z"), staleAt: now - 1, delayMinutes: 15, staleReason: reason,
-  } });
+  const stale = harness("USD", { "USDBRL=X": { price: 5.0523, lastUpdated: Date.parse("2026-10-23T03:20:00Z"), stale: true, staleReason: reason } }, { refresh: true });
   await fx.execute(["USD/BRL"], stale.context);
-  expect(JSON.parse(stale.output("json")[0]!).warnings).toEqual([`BRL/USD: ${reason}`]);
-  // A rate that is current says nothing of why it would stand.
-  const current = harness("USD", { BRL: { rate: 1 / 5.0523, asOf: now - 60_000, staleAt: now + 60_000, staleReason: reason } });
-  await fx.execute(["USD/BRL"], current.context);
-  expect(JSON.parse(current.output("json")[0]!).warnings).toBeUndefined();
+  expect(JSON.parse(stale.output("json")[0]!).warnings).toEqual([`USDBRL=X: ${reason}`]);
+  expect(stale.forced).toEqual([true]);
+  const refreshed = harness("USD", { "USDZAR=X": { price: 17.4, lastUpdated: Date.parse("2026-10-23T05:00:00Z"), stale: true } }, { refresh: true });
+  await fx.execute(["ZAR"], refreshed.context);
+  expect(JSON.parse(refreshed.output("json")[0]!).warnings).toEqual(["USDZAR=X: --refresh found no newer quote than Fri 23 Oct 05:00 UTC."]);
+  // Without --refresh, nothing claims a refresh ran.
+  const cached = harness("USD", { "USDZAR=X": { price: 17.4, lastUpdated: Date.parse("2026-10-23T05:00:00Z") } });
+  await fx.execute(["ZAR"], cached.context);
+  expect(cached.forced).toEqual([false]);
+  expect(cached.output("json")[0]).not.toContain("--refresh");
 });
 
 test("the text line states both directions in figures that survive tiny and large rates", () => {
@@ -192,15 +203,15 @@ test("the text line states both directions in figures that survive tiny and larg
 });
 
 test("a currency typed as its name is asked for by its code and says so; a name several currencies share fails listing them, asking for nothing", async () => {
-  const run = harness("USD", { JPY: 0.0063, MXN: 0.054 });
+  const run = harness("USD", { "USDJPY=X": 158.7, "USDMXN=X": 18.5 });
   await fx.execute(["yen"], run.context);
-  expect(run.requests).toEqual(["JPY"]);
+  expect(run.batches).toEqual([["USDJPY=X"]]);
   expect(run.rows()).toEqual([[expect.objectContaining({ currency: "JPY", baseCurrency: "USD", pair: "JPY/USD" })]]);
   expect(run.output("json")[0]).toContain("Read yen as JPY.");
 
-  const peso = harness("USD", { MXN: 0.054 });
+  const peso = harness("USD", { "USDMXN=X": 18.5 });
   await expect(fx.execute(["peso"], peso.context)).rejects.toThrow("peso names several currencies: MXN (Mexican), ARS (Argentine), COP (Colombian), CLP (Chilean), PHP (Philippine)");
-  expect(peso.requests).toEqual([]);
+  expect(peso.batches).toEqual([]);
 });
 
 /** `fx --date` against daily closes by pair symbol; every history request is kept. */
@@ -235,7 +246,7 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   await fx.execute(["USD/CAD", "--date", "2026-09-02"], run.context);
   expect(run.rows()[0]).toEqual([{ currency: "USD", baseCurrency: "CAD", rate: 1.3845, asOf: "2026-09-02", stale: false, pair: "USD/CAD",
     inverse: 1 / 1.3845, date: "2026-09-02" }]);
-  expect(run.output("text")[0]).toBe("1 USD = 1.3845 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)");
+  expect(run.output("text")[0]).toBe("1 USD = 1.38450 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)");
   expect(run.printed[0]!.result.warnings).toBeUndefined();
 
   // A Saturday has no close: Friday's, said so. A cross reads both pairs' closes of the day.
@@ -243,8 +254,9 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   expect(run.rows()[1]).toMatchObject([{ rate: 1.38376, asOf: "2026-09-04", date: "2026-09-05" }]);
   expect(run.printed[1]!.result.warnings).toEqual(["No daily close on 2026-09-05, a weekend or market holiday: this is the close of 2026-09-04, the trading day before it."]);
   await fx.execute(["1000", "EUR/CAD", "--date", "2026-09-02"], run.context);
-  expect(run.rows()[2][0].rate).toBeCloseTo(1.15884 * 1.3845, 9);
-  expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.15884 * 1.3845, 6);
+  // The cross converts at EUR/CAD as it prints, to five decimals.
+  expect(run.rows()[2][0].rate).toBe(Number((1.15884 * 1.3845).toFixed(5)));
+  expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.60441, 6);
   expect(run.asked).toEqual(["CAD=X", "CAD=X", "EURUSD=X", "CAD=X"]);
 });
 
@@ -277,7 +289,7 @@ test("fx --forward implies the forward from both short rates, shows them with th
   const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());
   try {
     // USD/MXN 18.35: one MXN is 1/18.35 USD.
-    const run = harness("USD", { MXN: 1 / 18.35 });
+    const run = harness("USD", { "USDMXN=X": 18.35 });
     await fx.execute(["USD/MXN", "--forward", "30d"], run.context);
     const [row] = run.rows()[0] as Record<string, unknown>[];
     expect(row).toMatchObject({ pair: "USD/MXN", tenor: "30d", days: 30, forwardDate: "2026-11-20", label: "implied by rates, not a dealer quote",
@@ -292,26 +304,26 @@ test("fx --forward implies the forward from both short rates, shows them with th
 
     // A rate that could not be read, or a currency with none, is named.
     spy.mockImplementation(async () => shortRates({ MXN: { value: null, asOf: null, unavailableReason: "Banxico did not answer" } }));
-    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { MXN: 1 / 18.35 }).context))
+    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { "USDMXN=X": 18.35 }).context))
       .rejects.toThrow("No 30d forward for USD/MXN. TIIE 28d (MXN) could not be read: Banxico did not answer.");
     spy.mockImplementation(async () => shortRates());
-    await expect(fx.execute(["USD/ZAR", "--forward", "1m"], harness("USD", { ZAR: 0.055 }).context))
+    await expect(fx.execute(["USD/ZAR", "--forward", "1m"], harness("USD", { "USDZAR=X": 18.2 }).context))
       .rejects.toThrow("No 1m forward for USD/ZAR. No short rate for ZAR; forwards are implied for MXN, USD.");
     // A server without short rates says forwards are not there yet.
     spy.mockImplementation(async () => { throw new ApiRequestError("not found", 404); });
-    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { MXN: 1 / 18.35 }).context))
+    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { "USDMXN=X": 18.35 }).context))
       .rejects.toThrow("Forwards are not available from Gloom Cloud yet");
     // A currency typed as its name says which code it was read as, as the spot answer does.
     spy.mockImplementation(async () => {
       const payload = shortRates();
       return { ...payload, rates: [...payload.rates, { ...payload.rates[0]!, currency: "EUR", name: "€STR", value: 2.441, publisher: "European Central Bank" }] };
     });
-    const named = harness("USD", { EUR: 1.12 });
+    const named = harness("USD", { "EURUSD=X": 1.12 });
     await fx.execute(["euro/USD", "--forward", "3m"], named.context);
     expect(named.output("json")[0]).toContain("Read euro as EUR.");
     // A bad tenor or an amount is refused before anything is read.
     await expect(fx.execute(["USD/MXN", "--forward", "30"], harness("USD", {}).context)).rejects.toThrow("is not a tenor");
-    await expect(fx.execute(["100", "USD/MXN", "--forward", "30d"], harness("USD", { MXN: 0.05 }).context)).rejects.toThrow("--forward prices a pair, not an amount.");
+    await expect(fx.execute(["100", "USD/MXN", "--forward", "30d"], harness("USD", { "USDMXN=X": 20 }).context)).rejects.toThrow("--forward prices a pair, not an amount.");
   } finally {
     spy.mockRestore();
   }
@@ -335,19 +347,4 @@ test("fx --forward with --date says the forward is today's only and how to get e
   } finally {
     spy.mockRestore();
   }
-});
-
-test("fx --refresh reads every leg again, and a leg still stale says the data service had no newer rate", async () => {
-  setSystemTime(new Date("2026-10-27T15:00:00Z"));
-  const now = Date.now();
-  const rates = { ZAR: { rate: 0.0573, asOf: Date.parse("2026-10-27T14:00:00Z"), staleAt: now - 1 } };
-  const refreshed = harness("USD", rates, { refresh: true });
-  await fx.execute(["ZAR"], refreshed.context);
-  expect(refreshed.forced).toEqual(["ZAR"]);
-  expect(JSON.parse(refreshed.output("json")[0]!).warnings).toContain("ZAR/USD: --refresh found no newer rate than Tue 27 Oct 14:00 UTC.");
-  // Without --refresh, the cached leg is read as it is, and nothing claims a refresh ran.
-  const cached = harness("USD", rates);
-  await fx.execute(["ZAR"], cached.context);
-  expect(cached.forced).toEqual([]);
-  expect(cached.output("json")[0]).not.toContain("--refresh");
 });

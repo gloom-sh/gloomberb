@@ -1,0 +1,117 @@
+import type { QuoteBatchOptions, QuoteBatchResult, QuoteSubscriptionTarget } from "../types/data-provider";
+import type { Quote } from "../types/financials";
+import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { dollarPairListing, quotedFxPair } from "../utils/currency-pair";
+import { quoteObservation } from "../plugins/builtin/shared/report-freshness";
+import { isUsableRate } from "./fx-pair";
+
+/** A listing a rate is read from, and whether its price is the rate's inverse. */
+export interface FxQuoteLeg {
+  symbol: string;
+  invert: boolean;
+}
+
+/**
+ * A pair's own listing, as markets quote it: EURJPY=X for EUR/JPY and,
+ * inverted, for JPY/EUR; USDSGD=X for USD/SGD.
+ */
+export function fxPairListing(currency: string, baseCurrency: string): FxQuoteLeg {
+  const [base, quote] = quotedFxPair(currency, baseCurrency, 1).pair.split("/") as [string, string];
+  return { symbol: `${base}${quote}=X`, invert: base !== currency };
+}
+
+/** A currency's dollar pair, read as USD per unit: EURUSD=X, or USDJPY=X inverted. */
+function dollarLeg(code: string): FxQuoteLeg {
+  const symbol = dollarPairListing(code);
+  return { symbol, invert: symbol.startsWith("USD") };
+}
+
+/** The rate `fx` answers with and the quotes behind it, each as `quote` reads it. */
+export interface FxQuoteRate {
+  /** `baseCurrency` per unit of `currency`. */
+  rate: number;
+  /** The pair's own quote, or the two dollar pairs it is crossed from. */
+  quotes: { symbol: string; quote: Quote }[];
+  /** Crossed through the dollar: the pair has no quote of its own. */
+  viaUsd: boolean;
+}
+
+export interface FxQuoteMiss {
+  /** The currencies no quote priced. */
+  missing: string[];
+  /** The reasons the quotes that did not come back gave, first the pair's own. */
+  errors: unknown[];
+}
+
+function legRate(leg: FxQuoteLeg, quote: Quote | null | undefined): number | null {
+  const price = quote?.price;
+  if (!isUsableRate(price)) return null;
+  const rate = leg.invert ? 1 / price : price;
+  return isUsableRate(rate) ? rate : null;
+}
+
+/**
+ * The rate of `currency` in `baseCurrency` from the quotes `quote` and the FX
+ * board read, in one batch: the pair's own quote (EURJPY=X for EUR/JPY),
+ * else, for a pair with no quote or one that went stale while both dollar
+ * pairs are current, the cross of the dollar pairs (EURUSD=X and USDJPY=X),
+ * said as such. A pair with a dollar side is its own dollar pair. Null for a
+ * currency priced in itself; the currencies no quote priced when neither
+ * reading has a price.
+ */
+export async function readFxQuoteRate(
+  currency: string,
+  baseCurrency: string,
+  getQuotesBatch: (targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions) => Promise<QuoteBatchResult[]>,
+  options: { forceRefresh?: boolean; now?: number } = {},
+): Promise<FxQuoteRate | FxQuoteMiss | null> {
+  if (currency === baseCurrency) return null;
+  const now = options.now ?? Date.now();
+  const own = fxPairListing(currency, baseCurrency);
+  const crossed = currency !== "USD" && baseCurrency !== "USD";
+  const legs = crossed ? [dollarLeg(currency), dollarLeg(baseCurrency)] : [];
+  const asked = [own, ...legs];
+  const results = await getQuotesBatch(
+    asked.map((leg) => ({ symbol: leg.symbol, exchange: "" })),
+    { forceRefresh: options.forceRefresh === true, revalidate: true },
+  );
+  const resultOf = (leg: FxQuoteLeg, index: number) => results.find((result) => result.target.symbol === leg.symbol) ?? results[index];
+  const read = asked.map((leg, index) => {
+    const result = resultOf(leg, index);
+    const quote = result?.quote ?? null;
+    return { leg, quote, rate: legRate(leg, quote), error: result?.error };
+  });
+  const [pair, from, into] = read as [typeof read[number], ...typeof read];
+  const current = (entry: typeof read[number] | undefined) => entry?.rate != null && !isQuoteStaleForCurrentSession(entry.quote!, now);
+  const legsCurrent = crossed && current(from) && current(into);
+  if (pair.rate != null && (!legsCurrent || current(pair))) {
+    return { rate: pair.rate, quotes: [{ symbol: pair.leg.symbol, quote: pair.quote! }], viaUsd: false };
+  }
+  if (crossed && from?.rate != null && into?.rate != null) {
+    return {
+      rate: from.rate / into.rate,
+      quotes: [{ symbol: from.leg.symbol, quote: from.quote! }, { symbol: into.leg.symbol, quote: into.quote! }],
+      viaUsd: true,
+    };
+  }
+  const missing = crossed
+    ? [currency, baseCurrency].filter((_code, index) => read[index + 1]?.rate == null)
+    : [currency === "USD" ? baseCurrency : currency];
+  return { missing, errors: read.flatMap((entry) => entry.rate == null && entry.error != null ? [entry.error] : []) };
+}
+
+/**
+ * The one observation a rate is dated by, as `quote` dates a quote: the
+ * pair's own quote, or for a cross the older of its two, stale when either
+ * is and as held back as the more delayed.
+ */
+export function fxQuoteRateObservation(rate: FxQuoteRate, now = Date.now()): ReturnType<typeof quoteObservation> {
+  const observations = rate.quotes.map(({ quote }) => quoteObservation(quote, now));
+  const oldest = observations.reduce((older, observation) => observation.updatedAt < older.updatedAt ? observation : older);
+  const delays = observations.flatMap((observation) => observation.delayMinutes ?? []);
+  return {
+    ...oldest,
+    stale: observations.some((observation) => observation.stale === true),
+    ...(delays.length > 0 ? { delayMinutes: Math.max(...delays) } : {}),
+  };
+}

@@ -22,6 +22,11 @@ test("a volume of 0 nobody counts is no volume, while a stock's 0 and an index's
   // ^GSPC's source sums its members' volume; a halted stock's session traded nothing.
   expect(reportedQuoteVolume({ volume: 2_500_000_000, instrumentType: "INDEX" })).toBe(2_500_000_000);
   expect(reportedQuoteVolume({ volume: 0, instrumentType: "EQUITY" })).toBe(0);
+  // A currency pair has no counted volume, whatever its quote carries (EURUSD=X's Overview read Volume 0).
+  for (const instrumentType of ["CURRENCY", "CASH", "FOREX"]) {
+    expect(reportedQuoteVolume({ volume: 0, instrumentType })).toBeNull();
+    expect(reportedQuoteVolume({ volume: 1_234, instrumentType })).toBeNull();
+  }
   expect(reportedQuoteVolume({ volume: Number.NaN, instrumentType: "EQUITY" })).toBeNull();
   expect(reportedQuoteVolume({ instrumentType: "EQUITY" })).toBeNull();
   expect(reportedQuoteVolume(null)).toBeNull();

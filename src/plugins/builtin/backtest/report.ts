@@ -1,7 +1,7 @@
 import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/headless";
-import { formatStat, PRICE_RETURN_LABEL, PRICE_RETURN_NOTE, SUMMARY_ROWS, type StatValue } from "./format";
+import { formatStat, formatTradePrice, PRICE_RETURN_LABEL, PRICE_RETURN_NOTE, SUMMARY_ROWS, type StatValue } from "./format";
 import { continuationNote, type BacktestWindowOptions, type HistoryBacktestResult } from "./window";
 
 /**
@@ -89,6 +89,8 @@ function summaryUnit(kind: StatValue["kind"], countUnit: string | undefined): st
 
 function summarySections(input: BacktestReportInput): HeadlessBundleSection[] {
   const { result, unit } = input;
+  // At the instrument's precision: a currency pair's five decimals (three for yen), not the cent.
+  const tradePrice = (value: unknown) => formatTradePrice(typeof value === "number" ? value : null, input.symbol);
   return [
     {
       title: `${input.rules.label} · ${result.start} to ${result.end}`,
@@ -112,9 +114,9 @@ function summarySections(input: BacktestReportInput): HeadlessBundleSection[] {
       title: "Trades",
       columns: [
         { key: "entryDate", header: "Entry" },
-        { key: "entryPrice", header: "Entry price", align: "right", unitKey: "currency", format: fixed(2) },
+        { key: "entryPrice", header: "Entry price", align: "right", unitKey: "currency", format: tradePrice },
         { key: "exitDate", header: "Exit" },
-        { key: "exitPrice", header: "Exit price", align: "right", unitKey: "currency", format: fixed(2) },
+        { key: "exitPrice", header: "Exit price", align: "right", unitKey: "currency", format: tradePrice },
         { key: "returnPct", header: "Return %", align: "right", format: fixed(2) }, { key: "sessions", header: "Sessions", align: "right" },
       ],
       rows: result.trades.map((trade) => ({
