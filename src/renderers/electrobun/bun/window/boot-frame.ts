@@ -19,6 +19,7 @@ export function readDesktopBootFrame(path: string): BootFrame | null {
     const frame: unknown = JSON.parse(readFileSync(path, "utf8"));
     return isBootFrame(frame) ? frame : null;
   } catch {
+    // Intentional ignore: no saved boot frame yet, or an unreadable one, opens the window without it.
     return null;
   }
 }

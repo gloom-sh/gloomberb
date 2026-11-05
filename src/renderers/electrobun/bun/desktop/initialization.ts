@@ -201,7 +201,9 @@ export function startDesktopBackend(
  */
 export function joinDesktopBackendLaunch(backend: DesktopBackend): Promise<void> {
   const running = launches.get(backend);
-  return running ? running.then(() => {}, () => {}) : Promise.resolve();
+  return running ? running.then(() => {}, () => {
+    // Intentional ignore: a failed launch is for init to report; this only waits for it to settle.
+  }) : Promise.resolve();
 }
 
 export async function initializeDesktopBackend(

@@ -78,8 +78,8 @@ export function WebAudioPlayer({
     try {
       await audio.play();
     } catch {
-      // Refused (no source yet, or the page has not been touched): the state
-      // follows the element's own events.
+      // Intentional ignore: a refused play (no source yet, or the page has not
+      // been touched) leaves the state to follow the element's own events.
     }
   }, []);
   const pause = useCallback(() => {

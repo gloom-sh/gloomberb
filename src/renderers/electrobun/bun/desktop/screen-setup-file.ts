@@ -29,7 +29,7 @@ export function desktopScreenSetupStore(path: string = desktopScreenSetupPath())
         const raw: unknown = JSON.parse(text);
         if (raw && typeof raw === "object" && !Array.isArray(raw)) return parseScreenSetup(raw);
       } catch {
-        // Not JSON: kept below.
+        // Intentional ignore: a file that is not JSON falls through to the copy and the error logged below.
       }
       // The next save would replace a file this build cannot read: a copy stays beside it.
       try {

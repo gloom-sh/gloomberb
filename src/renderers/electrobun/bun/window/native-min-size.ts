@@ -230,7 +230,7 @@ function linuxSymbol(file: string, name: string): Pointer | null {
       const handle = dl.dlopen(cString(file), 0x1 | 0x4);
       return handle ? dl.dlsym(handle, cString(name)) : null;
     } catch {
-      // No dlopen in this libc: glibc before 2.34 keeps it in libdl.
+      // Intentional ignore: no dlopen in this libc; glibc before 2.34 keeps it in libdl, tried next.
     }
   }
   return null;

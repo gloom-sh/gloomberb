@@ -10,6 +10,7 @@ function decodeActionSelection(action: string, expectedAction: string): ContextM
     try {
       return decodeURIComponent(part);
     } catch {
+      // Intentional ignore: a malformed escape names no request or item, so the click selects nothing.
       return "";
     }
   });

@@ -180,7 +180,7 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
       try {
         reader.releaseLock();
       } catch {
-        // A reader cancelled mid-read cannot release its lock.
+        // Intentional ignore: a reader cancelled mid-read cannot release its lock.
       }
     }
   }

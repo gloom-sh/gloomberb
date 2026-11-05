@@ -65,6 +65,7 @@ function gloomApiArea(url: unknown): string | null {
     const segment = parsed.pathname.split("/")[1];
     return segment ? `${parsed.host}/${segment}` : parsed.host;
   } catch {
+    // Intentional ignore: a URL that does not parse names no Gloom API area.
     return null;
   }
 }

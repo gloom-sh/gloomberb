@@ -1,6 +1,7 @@
 import { setWindowFullscreen, setWindowMaximized } from "../../../components/layout/window-fullscreen";
 import { detectPlatform } from "../../../utils/platform";
 import { backendRequest } from "./backend-rpc";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * Long enough that dragging a window edge does not ask the host on every
@@ -34,9 +35,10 @@ export function installElectrobunWindowFullscreenTracking(): () => void {
       ]);
       setWindowFullscreen(fullscreen === true);
       setWindowMaximized(maximized === true);
-    } catch {
+    } catch (error) {
       // A host too old to answer has the window chrome the header already
       // assumes, so leaving the last known state alone is the safe read.
+      logFailure("desktop-window", "Could not read the window's fullscreen state")(error);
     } finally {
       reading = false;
       if (readAgain) {

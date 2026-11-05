@@ -18,6 +18,7 @@ import { setAppBadge } from "./app-badge";
 import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
 import { saveDesktopViewIds } from "./view-ids";
 import type { DesktopBackend, DesktopRpc } from "./backend";
+import { logFailure } from "../../../../utils/log-failure";
 
 function normalizeText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -50,16 +51,16 @@ function windowForRpcKey(backend: DesktopBackend, windowKey: string | undefined)
 function isWindowFullscreen(backend: DesktopBackend, windowKey: string | undefined): boolean {
   try {
     return windowForRpcKey(backend, windowKey)?.isFullScreen?.() === true;
-  } catch {
-    return false;
+  } catch (error) {
+    return logFailure("desktop-window", "Could not read the window's fullscreen state", false)(error);
   }
 }
 
 function isWindowMaximized(backend: DesktopBackend, windowKey: string | undefined): boolean {
   try {
     return windowForRpcKey(backend, windowKey)?.isMaximized?.() === true;
-  } catch {
-    return false;
+  } catch (error) {
+    return logFailure("desktop-window", "Could not read the window's maximized state", false)(error);
   }
 }
 

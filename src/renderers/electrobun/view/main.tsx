@@ -59,6 +59,7 @@ import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usag
 import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
 import { cloudSyncController } from "../../../sync/controller";
 import { createViewIdMirror, restoreViewIds, viewIdStorage } from "./view-ids";
+import { logFailure } from "../../../utils/log-failure";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -119,7 +120,7 @@ function requestStartupFocus(): void {
   focusWebSurface();
   requestAnimationFrame(() => {
     void backendRequest("host.focusWindow")
-      .catch(() => null)
+      .catch(logFailure("electrobun-web-boot", "Could not focus the window at startup", null))
       .then(() => focusWebSurface());
   });
 }
@@ -131,8 +132,12 @@ async function boot() {
   const backendInitPromise = initElectrobunBackend();
   const externalBundlesPromise = backendRequest("plugins.listExternal");
   // Avoid a premature global unhandled-rejection render while UI chunks load.
-  void backendInitPromise.catch(() => {});
-  void externalBundlesPromise.catch(() => {});
+  void backendInitPromise.catch(() => {
+    // Intentional ignore: boot awaits this promise below and shows its failure; this only stops an early unhandled rejection.
+  });
+  void externalBundlesPromise.catch(() => {
+    // Intentional ignore: the plugin load below awaits this promise, asks again and logs its failure.
+  });
 
   installElectrobunConfigStoreHost();
   installElectrobunBrokerRemoteClient();
@@ -303,7 +308,7 @@ async function boot() {
     startBootFrameRecorder({
       doc: document,
       root: appRootElement,
-      save: (frame) => { void backendRequest("host.saveBootFrame", { frame }).catch(() => {}); },
+      save: (frame) => { void backendRequest("host.saveBootFrame", { frame }).catch(logFailure("electrobun-web-boot", "Could not save the boot frame")); },
     });
   }
   requestStartupFocus();

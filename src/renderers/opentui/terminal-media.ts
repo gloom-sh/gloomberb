@@ -1,6 +1,7 @@
 import { join } from "path";
 import { getGloomberbDirs } from "../../data/config/home";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { logFailure } from "../../utils/log-failure";
 
 /** The subset of `Bun.Subprocess` this module needs, so tests can supply a fake. */
 export interface TerminalMediaChild {
@@ -117,6 +118,7 @@ function defaultIsStrandedPlayer(pid: number): boolean {
     // must never be able to shoot down the first one's playback.
     return Number.parseInt(line.slice(line.lastIndexOf(" ") + 1), 10) === 1;
   } catch {
+    // Intentional ignore: a player the probe cannot confirm as orphaned is left running, never killed.
     return false;
   }
 }
@@ -125,7 +127,7 @@ function defaultKillProcess(pid: number): void {
   try {
     process.kill(pid, "SIGTERM");
   } catch {
-    // Already gone, or not ours to kill.
+    // Intentional ignore: a player already gone, or not ours to kill, needs nothing more.
   }
 }
 
@@ -156,8 +158,8 @@ export function createTerminalMediaReaper(options: TerminalMediaReaperOptions): 
         .split("\n")
         .map((line) => Number.parseInt(line.trim(), 10))
         .filter((pid) => Number.isFinite(pid) && pid > 1);
-    } catch {
-      return [];
+    } catch (error) {
+      return logFailure("terminal-media", "Could not read the media player pid file", [])(error);
     }
   }
 
@@ -168,8 +170,9 @@ export function createTerminalMediaReaper(options: TerminalMediaReaperOptions): 
         return;
       }
       writeFileSync(stateFile, `${pids.join("\n")}\n`, "utf8");
-    } catch {
+    } catch (error) {
       // Losing a pid only costs us cross-restart reaping, never correctness.
+      logFailure("terminal-media", "Could not write the media player pid file")(error);
     }
   }
 
@@ -188,7 +191,7 @@ export function createTerminalMediaReaper(options: TerminalMediaReaperOptions): 
       try {
         child.kill();
       } catch {
-        // Already exited.
+        // Intentional ignore: a player that already exited needs no kill.
       }
       forgetState(child.pid);
     }
@@ -227,7 +230,9 @@ export function createTerminalMediaReaper(options: TerminalMediaReaperOptions): 
       void child.exited.then(() => {
         if (active === child) active = null;
         forgetState(child.pid);
-      }).catch(() => {});
+      }).catch(() => {
+        // Intentional ignore: exited only resolves, and the pid cleanup above handles its own errors.
+      });
     },
     stopActive,
   };

@@ -308,7 +308,10 @@ export function installerFolderScript({ folder, app, log, pending }: { folder: s
 
 /** The installer's folder a retirement that did not finish left in `path`; null without one. */
 async function readPendingFolder(path: string): Promise<string | null> {
-  const text = await readFile(path, "utf8").catch(() => "");
+  const text = await readFile(path, "utf8").catch(() => {
+    // Intentional ignore: no pending file, the usual case, means no unfinished retirement.
+    return "";
+  });
   const folder = text.replace(/^\uFEFF/, "").trim();
   return folder && win32.isAbsolute(folder) ? folder : null;
 }
@@ -325,7 +328,7 @@ export async function settleInstallerFolder(context: InstallerFolderContext): Pr
   if (!running) return { kind: "none" };
   const channelRoot = win32.dirname(running.folder);
   const pending = win32.join(channelRoot, PENDING_FILE);
-  const recorded = await (context.readInstallerFolder ?? readInstallerFolderFromRegistry)().catch(() => null)
+  const recorded = await (context.readInstallerFolder ?? readInstallerFolderFromRegistry)().catch(logFailure("desktop-installer-folder", "Could not read the installer's folder from the registry", null))
     ?? await readPendingFolder(pending);
   if (!recorded || samePath(recorded, running.folder)) return { kind: "none" };
   const folder = win32.resolve(recorded);

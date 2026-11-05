@@ -189,7 +189,7 @@ export function OpenTuiDialogHostProvider({ children }: { children: ReactNode })
         try {
           savedFocus?.focus();
         } catch {
-          // The previously focused renderable may have unmounted with the dialog.
+          // Intentional ignore: the previously focused renderable may have unmounted with the dialog.
         }
       });
     },

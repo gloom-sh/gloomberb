@@ -99,7 +99,7 @@ export async function removeUpdateAsides(
     ? [basename(app), `${LEGACY_DESKTOP_APP_NAME}.app`]
     : [basename(app)];
   const removed: string[] = [];
-  for (const entry of await readdir(folder).catch(() => [] as string[])) {
+  for (const entry of await readdir(folder).catch(logFailure("desktop-update", "Could not list the app's folder for old copies", [] as string[]))) {
     if (!names.some((name) => isUpdateAside(entry, name))) continue;
     const path = join(folder, entry);
     // One that still cannot be removed (another user's) is tried again at the next start.
@@ -192,7 +192,10 @@ function tarHeaderChecksumMatches(header: Uint8Array): boolean {
  * so it says nothing about the files' contents.
  */
 export async function isWholeTar(path: string): Promise<boolean> {
-  const file = await open(path, "r").catch(() => null);
+  const file = await open(path, "r").catch(() => {
+    // Intentional ignore: a file that cannot be opened is not a whole tar, the answer asked for.
+    return null;
+  });
   if (!file) return false;
   try {
     const { size } = await file.stat();
@@ -208,9 +211,12 @@ export async function isWholeTar(path: string): Promise<boolean> {
     }
     return false;
   } catch {
+    // Intentional ignore: a file that cannot be read through is not a whole tar.
     return false;
   } finally {
-    await file.close().catch(() => {});
+    await file.close().catch(() => {
+      // Intentional ignore: the answer is settled, and a failed close only drops a read handle.
+    });
   }
 }
 
@@ -243,14 +249,17 @@ async function removeStagedArchive(path: string): Promise<void> {
  */
 async function removeUnusableUpdateArchives(folder: string): Promise<string[]> {
   const removed: string[] = [];
-  for (const entry of await readdir(folder).catch(() => [] as string[])) {
+  for (const entry of await readdir(folder).catch(() => {
+    // Intentional ignore: no extraction folder yet means no update archive to check.
+    return [] as string[];
+  })) {
     if (!entry.endsWith(".tar")) continue;
     const path = join(folder, entry);
     let reason: string;
     if (!(await isWholeTar(path))) {
       reason = "Could not remove a damaged update archive";
     } else {
-      const head = await Bun.file(path).slice(0, 64 * 1024).bytes().catch(() => null);
+      const head = await Bun.file(path).slice(0, 64 * 1024).bytes().catch(logFailure("desktop-update", "Could not read an update archive's first entry", null));
       const top = head ? firstTarPath(head)?.replace(/^\.\//, "").split("/")[0] : undefined;
       if (top !== LEGACY_DESKTOP_APP_NAME && top !== `${LEGACY_DESKTOP_APP_NAME}.app`) continue;
       reason = "Could not remove an update archive from before the rename";
@@ -438,7 +447,7 @@ export function createElectrobunDesktopUpdater(
 
   /** Electrobun's `self-extraction` folder, where the download leaves the update as `<hash>.tar`. */
   async function extractionFolder(): Promise<string | null> {
-    const appData = await updater.appDataFolder?.().catch(() => null);
+    const appData = await updater.appDataFolder?.().catch(logFailure("desktop-update", "Could not find the updater's data folder", null));
     return appData ? join(appData, "self-extraction") : null;
   }
 

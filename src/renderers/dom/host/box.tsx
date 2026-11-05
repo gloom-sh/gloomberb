@@ -60,7 +60,7 @@ function capturePointer(element: HTMLElement | null, pointerId: number | null): 
     element.setPointerCapture(pointerId);
     return { element, pointerId };
   } catch {
-    // The pointer is already up or belongs to another frame: drag uncaptured.
+    // Intentional ignore: a pointer already up or owned by another frame leaves the drag uncaptured.
     return null;
   }
 }
@@ -70,7 +70,7 @@ function releasePointer(captured: { element: HTMLElement; pointerId: number } | 
   try {
     if (captured.element.hasPointerCapture?.(captured.pointerId)) captured.element.releasePointerCapture(captured.pointerId);
   } catch {
-    // Released already, by the browser on pointerup.
+    // Intentional ignore: the browser already released the capture on pointerup.
   }
 }
 

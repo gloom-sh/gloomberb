@@ -14,6 +14,7 @@ function isGloomCloudUrl(url: URL): boolean {
   try {
     return url.origin === new URL(process.env.GLOOMBERB_API_URL ?? "https://api.gloom.sh").origin;
   } catch {
+    // Intentional ignore: an API URL override that does not parse matches no Gloom Cloud request.
     return false;
   }
 }

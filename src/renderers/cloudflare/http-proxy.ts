@@ -104,6 +104,7 @@ export function validateProxyTarget(
   try {
     url = new URL(rawUrl);
   } catch {
+    // Intentional ignore: an unparsable target URL is the caller's input error, answered with a 400 here.
     return { error: "The target URL is not valid.", status: 400 };
   }
   if (url.protocol !== "https:") {
@@ -200,7 +201,10 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
     if (!signedOutRouteAllows(target.url, init.method, signedOutRoutes)) {
       return proxyError("Sign in to Gloom to send this request.", 401);
     }
-    if (options.signedOutLimit && !(await options.signedOutLimit(request).catch(() => true))) {
+    if (options.signedOutLimit && !(await options.signedOutLimit(request).catch(() => {
+      console.warn("[http-proxy] Could not check the signed-out rate limit; the request went ahead");
+      return true;
+    }))) {
       return proxyError("Too many requests right now. Sign in to Gloom, or try again in a minute.", 429, { "retry-after": "60" });
     }
   }
@@ -225,7 +229,9 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
   // memory, so the cap also keeps one response well inside an isolate's memory.
   const tooLarge = `The upstream response is larger than ${MAX_BODY_BYTES / (1024 * 1024)} MB.`;
   if (init.method !== "HEAD" && Number(response.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
-    await response.body?.cancel().catch(() => {});
+    await response.body?.cancel().catch(() => {
+      // Intentional ignore: the refused body is dropped either way, and the 502 below answers the caller.
+    });
     return proxyError(tooLarge, 502);
   }
   let body: Uint8Array | null;

@@ -1,4 +1,5 @@
 import type { DesktopCapabilitySubscribeRequest } from "../shared/protocol";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface CapabilitySubscriptionOptions extends DesktopCapabilitySubscribeRequest {
   onEvent(event: unknown): void;
@@ -28,7 +29,7 @@ export function subscribeCapability(
   let disposed = false;
   let subscribed = false;
   const unsubscribe = () => {
-    void transport.unsubscribe(request.subscriptionId).catch(() => {});
+    void transport.unsubscribe(request.subscriptionId).catch(logFailure("desktop-capabilities", "Could not unsubscribe a capability stream"));
   };
   const stopEvents = transport.onEvent(request.subscriptionId, onEvent);
 

@@ -45,6 +45,7 @@ function shipsChromium(): boolean {
     const build = JSON.parse(readFileSync(resolve("../Resources/build.json"), "utf8")) as { availableRenderers?: unknown };
     chromiumShipped = !Array.isArray(build.availableRenderers) || build.availableRenderers.includes("cef");
   } catch {
+    // Intentional ignore: a build that does not say is taken to ship Chromium, as above.
     chromiumShipped = true;
   }
   return chromiumShipped;

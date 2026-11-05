@@ -1,5 +1,6 @@
 import { installAppBadgeHost } from "../../../notifications/app-badge";
 import { backendRequest } from "./backend-rpc";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * Lets the unread count reach the Dock icon. The view cannot call native
@@ -11,7 +12,7 @@ export function installElectrobunAppBadgeHost(): () => void {
   return installAppBadgeHost({
     setBadge: (label) => {
       // A failed badge is not worth an error; the next change sets it again.
-      void backendRequest("host.setAppBadge", { label }).catch(() => {});
+      void backendRequest("host.setAppBadge", { label }).catch(logFailure("desktop-host", "Could not set the app badge"));
     },
   });
 }

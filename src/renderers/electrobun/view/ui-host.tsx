@@ -6,6 +6,7 @@ import { NATIVE_CONTEXT_MENU_SUPPORTED, showDesktopContextMenu } from "./host/na
 import { startElectrobunWindowDrag } from "./host/window-move";
 import { createDomUiHost } from "../../dom/dom-ui-host";
 import { detectPlatform } from "../../../utils/platform";
+import { logFailure } from "../../../utils/log-failure";
 
 export function createWebUiHost(desktopPlatform?: string): UiHost {
   return createDomUiHost(desktopPlatform, {
@@ -76,7 +77,7 @@ export const webRendererHost: RendererHost = {
         return;
       }
     } catch {
-      // Fall through to the native Electrobun clipboard bridge.
+      // Intentional ignore: the native Electrobun clipboard bridge below copies the image instead.
     }
     await backendRequest("host.copyPngImage", { pngBase64 });
   },
@@ -96,7 +97,7 @@ export const webRendererHost: RendererHost = {
       body: notification.body,
       subtitle: notification.subtitle,
       sound: notification.sound,
-    }).catch(() => {});
+    }).catch(logFailure("desktop-host", "Could not show a notification"));
   },
   showContextMenu: showDesktopContextMenu,
 };
