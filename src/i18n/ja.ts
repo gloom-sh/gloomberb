@@ -1530,7 +1530,7 @@ export const ja: Record<string, string> = {
   "Enter: next field, then add": "Enter: 次の項目へ、最後に追加",
   "Add one ticker to continue": "ティッカーを1つ追加すると続行できます",
   "Add one ticker to continue.": "ティッカーを1つ追加すると続行できます。",
-  "Esc, then Enter: continue": "Esc のあと Enter: 続行",
+  "Enter on an empty ticker: continue": "ティッカーが空のまま Enter: 続行",
   "Enter to add a ticker": "Enter でティッカーを追加",
   "  already added": "  追加済み",
   "Credentials stay on this device.": "認証情報はこの端末にのみ保存されます。",

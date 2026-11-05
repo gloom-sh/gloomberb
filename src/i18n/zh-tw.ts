@@ -1530,7 +1530,7 @@ export const zhTW: Record<string, string> = {
   "Enter: next field, then add": "Enter：下一欄位，最後新增",
   "Add one ticker to continue": "新增一個代號即可繼續",
   "Add one ticker to continue.": "新增一個代號即可繼續。",
-  "Esc, then Enter: continue": "Esc，然後 Enter：繼續",
+  "Enter on an empty ticker: continue": "代號為空時按 Enter：繼續",
   "Enter to add a ticker": "按 Enter 新增代號",
   "  already added": "  已新增",
   "Credentials stay on this device.": "憑證僅保存在此裝置上。",

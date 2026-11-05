@@ -417,6 +417,11 @@ export function useOnboardingPositions({
     /** What a blank Currency saves: the listing's currency, else the portfolio's. */
     blankCurrency: (preview.status === "ready" && preview.currency ? preview.currency : fallbackCurrency).toUpperCase(),
     fieldIdx,
+    /**
+     * The cursor is in the Ticker field and it is empty: with a holding
+     * listed, Enter there goes on to the next step instead of asking for one.
+     */
+    onEmptyTicker: fieldIdx === 0 && !normalizePositionQuery(draft.ticker),
     preview,
     /** What the size field counts: Contracts for a future, else Shares. */
     quantityLabel,

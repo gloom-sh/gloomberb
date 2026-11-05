@@ -1530,7 +1530,7 @@ export const zhCN: Record<string, string> = {
   "Enter: next field, then add": "Enter：下一字段，最后添加",
   "Add one ticker to continue": "添加一个代码即可继续",
   "Add one ticker to continue.": "添加一个代码即可继续。",
-  "Esc, then Enter: continue": "Esc，然后 Enter：继续",
+  "Enter on an empty ticker: continue": "代码为空时按 Enter：继续",
   "Enter to add a ticker": "按 Enter 添加代码",
   "  already added": "  已添加",
   "Credentials stay on this device.": "凭据仅保存在此设备上。",

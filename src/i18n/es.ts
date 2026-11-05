@@ -1533,7 +1533,7 @@ export const es: Record<string, string> = {
   "Enter: next field, then add": "Enter: siguiente campo, luego añade",
   "Add one ticker to continue": "Añade un ticker para continuar",
   "Add one ticker to continue.": "Añade un ticker para continuar.",
-  "Esc, then Enter: continue": "Esc y luego Enter: continuar",
+  "Enter on an empty ticker: continue": "Enter con el ticker vacío: continuar",
   "Enter to add a ticker": "Enter para añadir un ticker",
   "  already added": "  ya añadido",
   "Credentials stay on this device.": "Las credenciales se quedan en este dispositivo.",
