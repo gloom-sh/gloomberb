@@ -3471,9 +3471,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       { forceRefresh: ctx.cliOptions.refresh, now });
     if (read && "missing" in read) {
       // A reason the data service gave for a missing quote (spot gold is not quoted) says more than the generic line;
-      // a symbol that names nothing (USDXYZ=X) does not.
+      // a symbol that names nothing (USDXYZ=X) or a source with nothing to say (No quote provider available) does not.
       const reason = read.errors.map((error) => providerMissReason(error)
-        ?? (typeof error === "string" && !/^Not a ticker\b|unavailable/i.test(error) ? error : undefined)).find(Boolean);
+        ?? (typeof error === "string" && !/^(?:Not a ticker|No quote provider)\b|unavailable/i.test(error) ? error : undefined)).find(Boolean);
       if (reason) ctx.fail(reason);
       ctx.fail(
         `Exchange rate unavailable for ${read.missing.join(" and ")}.`,

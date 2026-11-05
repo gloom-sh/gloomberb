@@ -9,12 +9,13 @@ import { reuseResolvedSeriesIdentity } from "./panel-series";
 import { pricePointsToResolvedSeries } from "./price-series";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
+// A currency pair at its precision: five decimals, three in yen, five significant digits below 1.
 const cases = [
-  ["EURUSD=X", "USD", "CURRENCY", 1.1602274179458618, "$1.160227"],
-  ["USDEUR=X", "EUR", "CURRENCY", 0.8618999719619751, "€0.8619"],
-  // A float32 provider rate: seven significant digits drop the 153.554001 tail.
+  ["EURUSD=X", "USD", "CURRENCY", 1.1602274179458618, "$1.16023"],
+  ["USDEUR=X", "EUR", "CURRENCY", 0.8618999719619751, "€0.86190"],
+  // A float32 provider rate: the pair's three decimals drop the 153.554001 tail.
   ["JPY=X", "JPY", "CURRENCY", 153.5540008544922, "¥153.554"],
-  ["JPYUSD=X", "USD", "CURRENCY", 0.00651236716657877, "$0.006512"],
+  ["JPYUSD=X", "USD", "CURRENCY", 0.00651236716657877, "$0.0065124"],
   ["AAPL", "USD", "EQUITY", 259.7499, "$259.75"],
   // A real provider quote, not a hand-rounded one: crypto display precision has
   // to survive the float tail rather than spend eight decimals on it.
@@ -73,12 +74,12 @@ test("shared price axes retain FX cursor precision in either order and metadata 
   const equity = (await priceModel("AAPL", "USD", "EQUITY", 259.7499)).model.chart.series[0]!;
   for (const entries of [[equity, fx], [fx, equity]]) {
     const scene = buildCompositeChartScene(entries, [{ id: "main" }], { width: 101, height: 20 })!;
-    expect(formatCompositeCursorValue(1.1602274179458618, scene.panels[0]!.axes.left!)).toBe("$1.160227");
+    expect(formatCompositeCursorValue(1.1602274179458618, scene.panels[0]!.axes.left!)).toBe("$1.16023");
   }
   const untyped = { ...fx, priceAssetCategory: undefined };
   const recovered = reuseResolvedSeriesIdentity(untyped, fx);
   expect(formatCompositeSeriesValue(1.1602274179458618, untyped)).toBe("$1.16");
-  expect(formatCompositeSeriesValue(1.1602274179458618, recovered)).toBe("$1.160227");
+  expect(formatCompositeSeriesValue(1.1602274179458618, recovered)).toBe("$1.16023");
   expect(recovered.points).toBe(untyped.points);
 });
 

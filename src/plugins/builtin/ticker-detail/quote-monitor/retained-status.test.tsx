@@ -64,7 +64,7 @@ test.each([80, 120])("retained provider quote exposes refresh failure and clears
     return quote(price);
   });
   expect(calls).toBeGreaterThan(0);
-  expect(initial).toContain("$1.160227");
+  expect(initial).toContain("$1.16023");
   expect(initial).not.toContain("disconnected");
 
   fail = true;
@@ -73,14 +73,14 @@ test.each([80, 120])("retained provider quote exposes refresh failure and clears
   expect(entry.error?.message).toBe("FX feed disconnected");
   expect(entry.lastGoodData?.price).toBe(1.160227);
   const failed = await frame();
-  expect(failed).toContain("$1.160227");
+  expect(failed).toContain("$1.16023");
   expect(failed).toContain("FX feed disconnected");
 
   fail = false;
   price = 1.170227;
   await act(async () => { await coordinator!.loadQuotesBatch([instrument], { forceRefresh: true }); });
   const recovered = await frame();
-  expect(recovered).toContain("$1.170227");
+  expect(recovered).toContain("$1.17023");
   expect(recovered).not.toContain("disconnected");
   expect(coordinator!.getQuoteEntry(instrument).error).toBeNull();
 });
@@ -89,11 +89,11 @@ test("explicit stale cached quote is identified while its provider refresh is pe
   let complete!: (value: Quote) => void;
   const pending = new Promise<Quote>((resolve) => { complete = resolve; });
   const retained = await render(80, () => pending, { ...quote(), stale: true });
-  expect(retained).toContain("$1.160227");
+  expect(retained).toContain("$1.16023");
   expect(retained).toContain("Stale quote");
   await act(async () => { complete(quote(1.170227)); });
   const recovered = await frame();
-  expect(recovered).toContain("$1.170227");
+  expect(recovered).toContain("$1.17023");
   expect(recovered).not.toContain("Stale quote");
 });
 
@@ -103,12 +103,12 @@ test.each(["NaN", "Infinity", "future"] as const)("retained quote with %s source
   const invalidTime = kind === "NaN" ? NaN : kind === "Infinity" ? Infinity : Date.now() + 86_400_000;
   const cached = { ...quote(), lastUpdated: invalidTime, receivedAt: Date.now() };
   const retained = await render(80, () => pending, cached);
-  expect(retained).toContain("$1.160227");
+  expect(retained).toContain("$1.16023");
   expect(retained).toContain("Stale quote");
   expect(Object.is(cached.lastUpdated, invalidTime)).toBe(true);
   await act(async () => { complete(quote(1.170227)); });
   const recovered = await frame();
-  expect(recovered).toContain("$1.170227");
+  expect(recovered).toContain("$1.17023");
   expect(recovered).not.toContain("Stale quote");
 });
 
