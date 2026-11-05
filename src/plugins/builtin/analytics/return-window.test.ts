@@ -3,7 +3,7 @@ import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { normalizePriceHistory } from "../../../utils/price-history";
 import { buildChartKey } from "../../../market-data/selectors";
-import { computeDatedBeta, computeWeightedPortfolioReturns, resolveDatedReturns } from "./metrics";
+import { computeDatedBeta, computeWeightedPortfolioReturns, resolveDatedReturns } from "../../../portfolio/return-metrics";
 import { buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
 import { createTestTicker } from "../../../test-support/ticker";
 

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
-import { resolveDatedReturns } from "../../plugins/builtin/analytics/metrics";
+import { resolveDatedReturns } from "../../portfolio/return-metrics";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
