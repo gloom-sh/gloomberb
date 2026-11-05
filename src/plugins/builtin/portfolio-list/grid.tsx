@@ -27,6 +27,7 @@ import { useThrottledMemo } from "./use-throttled-memo";
 // move on the reorder cadence, so a tick does not reshuffle the layout.
 const GRID_TILE_THROTTLE_MS = 250;
 
+const PRICE_COLUMN: ColumnConfig = { id: "price", label: "Last", width: 10, align: "right" };
 const MARKET_CAP_COLUMN: ColumnConfig = { id: "market_cap", label: "Mkt Cap", width: 10, align: "right" };
 const MARKET_VALUE_COLUMN: ColumnConfig = { id: "mkt_value", label: "Mkt Value", width: 10, align: "right" };
 const CHANGE_PCT_COLUMN: ColumnConfig = { id: "change_pct", label: "Change", width: 8, align: "right" };
@@ -61,6 +62,20 @@ function positionAdjustedChangePercent(
     : null;
 }
 
+/**
+ * A portfolio's ticker it holds no position in: one followed, as setup adds a
+ * holding entered without shares. Its tile reads like a watchlist entry.
+ */
+function isFollowedOnly(
+  ticker: TickerRecord,
+  financials: TickerFinancials | undefined,
+  context: ColumnContext,
+  isPortfolioTab: boolean,
+): boolean {
+  return isPortfolioTab
+    && getPortfolioPositionMetrics(ticker, context.activeTab, quoteCurrency(ticker, financials)).positionCount === 0;
+}
+
 function tileWeight(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,
@@ -75,7 +90,35 @@ function tileWeight(
   return Math.max(1, Math.abs(weight));
 }
 
-const TILE_COLUMN_IDS = [MARKET_CAP_COLUMN, MARKET_VALUE_COLUMN, CHANGE_PCT_COLUMN, DAY_PNL_COLUMN, VOLUME_COLUMN, WEIGHT_COLUMN]
+/**
+ * Each tile's area: a holding's market value, else what a watchlist sizes by.
+ * A followed ticker beside holdings takes the smallest holding's area, since
+ * its market cap would bury every position the portfolio values.
+ */
+function gridTileWeights(
+  tickers: TickerRecord[],
+  financialsMap: Map<string, TickerFinancials>,
+  context: ColumnContext,
+  isPortfolioTab: boolean,
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  const followed: string[] = [];
+  let smallestHeld = Number.POSITIVE_INFINITY;
+  for (const ticker of tickers) {
+    const symbol = ticker.metadata.ticker;
+    const financials = financialsMap.get(symbol);
+    const weight = tileWeight(ticker, financials, context, isPortfolioTab);
+    weights.set(symbol, weight);
+    if (isFollowedOnly(ticker, financials, context, isPortfolioTab)) followed.push(symbol);
+    else smallestHeld = Math.min(smallestHeld, weight);
+  }
+  if (Number.isFinite(smallestHeld)) {
+    for (const symbol of followed) weights.set(symbol, smallestHeld);
+  }
+  return weights;
+}
+
+const TILE_COLUMN_IDS = [PRICE_COLUMN, MARKET_CAP_COLUMN, MARKET_VALUE_COLUMN, CHANGE_PCT_COLUMN, DAY_PNL_COLUMN, VOLUME_COLUMN, WEIGHT_COLUMN]
   .map((column) => column.id);
 
 function tileVersion(
@@ -114,22 +157,26 @@ function buildPortfolioGridItem(
   layoutWeight: number | undefined,
 ): MetricTreemapItem<TickerRecord> {
   const symbol = ticker.metadata.ticker;
-  const primaryColumn = isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
-  const primary = getColumnValue(primaryColumn, ticker, financials, context).text;
   const change = getColumnValue(CHANGE_PCT_COLUMN, ticker, financials, context).text;
-  const secondary = isPortfolioTab
+  // As the watchlist table lists it, by its price and day's move: a position's
+  // value, day P&L and weight would be a dash on every line.
+  const followed = isFollowedOnly(ticker, financials, context, isPortfolioTab);
+  const held = isPortfolioTab && !followed;
+  const primaryColumn = followed ? PRICE_COLUMN : isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
+  const primary = getColumnValue(primaryColumn, ticker, financials, context).text;
+  const secondary = held
     ? `${getColumnValue(DAY_PNL_COLUMN, ticker, financials, context).text} ${change}`
     : change;
-  const tertiary = isPortfolioTab
-    ? getColumnValue(WEIGHT_COLUMN, ticker, financials, context).text
-    : getColumnValue(VOLUME_COLUMN, ticker, financials, context).text;
+  const tertiary = followed
+    ? null
+    : getColumnValue(held ? WEIGHT_COLUMN : VOLUME_COLUMN, ticker, financials, context).text;
 
   return {
     id: symbol,
     // As the table's Ticker column names it: an option reads as its contract, not its OCC code.
     label: tickerDisplayName(ticker),
     weight: layoutWeight ?? tileWeight(ticker, financials, context, isPortfolioTab),
-    colorValue: positionAdjustedChangePercent(ticker, financials, context, isPortfolioTab),
+    colorValue: positionAdjustedChangePercent(ticker, financials, context, held),
     primaryText: primary,
     secondaryText: secondary,
     tertiaryText: tertiary,
@@ -171,10 +218,7 @@ export function PortfolioGrid({
   const recordsKey = sortedTickers.map((ticker) => objectVersion(ticker)).join(",");
   const structureDeps = [isPortfolioTab, recordsKey, columnContext.activeTab, columnContext.baseCurrency];
   const layoutWeights = useThrottledMemo(
-    () => new Map(sortedTickers.map((ticker) => [
-      ticker.metadata.ticker,
-      tileWeight(ticker, financialsMap.get(ticker.metadata.ticker), columnContext, isPortfolioTab),
-    ])),
+    () => gridTileWeights(sortedTickers, financialsMap, columnContext, isPortfolioTab),
     [financialsMap, columnContext],
     structureDeps,
     PORTFOLIO_REORDER_THROTTLE_MS,

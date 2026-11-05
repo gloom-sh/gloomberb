@@ -1,4 +1,5 @@
 import "./opentui-libc";
+import { installJsxDevFallback } from "../react/jsx-dev-fallback";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
 import { cliAsciiEnabled, plainByDefault, setCliPlainOverride } from "../utils/cli-output";
@@ -18,6 +19,10 @@ import {
   smokePluginHost,
   smokeShotView,
 } from "./native-smoke";
+
+// Before the first module with JSX loads, which is never one of the imports
+// above: every command reaches those through a dynamic import.
+installJsxDevFallback();
 
 async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
   // Before anything in the app can reach for the render library, so a temp

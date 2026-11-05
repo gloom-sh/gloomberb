@@ -28,6 +28,9 @@ export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
 export const SKIP_PORTFOLIO_KEY = "s";
+/** Each step's primary button (Continue, Start exploring) and its Back. */
+export const CONTINUE_KEY = "Enter";
+export const BACK_KEY = "Esc";
 
 /** Digits jump straight to a section the header would let you click. */
 const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", "2": "cloud", "3": "pro" };
@@ -147,7 +150,9 @@ export function useOnboardingKeyboard({
       if (stage === "portfolio" && portfolioSub === "positions") {
         if (editingField) {
           if (enter) {
-            positions.submitField();
+            // A holding is listed and nothing more is typed: Enter is the Continue button.
+            if (positionCount > 0 && positions.onEmptyTicker) continueFromPositions();
+            else positions.submitField();
           } else if (tab) {
             positions.setFieldIdx((index) => (
               event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)

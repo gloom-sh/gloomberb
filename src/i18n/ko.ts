@@ -1528,7 +1528,7 @@ export const ko: Record<string, string> = {
   "Enter: next field, then add": "Enter: 다음 필드, 마지막에 추가",
   "Add one ticker to continue": "티커를 하나 추가하면 계속할 수 있습니다",
   "Add one ticker to continue.": "티커를 하나 추가하면 계속할 수 있습니다.",
-  "Esc, then Enter: continue": "Esc 후 Enter: 계속",
+  "Enter on an empty ticker: continue": "티커가 비어 있을 때 Enter: 계속",
   "Enter to add a ticker": "Enter로 티커 추가",
   "  already added": "  이미 추가됨",
   "Credentials stay on this device.": "자격 증명은 이 기기에만 저장됩니다.",

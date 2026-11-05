@@ -289,13 +289,13 @@ function TuiFieldRow({
 
 /**
  * The line under the form: what Enter does, and how the step goes on. It
- * needs one ticker, and while a field has the keyboard Enter adds, so Esc
- * comes first.
+ * needs one ticker; once one is listed, Enter on the empty Ticker field
+ * continues, as Continue does.
  */
 function positionsHint(editing: boolean, count: number): string {
   if (!editing && count > 0) return tf("Enter continues · a adds another{broker}", { broker: "" });
   const enter = editing ? t("Enter: next field, then add") : t("Enter to add a ticker");
-  return `${enter} · ${count > 0 ? t("Esc, then Enter: continue") : t("Add one ticker to continue")}`;
+  return `${enter} · ${count > 0 ? t("Enter on an empty ticker: continue") : t("Add one ticker to continue")}`;
 }
 
 /** The size held: negative for a short. */

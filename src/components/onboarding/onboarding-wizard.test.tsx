@@ -372,18 +372,19 @@ describe("OnboardingWizard", () => {
     expect(first).toContain("What do you hold?");
     expect(first).not.toContain("Skip setup");
     expect(first).not.toContain("Recommended");
-    // The step needs one ticker, and says so; once it has one, Enter still adds, so Esc comes first.
+    // The step needs one ticker, and says so.
     expect(first).toContain("Add one ticker to continue");
 
     await addManualPosition("MSFT", "4", "400");
     await addManualPosition("AAPL", "10", "180");
     const listed = tui.frame();
-    expect(listed).toContain("Esc, then Enter: continue");
+    expect(listed).toContain("Enter on an empty ticker: continue");
     expect(listed).toContain("Positions (2)");
     expect(listed).toContain("10 @ 180");
     expect(listed).toContain("$1,000");
 
-    await pressEscape();
+    // The form is back on its empty Ticker field: Enter there goes on, as
+    // Continue does, rather than asking for a ticker.
     await pressEnter();
 
     await skipDesks();
