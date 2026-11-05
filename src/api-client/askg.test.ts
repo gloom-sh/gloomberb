@@ -289,5 +289,15 @@ describe("classifyASKGRequestError", () => {
       classifyASKGRequestError(new ApiRequestError("daily cap reached", 429))
         .code,
     ).toBe("daily_turn_cap");
+    // The cap's body names the tier it counted, which says whether Pro lifts it.
+    const capped = classifyASKGRequestError(new ApiRequestError(
+      "You've used today's 300 Ask Gloom questions. The count resets at midnight UTC, in about 6 hours.",
+      429,
+      21_600_000,
+      undefined,
+      { code: "daily_turn_cap", tier: "pro", turnsPerDay: 300 },
+    ));
+    expect(capped.code).toBe("daily_turn_cap");
+    expect(capped.options.tier).toBe("pro");
   });
 });

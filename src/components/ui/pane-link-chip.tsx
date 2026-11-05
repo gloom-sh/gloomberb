@@ -10,13 +10,14 @@ import { IconButton } from "./icon";
  * The chip for a pane something opens: a pane shared in chat, a Gloom Wire
  * post's story or calendar, a function written in a message, a source of an
  * Ask Gloom answer. One chip for all of them, so they read as one thing and
- * open as one thing.
+ * open as one thing; a question Ask Gloom suggests asking next is the same
+ * chip, its key in the square.
  */
 export interface PaneLinkChipContent {
   title: string;
   /** The pane it opens, then anything the link itself says (a calendar's day). */
   detail: string;
-  /** The lead square: the opened pane's letter, or what ties the chip to its text (a source's number). */
+  /** The lead square: the opened pane's letter, or what ties the chip to its text (a source's number, a key). */
   icon: string;
 }
 
