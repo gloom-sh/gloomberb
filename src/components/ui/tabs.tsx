@@ -408,26 +408,64 @@ function OpenTuiTabs({
     totalWidth,
     activeIndex: tabs.findIndex((tab) => tab.value === activeValue),
   };
+  // Blank cells after the last tab, so the strip can start at a tab's edge
+  // when it reveals the last ones (see revealActiveTab).
+  const [revealPad, setRevealPad] = useState(0);
+  const revealPadRef = useRef(0);
+  // The strip and tab last revealed, and a scroll the padding held back until it rendered.
+  const revealedRef = useRef<{ geometry: string; pendingLeft: number | null }>({ geometry: "", pendingLeft: null });
   const revealActiveTab = useCallback(() => {
     const scrollBox = scrollRef.current;
     const { tabWidths: widths, totalWidth: stripWidth, activeIndex } = revealRef.current;
     const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
     if (!scrollBox || activeIndex < 0 || viewportWidth <= 0) return;
+    const geometry = `${activeIndex}|${viewportWidth}|${stripWidth}|${widths.join(",")}`;
+    const revealed = revealedRef.current;
+    if (revealed.geometry === geometry) {
+      // The same tab in the same strip: only a scroll the padding held back is finished, once the padding has
+      // rendered, never the user's own scroll undone.
+      const left = revealed.pendingLeft;
+      if (left != null) {
+        scrollBox.scrollLeft = left;
+        scrollBox.scrollTo({ x: left, y: scrollBox.scrollTop });
+        if ((scrollBox.scrollLeft ?? 0) === left) revealed.pendingLeft = null;
+      }
+      return;
+    }
+    revealedRef.current = { geometry, pendingLeft: null };
 
     const activeLeft = widths.slice(0, activeIndex).reduce((sum, width) => sum + width, 0);
     const activeRight = activeLeft + widths[activeIndex]!;
     const currentLeft = scrollBox.scrollLeft ?? 0;
     const currentRight = currentLeft + viewportWidth;
-    const maxScrollLeft = Math.max(0, stripWidth - viewportWidth);
     const scrollToLeft = (left: number) => {
       scrollBox.scrollLeft = left;
       scrollBox.scrollTo({ x: left, y: scrollBox.scrollTop });
     };
+    const padTo = (pad: number) => {
+      if (pad === revealPadRef.current) return;
+      revealPadRef.current = pad;
+      setRevealPad(pad);
+    };
+    // Where each tab starts: a strip scrolled to between two of them shows the end of a label.
+    const starts = widths.map((_, index) => widths.slice(0, index).reduce((sum, width) => sum + width, 0));
+    const cutAtStart = currentLeft > 0 && !starts.includes(currentLeft);
 
-    if (activeLeft < currentLeft) {
+    if (stripWidth <= viewportWidth) {
+      padTo(0);
+      if (currentLeft > 0) scrollToLeft(0);
+    } else if (activeLeft < currentLeft) {
+      padTo(0);
       scrollToLeft(activeLeft);
-    } else if (activeRight > currentRight) {
-      scrollToLeft(Math.min(activeRight - viewportWidth, maxScrollLeft));
+    } else if (activeRight > currentRight || cutAtStart) {
+      // The tab revealed ends at the right edge with as many whole tabs before it as fit, the strip starting at a
+      // tab's edge: the one before is shown whole or not at all, never as the end of its label. A tab wider than
+      // the strip shows its start. Past the last tab the strip is padded with blank cells to scroll that far.
+      let left = activeLeft;
+      for (let index = activeIndex - 1; index >= 0 && activeRight - starts[index]! <= viewportWidth; index -= 1) left = starts[index]!;
+      padTo(Math.max(0, left + viewportWidth - stripWidth));
+      scrollToLeft(left);
+      if ((scrollBox.scrollLeft ?? 0) !== left) revealedRef.current.pendingLeft = left;
     }
   }, []);
   useEffect(revealActiveTab, [revealActiveTab, revealKey]);
@@ -466,7 +504,7 @@ function OpenTuiTabs({
     <Box
       ref={tabRowRef}
       flexDirection="row"
-      width={totalWidth}
+      width={totalWidth + (scrollable ? revealPad : 0)}
       height={1}
       onMouseDrag={onReorder ? handleTabDrag : undefined}
       onMouseDragEnd={onReorder ? finishTabDrag : undefined}

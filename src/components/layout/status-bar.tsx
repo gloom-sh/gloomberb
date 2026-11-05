@@ -106,14 +106,9 @@ function truncate(text: string, width: number): string {
   return `${text.slice(0, width - 1).trimEnd()}…`;
 }
 
-/**
- * The longest a layout tab's name runs; the shortest a narrow bar cuts every
- * name to, and then the other tabs' names and the one in front, before its
- * tabs scroll.
- */
+/** The longest a layout tab's name runs, and the shortest a narrow bar cuts every name to before its tabs scroll. */
 const LAYOUT_NAME_MAX = 14;
 const LAYOUT_NAME_MIN = 8;
-const LAYOUT_NAME_CUT_MIN = 3;
 
 const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
   openFormModal({ kind: "builtin", actionId });
@@ -211,23 +206,18 @@ export function StatusBar() {
   // that, so a long list of layouts never pushes those controls off screen.
   const tabsRoom = Math.max(0, termWidth - 1 - controlsWidth - feedbackWidth - STATUS_WIDGET_COLUMNS);
   const tabsWidthOf = (tabs: readonly { label: string }[]) => tabs.reduce((sum, tab) => sum + tab.label.length + 2, 0);
-  // Before they scroll, the names are cut to fit, each keeping its start: all
-  // of them, then the other tabs' and the one in front's further when that
-  // fits them all. A strip that still scrolls keeps the names at the first
-  // cut, the one in front no wider than the strip. A scrolled strip showed
-  // the end of a name (`CIO` of `FX Desk - CIO`).
+  // The names are cut to fit the strip, each keeping its start, down to a
+  // length that still reads; a strip that holds them at none of those
+  // scrolls with the names whole, and only the one in front is cut, to the
+  // strip's width. A scrolled strip showed the end of a name (`CIO` of
+  // `FX Desk - CIO`).
+  const overflowsAt = (width: number) => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(width)) > tabsRoom;
   let nameWidth = LAYOUT_NAME_MAX;
-  let activeNameWidth = LAYOUT_NAME_MAX;
-  const overflows = () => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(nameWidth, activeNameWidth)) > tabsRoom;
-  while (overflows() && nameWidth > LAYOUT_NAME_MIN) activeNameWidth = nameWidth -= 1;
-  const scrolledWidth = nameWidth;
-  while (overflows() && nameWidth > LAYOUT_NAME_CUT_MIN) nameWidth -= 1;
-  while (overflows() && activeNameWidth > LAYOUT_NAME_CUT_MIN) activeNameWidth -= 1;
-  if (overflows()) {
-    nameWidth = activeNameWidth = scrolledWidth;
-    const activeTabWidth = () => (layouts[activeLayoutIdx] ? layoutTab(activeLayoutIdx, nameWidth, activeNameWidth).label.length + 2 : 0);
-    while (!nativePaneChrome && activeTabWidth() > tabsRoom && activeNameWidth > 1) activeNameWidth -= 1;
-  }
+  while (overflowsAt(nameWidth) && nameWidth > LAYOUT_NAME_MIN) nameWidth -= 1;
+  if (overflowsAt(nameWidth)) nameWidth = LAYOUT_NAME_MAX;
+  let activeNameWidth = nameWidth;
+  const activeTabWidth = () => (layouts[activeLayoutIdx] ? layoutTab(activeLayoutIdx, nameWidth, activeNameWidth).label.length + 2 : 0);
+  while (!nativePaneChrome && activeTabWidth() > tabsRoom && activeNameWidth > 1) activeNameWidth -= 1;
   const savedLayoutTabs = savedLayoutTabsAt(nameWidth, activeNameWidth);
   const layoutTabs = transientLayout
     ? [

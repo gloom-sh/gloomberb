@@ -193,25 +193,30 @@ describe("StatusBar", () => {
   });
 
   // At 52 columns the bar showed `CIO` of the layout "FX Desk - CIO": the strip scrolled to the end of its name.
-  test("a layout name cut to fit a narrow bar keeps its start, with an ellipsis", async () => {
+  test("a narrow bar shows the start of the layout in front, cut with an ellipsis, and no tab cut to its end", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-status-bar-narrow");
     config.layouts = ["Default", "FX Desk - CIO"].map((name) => ({ name, layout: cloneLayout(config.layout) }));
     config.activeLayoutIndex = 1;
-    for (const width of [52, 44]) {
+    const lines = new Map<number, string>();
+    for (const width of [56, 44]) {
       await tui.render(
         <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
           <StatusBar />
         </AppContext>,
         { width, height: 1 },
       );
-      await tui.setup().renderOnce();
+      // The strip settles once it has measured its tabs and padded past the last.
+      for (let frame = 0; frame < 3; frame++) await act(async () => { await tui.setup().renderOnce(); });
       const line = tui.frame().split("\n")[0] ?? "";
-      expect(line).toContain("^2 FX D…");
-      // The other tab is cut to its start too where they both fit, never to the end of its name.
-      if (width === 52) expect(line).toContain("^1 De…");
+      lines.set(width, line);
       expect(line).toContain("Feedback");
       tui.destroy();
     }
+    // Scrolled to the layout in front, the strip starts at a tab's edge: "^1 Default" is out of view whole, not
+    // cut to "lt".
+    expect(lines.get(56)).toStartWith("  ^2 FX Desk - CIO  ");
+    // A strip narrower than that tab shows the start of its name.
+    expect(lines.get(44)).toStartWith("  ^2 FX D…  ");
   });
 
   // A dead link left every cell a dash with nothing saying the app was offline.
