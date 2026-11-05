@@ -256,7 +256,7 @@ export function clearBrokerInstanceTickerData(
 }
 
 /** The profile a broker portfolio id was made for: `broker:<profile>:<account>`. */
-function brokerInstanceIdOfPortfolio(portfolioId: string): string | undefined {
+export function brokerInstanceIdOfPortfolio(portfolioId: string): string | undefined {
   return isBrokerPortfolioId(portfolioId) ? portfolioId.split(":")[1] || undefined : undefined;
 }
 
