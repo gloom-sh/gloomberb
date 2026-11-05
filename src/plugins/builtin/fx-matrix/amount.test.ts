@@ -59,7 +59,7 @@ test("an amount saved from the field, the command bar or the settings reads back
     // The field, `FXC 5000 EUR`, `fx 5000 EUR/USD` and `convert 5000 EUR` all save through the template; the settings their own way.
     const opened = await template.createInstance!(context, { arg: typed });
     const saved = await settings.applyValue!({}, amountField, typed, {} as PaneSettingsContext);
-    for (const stored of [opened.settings!.amount, saved.amount]) {
+    for (const stored of [opened!.settings!.amount, saved.amount]) {
       expect(readFxBoardAmount(stored), typed).toEqual({ amount, currency: "EUR" });
       // Shown grouped; put back unchanged in the field or the settings, it stays the amount it was.
       expect(formatFxBoardAmount({ amount, currency: "EUR" })).toBe(shown);

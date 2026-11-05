@@ -121,7 +121,7 @@ const FX_STALE_AFTER_DELAY_MS = 15 * 60_000;
  * close stays current over the weekend, a rate that stopped on a weekday
  * goes stale, whatever the service said of it.
  */
-export function fxQuoteAgedOut(observation: { updatedAt: number; delayMinutes?: number }, now = Date.now()): boolean {
+function fxQuoteAgedOut(observation: { updatedAt: number; delayMinutes?: number }, now = Date.now()): boolean {
   if (!Number.isFinite(observation.updatedAt)) return false;
   return fxFreshUntil(observation.updatedAt, (observation.delayMinutes ?? 0) * 60_000 + FX_STALE_AFTER_DELAY_MS) <= now;
 }
