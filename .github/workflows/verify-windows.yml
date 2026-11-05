@@ -121,6 +121,14 @@ jobs:
           name: windows-x64-desktop-cli-verification
           path: artifacts/windows-cli-verification
 
+      # The screenshots the desktop check judged, a passing run's too, to set
+      # beside a failing one.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-x64-desktop-gui-verification
+          path: artifacts/windows-gui-verification
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64-installer
