@@ -91,6 +91,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
 
@@ -210,7 +211,11 @@ jobs:
       issues: write
       pull-requests: write
     steps:
+      # The only job here with a write token: no token on disk, and no Actions
+      # cache restored (the shards run plugins' code, which could save one).
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
 
