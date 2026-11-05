@@ -152,15 +152,15 @@ function overlayStreamQuote(base: BoardQuoteState, streamed: Quote | null): Boar
 /**
  * `promise`, or a timeout error once `timeoutMs` has passed (never, without
  * one). A result that arrives after the timeout is handed to `onLate`, so the
- * caller can still use what it stopped waiting for; a failure then has
- * nothing to add.
+ * caller can still use what it stopped waiting for; a failure then is only
+ * logged, as the caller has recorded the timeout.
  */
 function within<T>(promise: Promise<T>, timeoutMs: number | undefined, onLate?: (late: T) => void): Promise<T> {
   if (timeoutMs == null) return promise;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      if (onLate) promise.then(onLate, () => {});
+      if (onLate) promise.then(onLate, logFailure("shared.use-quote-board", "Late board quote read failed"));
       reject(new Error("Quote refresh timed out"));
     }, timeoutMs);
   });
