@@ -72,6 +72,8 @@ export interface ASKGErrorState {
   message: string;
   retryable: boolean;
   retryAfterMs?: number;
+  /** The plan tier a daily cap counted, when the server said: `standard` can upgrade. */
+  tier?: string;
 }
 
 /** The person's rating of one answer, as the control shows it. */
@@ -100,6 +102,8 @@ export interface ASKGTurn {
    * that fell back to no numbers, and on a stored turn, which keeps no version.
    */
   numbered?: true;
+  /** Questions to ask next, from the server once the answer finished. */
+  followUps?: string[];
 }
 
 /** What a server adds to the prompt version of a turn whose reads it numbered. */
@@ -389,6 +393,14 @@ function applyEvent(
       }));
     case "usage":
       return next;
+    case "follow-ups": {
+      const questions = Array.isArray(event.questions)
+        ? event.questions.filter((question): question is string => typeof question === "string" && question.trim().length > 0).slice(0, 3)
+        : [];
+      return questions.length === 0
+        ? next
+        : patchTurn(next, event.turnId, (turn) => ({ ...turn, followUps: questions.map((question) => question.trim()) }));
+    }
     case "done":
       return patchTurn(next, event.turnId, (turn) => ({
         ...turn,
@@ -415,6 +427,9 @@ function applyEvent(
             : row
         )),
       }));
+    default:
+      // A frame a newer server adds is skipped, never the end of the answer.
+      return next;
   }
 }
 
@@ -866,13 +881,13 @@ function waitText(ms: number): string {
 export function describeASKGError(error: ASKGErrorState): string {
   const title = ERROR_TITLES[error.code] ?? "Ask Gloom failed";
   const wait = error.retryAfterMs && error.retryAfterMs > 0 ? waitText(error.retryAfterMs) : null;
-  // The cap has one thing to say: none left, and when there will be more.
-  if (error.code === "daily_turn_cap") {
-    return `No questions left today.${wait ? ` More in ${wait}.` : ""}`;
-  }
-  const retry = wait ? ` Try again in ${wait}.` : "";
   // A machine code the platform appends ("daily_turn_cap") is not for people.
   const detail = error.message.replace(/\s*\b[a-z]+(?:_[a-z]+)+\b\.?/g, "").trim();
+  // The server says how many questions were used and when the count resets.
+  if (error.code === "daily_turn_cap") {
+    return detail || `No questions left today.${wait ? ` More in ${wait}.` : ""}`;
+  }
+  const retry = wait ? ` Try again in ${wait}.` : "";
   return detail && detail.toLowerCase() !== title.toLowerCase()
     ? `${title}: ${detail}${retry}`
     : `${title}.${retry}`;

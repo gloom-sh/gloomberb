@@ -393,13 +393,33 @@ describe("failure handling", () => {
       message: "Connection lost",
       retryable: true,
     })).toBe("Connection lost.");
-    // The cap says when there will be more, in words, and never its code.
+    // The cap says what the server says (how many, when it resets), never its code.
     expect(describeASKGError({
       code: "daily_turn_cap",
-      message: "The daily Ask Gloom turn limit is used up. daily_turn_cap",
+      message: "You've used today's 20 Ask Gloom questions. The count resets at midnight UTC, in about 6 hours. Pro has a higher daily limit. daily_turn_cap",
+      retryable: false,
+      retryAfterMs: 21_600_000,
+    })).toBe("You've used today's 20 Ask Gloom questions. The count resets at midnight UTC, in about 6 hours. Pro has a higher daily limit.");
+    expect(describeASKGError({
+      code: "daily_turn_cap",
+      message: "daily_turn_cap",
       retryable: false,
       retryAfterMs: 79_188_000,
     })).toBe("No questions left today. More in 22 h.");
+  });
+
+  test("keeps an answer's questions to ask next, and skips a frame it does not know", () => {
+    let state = apply(
+      withTurn(),
+      { seq: 1, type: "session", sessionId: "s1", turnId: "turn-1", model: "m", promptVersion: "v1" },
+      { seq: 2, type: "text-delta", turnId: "turn-1", delta: "NVDA is at $182." },
+      { seq: 3, type: "follow-ups", turnId: "turn-1", questions: ["How did NVDA do this year?", " ", "What do analysts expect?"] },
+    );
+    expect(state.turns[0]?.followUps).toEqual(["How did NVDA do this year?", "What do analysts expect?"]);
+    // A frame a newer server adds must not end the answer.
+    state = apply(state, { seq: 4, type: "something-new", turnId: "turn-1" } as unknown as ASKGSseEvent);
+    state = apply(state, { seq: 5, type: "done", turnId: "turn-1", reason: "complete" });
+    expect(state.turns[0]).toMatchObject({ status: "complete", answer: "NVDA is at $182." });
   });
 
   test("a retried turn leaves no trace of the attempt it replaces", () => {

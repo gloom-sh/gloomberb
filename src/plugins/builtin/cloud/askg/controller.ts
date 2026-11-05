@@ -123,6 +123,7 @@ function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities |
   const capabilities: ASKGCapabilities = {
     ...(session.capabilities?.scripts === 1 ? { scripts: 1 as const } : {}),
     ...(session.capabilities?.sources === 1 ? { sources: 1 as const } : {}),
+    ...(session.capabilities?.followUps === 1 ? { followUps: 1 as const } : {}),
   };
   return Object.keys(capabilities).length > 0 ? capabilities : null;
 }
@@ -144,6 +145,7 @@ function errorState(error: unknown): ASKGErrorState {
       message: error.message,
       retryable: error.retryable,
       ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+      ...(error.options.tier ? { tier: error.options.tier } : {}),
     };
   }
   return {
