@@ -249,6 +249,68 @@ describe("resolveChartSpecData", () => {
     }
   });
 
+  test("an index's volume keeps its bars as its members' volume without a unit warning, and other types warn only where the unit is unknown", async () => {
+    const volumeOf = async (symbol: string, instrumentType: string | undefined, volume = 1234, exchange?: string) => {
+      const history = [{ date: new Date("2026-01-14"), close: 1, volume }, { date: new Date("2026-01-15"), close: 1, volume }];
+      const quote = { symbol, currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-15"), instrumentType };
+      const financials = { ...emptyFinancials(), quote, priceHistory: history };
+      const provider = createTestDataProvider({
+        getQuote: async () => quote,
+        getTickerFinancials: async () => financials,
+        getPriceHistory: async () => history,
+        getPriceHistoryForResolution: async () => history,
+      });
+      const instrument = { symbol, ...(exchange ? { exchange } : {}) };
+      const sources = { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") };
+      const viewport = { range: "1M" as const, resolution: "1d" as const };
+      // The chart's own volume panel, and a volume series added by hand.
+      const charted = await resolveChartSpecData(chartSpec({
+        viewport,
+        series: [chartSeries({ id: "price", source: { kind: "security", instrument, fieldId: "market.close" } })],
+        studies: [{ id: "volume", kind: "volume", inputSeriesIds: ["price"], parameters: {}, panelId: "main", axis: "left" }],
+      }), sources);
+      const added = await resolveChartSpecData(chartSpec({
+        viewport,
+        series: [chartSeries({ id: "direct", source: { kind: "security", instrument, fieldId: "market.volume" } })],
+      }), sources);
+      const warned = (result: { warnings: string[] }) => result.warnings.some((warning) => warning.includes("Volume unit unknown"));
+      return {
+        direct: added.series.find((entry) => entry.id === "direct"),
+        study: charted.series.find((entry) => entry.id === "volume"),
+        warned: warned(charted) || warned(added),
+      };
+    };
+
+    // A quote typed INDEX, and a listing named like one before any type is known.
+    for (const [instrumentType, exchange] of [["INDEX", "HKSE"], ["IND", undefined], [undefined, "HKSE"]] as const) {
+      const index = await volumeOf("^HSI", instrumentType, 1234, exchange);
+      expect(index.study).toMatchObject({ label: "Members' volume", unit: "" });
+      expect(index.study?.points.map((point) => point.value)).toEqual([1234, 1234]);
+      expect(index.direct).toMatchObject({ unit: "", warning: undefined });
+      expect(index.direct?.label).toMatch(/^\^HSI(:HKSE)? Members' volume$/);
+      expect(index.warned).toBe(false);
+    }
+
+    // Types the display table misses still name shares or contracts.
+    for (const [symbol, instrumentType, unit] of [["O", "REIT", "shares"], ["PDI", "CLOSEDEND", "shares"], ["ES", "CONTFUT", "contracts"], ["GC=F", undefined, "contracts"]] as const) {
+      const known = await volumeOf(symbol, instrumentType);
+      expect([known.study?.unit, known.direct?.unit, known.warned]).toEqual([unit, unit, false]);
+    }
+
+    // The unit is unknown for a coin, a bond or an untyped listing, and says so.
+    for (const [symbol, instrumentType] of [["BTC-USD", "CRYPTOCURRENCY"], ["US912828", "BOND"], ["FOO", undefined]] as const) {
+      const unknown = await volumeOf(symbol, instrumentType);
+      expect(unknown.study).toMatchObject({ label: "Volume", unit: "" });
+      expect(unknown.direct?.warning).toBe("Volume unit unknown.");
+      expect(unknown.warned).toBe(true);
+    }
+
+    // A series with no volume to read (spot FX counts none) has no unit to warn about.
+    const flat = await volumeOf("EURUSD=X", "CURRENCY", 0);
+    expect(flat.direct?.warning).toBeUndefined();
+    expect(flat.warned).toBe(false);
+  });
+
   test("cached history honors the visible date range before the network resolves", () => {
     const source = { kind: "security" as const, instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" };
     const history = ["2021-01-01", "2026-08-01", "2026-08-15", "2026-09-10"].map((day, i) => ({

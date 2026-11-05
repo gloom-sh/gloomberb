@@ -7,6 +7,12 @@ import type { PriceBasis } from "../../types/instrument";
  */
 export const INDEX_POINTS_UNIT = "points";
 
+/**
+ * What a chart calls an index's volume: the combined volume of its members,
+ * which no source gives a unit of its own.
+ */
+export const INDEX_MEMBERS_VOLUME_LABEL = "Members' volume";
+
 /** How a report line names that unit: `history` heads an index's bars with it, `ticker` its quote. */
 export const INDEX_POINTS_LABEL = "Index points";
 

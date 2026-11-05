@@ -298,7 +298,7 @@ function resolveStudySpecs(
     else if (spec.kind === "formula" && formula) outputs = resolveFormula(spec, inputs as ResolvedSeries[], formula.terms, formula.unit, color);
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color, nameVolumeInput);
-      if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
+      if (!input.volumeUnit && !input.volumeBasis && outputs.some((output) => output.points.length > 0)) {
         warnings.push(`Volume unit unknown: ${input.label}.`);
       }
     }

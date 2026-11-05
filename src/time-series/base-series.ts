@@ -22,7 +22,8 @@ import { marketSeriesFrequency } from "./market";
 import { canonicalExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
 import { contractPriceUnit, currencyPairPriceUnit } from "./price-units";
-import { INDEX_POINTS_UNIT, isIndexLevel } from "../market-data/market/index-level";
+import { INDEX_POINTS_UNIT, INDEX_MEMBERS_VOLUME_LABEL, isIndexLevel } from "../market-data/market/index-level";
+import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -129,7 +130,18 @@ export function baseSecuritySeries(
   const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType || quoteMetadata?.instrumentType });
   const unknownBondBasis = hasUnknownBondHistoryBasis(financials.quote,
     spec.source.instrument.instrument?.secType, quoteMetadata?.instrumentType);
-  const volumeUnit = unknownBondBasis ? undefined : assetKind === "equity" ? "shares" as const : assetKind === "contract" ? "contracts" as const : undefined;
+  // The table behind `assetKind` leaves out types a provider or broker also
+  // sends (a REIT, a closed-end fund, a continuous future), and a listing
+  // before its quote arrives has none: the instrument's own kind fills those.
+  const instrumentKind = [financials.quote?.instrumentType, quoteMetadata?.instrumentType, spec.source.instrument.instrument?.secType]
+    .map((type) => classifyInstrumentType(type)).find((kind) => kind !== null)
+    ?? kindFromListingSyntax(spec.source.instrument.symbol, spec.source.instrument.exchange);
+  const volumeUnit = unknownBondBasis ? undefined
+    : assetKind === "equity" || instrumentKind === "equity" || instrumentKind === "fund" ? "shares" as const
+    : assetKind === "contract" || instrumentKind === "future" || instrumentKind === "option" ? "contracts" as const
+    : undefined;
+  // An index has no volume of its own: sources sum its members' volume.
+  const volumeBasis = !volumeUnit && !unknownBondBasis && instrumentKind === "index" ? "index-members" as const : undefined;
   // A price quote establishes its currency, but only instrument metadata can
   // establish a per-share or per-crypto-unit basis. This does not establish the
   // provider's volume denomination or a derivative's contract multiplier.
@@ -196,7 +208,8 @@ export function baseSecuritySeries(
     && points.every((point) => [point.open, point.high, point.low].every((value) => value == null || value === point.close));
   return {
     id: spec.id,
-    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic) : `${symbol} ${field.seriesLabel ?? field.shortLabel}`),
+    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic)
+      : `${symbol} ${field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL : field.seriesLabel ?? field.shortLabel}`),
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
@@ -204,9 +217,10 @@ export function baseSecuritySeries(
     priceAssetCategory: marketField && field.unitGroup === "price" && !unknownBondBasis
       ? financials.quote?.instrumentType || quoteMetadata?.instrumentType : undefined,
     volumeUnit,
+    ...(volumeBasis ? { volumeBasis } : {}),
     ...(priceIssues.length ? { valuationPriceIssues: priceIssues } : {}),
     warning: [valuationFallback ? "Release dates unavailable; showing reported periods." : undefined,
-      field.id === "market.volume" && !volumeUnit && points.length > 0
+      field.id === "market.volume" && !volumeUnit && !volumeBasis && points.some((point) => Number.isFinite(point.value) && point.value !== 0)
         ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source)].filter(Boolean).join(" ") || undefined,
     nativeFrequency: marketField ? marketSeriesFrequency(spec.source, marketResolution)
       : valuationFallback ?? (spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency),

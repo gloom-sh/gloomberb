@@ -218,6 +218,12 @@ export interface ResolvedSeries {
   tickGrid?: number;
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
+  /**
+   * Set where the volume is the combined volume of an index's members. It has
+   * no unit of its own to state and nothing unknown to warn about; the volume
+   * reads as "Members' volume".
+   */
+  volumeBasis?: "index-members";
   nativeFrequency: SeriesPeriod;
   /**
    * Set on a series with nothing to draw because its company reports no

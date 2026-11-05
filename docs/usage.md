@@ -595,7 +595,7 @@ On intraday charts, bars outside the venue's regular session (pre-market, after-
 
 In the Indicators dialog (`i`), the highlighted study's setting sits beside Done: Period (`p`) for SMA, EMA, Bollinger, RSI and ATR, Bands (`b`) for VWAP, Rows (`n`) for the volume profile and Anchors (`a`) for anchored VWAP.
 
-- **Volume** bars take the price's colour where the bar rose and the falling colour where it fell, like the candles. Picking a colour for the volume study draws every bar in it instead.
+- **Volume** bars take the price's colour where the bar rose and the falling colour where it fell, like the candles. Picking a colour for the volume study draws every bar in it instead. An index has no volume of its own: its bars are the combined volume of its members, named `Members' volume`, with no unit and no unit warning. A stock's or fund's volume is in shares and a future's in contracts; a coin's, a bond's and a listing whose type is unknown say under the chart's data warnings (`!`) that the unit is unknown.
 - **VWAP** is the volume-weighted average of the typical price, (high + low + close) / 3, from each session open. It needs intraday bars, and Bands add and subtract a whole number of volume-weighted standard deviations.
   - It restarts at the venue's open: 09:30 New York for US listings, 17:00 Central the evening before for CME Group and Cboe VIX futures, and each ICE U.S. contract's published open (Coffee 04:15, Sugar 03:30, Cocoa 04:45, Orange Juice 08:00 New York, Cotton 21:00 and the dollar index 20:00 the evening before).
   - A venue without known hours restarts at local midnight, or at midnight UTC for crypto.

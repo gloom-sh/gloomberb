@@ -452,6 +452,16 @@ describe("study resolution", () => {
     }
   });
 
+  test("an index's volume is named for its members and is not a unit warning", () => {
+    const input = { ...resolved("hsi"), volumeUnit: undefined, volumeBasis: "index-members" as const, observationKind: "market" as const };
+    const result = resolveStudies([input], [study("volume", "volume", [input.id])]);
+    expect(result.series[0]).toMatchObject({ label: "Members' volume", unit: "", unitGroup: "volume" });
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual(input.points.map((point) => point.volume));
+    expect(result.warnings).toEqual([]);
+    const peer = { ...resolved("msft", 2), observationKind: "market" as const };
+    expect(resolveStudies([input, peer], [study("volume", "volume", [input.id])]).series[0]?.label).toBe("Members' volume HSI");
+  });
+
   test("volume names its security only when another one is charted", () => {
     const input = { ...resolved("aapl"), observationKind: "market" as const };
     const volume = study("volume", "volume", [input.id]);
