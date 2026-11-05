@@ -21,11 +21,18 @@ printf '%s\n' "$BUILT_SHA256" > "$manifest"
 cd "$dir"
 sha256sum --check --strict --quiet "$manifest"
 
+# Every entry that is not a folder counts, so a link or any other extra entry
+# fails the check, and a listed name that is now a link does too.
 built="$(sed -E 's/^[0-9a-f]{64}  //' "$manifest" | LC_ALL=C sort)"
-present="$(find . -type f | sed 's|^\./||' | LC_ALL=C sort)"
+present="$(find . ! -type d | sed 's|^\./||' | LC_ALL=C sort)"
 if [ "$built" != "$present" ]; then
-  echo "Files the build did not upload:" >&2
+  echo "Entries the build did not upload:" >&2
   LC_ALL=C comm -13 <(printf '%s\n' "$built") <(printf '%s\n' "$present") >&2
+  exit 1
+fi
+if [ -n "$(find . ! -type d ! -type f -print -quit)" ]; then
+  echo "Not plain files:" >&2
+  find . ! -type d ! -type f >&2
   exit 1
 fi
 echo "$(printf '%s\n' "$built" | wc -l | tr -d ' ') files are the ones built."

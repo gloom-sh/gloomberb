@@ -5,8 +5,8 @@ name: Load Registry Plugins
 # anything is published. Release and Nightly call it, with no secrets.
 #
 # The load runs code from other repositories, so it has a job of its own: a
-# read-only token that is not left on disk, no signing, no Actions cache, and
-# nothing it uploads. It reads the builds from the run's artifacts, which code
+# read-only token that is not left on disk, no signing, no Actions cache to
+# restore, and nothing it uploads. It reads the builds from the run's artifacts, which code
 # running there could also replace, so the checksums job sums every built file
 # first, before any plugin runs, and the jobs that publish check what they
 # download against those sums (scripts/check-built-files.sh).
@@ -91,8 +91,6 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
-        with:
-          cache: "false"
 
       # By pattern, which matches nothing when the build uploaded nothing.
       - uses: actions/download-artifact@v4
