@@ -10,12 +10,12 @@ import type { Quote } from "../../../types/financials";
 import type { CloudQuotePayload } from "../../../api-client/types";
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
 import { quoteTradingDay } from "../../../market-data/quotes/day-range";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 import { episodeEvidence, episodeIssues, episodeProxyMarker, episodeWindowText, replayEpisodes, RISK_EPISODES } from "./risk-episodes";
 import {
   computeWeightedPortfolioReturns,
   syntheticPositionUnsupportedReason,
-} from "./metrics";
+} from "../../../portfolio/return-metrics";
 import {
   buyAndHoldReturns,
   concentration,

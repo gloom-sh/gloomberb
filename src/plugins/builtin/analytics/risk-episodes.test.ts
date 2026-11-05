@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 import { episodeCloses, episodeEvidence, episodeIssues, fetchRiskEpisodeHistory, replayEpisodes, RISK_EPISODES, type EpisodeReader } from "./risk-episodes";
 
 const covid = RISK_EPISODES.find((episode) => episode.id === "covid-2020")!;

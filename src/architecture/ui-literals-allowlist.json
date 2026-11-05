@@ -40,6 +40,14 @@
     },
     "why": "A framed text area's text keeps 6px off its frame above and below, the padding its fields were given in #1426; its sides are the inset."
   },
+  "src/components/ui/pane-link-chip.tsx": {
+    "literals": {
+      "font weight": 1,
+      "radius": 3,
+      "spacing": 2
+    },
+    "why": "Chat's pane-link chip, moved here unchanged so Ask Gloom's sources draw the same chip; its literals were allowed in chat (its own owner and conventions), and moving it onto the tokens would change every chip in chat."
+  },
   "src/components/ui/range-track.tsx": {
     "literals": {
       "radius": 1,
@@ -70,14 +78,6 @@
   "src/plugins/builtin/chat/content/handle-prompt.tsx": {
     "literals": {
       "font weight": 1,
-      "spacing": 2
-    },
-    "why": "Chat has its own owner and conventions; reported, not changed."
-  },
-  "src/plugins/builtin/chat/message/pane-chip.tsx": {
-    "literals": {
-      "font weight": 1,
-      "radius": 3,
       "spacing": 2
     },
     "why": "Chat has its own owner and conventions; reported, not changed."

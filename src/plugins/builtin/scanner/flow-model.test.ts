@@ -9,6 +9,7 @@ import {
   flowHistorySearch,
   flowRowsSpanDays,
   flowSessionSearch,
+  formatFlowExpiry,
   formatFlowTime,
   keepFlowPrints,
   mergeFlowRows,
@@ -187,12 +188,18 @@ describe("paging below the live tape", () => {
       .toBe("minPremium=250000&universe=symbols&symbols=AMD%2CNVDA");
   });
 
-  test("prints from earlier days show their date", () => {
-    const today = new Date(2026, 2, 2, 15, 4, 5).getTime();
-    const yesterday = new Date(2026, 2, 1, 9, 31, 0).getTime();
+  test("prints read in UTC, as the TIME UTC header says, and earlier days show their date", () => {
+    const today = Date.UTC(2026, 2, 2, 15, 4, 5);
+    const yesterday = Date.UTC(2026, 2, 1, 23, 31, 0);
     expect(formatFlowTime(today, today)).toBe("15:04:05");
-    expect(formatFlowTime(yesterday, today)).toBe("03/01 09:31");
+    expect(formatFlowTime(yesterday, today)).toBe("03/01 23:31");
     expect(flowRowsSpanDays([event({ at: today })], today)).toBe(false);
     expect(flowRowsSpanDays([event({ at: today }), event({ at: yesterday })], today)).toBe(true);
+  });
+
+  test("an expiry past this year carries its year", () => {
+    const now = Date.UTC(2026, 10, 5);
+    expect(formatFlowExpiry("2026-12-18", now)).toBe("12/18");
+    expect(formatFlowExpiry("2027-06-17", now)).toBe("06/17/27");
   });
 });

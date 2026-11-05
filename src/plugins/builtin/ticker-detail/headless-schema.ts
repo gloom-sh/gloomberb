@@ -113,7 +113,7 @@ export const paneSchemas = {
       id: "returns",
       aliases: ["returns", "interval returns", "cumulative return", "performance", "max drawdown"],
       // A capture is read from the rendered pane, as before the report existed:
-      // the table's rows, or the figures above the chart view.
+      // the table's rows, or the bars the chart view drew.
       screenshotReadiness: "live-dom",
     },
   },

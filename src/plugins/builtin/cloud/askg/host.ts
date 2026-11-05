@@ -3,10 +3,17 @@ import type { TickerRepository } from "../../../../data/ticker-repository";
 import type { AssetDataRouter } from "../../../../sources/provider-router";
 import type { MarketContext } from "../../../../cli/types";
 import type { AppConfig } from "../../../../types/config";
+import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
+import { resolvePaneFunction } from "../../../../cli/pane-functions/resolver";
+import { capabilityPluginState } from "../../../../cli/pane-functions/capabilities";
+import { optionPaneState } from "../../../../cli/pane-functions/options";
 import { getSharedRegistry } from "../../../registry";
 import type { PluginRegistry } from "../../../registry";
 import { createASKGToolExecutor, type ASKGToolExecutor } from "./executor";
 import { buildASKGClientManifest, type ASKGClientManifest } from "./manifest";
+import { buildPaneSharePayload } from "../../../../shares/pane";
+import { parseSharePayload, type SharePayload } from "../../../../shares/payload";
+import { formatSourceCommand, type ASKGSourceCommand } from "./sources";
 import type { ASKGUndoManager, InProcessRemoteControlHandler } from "./undo";
 
 /**
@@ -73,6 +80,56 @@ export interface ASKGPaneTarget {
   templateId?: string;
   paneId: string;
   label: string;
+}
+
+/** A pane share: what Share puts behind a link, and what opens one. */
+export type ASKGSourceShare = Extract<SharePayload, { kind: "pane" }>;
+
+/**
+ * The pane share a source opens, built here, not stored: the pane `fn` and
+ * `shot` resolve the same words to, with the settings and view state its
+ * options set (FA's period), as the tool call that read the figure ran. It
+ * opens the way a share link does, and becomes one (`createShare`) only when
+ * the answer is shared. Its title is the words, as its chip says them, so a
+ * link made of it reads the same in chat. Throws what `fn` would say when the
+ * app cannot open it.
+ */
+export async function buildASKGSourceShare(
+  source: ASKGSourceCommand,
+  config: AppConfig,
+): Promise<ASKGSourceShare> {
+  const registry = getSharedRegistry();
+  if (!registry) throw new Error("The plugin registry is not available.");
+  return sourceShare(registry, marketContextFromRegistry(registry, config), source);
+}
+
+/** `buildASKGSourceShare` from the functions and the market context it is given. */
+export async function sourceShare(
+  catalog: PaneFunctionCatalog,
+  context: MarketContext,
+  source: ASKGSourceCommand,
+): Promise<ASKGSourceShare> {
+  const resolved = await resolvePaneFunction(catalog, context, {
+    target: source.code,
+    arg: source.arg,
+    options: source.options,
+    outputPath: null,
+    width: 1280,
+    height: 720,
+    theme: null,
+    scale: 1,
+    watermark: null,
+    requireBotSafe: false,
+  }, { strictHeadlessOptions: true });
+  const pluginState = capabilityPluginState(resolved.capability, resolved.options);
+  const paneState = {
+    ...optionPaneState(resolved.options),
+    ...(Object.keys(pluginState).length > 0 ? { pluginState } : {}),
+  };
+  const share = buildPaneSharePayload(catalog, resolved.instance, paneState);
+  if (!share) throw new Error("This pane has no view to open.");
+  const titled = parseSharePayload({ ...share, data: { ...share.data, title: formatSourceCommand(source) } });
+  return titled?.kind === "pane" ? titled : share;
 }
 
 /**

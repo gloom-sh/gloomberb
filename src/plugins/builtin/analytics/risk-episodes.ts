@@ -4,7 +4,7 @@ import type { CloudMarketResponse, CloudPricePointPayload } from "../../../api-c
 import { createPluginCache } from "../../../data/plugin-cache";
 import { formatNumber } from "../../../utils/format";
 import { loadCloudResource } from "../shared/cloud-resource";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 import { regressReturns } from "./risk-math";
 import { accountFxPair, riskConversion } from "./risk-fx";
 import { riskInstrumentId, RISK_FACTOR_INSTRUMENTS, type RiskInstrument, type RiskMarketSnapshot } from "./risk-client";

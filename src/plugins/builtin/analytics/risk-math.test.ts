@@ -10,7 +10,7 @@ import {
   sinceBasketRisk,
   subtractReturns,
 } from "./risk-math";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 function returns(length = 140): DatedReturn[] {
   const start = Date.parse("2025-01-01");
   return Array.from({ length }, (_, index) => ({

@@ -16,7 +16,8 @@ import { openTeamPane } from "../../team/pane-request";
 import { hasOnlyDmUsernameArgs, parseDmUsernames } from "../../plugins/builtin/chat/channels";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { getShare, type ShareRecord } from "../../shares/api";
-import { openShareLink, registerShareOpener } from "../../shares/open";
+import type { PaneShareData } from "../../shares/payload";
+import { openSharedPane, openShareLink, registerShareOpener } from "../../shares/open";
 import { openPaneShare } from "../../shares/pane";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { materializeMarketplaceLayout } from "../../shares/portable-layout";
@@ -603,9 +604,22 @@ async function openShareInApp(
     else notifyError(pluginRegistry, "This link contains a snapshot, not a live pane.");
     return;
   }
+  await openSharedPaneInApp(share.data, pluginRegistry, { retry: options.retry, opened: "Opened shared pane." });
+}
+
+/**
+ * Opens a pane share's pane: one read from a link, or one held here (an Ask
+ * Gloom source). `opened` is the toast that says it opened, for a link the
+ * person cannot see land; a pane opened from where they are needs none.
+ */
+async function openSharedPaneInApp(
+  data: PaneShareData,
+  pluginRegistry: PluginRegistry,
+  options: { retry: () => void; opened?: string },
+): Promise<void> {
   try {
-    await openPaneShare(pluginRegistry, share.data);
-    notifySuccess(pluginRegistry, "Opened shared pane.");
+    await openPaneShare(pluginRegistry, data);
+    if (options.opened) notifySuccess(pluginRegistry, options.opened);
   } catch (error) {
     if (error instanceof PluginOffError) {
       notifyPluginOff(pluginRegistry, error, options.retry);
@@ -705,13 +719,17 @@ export function useDesktopDeepLinkRuntime({
   pluginRegistry: PluginRegistry;
   stateRef: { current: AppState };
 }) {
-  // Share links opened inside the app (chat's share chips) take the same path, in every renderer.
+  // Share links opened inside the app (chat's share chips) take the same path, in every
+  // renderer, and so do the pane shares an Ask Gloom answer holds for its sources.
   useEffect(() => {
     if (!initialized) return;
-    return registerShareOpener((id, { fallback }) => openShareInApp(id, pluginRegistry, {
-      fallback,
-      retry: () => openShareLink(id, fallback),
-    }));
+    return registerShareOpener(
+      (id, { fallback }) => openShareInApp(id, pluginRegistry, {
+        fallback,
+        retry: () => openShareLink(id, fallback),
+      }),
+      (share) => openSharedPaneInApp(share, pluginRegistry, { retry: () => openSharedPane(share) }),
+    );
   }, [initialized, pluginRegistry]);
 
   useEffect(() => {

@@ -2628,6 +2628,34 @@ describe("CompositeChart", () => {
     expect(tui.frame()).not.toContain("2025-01-01");
   });
 
+  // RETURN marks its best bar with a level and rests its cursor on the newest
+  // bar, which can be the best one: the axis then reads the value once.
+  test("a level's label leaves its value to the cursor only when the cursor reads that same value", async () => {
+    const render = (cursorDay: string) => tui.render(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart width={60} height={12} showLegend={false} navigable={false}
+          series={[series("price", "main", "left", "USD", [100, 200, 199, 100])]}
+          panels={[{ id: "main" }]}
+          cursorDate={new Date(`${cursorDay}T00:00:00.000Z`)}
+          levels={{ seriesId: "price", items: [
+            { id: "best", value: 200, label: "Best", axisLabel: "200.00", color: "#00cc66", editable: false, actionable: false, prioritizeAxisLabel: true },
+          ] }} />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    const bestLabel = () => tui.frame().split("\n").find((line) => line.includes("Best"))!;
+
+    await render("2025-01-02");
+    await act(async () => tui.setup().renderOnce());
+    expect(bestLabel()).toContain("200");
+    expect(bestLabel()).not.toContain("Best 200.00");
+
+    // A cursor beside the level, at another value, covers its axis label: the label keeps the value.
+    await render("2025-01-03");
+    await act(async () => tui.setup().renderOnce());
+    expect(bestLabel()).toContain("Best 200.00");
+  });
+
   // A read-only chart under a view strip (returns) has no viewport to pan,
   // but its bars are read with the arrows: Down takes them from the strip,
   // and handing them back puts the cursor on its resting bar again.

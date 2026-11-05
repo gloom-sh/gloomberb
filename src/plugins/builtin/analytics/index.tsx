@@ -45,7 +45,7 @@ import {
 import {
   computeSharpeRatio,
   hasPortfolioPosition,
-} from "./metrics";
+} from "../../../portfolio/return-metrics";
 import {
   buildAnalyticsRiskRows,
   buildAnalyticsSummaryRows,

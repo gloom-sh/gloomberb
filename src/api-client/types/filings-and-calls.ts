@@ -117,7 +117,10 @@ interface CloudRiskReportSummaryPayload {
   };
   /** Year of the filing date: "the 2026 10-K". */
   reportYear: number;
+  /** The SEC's acceptance instant, or midnight UTC of the filing day on older reports. */
   filedAt: string;
+  /** The day EDGAR dated the 10-K (YYYY-MM-DD). Older servers leave it out. */
+  filingDate?: string | null;
   updatedAt: string;
   riskCount: number;
   groupCount: number;

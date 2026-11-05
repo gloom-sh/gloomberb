@@ -1,5 +1,5 @@
 import type { CloudFilingEventPayload } from "../../../api-client";
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 
 /** Every 8-K carries exhibits, so the label says nothing beside another one. */
@@ -16,12 +16,19 @@ export interface FilingEventPerson {
 export interface FilingEventEntry {
   id: string;
   filedLabel: string;
+  /** "8-K", or "8-K/A" for an amendment, on every entry as a filing list names its forms. */
+  form: string;
   itemsLabel: string;
   docUrl: string;
   material: boolean;
   headline: string | null;
   points: string[];
   people: FilingEventPerson[];
+  /**
+   * A blank row above it: an entry with a read under its row does, a filing
+   * listed under ALSO FILED is one row of a table and does not.
+   */
+  spaced: boolean;
   /** Lines the entry occupies in the feed, its leading blank row included. */
   lines: number;
   /** First line of the entry in the feed, its leading blank row included. */
@@ -44,28 +51,59 @@ function formatCalendarDate(value: string | null | undefined): string | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
-  return formatShortDate(date, { day: "2-digit", year: "2-digit", utc: true });
+  return formatFilingDate(date);
 }
 
+/** The day EDGAR dated it; without one, the day of the acceptance instant, in UTC as filing days are. */
 function formatFiled(event: CloudFilingEventPayload): string {
-  return formatCalendarDate(event.filingDate)
-    ?? formatShortDate(event.filedAt, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
+  return formatCalendarDate(event.filingDate) ?? formatFilingDate(event.filedAt);
 }
 
 function itemsLabel(event: CloudFilingEventPayload): string {
   const named = event.labels.filter((label) => label !== EXHIBITS_LABEL);
   const labels = named.length > 0 ? named : event.labels;
-  const items = labels.join(" · ") || UNCLASSIFIED_LABEL;
-  // An amendment restates or completes an earlier 8-K; say so before its items.
-  return event.form?.trim().toUpperCase() === "8-K/A" ? `8-K/A · ${items}` : items;
+  return labels.join(" · ") || UNCLASSIFIED_LABEL;
 }
 
-function personDetail(person: CloudFilingEventPayload["people"][number]): string {
-  return [
-    person.role,
-    person.action,
-    person.effective ? `effective ${formatCalendarDate(person.effective) ?? "—"}` : null,
-  ].filter(Boolean).join(", ");
+type FilingPerson = CloudFilingEventPayload["people"][number];
+
+/** Actions that end a role: what a move between two roles goes from. */
+const LEAVING_ACTIONS = new Set(["left", "resigned", "resigned as director"]);
+
+const effectiveLabel = (effective: string | null) => `effective ${formatCalendarDate(effective) ?? "—"}`;
+
+/**
+ * What happened to one person, on one line: a move from one role to another
+ * reads `Chief Executive Officer → Executive Chair`, roles taken or left at
+ * once are listed together, and a date every role shares is said once.
+ */
+function personDetail(changes: FilingPerson[]): string {
+  const dates = new Set(changes.map((change) => change.effective ?? ""));
+  const shared = dates.size === 1 ? changes[0]!.effective : null;
+  const dated = (text: string, effective: string | null) =>
+    dates.size > 1 && effective ? `${text}, ${effectiveLabel(effective)}` : text;
+  const leaving = changes.filter((change) => LEAVING_ACTIONS.has(change.action));
+  const taking = changes.filter((change) => !LEAVING_ACTIONS.has(change.action) && change.action !== "other");
+  const other = changes.filter((change) => change.action === "other");
+  const roles = (list: FilingPerson[]) => list.map((change) => dated(change.role, change.effective)).join(", ");
+  const withAction = (list: FilingPerson[]) => list.map((change) => dated(`${change.role}, ${change.action}`, change.effective));
+  const parts = leaving.length > 0 && taking.length > 0
+    ? [`${roles(leaving)} → ${roles(taking)}`, ...withAction(other)]
+    : withAction([...leaving, ...taking, ...other]);
+  const text = parts.join("; ");
+  return shared ? `${text}, ${effectiveLabel(shared)}` : text;
+}
+
+/** Each person named once, in the order the filing first names them. */
+function filingPeople(people: FilingPerson[]): FilingEventPerson[] {
+  const byName = new Map<string, { name: string; changes: FilingPerson[] }>();
+  for (const person of people) {
+    const key = person.name.trim().replace(/\s+/g, " ").toLowerCase();
+    const entry = byName.get(key) ?? { name: person.name.trim(), changes: [] };
+    entry.changes.push(person);
+    byName.set(key, entry);
+  }
+  return [...byName.values()].map((entry) => ({ name: entry.name, detail: personDetail(entry.changes) }));
 }
 
 /** A filing the model read and had something to say about. */
@@ -86,23 +124,23 @@ function buildEntry(
   const points = detailed && event.summary
     ? event.summary.split("\n").map((point) => point.trim()).filter(Boolean)
     : [];
-  const people = detailed
-    ? event.people.map((person) => ({ name: person.name, detail: personDetail(person) }))
-    : [];
-  // One blank row above, then the filed-and-items row, then whatever was read.
-  let lines = 2;
+  const people = detailed ? filingPeople(event.people) : [];
+  // One blank row above a read entry, then the filed-and-items row, then whatever was read.
+  let lines = detailed ? 2 : 1;
   if (headline) lines += proseLines(headline, proseWidth);
   for (const point of points) lines += proseLines(point, proseWidth, BULLET_PREFIX);
   for (const person of people) lines += proseLines(person.detail, proseWidth, `${person.name}  `);
   return {
     id: event.id,
     filedLabel: formatFiled(event),
+    form: event.form?.trim().toUpperCase() || "8-K",
     itemsLabel: itemsLabel(event),
     docUrl: event.docUrl,
     material: event.material,
     headline,
     points,
     people,
+    spaced: detailed,
     lines,
   };
 }

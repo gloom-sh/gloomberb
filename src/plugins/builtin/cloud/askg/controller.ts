@@ -120,7 +120,11 @@ function undeliveredResult(payload: ToolResultPayload): ToolResultPayload {
  * none, and its turns go out as they always have.
  */
 function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities | null {
-  return session.capabilities?.scripts === 1 ? { scripts: 1 } : null;
+  const capabilities: ASKGCapabilities = {
+    ...(session.capabilities?.scripts === 1 ? { scripts: 1 as const } : {}),
+    ...(session.capabilities?.sources === 1 ? { sources: 1 as const } : {}),
+  };
+  return Object.keys(capabilities).length > 0 ? capabilities : null;
 }
 
 /**

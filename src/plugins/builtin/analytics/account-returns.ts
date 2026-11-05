@@ -3,7 +3,7 @@ import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import { formatNumber } from "../../../utils/format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { formatReturn } from "./display";
-import { alignedAssetReturns, computeDatedBeta, computeSharpeRatio, type DatedReturn } from "./metrics";
+import { alignedAssetReturns, computeDatedBeta, computeSharpeRatio, type DatedReturn } from "../../../portfolio/return-metrics";
 import type { AnalyticsMetricRow } from "./view";
 
 const MIN_ACCOUNT_RETURNS = 10;

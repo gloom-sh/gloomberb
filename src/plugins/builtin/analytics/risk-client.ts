@@ -11,7 +11,7 @@ import { loadCloudResource } from "../shared/cloud-resource";
 import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { PricePoint } from "../../../types/financials";
-import { resolveDatedReturns, type DatedReturn } from "./metrics";
+import { resolveDatedReturns, type DatedReturn } from "../../../portfolio/return-metrics";
 import { qualifySharpeCadence } from "./sharpe-cadence";
 import type { RiskEpisodeState } from "./risk-episodes";
 import { evidenceDay } from "./risk-evidence";

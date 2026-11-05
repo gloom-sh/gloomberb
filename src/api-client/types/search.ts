@@ -11,6 +11,7 @@ export type CloudSearchSort = "relevance" | "newest" | "oldest";
 export interface CloudSearchChunkMetadata {
   speaker?: string;
   role?: string;
+  /** A call speaker's company; on a filing hit, the filer as EDGAR names it. */
   company?: string;
   isQa?: boolean;
   startSeconds?: number;
@@ -20,6 +21,8 @@ export interface CloudSearchChunkMetadata {
   form?: string;
   accession?: string;
   section?: string;
+  /** On a filing hit, the day EDGAR dated it (YYYY-MM-DD); `publishedAt` is the acceptance instant. */
+  filingDate?: string;
 }
 
 export interface CloudSearchHit {

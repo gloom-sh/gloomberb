@@ -283,17 +283,18 @@ describe("ASKGSessionController", () => {
     await harness.streamed;
   });
 
-  test("offers scripts at session start and asks for them on every turn the session accepted them for", async () => {
-    const harness = negotiationHarness([{ scripts: 1 }, undefined]);
+  test("offers scripts and sources at session start and asks for them on every turn the session accepted them for", async () => {
+    const harness = negotiationHarness([{ scripts: 1, sources: 1, feedback: 1 }, undefined]);
     await harness.controller.ask("first");
     await harness.controller.ask("second");
 
     expect(harness.sessionRequests).toHaveLength(1);
-    expect(harness.sessionRequests[0]?.capabilities).toEqual({ scripts: 1, feedback: 1 });
-    // Each turn decides alone, so each one repeats what the session accepted.
+    expect(harness.sessionRequests[0]?.capabilities).toEqual({ scripts: 1, feedback: 1, sources: 1 });
+    // Each turn decides alone, so each one repeats what the session accepted;
+    // a rating is the session's alone and never goes with a turn.
     expect(harness.turnRequests.map((request) => request.capabilities)).toEqual([
-      { scripts: 1 },
-      { scripts: 1 },
+      { scripts: 1, sources: 1 },
+      { scripts: 1, sources: 1 },
     ]);
 
     // The session expires, and the server that renews it no longer runs them.
@@ -301,7 +302,7 @@ describe("ASKGSessionController", () => {
     await harness.controller.ask("third");
 
     expect(harness.sessionRequests).toHaveLength(2);
-    expect(harness.sessionRequests[1]?.capabilities).toEqual({ scripts: 1, feedback: 1 });
+    expect(harness.sessionRequests[1]?.capabilities).toEqual({ scripts: 1, feedback: 1, sources: 1 });
     expect(harness.turnRequests[2]).not.toHaveProperty("capabilities");
   });
 

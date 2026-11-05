@@ -1,5 +1,4 @@
 import { EmptyState } from "../../../components";
-import { formatShortDate } from "../../../utils/datetime-format";
 import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import { transactionTypeLabel, type InsiderTransaction } from "../insider/insider-data";
 
@@ -9,10 +8,6 @@ export function formatFilingShortDate(value: Date | string | number): string {
   const date = value instanceof Date ? value : new Date(value);
   if (isNaN(date.getTime())) return "—";
   return `${MONTH_NAMES[date.getUTCMonth()]} ${String(date.getUTCDate()).padStart(2, " ")} ${date.getUTCFullYear()}`;
-}
-
-export function formatFilingMetaDate(value: Date): string {
-  return formatShortDate(value, { utc: true });
 }
 
 export function formatFilingFormLabel(form: string, fallback = "FORM 4"): string {

@@ -40,6 +40,8 @@ export interface ASKGToolRow {
   argumentSummary: string;
   /** The arguments themselves, when known, so the row can name what it read. */
   args?: Record<string, JsonValue>;
+  /** The number the answer cites this read by, `[n]`; absent on a write and from an older server. */
+  ref?: number;
   writeTier: WriteTier;
   /** Server tools are executed by the platform and marked as run by Gloom. */
   origin: "client" | "server";
@@ -92,7 +94,16 @@ export interface ASKGTurn {
   startedAt: number;
   /** Absent until rated, here or on a stored conversation. */
   feedback?: ASKGTurnFeedback;
+  /**
+   * The server numbered this turn's reads for the answer to cite (its stream
+   * named a `+sources` prompt version). Absent on an older server, on a turn
+   * that fell back to no numbers, and on a stored turn, which keeps no version.
+   */
+  numbered?: true;
 }
+
+/** What a server adds to the prompt version of a turn whose reads it numbered. */
+const SOURCES_PROMPT_VERSION_SUFFIX = "+sources";
 
 export interface ASKGConversationState {
   sessionId: string | null;
@@ -163,6 +174,11 @@ export function requiresLocalConfirmation(call: {
     || call.writeTier === "broker";
 }
 
+/** A source number as the wire may carry it: a positive whole number, or nothing. */
+export function isSourceRef(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
 function scalarText(value: JsonValue): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -197,6 +213,7 @@ function rowFromToolCall(event: ASKGToolCallEvent): ASKGToolRow {
     name: event.name,
     argumentSummary: summarizeToolArguments(event.args),
     args: event.args,
+    ...(isSourceRef(event.ref) ? { ref: event.ref } : {}),
     writeTier: event.writeTier,
     origin: "client",
     // A call that needs approval waits here until the app has looked at what it would change.
@@ -293,7 +310,12 @@ function applyEvent(
           } : {}),
         },
         null,
-        (current) => (current.remoteTurnId ? current : { ...current, remoteTurnId: event.turnId }),
+        (current) => {
+          const named = current.remoteTurnId ? current : { ...current, remoteTurnId: event.turnId };
+          return event.promptVersion?.endsWith(SOURCES_PROMPT_VERSION_SUFFIX) && !named.numbered
+            ? { ...named, numbered: true }
+            : named;
+        },
       );
     }
     case "text-delta":
@@ -315,6 +337,7 @@ function applyEvent(
           name: event.name,
           argumentSummary: args ? summarizeToolArguments(args) : (event.summary.note ?? ""),
           ...(args ? { args } : {}),
+          ...(isSourceRef(event.ref) ? { ref: event.ref } : {}),
           writeTier: "read",
           origin: "server",
           source: event.source,
@@ -344,6 +367,7 @@ function applyEvent(
         }
         return {
           ...row,
+          ...(row.ref === undefined && isSourceRef(event.ref) ? { ref: event.ref } : {}),
           source: event.source,
           status: row.status === "running" || row.status === "pending" ? event.status : row.status,
           elapsedMs: row.elapsedMs ?? event.summary.elapsedMs,
@@ -530,6 +554,7 @@ function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
       ? summarizeToolArguments(tool.args as Record<string, JsonValue>)
       : (tool.note ?? ""),
     ...(tool.args ? { args: tool.args as Record<string, JsonValue> } : {}),
+    ...(isSourceRef(tool.ref) ? { ref: tool.ref } : {}),
     writeTier: "read",
     origin: tool.origin,
     status: (tool.status as ASKGToolRowStatus) ?? "ok",

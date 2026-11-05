@@ -7,7 +7,7 @@ import type { TelemetryConfig } from "../types/config";
  * installation has drawn the one-time notice for it; an explicit choice
  * either way never needs the notice. While signed in, an off is the
  * account's: cloud sync carries it to the account's other devices
- * (`mergedAttentionTelemetry` in sync/core-contributors.ts).
+ * (`mergedAttentionTelemetry` in sync/config-merge.ts).
  */
 
 /** What switching off says, from the notice or the command bar: counting stops, published totals stay. */

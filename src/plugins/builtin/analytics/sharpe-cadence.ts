@@ -1,7 +1,7 @@
 import type { PricePoint } from "../../../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { getPricePointTimestamp } from "../../../utils/price-history";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession, PUBLISHED_US_EQUITY_SESSION_BASIS } from "../../../market-data/published-us-sessions";
 
 const DAY_MS = 86_400_000;

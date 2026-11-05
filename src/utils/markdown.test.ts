@@ -19,6 +19,18 @@ describe("parseInlineMarkdown", () => {
     ]);
   });
 
+  test("a link's label may escape its brackets, and an unescaped one starts the label anew", () => {
+    expect(parseInlineMarkdown("up 2% [\\[3\\]](x)\\[5\\]", { links: true })).toEqual([
+      { text: "up 2% " },
+      { text: "[3]", link: "x" },
+      { text: "[5]" },
+    ]);
+    expect(parseInlineMarkdown("a [b\\](x) [c](d)", { links: true })).toEqual([
+      { text: "a [b](x) " },
+      { text: "c", link: "d" },
+    ]);
+  });
+
   // Each of these once read as a mark and swallowed the text after it.
   test.each([
     "2 * 3 * 4 = 24",

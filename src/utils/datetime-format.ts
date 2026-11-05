@@ -103,6 +103,17 @@ export function formatShortDate(value: DisplayDateValue, options: ShortDateOptio
   return formatter.format(date);
 }
 
+/**
+ * The day a filing is dated, as the agency and the filer write it: "Nov 04,
+ * 2026", the day padded so a column of them lines up. A calendar day, read in
+ * UTC, so it never moves with the viewer's zone: give it the filing date
+ * (`2026-11-04`, or that day at midnight UTC), not an acceptance instant,
+ * which can fall on the evening before or on a weekend.
+ */
+export function formatFilingDate(value: DisplayDateValue, fallback = "\u2014"): string {
+  return formatShortDate(value, { day: "2-digit", utc: true, fallback });
+}
+
 const clockFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
   minute: "2-digit",

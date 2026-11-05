@@ -19,6 +19,7 @@ import {
   useUiCapabilities,
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
+import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 import { usePluginPaneState } from "../../runtime";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
@@ -180,8 +181,8 @@ function RiskFactorsReader({
   const meta = report
     ? [
         years.length > 1 ? null : `${report.reportYear} 10-K`,
-        `Filed ${report.filedAt?.slice(0, 10) || "unavailable"}`,
-        listsNone ? null : `updated ${report.updatedAt?.slice(0, 10) || "unavailable"}`,
+        `Filed ${formatFilingDate(report.filingDate || report.filedAt?.slice(0, 10), "unavailable")}`,
+        listsNone ? null : `updated ${formatShortDate(report.updatedAt, { day: "2-digit", fallback: "unavailable" })}`,
         diff || listsNone ? null : "no prior year on file",
       ].filter(Boolean).join(" · ")
     : "";
@@ -263,7 +264,8 @@ function RiskFactorsReader({
                 {diff.reworded.map((item) => (
                   <RiskLine
                     key={`reworded-${item.index}`}
-                    tag={`${Math.round((1 - item.similarity) * 100)}% REWRITTEN`}
+                    // Named as the count over the list names them.
+                    tag={`${Math.round((1 - item.similarity) * 100)}% REWORDED`}
                     group={report.risks[item.index]?.group ?? null}
                     heading={report.risks[item.index]?.heading ?? ""}
                     note={noteFor(report.notes.reworded, item.index)}

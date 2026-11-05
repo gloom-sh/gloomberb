@@ -44,7 +44,8 @@ export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { title: "Filing", ...savedCopyMark(report), entries: [
         { label: "Ticker", value: report.ticker },
         { label: "Filing year", value: report.reportYear },
-        { label: "Filed", value: report.filedAt },
+        // The day EDGAR dated it; the acceptance instant is in the metadata.
+        { label: "Filed", value: report.filingDate || report.filedAt },
         { label: "Report updated", value: report.updatedAt },
         { label: "Source", value: report.docUrl },
       ] },
@@ -72,7 +73,7 @@ export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
       metadata: {
         ...savedCopyMark(list),
         ticker: report.ticker, requestedYear: selection, reportYear: report.reportYear,
-        filedAt: report.filedAt, updatedAt: report.updatedAt, docUrl: report.docUrl,
+        filedAt: report.filedAt, filingDate: report.filingDate ?? null, updatedAt: report.updatedAt, docUrl: report.docUrl,
         reportFetchedAt: report.fetchedAt, reportStale: report.stale,
         listFetchedAt: list?.fetchedAt ?? null, listStale: list?.stale ?? false,
         latestDiscoveryChecked: list !== null,
