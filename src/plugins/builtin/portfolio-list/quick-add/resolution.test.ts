@@ -4,7 +4,10 @@ import type { PluginRegistry } from "../../../registry";
 import { setSharedRegistryForTests } from "../../../registry";
 import { createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
 import { createTestTicker } from "../../../../test-support/ticker";
-import { exchangeLabelFromValidation, resolveQuickAddValidation, tickerNameFromValidation } from "./resolution";
+import {
+  exchangeLabelFromValidation, isPlausibleTickerQuery, mayBeQuickAddList, normalizeQuickAddQuery, QUICK_ADD_REFUSAL,
+  readQuickAddEntries, resolveQuickAddList, resolveQuickAddValidation, tickerNameFromValidation,
+} from "./resolution";
 
 const nyse: InstrumentSearchResult = {
   providerId: "test", symbol: "NET", name: "Cloudflare", exchange: "NYSE", currency: "USD", type: "STK",
@@ -110,5 +113,41 @@ describe("quick-add listing resolution", () => {
     // Once New York's line is saved beside it, the bare symbol is that row.
     const newYork = createTestTicker("SHEL:XNYS", "Shell PLC ADR", { exchange: "NYSE", currency: "USD", watchlists: ["watchlist"] });
     expect(await validate(new Map([["SHEL", london], ["SHEL:XNYS", newYork]]))).toMatchObject({ status: "duplicate", symbol: "SHEL:XNYS" });
+  });
+
+  // `a` then EURUSD=X said "Use a ticker symbol", and so did a pasted `usd/jpy, EUR/JPY ,gbp-chf`.
+  test("the row takes every form quote and watchlist add take, and a pasted list entry by entry", async () => {
+    for (const typed of ["EURUSD=X", "^GSPC", "CL=F", "SAN:EPA", "BRK.B", "BTC-USD", "EUR/USD", "M&M.NS"]) {
+      expect(isPlausibleTickerQuery(normalizeQuickAddQuery(typed)), typed).toBe(true);
+    }
+    // What no symbol holds is refused naming what the row takes, with no lookup.
+    expect(await resolveQuickAddValidation({ query: "!!!", collectionId: "watchlist", collectionKind: "watchlist", tickers: new Map(), financials: new Map() }))
+      .toEqual({ status: "missing", query: "!!!", message: QUICK_ADD_REFUSAL });
+
+    const searched: string[] = [];
+    const listed: Record<string, InstrumentSearchResult> = Object.fromEntries(["USDJPY=X", "EURJPY=X", "GBPCHF=X", "EURUSD=X"].map((symbol) => [symbol, {
+      providerId: "test", symbol, name: `${symbol.slice(0, 3)}/${symbol.slice(3, 6)}`, exchange: "CCY", currency: symbol.slice(3, 6), type: "CURRENCY",
+    }]));
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async (query) => {
+          searched.push(query);
+          const key = query.toUpperCase().replace(/[/-]/, "").replace(/(=X)?$/, "=X");
+          return listed[key] ? [listed[key]!] : [];
+        },
+        getQuote: async (symbol) => createTestQuote({ symbol, price: 1.1, instrumentType: "CURRENCY" }),
+      }),
+    } as PluginRegistry);
+    expect(mayBeQuickAddList("EURUSD=X")).toBe(false);
+    expect(await readQuickAddEntries("usd/jpy, EUR/JPY ,gbp-chf")).toEqual(["USD/JPY", "EUR/JPY", "GBP-CHF"]);
+    // A pasted column reaches the row as one line, each break a space: still a list of symbols.
+    expect(await readQuickAddEntries("EURUSD=X USDJPY=X")).toEqual(["EURUSD=X", "USDJPY=X"]);
+    const collection = { collectionId: "watchlist", collectionKind: "watchlist" as const, tickers: new Map(), financials: new Map() };
+    const list = await resolveQuickAddList({ ...collection, query: "USD/JPY, EUR/JPY, XYZQ", entries: ["USD/JPY", "EUR/JPY", "XYZQ"] });
+    expect(list.status).toBe("list");
+    if (list.status !== "list") return;
+    expect(list.entries.map((entry) => [entry.query, entry.status])).toEqual([["USD/JPY", "ready"], ["EUR/JPY", "ready"], ["XYZQ", "missing"]]);
+    // One entry is checked as a symbol typed alone.
+    expect(await resolveQuickAddList({ ...collection, query: "EURUSD=X", entries: ["EURUSD=X"] })).toMatchObject({ status: "ready", symbol: "EURUSD=X" });
   });
 });

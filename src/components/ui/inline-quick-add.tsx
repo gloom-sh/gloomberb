@@ -20,6 +20,8 @@ export interface InlineQuickAddRowProps {
   onFocus?: () => void;
   onBlur: () => void;
   onCancel?: () => void;
+  /** A paste of several lines is one line of them, each break a space, as a field that reads a list wants. */
+  joinPastedLines?: boolean;
 }
 
 /** Shared one-row composer used by pane-native inline add flows. */
@@ -40,6 +42,7 @@ export function InlineQuickAddRow({
   onFocus,
   onBlur,
   onCancel,
+  joinPastedLines,
 }: InlineQuickAddRowProps) {
   const inputWidth = useMemo(() => {
     const queryWidth = [...value.trim()].length;
@@ -79,6 +82,7 @@ export function InlineQuickAddRow({
       onFocus={onFocus}
       onBlur={onBlur}
       onEscape={onCancel}
+      joinPastedLines={joinPastedLines}
     />
   );
 

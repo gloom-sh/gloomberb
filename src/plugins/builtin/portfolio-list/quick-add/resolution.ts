@@ -10,6 +10,9 @@ import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import { isProviderBusy } from "../../../../sources/provider-errors";
+import { splitSymbolArgs } from "../../../../cli/symbol-args";
+import { readNameEntries } from "../../../../cli/name-entries";
+import { mapWithConcurrency } from "../../../../utils/concurrency";
 import {
   describeFormerIssuer,
   describeTickerChange,
@@ -22,8 +25,19 @@ import {
 } from "../../../../tickers/ticker-changes";
 
 const QUICK_ADD_MAX_QUERY_LENGTH = 32;
-// A slash writes a pair as crypto exchanges and FX desks do: BTC/GBP, EUR/USD.
-const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-/\s]*$/;
+/**
+ * The listing syntax `quote` and `watchlist add` take: a slash writes a pair
+ * as crypto exchanges and FX desks do (BTC/GBP, EUR/USD), `=X` and `=F` a
+ * pair's and a future's listing (EURUSD=X, CL=F), `^` an index (^GSPC), a
+ * colon the venue (SAN:EPA), and `&` is in some symbols (M&M.NS).
+ */
+const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9^][A-Z0-9.\-/=^:&\s]*$/;
+/** What a refusal says the row takes. */
+export const QUICK_ADD_REFUSAL = "Type a ticker (AAPL, EURUSD=X, ^GSPC) or a list";
+/** The separators a pasted list carries; a typed line of symbols has spaces. */
+const QUICK_ADD_LIST_SEPARATOR = /[,;\t\r\n]/;
+/** Entries of a pasted list looked up at once. */
+const QUICK_ADD_LIST_LOOKUPS = 4;
 
 export type QuickAddCollectionKind = "portfolio" | "watchlist";
 
@@ -47,12 +61,42 @@ export type QuickAddValidation =
   /** The symbol names several listings and none is the default: the add row asks which. */
   | { status: "choose"; query: string }
   | { status: "missing"; query: string; message: string }
-  | { status: "error"; query: string; message: string };
+  | { status: "error"; query: string; message: string }
+  /** A pasted list (`usd/jpy, EUR/JPY, gbp-chf`): each entry checked as one typed alone. */
+  | { status: "list"; query: string; entries: QuickAddEntryValidation[] };
+
+/** One entry of a pasted list: what was typed and how it checked. */
+export type QuickAddEntryValidation = Exclude<QuickAddValidation, { status: "idle" | "checking" | "list" }>;
 
 export const IDLE_VALIDATION: QuickAddValidation = { status: "idle", query: "" };
 
 export function normalizeQuickAddQuery(value: string): string {
   return value.replace(/^\s*\$/, "").trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Whether what was typed may be several symbols: a pasted list's separators,
+ * or words with spaces between them, which `watchlist add` reads as a
+ * company's name or as the symbols it holds.
+ */
+export function mayBeQuickAddList(value: string): boolean {
+  return QUICK_ADD_LIST_SEPARATOR.test(value) || /\S\s+\S/.test(value.trim());
+}
+
+/**
+ * The entries of what was typed or pasted, read as `watchlist add` reads its
+ * argument (`splitSymbolArgs`, `readNameEntries`): split by commas,
+ * semicolons, tabs and lines, an entry with spaces a company's name when
+ * search finds one (philip morris intl) or else the symbols it holds
+ * (EURUSD=X USDJPY=X, a pasted column joined into one line), and a
+ * terminal's code (VOD LN) one entry. Each comes back as the row
+ * normalizes a query.
+ */
+export async function readQuickAddEntries(value: string): Promise<string[]> {
+  const entries = splitSymbolArgs([value], { phrases: true });
+  const marketData = getSharedRegistry()?.marketData;
+  const read = marketData ? await readNameEntries(entries, marketData) : entries;
+  return [...new Set(read.map(normalizeQuickAddQuery).filter(Boolean))];
 }
 
 export function isPlausibleTickerQuery(query: string): boolean {
@@ -145,7 +189,7 @@ export async function resolveQuickAddValidation({
 }): Promise<QuickAddValidation> {
   if (!query) return IDLE_VALIDATION;
   if (!isPlausibleTickerQuery(query)) {
-    return { status: "missing", query, message: "Use a ticker symbol" };
+    return { status: "missing", query, message: QUICK_ADD_REFUSAL };
   }
 
   const registry = getSharedRegistry();
@@ -208,4 +252,18 @@ export async function resolveQuickAddValidation({
     }
     return { status: "error", query, message: isProviderBusy(error) ? "Search is busy" : "Ticker lookup failed" };
   }
+}
+
+/**
+ * A pasted list checked entry by entry, as each would be typed alone, a few
+ * at a time. One entry is checked as a symbol typed alone.
+ */
+export async function resolveQuickAddList({
+  query,
+  entries,
+  ...collection
+}: Omit<Parameters<typeof resolveQuickAddValidation>[0], "query"> & { query: string; entries: readonly string[] }): Promise<QuickAddValidation> {
+  if (entries.length <= 1) return resolveQuickAddValidation({ ...collection, query: entries[0] ?? query });
+  const checked = await mapWithConcurrency(entries, QUICK_ADD_LIST_LOOKUPS, (entry) => resolveQuickAddValidation({ ...collection, query: entry }));
+  return { status: "list", query, entries: checked.filter((entry): entry is QuickAddEntryValidation => entry.status !== "idle" && entry.status !== "checking" && entry.status !== "list") };
 }
