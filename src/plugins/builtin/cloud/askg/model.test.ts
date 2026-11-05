@@ -327,6 +327,15 @@ describe("timeline row helpers", () => {
 });
 
 describe("daily questions left", () => {
+  test("a turn knows the server numbered its reads from the prompt version its stream names", () => {
+    const session = (promptVersion: string): ASKGSseEvent => ({
+      seq: 1, type: "session", sessionId: "s1", turnId: "remote-1", model: "m", promptVersion,
+    });
+    expect(apply(withTurn(), session("askg-v8-scripts+sources")).turns[0]?.numbered).toBe(true);
+    // An older server, or a turn that fell back to no numbers.
+    expect(apply(withTurn(), session("askg-v8-scripts")).turns[0]?.numbered).toBeUndefined();
+  });
+
   test("counts each turn the platform admits after the limits were read, and none once it refuses at the cap", () => {
     const limits = {
       requestsPerMinute: 20,

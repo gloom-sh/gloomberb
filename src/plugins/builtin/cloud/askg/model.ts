@@ -94,7 +94,16 @@ export interface ASKGTurn {
   startedAt: number;
   /** Absent until rated, here or on a stored conversation. */
   feedback?: ASKGTurnFeedback;
+  /**
+   * The server numbered this turn's reads for the answer to cite (its stream
+   * named a `+sources` prompt version). Absent on an older server, on a turn
+   * that fell back to no numbers, and on a stored turn, which keeps no version.
+   */
+  numbered?: true;
 }
+
+/** What a server adds to the prompt version of a turn whose reads it numbered. */
+const SOURCES_PROMPT_VERSION_SUFFIX = "+sources";
 
 export interface ASKGConversationState {
   sessionId: string | null;
@@ -301,7 +310,12 @@ function applyEvent(
           } : {}),
         },
         null,
-        (current) => (current.remoteTurnId ? current : { ...current, remoteTurnId: event.turnId }),
+        (current) => {
+          const named = current.remoteTurnId ? current : { ...current, remoteTurnId: event.turnId };
+          return event.promptVersion?.endsWith(SOURCES_PROMPT_VERSION_SUFFIX) && !named.numbered
+            ? { ...named, numbered: true }
+            : named;
+        },
       );
     }
     case "text-delta":

@@ -10,6 +10,7 @@ import type { JsonValue } from "./protocol";
 import {
   answerReadNothing,
   answerSources,
+  answerWithSourceLinks,
   citedRefs,
   createSourceResolver,
   formatSourceCommand,
@@ -142,6 +143,24 @@ describe("the function a read's data is shown in", () => {
     expect(resolver.target(row("nosuchfn", { symbol: "NVDA" }, { origin: "client" })).kind).toBe("none");
     expect(createSourceResolver(null).target(row("market.quotes", { symbols: ["NVDA"] })).kind).toBe("none");
   });
+
+  test("a call kept without its arguments opens only a pane its arguments could not change", () => {
+    // A transcript from before the platform kept them, or arguments too large
+    // to send: a news search or one chamber's trades in a ticker would
+    // otherwise open the whole feed.
+    const bare = (name: string, origin: ASKGToolRow["origin"] = "server") => {
+      const { args: _args, ...kept } = row(name, {}, { origin });
+      return opens(resolver.target(kept));
+    };
+    expect(bare("news.stories")).toBeNull();
+    expect(bare("congress.house_trades")).toBeNull();
+    expect(bare("congress.senate_trades")).toBeNull();
+    expect(bare("hp", "client")).toBeNull();
+    expect(bare("macro.calendar")).toBe("ECO");
+    expect(bare("macro.yield_curve")).toBe("GC");
+    // A call that sent its arguments, even none, says what it read.
+    expect(opens(resolver.target(row("news.stories", {})))).toBe("N");
+  });
 });
 
 describe("citations", () => {
@@ -157,6 +176,15 @@ describe("citations", () => {
     expect(sourceRefFromHref("gloom-source:6")).toBe(6);
     expect(sourceRefFromHref("https://example.com")).toBeNull();
     expect(sourceRefFromHref("gloom-source:0")).toBeNull();
+  });
+
+  test("a source link the answer wrote itself shows the number of the source it opens", () => {
+    const written = "Up 2% [ 9 ](gloom-source:2), down [x](gloom-source:nope).";
+    expect(citedRefs(written)).toEqual([2]);
+    expect(linkCitations(written, new Set([2]))).toBe("Up 2% [ 2 ](gloom-source:2), down x.");
+    expect(linkCitations(written, new Set())).toBe("Up 2% [2], down x.");
+    expect(answerWithSourceLinks(written, [{ label: "[2] HP NVDA", url: "https://x" }]))
+      .toBe("Up 2% [2], down x.\n\n[2] HP NVDA https://x");
   });
 });
 
@@ -188,11 +216,16 @@ describe("the sources an answer lists", () => {
     expect(sources.map((source) => opens(source.target))).toEqual(["QQ NVDA"]);
   });
 
-  test("an answer with figures that read nothing says so", () => {
-    expect(answerReadNothing(turn("a", "Apple was founded in 1976.", []))).toBe(true);
-    expect(answerReadNothing(turn("a", "Hello! Ask me about a ticker.", []))).toBe(false);
-    expect(answerReadNothing(turn("a", "NVDA is at $182 [1].", []))).toBe(false);
-    expect(answerReadNothing(turn("a", "NVDA is at $182.", [quotes]))).toBe(false);
+  test("an answer with figures that read nothing says so, on a turn the server numbered", () => {
+    const numbered = (answer: string, tools: ASKGToolRow[]) => answerReadNothing({ ...turn("a", answer, tools), numbered: true });
+    expect(numbered("Apple was founded in 1976.", [])).toBe(true);
+    expect(numbered("Hello! Ask me about a ticker.", [])).toBe(false);
+    expect(numbered("NVDA is at $182 [1].", [])).toBe(false);
+    expect(numbered("NVDA is at $182.", [quotes])).toBe(false);
+    // An app action had its reason to answer without data.
+    expect(numbered("Opened NVDA on 6M.", [row("chart.open", { symbol: "NVDA" }, { origin: "client", writeTier: "ui-write" })])).toBe(false);
+    // An older server's answer, or a stored one, may have read what it no longer shows.
+    expect(answerReadNothing(turn("a", "Apple was founded in 1976.", []))).toBe(false);
   });
 });
 

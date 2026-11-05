@@ -149,6 +149,16 @@ const SERVER_TOOL_SOURCES: Record<string, ServerToolSource> = {
   "apps.attention": onTicker("APPS"),
 };
 
+/**
+ * Server tools whose pane is the same whatever the call asked (each takes
+ * only a row limit), so a call stored without its arguments still opens it:
+ * a transcript from before the platform kept them, or a frame that left out
+ * arguments too large to send. Every other tool's arguments say what it read
+ * (a ticker, a search, a chamber), and without them it opens nothing rather
+ * than a pane near what it read, like a bare news feed for a search.
+ */
+const SERVER_TOOLS_WITHOUT_ARGS: ReadonlySet<string> = new Set(["macro.calendar", "macro.yield_curve"]);
+
 /** The tool names the table above places, for the test that holds each to a real function. */
 export const MAPPED_SERVER_TOOLS: readonly string[] = Object.keys(SERVER_TOOL_SOURCES);
 
@@ -273,6 +283,8 @@ export function createSourceResolver(catalog: PaneFunctionCatalog | null): ASKGS
   const cache = new WeakMap<ASKGToolRow, ASKGSourceTarget>();
   const resolve = (row: ASKGToolRow): ASKGSourceTarget => {
     if (!catalog || row.writeTier !== "read") return none;
+    // A call without its arguments cannot say what it read.
+    if (row.args === undefined && !(row.origin === "server" && SERVER_TOOLS_WITHOUT_ARGS.has(row.name))) return none;
     const args = row.args ?? {};
     if (row.origin === "server") {
       const source = serverToolCommand(row.name, args);
@@ -313,7 +325,7 @@ function citationRefs(group: string): number[] {
 /** The source numbers an answer cites, in the order it first cites each. */
 export function citedRefs(answer: string): number[] {
   const refs: number[] = [];
-  for (const match of withoutCode(answer).matchAll(CITATION_RE)) {
+  for (const match of withoutCode(withoutWrittenSourceLinks(answer)).matchAll(CITATION_RE)) {
     for (const ref of citationRefs(match[1]!)) if (!refs.includes(ref)) refs.push(ref);
   }
   return refs;
@@ -327,6 +339,29 @@ function withoutCode(answer: string): string {
 /** The href a citation link carries; MarkdownText hands it back on a click. */
 export const SOURCE_LINK_SCHEME = "gloom-source:";
 
+/** A source link in the answer's own text, `[ 9 ](gloom-source:2)`, outside code. */
+const WRITTEN_SOURCE_LINK_RE = /(?<![!\\])\[((?:\\.|[^[\]\\])*)\]\(gloom-source:([^)\s]*)\)/g;
+
+/**
+ * The answer with each source link it wrote itself turned back into the
+ * citation of the source it opens (`[ 9 ](gloom-source:2)` is `[2]`), or into
+ * its label when it opens none. Only `linkCitations` writes these links, from
+ * the citations, so what a square shows is always the source it opens.
+ */
+function withoutWrittenSourceLinks(answer: string): string {
+  if (!answer.includes(SOURCE_LINK_SCHEME)) return answer;
+  let result = "";
+  let cursor = 0;
+  for (const match of withoutCode(answer).matchAll(WRITTEN_SOURCE_LINK_RE)) {
+    const index = match.index!;
+    const ref = Number(match[2]);
+    result += answer.slice(cursor, index);
+    result += isSourceRef(ref) ? `[${ref}]` : answer.slice(index + 1, index + 1 + match[1]!.length);
+    cursor = index + match[0].length;
+  }
+  return result + answer.slice(cursor);
+}
+
 export function sourceRefFromHref(href: string): number | null {
   if (!href.startsWith(SOURCE_LINK_SCHEME)) return null;
   const ref = Number(href.slice(SOURCE_LINK_SCHEME.length));
@@ -339,7 +374,8 @@ export function sourceRefFromHref(href: string): number | null {
  * chip it opens, as wide as the `[3]` it stands for. A citation of a source
  * that opens nothing, or of no source at all, stays the text it was.
  */
-export function linkCitations(answer: string, openable: ReadonlySet<number>): string {
+export function linkCitations(written: string, openable: ReadonlySet<number>): string {
+  const answer = withoutWrittenSourceLinks(written);
   if (openable.size === 0) return answer;
   const code = withoutCode(answer);
   let result = "";
@@ -401,11 +437,17 @@ export function answerSources(
   });
 }
 
-/** True when an answer gives figures and read nothing to take them from. */
+/**
+ * True when an answer gives figures and its turn ran no call to take them
+ * from. Only said of a turn the server numbered the reads of: an older
+ * server's answer, or a stored one, may have read what it no longer shows,
+ * and a turn that ran an app action had a reason to answer without data.
+ */
 export function answerReadNothing(turn: ASKGTurn): boolean {
-  return /\d/.test(turn.answer)
+  return turn.numbered === true
+    && /\d/.test(turn.answer)
     && citedRefs(turn.answer).length === 0
-    && !turn.tools.some((row) => row.writeTier === "read" && row.status !== "denied" && row.status !== "cancelled");
+    && !turn.tools.some((row) => row.status !== "denied" && row.status !== "cancelled");
 }
 
 /**
@@ -418,6 +460,7 @@ export function answerWithSourceLinks(
   answer: string,
   sources: ReadonlyArray<{ label: string; url: string | null }>,
 ): string {
+  const text = withoutWrittenSourceLinks(answer).trim();
   const lines = sources.map((source) => (source.url ? `${source.label} ${source.url}` : source.label));
-  return lines.length > 0 ? `${answer.trim()}\n\n${lines.join("\n")}` : answer.trim();
+  return lines.length > 0 ? `${text}\n\n${lines.join("\n")}` : text;
 }
