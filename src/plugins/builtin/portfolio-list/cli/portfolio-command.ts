@@ -1005,7 +1005,7 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--currency <code>", description: "portfolio create: the currency the portfolio totals in, whatever the base currency (a name's last word in capitals, such as THB, is read as one too)" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
-      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloom catalog glossary lists every term" },
+      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade; Contribution with --from); gloom catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",

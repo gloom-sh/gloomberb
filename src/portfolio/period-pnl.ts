@@ -7,7 +7,10 @@
  * gains when the price falls. A holding in another currency earns its price
  * move at the end's FX rate, and the currency's own move on its start value
  * is the separate FX line, so price and currency are never mixed in one figure.
+ * A price in a minor unit (pence, US cents) counts in its major currency.
  */
+import { sameCurrency } from "./position-metrics";
+import { heldCurrencyUnit } from "../utils/currency-units";
 
 /** A holding's close on a day: a share's regular close, a future's settlement. */
 export interface PeriodClose {
@@ -29,7 +32,7 @@ export interface PeriodPnlHolding {
   partialEnd?: boolean;
 }
 
-/** One unit of a currency in the book's currency on a day; null when no close of the pair could be read. */
+/** One unit of a major currency (GBP, never GBp) in the book's currency on a day; null when no close of the pair could be read. */
 export type PeriodFxRate = (currency: string, day: string) => number | null;
 
 export interface PeriodPnlRow {
@@ -47,8 +50,8 @@ export interface PeriodPnlRow {
   pnl: number | null;
   /** The currency's move on the start value; 0 for a holding in the book's currency. */
   fx: number | null;
-  /** The start and end rates of a holding in another currency. */
-  rates: { start: number; end: number } | null;
+  /** The start and end rates of a holding in another currency, and the major currency they convert (GBP for a price in pence). */
+  rates: { currency: string; start: number; end: number } | null;
   /** The price P&L over the book's start value (`PeriodPnl.contributionBase`), in percent; the FX line carries the currency's. */
   contribution: number | null;
 }
@@ -74,24 +77,31 @@ export interface PeriodPnl {
 
 const finite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value);
 
+/** The major currency a holding's price converts through, and what one unit of its price is worth in the book's currency's unit before FX. */
+export function periodCurrency(currency: string, bookCurrency: string): { currency: string; own: boolean; scale: number } {
+  const unit = heldCurrencyUnit(currency);
+  const book = heldCurrencyUnit(bookCurrency);
+  return { currency: unit.currency || currency, own: sameCurrency(currency, bookCurrency), scale: (book.divisor || 1) / (unit.divisor || 1) };
+}
+
 export function periodPnl(holdings: readonly PeriodPnlHolding[], bookCurrency: string, rate: PeriodFxRate): PeriodPnl {
-  const sameCurrency = (currency: string) => currency.toUpperCase() === bookCurrency.toUpperCase();
   const unpriced: string[] = [];
   const valued = holdings.map((holding) => {
     const { start, end } = holding;
-    const own = sameCurrency(holding.currency);
-    const startRate = start ? own ? 1 : rate(holding.currency, start.day) : null;
-    const endRate = end ? own ? 1 : rate(holding.currency, end.day) : null;
+    // A price in pence counts a hundredth of a pound, converted at GBP's rate.
+    const { currency: major, own, scale } = periodCurrency(holding.currency, bookCurrency);
+    const startRate = start ? (own ? 1 : rate(major, start.day)) : null;
+    const endRate = end ? (own ? 1 : rate(major, end.day)) : null;
     const priced = !!start && !!end && finite(startRate) && finite(endRate);
     if (!priced) unpriced.push(holding.symbol);
-    const startValue = start && finite(startRate) ? holding.priceUnits * start.price * startRate : null;
+    const startValue = start && finite(startRate) ? holding.priceUnits * start.price * scale * startRate : null;
     return {
       symbol: holding.symbol, priceUnits: holding.priceUnits, currency: holding.currency, start, end, partialEnd: !!holding.partialEnd,
       changePercent: start && end && start.price !== 0 ? (end.price / start.price - 1) * 100 : null,
       startValue,
-      pnl: priced ? holding.priceUnits * (end!.price - start!.price) * endRate! : null,
-      fx: priced ? holding.priceUnits * start!.price * (endRate! - startRate!) : null,
-      rates: priced && !own ? { start: startRate!, end: endRate! } : null,
+      pnl: priced ? holding.priceUnits * (end!.price - start!.price) * scale * endRate! : null,
+      fx: priced ? holding.priceUnits * start!.price * scale * (endRate! - startRate!) : null,
+      rates: priced && !own ? { currency: major, start: startRate!, end: endRate! } : null,
     };
   });
   const starts = valued.flatMap((row) => finite(row.startValue) && finite(row.pnl) ? [row.startValue] : []);

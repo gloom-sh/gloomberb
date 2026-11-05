@@ -330,6 +330,29 @@ export function useTickerFinancialsMap(
   );
 }
 
+/**
+ * The rows whose financial snapshot has answered, with figures or without:
+ * until it has, a dash in a company column (P/E, market cap) may still fill
+ * in, so a list does not yet say no row has one.
+ */
+export function useAnsweredSnapshots(
+  tickers: TickerRecord[],
+  options: TickerInstrumentOptions = {},
+): ReadonlySet<string> {
+  const coordinator = getSharedMarketDataCoordinator();
+  const optionsKey = options.portfolioId ?? "";
+  const instruments = useMemo(() => tickers.flatMap((ticker) => {
+    const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, options);
+    return instrument ? [{ symbol: ticker.metadata.ticker, instrument }] : [];
+  }), [optionsKey, tickers]);
+  const keys = useMemo(() => instruments.map(({ instrument }) => buildSnapshotKey(instrument)), [instruments]);
+  const version = useCoordinatorKeysVersion(keys);
+  return useMemo(() => new Set(coordinator ? instruments.flatMap(({ symbol, instrument }) => {
+    const phase = coordinator.getSnapshotEntry(instrument).phase;
+    return phase === "ready" || phase === "error" || phase === "refreshing" ? [symbol] : [];
+  }) : []), [coordinator, instruments, version]);
+}
+
 export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): QueryEntry<Quote> | null {
   const instrument = useTickerInstrument(symbol, ticker);
   const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;

@@ -13,7 +13,7 @@ import {
   type TickerListVisibleRange,
 } from "../../../../components";
 import { useTickerSourceActivate } from "../../../../react/ticker-source";
-import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
+import { useAnsweredSnapshots, useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
 import { useAppActive, useAppVisible, usePaneVisible } from "../../../../state/app/activity";
 import { t, tf } from "../../../../i18n";
@@ -110,7 +110,7 @@ import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
 import { useFuturesFrontNotes } from "./futures-front";
 import { usePurchaseDateCostFx } from "./purchase-date-fx";
-import { periodPnlLabel, periodPnlNotices, usePanePeriodPnl } from "./period-pnl";
+import { periodFxLine, periodPnlLabel, periodPnlNotices, usePanePeriodPnl } from "./period-pnl";
 import type { LoadedPeriodPnl } from "../period-pnl";
 import {
   allocationWeightBase,
@@ -204,6 +204,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     portfolioId: isPortfolioTab ? activeCollectionId : undefined,
   }), [activeCollectionId, isPortfolioTab]);
   const marketFinancialsMap = useTickerFinancialsMap(tickers, financialsInstrumentOptions);
+  // Until a row's snapshot answers, a dash in its company columns may still fill in: PF hides none yet.
+  const answeredSnapshots = useAnsweredSnapshots(tickers, financialsInstrumentOptions);
   const financialsMap = useMemo(
     () => buildPortfolioFinancialsMap(tickers, cachedFinancials, marketFinancialsMap, financialsInstrumentOptions),
     [tickers, cachedFinancials, marketFinancialsMap, financialsInstrumentOptions],
@@ -329,7 +331,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     perpetualsVersion: perpetuals.version,
     futuresTerms: futuresTerms.terms,
     futuresTermsVersion: futuresTerms.version,
-    ...(periodColumns ? { periodPnl: { rows: periodColumns.rows, pending: periodColumns.pending }, periodPnlVersion: periodColumns.version } : {}),
+    ...(periodColumns ? { periodPnl: { rows: periodColumns.rows, pending: periodColumns.pending, fx: periodFxLine(periodColumns.result) }, periodPnlVersion: periodColumns.version } : {}),
   }), [
     activeCollectionId,
     exchangeRates,
@@ -850,6 +852,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           onOpenPerpetual={showsPerpetuals ? openPerpMarket : undefined}
           rootHeight={contentHeight}
           width={width}
+          answeredSnapshots={answeredSnapshots}
         />
       ) : (
         <PortfolioGrid

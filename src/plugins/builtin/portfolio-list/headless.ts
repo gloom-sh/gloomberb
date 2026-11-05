@@ -51,8 +51,7 @@ import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
-import { periodDayText } from "../../../market-data/market/period-return";
-import { loadPeriodPnl } from "./period-pnl";
+import { loadPeriodPnl, periodBasisText, periodBoughtText, periodUnpricedText } from "./period-pnl";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
@@ -476,10 +475,12 @@ const PERIOD_COLUMNS: HeadlessPaneColumn[] = [
 /**
  * PF over a period (`--from`, `--to`): P&L and contribution by position
  * between two closes, as `portfolio show --from` reads them, on the
- * holdings held now.
+ * holdings held now, largest at the start first; the FX line and the total
+ * cover every position, whatever the limit.
  */
 async function portfolioPeriodHoldings(
   target: Extract<CollectionMatch, { kind: "portfolio" }>,
+  limit: number,
   ctx: HeadlessPaneContext,
   window: PriceWindow,
 ): Promise<HeadlessRowsResult> {
@@ -497,7 +498,9 @@ async function portfolioPeriodHoldings(
   const result = await loadPeriodPnl({ tickers, portfolioId: target.id, currency, window, provider: ctx.marketData, fxHistory: ctx.apiClient, quotes, futures });
   ctx.signal.throwIfAborted();
   const bySymbolTicker = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
-  const rows: HeadlessPaneRow[] = result.rows.map((row) => {
+  // Largest at the start first, as PF lists its positions; a holding without a start close after them.
+  const ordered = [...result.rows].sort((a, b) => Math.abs(b.startValue ?? -1) - Math.abs(a.startValue ?? -1) || a.symbol.localeCompare(b.symbol));
+  const rows: HeadlessPaneRow[] = ordered.slice(0, limit).map((row) => {
     const ticker = bySymbolTicker.get(row.symbol);
     const shares = ticker?.metadata.positions.filter((position) => position.portfolio === target.id).reduce((sum, position) => sum + position.shares, 0) ?? null;
     return {
@@ -517,20 +520,19 @@ async function portfolioPeriodHoldings(
       contribution: row.contribution,
     };
   });
-  if (result.rows.some((row) => row.rates)) rows.push({ symbol: "FX", pnl: result.fx, contribution: result.fxContribution });
+  const fxCurrencies = [...new Set(result.rows.flatMap((row) => row.rates ? [row.rates.currency] : []))];
+  if (fxCurrencies.length) rows.push({ symbol: `FX (${fxCurrencies.join(", ")})`, pnl: result.fx, contribution: result.fxContribution });
   rows.push({ symbol: "TOTAL", pnl: result.total, contribution: result.totalContribution });
-  const startDays = new Set(result.rows.flatMap((row) => row.start ? [row.start.day] : []));
-  const endDays = new Set(result.rows.flatMap((row) => row.end ? [row.end.day] : []));
-  const year = new Date().getUTCFullYear();
+  const futuresHeldNow = result.rows.some((row) => { const ticker = bySymbolTicker.get(row.symbol); return !!ticker && isFuturesTicker(ticker); });
+  const bought = periodBoughtText(result);
   const notices = [
-    `P&L from the close of ${startDays.size === 1 ? periodDayText([...startDays][0]!, year) : "each holding's last session before the start"}`
-      + ` to the close of ${endDays.size === 1 ? periodDayText([...endDays][0]!, year) : "its last session in the window"}, on the holdings held now, in ${currency}.`,
+    `${periodBasisText(result, { futuresHeld: futuresHeldNow })}, in ${currency}.`,
     ...(result.contributionBase == null ? [] : [`Contribution is P&L over the book's ${result.contributionBasis === "gross" ? "gross exposure" : "value"} at the start, longs plus shorts at their absolute value when it holds a short; cash excluded.`]),
-    ...(result.boughtInWindow.length ? [`${result.boughtInWindow.join(", ")} bought inside the window; the P&L runs from the start close all the same.`] : []),
+    ...(bought ? [bought] : []),
+    ...(ordered.length > limit ? [`${ordered.length - limit} more position${ordered.length - limit === 1 ? "" : "s"} not shown; the FX line and the total include every position.`] : []),
   ];
-  const errors = result.unpriced.length
-    ? [`No P&L for ${result.unpriced.join(", ")}: ${result.failures.length ? result.failures.map((failure) => `${failure.symbol}: ${failure.error}`).join("; ") : "no close at one end of the window, or no FX close for its currency"}.`]
-    : [];
+  const unpricedText = periodUnpricedText(result);
+  const errors = unpricedText ? [unpricedText] : [];
   return {
     freshness: {
       source: resolved.portfolio.brokerId || resolved.portfolio.brokerInstanceId ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
@@ -553,6 +555,7 @@ async function portfolioPeriodHoldings(
       contributionBase: result.contributionBase,
       contributionBasis: result.contributionBasis,
       notices,
+      boughtInWindowSymbols: result.boughtInWindow,
       // The whole reading, as the PF pane draws it over the same period (a capture's).
       periodPnl: result,
     },
@@ -668,7 +671,7 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
     if (window) {
       if (target.kind !== "portfolio") throw new Error("--from reads a portfolio's P&L between two closes; a watchlist holds no positions.");
       if (args.options.close === true) throw new Error("--from values each position at its closes already; leave out --close.");
-      return portfolioPeriodHoldings(target, ctx, window);
+      return portfolioPeriodHoldings(target, limit, ctx, window);
     }
     return target.kind === "portfolio"
       ? portfolioHoldings(target, limit, ctx, args.options.close === true ? "regular-close" : "latest-print")

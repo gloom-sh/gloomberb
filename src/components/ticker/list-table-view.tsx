@@ -52,6 +52,26 @@ type ResolveTickerTableCell = (
   financials: TickerFinancials | undefined,
 ) => TickerTableCell;
 
+/**
+ * A row after the tickers that adds them up, such as a book's FX line over a
+ * period: its cells by column id, read-only, never selected, with no menu.
+ */
+export interface TickerTableSummaryRow {
+  id: string;
+  cells: Readonly<Record<string, Pick<TickerTableCell, "text" | "color" | "value">>>;
+}
+
+/** The record a summary row stands in the table's items as, and the row it is. */
+const summaryRowOf = new WeakMap<TickerRecord, TickerTableSummaryRow>();
+
+function summaryRecord(row: TickerTableSummaryRow): TickerRecord {
+  const record = { metadata: { ticker: `\u0000summary:${row.id}`, exchange: "", currency: "", name: "", portfolios: [], watchlists: [], positions: [] } } as unknown as TickerRecord;
+  summaryRowOf.set(record, row);
+  return record;
+}
+
+const isTickerRow = (item: TickerRecord) => !summaryRowOf.has(item);
+
 export interface TickerListVisibleRange {
   start: number;
   end: number;
@@ -96,6 +116,8 @@ export interface TickerListTableViewProps {
   rowMenuAccelerators?: Readonly<Record<string, string>>;
   emptyTitle?: string;
   emptyHint?: string;
+  /** Rows after the tickers that add them up; shown only beside at least one ticker. */
+  summaryRows?: readonly TickerTableSummaryRow[];
   /**
    * The pane's own key for adding a ticker, which the empty table names. The
    * command bar's key when absent. The pane shows its add control once, in its
@@ -235,6 +257,7 @@ export function TickerListTableView({
   emptyTitle = t("No tickers."),
   emptyHint,
   addTickerShortcut,
+  summaryRows,
   virtualize = true,
   overscan = 4,
 }: TickerListTableViewProps) {
@@ -272,6 +295,11 @@ export function TickerListTableView({
     _index: number,
     rowState: { selected: boolean },
   ) => {
+    const summary = summaryRowOf.get(ticker);
+    if (summary) {
+      const cell = summary.cells[column.id];
+      return { text: cell?.text ?? "", ...(cell?.color ? { color: cell.color } : {}), ...(cell?.value !== undefined ? { value: cell.value } : {}), attributes: TextAttributes.NONE };
+    }
     const financials = financialsRef.current.get(ticker.metadata.ticker);
     if (column.id === PRICE_SPARKLINE_COLUMN_ID) {
       return {
@@ -302,6 +330,8 @@ export function TickerListTableView({
   }, []);
 
   const getRowVersion = useCallback((ticker: TickerRecord) => {
+    const summary = summaryRowOf.get(ticker);
+    if (summary) return summary;
     const symbol = ticker.metadata.ticker;
     return `${resolveEpoch}|${objectVersion(financialsMap.get(symbol))}|${safeFlashSymbols.get(symbol) ?? ""}`;
   }, [financialsMap, resolveEpoch, safeFlashSymbols]);
@@ -316,7 +346,7 @@ export function TickerListTableView({
   }), [cursorSymbol, setCursorSymbol]);
 
   const handleActivate = useCallback((ticker: TickerRecord) => {
-    onRowActivate?.(ticker);
+    if (isTickerRow(ticker)) onRowActivate?.(ticker);
   }, [onRowActivate]);
 
   const showTickerContextMenu = useCallback((
@@ -343,6 +373,7 @@ export function TickerListTableView({
   }, [renderer, showContextMenu]);
 
   const handleRowMouseDown = useCallback((ticker: TickerRecord, _index: number, event: TableMouseEvent) => {
+    if (!isTickerRow(ticker)) return event.button === 2;
     if (event.button !== 2) return false;
     if (nativeContextMenu !== true) {
       showTickerContextMenu(ticker, event);
@@ -351,8 +382,12 @@ export function TickerListTableView({
   }, [nativeContextMenu, showTickerContextMenu]);
 
   const handleRowContextMenu = useCallback((ticker: TickerRecord, _index: number, event: TableMouseEvent) => {
-    showTickerContextMenu(ticker, event);
+    if (isTickerRow(ticker)) showTickerContextMenu(ticker, event);
   }, [showTickerContextMenu]);
+
+  // Summary rows follow the tickers, as records of their own the table never selects.
+  const summaries = useMemo(() => tickers.length && summaryRows?.length ? summaryRows.map(summaryRecord) : [], [summaryRows, tickers.length]);
+  const items = useMemo(() => summaries.length ? [...tickers, ...summaries] : tickers, [summaries, tickers]);
 
   // The cursor row's right-click menu, for the keyboard, while the table is focused.
   const cursorTicker = selectedIndex >= 0 ? tickers[selectedIndex] ?? null : null;
@@ -368,7 +403,8 @@ export function TickerListTableView({
     <DataTableView<TickerRecord, ColumnConfig>
       focused={focused}
       columns={columns}
-      items={tickers}
+      items={items}
+      isNavigable={summaries.length ? isTickerRow : undefined}
       sortColumnId={sortColumnId ?? null}
       sortDirection={sortDirection}
       onHeaderClick={onHeaderClick}

@@ -1,4 +1,5 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
+import type { ManualChartResolution } from "../../../time-series/resolution";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createDefaultConfig } from "../../../types/config";
@@ -258,4 +259,45 @@ test("--close values a future at its exchange settlement, dated by its session, 
   } finally {
     setCliColorEnabledOverride(null);
   }
+});
+
+test("fn PF --from lists the period's P&L largest first within --limit, with the FX line and the total over every position", async () => {
+  setSystemTime(new Date("2026-11-05T13:00:00Z"));
+  const closes: Record<string, [number, number]> = { AAPL: [347.73, 344.63], TSLA: [400, 380], "2382": [63.15, 63.3] };
+  const hk = createTestTicker("2382", "Sunny Optical", { exchange: "HKEX", currency: "HKD", portfolios: [MANUAL.id],
+    positions: [{ portfolio: MANUAL.id, shares: 1_000, currency: "HKD", broker: "manual" }] });
+  const base = context([holding("AAPL", 50, 230, MANUAL.id), holding("TSLA", -20, 300, MANUAL.id), hk]);
+  const ctx = {
+    ...base,
+    marketData: createTestDataProvider({
+      getQuote: async (symbol) => createTestQuote({ symbol, price: closes[symbol]![1], currency: symbol === "2382" ? "HKD" : "USD" }),
+      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end, interval) => ({
+        points: [["2026-10-23", closes[symbol]![0]], ["2026-10-30", closes[symbol]![1]]]
+          .map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close: close as number }))
+          .filter((point) => point.date >= start && point.date <= end),
+        resolution: interval as ManualChartResolution,
+      }),
+    }),
+    apiClient: { getCloudHistory: async (symbol: string, _exchange: string, params: { startDate?: string; endDate?: string }) => ({ status: "success",
+      data: symbol === "HKD=X" ? [["2026-10-23", 7.8], ["2026-10-30", 7.75]].filter(([date]) => date! >= params.startDate! && date! <= params.endDate!)
+        .map(([date, close]) => ({ date: `${date}T00:00:00.000Z`, close })) : [] }) },
+  } as unknown as HeadlessPaneContext;
+  const period = (options: Record<string, unknown>) => args(MANUAL.id, { from: "2026-10-26", to: "2026-10-30", ...options } as unknown as Record<string, number>);
+  const result = await collectionHoldingsHeadless.load(period({ limit: 2 }), ctx);
+  // The two largest at the start, in USD (AAPL's $17,387, 2382's HK$63,150 at 7.80, $8,096, over TSLA's $8,000 short),
+  // then the FX line and the total, which count TSLA too.
+  expect(result.rows.map((row) => row.symbol)).toEqual(["AAPL", "2382", "FX (HKD)", "TOTAL"]);
+  const fx = 63_150 * (1 / 7.75 - 1 / 7.8);
+  expect(result.rows.at(-1)!.pnl as number).toBeCloseTo(150 / 7.75 + 50 * (344.63 - 347.73) + -20 * (380 - 400) + fx, 6);
+  expect(result.metadata?.notices).toContain("1 more position not shown; the FX line and the total include every position.");
+  setCliColorEnabledOverride(false);
+  try {
+    expect(renderHeadlessPaneText(collectionHoldingsHeadless, result, period({ limit: 2 }), "PF"))
+      .toContain("P&L from the close of Fri 23 Oct to the close of Fri 30 Oct, on the holdings held now, in USD.");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+  // --close already is what --from reads; a watchlist holds no positions.
+  await expect(collectionHoldingsHeadless.load(period({ close: true }), ctx)).rejects.toThrow("leave out --close");
+  await expect(collectionHoldingsHeadless.load({ ...period({}), rawArgument: "tech", argument: "tech" }, ctx)).rejects.toThrow("a watchlist holds no positions");
 });

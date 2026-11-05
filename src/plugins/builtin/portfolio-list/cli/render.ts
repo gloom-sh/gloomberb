@@ -60,7 +60,7 @@ import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind
 import { perpetualListing } from "../../../../tickers/perpetual-listing";
 import { loadPerpetualMarket } from "../../../../sources/gloomberb-cloud/perpetuals";
 import { listedMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
-import { chunked, mapWithConcurrency } from "../../../../utils/concurrency";
+import { chunked, LIST_FINANCIALS_CONCURRENCY, mapWithConcurrency } from "../../../../utils/concurrency";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
@@ -819,7 +819,7 @@ async function showCollectionWithMarketData(
     : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud";
   if (matchedPortfolio && period) {
     await showPeriodPnl({ ctx, portfolio: matchedPortfolio, name: displayName, tickers: filtered, currency, window: period, provider: dataProvider,
-      fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel });
+      fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel, explain });
     return;
   }
   let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source });
@@ -1315,8 +1315,6 @@ interface WatchlistRowValue {
 
 /** Financials requested at once, the most the app asks for at a time. */
 const FINANCIALS_BATCH_SIZE = 64;
-/** Financials asked for one at a time, at most this many at once, from a source without batches. */
-const FINANCIALS_CONCURRENCY = 8;
 
 /**
  * The financials of the listings whose quote carries no market cap, through
@@ -1342,7 +1340,7 @@ async function loadMarketCapFinancials(
     }));
     return financials;
   }
-  await mapWithConcurrency(targets, FINANCIALS_CONCURRENCY, async (target) => {
+  await mapWithConcurrency(targets, LIST_FINANCIALS_CONCURRENCY, async (target) => {
     const value = await dataProvider.getTickerFinancials(target.symbol, target.exchange).catch(logFailure("portfolio-list.cli.render", "Load market cap financials failed", null));
     if (value) financials.set(target.symbol, value);
   });

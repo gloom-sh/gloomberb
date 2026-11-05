@@ -7,7 +7,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { errorMessage } from "../../../../utils/errors";
 import { readPriceWindow, type PriceWindow } from "../../../../utils/price-window";
 import { useAssetData } from "../../../runtime";
-import { loadPeriodPnl, type LoadedPeriodPnl } from "../period-pnl";
+import { loadPeriodPnl, periodBoughtText, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
 
 export interface PanePeriodPnl {
   window: PriceWindow | null;
@@ -39,12 +39,18 @@ export function periodPnlLabel(period: PanePeriodPnl): string {
   return `P&L ${dayMonth(start)}–${dayMonth(end)}`;
 }
 
-/** What the period's P&L leaves out or could not read, for the pane's warning notice. */
+/** The FX line under the rows (`FX (HKD)`), so they add up to the header's total; null when every holding is in the book's currency. */
+export function periodFxLine(result: LoadedPeriodPnl | null): { currencies: string; pnl: number; contribution: number | null } | null {
+  const currencies = [...new Set((result?.rows ?? []).flatMap((row) => row.rates ? [row.rates.currency] : []))];
+  return result && currencies.length ? { currencies: currencies.join(", "), pnl: result.fx, contribution: result.fxContribution } : null;
+}
+
+/** What the period's P&L leaves out or could not read, and the holdings bought inside it, for the pane's notices. */
 export function periodPnlNotices(period: PanePeriodPnl | null): string[] {
   if (!period) return [];
   if (period.error) return [`P&L period: ${period.error}`];
-  const unpriced = period.result?.unpriced ?? [];
-  return unpriced.length ? [`No period P&L for ${unpriced.join(", ")}: no close at one end of the window`] : [];
+  if (!period.result) return [];
+  return [periodUnpricedText(period.result), periodBoughtText(period.result)].filter((notice): notice is string => !!notice);
 }
 
 /** The pane's P&L From and To as `portfolio show --from --to` reads them, or why they do not read. */
@@ -77,11 +83,13 @@ export function usePanePeriodPnl({ from, to, enabled, portfolioId, tickers, curr
 }): PanePeriodPnl | null {
   const provider = useAssetData();
   const { window, error: windowError } = useMemo(() => readPanePeriod(enabled ? from : "", to), [enabled, from, to]);
-  // The holdings and their quantities: a quote tick does not read the closes again.
+  // The holdings, their quantities and the currency each is priced in (its quote's, once it arrives): a quote tick does
+  // not read the closes again, but a quote that changes a holding's currency does, so pence are never read as pounds.
   const holdings = useMemo(() => tickers.flatMap((ticker) => {
     const shares = ticker.metadata.positions.filter((position) => position.portfolio === portfolioId).reduce((sum, position) => sum + position.shares, 0);
-    return shares ? [`${ticker.metadata.ticker}:${shares}`] : [];
-  }).sort().join(","), [portfolioId, tickers]);
+    const priced = financialsMap.get(ticker.metadata.ticker)?.quote?.currency || ticker.metadata.currency || "";
+    return shares ? [`${ticker.metadata.ticker}:${shares}:${priced}`] : [];
+  }).sort().join(","), [financialsMap, portfolioId, tickers]);
   const given = snapshot && window && snapshot.window.from === window.from && snapshot.window.to === window.to ? snapshot : null;
   const key = window && !given ? `${portfolioId}|${currency}|${window.from}|${window.to}|${holdings}|${futuresVersion}` : "";
   const inputs = useRef({ tickers, futures, financialsMap });

@@ -120,9 +120,11 @@ export interface ColumnContext {
   /**
    * P&L over a period instead of since cost (the pane's P&L From): P&L shows
    * each row's P&L between the two closes and P&L% its contribution to the
-   * book. Rows are missing while the closes load (`pending`).
+   * book. Rows are missing while the closes load (`pending`). `fx` is the
+   * currencies' move on the start values, the line under the rows that makes
+   * them add up to the header's total.
    */
-  periodPnl?: { rows: ReadonlyMap<string, PeriodPnlRow>; pending: boolean };
+  periodPnl?: { rows: ReadonlyMap<string, PeriodPnlRow>; pending: boolean; fx?: { currencies: string; pnl: number; contribution: number | null } | null };
   /** Moves whenever `periodPnl` does. */
   periodPnlVersion?: number;
 }
@@ -131,11 +133,15 @@ export interface ColumnContext {
 function periodPnlCell(period: NonNullable<ColumnContext["periodPnl"]>, symbol: string, field: "pnl" | "contribution"): { text: string; color?: string } {
   const row = period.rows.get(symbol);
   if (!row) return { text: period.pending ? "…" : "—" };
-  const value = row[field];
+  return periodPnlFigure(row[field], field);
+}
+
+/** A period's P&L (`pnl`) or contribution figure as the P&L and P&L% cells show it, the FX line's included. */
+export function periodPnlFigure(value: number | null | undefined, field: "pnl" | "contribution"): { text: string; color?: string; value?: number } {
   if (value == null || !Number.isFinite(value)) return { text: "—" };
   return field === "pnl"
-    ? { text: formatCompactAmount(value, { signed: true }), color: priceColor(value) }
-    : { text: formatPercentRaw(value), color: shownPriceColor(value, 2) };
+    ? { text: formatCompactAmount(value, { signed: true }), color: priceColor(value), value }
+    : { text: formatPercentRaw(value), color: shownPriceColor(value, 2), value };
 }
 
 /** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
