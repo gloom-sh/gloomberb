@@ -55,9 +55,15 @@ const CURRENCY_WIDTH = 4;
 /** A listing abroad's figure with its currency; a US listing's dollars stay bare. */
 const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== "--" ? `${text} ${row.currency}` : text);
 
-export function historyColumns(width: number, rows: readonly HistoryRow[]): HistoryColumn[] {
-  const labelled = rows.some((row) => row.currency != null);
-  const periods = rows.some((row) => row.periodKind !== "quarter");
+/**
+ * The columns that fit `width`. A listing abroad's (`abroad`, Hong Kong's)
+ * read the same whatever its rows hold: PERIOD, since its rows may be halves
+ * or years, a currency after every amount, and no move columns.
+ */
+export function historyColumns(width: number, rows: readonly HistoryRow[], options: { abroad?: boolean } = {}): HistoryColumn[] {
+  const abroad = options.abroad === true;
+  const labelled = abroad || rows.some((row) => row.currency != null);
+  const periods = abroad || rows.some((row) => row.periodKind !== "quarter");
   let columns = ALL_COLUMNS.filter((column) => {
     const value = SALES_COLUMNS[column.id] ?? (labelled ? MOVE_COLUMNS[column.id] : undefined);
     return !value || rows.some((row) => value(row) != null);
@@ -65,7 +71,7 @@ export function historyColumns(width: number, rows: readonly HistoryRow[]): Hist
     if (labelled && AMOUNT_COLUMNS.has(column.id)) return { ...column, width: column.width + CURRENCY_WIDTH };
     // A half or a year is no quarter: the column names what it holds.
     if (periods && column.id === "period") {
-      return { ...column, label: "PERIOD", width: Math.max(column.width, ...rows.map((row) => periodText(row).length)) };
+      return { ...column, label: "PERIOD", width: Math.max(column.width, "PERIOD".length, ...rows.map((row) => periodText(row).length)) };
     }
     return column;
   });

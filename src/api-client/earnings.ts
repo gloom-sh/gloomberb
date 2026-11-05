@@ -123,8 +123,9 @@ export interface EarningsHistoryPayload {
   /** The basis the company's next consensus is on, from its past year's reports; null when they do not agree. Absent from older servers. */
   consensusBasis?: EarningsEpsBasis | null;
   /**
-   * A listing abroad's history is read for Pro accounts: `pro: false` says
-   * why there are no reports. Absent for US listings, open to everyone.
+   * Whether a listing abroad's history carries its announcements' figures
+   * and links (Pro, as KPIS has them); its street quarters are everyone's.
+   * Absent for US listings.
    */
   access?: { pro: boolean };
   /** Newest first; an upcoming report leads. */

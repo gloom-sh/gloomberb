@@ -97,9 +97,10 @@ export function loadEarningsBoard(query: EarningsCalendarQuery, force = false) {
 }
 
 /**
- * A history's cache key. A listing abroad's history is the account's (Gloom
- * Cloud reads it for Pro), so `accessKey` (the session and plan) keeps one
- * account's apart from another's, and from the next sign-in's.
+ * A history's cache key. A listing abroad's history differs by plan (Gloom
+ * Cloud adds its announcements' figures for Pro), so `accessKey` (the session
+ * and plan) keeps one account's apart from another's, and from the next
+ * sign-in's.
  */
 const historyKey = (symbol: string, limit?: number, accessKey?: string) => {
   const key = limit == null ? symbol : `${symbol}:${limit}`;
@@ -130,6 +131,3 @@ export function loadEarningsHistory(symbol: string, force = false, limit?: numbe
   return loadCloudResource(historyCache, historyKey(symbol, limit, accessKey), () => fetchEarningsHistory(symbol, apiClient, limit),
     { force, validate: (payload) => validateEarningsHistory(payload, symbol) });
 }
-
-/** A listing abroad's history Gloom Cloud did not read for this account: its past reports are Pro's. */
-export const historyNeedsPro = (payload: EarningsHistoryPayload | null | undefined) => payload?.access?.pro === false;

@@ -370,19 +370,26 @@ test("a Hong Kong filed EPS that is basic says so instead of GAAP", async () => 
   expect(rows.map((row) => [row.period, row.epsActual, row.epsBasis])).toEqual([["FY2025", 6.6, "basic"]]);
 })
 
-test("an account without Pro is told Hong Kong past reports come with it, and keeps the next report", async () => {
+test("an account without Pro gets a Hong Kong listing's street quarters, named by its fiscal year, with no notice", async () => {
   const next = addDays(today, 12);
   const result = await createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
-    history: async () => ({ asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: null, fiscalAnchor: null, consensusBasis: null,
-      access: { pro: false }, reports: [] }),
-    upcoming: async () => [{
-      symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date(`${next}T08:10:00Z`), isDateEstimate: false, timing: "",
-      epsEstimate: 7.22, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null,
-      estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 7.22, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" } },
-    }],
+    history: async () => ({
+      asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: "Tencent", consensusBasis: "adjusted", access: { pro: false },
+      fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 },
+      reports: [
+        report({ symbol: "0700:HKEX", date: next, timing: null, timingSource: null, currency: "CNY", dateStatus: "confirmed",
+          fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 7.22 }),
+        report({ symbol: "0700:HKEX", date: addDays(today, -86), timing: null, timingSource: null, currency: "CNY", dateStatus: "reported",
+          fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 2, epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted" }),
+      ],
+    }),
+    upcoming: async () => [],
   }).load({ rawArgument: "0700:HKEX", argument: ["0700:HKEX"], symbols: ["0700:HKEX"], options: {} }, context);
   expect(result.errors).toBeUndefined();
-  expect(result.rows.map((row) => [row.date, row.currency, row.epsEstimate])).toEqual([[next, "CNY", 7.22]]);
-  expect(result.metadata?.notices).toEqual(["Past reports for Hong Kong listings come with Gloom Pro, so 0700:HKEX shows its next report."]);
+  expect(result.metadata?.notices).toBeUndefined();
+  expect(result.rows.map((row) => [row.period, row.currency, row.epsEstimate, row.epsActual, row.filing])).toEqual([
+    ["Q3 FY2026", "CNY", 7.22, null, null],
+    ["Q2 FY2026", "CNY", 7.23544, 7.433, null],
+  ]);
 })
