@@ -78,13 +78,6 @@ export function formatFxBoardAmount({ amount, currency }: FxBoardAmount): string
   return `${figure} ${currency}`;
 }
 
-/** The board's saved amount (`2,500,000 EUR`), or null when there is none or it reads as none. */
-export function savedFxBoardAmount(saved: unknown): FxBoardAmount | null {
-  if (typeof saved !== "string") return null;
-  const parsed = parseFxBoardAmount(saved);
-  return parsed && !("error" in parsed) ? { amount: parsed.amount, currency: parsed.currency } : null;
-}
-
 /**
  * The board's currencies with the ones an amount names added at the end, as
  * `fx 2500000 EUR/USD` opens the board on EUR and USD whatever it listed.

@@ -60,7 +60,7 @@ function spelledPair(text: string): FxRequest | null {
 }
 
 /** Whether `fx` reads the argument as a pair spelled without its slash (`spelledPair`). */
-export function isSpelledFxPair(raw: string): boolean {
+function isSpelledFxPair(raw: string): boolean {
   return spelledPair(raw.trim().toUpperCase()) != null;
 }
 

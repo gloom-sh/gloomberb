@@ -19,7 +19,7 @@ export function readStaleReason(value: unknown): string | undefined {
 }
 
 /** `06:30–06:35 UTC bar close, quotes paused`: what a price taken from a bar is, and why. */
-export function intradayBarText(bar: QuoteIntradayBar): string {
+function intradayBarText(bar: QuoteIntradayBar): string {
   const clock = (time: number) => new Date(time).toISOString().slice(11, 16);
   return `${clock(bar.start)}–${clock(bar.start + bar.minutes * 60_000)} UTC bar close, quotes paused`;
 }
