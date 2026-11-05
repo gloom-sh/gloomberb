@@ -10,6 +10,14 @@ inputs:
     description: Fetch Electrobun's SDK into .hutch/devkit and patch it, for desktop builds, the type checks and the tests
     required: false
     default: "false"
+  cache:
+    description: >-
+      Restore the Bun binary from the Actions cache, and save it there after a
+      miss. Off in a job that runs registry plugins, which must leave nothing
+      a later job restores, and in a job that builds a release, deploys or
+      publishes, which takes nothing from it.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -23,6 +31,7 @@ runs:
     - uses: oven-sh/setup-bun@v2
       with:
         bun-version: ${{ steps.bun-version.outputs.version }}
+        no-cache: ${{ inputs.cache != 'true' }}
 
     - if: inputs.install == 'true'
       shell: bash

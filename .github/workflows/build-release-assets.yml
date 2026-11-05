@@ -5,6 +5,10 @@ name: Build Release Assets
 # it for a stable tag as the tag is; Nightly runs it for a main commit under a
 # nightly version, with the desktop files named nightly-* so they can never be
 # taken for a stable manifest.
+#
+# No registry plugin runs in these jobs, which hold the signing keys. The
+# plugin check reads these builds after this workflow, in
+# load-registry-plugins.yml, which callers run with no secrets.
 on:
   workflow_call:
     inputs:
@@ -20,6 +24,9 @@ on:
         description: "stable keeps Electrobun's stable-* desktop file names; nightly renames them nightly-*."
         type: string
         default: stable
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -52,8 +59,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
+        with:
+          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
@@ -64,15 +74,6 @@ jobs:
 
       - name: Build
         run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
-
-      # Before the binary is uploaded: every plugin the registry lists has to
-      # load in it. Not the musl builds, which only run in the Alpine container
-      # build.ts starts, nor Windows, whose paths this check has not been run
-      # with. A registry or plugin outage only warns; a host that does not
-      # serve what plugins import fails the leg, so no asset ships from it.
-      - name: Load registry plugins in the built binary
-        if: ${{ !matrix.target && runner.os != 'Windows' }}
-        run: bun run plugins:registry:packaged --terminal dist/gloomberb-*.gz
 
       - uses: actions/upload-artifact@v4
         with:
@@ -85,10 +86,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
+          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
@@ -97,6 +100,7 @@ jobs:
         run: npm pkg set "version=$BUILD_VERSION"
 
       - name: Configure Apple signing
+        id: signing
         uses: ./.github/actions/apple-signing
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -114,6 +118,13 @@ jobs:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
         run: bun run desktop:release
 
+      # Signed, notarized and stapled: nothing after this signs.
+      - name: Remove the signing keychain and notary key
+        if: ${{ always() && steps.signing.outcome != 'skipped' }}
+        uses: ./.github/actions/apple-signing
+        with:
+          cleanup: "true"
+
       - name: Build Homebrew app archives
         run: |
           set -euo pipefail
@@ -129,9 +140,6 @@ jobs:
           test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
           "$app/Contents/Resources/gloom" help
           "$app/Contents/Resources/gloomberb" help
-          # The terminal the app ships, with the Bun it ships, must load every
-          # plugin the registry lists.
-          bun run plugins:registry:packaged --terminal "$app/Contents/Resources/gloom"
           ditto -c -k --keepParent "$app" artifacts/stable-macos-arm64-Gloom.app.zip
           # The same signed bundle under its old name, for a Homebrew cask that
           # still installs Gloomberb.app. Its signature does not cover the name.
@@ -173,10 +181,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
+          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}

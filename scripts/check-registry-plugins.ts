@@ -15,8 +15,8 @@ import { annotate, cloneRegistryPlugins } from "./registry-plugins";
  * export some published plugin still uses fails in CI rather than in the
  * installs of everyone who updates Gloomberb before the plugin.
  *
- * Each plugin is checked at its registry ref, or its default branch when the
- * registry does not pin it: what `gloomberb install` would land. Anything
+ * Each plugin is checked at the commit the registry reviewed, or else at its
+ * registry ref or default branch: what `gloomberb install` would land. Anything
  * else that goes wrong (the registry or GitHub unreachable, a dependency of
  * the plugin's own that does not resolve) is reported as a warning. This job
  * judges the host, not the plugins.
