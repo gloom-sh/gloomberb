@@ -304,6 +304,77 @@ describe("useQuoteBoard follow-ups", () => {
   });
 });
 
+describe("useQuoteBoard late answers", () => {
+  /** A cache-first board whose batch and single reads answer when the test says. */
+  async function mountPending(symbols: string[]) {
+    const batches: Array<(rows: QuoteBatchResult[]) => void> = [];
+    const singles = new Map<string, (quote: Quote) => void>();
+    const provider = {
+      getQuotesBatch: (targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions) => options?.cacheOnly
+        ? Promise.resolve(targets.map((target) => ({ target, quote: null })))
+        : new Promise<QuoteBatchResult[]>((resolve) => batches.push(resolve)),
+      getQuote: (symbol: string) => new Promise<Quote>((resolve) => singles.set(symbol, resolve)),
+    };
+    let board: BoardQuoteMap = new Map();
+    let reload: () => void = () => {};
+    function LateProbe() {
+      const result = useQuoteBoard(symbols, { cacheFirst: true, refreshTimeoutMs: 40, liveStreaming: false });
+      board = result.quotes;
+      reload = result.refresh;
+      return <Text>{`${board.size}`}</Text>;
+    }
+    const runtime = { getMarketData: () => provider } as unknown as PluginRuntimeAccess;
+    await tui.render(<PluginRenderProvider runtime={runtime} pluginId="test"><LateProbe /></PluginRenderProvider>, { width: 40, height: 6 });
+    await settle();
+    return { batches, singles, board: () => board, reload: () => reload() };
+  }
+
+  test("a batch that answers after the timeout paints over the timeout error", async () => {
+    const { batches, board } = await mountPending(["A", "B"]);
+    await settle(80);
+    expect(board().get("A")).toMatchObject({ quote: null, loading: false, error: "Quote refresh timed out" });
+
+    await act(async () => batches[0]!([
+      { target: { symbol: "A", exchange: "" }, quote: quote("A", 5) },
+      { target: { symbol: "B", exchange: "" }, quote: quote("B", 6) },
+    ]));
+    await settle();
+    expect(board().get("A")).toMatchObject({ quote: { price: 5 }, loading: false, error: null, stale: false });
+    expect(board().get("B")).toMatchObject({ quote: { price: 6 }, loading: false, error: null, stale: false });
+    expect(quoteBoardStatus(board())).toMatchObject({ loading: 0, stale: 0, unavailable: 0 });
+  });
+
+  test("a late answer from a load a newer one superseded is dropped", async () => {
+    const { batches, board, reload } = await mountPending(["A", "B"]);
+    await settle(80);
+
+    await act(async () => reload());
+    await settle();
+    expect(batches).toHaveLength(2);
+    await act(async () => batches[0]!([
+      { target: { symbol: "A", exchange: "" }, quote: quote("A", 5) },
+      { target: { symbol: "B", exchange: "" }, quote: quote("B", 6) },
+    ]));
+    await settle();
+    expect(board().get("A")).toMatchObject({ quote: null, loading: true });
+
+    await act(async () => batches[1]!([{ target: { symbol: "A", exchange: "" }, quote: quote("A", 7) }, { target: { symbol: "B", exchange: "" }, quote: quote("B", 8) }]));
+    await settle();
+    expect(board().get("A")?.quote?.price).toBe(7);
+  });
+
+  test("a symbol read alone that answers after the timeout paints", async () => {
+    const { batches, singles, board } = await mountPending(["A"]);
+    await act(async () => batches[0]!([{ target: { symbol: "A", exchange: "" }, quote: null, followUp: "default" }]));
+    await settle(80);
+    expect(board().get("A")).toMatchObject({ quote: null, loading: false, error: "Quote refresh timed out" });
+
+    await act(async () => singles.get("A")!(quote("A", 9)));
+    await settle();
+    expect(board().get("A")).toMatchObject({ quote: { price: 9 }, error: null, stale: false });
+  });
+});
+
 describe("useQuoteBoard target changes", () => {
   test("drops removed quotes and errors while retaining overlapping quotes across pending requests", async () => {
     const pending: Array<(rows: QuoteBatchResult[]) => void> = [];
