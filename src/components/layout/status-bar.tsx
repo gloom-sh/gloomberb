@@ -109,6 +109,8 @@ function truncate(text: string, width: number): string {
 /** The longest a layout tab's name runs, and the shortest a narrow bar cuts every name to before its tabs scroll. */
 const LAYOUT_NAME_MAX = 14;
 const LAYOUT_NAME_MIN = 8;
+/** Below this many columns the bar cuts the names to fit, as Tidy stacks the panes in one column. */
+const NARROW_TERMINAL_WIDTH = 80;
 
 const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
   openFormModal({ kind: "builtin", actionId });
@@ -166,15 +168,16 @@ export function StatusBar() {
   );
   /** How the tab in front is cut on a strip too narrow for it: its name's length, and whether its key stays. */
   type ActiveTabCut = { nameWidth: number; key: boolean };
+  // Linked tabs show `*` when edited locally and `↓` when the team is ahead: read once a render, whatever the
+  // passes below try.
+  const layoutMarkers = layouts.map((layout) => (layout.origin && registry
+    ? linkedLayoutMarker(linkedLayoutStatus(layout, registry.panes, remoteRevisions.get(layout.origin.layoutId)))
+    : ""));
   const layoutTab = (index: number, nameWidth: number, activeCut?: ActiveTabCut) => {
     const layout = layouts[index]!;
     const cut = index === activeLayoutIdx ? activeCut : undefined;
-    // Linked tabs show `*` when edited locally and `↓` when the team is ahead.
-    const marker = layout.origin && registry
-      ? linkedLayoutMarker(linkedLayoutStatus(layout, registry.panes, remoteRevisions.get(layout.origin.layoutId)))
-      : "";
     return {
-      label: `${cut?.key === false ? "" : tabKey(index)}${truncate(layout.name, cut?.nameWidth ?? nameWidth)}${marker}`,
+      label: `${cut?.key === false ? "" : tabKey(index)}${truncate(layout.name, cut?.nameWidth ?? nameWidth)}${layoutMarkers[index] ?? ""}`,
       value: String(index),
       reorderable: true,
     };
@@ -209,15 +212,18 @@ export function StatusBar() {
   // that, so a long list of layouts never pushes those controls off screen.
   const tabsRoom = Math.max(0, termWidth - 1 - controlsWidth - feedbackWidth - STATUS_WIDGET_COLUMNS);
   const tabsWidthOf = (tabs: readonly { label: string }[]) => tabs.reduce((sum, tab) => sum + tab.label.length + 2, 0);
-  // The names are cut to fit the strip, each keeping its start, down to a
-  // length that still reads; a strip that holds them at none of those
-  // scrolls with the names whole, and only the one in front is cut, to the
-  // strip's width: its name to a few letters, then without its key. A
-  // scrolled strip showed the end of a name (`CIO` of `FX Desk - CIO`).
+  // On a narrow terminal the names are cut to fit the strip, each keeping
+  // its start, down to a length that still reads; a strip that holds them at
+  // none of those scrolls with the names whole, as every strip on a wider
+  // terminal does. Only the one in front is cut to the strip's width: its
+  // name to a few letters, then without its key. A scrolled strip showed the
+  // end of a name (`CIO` of `FX Desk - CIO`).
   const overflowsAt = (width: number) => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(width)) > tabsRoom;
   let nameWidth = LAYOUT_NAME_MAX;
-  while (overflowsAt(nameWidth) && nameWidth > LAYOUT_NAME_MIN) nameWidth -= 1;
-  if (overflowsAt(nameWidth)) nameWidth = LAYOUT_NAME_MAX;
+  if (termWidth < NARROW_TERMINAL_WIDTH) {
+    while (overflowsAt(nameWidth) && nameWidth > LAYOUT_NAME_MIN) nameWidth -= 1;
+    if (overflowsAt(nameWidth)) nameWidth = LAYOUT_NAME_MAX;
+  }
   const activeCut: ActiveTabCut = { nameWidth, key: true };
   const activeTooWide = () => !nativePaneChrome && !!layouts[activeLayoutIdx]
     && layoutTab(activeLayoutIdx, nameWidth, activeCut).label.length + 2 > tabsRoom;

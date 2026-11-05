@@ -220,6 +220,21 @@ describe("StatusBar", () => {
     expect(lines.get(40)).toStartWith("  FX…  ");
   });
 
+  test("a terminal 80 columns or wider keeps every name at its full length and scrolls the strip, as it did", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-status-bar-wide");
+    config.layouts = [1, 2, 3, 4].map((index) => ({ name: `Research Desk ${index}`, layout: cloneLayout(config.layout) }));
+    config.activeLayoutIndex = 0;
+    await tui.render(
+      <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
+        <StatusBar />
+      </AppContext>,
+      { width: 100, height: 1 },
+    );
+    for (let frame = 0; frame < 3; frame++) await act(async () => { await tui.setup().renderOnce(); });
+    // Four names cut to 11 letters would fit; at this width they stay at 14 and the strip scrolls past the last.
+    expect(tui.frame().split("\n")[0]).toStartWith("  ^1 Research Desk…  ^2 Research Desk…  ^3 Research Desk…");
+  });
+
   // A dead link left every cell a dash with nothing saying the app was offline.
   test("says the data service is unreachable while it is, opens Connections from it, and drops it once it answers", async () => {
     const health = new ConnectionHealthRegistry();

@@ -491,7 +491,8 @@ function OpenTuiTabs({
     const rawDelta = Math.abs(event.scroll?.delta ?? 1);
     const deltaCells = Math.max(1, Math.round(rawDelta / WHEEL_DELTA_PER_CELL));
     const directionSign = direction === "right" || direction === "down" ? 1 : -1;
-    const maxScrollLeft = Math.max(0, totalWidth - viewportWidth);
+    // As far as the reveal's blank cells past the last tab reach, so a tick never pulls a revealed strip off a tab's edge.
+    const maxScrollLeft = Math.max(0, totalWidth + (scrollable ? revealPadRef.current : 0) - viewportWidth);
     const nextLeft = Math.max(
       0,
       Math.min(maxScrollLeft, (scrollBox.scrollLeft ?? 0) + directionSign * deltaCells),
