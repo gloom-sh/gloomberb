@@ -6,6 +6,10 @@
  * the cell in step with the root font size rather than by restyling each pane.
  * `WEB_CELL_WIDTH` / `WEB_CELL_HEIGHT` are live bindings: importers read the
  * current value, and a re-render after `syncFontScale()` picks up the new grid.
+ * The kit's Box and Text skip a render while their props stay the same, so a
+ * box sized in cells would keep the old grid's pixels; the DOM host providers
+ * follow `subscribeCellGrid` and re-render every kit element when the grid
+ * changes (dom-host-providers.tsx).
  *
  * The terminal renderer owns no font (the emulator does), so this no-ops there.
  */
@@ -22,6 +26,21 @@ export let WEB_CELL_HEIGHT: number = BASE_CELL_HEIGHT_PX;
 
 let appliedFontSizePx = BASE_FONT_SIZE_PX;
 let appliedToDocument = false;
+let cellGrid = 0;
+const cellGridListeners = new Set<() => void>();
+
+/** A number that changes whenever the cell size does. */
+export function cellGridRevision(): number {
+  return cellGrid;
+}
+
+/** Calls `listener` after the cell size changes. Returns the unsubscribe. */
+export function subscribeCellGrid(listener: () => void): () => void {
+  cellGridListeners.add(listener);
+  return () => {
+    cellGridListeners.delete(listener);
+  };
+}
 
 export function clampFontSize(value: unknown): number {
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : BASE_FONT_SIZE_PX;
@@ -42,13 +61,19 @@ export function syncFontScale(fontSizePx: unknown): boolean {
 
   const scale = size / BASE_FONT_SIZE_PX;
   appliedFontSizePx = size;
-  WEB_CELL_WIDTH = roundToHundredth(BASE_CELL_WIDTH_PX * scale);
-  WEB_CELL_HEIGHT = roundToHundredth(BASE_CELL_HEIGHT_PX * scale);
+  const width = roundToHundredth(BASE_CELL_WIDTH_PX * scale);
+  const height = roundToHundredth(BASE_CELL_HEIGHT_PX * scale);
+  const gridChanged = width !== WEB_CELL_WIDTH || height !== WEB_CELL_HEIGHT;
+  WEB_CELL_WIDTH = width;
+  WEB_CELL_HEIGHT = height;
 
   const style = (globalThis as {
     document?: { body?: { style?: { setProperty: (name: string, value: string) => void } } };
   }).document?.body?.style;
-  if (!style) return false;
+  if (!style) {
+    if (gridChanged) notifyCellGrid();
+    return false;
+  }
 
   style.setProperty("--cell-w", `${WEB_CELL_WIDTH}px`);
   style.setProperty("--cell-h", `${WEB_CELL_HEIGHT}px`);
@@ -57,7 +82,13 @@ export function syncFontScale(fontSizePx: unknown): boolean {
   // The type, spacing and inset tokens in styles.css scale with it.
   style.setProperty("--gloom-font-scale", String(roundToHundredth(scale)));
   appliedToDocument = true;
+  if (gridChanged) notifyCellGrid();
   return true;
+}
+
+function notifyCellGrid(): void {
+  cellGrid += 1;
+  for (const listener of cellGridListeners) listener();
 }
 
 /**

@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import { reportCrash } from "../../telemetry/crash-reports";
+import { cellGridRevision, subscribeCellGrid } from "../../theme/font-scale";
 import { UiHostProvider, type RendererHost, type UiHost } from "../../ui/host";
 import { WebDialogHostProvider } from "./dialog-host";
 import { WebInputHostProvider } from "./input-host";
@@ -17,8 +18,12 @@ export function DomHostProviders({
   renderer: RendererHost;
   children: ReactNode;
 }) {
+  // Boxes are sized in cells and drawn in pixels, and the kit skips a box whose
+  // props did not change: without this, one rendered before a font size change
+  // (the first frame is drawn at the default size) keeps the old grid's pixels.
+  const cellGrid = useSyncExternalStore(subscribeCellGrid, cellGridRevision);
   return (
-    <UiHostProvider ui={ui} renderer={renderer} nativeRenderer={webNativeRenderer}>
+    <UiHostProvider ui={ui} renderer={renderer} nativeRenderer={webNativeRenderer} cellGrid={cellGrid}>
       <WebInputHostProvider>
         <WebToastHostProvider>
           <WebDialogHostProvider>

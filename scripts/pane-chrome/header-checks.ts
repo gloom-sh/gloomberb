@@ -11,7 +11,10 @@ import { HEADER_MEASURE, headerControl, headerFailures, type HeaderMeasure } fro
  * or the window edge instead of ending in an ellipsis of its own: the update
  * status gives way, Help and the market summary keep their room (where Restart
  * ran under Help and Help over the market summary). At the narrowest width a
- * real click on Restart restarts and one on Help opens Help.
+ * real click on Restart restarts and one on Help opens Help. The open command
+ * bar's sheet hangs under its prompt edge to edge at every text size, after
+ * the size changes as well (where a 13 px text size left the prompt at the
+ * default size's columns and the sheet 6 px to its right).
  */
 
 interface HeaderStep {
@@ -61,6 +64,16 @@ const presses = (cdp: Cdp) => evaluate<{ restarts: number; helpOpens: number }>(
 
 const center = (box: { left: number; right: number; top: number; bottom: number }) => ({ x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 });
 
+/** Text sizes the sheet is checked at, set one after another as FONT+ and FONT- do. */
+const SHEET_FONT_SIZES = [12, 13, 16, 11];
+
+/** The open prompt's and the sheet's left and right edges, in px. */
+const SHEET_EDGES = `(() => {
+  const prompt = document.querySelector('[data-gloom-role="header-command-prompt"]')?.getBoundingClientRect();
+  const sheet = document.querySelector('[data-gloom-role="command-bar-panel"]')?.getBoundingClientRect();
+  return prompt && sheet ? { prompt: [prompt.left, prompt.right], sheet: [sheet.left, sheet.right] } : null;
+})()`;
+
 export const headerSteps: HeaderStep[] = MODES.flatMap(({ label, query, fullscreen, widths = WIDTHS, clickAt = widths[0]! }): HeaderStep[] => [
   {
     name: `top bar (${label}): every update state fits beside Help and the market summary from ${widths[0]} to ${widths.at(-1)} px, the command bar closed and open`,
@@ -83,6 +96,37 @@ export const headerSteps: HeaderStep[] = MODES.flatMap(({ label, query, fullscre
         await cdp.send("Emulation.setDeviceMetricsOverride", { ...RESTORE, deviceScaleFactor: 1, mobile: false });
       }
       if (problems.length > 0) fail(`${problems.length} layouts of the top bar overlap or cut:\n     ${problems.slice(0, 12).join("\n     ")}`);
+    },
+  },
+  {
+    name: `top bar (${label}): the command bar's sheet hangs under its prompt edge to edge at text sizes ${SHEET_FONT_SIZES.join(", ")} px`,
+    scenario: `header&${query}`,
+    async run(cdp) {
+      const problems: string[] = [];
+      try {
+        if (fullscreen) await evaluate(cdp, "window.__paneChrome.header.fullscreen(true)");
+        await evaluate(cdp, "window.__paneChrome.header.show('none')");
+        for (const width of [widths[0]!, widths.at(-1)!]) {
+          await resize(cdp, width);
+          for (const size of SHEET_FONT_SIZES) {
+            await evaluate(cdp, `window.__paneChrome.header.commandBar(false); window.__paneChrome.header.fontSize(${size})`);
+            await frames(cdp, 2);
+            await evaluate(cdp, "window.__paneChrome.header.commandBar(true)");
+            await frames(cdp, 2);
+            const edges = await evaluate<{ prompt: [number, number]; sheet: [number, number] } | null>(cdp, SHEET_EDGES);
+            if (!edges) {
+              problems.push(`${width} px, ${size} px text: no open prompt or sheet`);
+            } else if (Math.abs(edges.prompt[0] - edges.sheet[0]) > 0.5 || Math.abs(edges.prompt[1] - edges.sheet[1]) > 0.5) {
+              const px = ([left, right]: [number, number]) => `${left.toFixed(2)}-${right.toFixed(2)}`;
+              problems.push(`${width} px, ${size} px text: the prompt spans ${px(edges.prompt)} and the sheet ${px(edges.sheet)}`);
+            }
+          }
+        }
+      } finally {
+        await evaluate(cdp, "window.__paneChrome.header.commandBar(false)");
+        await cdp.send("Emulation.setDeviceMetricsOverride", { ...RESTORE, deviceScaleFactor: 1, mobile: false });
+      }
+      if (problems.length > 0) fail(`the command bar's sheet is off its prompt in ${problems.length} layouts:\n     ${problems.slice(0, 12).join("\n     ")}`);
     },
   },
   {

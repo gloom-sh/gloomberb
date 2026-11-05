@@ -47,6 +47,7 @@ export function resolveCommandBarPanelLayout({
   currentRoute,
   hasRootFeedback,
   hasVisibleListState,
+  laidOutPromptWidth = null,
   nativeListRowCount,
   nativePaneChrome,
   nativeWindowChrome,
@@ -62,6 +63,8 @@ export function resolveCommandBarPanelLayout({
   currentRoute: CommandBarRoute | null;
   hasRootFeedback: boolean;
   hasVisibleListState: boolean;
+  /** The open prompt's width as the desktop laid it out, in cells (prompt-width.ts). */
+  laidOutPromptWidth?: number | null;
   nativeListRowCount: number;
   nativePaneChrome: boolean;
   nativeWindowChrome?: boolean;
@@ -79,7 +82,11 @@ export function resolveCommandBarPanelLayout({
     titleBarOverlay,
     windowFullscreen,
   });
-  const barWidth = prompt.width;
+  // The sheet is the prompt grown downward, so it takes the prompt's width:
+  // the geometry's, or less where the desktop squeezed the open prompt.
+  const barWidth = nativePaneChrome && laidOutPromptWidth != null && laidOutPromptWidth < prompt.width - 0.01
+    ? laidOutPromptWidth
+    : prompt.width;
   const contentPadding = nativePaneChrome ? 1 : 3;
   const nativePanelPaddingColumns = nativePaneChrome
     ? Math.ceil((NATIVE_COMMAND_SURFACE.paddingXPx * 2) / Math.max(1, cellWidthPx))

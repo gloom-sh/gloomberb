@@ -753,6 +753,7 @@ interface UiHostContextValue {
   ui: UiHost;
   renderer: RendererHost;
   nativeRenderer: NativeRendererHost;
+  cellGrid: number;
 }
 
 const noopNativeRenderer: NativeRendererHost = {
@@ -772,15 +773,22 @@ export function UiHostProvider({
   ui,
   renderer,
   nativeRenderer = noopNativeRenderer,
+  cellGrid = 0,
   children,
 }: {
   ui: UiHost;
   renderer: RendererHost;
   nativeRenderer?: NativeRendererHost;
+  /**
+   * Changes with the host's cell size (the DOM's follows the font size). The
+   * context carries it so every kit element, memoized ones included, and every
+   * reader of `cellWidthPx` renders again on the new grid.
+   */
+  cellGrid?: number;
   children: ReactNode;
 }) {
   return (
-    <UiHostContext value={{ ui, renderer, nativeRenderer }}>
+    <UiHostContext value={{ ui, renderer, nativeRenderer, cellGrid }}>
       {children}
     </UiHostContext>
   );
