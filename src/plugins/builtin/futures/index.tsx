@@ -48,8 +48,10 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   FUTURES_RETURN_COLUMNS,
+  futuresBoardQuotes,
   futuresNoMatchFailure,
   futuresRowId,
+  futuresSessionQuote,
   type FuturesColumnId,
   type FuturesSortPreference,
   type FuturesTableRow,
@@ -57,6 +59,7 @@ import {
 import {
   createFuturesColumns,
   FUTURES_COLUMN_DEFS,
+  FUTURES_REPORT_COLUMNS,
   renderFuturesCell,
   resolveFuturesColumnIds,
   usesSessionText,
@@ -140,45 +143,49 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const returns = useFrontContractReturns(listedContracts, quotes, dataProvider, showsReturns && paneVisible);
   // The unit a price counts and the month a symbol rolled past, as `quote` reads them.
   const terms = useFuturesBoardTerms(listedContracts, !!dataProvider && paneVisible);
+  // Each move measured as `quote` measures it with the row's terms, so a row never flips between references at the reopen.
+  const shownQuotes = useMemo(() => futuresBoardQuotes(quotes, terms), [quotes, terms]);
 
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
-    () => buildFuturesRows(contractsBySector, sortPreference, quotes, {
+    () => buildFuturesRows(contractsBySector, sortPreference, shownQuotes, {
       query: searchQuery,
       collapsed: collapsedSectors,
       returns,
       terms,
     }),
-    [collapsedSectors, contractsBySector, quotes, returns, searchQuery, sortPreference, terms],
+    [collapsedSectors, contractsBySector, returns, searchQuery, shownQuotes, sortPreference, terms],
   );
 
   const sessionText = usesSessionText(width);
-  const quotesRef = useRef(quotes);
+  const quotesRef = useRef(shownQuotes);
   const returnsRef = useRef(returns);
   const termsRef = useRef(terms);
-  quotesRef.current = quotes;
+  quotesRef.current = shownQuotes;
   returnsRef.current = returns;
   termsRef.current = terms;
   const renderCell = useCallback((
     row: FuturesTableRow,
     column: FuturesColumn,
-  ) => renderFuturesCell(row, column, quotesRef.current, { sessionText, returns: returnsRef.current, terms: termsRef.current }), [sessionText]);
+  ) => renderFuturesCell(row, column, quotesRef.current, { sessionText, returns: returnsRef.current, terms: termsRef.current, now: Date.now() }),
+  [sessionText]);
   // Everything a cell reads: the headline figures the board shows, the quote's
   // other fields, whether the last good quote is held over, and the returns.
   const getRowVersion = useCallback((row: FuturesTableRow) => {
     if (row.type !== "row") return row.sector;
-    const state = quotes.get(row.contract.symbol);
+    const state = shownQuotes.get(row.contract.symbol);
     const quote = state?.quote ? boardHeadlineQuote(state.quote) : null;
     const values = returns.get(row.contract.symbol);
     const contract = terms.get(row.contract.symbol);
     return [
       state?.loading, state?.stale,
-      quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.marketState, quote?.symbol, quote?.name,
-      values?.loading, values?.values["1W"], values?.values["1M"], values?.values.YTD,
+      quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.symbol, quote?.name,
+      futuresSessionQuote(row.contract, quote)?.marketState,
+      values?.loading, ...Object.values(values?.values ?? {}),
       contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
       contract?.terms?.nearest?.lastTrade, contract?.terms?.mostActive?.contract,
     ].join(":");
-  }, [quotes, returns, terms]);
+  }, [returns, shownQuotes, terms]);
 
   const toggleSector = useCallback((sector: FuturesSector) => {
     setCollapsedSectors((current) => {
@@ -342,6 +349,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       getRowVersion={getRowVersion}
       selectedTextOverridesCellColor
       reportEveryRow
+      reportColumns={showsReturns ? FUTURES_REPORT_COLUMNS : undefined}
       emptyStateTitle={searchQuery.trim()
         ? "No matching contracts."
         : "No market data provider connected."}

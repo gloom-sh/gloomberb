@@ -130,6 +130,8 @@ interface DesktopPaneShotRenderedCell {
   instant?: string;
   /** The full-precision number behind a cell whose text rounds it (a trade of -9.4596), from the same export value. */
   value?: number;
+  /** A column only the JSON and CSV carry (DataTable `reportColumns`): the text report leaves it out. Only in `reportRows`. */
+  reportOnly?: true;
 }
 
 export interface DesktopPaneShotRenderedRow {

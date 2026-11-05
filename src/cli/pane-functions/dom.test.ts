@@ -103,6 +103,21 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   ]);
 });
 
+test("a column only the exports carry (FUT's 3M, 6M and 1Y) is in the JSON and CSV, never in the text", async () => {
+  const resolved = { token: "FUT", label: "Futures", options: {}, capability: { id: "futures-pane" }, pane: { id: "futures" } } as unknown as ResolvedPaneFunction;
+  const cells = [{ columnId: "code", columnLabel: "SYM", text: "ES" }, { columnId: "return1w", columnLabel: "1W", text: "-0.71%", value: -0.71 },
+    { columnId: "return1y", columnLabel: "1Y", text: "+14.10%", value: 14.1, reportOnly: true as const }];
+  const row = { tableIndex: 0, rowIndex: 0, key: "ES=F", selected: false, cells };
+  const screenshot = { symbols: [], render: { visibleText: "", rows: [{ ...row, cells: cells.slice(0, 2) }], reportRows: [row],
+    truncated: false, truncationReasons: [], reportTruncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
+    errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [] } } as unknown as PaneScreenshotResult;
+  const report = await buildDomPaneReportFromRender(resolved, screenshot);
+  expect(report.text).not.toContain("1Y");
+  expect(report.text).not.toContain("14.10");
+  expect((report.data.rows as typeof screenshot.render.rows)[0]!.cells.at(-1)).toMatchObject({ columnId: "return1y", value: 14.1 });
+  expect(renderReportCsv(report.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%)", "ES,-0.71,14.1"]);
+});
+
 test("a time the pane draws as a date, at 00:00 UTC, prints as the date; one it draws with a time of day keeps it", async () => {
   const resolved = {
     token: "CLTR", label: "SEC Comment Letters", options: {}, capability: { id: "comment-letters-pane" },

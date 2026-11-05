@@ -3,10 +3,13 @@ import { periodReturn } from "../../../market-data/market/period-return";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import { quotedContractMonth } from "./model";
 
-export type FuturesReturnHorizon = "1W" | "1M" | "YTD";
+/** The board draws 1W, 1M and YTD; its JSON and CSV add 3M, 6M and 1Y. */
+export type FuturesReturnHorizon = "1W" | "1M" | "3M" | "6M" | "1Y" | "YTD";
 export type FuturesReturnValues = Readonly<Record<FuturesReturnHorizon, number | null>>;
 
-export const NO_FUTURES_RETURNS: FuturesReturnValues = { "1W": null, "1M": null, YTD: null };
+const HORIZONS: readonly FuturesReturnHorizon[] = ["1W", "1M", "3M", "6M", "1Y", "YTD"];
+
+export const NO_FUTURES_RETURNS: FuturesReturnValues = { "1W": null, "1M": null, "3M": null, "6M": null, "1Y": null, YTD: null };
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
 
@@ -83,8 +86,8 @@ export function pickFrontContract(
 
 /**
  * One contract's returns: the latest price against that same contract's close
- * on or before the same date a week and a calendar month earlier, and its
- * last close of the year before (periodReturn). The continuous alias's own
+ * on or before the same date a week and one, three, six and twelve calendar
+ * months earlier, and its last close of the year before (periodReturn). The continuous alias's own
  * series jumps at every roll (LE=F fell 6.3% on a July roll day), so its
  * history is never the baseline. `price` is the live quote, dated `asOf`;
  * without one the contract's last close stands in.
@@ -99,6 +102,5 @@ export function frontContractReturns(
   const liveDay = live ? utcDay(asOf) : null;
   const latest = live && liveDay ? { day: liveDay, close: price } : closes.at(-1);
   if (!latest) return NO_FUTURES_RETURNS;
-  const change = (period: FuturesReturnHorizon) => periodReturn(closes, period, latest)?.percent ?? null;
-  return { "1W": change("1W"), "1M": change("1M"), YTD: change("YTD") };
+  return Object.fromEntries(HORIZONS.map((period) => [period, periodReturn(closes, period, latest)?.percent ?? null])) as FuturesReturnValues;
 }

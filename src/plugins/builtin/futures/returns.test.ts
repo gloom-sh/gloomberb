@@ -37,8 +37,11 @@ describe("front contract", () => {
 
 describe("front contract returns", () => {
   const history = bars(
+    ["2025-09-26", 70],
     ["2025-12-30", 80],
     ["2025-12-31", 80],
+    ["2026-03-27", 85],
+    ["2026-06-26", 90],
     ["2026-08-27", 95],
     ["2026-08-28", 96],
     ["2026-09-18", 98],
@@ -52,6 +55,10 @@ describe("front contract returns", () => {
     // A month back is Aug 27.
     expect(returns["1M"]).toBeCloseTo((102 / 95 - 1) * 100, 10);
     expect(returns.YTD).toBeCloseTo((102 / 80 - 1) * 100, 10);
+    // The horizons only the JSON and CSV carry: back to the Friday on or before Jun 27, Mar 27 and Sep 27 2025.
+    expect(returns["3M"]).toBeCloseTo((102 / 90 - 1) * 100, 10);
+    expect(returns["6M"]).toBeCloseTo((102 / 85 - 1) * 100, 10);
+    expect(returns["1Y"]).toBeCloseTo((102 / 70 - 1) * 100, 10);
   });
 
   test("without a live price the last close stands in", () => {

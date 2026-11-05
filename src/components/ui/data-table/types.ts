@@ -185,6 +185,14 @@ export interface DataTableProps<
    * option chain's strike window; leave it off for long or paged lists.
    */
   reportEveryRow?: boolean;
+  /**
+   * Columns a rendered-view report's JSON and CSV carry after the drawn ones,
+   * which the table never draws and its text report leaves out: figures a
+   * script reads that the view has no room for (FUT's 3M, 6M and 1Y
+   * returns). `renderCell` renders them like any column. Read only with
+   * `reportEveryRow`.
+   */
+  reportColumns?: readonly C[];
   scrollToIndex?: number | null;
   scrollToIndexAlign?: DataTableScrollAlign;
   scrollToIndexVersion?: number;

@@ -145,7 +145,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
         columnLabel: first?.label ?? "Row",
         text: normalize(section.action ? `${section.text} ${section.action.label}` : section.text),
       }]
-      : props.columns.map((column) => {
+      : [...props.columns, ...props.reportColumns ?? []].map((column, columnIndex) => {
         const cell = props.renderCell(item, column, index, { selected });
         return {
           columnId: column.id,
@@ -153,6 +153,8 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
           text: normalize(cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
           ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
+          // Read by the JSON and CSV, never drawn or printed as text.
+          ...(columnIndex >= props.columns.length ? { reportOnly: true } : {}),
         };
       });
     // A section header (FUT's sector) is marked, so a count of the table's rows can leave it out.
@@ -165,7 +167,7 @@ function cachedReportedRows<T, C extends DataTableColumn>(
   props: DataTableProps<T, C>,
   cache: { current: { source: readonly unknown[]; rows: ReturnType<typeof reportedRows> } | null },
 ) {
-  const source = [props.items, props.columns, props.renderCell, props.isSelected, props.renderSectionHeader];
+  const source = [props.items, props.columns, props.reportColumns, props.renderCell, props.isSelected, props.renderSectionHeader];
   const cached = cache.current;
   if (cached && cached.source.length === source.length && cached.source.every((value, index) => value === source[index])) {
     return cached.rows;

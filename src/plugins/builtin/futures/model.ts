@@ -6,6 +6,8 @@ import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "
 import { futuresPriceUnit } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
+import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
+import { globexDayOpen } from "../../../market-data/market/globex-day";
 import type { FuturesReturnHorizon } from "./returns";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
@@ -25,6 +27,9 @@ export type FuturesColumnId =
   | "return1w"
   | "return1m"
   | "returnYtd"
+  | "return3m"
+  | "return6m"
+  | "return1y"
   | "volume"
   | "prevClose"
   | "time";
@@ -170,7 +175,46 @@ export const FUTURES_RETURN_COLUMNS: Readonly<Partial<Record<FuturesColumnId, Fu
   return1w: "1W",
   return1m: "1M",
   returnYtd: "YTD",
+  return3m: "3M",
+  return6m: "6M",
+  return1y: "1Y",
 };
+
+/** Sectors whose contracts trade CME Globex's whole day, 17:00 to 16:00 Central; grains, softs, lumber and livestock keep shorter hours. */
+const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", "equity-sectors", "rates", "energy", "metals", "currencies"]);
+
+/**
+ * The row's quote in the session CME Globex's clock gives a contract that
+ * trades its whole day (globexDayOpen): open from the 17:00 reopen, before a
+ * delayed feed shows a trade of it, and closed in the daily break, whatever
+ * its last print says. Any other row, and a day the calendar cannot vouch
+ * for, keeps the state its quote reports.
+ */
+export function futuresSessionQuote(contract: FuturesContract, quote: Quote | null | undefined, now = Date.now()): Quote | null | undefined {
+  if (!quote?.marketState || quote.delisting || !GLOBEX_DAY_SECTORS.has(contract.sector)) return quote;
+  const open = globexDayOpen(contract.venue, now);
+  if (open == null) return quote;
+  const state = open ? "REGULAR" : "CLOSED";
+  return quote.marketState === state ? quote : { ...quote, marketState: state };
+}
+
+/**
+ * The board's quotes with each row's move measured as `quote` measures it
+ * with the row's terms (futuresQuoteFromSettle): from the last confirmed
+ * settlement while nothing confirms the source's reference, so a row never
+ * flips between two references at the reopen. The same map while no row
+ * changes.
+ */
+export function futuresBoardQuotes(quotes: BoardQuoteMap, terms: FuturesTermsMap): BoardQuoteMap {
+  let next: BoardQuoteMap | null = null;
+  for (const [symbol, state] of quotes) {
+    const quote = futuresQuoteFromSettle(state.quote, terms.get(symbol)?.terms);
+    if (quote === state.quote) continue;
+    next ??= new Map(quotes);
+    next.set(symbol, { ...state, quote });
+  }
+  return next ?? quotes;
+}
 
 function getSortValue(
   columnId: FuturesColumnId,
@@ -184,7 +228,7 @@ function getSortValue(
     case "unit":
       return futuresUnitLabel(contract, terms?.get(contract.symbol)?.terms);
     case "status":
-      return quoteDotMarketState(quote) === "REGULAR" ? 0 : 1;
+      return quoteDotMarketState(futuresSessionQuote(contract, quote)) === "REGULAR" ? 0 : 1;
     case "code":
       return contract.code;
     case "name":
@@ -198,6 +242,9 @@ function getSortValue(
     case "return1w":
     case "return1m":
     case "returnYtd":
+    case "return3m":
+    case "return6m":
+    case "return1y":
       return returns?.get(contract.symbol)?.values[FUTURES_RETURN_COLUMNS[columnId]!] ?? null;
     case "volume":
       return quote?.volume ?? null;

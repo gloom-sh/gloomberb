@@ -70,7 +70,7 @@ function proseLines(render: PaneScreenshotResult["render"], title: string): stri
 }
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
-  return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
+  return rows.some((row) => row.cells.some((cell) => !cell.reportOnly && /\u2026|\.\.\./.test(cell.text)));
 }
 
 /** Column identity per cell; a repeated label within one row stays distinct. */
@@ -148,7 +148,9 @@ function domTableTitle(table: DomTable): string {
 }
 
 function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
-  const tables = domTables(rows);
+  // A column only the JSON and CSV carry is no part of the text.
+  const tables = domTables(rows.map((row) => row.cells.some((cell) => cell.reportOnly)
+    ? { ...row, cells: row.cells.filter((cell) => !cell.reportOnly) } : row));
   return tables.flatMap((table, index) => [
     ...(index > 0 ? [""] : []),
     ...(tables.length > 1 ? [renderSection(domTableTitle(table))] : []),
