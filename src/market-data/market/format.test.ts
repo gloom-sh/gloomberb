@@ -350,6 +350,10 @@ describe("live quote precision", () => {
     // Without session prices or a currency, a print still takes its pair's decimals, and a large rate fewer.
     expect(formatMarketPrice(1.0981532, quoteFormatOptions({ instrumentType: "CURRENCY" }))).toBe("1.09815");
     expect(formatMarketPrice(16250.5, { ...quoteFormatOptions({ instrumentType: "CURRENCY" }), currency: "IDR" })).toBe("16,250.50");
+    // Its move too, at the pair's precision rather than five significant figures of the move.
+    const pair = quoteFormatOptions({ instrumentType: "CURRENCY" });
+    expect(formatMarketChangeWithCurrency(0.0034498, "USD", pair, 1.12638)).toBe("+$0.00345");
+    expect(formatMarketChangeWithCurrency(-0.4551, "JPY", pair, 157.972)).toBe("-¥0.455");
   });
 
   test("takes decimals from the currency's minor unit and from session prices, never from the tick", () => {

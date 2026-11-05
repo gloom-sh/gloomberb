@@ -494,6 +494,13 @@ export function formatMarketChangeWithCurrency(
       ...options, minimumFractionDigits: Math.max(2, options.minimumFractionDigits ?? 0),
     })}`;
   }
+  // A currency pair's move is written at the pair's precision (+$0.00345 on EUR/USD 1.12638), never its float tail.
+  if (resolveAssetDisplayKind(options) === "cash" && referencePrice != null && Number.isFinite(referencePrice) && referencePrice > 0) {
+    const digits = fxRateDigits(currency, referencePrice);
+    const rounded = Math.abs(value) < 0.5 * 10 ** -digits;
+    const body = formatMarketPriceWithCurrency(rounded ? 0 : Math.abs(value), currency, { ...options, fixedFractionDigits: digits });
+    return rounded ? body : `${value > 0 ? "+" : "-"}${body}`;
+  }
   // A move on a listing whose tick is finer than cents is written to the tick's decimals (+HK$0.030 on an HKEX ETF).
   const tick = listingTickDigits(options.listingTickTable, referencePrice);
   if (tick !== undefined && resolveAssetDisplayKind(options) !== "crypto") {
