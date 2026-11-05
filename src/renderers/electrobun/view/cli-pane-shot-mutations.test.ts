@@ -11,23 +11,24 @@ test("a capture waits on what changes the page, not on an input's name cleared a
   const cell = document.createElement("span");
   cell.textContent = "848.1k";
   document.body.append(input, cell);
-  const batches: boolean[] = [];
-  const observer = new window.MutationObserver((records) => { batches.push(changedThePage(records as unknown as MutationRecord[])); });
+  // Each step's records are read at once rather than through the observer's callback, so the
+  // check does not depend on when the DOM delivers them.
+  const observer = new window.MutationObserver(() => {});
   observer.observe(document.body as never, SHOT_MUTATION_OPTIONS);
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const batch = () => changedThePage(observer.takeRecords() as unknown as MutationRecord[]);
 
   // React's update of the input: name cleared, type set again, name set back; the cell's text set to what it was.
   input.setAttribute("name", "");
   input.setAttribute("type", "file");
   input.setAttribute("name", "ticker");
   (cell.firstChild as unknown as { data: string }).data = "848.1k";
-  await settle();
+  const rerender = batch();
   // A figure that moves is a change, and so is a row that arrives.
   (cell.firstChild as unknown as { data: string }).data = "848.4k";
-  await settle();
+  const figure = batch();
   document.body.append(document.createElement("div"));
-  await settle();
-  expect(batches).toEqual([false, true, true]);
+  const row = batch();
+  expect([rerender, figure, row]).toEqual([false, true, true]);
   observer.disconnect();
   await window.happyDOM.close();
 });
