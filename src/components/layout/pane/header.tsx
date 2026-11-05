@@ -226,11 +226,14 @@ function PaneTitleTicker({ symbol, color, onPress }: {
   const searchShortcut = useActionShortcut("ticker-search");
   const label = "Change ticker";
   // A span in the title's line, so the title still ends in one ellipsis. The button's inset goes
-  // into the space before it, so the ticker's letters stay where the title's text put them.
+  // into the space before it, so the ticker's letters stay where the title's text put them. On the
+  // title's baseline: the title's line is trimmed to its capitals (styles.css), and WebKit puts a
+  // box aligned to the line's top at the trimmed edge, which dropped the ticker by the trim and
+  // cut its letters at the bottom.
   return (
     <Text
       data-gloom-role="pane-title-ticker"
-      style={{ display: "inline-flex", verticalAlign: "top", marginLeft: "calc(-1 * var(--gloom-space-xs))" }}
+      style={{ display: "inline-flex", verticalAlign: "baseline", marginLeft: "calc(-1 * var(--gloom-space-xs))" }}
     >
       <Button
         label={label}
