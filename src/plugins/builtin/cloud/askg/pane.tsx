@@ -16,6 +16,7 @@ import {
   ScrollBox,
   Text,
   TextAttributes,
+  useRendererHost,
   useUiCapabilities,
   type BoxRenderable,
   type ScrollBoxRenderable,
@@ -62,9 +63,31 @@ import { describePortfolioTab } from "../../analytics/portfolio-selection";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
   createASKGRendererToolExecutor,
+  buildASKGSourceShare,
+  type ASKGSourceShare,
   loadASKGClientManifest,
   resolveToolPaneTarget,
 } from "./host";
+import { getSharedRegistry } from "../../../registry";
+import {
+  answerReadNothing,
+  answerSources,
+  answerWithSourceLinks,
+  createSourceResolver,
+  formatSourceCommand,
+  linkCitations,
+  SOURCE_LINK_SCHEME,
+  sourceRefFromHref,
+  type ASKGAnswerSource,
+  type ASKGSourceTarget,
+} from "./sources";
+import { AnswerSources, answerSourceLabel } from "./answer-sources";
+import { openSharedPane } from "../../../../shares/open";
+import { createShare, openLiveShareUrl } from "../../../../shares/api";
+import { ApiRequestError } from "../../../../api-client/errors";
+import { personalDataNotice } from "../../../../shares/pane-image";
+import { readyToShare } from "../../../../shares/ready";
+import type { PanePersonalData } from "../../../../types/plugin";
 import {
   askgConversationLabel,
   askgConversationListStore,
@@ -183,6 +206,7 @@ function askgExampleQuestions({
 }
 
 const NO_EXAMPLES: string[] = [];
+const NO_SOURCES: readonly ASKGAnswerSource[] = [];
 
 /** Rate the answer the keyboard is on: the selected one, else the latest. */
 const GOOD_ANSWER_KEY = "g";
@@ -313,6 +337,11 @@ function AnswerFeedback({
   );
 }
 
+/** The answer reads its citations as links, and only them: a link the model wrote stays text. */
+function isSourceLink(href: string): boolean {
+  return href.startsWith(SOURCE_LINK_SCHEME);
+}
+
 /** Rows the confirmation block reserves for the dry run preview. */
 const MAX_PREVIEW_LINES = 4;
 
@@ -409,6 +438,9 @@ function TurnView({
   catalog,
   openTicker,
   tools,
+  sources,
+  displayContext,
+  onOpenSource,
   onRetry,
   onUpgrade,
   onRate,
@@ -430,6 +462,10 @@ function TurnView({
   openTicker: (symbol: string) => void;
   /** The turn's tool timeline. */
   tools: ReactNode;
+  /** What the answer cites, or the reads behind it when it cites none. */
+  sources: readonly ASKGAnswerSource[];
+  displayContext: ToolDisplayContext;
+  onOpenSource: (source: ASKGAnswerSource) => void;
   onRetry: () => void;
   onUpgrade: () => void;
   onRate: (rating: ASKGFeedbackRating) => void;
@@ -437,6 +473,16 @@ function TurnView({
   onShare: () => void;
 }) {
   const colors = useThemeColors();
+  // A citation opens its source; one that opens nothing stays the text it was.
+  const answer = useMemo(() => linkCitations(turn.answer, new Set(sources.flatMap((source) => (
+    source.ref !== null && source.target.kind === "pane" ? [source.ref] : []
+  )))), [sources, turn.answer]);
+  const openLink = useCallback((href: string) => {
+    const ref = sourceRefFromHref(href);
+    const source = ref === null ? undefined : sources.find((entry) => entry.ref === ref);
+    if (source) onOpenSource(source);
+  }, [onOpenSource, sources]);
+  const finished = turn.status === "complete" && turn.answer.trim().length > 0;
   return (
     <Box flexDirection="column" paddingTop={1}>
       <Prose
@@ -450,15 +496,27 @@ function TurnView({
       {turn.answer ? (
         <Box paddingTop={1}>
           <MarkdownText
-            text={turn.answer}
+            text={answer}
             lineWidth={width}
             catalog={catalog}
             textColor={colors.text}
             openTicker={openTicker}
+            onOpenLink={openLink}
+            readsLink={isSourceLink}
+            linkChips
           />
         </Box>
       ) : turn.status === "streaming" && turn.tools.length === 0 ? (
         <Box paddingTop={1}><Spinner label="Gloom is thinking…" /></Box>
+      ) : null}
+      {finished ? (
+        <AnswerSources
+          sources={sources}
+          readNothing={answerReadNothing(turn)}
+          width={width}
+          context={displayContext}
+          onOpen={onOpenSource}
+        />
       ) : null}
       {rateable ? (
         <AnswerFeedback
@@ -514,8 +572,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const activeSymbol = useAppSelector((state) => state.recentTickers[0] ?? null);
   const { pinTicker } = usePluginTickerActions();
-  const { createPaneFromTemplate, showPane, openCommandBar } = usePluginAppActions();
+  const { openCommandBar, notify } = usePluginAppActions();
   const dialog = useDialog();
+  const rendererHost = useRendererHost();
 
   const configRef = useRef(config);
   configRef.current = config;
@@ -1015,17 +1074,32 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     return afterLayout(() => revealInScrollBox(scrollRef.current, selectedRowNodeRef.current));
   }, [expandedToolCallId, feedbackFollowUpTurnId, openGroups, selectedId]);
 
-  const openPaneForTool = useCallback((row: ASKGToolRow) => {
-    const target = resolveToolPaneTarget(row.name);
-    if (!target) return;
-    if (target.templateId) {
-      createPaneFromTemplate(target.templateId, row.argumentSummary
-        ? { arg: row.argumentSummary.split(" · ")[0] }
-        : undefined);
-      return;
+  // Each read as the function, ticker and options that show its data. The
+  // functions can arrive after the pane (a plugin loading late), so the
+  // resolver is built again when they change.
+  const registry = getSharedRegistry() ?? null;
+  const functionCount = registry?.paneTemplates.size ?? 0;
+  const sourceResolver = useMemo(() => createSourceResolver(registry), [registry, functionCount]);
+
+  // A source is the pane share of the view it was read from, built here, and
+  // opens the way a share link does (chat's chips), in a pane of its own.
+  const openSourceTarget = useCallback(async (target: ASKGSourceTarget) => {
+    if (target.kind !== "pane") return;
+    const failed = (reason: string) => notify({ body: `Could not open ${formatSourceCommand(target.command)}: ${reason}`, type: "error" });
+    try {
+      const share = await buildASKGSourceShare(target.command, configRef.current);
+      openSharedPane(share.data, () => failed("panes cannot open from here."));
+    } catch (error) {
+      failed(error instanceof Error ? error.message : String(error));
     }
-    showPane(target.paneId);
-  }, [createPaneFromTemplate, showPane]);
+  }, [notify]);
+  const openSource = useCallback((source: ASKGAnswerSource) => {
+    void openSourceTarget(source.target);
+  }, [openSourceTarget]);
+
+  const openPaneForTool = useCallback((row: ASKGToolRow) => {
+    void openSourceTarget(sourceResolver.target(row));
+  }, [openSourceTarget, sourceResolver]);
 
   const openSymbol = useCallback((symbol: string) => {
     pinTicker(symbol, { floating: true });
@@ -1132,6 +1206,133 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       : null;
   }, [feedbackFollowUpTurnId, state]);
 
+  // What each answer cites, as the commands that show it.
+  const turnSources = useMemo(
+    () => state.turns.map((_turn, index) => answerSources(state.turns, index, sourceResolver)),
+    [sourceResolver, state.turns],
+  );
+  // The answer `o` and Copy Answer with Source Links act on, as `g` and `b`
+  // rate: the one the keyboard is on, else the newest, the one being read.
+  // Its sources count once it is finished and shows them.
+  const sourcesTurnIndex = useMemo(() => {
+    if (selectedId) {
+      const index = state.turns.findIndex((entry) => (
+        selectedId === answerStopId(entry.id)
+        || selectedId === toolGroupId(entry.id)
+        || entry.tools.some((row) => row.toolCallId === selectedId)
+      ));
+      if (index >= 0) return index;
+    }
+    return state.turns.length - 1;
+  }, [selectedId, state.turns]);
+  const openableSources = useMemo(() => {
+    const turn = state.turns[sourcesTurnIndex];
+    if (!turn || turn.status !== "complete") return [];
+    return (turnSources[sourcesTurnIndex] ?? []).filter((source) => source.target.kind === "pane");
+  }, [sourcesTurnIndex, state.turns, turnSources]);
+  const chooseAnswerSource = useCallback(async () => {
+    if (openableSources.length === 1) {
+      openSource(openableSources[0]!);
+      return;
+    }
+    if (openableSources.length === 0) return;
+    const picked = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: unknown) => (
+        <ChoiceDialog
+          {...(context as PromptContext<string>)}
+          title="Sources of the answer"
+          choices={openableSources.map((source, index) => ({
+            id: String(index),
+            label: answerSourceLabel(source, displayContext),
+            description: source.target.kind === "pane" ? source.target.label : undefined,
+          }))}
+        />
+      ),
+    }).catch(logFailure("cloud.askg.pane", "The answer sources prompt failed"));
+    const source = picked === undefined ? undefined : openableSources[Number(picked)];
+    if (source) openSource(source);
+  }, [dialog, displayContext, openSource, openableSources]);
+
+  // A source is a pane share held here; sharing the answer makes each one a
+  // link (`createShare`), so it opens for whoever reads it. Made once per
+  // source in this pane, by the words it opens, so copying again makes none anew.
+  const sourceLinksRef = useRef(new Map<string, string>());
+  const copyAnswerRef = useRef<() => void>(() => {});
+  // One copy at a time: a second press while links are being made would make them twice.
+  const copyingAnswerRef = useRef(false);
+  const copyAnswerWithSourceLinks = useCallback(async () => {
+    const turn = state.turns[sourcesTurnIndex];
+    const sources = turnSources[sourcesTurnIndex] ?? [];
+    if (!turn || openableSources.length === 0 || copyingAnswerRef.current) return;
+    if (!readyToShare(notify, () => copyAnswerRef.current(), "share an answer's sources")) return;
+    copyingAnswerRef.current = true;
+    const links = sourceLinksRef.current;
+    try {
+      const pending: Array<{ key: string; share: ASKGSourceShare | null }> = [];
+      let personal: PanePersonalData | null = null;
+      for (const source of sources) {
+        if (source.target.kind !== "pane") continue;
+        const key = formatSourceCommand(source.target.command);
+        if (links.has(key) || pending.some((entry) => entry.key === key)) continue;
+        const share = await buildASKGSourceShare(source.target.command, configRef.current).catch((error: unknown) => {
+          logFailure("cloud.askg.pane", "An answer source could not be shared")(error);
+          return null;
+        });
+        const declared = share?.data.version === 2
+          ? registry?.panes.get(share.data.layout.layout.instances[0]?.paneId ?? "")?.personalData
+          : undefined;
+        if (typeof declared === "string") personal ??= declared;
+        pending.push({ key, share });
+      }
+      if (personal && !await confirmDialog(dialog, {
+        title: "Copy public links?",
+        body: [personalDataNotice(personal), "Anyone with a link can open its pane with its settings."],
+        confirmLabel: "Copy links",
+        defaultAction: "cancel",
+      })) return;
+      // A source that cannot be shared leaves the rest linked; once the
+      // service says the share limit is reached, the rest are not tried.
+      let limited = false;
+      let failure: string | null = null;
+      for (const { key, share } of pending) {
+        if (!share || limited) continue;
+        try {
+          links.set(key, openLiveShareUrl((await createShare(share)).id));
+        } catch (error) {
+          limited = error instanceof ApiRequestError && error.status === 429;
+          failure ??= error instanceof Error && error.message ? error.message : "Could not share a source.";
+        }
+      }
+      const linkOf = (source: ASKGAnswerSource) => (
+        source.target.kind === "pane" ? links.get(formatSourceCommand(source.target.command)) ?? null : null
+      );
+      const text = answerWithSourceLinks(turn.answer, sources.map((source) => ({
+        label: answerSourceLabel(source, displayContext),
+        url: linkOf(source),
+      })));
+      await rendererHost.copyText(text);
+      const unlinked = openableSources.filter((source) => linkOf(source) === null);
+      if (unlinked.length === 0) {
+        notify({ body: "Answer copied, with a link to each source", type: "success" });
+      } else {
+        const names = unlinked.map((source) => (
+          source.ref !== null ? `[${source.ref}]` : source.target.kind === "pane" ? formatSourceCommand(source.target.command) : ""
+        ));
+        const reason = limited ? "the share limit is reached for now" : failure ?? "they could not be shared";
+        notify({
+          body: `Answer copied without a link for ${names.join(", ")}: ${reason}`,
+          type: unlinked.length === openableSources.length ? "error" : "info",
+        });
+      }
+    } catch (error) {
+      notify({ body: error instanceof Error && error.message ? error.message : "Could not copy this answer.", type: "error" });
+    } finally {
+      copyingAnswerRef.current = false;
+    }
+  }, [dialog, displayContext, notify, openableSources, registry, rendererHost, sourcesTurnIndex, state.turns, turnSources]);
+  copyAnswerRef.current = () => { void copyAnswerWithSourceLinks(); };
+
   // A second thumbs down on the same answer opens or closes its reasons, so
   // they are always one press away and never in the way. A thumbs down hands
   // the keyboard to the answer, so its reasons answer 1 to 4 straight away.
@@ -1180,7 +1381,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const resultActive = resultFocused && !!expandedRow && detailHeight > 0 && !inputFocused && !showSidebar;
   // `o` opens the pane of the result the rows belong to, else the selected row's.
   const paneRow = resultActive ? expandedRow : selectedRow;
-  const canOpenPane = !!paneRow && !!resolveToolPaneTarget(paneRow.name);
+  const canOpenPane = !!paneRow && sourceResolver.target(paneRow).kind === "pane";
   const expandTarget = resultActive ? expandedRow : selectedRow;
 
   const toggleResult = useCallback((row: ASKGToolRow) => {
@@ -1389,6 +1590,12 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       openPaneForTool(paneRow);
       return;
     }
+    // Off a call, `o` opens what the answer cites.
+    if (isPlainKey(event, "o") && !paneRow && openableSources.length > 0) {
+      consume();
+      void chooseAnswerSource();
+      return;
+    }
     if (isPlainKey(event, UNDO_KEY) && selectedRow && canUndo(selectedRow)) {
       consume();
       void controller.undo(selectedRow.toolCallId);
@@ -1468,6 +1675,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         });
       }
       if (paneRow && canOpenPane) list.push({ id: "open-pane", key: "o", label: "pen pane", onPress: () => openPaneForTool(paneRow) });
+      else if (!paneRow && openableSources.length > 0) {
+        const one = openableSources.length === 1;
+        list.push({
+          id: "open-source",
+          key: "o",
+          label: one ? "pen source" : "pen sources",
+          title: one ? "Open Source" : "Open a Source",
+          onPress: () => void chooseAnswerSource(),
+        });
+      }
       if (selectedRow && canUndo(selectedRow)) {
         list.push({ id: "undo", key: UNDO_KEY, label: " undo", title: "Undo", onPress: () => void controller.undo(selectedRow.toolCallId) });
       }
@@ -1500,6 +1717,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     answerPaneConsent,
     answerTickers.length,
     canOpenPane,
+    chooseAnswerSource,
     chooseAnswerTicker,
     chooseFeedbackReason,
     confirmation,
@@ -1517,6 +1735,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     newConversation,
     openGroups,
     openPaneForTool,
+    openableSources.length,
     paneConsentPending,
     paneRow,
     rateAnswer,
@@ -1558,14 +1777,26 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         : []),
     ],
     hints,
-    menu: state.turns.length === 0 && planAccess.emailVerified
-      ? examples.map((question, index): ContextMenuItem => ({
-        id: `example-${index}`,
-        label: `Ask: ${question}`,
-        onSelect: () => askAndCompose(question),
-      }))
-      : [],
-  }), [askAndCompose, confirmation, examples, hints, planAccess.emailVerified, quota, running, state]);
+    menu: !planAccess.emailVerified
+      ? []
+      : state.turns.length === 0
+        ? examples.map((question, index): ContextMenuItem => ({
+          id: `example-${index}`,
+          label: `Ask: ${question}`,
+          onSelect: () => askAndCompose(question),
+        }))
+        // The terminal cannot press a citation inside a line: the menu opens each.
+        : [
+          ...openableSources.map((source, index): ContextMenuItem => ({
+            id: `source-${index}`,
+            label: `Open ${answerSourceLabel(source, displayContext)}`,
+            onSelect: () => openSource(source),
+          })),
+          ...(openableSources.length > 0
+            ? [{ id: "copy-answer-sources", label: "Copy Answer with Source Links", onSelect: () => copyAnswerRef.current() }]
+            : []),
+        ],
+  }), [askAndCompose, confirmation, displayContext, examples, hints, openSource, openableSources, planAccess.emailVerified, quota, running, state]);
 
   if (!planAccess.emailVerified) {
     return (
@@ -1637,7 +1868,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             selectedIndex={inputFocused ? null : exampleIndex}
             onAsk={askAndCompose}
           />
-        ) : state.turns.map((turn) => (
+        ) : state.turns.map((turn, index) => (
           <TurnView
             key={turn.id}
             turn={turn}
@@ -1664,6 +1895,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
                 onUndo={(toolCallId) => void controller.undo(toolCallId)}
               />
             )}
+            sources={turnSources[index] ?? NO_SOURCES}
+            displayContext={displayContext}
+            onOpenSource={openSource}
             onRetry={() => retryAndCompose(turn.id)}
             onUpgrade={upgrade}
             // The controls keep their press from the column behind them, so
@@ -1702,7 +1936,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             width={nativePaneChrome ? bodyWidth : bodyWidth - 2}
             height={detailHeight - 1}
             focused={focused && resultActive}
-            canOpenPane={!!resolveToolPaneTarget(expandedRow.name)}
+            canOpenPane={sourceResolver.target(expandedRow).kind === "pane"}
             openPaneShortcut={paneRow?.toolCallId === expandedRow.toolCallId && canOpenPane ? "o" : undefined}
             onOpenSymbol={openSymbol}
             onOpenPane={() => openPaneForTool(expandedRow)}

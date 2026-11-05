@@ -1,11 +1,13 @@
-import { createElement, useState } from "react";
 import type { ChatAttachment } from "../../../../api-client";
-import { IconButton } from "../../../../components/ui";
+import {
+  DesktopPaneLinkChip,
+  IconButton,
+  TerminalPaneLinkChip,
+  type PaneLinkChipContent,
+} from "../../../../components/ui";
 import { tf } from "../../../../i18n";
-import { Box, Text, TextAttributes } from "../../../../ui";
-import { blendHex, colors } from "../../../../theme/colors";
-import { useThemeColors } from "../../../../theme/theme-context";
-import { formatInlinePreview } from "../layout";
+import { Box } from "../../../../ui";
+import { colors } from "../../../../theme/colors";
 import { wirePaneTarget, type ChatMessagePaneLink } from "../pane-links/model";
 import { chatPaneLinkPane, useSharePreview } from "../pane-links/previews";
 import type { ComposerShareLink } from "../pane-links/composer";
@@ -19,16 +21,8 @@ import { DESKTOP_DRAFT_STRIP_STYLE } from "../attachments/desktop";
  * and after the share is read, so the transcript never moves.
  */
 
-interface ChatPaneChipContent {
-  title: string;
-  /** The pane it opens, then anything the link itself says (a calendar's day). */
-  detail: string;
-  /** The opened pane's letter, where there is no picture. */
-  icon: string;
-}
-
 /** What a chip says, from the share or the post and nothing of the reader's own. */
-function useChatPaneChipContent(link: ChatMessagePaneLink): ChatPaneChipContent {
+function useChatPaneChipContent(link: ChatMessagePaneLink): PaneLinkChipContent {
   const shareId = link.kind === "share" ? link.id : "";
   const preview = useSharePreview(shareId);
   if (link.kind === "command") return { title: link.query, detail: link.name, icon: "" };
@@ -46,21 +40,14 @@ function useChatPaneChipContent(link: ChatMessagePaneLink): ChatPaneChipContent 
   return { title: pane?.name ?? target.name, detail: target.day ?? "", icon: pane?.icon ?? "" };
 }
 
-interface DomEventLike {
-  preventDefault(): void;
-  stopPropagation(): void;
+/** The hover text: a share's link, and what a function written in a message is called. */
+function chipTooltip(link: ChatMessagePaneLink): string | undefined {
+  return link.kind === "share" ? link.url : link.kind === "command" ? link.name : undefined;
 }
 
-/**
- * Each kind of chip keeps one height, known before anything loads: a share
- * with its picture, a share without one, and a Wire post's one-line chip.
- */
-const PICTURE_CHIP_HEIGHT = 74;
-const SHARE_CHIP_HEIGHT = 48;
-const COMPACT_CHIP_HEIGHT = 28;
-const THUMB = { width: 112, height: 64 };
-const ICON_SIZE = 38;
-const CHIP_MAX_WIDTH = 420;
+function chipLinkKey(link: ChatMessagePaneLink): string {
+  return link.kind === "share" ? `share:${link.id}` : link.kind === "command" ? `command:${link.query}` : link.link.kind;
+}
 
 export function DesktopChatPaneChip({
   link,
@@ -80,169 +67,21 @@ export function DesktopChatPaneChip({
   /** In the composer: the x at the chip's end that takes the link back out. */
   onRemove?: () => void;
 }) {
-  const themeColors = useThemeColors();
   const content = useChatPaneChipContent(link);
-  const [hovered, setHovered] = useState(false);
-  // A fresh copy of the message brings a fresh link, which gets its own try.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const compact = link.kind === "wire";
-  const height = compact ? COMPACT_CHIP_HEIGHT : preview ? PICTURE_CHIP_HEIGHT : SHARE_CHIP_HEIGHT;
-  const border = hovered ? themeColors.borderFocused : blendHex(themeColors.border, themeColors.bg, 0.35);
-  const surface = blendHex(themeColors.panel, themeColors.bg, hovered ? 0.2 : 0.5);
-  const label = [content.title, content.detail].filter(Boolean).join(", ");
-  const pressable = {
-    "aria-label": label || undefined,
-    // A share's link, and what a function written in a message is called.
-    title: link.kind === "share" ? link.url : link.kind === "command" ? link.name : undefined,
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => setHovered(false),
-    // A press on the chip is not a press on the row behind it.
-    onMouseDown: (event: DomEventLike) => event.stopPropagation(),
-    onClick: (event: DomEventLike) => {
-      event.stopPropagation();
-      onOpen(link);
-    },
-  };
-  const buttonReset = { cursor: "pointer", font: "inherit", color: "inherit", textAlign: "left" };
-  const dataAttributes = {
-    "data-gloom-role": "chat-pane-chip",
-    "data-gloom-pane-link": link.kind === "share" ? `share:${link.id}` : link.kind === "command" ? `command:${link.query}` : link.link.kind,
-  };
-  if (link.kind === "command") {
-    // The same frame at the height of the line of text it is written in: the
-    // kit's chip, 16px in an 18px row, as the ticker chips beside it.
-    return createElement("button", {
-      type: "button",
-      ...dataAttributes,
-      ...pressable,
-      style: {
-        ...buttonReset,
-        boxSizing: "border-box",
-        display: "inline-flex",
-        alignItems: "center",
-        height: "calc(100% - 2px)",
-        maxWidth: "100%",
-        padding: "0 var(--gloom-space-sm)",
-        border: `1px solid ${border}`,
-        borderRadius: "var(--gloom-radius-sm)",
-        background: surface,
-        opacity: dimmed ? 0.6 : 1,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "pre",
-        color: themeColors.textBright,
-        fontWeight: "var(--gloom-weight-bold)",
-      },
-    }, content.title);
-  }
-  const showPicture = !!preview && failedUrl !== preview.url;
-  const leadSize = compact ? 18 : ICON_SIZE;
-  const lead = showPicture
-    ? createElement("img", {
-      key: "picture",
-      src: preview!.url,
-      alt: "",
-      width: THUMB.width,
-      height: THUMB.height,
-      loading: "lazy",
-      decoding: "async",
-      draggable: false,
-      onError: () => {
-        setFailedUrl(preview!.url);
-        onPreviewError?.(preview!);
-      },
-      style: {
-        width: THUMB.width,
-        height: THUMB.height,
-        flex: "none",
-        objectFit: "cover",
-        objectPosition: "top left",
-        borderRadius: 3,
-        display: "block",
-        background: blendHex(themeColors.panel, themeColors.bg, 0.5),
-      },
-    })
-    : createElement("span", {
-      key: "icon",
-      "aria-hidden": true,
-      style: {
-        width: leadSize,
-        height: leadSize,
-        flex: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 3,
-        fontWeight: 600,
-        fontSize: compact ? "0.86em" : "1em",
-        color: themeColors.textBright,
-        background: blendHex(themeColors.panel, themeColors.text, 0.14),
-      },
-    }, content.icon);
-  const line = (text: string, tone: "title" | "detail") => createElement("span", {
-    key: tone,
-    style: {
-      display: "block",
-      minWidth: 0,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      color: tone === "title" ? themeColors.textBright : themeColors.textMuted,
-      fontWeight: tone === "title" ? 600 : 400,
-      fontSize: tone === "title" ? undefined : "0.92em",
-    },
-  }, text);
-  const text = compact
-    ? createElement("span", {
-      key: "text",
-      style: { display: "flex", flexDirection: "row", gap: 6, minWidth: 0, alignItems: "baseline" },
-    }, line(content.title, "title"), content.detail ? line(content.detail, "detail") : null)
-    : createElement("span", {
-      key: "text",
-      style: { display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, flex: "1 1 auto", gap: 1 },
-    }, line(content.title, "title"), line(content.detail, "detail"));
-  const frame = {
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: compact ? 6 : 8,
-    height,
-    width: compact ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
-    maxWidth: "100%",
-    flex: "none",
-    margin: "2px 0",
-    padding: compact ? "0 10px 0 5px" : "4px 10px 4px 4px",
-    border: `1px solid ${border}`,
-    borderRadius: 6,
-    background: surface,
-    opacity: dimmed ? 0.6 : 1,
-    overflow: "hidden",
-  };
-  if (!onRemove) {
-    return createElement("button", { type: "button", ...dataAttributes, ...pressable, style: { ...frame, ...buttonReset } }, lead, text);
-  }
-  // The same chip with its x inside the frame, where a waiting image keeps its own.
-  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4 } },
-    createElement("button", {
-      key: "open",
-      type: "button",
-      ...pressable,
-      style: {
-        ...buttonReset,
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: frame.gap,
-        flex: "1 1 auto",
-        minWidth: 0,
-        height: "100%",
-        padding: 0,
-        border: "none",
-        background: "transparent",
-      },
-    }, lead, text),
-    <IconButton key="remove" icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />);
+  return (
+    <DesktopPaneLinkChip
+      content={content}
+      variant={link.kind === "command" ? "inline" : link.kind === "wire" ? "line" : "card"}
+      picture={link.kind === "command" ? null : preview}
+      dimmed={dimmed}
+      onOpen={() => onOpen(link)}
+      onPictureError={preview ? () => onPreviewError?.(preview) : undefined}
+      onRemove={onRemove}
+      tooltip={chipTooltip(link)}
+      role="chat-pane-chip"
+      linkKey={chipLinkKey(link)}
+    />
+  );
 }
 
 /**
@@ -326,24 +165,13 @@ export function TerminalChatPaneChip({
   onOpen: (link: ChatMessagePaneLink) => void;
 }) {
   const content = useChatPaneChipContent(link);
-  const icon = content.icon ? ` ${content.icon} ` : " ";
-  const text = formatInlinePreview(
-    [content.title, content.detail].filter(Boolean).join(" · "),
-    Math.max(width - icon.length - 1, 1),
-  );
   return (
-    <Box
-      height={1}
-      flexDirection="row"
-      backgroundColor={blendHex(colors.panel, colors.text, 0.14)}
-      onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        onOpen(link);
-      }}
-    >
-      <Text fg={selected ? selectedTextColor : colors.textBright} attributes={TextAttributes.BOLD}>{icon}</Text>
-      <Text fg={selected ? selectedTextColor : colors.text}>{`${text} `}</Text>
-    </Box>
+    <TerminalPaneLinkChip
+      content={content}
+      width={width}
+      selected={selected}
+      selectedTextColor={selectedTextColor}
+      onOpen={() => onOpen(link)}
+    />
   );
 }

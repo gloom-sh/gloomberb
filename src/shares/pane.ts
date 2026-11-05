@@ -4,11 +4,12 @@ import {
 } from "./portable-layout";
 import type { PluginRegistry } from "../plugins/registry";
 import type { PaneInstanceConfig } from "../types/config";
+import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
 import { parseSharePayload, type PaneShareData, type SharePayload } from "./payload";
 
 export function buildPaneSharePayload(
-  pluginRegistry: PluginRegistry,
+  pluginRegistry: { panes: ReadonlyMap<string, PaneDef>; paneTemplates: ReadonlyMap<string, PaneTemplateDef> },
   pane: PaneInstanceConfig,
   paneState: Record<string, unknown> = {},
   resolvedTicker?: string | null,

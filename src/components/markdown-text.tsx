@@ -2,6 +2,7 @@ import { Box, Span, Text } from "../ui";
 import { useState } from "react";
 import { TextAttributes } from "../ui";
 import { InlineTickerBadge } from "./ticker/badge";
+import { PaneLinkMarker } from "./ui/pane-link-chip";
 import { tokenizeTickerText } from "../tickers/tokenizer";
 import type { InlineTickerCatalogEntry } from "../state/hooks/inline-tickers";
 import { colors } from "../theme/colors";
@@ -29,7 +30,21 @@ export interface MarkdownTextProps {
    * the text it was written as.
    */
   onOpenLink?: (href: string) => void;
+  /**
+   * With `onOpenLink`, only the links whose href this accepts are read as
+   * links (Ask Gloom's citations of its sources); every other one stays the
+   * text it was written as. Every link is read when unset.
+   */
+  readsLink?: (href: string) => boolean;
+  /**
+   * Links drawn as the lead square of a pane-link chip rather than as
+   * underlined text: Ask Gloom's numbered citations, each the square of the
+   * source chip it opens.
+   */
+  linkChips?: boolean;
 }
+
+type LinkReading = boolean | ((href: string) => boolean);
 
 /** A segment as drawn here: a heading or a table header has its own colour. */
 interface StyledSegment extends MarkdownSegment {
@@ -42,11 +57,11 @@ interface ParsedLine {
   indent?: number;
 }
 
-function parseInline(text: string, links = false): StyledSegment[] {
+function parseInline(text: string, links: LinkReading = false): StyledSegment[] {
   return parseInlineMarkdown(text, { links });
 }
 
-function parseLine(line: string, links: boolean): ParsedLine {
+function parseLine(line: string, links: LinkReading): ParsedLine {
   const headingMatch = line.match(MARKDOWN_HEADING_RE);
   if (headingMatch) {
     return {
@@ -346,7 +361,7 @@ function layoutTableRows(
   return lines;
 }
 
-function headerCell(text: string, links: boolean): StyledSegment[] {
+function headerCell(text: string, links: LinkReading): StyledSegment[] {
   return parseInline(text, links).map((segment) => ({ ...segment, bold: true, color: colors.textDim }));
 }
 
@@ -355,7 +370,7 @@ function headerCell(text: string, links: boolean): StyledSegment[] {
  * the columns gets one record per row instead: the first cell as a title, then
  * each other column as a labelled field.
  */
-function layoutMarkdownTable(table: MarkdownTable, lineWidth?: number, links = false): TableLine[] {
+function layoutMarkdownTable(table: MarkdownTable, lineWidth?: number, links: LinkReading = false): TableLine[] {
   const header = table.header.map((cell) => headerCell(cell, links));
   const body = table.rows.map((row) => row.map((cell) => parseInline(cell, links)));
   const align = table.header.map((_, column) => columnAlign(table, column));
@@ -413,12 +428,17 @@ function wrappedInlineTextStyle() {
 /** Desktop and web: the width of the box the text sits in, beside a list marker too. */
 const NATIVE_FILL = { width: "100%", flexShrink: 1, minWidth: 0 } as const;
 
-function SegmentSpan({ segment, wrap = false, onOpenLink }: {
+function SegmentSpan({ segment, wrap = false, onOpenLink, linkChips = false }: {
   segment: StyledSegment;
   wrap?: boolean;
   onOpenLink?: (href: string) => void;
+  linkChips?: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const chipHref = linkChips && onOpenLink ? segment.link : undefined;
+  if (chipHref) {
+    return <PaneLinkMarker label={segment.text} native={nativePaneChrome === true} onOpen={() => onOpenLink!(chipHref)} />;
+  }
   const wrapProps = wrap
     ? {
         wrapText: true,
@@ -483,6 +503,7 @@ function MarkdownLine({
   hoveredSymbol,
   onHover,
   onOpenLink,
+  linkChips,
 }: {
   parsed: ParsedLine;
   lineWidth?: number;
@@ -492,6 +513,7 @@ function MarkdownLine({
   hoveredSymbol: string | null;
   onHover: (symbol: string | null) => void;
   onOpenLink?: (href: string) => void;
+  linkChips?: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const parsed = nativePaneChrome ? readerLine(sourceLine) : sourceLine;
@@ -521,7 +543,7 @@ function MarkdownLine({
       <Text fg={textColor} {...textWrapProps}>
         {indentStr}
         {parsed.segments.map((segment, i) => (
-          <SegmentSpan key={i} segment={segment} wrap={shouldWrap} onOpenLink={onOpenLink} />
+          <SegmentSpan key={i} segment={segment} wrap={shouldWrap} onOpenLink={onOpenLink} linkChips={linkChips} />
         ))}
       </Text>
     );
@@ -545,7 +567,7 @@ function MarkdownLine({
                   ? { wrapText: true, wrapMode: "word", style: wrappedTextStyle() }
                   : {})}
               >
-                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} />
+                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} linkChips={linkChips} />
               </Text>
             );
           }
@@ -559,7 +581,7 @@ function MarkdownLine({
                   ? { wrapText: true, wrapMode: "word", style: wrappedTextStyle() }
                   : {})}
               >
-                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} />
+                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} linkChips={linkChips} />
               </Text>
             );
           }
@@ -587,11 +609,13 @@ export function MarkdownText({
   textColor = colors.text,
   openTicker = () => {},
   onOpenLink,
+  readsLink,
+  linkChips,
   paragraphGap,
   headingStyle,
 }: MarkdownTextProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const links = onOpenLink !== undefined;
+  const links: LinkReading = onOpenLink === undefined ? false : readsLink ?? true;
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const blocks = parseMarkdownBlocks(text);
 
@@ -605,7 +629,7 @@ export function MarkdownText({
               {layoutMarkdownTable(block.table, lineWidth, links).map((line, lineIndex) => (
                 <Text key={lineIndex} fg={textColor}>
                   {line.map((segment, segmentIndex) => (
-                    <SegmentSpan key={segmentIndex} segment={segment} onOpenLink={onOpenLink} />
+                    <SegmentSpan key={segmentIndex} segment={segment} onOpenLink={onOpenLink} linkChips={linkChips} />
                   ))}
                 </Text>
               ))}
@@ -633,6 +657,7 @@ export function MarkdownText({
             hoveredSymbol={hoveredSymbol}
             onHover={setHoveredSymbol}
             onOpenLink={onOpenLink}
+            linkChips={linkChips}
           />
         );
         // A line's height comes from --cell-h, in em of its own size.
