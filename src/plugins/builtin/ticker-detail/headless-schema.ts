@@ -99,12 +99,21 @@ export const paneSchemas = {
         defaultValue: "1h",
         pluginState: { pluginId: "ticker-research" },
       },
+      {
+        key: "view",
+        description: "Rendered pane view: the table of returns, or a chart of a bar per interval. The report lists the rows either way.",
+        type: "enum",
+        values: [{ value: "table" }, { value: "chart", aliases: ["bars"] }],
+        defaultValue: "table",
+        pluginState: { pluginId: "ticker-research" },
+      },
       ...WINDOW_OPTIONS,
     ],
     discovery: {
       id: "returns",
       aliases: ["returns", "interval returns", "cumulative return", "performance", "max drawdown"],
-      // A capture is read from the rendered table, as before the report existed.
+      // A capture is read from the rendered pane, as before the report existed:
+      // the table's rows, or the figures above the chart view.
       screenshotReadiness: "live-dom",
     },
   },

@@ -28,6 +28,17 @@ export const formatBpAxis = spanAxisFormatter((value, digits) => `${value.toFixe
 /** Percent values already in percent units: `4.25%`. */
 export const formatPercentAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`);
 
+/**
+ * Moves already in percent units, signed as a return reads: `+4%`, `0%`,
+ * `-0.25%`, and the cursor's `+5.31%`. Two decimals at most, trailing zeros
+ * dropped, so round ticks stay short.
+ */
+export function formatChangePercentAxis(value: number): string {
+  const fixed = value.toFixed(2).replace(/\.?0+$/, "");
+  if (!/[1-9]/.test(fixed)) return "0%";
+  return `${value > 0 ? "+" : ""}${fixed}%`;
+}
+
 const COMPACT_UNITS = [
   { divisor: 1e12, suffix: "T" },
   { divisor: 1e9, suffix: "B" },

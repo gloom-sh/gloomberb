@@ -97,10 +97,12 @@ export function useCompositeChartKeyboard({
   focused,
   interactive,
   navigable,
+  enterable,
   showLegend,
   scene,
   cursor,
   cursorDate,
+  restingCursor,
   updateCursor,
   pin,
   onActivate,
@@ -130,12 +132,16 @@ export function useCompositeChartKeyboard({
   focused: boolean;
   interactive: boolean;
   navigable: boolean;
+  /** Under a tab strip, moves into the chart for its cursor keys though it does not navigate. */
+  enterable: boolean;
   showLegend: boolean;
   /** The chart's scene, without its cursor. */
   scene: CompositeChartScene | null;
   /** Where the crosshair is, which moves without rendering the chart. */
   cursor: CompositeCursorSource | null;
   cursorDate: CompositeChartProps["cursorDate"];
+  /** `cursorDate` is where the chart's own cursor goes back to, as when the pointer leaves. */
+  restingCursor: boolean;
   updateCursor: (date: Date | null) => void;
   /** The tab's crosshair pin, when there is a cursor to pin or a pin to lift. */
   pin: { pinned: boolean; toggle: () => void } | null;
@@ -230,9 +236,10 @@ export function useCompositeChartKeyboard({
   // Under a tab strip, a chart you pan and draw on is one focus level down: the
   // strip keeps Left, Right, h and l until Down, Enter, a click or a tool moves
   // into the chart, and Esc or Up hands them back. A pane with no strip (G)
-  // leaves the chart its keys throughout.
+  // leaves the chart its keys throughout. A read-only chart stays at the
+  // strip's level unless it is enterable.
   const paneHasStrip = usePaneHasTabStrip();
-  const zoned = navigable && paneHasStrip;
+  const zoned = (navigable || enterable) && paneHasStrip;
   const inside = zoned && entered;
   usePaneArrowHold(focused && inside);
   // The next visit to the pane or the tab starts at the strip.
@@ -274,8 +281,10 @@ export function useCompositeChartKeyboard({
   const leaveChart = () => {
     setEntered(false);
     setLegendKeyboardIndex(null);
-    // Stepping out to the strip leaves a pinned crosshair where it is.
-    if (!clearableCursor() || pin?.pinned) return;
+    // Stepping out to the strip leaves a pinned crosshair where it is. A
+    // cursor that rests on the owner's bar goes back there, as when the
+    // pointer leaves.
+    if ((!clearableCursor() && !restingCursor) || pin?.pinned) return;
     keyboardCursorDateRef.current = null;
     updateCursor(null);
   };
@@ -604,7 +613,8 @@ export function useCompositeChartKeyboard({
       || (interaction === "delete-drawing" && !canDeleteDrawing)
       || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
       // A focused tab strip in the pane keeps the arrows until the user moves
-      // into a chart they pan and draw on; a read-only chart never takes them.
+      // into a chart they pan and draw on, or an enterable one; any other
+      // read-only chart never takes them.
       || ((interaction === "cursor-left" || interaction === "cursor-right") && (!scene || (arrowsClaimed && !inside)))
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"

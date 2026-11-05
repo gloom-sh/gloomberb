@@ -1250,6 +1250,8 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 **RETURN's clock.** In the `RETURN` pane an intraday bar's time is on its venue's clock, with the zone in the column header: `TIME ET` for New York, so the open reads 09:30, the venue's city for another zone (`TIME TOKYO`), and `TIME UTC` for a coin, a currency pair or a venue whose zone the app does not know. A daily or longer bar is a date. Under the query bar the pane sums its window up: the total return from the base close, and the best and worst interval with the bar each was. An export, `fn RETURN` and `--json` keep UTC.
 
+**RETURN's chart.** The `RETURN` pane's Chart tab draws the same window as a bar per interval from zero, rising bars in the theme's up colour and falling ones in its down colour, with the best and worst interval marked by a dashed line and their returns on the axis. The cursor rests on the newest bar (marked `DTD`, `WTD` or `MTD` while it is still forming); the pointer reads any other bar, and in the terminal Down or Enter moves into the chart so Left and Right step bar by bar, and Esc or Up hands the arrows back to the tabs. The pane remembers the tab, and `gloom shot RETURN AAPL --view chart` pictures it.
+
 ### A window of dates
 
 `gloom history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.

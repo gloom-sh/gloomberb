@@ -354,7 +354,7 @@ export function returnBaseCloseDay(
  * knows its sessions, so the open reads 09:30 and not 13:30; null for UTC, which
  * is where a coin, a currency pair or a venue with no known zone keeps its bars.
  */
-function returnClockZone(venue: string | undefined): string | null {
+export function returnClockZone(venue: string | undefined): string | null {
   if (!venue || isAlwaysOpenExchange(venue)) return null;
   return sessionCalendarTimeZone(venue);
 }

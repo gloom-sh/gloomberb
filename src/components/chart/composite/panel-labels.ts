@@ -77,7 +77,8 @@ export function resolveSeriesAxisTags(
       side: source.axis,
       value: cursor.value,
       label: (format ?? formatCompositeCursorValue)(cursor.value, domain),
-      color: source.color,
+      // A column below zero is drawn in its negative colour, and so is its tag.
+      color: cursor.value < 0 && source.negativeColor ? source.negativeColor : source.color,
       yRatio,
       carried: !!cursor.carried,
     }];
