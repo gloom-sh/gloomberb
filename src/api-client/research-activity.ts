@@ -28,7 +28,15 @@ export type ResearchActivity =
   | "onboarding_signed_in"
   | "onboarding_pro_viewed"
   | "onboarding_completed"
-  | "onboarding_skipped";
+  | "onboarding_skipped"
+  // Google One Tap on the hosted terminal: asked for, what Google reported, how it ended.
+  | "one_tap_prompted"
+  | "one_tap_shown"
+  | "one_tap_not_shown"
+  | "one_tap_skipped"
+  | "one_tap_dismissed"
+  | "one_tap_signed_in"
+  | "one_tap_failed";
 export type ResearchFeature =
   | "overview"
   | "chart"
@@ -54,6 +62,8 @@ const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const ANONYMOUS_ID = /^[a-f0-9-]{36}$/;
 /** The server accepts a tab id or an upgrade placement only in this shape. */
 const ACTIVITY_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A One Tap reason, such as Google's `opt_out_or_no_session`; the server's shape. */
+const ACTIVITY_REASON = /^[a-z][a-z0-9_]{0,39}$/;
 const CAMPAIGN_KEYS = [
   "utm_source",
   "utm_medium",
@@ -359,6 +369,8 @@ export interface ResearchActivityDetails {
   teaser_kind?: "summary" | "sample" | "none";
   /** The sign-in wall action, never the button copy. */
   cta?: "login" | "signup";
+  /** A One Tap event's reason: Google's notification reason or the terminal's own id. */
+  reason?: string;
 }
 
 /**
@@ -370,7 +382,7 @@ export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
   tab?: string,
-  { desks, placement: rawPlacement, teaser_kind, cta }: ResearchActivityDetails = {},
+  { desks, placement: rawPlacement, teaser_kind, cta, reason: rawReason }: ResearchActivityDetails = {},
 ): void {
   if (!researchTelemetryAllowed()) return;
   const target = getCurrentPluginTarget();
@@ -381,10 +393,11 @@ export function recordResearchActivity(
   if (!user && target !== "web" && target !== "desktop") return;
   // The server refuses the whole event over a malformed id, so one is dropped instead.
   const placement = rawPlacement && ACTIVITY_ID.test(rawPlacement) ? rawPlacement : undefined;
+  const reason = event.startsWith("one_tap_") && rawReason && ACTIVITY_REASON.test(rawReason) ? rawReason : undefined;
   if (wallEvent && !placement) return;
   if (event === "wall_cta_clicked" && cta !== "login" && cta !== "signup") return;
   const identity = user?.id ?? (wallEvent ? anonymousId : "guest");
-  const key = `${identity}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}${event === "wall_cta_clicked" ? `:${cta}` : ""}`;
+  const key = `${identity}:${event}:${feature ?? ""}:${tab ?? ""}:${placement ?? ""}${event === "wall_cta_clicked" ? `:${cta}` : ""}${reason ? `:${reason}` : ""}`;
   if (sent.has(key) || (wallEvent && wallSessionViews().has(key))) return;
   sent.add(key);
   if (event !== "workspace_opened") recordResearchActivity("workspace_opened");
@@ -401,6 +414,7 @@ export function recordResearchActivity(
       placement,
       ...(event === "wall_viewed" && teaser_kind ? { teaser_kind } : {}),
       ...(event === "wall_cta_clicked" ? { cta } : {}),
+      ...(reason ? { reason } : {}),
     })
     .then(() => {
       if (!wallEvent) return;

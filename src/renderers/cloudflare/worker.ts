@@ -94,20 +94,29 @@ type ApiFetch = (request: Request) => Promise<Response>;
 const proxySessions = createProxySessionGate({ sessionUrl: `${API_ORIGIN}/auth/get-session` });
 
 /**
+ * Google Identity Services, which draws Google One Tap for signed-out
+ * visitors: its script, the frame and requests it makes, and its stylesheet,
+ * each by the narrowest path Google documents. The script is only added to
+ * the page when the prompt is about to be asked for.
+ */
+const GOOGLE_IDENTITY = "https://accounts.google.com/gsi/";
+
+/**
  * What the page may fetch: itself (the API and the plugin proxy are both
- * same-origin), the app's own hosts, and the plugin hosts the browser calls
- * directly. Every other plugin host goes through the proxy.
+ * same-origin), the app's own hosts, Google sign-in, and the plugin hosts the
+ * browser calls directly. Every other plugin host goes through the proxy.
  */
 const CONNECT_SRC = [
   "'self'",
   "https://api.github.com",
   "https://plugins.gloom.sh",
   "https://gloom.sh",
+  GOOGLE_IDENTITY,
   ...WEB_DIRECT_HOSTS.map((host) => `https://${host}`),
 ].join(" ");
 
 export const SECURITY_HEADERS = {
-  "content-security-policy": `default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src ${CONNECT_SRC}; form-action 'self'; upgrade-insecure-requests`,
+  "content-security-policy": `default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self' ${GOOGLE_IDENTITY}client; frame-src 'self' ${GOOGLE_IDENTITY}; style-src 'self' 'unsafe-inline' ${GOOGLE_IDENTITY}style; img-src 'self' data: https:; media-src 'self' https:; connect-src ${CONNECT_SRC}; form-action 'self'; upgrade-insecure-requests`,
   "cross-origin-opener-policy": "same-origin",
   "cross-origin-resource-policy": "same-origin",
   "permissions-policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",

@@ -346,3 +346,36 @@ describe("upgrade intent placement", () => {
     ]);
   });
 });
+
+describe("One Tap reasons", () => {
+  const originalRecord = apiClient.recordResearchActivity;
+  afterEach(() => {
+    apiClient.recordResearchActivity = originalRecord;
+    apiClient.setSessionToken(null);
+    apiClient.restoreCachedUser(null);
+  });
+
+  test("carry Google's reason on One Tap events only, count each reason once, and drop one the server would refuse", async () => {
+    const sent: Array<{ event: string; reason?: string }> = [];
+    apiClient.recordResearchActivity = (async (payload) => {
+      sent.push({ event: payload.event, reason: payload.reason });
+    }) as typeof apiClient.recordResearchActivity;
+    apiClient.setSessionToken("one-tap-session");
+    apiClient.restoreCachedUser({ id: "one-tap-user", email: "o@example.com", emailVerified: true, plan: "free" });
+
+    recordResearchActivity("one_tap_dismissed", undefined, undefined, { reason: "cancel_called" });
+    // The prompt asked again after a dialog closed ends another way.
+    recordResearchActivity("one_tap_dismissed", undefined, undefined, { reason: "credential_returned" });
+    recordResearchActivity("one_tap_dismissed", undefined, undefined, { reason: "cancel_called" });
+    recordResearchActivity("one_tap_skipped", undefined, undefined, { reason: "Jane Doe" });
+    recordResearchActivity("research_viewed", "news", undefined, { reason: "tap_outside" });
+    await Promise.resolve();
+
+    expect(sent.filter((entry) => entry.event !== "workspace_opened")).toEqual([
+      { event: "one_tap_dismissed", reason: "cancel_called" },
+      { event: "one_tap_dismissed", reason: "credential_returned" },
+      { event: "one_tap_skipped", reason: undefined },
+      { event: "research_viewed", reason: undefined },
+    ]);
+  });
+});
