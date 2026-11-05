@@ -313,6 +313,67 @@ function Test-MainLaunchDiagnostics {
   }
 }
 
+# The empty portfolio the desktop check opens: flat bars down the window and a
+# few short lines of text, none on the rows a grid of samples 21 pixels apart
+# looked at. Its fills alone are a blank window; with the text it is not.
+function Test-ScreenshotContent {
+  param([string]$RootTestDir)
+  foreach ($Name in @("Get-ScreenshotStats", "Assert-ScreenshotHasContent")) {
+    $Definition = $Ast.Find({
+      param($Node)
+      $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq $Name
+    }, $false)
+    if (-not $Definition) { throw "Missing production function: $Name" }
+    Invoke-Expression $Definition.Extent.Text
+  }
+  Add-Type -AssemblyName System.Drawing
+  New-Item -ItemType Directory -Force $RootTestDir | Out-Null
+
+  foreach ($WithText in @($false, $true)) {
+    $Path = Join-Path $RootTestDir "window-text-$WithText.png"
+    $Bitmap = New-Object System.Drawing.Bitmap 944, 672
+    try {
+      $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
+      try {
+        # Border, title bar, tabs and their underline, header, body, input row, actions, status bar.
+        $Bands = @(
+          @(0, 1, 78, 78, 78), @(1, 28, 0, 68, 170), @(28, 47, 56, 30, 0), @(47, 48, 255, 140, 0), @(48, 68, 10, 10, 20),
+          @(68, 614, 0, 0, 0), @(614, 634, 23, 13, 0), @(634, 654, 15, 8, 0), @(654, 672, 10, 10, 20)
+        )
+        foreach ($Band in $Bands) {
+          $Brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, $Band[2], $Band[3], $Band[4]))
+          try { $Graphics.FillRectangle($Brush, 0, $Band[0], 944, $Band[1] - $Band[0]) } finally { $Brush.Dispose() }
+        }
+      } finally {
+        $Graphics.Dispose()
+      }
+      if ($WithText) {
+        # A line of amber text in its anti-aliased shades, between the rows at 84 and 105.
+        for ($Y = 89; $Y -le 100; $Y += 1) {
+          for ($X = 8; $X -lt 88; $X += 1) {
+            if (($X + $Y) % 3 -eq 0) {
+              $Shade = $X % 40
+              $Bitmap.SetPixel($X, $Y, [System.Drawing.Color]::FromArgb(255, 60 + $Shade * 4, 40 + $Shade * 3, 0))
+            }
+          }
+        }
+      }
+      $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+      $Bitmap.Dispose()
+    }
+
+    $Failure = $null
+    try { Assert-ScreenshotHasContent $Path "Test window" } catch { $Failure = $_.Exception.Message }
+    if ($WithText) {
+      Assert-Condition ($null -eq $Failure) "A window with text between the old sample rows read as blank: $Failure"
+    } else {
+      Assert-Condition ($Failure -like "Test window screenshot appears blank:*") "A window of flat fills passed as content"
+    }
+  }
+  Write-Host "PASS screenshot content: flat fills are blank, sparse text is content"
+}
+
 $TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\desktop-verify\diagnostics-$([Guid]::NewGuid())"
 $SmokeRoot = $TestDir
 $InitialGloomberbHome = $env:GLOOMBERB_HOME
@@ -360,6 +421,7 @@ try {
   }
   Test-PartialWindowDiscovery
   Test-MainLaunchDiagnostics $TestDir
+  Test-ScreenshotContent (Join-Path $TestDir "screenshot-content")
 } finally {
   Restore-EnvironmentVariable "GLOOMBERB_HOME" $InitialGloomberbHome
   Restore-EnvironmentVariable "ELECTROBUN_CONSOLE" $InitialConsole
