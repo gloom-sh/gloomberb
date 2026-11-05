@@ -22,7 +22,8 @@ export function boundsForRects(rects: GridlockRect[]): LayoutBounds {
   };
 }
 
-function buildGridDockTree(instanceIds: string[], depth = 0): DockLayoutNode | null {
+/** `instanceIds` in reading order as a grid of tiles, halved side by side, then one above the other, and so on. */
+export function buildGridDockTree(instanceIds: string[], depth = 0): DockLayoutNode | null {
   if (instanceIds.length === 0) return null;
   if (instanceIds.length === 1) return { kind: "pane", instanceId: instanceIds[0]! };
   const splitIndex = Math.ceil(instanceIds.length / 2);

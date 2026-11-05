@@ -225,6 +225,12 @@ describe("pane-manager split-tree drops", () => {
     const short = { x: 0, y: 0, width: 52, height: 20 };
     expect(getDockLeafLayouts(gridlockAllPanes(layout, short), short).map((leaf) => leaf.stack)).toEqual([ids]);
     expect(getDockLeafLayouts(gridlockAllPanes(layout, BOUNDS), BOUNDS)).toHaveLength(8);
+    // Tidied again once the terminal is wide, either column is a grid of every pane, in reading order, not two stacks.
+    for (const column of [gridlockAllPanes(layout, narrow), gridlockAllPanes(layout, short)]) {
+      const wide = getDockLeafLayouts(gridlockAllPanes(column, BOUNDS), BOUNDS);
+      expect(wide.map((leaf) => [leaf.instanceId, leaf.stack ?? null])).toEqual(ids.map((id) => [id, null]));
+      expect(new Set(wide.map((leaf) => leaf.rect.y)).size).toBe(2);
+    }
   });
 
   test("gridlock infers a matching tiled layout from arranged windows", () => {

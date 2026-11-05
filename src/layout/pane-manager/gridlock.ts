@@ -1,8 +1,9 @@
 import type { DockLayoutNode, FloatingPaneEntry, LayoutConfig } from "../../types/config";
-import { buildDockStack } from "./dock-stack";
+import { buildDockStack, isDockStack } from "./dock-stack";
 import type { AppNotificationRequest } from "../../types/plugin";
 import {
   boundsForRects,
+  buildGridDockTree,
   inferDockTreeFromRects,
   type GridlockRect,
 } from "./gridlock-inference";
@@ -126,6 +127,21 @@ function narrowDockTree(rects: readonly GridlockRect[], stacks: ReadonlyMap<stri
   };
 }
 
+/**
+ * The one column a narrow terminal's Tidy leaves (`narrowDockTree`): one
+ * stack, or a stack above another or above a pane, with nothing floating.
+ * Tidied on a wider terminal, its panes are tiled in a grid again rather
+ * than kept as the two stacks the narrow one needed.
+ */
+function isNarrowTidyColumn(layout: LayoutConfig): boolean {
+  const root = layout.dockRoot;
+  if (!root || layout.floating.length > 0) return false;
+  if (isDockStack(root)) return true;
+  const stackOrPane = (node: DockLayoutNode) => isDockStack(node) || node.kind === "pane";
+  return root.kind === "split" && root.axis === "vertical"
+    && stackOrPane(root.first) && stackOrPane(root.second) && (isDockStack(root.first) || isDockStack(root.second));
+}
+
 export function gridlockAllPanes(
   layout: LayoutConfig,
   bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
@@ -148,11 +164,13 @@ export function gridlockAllPanes(
   const allRects = [...dockedRects, ...floatingRects];
   if (allRects.length === 0) return visibleLayout;
 
+  // Decided by the width each time: a column a narrow Tidy left is a grid again on a wider terminal.
+  const wideDockTree = () => isNarrowTidyColumn(visibleLayout)
+    ? buildGridDockTree(dockedRects.flatMap((rect) => stacks.get(rect.instanceId) ?? [rect.instanceId]))
+    : withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks);
   return finalizeLayout({
     ...visibleLayout,
-    dockRoot: bounds.width < NARROW_TIDY_WIDTH
-      ? narrowDockTree(allRects, stacks, bounds.height)
-      : withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks),
+    dockRoot: bounds.width < NARROW_TIDY_WIDTH ? narrowDockTree(allRects, stacks, bounds.height) : wideDockTree(),
     floating: [],
   });
 }
