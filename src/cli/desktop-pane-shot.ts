@@ -217,6 +217,15 @@ const SHOT_MODE_CSS = [
 const SHOT_READY_TIMEOUT_MS = 45_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
 
+/**
+ * Starts building the capture's page while its data is read: the build is
+ * the same for every capture, and `renderDesktopPaneScreenshot` waits on it.
+ * A build that fails is retried there, and reported.
+ */
+export function prepareDesktopPaneShotView(): void {
+  loadShotView().catch(() => { /* Intentional ignore: the render loads the view again and reports its failure. */ });
+}
+
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
   outputPath: string,

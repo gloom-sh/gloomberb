@@ -7,6 +7,7 @@ import { createSnapshotScannerClient, ScannerClientContext } from "../../../plug
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
+import { changedThePage, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
 import { decodeRpcValue } from "../shared/rpc-codec";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
@@ -335,15 +336,10 @@ function waitForShotReadiness(): () => void {
   let mutationVersion = 0;
   let lastSeenMutationVersion = 0;
   let stableFrames = 0;
-  const observer = new MutationObserver(() => {
-    mutationVersion += 1;
+  const observer = new MutationObserver((records) => {
+    if (changedThePage(records)) mutationVersion += 1;
   });
-  observer.observe(document.body, {
-    attributes: true,
-    childList: true,
-    characterData: true,
-    subtree: true,
-  });
+  observer.observe(document.body, SHOT_MUTATION_OPTIONS);
 
   const check = () => {
     if (cancelled || window.__GLOOM_CLI_SHOT_READY__) return;

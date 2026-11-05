@@ -15,6 +15,7 @@ import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
+import { mapWithConcurrency } from "../../utils/concurrency";
 import { requireThemeId } from "../commands/themes";
 import type { DesktopPaneShotIntradayHistory, DesktopPaneShotPayload } from "../desktop-pane-shot";
 import { optionPaneState, SHOT_SIZE_LIMITS, type ShotSizeClamp } from "./options";
@@ -152,6 +153,19 @@ function givenOptionKeys(capability: ResolvedPaneFunction["capability"], options
   return new Set(Object.keys(options).flatMap((key) => findCapabilityOption(capability, key)?.key ?? []));
 }
 
+/** Rows read at once for a list's capture. */
+const SHOT_SYMBOL_CONCURRENCY = 6;
+
+/** What one row of a capture adds to its payload. */
+interface ShotSymbolCapture {
+  ticker: TickerRecord;
+  financials?: [string, TickerFinancials];
+  /** The row's read failed: it shows without figures, and the capture names it. */
+  unread?: string;
+  tape?: TapeCapture;
+  chain?: [string, OptionsChain];
+}
+
 export async function buildDesktopShotPayload(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -247,74 +261,29 @@ export async function buildDesktopShotPayload(
     collectShotStatSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
-  let chartModel: ChartPaneModel | undefined;
-  const evidenceHook = paneScreenshotEvidenceHook(resolved);
-  if (evidenceHook?.prepare) {
-    const prepared = await evidenceHook.prepare({ resolved, context, settings: shotInstance.settings ?? {}, loadModel });
-    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, ...prepared.settings } };
-    for (const [symbol, data] of prepared.financials ?? []) {
-      financials.push([symbol, data]);
-      tickers.push(await createFallbackTicker(symbol, data, context));
-    }
-  } else if (resolved.pane.id === "analytics") {
-    const loaded = await loadModel();
-    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, analyticsView: "risk", riskSnapshot: loaded.result.metadata?.model ?? null } };
-  } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
-    const loaded = await loadModel();
-    chartModel = loaded.result as ChartPaneModel;
-    // Charts keep failed series as rows in their model. A lone name with no
-    // listing must fail the command before that empty chart is rendered.
-    if (collectShotSymbols(resolved, rawArg).length === 1 && chartModel.series.every((series) => series.points.length === 0)) {
-      const unknown = chartModel.chart.series.find((series) => isNotATickerMessage(series.warning))?.warning;
-      if (unknown) throw new Error(unknown);
-    }
-    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
-    const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
-    const captured = new Map(chartModel.snapshot.financials);
-    instrumentFinancials = chartModel.snapshot.instrumentFinancials;
-    historyVariants = chartModel.snapshot.historyVariants;
-    const identities = new Map(chartModel.spec.series.flatMap((series) => {
-      if (series.source.kind !== "security") return [];
-      const key = publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange);
-      const original = authored?.series.find(({ id }) => id === series.id)?.source;
-      const label = original?.kind === "security" ? publicTickerKey(original.instrument.symbol, original.instrument.exchange) : key;
-      return [[snapshotInstrumentKey(series.source.instrument), { key, label, target: series.source.instrument }] as const];
-    }));
-    for (const [identity, { key, label, target }] of identities) {
-      const data = (target.instrument ? instrumentFinancials?.find(entry => snapshotInstrumentKey(entry.instrument) === identity)?.financials : captured.get(key))
-        ?? { annualStatements: [], quarterlyStatements: [], priceHistory: [] };
-      if (!target.instrument) financials.push([label, data]);
-      const { symbol } = parsePublicTickerKey(key);
-      const ticker = await context.store.loadTicker(key) ?? await context.store.loadTicker(symbol);
-      tickers.push(ticker ?? await createFallbackTicker(key, data, context));
-    }
-    intradayHistories.push(...chartModel.snapshot.intradayHistories.map((history) => ({
-      ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
-    })));
-  } else for (const symbol of await collectShotSymbolsWithCollections(resolved, context, rawArg)) {
+  /** One row's data, or null for an argument the report reads as words rather than a ticker. */
+  const captureShotSymbol = async (symbol: string): Promise<ShotSymbolCapture | null> => {
     let entry: Awaited<ReturnType<typeof fetchTickerFinancials>>;
     try {
       entry = await fetchTickerFinancials(context, symbol);
     } catch (error) {
       // A report that reads its own argument (CDS's issuer name) renders it with no ticker data, as `fn` does.
-      if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) continue;
+      if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) return null;
       if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) throw error;
       // The pane values a holding no quote covers, such as an option contract,
       // at the broker's mark. It has no financials to capture.
       const holding = await loadBrokerMarkedHolding(context, symbol);
-      if (holding) {
-        tickers.push(holding);
-        continue;
-      }
+      if (holding) return { ticker: holding };
       // Any other row whose read failed (an over-the-counter name no source
       // carries, a read refused or timed out) is still a row of the list: it
       // shows without a price, and the capture names it rather than failing.
       const stored = await loadStoredShotTicker(context, symbol);
       if (!stored) throw error;
-      tickers.push(stored);
-      financials.push([symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]);
-      if (!isNoSourceAnswer(error)) unreadRows.push(symbol);
-      continue;
+      return {
+        ticker: stored,
+        financials: [symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }],
+        ...(!isNoSourceAnswer(error) ? { unread: symbol } : {}),
+      };
     }
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
@@ -362,10 +331,12 @@ export async function buildDesktopShotPayload(
       // letting the pane fetch them.
       data = await withShotPriceHistory(context, symbol, entry.tickerFile, data);
     }
-    tickers.push(entry.tickerFile ?? await createFallbackTicker(symbol, data, context));
-    financials.push([symbol, data]);
+    const capture: ShotSymbolCapture = {
+      ticker: entry.tickerFile ?? await createFallbackTicker(symbol, data, context),
+      financials: [symbol, data],
+    };
     if (resolved.pane.id === "time-sales") {
-      tapeSnapshots.push([entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)]);
+      capture.tape = [entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)];
     }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.
@@ -374,7 +345,71 @@ export async function buildDesktopShotPayload(
         if (isOptionsUnavailableError(error)) return null;
         throw error;
       });
-      if (chain) optionsChains.push([symbol, chain]);
+      if (chain) capture.chain = [symbol, chain];
+    }
+    return capture;
+  };
+  let chartModel: ChartPaneModel | undefined;
+  const evidenceHook = paneScreenshotEvidenceHook(resolved);
+  if (evidenceHook?.prepare) {
+    const prepared = await evidenceHook.prepare({ resolved, context, settings: shotInstance.settings ?? {}, loadModel });
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, ...prepared.settings } };
+    for (const [symbol, data] of prepared.financials ?? []) {
+      financials.push([symbol, data]);
+      tickers.push(await createFallbackTicker(symbol, data, context));
+    }
+  } else if (resolved.pane.id === "analytics") {
+    const loaded = await loadModel();
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, analyticsView: "risk", riskSnapshot: loaded.result.metadata?.model ?? null } };
+  } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
+    const loaded = await loadModel();
+    chartModel = loaded.result as ChartPaneModel;
+    // Charts keep failed series as rows in their model. A lone name with no
+    // listing must fail the command before that empty chart is rendered.
+    if (collectShotSymbols(resolved, rawArg).length === 1 && chartModel.series.every((series) => series.points.length === 0)) {
+      const unknown = chartModel.chart.series.find((series) => isNotATickerMessage(series.warning))?.warning;
+      if (unknown) throw new Error(unknown);
+    }
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
+    const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
+    const captured = new Map(chartModel.snapshot.financials);
+    instrumentFinancials = chartModel.snapshot.instrumentFinancials;
+    historyVariants = chartModel.snapshot.historyVariants;
+    const identities = new Map(chartModel.spec.series.flatMap((series) => {
+      if (series.source.kind !== "security") return [];
+      const key = publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange);
+      const original = authored?.series.find(({ id }) => id === series.id)?.source;
+      const label = original?.kind === "security" ? publicTickerKey(original.instrument.symbol, original.instrument.exchange) : key;
+      return [[snapshotInstrumentKey(series.source.instrument), { key, label, target: series.source.instrument }] as const];
+    }));
+    for (const [identity, { key, label, target }] of identities) {
+      const data = (target.instrument ? instrumentFinancials?.find(entry => snapshotInstrumentKey(entry.instrument) === identity)?.financials : captured.get(key))
+        ?? { annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+      if (!target.instrument) financials.push([label, data]);
+      const { symbol } = parsePublicTickerKey(key);
+      const ticker = await context.store.loadTicker(key) ?? await context.store.loadTicker(symbol);
+      tickers.push(ticker ?? await createFallbackTicker(key, data, context));
+    }
+    intradayHistories.push(...chartModel.snapshot.intradayHistories.map((history) => ({
+      ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
+    })));
+  } else {
+    // Each row is read at once, a few at a time, and kept in the list's order;
+    // the first row in that order whose read fails the capture fails it.
+    const captures = await mapWithConcurrency(
+      await collectShotSymbolsWithCollections(resolved, context, rawArg),
+      SHOT_SYMBOL_CONCURRENCY,
+      (symbol) => captureShotSymbol(symbol).then((capture) => ({ capture }), (error: unknown) => ({ error })),
+    );
+    for (const result of captures) {
+      if ("error" in result) throw result.error;
+      const { capture } = result;
+      if (!capture) continue;
+      tickers.push(capture.ticker);
+      if (capture.financials) financials.push(capture.financials);
+      if (capture.unread) unreadRows.push(capture.unread);
+      if (capture.tape) tapeSnapshots.push(capture.tape);
+      if (capture.chain) optionsChains.push(capture.chain);
     }
   }
   // A scanner pane reads one answer from the capture's own session: the page's socket is refused (see createSnapshotScannerClient).

@@ -5,6 +5,7 @@ import { createOutputFolder } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
 import {
+  prepareDesktopPaneShotView,
   renderDesktopPaneScreenshot,
   type DesktopPaneShotBridge,
   type DesktopPaneShotPayload,
@@ -251,6 +252,7 @@ export async function renderDesktopShot({
    */
   onStalledReport?: () => void;
 }): Promise<PaneScreenshotResult> {
+  prepareDesktopPaneShotView();
   if (captureImage) await createOutputFolder(outputPath);
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
