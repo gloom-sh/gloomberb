@@ -304,7 +304,7 @@ describe("history rows", () => {
       { date: new Date("2000-10-01"), open: 190, high: 192, low: 180, close: 191, volume: 3_851 },
     ], "1mo", "USX", "US cents / bushel");
     expect(monthly[1]).toMatchObject({ open: null, high: null, low: null, close: 192, volume: 145, flag: "high<close" });
-    // October's daily bars leave no week out: rebuilt. September's stop on the 12th: left blank.
+    // Daily bars through the 29th leave no week of September out: rebuilt. Bars that stop on the 12th: left blank.
     const daily = (from: string, to: string) => series(from, to, DAY).map((point, index) => ({ ...point, open: 185 + index, high: 195 + index, low: 180, close: 190 }));
     const rebuilt = withDailyRebuiltBars(monthly, [...daily("2000-09-01", "2000-09-29")]);
     expect(rebuilt[1]).toMatchObject({ open: 185, high: 223, low: 180, close: 192, rebuilt: "daily bars" });
