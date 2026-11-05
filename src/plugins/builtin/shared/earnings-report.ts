@@ -29,7 +29,7 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
 export type EpsBasisName = "GAAP" | "adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "One reported EPS per quarter. GAAP: the quarter's diluted statement EPS. adjusted: the consensus-basis figure the estimate is measured against, which leaves out items the statements include. unknown: no statement on a comparable share basis to tell. An upcoming report's estimate is labelled adjusted when it is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast.";
+export const EPS_BASIS_NOTE = "One reported EPS per quarter. GAAP: the quarter's diluted statement EPS. adjusted: the consensus-basis figure the estimate is measured against, which leaves out items the statements include. unknown: no statement on a comparable share basis to tell. An upcoming report's estimate is labelled with the basis every quarter of the past year that the statements label (at least two) was measured on, and adjusted when it is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast; a company that changed basis has none.";
 
 /** The basis as rows, exports and tools name it. */
 export function epsBasisName(basis: EarningsEpsBasis | null): EpsBasisName {

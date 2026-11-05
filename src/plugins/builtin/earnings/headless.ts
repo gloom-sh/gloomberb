@@ -15,6 +15,7 @@ import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
+import { fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
 import { isUsListingExchange } from "../../../utils/exchanges";
@@ -52,6 +53,12 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
 ];
 
+/** What an ERN <ticker> report's quarter is, in its metadata. */
+const FISCAL_QUARTER_NOTE = "fiscalQuarter is the quarter as the company names it (Q3 FY2027), from its earnings calls on record; fiscalPeriod is the month the quarter ended. A company whose calls do not name its quarters has fiscalQuarter null.";
+
+/** When an upcoming report has an implied move, in an ERN <ticker> report's metadata. */
+const IMPLIED_NOTE = "An upcoming report's implied move is read from its options' prices from 8 days before the report, for companies worth $2 billion or more. Before then, or for a smaller company, impliedMove is null: it is never estimated.";
+
 /** Where the board's caps come from and how old they can be, in its metadata. */
 const MARKET_CAP_NOTE = "Each company's market cap as RV shows it: its latest financials snapshot at the regular session's price (the close outside the session), from the newest quote Gloom Cloud holds for it. A company with no snapshot shows the earnings calendar's figure.";
 
@@ -59,7 +66,8 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
-  { key: "fiscalPeriod", header: "Quarter" },
+  // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
+  { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : "-" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
@@ -235,6 +243,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     timing: row.timing ? TIMING_LABEL[row.timing] : null,
     timingExpected: row.expectedTiming,
     fiscalPeriod: row.fiscalPeriod,
+    fiscalQuarter: fiscalQuarterText(row.fiscalQuarter),
     epsEstimate: row.epsEstimate,
     epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
@@ -261,6 +270,8 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
       symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,
       epsBasis: EPS_BASIS_NOTE,
       provisional: PROVISIONAL_NOTE,
+      fiscalQuarter: FISCAL_QUARTER_NOTE,
+      impliedMove: IMPLIED_NOTE,
       ...(notice ? { notices: [notice] } : {}),
     },
   };

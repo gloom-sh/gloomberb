@@ -79,12 +79,27 @@ interface EarningsHistoryReport extends EarningsReport {
   revenueActual: number | null;
   /** `press-release` until the statements have the quarter; absent from older servers. */
   revenueActualSource?: "statements" | "press-release" | null;
+  /** The fiscal quarter as the company names it, null when its calls do not say; absent from older servers. */
+  fiscalYear?: number | null;
+  fiscalQuarter?: number | null;
+}
+
+/** One report whose fiscal quarter the company's calls name: every other quarter steps from it. */
+export interface EarningsFiscalAnchor {
+  /** The quarter's end month, YYYY-MM. */
+  fiscalPeriod: string;
+  fiscalYear: number;
+  fiscalQuarter: number;
 }
 
 export interface EarningsHistoryPayload {
   asOf: string;
   symbol: string;
   name: string | null;
+  /** Null when the company's calls do not name its quarters; absent from older servers. */
+  fiscalAnchor?: EarningsFiscalAnchor | null;
+  /** The basis the company's next consensus is on, from its past year's reports; null when they do not agree. Absent from older servers. */
+  consensusBasis?: EarningsEpsBasis | null;
   /** Newest first; an upcoming report leads. */
   reports: EarningsHistoryReport[];
 }

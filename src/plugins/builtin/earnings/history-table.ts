@@ -5,6 +5,7 @@ import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, fiscalMonth, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { HistoryRow } from "./history-model";
+import { fiscalQuarterText } from "./fiscal-quarter";
 
 type HistoryColumnId =
   | "date" | "when" | "period" | "epsEstimate" | "analysts" | "epsActual" | "basis" | "epsSurprise"
@@ -73,7 +74,7 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "when":
       return { text: row.timing ? TIMING_LABEL[row.timing] : "--", color: row.expectedTiming ? colors.textMuted : dim };
     case "period":
-      return { text: fiscalMonth(row.fiscalPeriod), color: dim };
+      return { text: fiscalQuarterText(row.fiscalQuarter, true) ?? fiscalMonth(row.fiscalPeriod), color: dim };
     case "epsEstimate":
       return { text: epsText(row.epsEstimate), color: dim };
     case "analysts":
