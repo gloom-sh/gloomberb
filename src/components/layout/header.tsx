@@ -29,6 +29,7 @@ import { useViewport } from "../../react/input";
 import { canRetryUpdate } from "../../updater";
 import { updateFailureReason } from "../../updater/failure";
 import { t, tf } from "../../i18n";
+import { ariaKeyShortcut } from "../../app/keybindings/chord";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { ClippedText, NATIVE_CLIP_STYLE } from "../ui/display";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
@@ -68,7 +69,7 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
   const textSpace = Math.max(0, width - 2 - "> ".length);
   const full = t("Search or run a command");
   const short = t("Search");
-  if (textSpace >= full.length + shortcutLabel.length + 2) return { placeholder: full, shortcut: shortcutLabel };
+  if (textSpace >= full.length + displayWidth(shortcutLabel) + 2) return { placeholder: full, shortcut: shortcutLabel };
   if (textSpace >= full.length) return { placeholder: full, shortcut: "" };
   if (textSpace >= short.length) return { placeholder: short, shortcut: "" };
   return { placeholder: "", shortcut: "" };
@@ -262,7 +263,7 @@ function HeaderCommandPrompt({
       role={open ? undefined : "button"}
       tabIndex={open ? undefined : 0}
       aria-label={t("Search or run a command")}
-      aria-keyshortcuts={shortcutLabel}
+      aria-keyshortcuts={ariaKeyShortcut(shortcutLabel)}
       onMouseDown={open ? undefined : onOpen}
       onKeyDown={open ? undefined : (event: HeaderActionEvent) => {
         if (event.key === "Enter" || event.key === " ") onOpen(event);

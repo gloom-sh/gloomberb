@@ -11,10 +11,8 @@ import { isPaneLocked, setPaneLocked } from "../../../pane-settings";
 import { contextMenuDivider, type ContextMenuItem } from "../../../types/context-menu";
 import { pluginContextMenuSlot } from "../../../ui/context-menu";
 import { paneHintTitle, type CombinedPaneFooter } from "../pane/footer/model";
-import {
-  formatPlatformShortcutLabel,
-  type ShortcutDisplayMode,
-} from "../../../utils/shortcut-labels";
+import type { ShortcutDisplayMode } from "../../../utils/shortcut-labels";
+import { formatShortcutForHost } from "../../../app/keybindings";
 import { PANE_MANAGEMENT_ACCELERATORS, type PaneManagementAccelerators } from "./shortcuts";
 import { t, tf } from "../../../i18n";
 import { displayWidth } from "../../../utils/format";
@@ -293,7 +291,7 @@ export function menuItemsForFallback(
       label: item.label,
       checked: item.checked,
       accelerator: item.accelerator
-        ? formatPlatformShortcutLabel(item.accelerator, undefined, shortcutDisplayMode)
+        ? formatShortcutForHost(item.accelerator, shortcutDisplayMode)
         : undefined,
       action: () => { void item.onSelect?.(); },
     }];

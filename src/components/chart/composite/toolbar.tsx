@@ -1,4 +1,4 @@
-import { Box, Text } from "../../../ui";
+import { Box, Text, useShortcutLabel } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { CHART_DRAWING_COLORS, type ChartToolKind } from "./tools";
@@ -9,12 +9,14 @@ export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length 
 
 /** The bar's own button that folds it away, and the one it folds to. */
 const FOLD_BUTTON = {
-  label: "Hide drawing tools (Shift+T)",
+  label: "Hide drawing tools",
+  shortcut: "Shift+T",
   glyph: "\u2039",
   icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 const UNFOLD_BUTTON = {
-  label: "Show drawing tools (Shift+T)",
+  label: "Show drawing tools",
+  shortcut: "Shift+T",
   glyph: "\u203a",
   icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
@@ -35,7 +37,9 @@ function ChartToolButton({
   /** Drawn only while the pointer is over the bar (desktop and web). */
   reveal?: boolean;
 }) {
-  const label = tool.shortcut ? `${tool.label} (${tool.shortcut}). ${tool.hint}` : tool.label;
+  const keyLabel = useShortcutLabel();
+  const named = tool.shortcut ? `${tool.label} (${keyLabel(tool.shortcut)})` : tool.label;
+  const label = tool.hint ? `${named}. ${tool.hint}` : named;
   const color = active ? themeColors.text : themeColors.textDim;
   return (
     <Box

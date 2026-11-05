@@ -574,7 +574,7 @@ export const es: Record<string, string> = {
   "Commit pending changes or exit window mode.": "Confirmar cambios pendientes o salir del modo ventana.",
   "Open command mode for actions, pane commands, and typed prefixes.": "Abrir el modo comando para acciones, comandos de panel y prefijos.",
   "Change the focused pane's ticker.": "Cambia el ticker del panel activo.",
-  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. Shift+Enter opens a new pane. From a pane with no ticker it opens DES.": "Búsqueda de tickers: Enter cambia el ticker del panel activo y de los paneles vinculados a él, como un clic en el ticker del título de un panel en el escritorio y la web. Shift+Enter abre un panel nuevo. Desde un panel sin ticker abre DES.",
+  "Ticker search: Enter changes the focused pane's ticker and the panes linked to it, as a click on the ticker in a pane's title does on the desktop and the web. {key} opens a new pane. From a pane with no ticker it opens DES.": "Búsqueda de tickers: Enter cambia el ticker del panel activo y de los paneles vinculados a él, como un clic en el ticker del título de un panel en el escritorio y la web. {key} abre un panel nuevo. Desde un panel sin ticker abre DES.",
   "Open security details for a specific ticker.": "Abrir los detalles de un ticker específico.",
   "Move through command bar results.": "Moverse por los resultados de la barra de comandos.",
   "Run the selected result or its secondary action.": "Ejecutar el resultado seleccionado o su acción secundaria.",
@@ -1346,8 +1346,6 @@ export const es: Record<string, string> = {
   "No app? {url}": "¿Sin app? {url}",
   "Not enough room to draw the QR code.": "No hay espacio suficiente para dibujar el código QR.",
   "r to refresh the code · esc to cancel": "r para renovar el código · esc para cancelar",
-  "Create an account anytime: Ctrl+P → Sign Up.":
-    "Crea una cuenta cuando quieras: Ctrl+P → Sign Up.",
   "Sync portfolios, watchlists & layouts": "Sincroniza carteras, listas y diseños",
   "Portfolios, watchlists and layouts sync to this account.":
     "Las carteras, listas y diseños se sincronizan con esta cuenta.",

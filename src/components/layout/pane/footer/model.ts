@@ -291,12 +291,17 @@ function segmentGapWidth(before: PaneFooterSegment, after: PaneFooterSegment): n
   return separatesPaneFooterSegments(before, after) ? SEPARATOR_WIDTH : 1;
 }
 
-function paneHintWidth(hint: Pick<PaneHint, "key" | "label">, prefix = ""): number {
-  return getShortcutHintWidth(hint.key, hint.label, prefix);
+/** A hint's key as the host shows it (useShortcutLabel): `Ctrl+S` is `⌃S` on a Mac. */
+export type PaneHintKeyLabel = (key: string) => string;
+
+const KEY_AS_WRITTEN: PaneHintKeyLabel = (key) => key;
+
+function paneHintWidth(hint: Pick<PaneHint, "key" | "label">, prefix = "", keyLabel = KEY_AS_WRITTEN): number {
+  return getShortcutHintWidth(keyLabel(hint.key), hint.label, prefix);
 }
 
-export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label">[]): number {
-  return hints.reduce((total, hint, index) => total + paneHintWidth(hint, index > 0 ? " " : ""), 0);
+export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label">[], keyLabel = KEY_AS_WRITTEN): number {
+  return hints.reduce((total, hint, index) => total + paneHintWidth(hint, index > 0 ? " " : "", keyLabel), 0);
 }
 
 function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
@@ -413,6 +418,7 @@ export function layoutPaneFooterHintRow(
   footer: CombinedPaneFooter,
   contentWidth: number,
   iconReserve = 0,
+  keyLabel = KEY_AS_WRITTEN,
 ): PaneFooterHintRow {
   const width = Math.max(0, Math.floor(contentWidth));
   const hints = footer.hints.filter((hint) => !hint.disabled);
@@ -426,12 +432,12 @@ export function layoutPaneFooterHintRow(
   const more = moreControl(hintBudget);
   let visible = hints;
   let overflow: PaneHint[] = [];
-  if (totalHintsWidth(hints) > hintBudget) {
+  if (totalHintsWidth(hints, keyLabel) > hintBudget) {
     const room = Math.max(0, hintBudget - more.width - (more.width > 0 ? HINT_GAP : 0));
     visible = [];
     let used = 0;
     for (const hint of hints) {
-      const next = used + (visible.length > 0 ? HINT_GAP : 0) + paneHintWidth(hint);
+      const next = used + (visible.length > 0 ? HINT_GAP : 0) + paneHintWidth(hint, "", keyLabel);
       if (next > room) break;
       visible.push(hint);
       used = next;
@@ -439,8 +445,8 @@ export function layoutPaneFooterHintRow(
     overflow = hints.slice(visible.length);
   }
   const hintsWidth = overflow.length > 0
-    ? totalHintsWidth(visible) + (visible.length > 0 ? HINT_GAP : 0) + more.width
-    : totalHintsWidth(visible);
+    ? totalHintsWidth(visible, keyLabel) + (visible.length > 0 ? HINT_GAP : 0) + more.width
+    : totalHintsWidth(visible, keyLabel);
   return {
     hints: visible,
     overflow,

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ariaKeyShortcut,
   formatKeyChord,
+  formatShortcutText,
   isTypingChord,
   keyChordFromEvent,
   matchesKeyChord,
@@ -46,6 +48,79 @@ describe("formatKeyChord", () => {
     expect(formatKeyChord(chord, { primaryModifier: "cmd" })).toBe("Cmd+Shift+F");
     expect(formatKeyChord(parseKeyChord("Escape")!, { primaryModifier: "ctrl" })).toBe("Esc");
     expect(formatKeyChord(parseKeyChord("CmdOrCtrl+Digit")!, { primaryModifier: "cmd" })).toBe("Cmd+1-9");
+  });
+
+  test("Mac notation writes Apple's symbols in Control, Option, Shift, Command order, then the key", () => {
+    const mac = { primaryModifier: "cmd", notation: "mac" } as const;
+    expect(formatKeyChord(parseKeyChord("CmdOrCtrl+Shift+F")!, mac)).toBe("⇧⌘F");
+    expect(formatKeyChord(parseKeyChord("Cmd+Shift+Alt+Ctrl+K")!, mac)).toBe("⌃⌥⇧⌘K");
+    expect(formatKeyChord(parseKeyChord("Alt+Enter")!, mac)).toBe("⌥↩");
+    expect(formatKeyChord(parseKeyChord("Shift+Tab")!, mac)).toBe("⇧⇥");
+    expect(formatKeyChord(parseKeyChord("CmdOrCtrl+Digit")!, mac)).toBe("⌘1-9");
+    expect(formatKeyChord(parseKeyChord("Escape")!, mac)).toBe("Esc");
+    expect(formatKeyChord(parseKeyChord("`")!, mac)).toBe("`");
+  });
+});
+
+describe("formatShortcutText", () => {
+  const mac = { primaryModifier: "cmd", notation: "mac" } as const;
+  // Written as panes, menus and help rows name keys, and what a Mac shows for each.
+  const written: Array<[string, string]> = [
+    ["Ctrl+S", "⌃S"],
+    ["Shift+Enter", "⇧↩"],
+    ["CmdOrCtrl+F", "⌘F"],
+    ["Cmd/Ctrl+Shift+D", "⇧⌘D"],
+    ["Alt+Shift+Ctrl+x", "⌃⌥⇧X"],
+    ["Shift+Left/Right", "⇧←/→"],
+    ["Ctrl+P/N", "⌃P/N"],
+    ["Ctrl+Home/End", "⌃Home/End"],
+    ["Alt+Drag", "⌥Drag"],
+    ["Ctrl++", "⌃+"],
+    ["Shift+/", "⇧/"],
+    ["Up/Down", "↑/↓"],
+    ["Enter", "↩"],
+    ["Backspace", "⌫"],
+    ["Shift", "⇧"],
+    ["Esc", "Esc"],
+    ["PageUp/PageDown", "PageUp/PageDown"],
+    ["+/-", "+/-"],
+    ["1-9", "1-9"],
+    ["a", "a"],
+    ["G", "G"],
+    ["Drag", "Drag"],
+    // Function codes are not keys, even where one spells a key's name.
+    ["DES", "DES"],
+    ["UP", "UP"],
+  ];
+
+  test("a Mac writes modifiers and the keys that have one as symbols", () => {
+    for (const [text, label] of written) expect(formatShortcutText(text, mac)).toBe(label);
+  });
+
+  test("a label already in Mac notation comes back as it is", () => {
+    for (const [, label] of written) expect(formatShortcutText(label, mac)).toBe(label);
+  });
+
+  test("text notation leaves every key as written and only resolves CmdOrCtrl", () => {
+    for (const primaryModifier of ["ctrl", "cmd"] as const) {
+      for (const [text] of written) {
+        if (/CmdOrCtrl|Cmd\/Ctrl/.test(text)) continue;
+        expect(formatShortcutText(text, { primaryModifier })).toBe(text);
+      }
+    }
+    expect(formatShortcutText("CmdOrCtrl+F", { primaryModifier: "ctrl" })).toBe("Ctrl+F");
+    expect(formatShortcutText("Cmd/Ctrl+Shift+D", { primaryModifier: "ctrl" })).toBe("Ctrl+Shift+D");
+  });
+});
+
+describe("ariaKeyShortcut", () => {
+  test("reads keys written out and Mac labels as UI Events key names", () => {
+    expect(ariaKeyShortcut("Shift+Enter")).toBe("Shift+Enter");
+    expect(ariaKeyShortcut("Cmd+K")).toBe("Meta+K");
+    expect(ariaKeyShortcut("⇧⌘↩")).toBe("Shift+Meta+Enter");
+    expect(ariaKeyShortcut("⌃G")).toBe("Control+G");
+    expect(ariaKeyShortcut("Esc")).toBe("Escape");
+    expect(ariaKeyShortcut("")).toBeUndefined();
   });
 });
 

@@ -1,4 +1,4 @@
-import { Box, useUiCapabilities } from "../../../ui";
+import { Box, useShortcutLabel, useUiCapabilities } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
@@ -333,6 +333,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // What the High filter, where the calendar opens, leaves out, and the key that lists it (Shift+F steps back to All).
   const hiddenCount = useMemo(() => lowerImpactHidden(events, impactFilter, countryFilter), [countryFilter, events, impactFilter]);
   const hiddenStatus = hiddenCount > 0 && !detailEvent ? `${hiddenCount} lower-impact hidden` : null;
+  const allImpactKey = useShortcutLabel()("Shift+F");
   // The dash under Forecast on the row in hand, while its consensus is not in yet.
   const focusedEvent = detailEvent ?? filtered[selectedIdx];
   const noConsensus = !!focusedEvent && awaitsConsensus(focusedEvent);
@@ -340,9 +341,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ...(hiddenStatus ? [{
       id: "hidden-impact",
       capture: true,
-      title: `${hiddenStatus}: Shift+F or Impact All lists them`,
+      title: `${hiddenStatus}: ${allImpactKey} or Impact All lists them`,
       // First and whole: the countdown and the update time give way before the key does.
-      parts: [{ text: `${hiddenStatus} (Shift+F)`, tone: "muted" as const }],
+      parts: [{ text: `${hiddenStatus} (${allImpactKey})`, tone: "muted" as const }],
     }] : []),
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(listedAfterStatus ? [{ id: "listed-after", parts: [{ text: listedAfterStatus, tone: "warning" as const }] }] : []),
@@ -351,7 +352,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ...(noConsensus ? [{ id: "no-consensus", parts: [{ text: NO_CONSENSUS_NOTE, tone: "muted" as const }],
       variants: [[{ text: "no consensus yet", tone: "muted" as const }]] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, showStale, staleness]);
+  ], [allImpactKey, detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, showStale, staleness]);
   // A report of the pane (`gloom fn ECO`) says it too.
   const listedThrough = listedEnd ? dateKey(listedEnd) : null;
   useRemoteUiNode(listedAfter && listedThrough ? {

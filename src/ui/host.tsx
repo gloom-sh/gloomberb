@@ -1,8 +1,8 @@
-import { createContext, useContext, type ComponentType, type ReactNode, type Ref } from "react";
+import { createContext, useCallback, useContext, type ComponentType, type ReactNode, type Ref } from "react";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { AppNotificationRequest } from "../types/plugin";
 import { getShortcutDisplayMode } from "../utils/shortcut-labels";
-import { formatAdvertisedChord, useKeybindings } from "../app/keybindings";
+import { formatAdvertisedChord, formatShortcutForHost, useKeybindings } from "../app/keybindings";
 import type { AsciiFontName } from "./ascii-font";
 
 export const TextAttributes = {
@@ -817,6 +817,19 @@ export function useActionShortcut(actionId: string): string {
   // still gets a label rather than an error.
   const kind = useContext(UiHostContext)?.ui.kind;
   return formatAdvertisedChord(keybindings, actionId, getShortcutDisplayMode(kind));
+}
+
+/**
+ * Writes a key named in text (`Ctrl+S`, `Shift+Enter`, `Shift+Left/Right`) the
+ * way this host shows keys: Apple's symbols on a Mac desktop or in a Mac
+ * browser (`⌃S`, `⇧↩`), as written in a terminal and on Windows and Linux.
+ * For any key a pane, hint, tooltip or sentence names that is not a
+ * keybinding action (those come from useActionShortcut).
+ */
+export function useShortcutLabel(): (text: string) => string {
+  const kind = useContext(UiHostContext)?.ui.kind;
+  const mode = getShortcutDisplayMode(kind);
+  return useCallback((text: string) => formatShortcutForHost(text, mode), [mode]);
 }
 
 export function useRendererHost(): RendererHost {

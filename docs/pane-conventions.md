@@ -327,8 +327,8 @@ the origin of a number. The one count the kit draws is the
   unsupported symbol or series, sign-in or entitlement) and a reply that
   fails validation are the pane's error, saved copy or not.
 - Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
-  `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`. Every hint is
-  clickable. Hints follow the selection: a different array when a row is
+  `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`, and `[⌃S]save`
+  on a Mac. Every hint is clickable. Hints follow the selection: a different array when a row is
   selected, a detail is open, a tab changes. A hint with no target is omitted
   or `disabled`, never a no-op.
 - A key that only repeats what Enter already does, or that adjusts the
