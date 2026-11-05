@@ -240,9 +240,11 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const { accountState } = usePortfolioAccountState(activePortfolio, { brokerAccounts, config });
   // Cash entered by hand counts toward a manual portfolio's bankroll; a broker's is in its Net Liq.
   const manualCash = accountState ? null : resolvePortfolioCash(activePortfolio, null);
+  // The sized ticker's own currency too: its units are counted at the base currency's rate to it.
+  const sizedCurrency = financials?.quote?.currency || ticker?.metadata.currency || null;
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency, manualCash?.currency),
-    [accountState, config.baseCurrency, manualCash?.currency, portfolioFinancials, portfolioTickers],
+    () => [...buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency, manualCash?.currency), sizedCurrency],
+    [accountState, config.baseCurrency, manualCash?.currency, portfolioFinancials, portfolioTickers, sizedCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
   const portfolioSummary = useMemo(
@@ -279,6 +281,10 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const bankroll = bankrollOverride ?? sourceBankroll;
   const currentValue = currentValueOverride ?? sourceCurrentValue;
   const price = positionFinancials?.quote?.price ?? null;
+  const priceCurrency = positionFinancials?.quote?.currency || ticker?.metadata.currency || config.baseCurrency;
+  // Units divide a base-currency size by the price in that currency, at the rate the portfolio values holdings at.
+  const basePrice = price == null ? null : convertCurrency(price, priceCurrency, config.baseCurrency, exchangeRates);
+  const unitPrice = basePrice != null && Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null;
   // The same daily closes, through the same request, as the KELLY report reads.
   const historyRequest = useMemo(
     () => mode === "history" && ticker
@@ -291,9 +297,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const historyPoints = useResolvedEntryValue(historyEntry);
   const historyInputs = useMemo(
     () => historyPoints
-      ? estimateKellyHistoryInputs(clipPriceHistoryToRange(historyPoints, kellyHistoryRange(historyYears)), historyYears)
+      ? estimateKellyHistoryInputs(clipPriceHistoryToRange(historyPoints, kellyHistoryRange(historyYears)), historyYears, { exchange: ticker?.metadata.exchange ?? "" })
       : null,
-    [historyPoints, historyYears],
+    [historyPoints, historyYears, ticker?.metadata.exchange],
   );
   const rawActiveDraft = drafts[sizingMode] ?? DEFAULT_KELLY_DRAFTS[sizingMode];
   const { commonAssumptions, updateCommon } = useKellyCommonAssumptions(rawActiveDraft);
@@ -365,9 +371,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       draft: activeDraft,
       bankroll,
       currentValue,
-      price,
+      price: unitPrice,
     }),
-    [activeDraft, bankroll, currentValue, price, sizingMode],
+    [activeDraft, bankroll, currentValue, unitPrice, sizingMode],
   );
   const sensitivity = useMemo(() => buildSensitivityGrid(sizingMode, activeDraft), [activeDraft, sizingMode]);
   const curveMaxFraction = useMemo(
@@ -467,7 +473,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   useRemoteUiNode(mode === "history" && historyInputs ? {
     role: "report-freshness",
     label: "History freshness",
-    getMetadata: () => ({ asOf: historyInputs.end }),
+    getMetadata: () => ({ asOf: historyInputs.latest }),
   } : null);
   // History mode says what it is waiting for, or why it has no inputs, before any sizing warning.
   const historyStatus = mode !== "history" || historyInputs ? null

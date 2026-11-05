@@ -1,16 +1,12 @@
 import type { PricePoint } from "../../../types/financials";
 import type { TimeRange } from "../../../time-series/range";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
-import { getPricePointTimestamp } from "../../../utils/price-history";
+import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
 
-/** Sessions in one holding period: a month of trading days. */
-export const KELLY_HISTORY_PERIOD_SESSIONS = 21;
 export const KELLY_HISTORY_DEFAULT_YEARS = 5;
 export const KELLY_HISTORY_MAX_YEARS = 5;
 /** Fewer monthly returns than this say too little about a win rate to size on. */
 export const KELLY_HISTORY_MIN_PERIODS = 6;
-
-const YEAR_MS = 365.25 * 24 * 60 * 60_000;
 
 /** The binary inputs a ticker's own monthly returns imply over a lookback window. */
 export interface KellyHistoryInputs {
@@ -22,9 +18,11 @@ export interface KellyHistoryInputs {
   /** Up months over all months. */
   wins: number;
   periods: number;
-  /** Close the first return starts from, and the last bar, as YYYY-MM-DD. */
+  /** The month-end close the first return starts from, and the one the last return ends on, as YYYY-MM-DD. */
   start: string;
   end: string;
+  /** The newest daily close read, which a month in progress may follow, as YYYY-MM-DD. */
+  latest: string;
   years: number;
 }
 
@@ -43,26 +41,34 @@ export function kellyHistoryRequest(instrument: InstrumentRef, years: number): C
   return { instrument, bufferRange: kellyHistoryRange(years), granularity: "resolution", resolution: "1d" };
 }
 
-const dateKey = (time: number) => new Date(time).toISOString().slice(0, 10);
-
 /**
- * Win rate, mean gain and mean loss of non-overlapping 21-session returns,
- * counted back from the last daily close so the newest month is complete.
- * Null when the window holds fewer than `KELLY_HISTORY_MIN_PERIODS` of them,
- * or every one of them is a gain, or every one of them is a loss.
+ * Win rate, mean gain and mean loss of calendar-month returns: each month's
+ * last close against the month before's, for every asset, so a coin that
+ * trades every day and a stock that trades on weekdays are sized on the same
+ * months. A month counts once it has ended (`now` is in a later month), so a
+ * month in progress is never a return; the newest `years` × 12 complete
+ * months are used. Days are the venue's (`exchange`), a coin's UTC. Null
+ * when that leaves fewer than `KELLY_HISTORY_MIN_PERIODS` returns, or every
+ * one of them is a gain, or every one of them is a loss.
  */
-export function estimateKellyHistoryInputs(points: readonly PricePoint[], yearsInput: number): KellyHistoryInputs | null {
+export function estimateKellyHistoryInputs(
+  points: readonly PricePoint[],
+  yearsInput: number,
+  options: { exchange?: string; now?: number } = {},
+): KellyHistoryInputs | null {
   const years = clampKellyHistoryYears(yearsInput);
+  const thisMonth = new Date(options.now ?? Date.now()).toISOString().slice(0, 7);
+  const monthEnds = new Map<string, { day: string; close: number }>();
   const closes = points
     .map((point) => ({ time: getPricePointTimestamp(point), close: point.close }))
     .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.close) && point.close > 0)
     .sort((left, right) => left.time - right.time);
-  const last = closes.at(-1);
-  if (!last) return null;
-  const cutoff = last.time - years * YEAR_MS;
-  const window = closes.filter((point) => point.time >= cutoff);
-  const picks: typeof window = [];
-  for (let index = window.length - 1; index >= 0; index -= KELLY_HISTORY_PERIOD_SESSIONS) picks.unshift(window[index]!);
+  for (const point of closes) {
+    const day = dailyBarDate(point.time, options.exchange ?? "");
+    // Sorted oldest first, so each month keeps its last close.
+    if (day.slice(0, 7) < thisMonth) monthEnds.set(day.slice(0, 7), { day, close: point.close });
+  }
+  const picks = [...monthEnds.values()].slice(-(years * 12 + 1));
   const returns = picks.slice(1).map((point, index) => point.close / picks[index]!.close - 1);
   if (returns.length < KELLY_HISTORY_MIN_PERIODS) return null;
   const gains = returns.filter((value) => value > 0);
@@ -75,8 +81,9 @@ export function estimateKellyHistoryInputs(points: readonly PricePoint[], yearsI
     downsideReturn: mean(losses),
     wins: gains.length,
     periods: returns.length,
-    start: dateKey(picks[0]!.time),
-    end: dateKey(last.time),
+    start: picks[0]!.day,
+    end: picks.at(-1)!.day,
+    latest: dailyBarDate(closes.at(-1)!.time, options.exchange ?? ""),
     years,
   };
 }

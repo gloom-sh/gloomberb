@@ -1,46 +1,58 @@
 import { expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { estimateKellyHistoryInputs, KELLY_HISTORY_PERIOD_SESSIONS } from "./history";
+import { estimateKellyHistoryInputs } from "./history";
 
 const DAY_MS = 24 * 60 * 60_000;
-const LAST = Date.parse("2026-10-09T20:00:00Z");
+/** 9 Oct 2026: September is the newest month that has ended. */
+const NOW = Date.parse("2026-10-09T12:00:00Z");
 
-/** Daily closes, one a calendar day back from LAST, flat inside each 21-session block and moving `moves` between them, oldest first. */
-function closes(moves: number[]): PricePoint[] {
-  const blockCloses = moves.reduce((path, move) => [...path, path.at(-1)! * (1 + move)], [100]);
-  const sessions = moves.length * KELLY_HISTORY_PERIOD_SESSIONS + 1;
-  return Array.from({ length: sessions }, (_, index) => ({
-    date: new Date(LAST - (sessions - 1 - index) * DAY_MS),
-    close: blockCloses[Math.ceil(index / KELLY_HISTORY_PERIOD_SESSIONS)]!,
-  }));
+/**
+ * Daily closes at 00:00 UTC from 1 Jan 2024 through 8 Oct 2026, every day or
+ * weekdays only: month n (January 2024 is 0, at 100) trades `moves(n)` above
+ * the month before, flat inside the month. October is in progress and moves
+ * too, which must not count.
+ */
+function closes(moves: (month: number) => number, weekdaysOnly = false): PricePoint[] {
+  const points: PricePoint[] = [];
+  let close = 100;
+  let month = -1;
+  for (let time = Date.parse("2024-01-01T00:00:00Z"); time < NOW - DAY_MS / 2; time += DAY_MS) {
+    const date = new Date(time);
+    const index = (date.getUTCFullYear() - 2024) * 12 + date.getUTCMonth();
+    if (index !== month) {
+      if (month >= 0) close *= 1 + moves(index);
+      month = index;
+    }
+    if (weekdaysOnly && (date.getUTCDay() === 0 || date.getUTCDay() === 6)) continue;
+    points.push({ date, close });
+  }
+  return points;
 }
 
-test("monthly returns are counted back from the last close, and the lookback cuts the oldest", () => {
-  const moves = Array.from({ length: 24 }, (_, index) => index % 3 === 2 ? -0.05 : 0.1);
-  const inputs = estimateKellyHistoryInputs(closes(moves), 5)!;
-  expect(inputs.periods).toBe(24);
-  expect(inputs.wins).toBe(16);
-  expect(inputs.winProbability).toBeCloseTo(16 / 24, 10);
-  expect(inputs.upsideReturn).toBeCloseTo(0.1, 10);
-  expect(inputs.downsideReturn).toBeCloseTo(-0.05, 10);
-  expect(inputs.end).toBe("2026-10-09");
-  expect(inputs.start).toBe(new Date(LAST - 24 * KELLY_HISTORY_PERIOD_SESSIONS * DAY_MS).toISOString().slice(0, 10));
-
-  // One calendar year of these daily points holds 17 whole blocks back from the last close.
-  const year = estimateKellyHistoryInputs(closes(moves), 1)!;
-  expect(year.periods).toBe(17);
-  expect(Date.parse(year.start)).toBeGreaterThanOrEqual(LAST - 366 * DAY_MS);
+test("returns are calendar months, month-end close to month-end close, whether the asset trades every day or on weekdays", () => {
+  // Up 10% two months in three, down 5% the third; the month in progress (October) jumps 50%.
+  const moves = (month: number) => month === 33 ? 0.5 : month % 3 === 2 ? -0.05 : 0.1;
+  const coin = estimateKellyHistoryInputs(closes(moves), 5, { now: NOW })!;
+  // January 2024 to September 2026 is 33 month-ends, so 32 returns: none of October's.
+  expect(coin).toMatchObject({ periods: 32, start: "2024-01-31", end: "2026-09-30" });
+  expect(coin.wins).toBe(21);
+  expect(coin.upsideReturn).toBeCloseTo(0.1, 10);
+  expect(coin.downsideReturn).toBeCloseTo(-0.05, 10);
+  // A weekday-only listing is sized on the same months, its month-ends the last weekday.
+  const stock = estimateKellyHistoryInputs(closes(moves, true), 5, { now: NOW })!;
+  expect(stock).toMatchObject({ periods: 32, wins: 21, start: "2024-01-31", end: "2026-09-30" });
+  // A one-year lookback is the newest 12 months.
+  expect(estimateKellyHistoryInputs(closes(moves), 1, { now: NOW })).toMatchObject({ periods: 12, start: "2025-09-30" });
   // Out-of-order and unusable points are ignored rather than read as moves.
-  const noisy = [...closes(moves)].reverse().concat([{ date: new Date(LAST - DAY_MS / 2), close: Number.NaN }]);
-  expect(estimateKellyHistoryInputs(noisy, 5)).toEqual(inputs);
+  const noisy = [...closes(moves)].reverse().concat([{ date: new Date(NOW - DAY_MS), close: Number.NaN }]);
+  expect(estimateKellyHistoryInputs(noisy, 5, { now: NOW })).toEqual(coin);
 });
 
-test("too few months, or no history, gives no inputs instead of a size", () => {
-  expect(estimateKellyHistoryInputs(closes([0.1, -0.05, 0.1, 0.02, -0.01]), 5)).toBeNull();
-  expect(estimateKellyHistoryInputs([], 5)).toBeNull();
-});
-
-test("a window with no gain or no loss gives no inputs instead of a zero payoff", () => {
-  expect(estimateKellyHistoryInputs(closes(Array.from({ length: 8 }, () => 0.1)), 5)).toBeNull();
-  expect(estimateKellyHistoryInputs(closes(Array.from({ length: 8 }, () => -0.05)), 5)).toBeNull();
+test("too few months, or no history, or no gain or no loss gives no inputs instead of a size", () => {
+  const recent = closes((month) => (month % 2 ? 0.1 : -0.05)).filter((point) => point.date.getTime() >= Date.parse("2026-04-01"));
+  // April to September: five returns.
+  expect(estimateKellyHistoryInputs(recent, 5, { now: NOW })).toBeNull();
+  expect(estimateKellyHistoryInputs([], 5, { now: NOW })).toBeNull();
+  expect(estimateKellyHistoryInputs(closes(() => 0.1), 5, { now: NOW })).toBeNull();
+  expect(estimateKellyHistoryInputs(closes(() => -0.05), 5, { now: NOW })).toBeNull();
 });
