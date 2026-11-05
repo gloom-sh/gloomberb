@@ -448,6 +448,9 @@ function ChromeFamily() {
           <PaneHeader title="AAPL" width={Math.min(100, pageColumns())} focused={false} tabs={{ ...tabs, focused: false }} />
           <PaneHeader title="Quick Notes" width={Math.min(100, pageColumns())} focused showActions tabs={closableTabs} />
           <PaneHeader title="World Indices" width={Math.min(100, pageColumns())} focused={false} />
+          {/* A single-ticker pane's ticker is a control in its title, on the title's line. */}
+          <PaneHeader title="RETURN AMD" titleTicker="AMD" onTitleTickerPress={noop} width={Math.min(100, pageColumns())} focused showActions />
+          <PaneHeader title="^HSI" titleTicker="^HSI" onTitleTickerPress={noop} width={Math.min(100, pageColumns())} focused={false} tabs={{ ...tabs, focused: false }} />
         </Box>
       </Group>
       <Group title="Footer">
