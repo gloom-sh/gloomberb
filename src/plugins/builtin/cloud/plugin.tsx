@@ -20,6 +20,7 @@ import { registerMcpConnectCommand } from "./mcp-connect/command";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
 import { registerTrialOfferCommand, TrialOfferStatusWidget } from "./trial-offer-status-widget";
+import { OneTapPrompt } from "./one-tap/one-tap-prompt";
 import { CloudVerificationStatusWidget } from "./verification-status-widget";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { teamModule } from "./team/module";
@@ -47,7 +48,11 @@ function createCloudDataModule(): PluginModule {
   };
 }
 
-/** Sign-in, upgrade and MCP setup commands, and the email verification, upgrade and trial prompts. */
+/**
+ * Sign-in, upgrade and MCP setup commands, and the email verification,
+ * upgrade and trial prompts, and the hosted terminal's Google One Tap, which
+ * draws nothing in the status bar itself.
+ */
 const cloudAccountModule: PluginModule = {
   slots: {
     "status:widget": () => (
@@ -55,6 +60,7 @@ const cloudAccountModule: PluginModule = {
         <CloudVerificationStatusWidget />
         <CloudUpgradeStatusWidget />
         <TrialOfferStatusWidget />
+        <OneTapPrompt />
       </>
     ),
   },

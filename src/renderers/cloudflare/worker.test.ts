@@ -243,6 +243,18 @@ describe("content security policy", () => {
     expect(connectSrc).toContain(REGISTRY_ORIGIN);
     expect(connectSrc?.split(/\s+/)).toContain(DOCS_SITE);
   });
+
+  test("lets Google One Tap load, and only Google's sign-in paths", () => {
+    const directives = new Map(SECURITY_HEADERS["content-security-policy"]
+      .split(";")
+      .map((directive) => directive.trim().split(/\s+/))
+      .map(([name, ...sources]) => [name!, sources]));
+    expect(directives.get("script-src")).toEqual(["'self'", "https://accounts.google.com/gsi/client"]);
+    expect(directives.get("frame-src")).toEqual(["'self'", "https://accounts.google.com/gsi/"]);
+    expect(directives.get("style-src")).toContain("https://accounts.google.com/gsi/style");
+    expect(directives.get("connect-src")).toContain("https://accounts.google.com/gsi/");
+    expect(directives.get("frame-ancestors")).toEqual(["'none'"]);
+  });
 });
 
 test("a signed-out proxy call is counted by its address and with everyone's, and refused once either is spent", async () => {

@@ -375,6 +375,9 @@ class GloomApiClient {
     this.withSessionTransition((isCurrent) => this.auth.signUp(email, username, name, password, isCurrent));
   signIn = (email: string, password: string) =>
     this.withSessionTransition((isCurrent) => this.auth.signIn(email, password, isCurrent));
+  signInWithGoogle = (idToken: string) =>
+    this.withSessionTransition((isCurrent) => this.auth.signInWithGoogle(idToken, isCurrent));
+  getOneTapConfig = this.auth.getOneTapConfig.bind(this.auth);
   startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
   pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
   signOut = () => this.withSessionTransition((isCurrent) => this.auth.signOut(isCurrent), false);
@@ -559,7 +562,7 @@ class GloomApiClient {
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
     tab?: string; desks?: readonly string[]; placement?: string; teaser_kind?: "summary" | "sample" | "none";
-    cta?: "login" | "signup";
+    cta?: "login" | "signup"; reason?: string;
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
