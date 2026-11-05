@@ -197,15 +197,30 @@ const JOIN_SIDES = [
 
 type JoinSide = (typeof JOIN_SIDES)[number][0];
 
+/** Where a pane on the move could land on release, if anywhere but where it is drawn. */
+export interface PaneDropTargets {
+  /** Over another spot's title bar: a tab there, what a release makes until a join has held. */
+  tab: Extract<DropTarget, { kind: "tab" }> | null;
+  /** An edge held flush: a join on that side, once it has held (JOIN_DWELL_MS), over the tab too. */
+  join: Extract<DropTarget, { kind: "leaf" }> | null;
+}
+
+const NO_DROP: PaneDropTargets = { tab: null, join: null };
+
 /**
- * Where a pane on the move would land on release, if anywhere but where it is
- * drawn. Over another spot's title bar it becomes a tab there. Its edge
- * pushed flush against the same edge of the spot under the pointer, where
- * that spot meets another (never the dock's own edge, so a window parked at
- * the screen's edge or corner stays floating), it joins the dock on that
- * side: where it is drawn and where the pointer puts it, that edge is within
- * `flush` of the spot's. The caller arms a join only once it has held (see
- * JOIN_DWELL_MS). `join` false (Alt) leaves the edges out.
+ * Where a pane on the move could land on release. Over another spot's title
+ * bar it becomes a tab there. Its edge pushed flush against the same edge of
+ * the spot under the pointer, where that spot meets another (never the dock's
+ * own edge, so a window parked at the screen's edge or corner stays
+ * floating), it joins the dock on that side: where it is drawn and where the
+ * pointer puts it, that edge is within `flush` of the spot's. The pointer may
+ * be on that spot's title bar: a pane is held by its own, so it is there for
+ * every join above a spot and for a side join with the two title bars level.
+ * An axis the pane spans from edge to edge of the spot gives it no side to
+ * join on there, so a pane laid squarely on a spot of its size is a tab. The
+ * caller arms a join only once it has held (see JOIN_DWELL_MS); until then a
+ * release on the title bar makes the tab. `join` false (Alt) leaves the
+ * edges out.
  */
 export function resolvePaneDropTarget({
   x,
@@ -235,30 +250,45 @@ export function resolvePaneDropTarget({
   /** A docked pane's title bar, in rows. */
   headerRows: number;
   join: boolean;
-}): DropTarget | null {
-  if (!pointInRect(area, x, y)) return null;
+}): PaneDropTargets {
+  if (!pointInRect(area, x, y)) return NO_DROP;
   const leaf = leaves.find((entry) => pointInRect(entry.rect, x, y));
-  if (!leaf) return null;
+  if (!leaf) return NO_DROP;
   // Its own spot: alone there, nothing to land on; a tab of a stack can
-  // leave it for a side of the stack, but is a tab of it already.
+  // leave it for a side of the stack, but is a tab of it already, and its
+  // title bar is where the tab is pulled out from.
   const own = leaf.instanceId === paneId || (leaf.stack?.includes(paneId) ?? false);
   const targetId = leaf.instanceId !== paneId ? leaf.instanceId : leaf.stack?.find((id) => id !== paneId);
-  if (!targetId) return null;
-  if (y < leaf.rect.y + headerRows) return own ? null : { kind: "tab", targetId };
-  if (!join) return null;
+  if (!targetId) return NO_DROP;
+  const onTitleBar = y < leaf.rect.y + headerRows;
+  if (onTitleBar && own) return NO_DROP;
+  const tab = onTitleBar ? { kind: "tab" as const, targetId } : null;
+  if (!join) return { tab, join: null };
   const edgeOf = (box: LayoutBounds, side: JoinSide) => (
     side === "left" ? box.x : side === "right" ? box.x + box.width : side === "top" ? box.y : box.y + box.height
   );
+  // How far the edge on `side` is from the spot's, in catches, where it is
+  // drawn; null unless it is flush there and where the pointer puts it.
+  const closenessAt = (side: JoinSide, axis: keyof AxisDistance) => {
+    const line = edgeOf(leaf.rect, side);
+    if (Math.abs(edgeOf(free, side) - line) > flush[axis]) return null;
+    const closeness = Math.abs(edgeOf(rect, side) - line) / Math.max(flush[axis], 1e-6);
+    return closeness <= 1 ? closeness : null;
+  };
+  const spans = {
+    x: closenessAt("left", "x") !== null && closenessAt("right", "x") !== null,
+    y: closenessAt("top", "y") !== null && closenessAt("bottom", "y") !== null,
+  };
+  // The closest edge wins; level with another, the first of left, right, top, bottom.
   let best: { side: JoinSide; closeness: number } | null = null;
   for (const [side, axis] of JOIN_SIDES) {
-    const line = edgeOf(leaf.rect, side);
+    if (spans[axis]) continue;
     // The dock's own edge is the screen's: parking there is not joining.
-    if (Math.abs(line - edgeOf(area, side)) <= flush[axis]) continue;
-    if (Math.abs(edgeOf(free, side) - line) > flush[axis]) continue;
-    const closeness = Math.abs(edgeOf(rect, side) - line) / Math.max(flush[axis], 1e-6);
-    if (closeness <= 1 && (!best || closeness < best.closeness)) best = { side, closeness };
+    if (Math.abs(edgeOf(leaf.rect, side) - edgeOf(area, side)) <= flush[axis]) continue;
+    const closeness = closenessAt(side, axis);
+    if (closeness !== null && (!best || closeness < best.closeness)) best = { side, closeness };
   }
-  return best ? { kind: "leaf", targetId, position: best.side } : null;
+  return { tab, join: best ? { kind: "leaf", targetId, position: best.side } : null };
 }
 
 /**

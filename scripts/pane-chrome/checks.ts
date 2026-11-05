@@ -1036,6 +1036,29 @@ const steps: Step[] = [
     },
   },
   {
+    name: "floating pane: its top edge held flush with a docked pane's, the pointer on that pane's title bar, it joins above it once the preview shows",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+      const target = await rectOf(cdp, "plain:c") ?? fail("no plain:c");
+      const from = await pointOf(cdp, "plain:float", "title");
+      // The top edge a few px below plain:c's, where it meets plain:b, which
+      // the magnet pulls flush, and well inside it across: held by its title,
+      // the pointer is on plain:c's title bar.
+      const to = { x: target.x + 60 + (from.x - pane.x), y: target.y + 3 + (from.y - pane.y) };
+      const preview = `(() => { const el = document.querySelector('[data-gloom-role="drop-preview"]'); if (!el || getComputedStyle(el).opacity === "0") return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`;
+      const above = `(() => { const r = ${preview}; return r && Math.abs(r.y - ${target.y}) <= 2 && r.height < ${target.height * 0.75} ? r : null; })()`;
+      await dragHolding(cdp, from, to, async () => {
+        // Until the edge has held, a release there stacks it: the tab's preview, plain:c whole.
+        const early = await evaluate<Rect | null>(cdp, preview);
+        if (!early || Math.abs(early.height - target.height) > 2) fail("before the edge had held, the title bar did not show the tab's preview", { early: round(early), target: round(target) });
+        if (!await waitFor(cdp, above)) fail("holding the top edge flush never showed the join preview above plain:c", round(await evaluate<Rect | null>(cdp, preview)));
+      });
+      const joined = `(() => { const r = __check.paneRect("plain:float"); const c = __check.paneRect("plain:c"); return r && c && __check.pane("plain:float").getAttribute("data-floating") === "false" && !__check.stackTabs("plain:float") && Math.abs(r.y - ${target.y}) <= 2 && c.y >= r.y + r.height; })()`;
+      if (!await waitFor(cdp, joined)) fail("releasing on the join preview did not dock it above plain:c", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")), c: round(await rectOf(cdp, "plain:c")) });
+    },
+  },
+  {
     name: "floating pane: parked at the screen's edge or corner, it stays floating",
     scenario: "floating&titlebar=1",
     async run(cdp) {
