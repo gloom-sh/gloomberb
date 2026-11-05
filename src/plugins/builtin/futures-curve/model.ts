@@ -815,7 +815,7 @@ const NEXT_SESSION_SHIFT_MS = 6 * 3_600_000;
  * carried it into the next date) stays on its own date, and day-only venues
  * are as they are. A settlement's date is its session.
  */
-export function curveSessionDate(asOf: string): string {
+function curveSessionDate(asOf: string): string {
   return asOf.length === 10 ? asOf : zonedDateKey(Date.parse(asOf) + NEXT_SESSION_SHIFT_MS, "America/New_York");
 }
 
@@ -847,7 +847,7 @@ export function curveSettleShown(row: Pick<FuturesContract, "price" | "settlemen
 }
 
 /** The price a live contract is plotted and measured at: its settlement when it has not traded since (curveSettleShown), else its last trade. */
-export function curveShownPrice(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
+function curveShownPrice(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
   data: Pick<FuturesCurvePayload, "source" | "settlementDate">): number | null {
   return curveSettleShown(row, data) ? row.settlement ?? null : row.price;
 }
