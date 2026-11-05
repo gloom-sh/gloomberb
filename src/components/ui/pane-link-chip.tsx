@@ -25,7 +25,7 @@ export interface PaneLinkChipContent {
  * - `line`: one line, as a Wire post's story or calendar.
  * - `inline`: the height of the line of text it is written in, as a function in a message.
  */
-export type PaneLinkChipVariant = "card" | "line" | "inline";
+type PaneLinkChipVariant = "card" | "line" | "inline";
 
 interface DomEventLike {
   preventDefault(): void;
@@ -48,7 +48,7 @@ function leadSurface(panel: string, text: string, hovered = false): string {
   return blendHex(panel, text, hovered ? 0.24 : 0.14);
 }
 
-export interface DesktopPaneLinkChipProps {
+interface DesktopPaneLinkChipProps {
   content: PaneLinkChipContent;
   variant: PaneLinkChipVariant;
   /** The picture its sender posted with the link: a card's thumbnail. */

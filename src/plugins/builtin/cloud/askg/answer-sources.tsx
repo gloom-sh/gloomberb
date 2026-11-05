@@ -14,7 +14,7 @@ import { describeToolRow, type ToolDisplayContext } from "./tool-display";
  * citations in the answer are drawn as. A read no pane shows, or a number no
  * read carries, says so.
  */
-export function answerSourceChip(source: ASKGAnswerSource, context: ToolDisplayContext): PaneLinkChipContent {
+function answerSourceChip(source: ASKGAnswerSource, context: ToolDisplayContext): PaneLinkChipContent {
   const icon = source.ref === null ? source.target.kind === "pane" ? source.target.icon : "" : String(source.ref);
   if (source.target.kind === "pane") {
     return { title: formatSourceCommand(source.target.command), detail: source.target.label, icon };
