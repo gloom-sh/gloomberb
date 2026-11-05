@@ -5,10 +5,11 @@ import {
   parseArticle,
   type ArticleBlock,
 } from "../../../components/reader/article-text";
-import { formatDetailDate } from "../../../utils/datetime-format";
+import { formatDetailDate, formatFilingDate } from "../../../utils/datetime-format";
 import { chunkAttribution, hitTypeLabel } from "./model";
 
 export interface SearchArticle {
+  title: string;
   meta: string[];
   tickers: string[];
   lead: string | null;
@@ -52,8 +53,17 @@ export function searchArticle(document: CloudSearchDocument, hit: CloudSearchHit
     document.ticker,
     ...(news ? listedTickers(rawText) : []),
   ].filter((symbol): symbol is string => !!symbol?.trim());
+  // A filing is dated by the day EDGAR gave it and named by its filer, as its
+  // row is (presentSearchHit): the meta line carries the form and that day.
+  const filingDate = document.docType === "filing" ? hit.metadata?.filingDate : undefined;
+  const filer = document.docType === "filing" ? hit.metadata?.company?.trim() : undefined;
   return {
-    meta: [source, formatDetailDate(document.publishedAt || hit.publishedAt, ""), kindLabel(document, hit) ?? ""],
+    title: filer || document.title || hit.title,
+    meta: [
+      source,
+      filingDate ? formatFilingDate(filingDate, "") : formatDetailDate(document.publishedAt || hit.publishedAt, ""),
+      kindLabel(document, hit) ?? "",
+    ],
     tickers: [...new Set(tickers)],
     lead: gist.lead,
     facts: gist.facts,

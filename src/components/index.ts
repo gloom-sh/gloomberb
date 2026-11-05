@@ -93,7 +93,7 @@ export type { RowValueCache } from "./ui/row-value-cache";
 export { useRowNotes } from "./ui/row-notes";
 export type { RowNotes } from "./ui/row-notes";
 export { FeedDataTableStackView } from "./feed-data-table/stack-view";
-export type { FeedDataTableItem } from "./feed-data-table/stack-view";
+export type { FeedDataTableItem, FeedDataTableTimeColumn } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";
 export type { StackSortPreference } from "./feed-stack-controller";
 export { PaneFooterScope, usePaneFooter, usePaneMenuItems } from "./layout/pane/footer";

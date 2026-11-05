@@ -45,6 +45,16 @@ type DetailRow = IndexedStackRow<FeedDataTableItem>;
 
 type SortPreference = StackSortPreference<DetailColumnId>;
 
+/**
+ * The first column when it is not how long ago each item came in: a list of
+ * filings dates each row by the day it was filed (`formatFilingDate`).
+ */
+export interface FeedDataTableTimeColumn {
+  label: string;
+  width: number;
+  format: (timestamp: Date | string) => string;
+}
+
 interface FeedDataTableStackViewProps {
   width: number;
   height: number;
@@ -57,6 +67,7 @@ interface FeedDataTableStackViewProps {
   onRootKeyDown?: (event: DataTableKeyEvent, context: DataTableRootKeyContext) => boolean | void;
   sourceLabel?: string;
   titleLabel?: string;
+  timeColumn?: FeedDataTableTimeColumn;
   emptyStateTitle?: string;
   emptyStateHint?: string;
   isItemRead?: (item: FeedDataTableItem) => boolean;
@@ -96,8 +107,10 @@ function buildColumns(
   sourceLabel: string,
   titleLabel: string,
   items: FeedDataTableItem[],
+  timeColumn: FeedDataTableTimeColumn | undefined,
 ): DetailColumn[] {
-  const timeWidth = 8;
+  const timeLabel = timeColumn ? t(timeColumn.label) : t("Time");
+  const timeWidth = tableColumnWidth({ width: timeColumn?.width ?? 8, label: timeLabel });
   // Long sources (insider names, publishers) get more room as the pane
   // widens, from 14 cells up to 24; the title keeps its minimum.
   const sourceCap = Math.min(24, Math.max(14, Math.floor(width * 0.18)));
@@ -113,7 +126,7 @@ function buildColumns(
   );
 
   return [
-    { id: "time", label: t("Time"), width: timeWidth, align: "left" },
+    { id: "time", label: timeLabel, width: timeWidth, align: "left" },
     { id: "source", label: sourceLabel, width: sourceWidth, align: "left" },
     { id: "title", label: titleLabel, width: titleWidth, align: "left" },
   ];
@@ -131,6 +144,7 @@ export function FeedDataTableStackView({
   onRootKeyDown,
   sourceLabel = "Source",
   titleLabel = "Headline",
+  timeColumn,
   emptyStateTitle = "No items.",
   emptyStateHint,
   isItemRead,
@@ -155,8 +169,8 @@ export function FeedDataTableStackView({
   }, [controlled, onOpenItemIdChange]);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const columns = useMemo(
-    () => buildColumns(width, t(sourceLabel), t(titleLabel), items),
-    [items, language, sourceLabel, titleLabel, width],
+    () => buildColumns(width, t(sourceLabel), t(titleLabel), items, timeColumn),
+    [items, language, sourceLabel, timeColumn, titleLabel, width],
   );
   const sortedRows = useMemo(() => {
     return sortIndexedStackRows(items, sortPreference, compareRows);
@@ -226,7 +240,7 @@ export function FeedDataTableStackView({
     switch (column.id) {
       case "time":
         return {
-          text: row.item.timestamp ? formatTimeAgo(row.item.timestamp) : "",
+          text: row.item.timestamp ? (timeColumn ? timeColumn.format(row.item.timestamp) : formatTimeAgo(row.item.timestamp)) : "",
           color: colors.textDim,
         };
       case "source":
@@ -247,7 +261,7 @@ export function FeedDataTableStackView({
               : TextAttributes.NONE,
         };
     }
-  }, [isItemRead]);
+  }, [isItemRead, timeColumn]);
 
   const detailContent = openItem ? (
     <DetailReader

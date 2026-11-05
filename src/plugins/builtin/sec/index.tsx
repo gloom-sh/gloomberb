@@ -11,9 +11,10 @@ import { usePaneSettingValue } from "../../../state/app/context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { t, tf } from "../../../i18n";
-import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
+import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type FeedDataTableTimeColumn, type PaneHint, type QueryBarFilter } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { displayWidth } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -28,7 +29,6 @@ import { formatInsiderName } from "../insider/display";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
-  formatFilingMetaDate,
   buildInsiderTransactionDetailBody,
   renderFilingNotice,
 } from "./filing-display";
@@ -72,13 +72,15 @@ import { createSecFilingSearchProvider, resetSecFilingFocusRequests, useSecFilin
 export { secHeadless } from "./headless";
 
 const SEC_FILING_PAGE_SIZE = 50;
+/** Each row is dated by the day EDGAR filed it, as every filing list reads. */
+const FILED_COLUMN: FeedDataTableTimeColumn = { label: "Filed", width: 12, format: formatFilingDate };
 const NO_FILINGS: SecFilingItem[] = [];
 const OWNERSHIP_FORMS = new Set(["3", "4", "5"]);
 /** At most this many rows on screen have their insider forms and fund flow notices read for their row text. */
 const OWNERSHIP_ROWS_READ = 40;
 
 function formatFiledAt(filing: SecFilingItem): string {
-  return formatFilingMetaDate(filing.filingDate);
+  return formatFilingDate(filing.filingDate);
 }
 
 function buildDetailBody(filing: SecFilingItem): string {
@@ -611,6 +613,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
       sourceLabel="Form"
       titleLabel="Filing"
+      timeColumn={FILED_COLUMN}
       emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}

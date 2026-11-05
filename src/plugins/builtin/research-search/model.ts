@@ -8,7 +8,7 @@ import type {
 } from "../../../api-client";
 import type { CloudSearchParams } from "../../../api-client/paths";
 import type { DataTableColumn } from "../../../components";
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 
 export const RESEARCH_SEARCH_PANE_ID = "research-search";
 export const RESEARCH_SEARCH_TEMPLATE_ID = "research-search-pane";
@@ -161,8 +161,44 @@ export function hitTypeLabel(hit: CloudSearchHit): string {
   return hit.docType === "transcript" ? "CALL" : "NEWS";
 }
 
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A hit as the results and the command bar list it. A filing is dated by the
+ * day EDGAR gave it (`filingDate`), where `publishedAt` is the SEC's
+ * acceptance instant: a 10-Q accepted Friday at 19:40 ET is filed on Monday,
+ * and read in the viewer's zone the instant can name the Saturday. Its title
+ * is the filer, as a call's is the call without the ticker it leads with,
+ * since the form, ticker and date have columns of their own.
+ */
+export function presentSearchHit(hit: CloudSearchHit): CloudSearchHit {
+  if (hit.docType === "filing") {
+    const filingDate = hit.metadata?.filingDate?.trim();
+    const company = hit.metadata?.company?.trim();
+    return {
+      ...hit,
+      ...(filingDate && CALENDAR_DAY.test(filingDate) ? { publishedAt: filingDate } : {}),
+      ...(company ? { title: company } : {}),
+    };
+  }
+  if (hit.docType === "transcript") {
+    const ticker = hit.ticker?.trim();
+    const title = (ticker && hit.title.startsWith(`${ticker} `) ? hit.title.slice(ticker.length + 1) : hit.title)
+      .replace(/ \d{4}-\d{2}-\d{2}$/, "")
+      .trim();
+    return title && title !== hit.title ? { ...hit, title } : hit;
+  }
+  return hit;
+}
+
+/**
+ * The date column's text: a filing's day as filed (a bare `YYYY-MM-DD`, see
+ * presentSearchHit), read as the calendar day it names; a call or a story by
+ * the viewer's own day.
+ */
 export function formatHitDate(value: string | null | undefined): string {
-  return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
+  if (value && CALENDAR_DAY.test(value)) return formatFilingDate(value);
+  return formatShortDate(value, { day: "2-digit", fallback: "\u2014" });
 }
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -178,6 +214,13 @@ export function formatHitDateShort(value: string | null | undefined, now = Date.
   const date = new Date(value);
   const time = date.getTime();
   if (Number.isNaN(time)) return "";
+  // A filing's day has no hour to count an age from.
+  if (CALENDAR_DAY.test(value)) {
+    const sameYear = date.getUTCFullYear() === new Date(now).getUTCFullYear();
+    return sameYear
+      ? formatShortDate(date, { year: false, utc: true })
+      : date.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  }
   const age = now - time;
   if (age >= 0 && age < MS_PER_HOUR) return `${Math.max(1, Math.floor(age / 60_000))}m`;
   if (age >= 0 && age < 24 * MS_PER_HOUR) return `${Math.floor(age / MS_PER_HOUR)}h`;
@@ -231,7 +274,8 @@ export function buildResultColumns(width: number): SearchColumn[] {
   // Wide enough for a five-letter symbol plus the badge's own padding.
   const tickerWidth = 8;
   const typeWidth = 7;
-  const dateWidth = 10;
+  // "Nov 04, 2026", as every filing date reads.
+  const dateWidth = 12;
   const fixed = tickerWidth + typeWidth + dateWidth + 8;
   const remaining = Math.max(24, width - fixed);
   // The snippet is what makes a hit judgeable, so it takes the larger share.
