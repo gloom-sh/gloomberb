@@ -4,9 +4,6 @@ export {
   type CoreKeybindingActionId,
 } from "./actions";
 export {
-  ariaKeyShortcut,
-  formatKeyChord,
-  formatShortcutText,
   isTypingChord,
   keyChordFromEvent,
   matchesKeyChord,
@@ -14,7 +11,6 @@ export {
   serializeKeyChord,
   type KeyChord,
   type KeyChordEventLike,
-  type KeyNotation,
 } from "./chord";
 export {
   coreActionOnChord,
@@ -35,7 +31,6 @@ export {
   formatAdvertisedChord,
   formatChordForHost,
   formatShortcutForHost,
-  keyNotationFor,
   menuAcceleratorFor,
   primaryModifierFor,
   shortActionLabel,

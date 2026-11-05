@@ -292,7 +292,7 @@ function segmentGapWidth(before: PaneFooterSegment, after: PaneFooterSegment): n
 }
 
 /** A hint's key as the host shows it (useShortcutLabel): `Ctrl+S` is `⌃S` on a Mac. */
-export type PaneHintKeyLabel = (key: string) => string;
+type PaneHintKeyLabel = (key: string) => string;
 
 const KEY_AS_WRITTEN: PaneHintKeyLabel = (key) => key;
 
