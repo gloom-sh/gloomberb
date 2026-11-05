@@ -77,7 +77,7 @@ import {
   buildPortfolioChartTargets,
   buildPortfolioReturnSeries,
 } from "../analytics/pane-model";
-import { computeDatedBeta, hasPortfolioPosition } from "../analytics/metrics";
+import { computeDatedBeta, hasPortfolioPosition } from "../../../portfolio/return-metrics";
 import { buildTrackedCurrencies } from "../portfolio-list/pane/data";
 import { accountDailyReturns } from "../analytics/account-returns";
 import { useBrokerPortfolioPerformance } from "../analytics/broker-performance";

@@ -2,7 +2,7 @@ import {
   historyStatistics,
   type HistoryStatistics,
 } from "../../../components/chart/curve/model";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 
 export interface RiskSamplePoint extends DatedReturn {
   benchmark: number;

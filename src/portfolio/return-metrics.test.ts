@@ -7,8 +7,8 @@ import {
   computeWeightedPortfolioReturns,
   syntheticPositionUnsupportedReason,
   type DatedReturn,
-} from "./metrics";
-import { createTestTicker } from "../../../test-support/ticker";
+} from "./return-metrics";
+import { createTestTicker } from "../test-support/ticker";
 
 function datedReturns(values: number[], startDay = 1): DatedReturn[] {
   return values.map((value, index) => ({

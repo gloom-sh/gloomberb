@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
-import { resolveDatedReturns } from "../../plugins/builtin/analytics/metrics";
+import { resolveDatedReturns } from "../../portfolio/return-metrics";
 import { loadChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
 import { buildCompositeChartScene, applyCompositeChartCursor } from "../../components/chart/composite/scene";
 import type { HeadlessPaneContext } from "../../types/headless";

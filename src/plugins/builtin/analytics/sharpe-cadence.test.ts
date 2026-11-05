@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { resolveDatedReturns } from "./metrics";
+import { resolveDatedReturns } from "../../../portfolio/return-metrics";
 import { qualifySharpeCadence, qualifyReturnTimestamps } from "./sharpe-cadence";
 import { buildBenchmarkReturnSeries, buildPortfolioBetaResult, buildPortfolioChartTargets, buildPortfolioReturnSeries, PORTFOLIO_BENCHMARK } from "./pane-model";
 import { buildChartKey } from "../../../market-data/selectors";

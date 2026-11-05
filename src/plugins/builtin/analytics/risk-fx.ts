@@ -4,7 +4,7 @@ import { dailyFxCloses, FxHistoryError, type FxCloses } from "../../../market-da
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import type { DatedReturn } from "./metrics";
+import type { DatedReturn } from "../../../portfolio/return-metrics";
 
 export type { FxCloses };
 

@@ -31,7 +31,7 @@ import {
   type DatedReturn,
   type WeightedReturnSeries,
   type ReturnHistoryResult,
-} from "./metrics";
+} from "../../../portfolio/return-metrics";
 import { getPortfolioPositionValue } from "./sector-model";
 import type { AnalyticsMetricRow } from "./view";
 import { qualifySharpeCadence, qualifyReturnTimestamps, type SharpeCadenceResult, type ReturnTimestampResult, type TimestampHistory } from "./sharpe-cadence";

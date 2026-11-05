@@ -35,6 +35,5 @@
   "src/renderers/electrobun/bun/core-capabilities.ts": ["notes"],
   "src/renderers/electrobun/view/cli-pane-shot-entry.tsx": ["econ-statistics","market-valuation","time-sales"],
   "src/renderers/electrobun/view/main.tsx": ["notes"],
-  "src/renderers/electrobun/view/remote/connection-health.ts": ["connections"],
-  "src/sync/core-contributors.ts": ["analytics"]
+  "src/renderers/electrobun/view/remote/connection-health.ts": ["connections"]
 }

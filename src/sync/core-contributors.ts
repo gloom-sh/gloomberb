@@ -22,7 +22,7 @@ import {
   type DatedReturn,
   type ReturnHistoryResult,
   type WeightedReturnSeries,
-} from "../plugins/builtin/analytics/metrics";
+} from "../portfolio/return-metrics";
 import {
   getSyncedProfileAnalytics,
   setSyncedProfileAnalytics,

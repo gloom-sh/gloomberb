@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { resolveDatedReturns } from "./metrics";
+import { resolveDatedReturns } from "../../../portfolio/return-metrics";
 import {
   convertClosesToUsd,
   convertReturnsToAccount,
