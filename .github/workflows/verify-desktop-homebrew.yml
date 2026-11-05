@@ -11,12 +11,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
+          cache: "false"
 
       - name: Configure Apple signing
+        id: signing
         uses: ./.github/actions/apple-signing
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -33,6 +37,13 @@ jobs:
           ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
         run: bun run desktop:release
+
+      # Signed, notarized and stapled: nothing after this signs.
+      - name: Remove the signing keychain and notary key
+        if: ${{ always() && steps.signing.outcome != 'skipped' }}
+        uses: ./.github/actions/apple-signing
+        with:
+          cleanup: "true"
 
       - name: Build and verify Homebrew archives
         run: |

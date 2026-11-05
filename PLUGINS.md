@@ -140,11 +140,12 @@ The plugin API changes by these rules:
   declared, so an old checkout is refused with a reason instead of
   misbehaving.
 - CI compares every runtime export with a reviewed snapshot, and compiles each
-  plugin the registry lists, at the ref it would install, against every pull
-  request. It also loads each of them in the compiled terminal binary and in
-  the desktop's bundled terminal, which serve React and the `gloomberb/*`
-  modules from inside the process. The release build repeats the load in each
-  binary and in the macOS app it builds, before they are published.
+  plugin the registry lists, at the commit the registry reviewed or else the
+  ref it would install, against every pull request. It also loads each of them
+  in the compiled terminal binary and in the desktop's bundled terminal, which
+  serve React and the `gloomberb/*` modules from inside the process. Release
+  and nightly builds repeat the load in each binary and in the macOS app they
+  build, in a job of its own with no secrets, before anything is published.
 
 `update` only moves a plugin forward. When the registry's published tag is older
 than what is checked out (an install from the default branch can be ahead of

@@ -72,15 +72,24 @@ jobs:
       - name: Test global upgrade from 0.5.0
         run: bun run test:global-upgrade
 
-  # Fails when a plugin the registry lists, at the ref it would install,
-  # imports a host export this change does not have. Not a deploy gate: it
-  # reads other repositories, and a plugin's own breakage only warns.
+  # Fails when a plugin the registry lists, at the commit the registry
+  # reviewed or the ref it would install, imports a host export this change
+  # does not have. Not a deploy gate: it reads other repositories, and a
+  # plugin's own breakage only warns.
+  #
+  # This job and the next run code from other repositories. They leave no
+  # token on disk and use no Actions cache: what a job saves there on main,
+  # any later run can restore.
   registry-plugins:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
+        with:
+          cache: "false"
 
       - name: Compile registry plugins against this host
         run: bun run plugins:registry:check
@@ -96,8 +105,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
+        with:
+          cache: "false"
 
       - name: Build the terminal binary
         run: bun run scripts/build.ts --target linux-x64
@@ -118,8 +131,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
+      # Takes nothing from the Actions cache while it holds the deploy token.
       - uses: ./.github/actions/setup-bun
+        with:
+          cache: "false"
 
       - name: Build browser app
         run: bun run web:build
