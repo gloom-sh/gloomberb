@@ -27,6 +27,8 @@ export interface CotClassSummary extends CotPosition {
   previousReportDate: string | null
   percentile1Y: CotPercentile
   percentile3Y: CotPercentile
+  /** The latest net ranked against every stored report of the market, from its first (`historyStart`); absent from an older server. */
+  percentileAll?: CotPercentile
 }
 interface CotMarket {
   contractCode: string
@@ -45,8 +47,12 @@ export interface CotPayloadBase {
   asOf: string | null
   /** Latest report's actual source download time, not its publication time. */
   fetchedAt: string | null
-  /** These files do not establish the report's actual publication timestamp. */
-  publishedAt: null
+  /**
+   * The latest report's scheduled release by the CFTC's calendar (3:30 p.m.
+   * New York on the Friday after its Tuesday, a business day later around a
+   * federal holiday); null from an older server, which did not say.
+   */
+  publishedAt: string | null
   status: "available" | "partial" | "unavailable"
   gaps: string[]
   classes: Array<{ id: CotClass; label: string }>
@@ -64,6 +70,8 @@ export interface CotBoardPayload extends CotPayloadBase {
 }
 export interface CotHistoryPoint {
   reportDate: string
+  /** The report's scheduled release; absent from an older server. */
+  publishedAt?: string
   openInterest: number | null
   positions: Array<CotPosition & { id: CotClass; net: number | null; netPercentOfOpenInterest: number | null }>
 }
@@ -73,6 +81,10 @@ export interface CotContractPayload extends CotPayloadBase {
   openInterest: number | null
   /** Latest report's classes, each with 1Y and 3Y dated distribution context. */
   positions: CotClassSummary[]
+  /** The market's first stored report; absent from an older server. */
+  historyStart?: string | null
+  /** The first day `history` lists: three years and two weeks back unless `since` asked for more. */
+  historyFrom?: string | null
   /** Oldest first. Missing/suppressed legs and corresponding net remain null. */
   history: CotHistoryPoint[]
 }

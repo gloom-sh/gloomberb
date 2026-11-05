@@ -3,7 +3,7 @@ import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
-  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote,
+  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote, withDailyRebuiltBars,
 } from "./history-rows";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
@@ -285,7 +285,7 @@ describe("history rows", () => {
     expect(rows.filter((row) => row.flag).map((row) => [row.date, row.flag, row.close])).toEqual([["1992-12-01", "gap,jump", 2.763]]);
     expect(historyFlagNote(rows)).toBeNull();
     const blanked = historyRows([{ date: new Date("1977-09-01"), open: 0.0015, high: 0.0014, low: 0.0014, close: 0.0015 }, ...usdIlsMonthly()], "1mo");
-    expect(historyFlagNote(blanked)).toBe("1 of 38 bars has high below open or close in the source data; their prices are left blank");
+    expect(historyFlagNote(blanked)).toBe("1 of 38 bars has high below open or close in the source data; it keeps its close; open, high and low are blank, the month's daily bars not covering it without contradiction");
     // A daily series breaks where its weekly bars would: Athens shut for five weeks in 2015, and a fall is a jump too.
     const athens = historyRows([
       ...series("2015-06-22", "2015-06-26", DAY), ...series("2015-08-03", "2015-08-05", DAY), { date: new Date("2015-08-06"), close: 0.5 },
@@ -294,6 +294,26 @@ describe("history rows", () => {
     expect(historyGapNote(athens, { listing: "ETE.AT" })).toBe("No bars for 2015-06-27 to 2015-08-02 (5 weeks)");
     expect(historyJumpNote(athens)).toMatch(/^Close falls \d+x from [\d.]+ on 2015-08-05 to 0.5 on 2015-08-06$/);
     expect(historyUnbrokenFrom(athens)).toBe("2015-08-06");
+  });
+
+  test("a monthly bar whose prices contradict each other keeps its close, its range rebuilt from daily bars that cover it", () => {
+    // ZC=F's September 2000 bar: a close above its high blanked the month, and monthly returns broke.
+    const monthly = historyRows([
+      { date: new Date("2000-08-01"), open: 180.25, high: 185, low: 174, close: 182, volume: 386_687 },
+      { date: new Date("2000-09-01"), open: 182, high: 189, low: 176, close: 192, volume: 145 },
+      { date: new Date("2000-10-01"), open: 190, high: 192, low: 180, close: 191, volume: 3_851 },
+    ], "1mo", "USX", "US cents / bushel");
+    expect(monthly[1]).toMatchObject({ open: null, high: null, low: null, close: 192, volume: 145, flag: "high<close" });
+    // October's daily bars leave no week out: rebuilt. September's stop on the 12th: left blank.
+    const daily = (from: string, to: string) => series(from, to, DAY).map((point, index) => ({ ...point, open: 185 + index, high: 195 + index, low: 180, close: 190 }));
+    const rebuilt = withDailyRebuiltBars(monthly, [...daily("2000-09-01", "2000-09-29")]);
+    expect(rebuilt[1]).toMatchObject({ open: 185, high: 223, low: 180, close: 192, rebuilt: "daily bars" });
+    expect(historyFlagNote(rebuilt)).toBe("1 of 3 bars has high below open or close in the source data; it keeps its close, with open, high and low from the month's daily bars");
+    expect(withDailyRebuiltBars(monthly, daily("2000-09-01", "2000-09-12"))[1]!.open).toBeNull();
+    // A daily close above the kept one never makes a range that leaves it out: still blank.
+    expect(withDailyRebuiltBars(monthly, daily("2000-09-01", "2000-09-29").map((point) => ({ ...point, high: 191 })))[1]!.high).toBeNull();
+    // Daily bars keep blanking whole: only a monthly bar keeps its close.
+    expect(historyRows([{ date: new Date("2000-09-05"), open: 182, high: 189, low: 176, close: 192 }], "1d")[0]!.close).toBeNull();
   });
 
   test("closures, thin trading and round-the-clock coins are no break", () => {

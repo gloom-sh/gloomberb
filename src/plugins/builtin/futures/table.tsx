@@ -6,14 +6,14 @@ import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/fo
 import { minorUnitSign } from "../../../utils/currency-units";
 import { boardHeadlineQuote, isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
-import { FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresSessionQuote, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
+import { FUTURES_RETURN_BASE_COLUMNS, FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresSessionQuote, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
 
 /** The columns the board can draw; the 3M, 6M and 1Y returns are only the exports' (FUTURES_REPORT_COLUMNS). */
-type DrawnColumnId = Exclude<FuturesColumnId, "return3m" | "return6m" | "return1y">;
+type DrawnColumnId = Exclude<FuturesColumnId, "return3m" | "return6m" | "return1y" | keyof typeof FUTURES_RETURN_BASE_COLUMNS>;
 
 export interface FuturesColumnDef {
   id: DrawnColumnId;
@@ -135,12 +135,15 @@ const FUTURES_HEADER_LABELS: Record<DrawnColumnId, string> = {
 
 /**
  * Returns a script reads that the board has no room to draw: its JSON and CSV
- * carry them beside the drawn 1W, 1M and YTD (DataTable `reportColumns`).
+ * carry them beside the drawn 1W, 1M and YTD (DataTable `reportColumns`), and
+ * the day each return's base close is from, `1M from 2026-10-05`.
  */
 export const FUTURES_REPORT_COLUMNS: readonly FuturesColumn[] = [
   { id: "return3m", label: "3M", width: 8, align: "right" },
   { id: "return6m", label: "6M", width: 8, align: "right" },
   { id: "return1y", label: "1Y", width: 8, align: "right" },
+  ...(Object.entries(FUTURES_RETURN_BASE_COLUMNS) as Array<[keyof typeof FUTURES_RETURN_BASE_COLUMNS, string]>)
+    .map(([id, horizon]) => ({ id, label: `${horizon} from`, width: 10, align: "left" as const })),
 ];
 
 /** Falls back to the full column set when the saved selection is empty or unknown. */
@@ -271,6 +274,15 @@ export function renderFuturesCell(
       const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
       if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
       return { text: formatPercentRaw(value), value, color: shownPriceColor(value, 2) };
+    }
+    case "return1wFrom":
+    case "return1mFrom":
+    case "returnYtdFrom":
+    case "return3mFrom":
+    case "return6mFrom":
+    case "return1yFrom": {
+      const base = options?.returns?.get(contract.symbol)?.bases?.[FUTURES_RETURN_BASE_COLUMNS[column.id]];
+      return { text: base ?? "—", color: colors.textDim };
     }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };

@@ -4,7 +4,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
-import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
+import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import { newsSummaryLine } from "../../news/news-model";
@@ -74,7 +74,7 @@ import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
 import {
-  futuresContractLines, futuresPricePer, futuresRollLines, isFuturesInstrument, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresRollLines, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
@@ -126,6 +126,8 @@ import {
   type CliReportTables,
 } from "../report-tables";
 import { historyCoverageNotice } from "../../sources/history-coverage";
+import { fetchHistoryResult } from "../../sources/history-result";
+import { settleWithin } from "../../utils/async-deadline";
 import { maxDrawdownText } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
@@ -156,6 +158,7 @@ import {
   historyRows,
   historyUnit,
   quotedPriceDivisor,
+  withDailyRebuiltBars,
   historyVolume,
   historyVolumeBasis,
   historyVolumeNote,
@@ -1443,6 +1446,37 @@ function historyCommand({ range, window }: HistoryAsk): string {
   return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
 }
 
+/** How long `history` waits for a future's contract terms to name its unit before using the catalog's. */
+const HISTORY_PRICE_UNIT_WAIT_MS = 1_500;
+
+/** How long `history` waits for the daily bars that rebuild contradictory monthly bars before printing them with blanks. */
+const MONTHLY_REBUILD_WAIT_MS = 8_000;
+
+/**
+ * Monthly bars whose prices contradict each other, rebuilt from the daily
+ * bars of the months they span (withDailyRebuiltBars). Any other history,
+ * and one the daily bars fail or do not answer for in time, comes back as it is.
+ */
+async function withMonthlyBarsRebuilt(
+  rows: HistoryRow[], market: MarketContext, symbol: string, exchange: string,
+  context: MarketDataRequestContext, priceDivisor: number,
+): Promise<HistoryRow[]> {
+  const flagged = rows.filter((row) => row.interval === "1mo" && row.close != null && row.open == null && row.flag
+    && row.flag.split(",").some((code) => /^(high<|low>)/.test(code)));
+  if (flagged.length === 0) return rows;
+  // One read per month, all at once: a span of years of daily bars is more than one read serves.
+  const months = [...new Set(flagged.map((row) => row.date.slice(0, 7)))];
+  const daily = await settleWithin(Promise.all(months.map((month) => {
+    const start = new Date(`${month}-01T00:00:00Z`);
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59));
+    return fetchHistoryResult(market.dataProvider, symbol, exchange, { kind: "detail", start, end, interval: "1d" }, context)
+      .then((result) => result?.points ?? [])
+      .catch(logFailure("cli.commands-market", "Daily bars to rebuild a monthly bar failed", []));
+  })), MONTHLY_REBUILD_WAIT_MS);
+  const points = daily?.flat() ?? [];
+  return points.length ? withDailyRebuiltBars(rows, points, priceDivisor) : rows;
+}
+
 /**
  * One listing's bars, dated and checked as `history` prints them. Without
  * `lookups` it does not look up the other venues of a bare symbol or whether
@@ -1466,6 +1500,8 @@ async function loadListingHistory(
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
+  // A future's prices are in its contract's unit (US cents / bushel), as FUT and G spell it; asked beside the bars.
+  const priceUnit = isFuturesInstrument(symbol, null) ? settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
   const fate = lookups ? listingFateLoader(listing, market, quoted, { successor: true }) : null;
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
@@ -1489,7 +1525,7 @@ async function loadListingHistory(
   const identity = listingIdentity(listing, quote);
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
-  const unit = historyUnit(listing.key, listed ?? quote);
+  const unit = historyUnit(listing.key, listed ?? quote, await priceUnit);
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
   };
@@ -1499,7 +1535,9 @@ async function loadListingHistory(
   const pair = quote?.instrumentType === "CURRENCY" || isCurrencyPairListing(symbol, exchange);
   // A London line's bars were priced in pence: cleaned there, and printed to the pence decimals `quote` shows.
   const priceDivisor = quotedPriceDivisor(quote);
-  const rows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume, priceDivisor);
+  const barRows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume, priceDivisor);
+  // A monthly bar whose prices contradict each other keeps its close; its open, high and low come from the daily bars.
+  const rows = await withMonthlyBarsRebuilt(barRows, market, symbol, exchange, context, priceDivisor);
   // Bars stop arriving on the listing's own trading days, not New York's.
   const venue = quote?.listingExchangeName || exchange || undefined;
   const served = range === "YTD" && !window ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;
@@ -2470,8 +2508,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // to its future: the stories that mention the word are the news.
     const word = commodity ?? (unfiled ? newsFallbackText(args[0]!) : null);
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
+    // A word typed as a word ("corn", not CORN) that a ticker answers to but no story is filed under: the stories
+    // that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's market had plenty).
+    const typedWord = !!word && /^[A-Za-z]{3,}$/.test(word) && /[a-z]/.test(word);
     const reason = commodity ? `the commodity ${future!.symbol} trades`
-      : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker" : null;
+      : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker"
+        : typedWord ? `no stories filed under ${listing!.symbol}${identity?.name ? ` (${identity.name})` : ""}` : null;
     const emptyMessage = (searched: boolean) => listing && identity
       ? newsEmptyMessage(searched && word ? word : listing.symbol, listingTitle(identity), quote, resolved, searched)
       : undefined;

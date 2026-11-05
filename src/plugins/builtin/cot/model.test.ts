@@ -252,7 +252,28 @@ test("a report's publication time is the CFTC's release, 3:30 p.m. Eastern on it
   const load = (asOf: string) => cotHeadless.load({ argument: "CL", symbols: [], options: {} } as never,
     { apiClient: { getCloudCotContract: async () => ({ ...payload(), asOf }) } } as never);
   expect(await load("2026-10-27")).toMatchObject({ freshness: { publishedAt: "2026-10-30T19:30:00.000Z" } });
-  expect(await load("2026-12-29")).not.toHaveProperty("freshness");
+  expect((await load("2026-12-29")).freshness).not.toHaveProperty("publishedAt");
+});
+
+test("--since lists the history from that day with every report's release, and Pctl All ranks every report", async () => {
+  const asked: unknown[][] = [];
+  const all = { ...position().percentile1Y, value: 12.4, sampleCount: 1_042, windowStart: "2006-06-13", historyStart: "2006-06-13", completeWindow: true };
+  const served: CotContractPayload = { ...payload(), publishedAt: "2026-09-18T19:30:00.000Z", historyStart: "2006-06-13", historyFrom: "2006-06-13",
+    positions: [{ ...position(), percentileAll: all }],
+    history: [{ ...payload().history[0]!, reportDate: "2006-06-13", publishedAt: undefined },
+      { ...payload().history[1]!, publishedAt: "2026-09-18T19:30:00.000Z" }] };
+  const result = await cotHeadless.load({ argument: "ZC", symbols: [], options: { since: "2006-06-13" } } as never,
+    { apiClient: { getCloudCotContract: async (...args: unknown[]) => { asked.push(args); return { ...served, contract: { ...served.contract!, contractCode: "002602" } }; } } } as never);
+  expect(asked).toEqual([["002602", "legacy", "futures-only", "2006-06-13"]]);
+  const [classes, weeks] = (result as { sections: Array<{ columns: Array<{ key: string }>; textColumns?: Array<{ key: string }>; rows: Array<Record<string, unknown>> }> }).sections;
+  expect(classes!.columns.map((column) => column.key)).toContain("allHistoryPercentile");
+  expect(classes!.rows[0]).toMatchObject({ oneYearPercentile: null, allHistoryPercentile: 12 });
+  // The CSV and JSON date each week by its release; one the CFTC did not publish weekly at the time has none.
+  expect(weeks!.rows.map((row) => [row.reportDate, row.released])).toEqual([["2026-09-15", "2026-09-18T19:30:00.000Z"], ["2006-06-13", null]]);
+  expect(weeks!.textColumns!.map((column) => column.key)).not.toContain("released");
+  // One publication time and one publisher: the metadata says what the export's footer says.
+  expect(result).toMatchObject({ metadata: { publishedAt: "2026-09-18T19:30:00.000Z" },
+    freshness: { publisher: "Commodity Futures Trading Commission (CFTC)", publishedAt: "2026-09-18T19:30:00.000Z" } });
 });
 
 test("--report tff and --positions combined read the TFF board and contracts with options, and refuse a reply for the other scope", async () => {

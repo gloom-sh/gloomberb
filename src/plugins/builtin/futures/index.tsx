@@ -50,6 +50,7 @@ import {
   FUTURES_RETURN_COLUMNS,
   futuresBoardQuotes,
   futuresNoMatchFailure,
+  futuresReturnBaseText,
   futuresRowId,
   futuresSessionQuote,
   type FuturesColumnId,
@@ -141,6 +142,19 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const paneVisible = usePaneVisible();
   const showsReturns = columns.some((column) => FUTURES_RETURN_COLUMNS[column.id]);
   const returns = useFrontContractReturns(listedContracts, quotes, dataProvider, showsReturns && paneVisible);
+  // What each drawn return runs from (`1M from Mon 5 Oct close`): the report says it, the desktop header's hover too.
+  const returnBases = useMemo(() => new Map(columns.flatMap((column) => {
+    const horizon = FUTURES_RETURN_COLUMNS[column.id];
+    const text = horizon ? futuresReturnBaseText(horizon, returns) : null;
+    return text ? [[column.id, text] as const] : [];
+  })), [columns, returns]);
+  const titledColumns = useMemo(() => returnBases.size === 0 ? columns
+    : columns.map((column) => returnBases.has(column.id) ? { ...column, title: returnBases.get(column.id) } : column), [columns, returnBases]);
+  useRemoteUiNode(returnBases.size > 0 ? {
+    role: "report-notice",
+    label: "Return base dates",
+    getMetadata: () => ({ text: `Returns: ${[...returnBases.values()].join("; ")}.` }),
+  } : null);
   // The unit a price counts and the month a symbol rolled past, as `quote` reads them.
   const terms = useFuturesBoardTerms(listedContracts, !!dataProvider && paneVisible);
   // Each move measured as `quote` measures it with the row's terms, so a row never flips between references at the reopen.
@@ -332,7 +346,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       }}
       rootWidth={width}
       rootHeight={height}
-      columns={columns}
+      columns={titledColumns}
       items={dataProvider ? rows : []}
       sortable
       sortColumnId={sortPreference.columnId}
