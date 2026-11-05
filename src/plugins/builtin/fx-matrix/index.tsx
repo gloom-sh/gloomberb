@@ -50,7 +50,7 @@ const RATE_COLUMN_WIDTH = 10;
 /** Snapshot rates reload at this pace while the feed is not carrying every leg. */
 const FX_FALLBACK_REFRESH_MS = 60_000;
 
-/** Room for `2,500,000 EUR` and the cursor after it. */
+/** Room for `e.g. 2,500,000 EUR`, and for `2,500,000 EUR` and the cursor after it. */
 const AMOUNT_FIELD_WIDTH = 18;
 
 /**
@@ -316,7 +316,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     <QueryBar
       width={width}
       filters={[{
-        id: "amount", kind: "text", label: "Amount", value: amountField.draft, placeholder: "2,500,000 EUR",
+        // Read as an example, not a value, even where a narrow pane cuts it.
+        id: "amount", kind: "text", label: "Amount", value: amountField.draft, placeholder: "e.g. 2,500,000 EUR",
         width: AMOUNT_FIELD_WIDTH, debounceMs: 0, focused, active: amountField.active, inputRef: amountField.inputRef,
         onActiveChange: (active: boolean) => {
           amountField.setActive(active);
@@ -344,6 +345,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       rootBefore={queryBar}
+      // A new amount brings its column, the first after the codes, into view.
+      resetScrollKey={amount ? formatFxBoardAmount(amount) : ""}
       // A pane too narrow for every currency scrolls to the rest, as other wide tables do; the row's code stays.
       columns={allColumns}
       freezeFirstColumn

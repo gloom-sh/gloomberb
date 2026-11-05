@@ -1044,7 +1044,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       collectionId: "watchlist",
       collectionKind: "watchlist",
     });
-    expect(tui.frame()).not.toContain("Use a ticker symbol");
+    expect(tui.frame()).not.toContain("Type a ticker");
   });
 
   test("renders one-month sparkline column when price history is loaded", async () => {

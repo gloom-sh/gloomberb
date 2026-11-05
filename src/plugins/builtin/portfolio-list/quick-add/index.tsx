@@ -79,7 +79,12 @@ function QuickAddPreview({
     return (
       <Box flexDirection="row" overflow="hidden">
         <Text fg={ready.length > 0 ? colors.textDim : colors.textMuted} flexShrink={0}>
-          {ready.length > 0 ? tf("Add {count}: {symbols}", { count: ready.length, symbols: ready.map((entry) => entry.symbol).join(" ") }) : t("Nothing to add")}
+          {ready.length === 0
+            ? t("Nothing to add")
+            // "of 3" says some are left out even where a narrow row cuts the reasons after it.
+            : left.length > 0
+              ? tf("Add {count} of {total}: {symbols}", { count: ready.length, total: validation.entries.length, symbols: ready.map((entry) => entry.symbol).join(" ") })
+              : tf("Add {count}: {symbols}", { count: ready.length, symbols: ready.map((entry) => entry.symbol).join(" ") })}
         </Text>
         {left.length > 0 ? <Text fg={colors.warning}>{`  ${listLeftOutText(left, collectionKind)}`}</Text> : null}
       </Box>
