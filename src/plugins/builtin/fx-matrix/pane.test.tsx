@@ -9,8 +9,8 @@ import { createIdleEntry, type QueryEntry } from "../../../market-data/result-ty
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
-import { fxHiddenColumnsSegment, fxMatrixModule } from "./index";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { fxMatrixModule } from "./index";
+import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
 import { renderedReportObservations } from "../../../cli/pane-functions/report-notices";
 import { deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
@@ -67,8 +67,10 @@ function installCoordinator(): void {
   } as unknown as MarketDataCoordinator);
 }
 
-function Harness({ width = 100 }: { width?: number }) {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-fxc-pane-test"));
+function Harness({ width = 100, settings }: { width?: number; settings?: Record<string, unknown> }) {
+  const state = createInitialState(settings
+    ? createTestPaneConfig("/tmp/gloomberb-fxc-pane-test", { paneId: "fx-matrix", instanceId: "fx-matrix", settings })
+    : createDefaultConfig("/tmp/gloomberb-fxc-pane-test"));
   const runtime = { getMarketData: () => ({}) } as unknown as PluginRuntimeAccess;
 
   return (
@@ -98,7 +100,8 @@ describe("FxMatrixPane", () => {
     // EUR/USD is a real cross built from the two USD legs.
     expect(frame).toContain("1.0800");
     // The terminal draws no flags: codes only, in the columns it always had.
-    const [header, usdRow] = frame.split("\n");
+    // Under the amount field.
+    const [, header, usdRow] = frame.split("\n");
     expect(header!.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
     expect(header!.indexOf("USD")).toBe(13);
     expect(usdRow!.indexOf("USD")).toBe(1);
@@ -111,22 +114,34 @@ describe("FxMatrixPane", () => {
     expect(jpyRow).toContain("—");
   });
 
-  test("a pane too narrow for every currency drops whole columns from the right and says how many", async () => {
-    // Before: the last column was cut at the edge, in a capture with no cue at all.
+  // At 52 columns the board showed USD, EUR and GBP, "5 columns hidden", and no key reached JPY.
+  test("a pane too narrow for every currency scrolls to the rest as other wide tables do, and an amount reads in each", async () => {
     installCoordinator();
-    await tui.render(<Harness width={80} />, { width: 80, height: 14 });
-    await act(async () => {
-      await tui.setup().renderOnce();
-      await tui.setup().renderOnce();
-    });
-    const lines = tui.frame().split("\n");
-    expect(lines[0]!.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD"]);
-    expect(tui.frame()).not.toContain("more");
-    // Every currency keeps its row: its rates against the hidden ones read along it.
-    expect(lines.slice(1).filter((line) => /^\s*(USD|EUR|GBP|JPY|CHF|CAD|AUD|NZD)\s/.test(line))).toHaveLength(8);
-    expect(fxHiddenColumnsSegment(["AUD", "NZD"])).toMatchObject({
-      capture: true, title: "AUD, NZD are not shown as columns: widen the pane", parts: [{ text: "2 columns hidden" }],
-    });
+    await tui.render(<Harness width={52} settings={{ amount: "2,500,000 EUR" }} />, { width: 52, height: 14 });
+    const settle = async () => {
+      for (let i = 0; i < 3; i++) await act(async () => { await tui.setup().renderOnce(); });
+    };
+    await settle();
+    const lines = () => tui.frame().split("\n");
+    // The field holds the amount, and its column the amount in each currency at the board's rates: 1.08 / 1.27 for GBP.
+    expect(lines()[0]).toContain("2,500,000 EUR");
+    const header = lines()[1]!;
+    expect(header.trim().split(/\s+/).slice(0, 2)).toEqual(["AMOUNT", "USD"]);
+    // The table's own sign that columns go on past the edge.
+    expect(header.trimEnd().endsWith("→")).toBe(true);
+    expect(header).not.toContain("JPY");
+    const row = (code: string) => lines().find((line) => line.trimStart().startsWith(`${code} `))!;
+    expect(row("GBP")).toContain((2_500_000 * 1.08 / 1.27).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    // JPY has no rate here: its amount is unavailable, never parity.
+    expect(row("JPY")).toContain("—");
+    // Every currency keeps its row, and Shift+Right brings the columns past the edge into view, the codes kept.
+    expect(lines().filter((line) => /^\s*(USD|EUR|GBP|JPY|CHF|CAD|AUD|NZD)\s/.test(line))).toHaveLength(8);
+    for (let step = 0; step < 4 && !lines()[1]!.includes("JPY"); step++) {
+      await act(async () => { await tui.emitKeypress({ name: "right", shift: true }); });
+      await settle();
+    }
+    expect(lines()[1]).toContain("JPY");
+    expect(row("EUR").trimStart().startsWith("EUR")).toBe(true);
   });
 
   test("publishes what the rates it draws are, for a report to date them", async () => {
