@@ -70,6 +70,7 @@ import { valuationCache } from "../../../plugins/builtin/market-valuation/cache"
 import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
+import { logFailure } from "../../../utils/log-failure";
 
 declare global {
   interface Window {
@@ -259,7 +260,7 @@ function installShotHttpFetchTransport(): void {
 }
 
 async function restoreShotCloudSession(): Promise<void> {
-  await apiClient.getSession().catch(() => null);
+  await apiClient.getSession().catch(logFailure("desktop-pane-shot", "Could not restore the session for a pane screenshot", null));
 }
 
 /**
@@ -385,7 +386,7 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     },
     getOptionsChain: (symbol, exchange, expirationDate, context) => requestShotMarketData<OptionsChain>("getOptionsChain", [symbol, exchange, expirationDate, context]),
     getPriceHistory: (symbol, exchange, range, context) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range, context])
-      .then(revivePricePoints).catch(() => []),
+      .then(revivePricePoints).catch(logFailure("desktop-pane-shot", "Could not load price history for a pane screenshot", [])),
     getPriceHistoryForResolution: (symbol, exchange, range, resolution, context) => requestShotMarketData<PricePoint[]>(
       "getPriceHistoryForResolution", [symbol, exchange, range, resolution, context],
     ).then(revivePricePoints),
