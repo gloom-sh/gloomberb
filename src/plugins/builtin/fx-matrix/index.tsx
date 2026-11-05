@@ -1,4 +1,5 @@
 import { logFailure } from "../../../utils/log-failure";
+import { t, tf } from "../../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DataTableView,
@@ -420,8 +421,8 @@ export function fxConvertRows(query: string, open: (options: PaneTemplateCreateO
   const amount = formatFxBoardAmount(request);
   return [{
     id: `convert:${amount}`,
-    label: request.to ? `Convert ${amount} to ${request.to}` : `Convert ${amount}`,
-    detail: "In every currency on FX Cross Rates",
+    label: request.to ? tf("Convert {amount} to {currency}", { amount, currency: request.to }) : tf("Convert {amount}", { amount }),
+    detail: t("In every currency on FX Cross Rates"),
     right: "FXC",
     keywords: ["fx", "convert", "converter"],
     execute: () => open({ arg }),
