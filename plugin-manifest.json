@@ -770,7 +770,7 @@
           {
             "code": "FXC",
             "name": "FX Cross Rates",
-            "description": "Currency cross-rate matrix for major FX pairs."
+            "description": "Currency cross-rate matrix for major FX pairs, and an amount converted into each currency."
           },
           {
             "code": "RRG",

@@ -13,6 +13,7 @@ import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
+import { tableScrollStep } from "../ui/table-layout";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -689,8 +690,16 @@ export function DataTableView<
     // At either edge the key is still the table's, so it never falls through
     // to switch a tab.
     stopTableKey(event);
-    const nextLeft = Math.max(0, Math.min(maxLeft,
-      currentLeft + direction * Math.max(1, Math.floor(viewportWidth / 2))));
+    const nextLeft = tableScrollStep({
+      columns: tableProps.columns,
+      columnGap: tableProps.columnGap,
+      horizontalPadding: tableProps.horizontalPadding,
+      frozenFirstColumn: tableProps.freezeFirstColumn,
+      scrollLeft: currentLeft,
+      direction,
+      viewportWidth,
+      maxLeft,
+    });
     if (nextLeft === currentLeft) return;
     body.scrollLeft = nextLeft;
     effectiveSyncHeaderScroll();

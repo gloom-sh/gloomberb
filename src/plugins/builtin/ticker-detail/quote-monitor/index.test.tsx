@@ -147,8 +147,8 @@ describe("QuoteMonitorPane", () => {
     await renderHarness(createQuoteMonitorHarness({ width, symbols: [symbol], financials: new Map([[symbol, financials]]) }), { width, height: 7 });
     await renderOnce();
     const frame = tui.frame();
-    expect(frame).toContain("$1.160227");
-    expect(frame).toContain("-0.001078");
+    expect(frame).toContain("$1.16023");
+    expect(frame).toContain("-0.00108");
   });
 
   test("opens a Ticker Research pane on the second card click", async () => {

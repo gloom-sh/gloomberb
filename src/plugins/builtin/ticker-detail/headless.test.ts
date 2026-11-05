@@ -193,11 +193,11 @@ test("quote monitor exports retain FX precision and small changes without alteri
   const result = await quoteComparisonHeadless.load(input, ctx);
   expect(result.rows[0]).toMatchObject({ price: quote.price, change: quote.change, instrumentType: "CURRENCY" });
   const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
-  expect(text).toContain("$1.160227");
-  expect(text).toContain("-$0.001078");
+  expect(text).toContain("$1.16023");
+  expect(text).toContain("-$0.00108");
   expect(text).not.toContain("-$0.00 ");
   const priceColumn = quoteComparisonHeadless.columns!.find(({ key }) => key === "price")!;
-  expect(priceColumn.format!(0.00651236716657877, { instrumentType: "CURRENCY", currency: "USD" })).toBe("$0.006512");
+  expect(priceColumn.format!(0.00651236716657877, { instrumentType: "CURRENCY", currency: "USD" })).toBe("$0.0065124");
   expect(priceColumn.format!(null, { currency: "USD" })).toBe("—");
 });
 

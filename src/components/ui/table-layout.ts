@@ -141,6 +141,87 @@ export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGa
   return starts;
 }
 
+/**
+ * Where a frozen board can stop: 0, each column's edge (its start just past
+ * the frozen column) and its end, the first edge that shows the last column
+ * whole, or `maxLeft` when none does.
+ */
+function frozenBoardStops(columns: readonly TableWidthColumn[], columnGap: number, horizontalPadding: number, viewportWidth: number) {
+  const normalized = normalizeTableColumns(columns);
+  const starts = tableColumnStarts(normalized, columnGap);
+  const frozenWidth = (normalized[0]?.width ?? 0) + columnGap;
+  const edges = starts.slice(1).map((start) => start - frozenWidth).filter((edge) => edge > 0);
+  const last = normalized.length - 1;
+  // Scrolled this far the last column shows whole; what follows it is the table's own blank edge.
+  const lastShown = Math.max(0, horizontalPadding + (starts[last] ?? 0) + (normalized[last]?.width ?? 0) - viewportWidth);
+  return { edges, end: edges.find((edge) => edge >= lastShown) ?? null };
+}
+
+/**
+ * Where a sideways step of a table too wide for its pane lands (Shift or
+ * Ctrl+Left/Right, "more →"): half the viewport on. With a frozen first
+ * column it stops at a column's edge, so the column beside the frozen one
+ * shows whole: half a viewport cut a column under it, and a rate too wide
+ * for what showed went blank. A column wider than half the viewport is
+ * stepped to whole, and the far end is an edge too (`tableFarEdgePad`).
+ */
+export function tableScrollStep({
+  columns,
+  columnGap = 1,
+  horizontalPadding = 1,
+  frozenFirstColumn = false,
+  scrollLeft,
+  direction,
+  viewportWidth,
+  maxLeft,
+}: {
+  columns: readonly TableWidthColumn[];
+  columnGap?: number;
+  horizontalPadding?: number;
+  frozenFirstColumn?: boolean;
+  scrollLeft: number;
+  direction: -1 | 1;
+  viewportWidth: number;
+  maxLeft: number;
+}): number {
+  const step = Math.max(1, Math.floor(viewportWidth / 2));
+  const target = scrollLeft + direction * step;
+  if (!frozenFirstColumn) return Math.max(0, Math.min(maxLeft, target));
+  const board = frozenBoardStops(columns, columnGap, horizontalPadding, viewportWidth);
+  const end = Math.min(maxLeft, board.end ?? maxLeft);
+  const stops = [...new Set([0, ...board.edges.filter((edge) => edge < end), end])];
+  const onward = stops.filter((stop) => (direction > 0 ? stop > scrollLeft : stop < scrollLeft));
+  if (onward.length === 0) return Math.max(0, Math.min(end, scrollLeft));
+  const within = onward.filter((stop) => (direction > 0 ? stop <= target : stop >= target));
+  if (within.length > 0) return direction > 0 ? Math.max(...within) : Math.min(...within);
+  return direction > 0 ? Math.min(...onward) : Math.max(...onward);
+}
+
+/**
+ * Blank cells a table with a frozen first column takes past its last column,
+ * so scrolled to its far end it starts a column whole beside the frozen one,
+ * as each step does (`tableScrollStep`), rather than cutting one under it.
+ * None when an edge already shows the last column whole.
+ */
+export function tableFarEdgePad({
+  columns,
+  columnGap = 1,
+  horizontalPadding = 1,
+  contentWidth,
+  viewportWidth,
+}: {
+  columns: readonly TableWidthColumn[];
+  columnGap?: number;
+  horizontalPadding?: number;
+  contentWidth: number;
+  viewportWidth: number;
+}): number {
+  const maxLeft = contentWidth - viewportWidth;
+  if (viewportWidth <= 0 || maxLeft <= 0) return 0;
+  const { end } = frozenBoardStops(columns, columnGap, horizontalPadding, viewportWidth);
+  return end == null ? 0 : Math.max(0, end - maxLeft);
+}
+
 export function hasMeaningfulTableHorizontalOverflow(
   tableWidth: number,
   viewportWidth: number,

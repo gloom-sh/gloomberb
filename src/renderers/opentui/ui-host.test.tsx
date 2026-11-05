@@ -134,4 +134,11 @@ test("a one-line field fuses pasted lines unless it joins them, and a list field
   // Line ends, Windows line ends, tabs and the blank edges of a column copied from a sheet.
   await paste("\nNVDA\r\n AMD\t\tMSFT\n\n");
   expect(values.at(-1)).toBe("NVDA AMD MSFT");
+
+  // A field that reads a list keeps each line and cell an entry: a name or a terminal's code stays whole.
+  tui.destroy();
+  values.length = 0;
+  await tui.render(<Input focused joinPastedLines="list" width={60} onInput={(value: string) => values.push(value)} />, { width: 62, height: 2 });
+  await paste("Apple Inc\r\nMeta Platforms \nVOD LN\tBARC LN\n");
+  expect(values.at(-1)).toBe("Apple Inc, Meta Platforms, VOD LN, BARC LN");
 });

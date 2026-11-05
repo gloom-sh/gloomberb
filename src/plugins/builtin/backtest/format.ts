@@ -1,4 +1,5 @@
 import type { BacktestResult } from "./engine";
+import { currencyPairCode, fxRateDigits } from "../../../utils/currency-pair";
 
 export type StatValue = { value: number | null; kind: "signed" | "percent" | "ratio" | "count" };
 export interface SummaryRow {
@@ -49,4 +50,17 @@ export function formatStat(stat: StatValue | null): string {
   if (kind === "ratio") return value.toFixed(2);
   if (kind === "percent") return `${value.toFixed(1)}%`;
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+/**
+ * A trade's price at its instrument's precision, as the pane and `fn BT`
+ * print it: a currency pair's (EURUSD=X 1.12625, USDJPY=X 157.848), any
+ * other price to the cent, or to four significant digits below one unit.
+ * `--` for a trade still open.
+ */
+export function formatTradePrice(value: number | null | undefined, symbol: string): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  const pair = currencyPairCode(symbol);
+  if (pair) return value.toFixed(fxRateDigits(pair.slice(3), value));
+  return Math.abs(value) >= 1 ? value.toFixed(2) : value.toPrecision(4);
 }

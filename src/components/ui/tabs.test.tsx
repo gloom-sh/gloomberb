@@ -113,6 +113,33 @@ test("resizing a floating viewport keeps the selected tab visible without snappi
   expect(tabsScroll().scrollLeft).toBe(0);
 });
 
+// Revealing the last tab scrolled the strip to end mid-label ("ng  Peers  News  Notes"), and a wheel tick pulled a
+// strip padded to a tab's edge back off it.
+test("revealing a tab starts the strip at a tab's edge, and the wheel reaches as far as the reveal did", async () => {
+  await act(async () => {
+    await tui.render(<TabsHarness />, { width: 30, height: 4 });
+  });
+  await act(async () => { selectTab?.("notes"); });
+  for (let frame = 0; frame < 3; frame++) await act(async () => { await tui.setup().renderOnce(); });
+  const line = () => tui.frame().split("\n")[0]!;
+  const revealed = tabsScroll().scrollLeft;
+  expect(line()).toContain("Notes");
+  // Whole tabs only, from the first cell of one.
+  expect(line()).toMatch(/^ (Hiring|Peers|News) /);
+
+  const wheel = async (direction: "up" | "down", ticks: number) => {
+    await act(async () => {
+      for (let tick = 0; tick < ticks; tick++) await tui.setup().mockMouse.scroll(1, 0, direction);
+      await tui.setup().renderOnce();
+    });
+  };
+  await wheel("up", 2);
+  expect(tabsScroll().scrollLeft).toBeLessThan(revealed);
+  await wheel("down", 40);
+  expect(tabsScroll().scrollLeft).toBe(revealed);
+  expect(line()).toMatch(/^ (Hiring|Peers|News) /);
+});
+
 test("retranslates stable tab items when the app language changes", async () => {
   const tabs = [{ label: "Open", value: "open" }];
   await tui.render(

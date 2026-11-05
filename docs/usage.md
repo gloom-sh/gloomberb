@@ -819,7 +819,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `DESK [desk]` | Add a ready-made desk as a new layout tab: equities, options, futures and commodities, rates and credit, FX and macro, or active trading. `DESK buildout` opens TheBuildout's theme board with a company's flow, its facilities on the map and its signals; `DESK buildout-map` gives the map the room |
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
-| `GL` | Tidy all windows |
+| `GL` | Tidy all windows. In a terminal under 80 columns it stacks the panes in one column, as one or two tab stacks at the full width; tidied again 80 columns or wider, that column is a grid again |
 | `SB` | Toggle the status bar |
 | `VF` | Toggle quote value flashing |
 | `TH <theme>` | Change color theme. The list shows each theme's id, the one `gloom config set theme <id>` takes. `gloom config themes` lists them, `colorblind`, `colorblind-light` and `high-contrast` included |
@@ -841,6 +841,7 @@ In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` rem
 - Removing it from a portfolio deletes its position there. Its notes, alerts and other lists stay.
 - Broker portfolios and team lists have no `d` (the next sync would put a broker ticker back, and everyone shares a team list). `RW` and `RP` still edit a team list.
 - In the add row, a symbol with a colon (`NET:`) opens that symbol's exchanges, and the one you pick joins the list.
+- The add row takes what `quote` and `watchlist add` take: `AAPL`, `EURUSD=X`, `eur/usd`, `^GSPC`, `BRK.B`. A list typed or pasted with commas or one per line (`usd/jpy, EUR/JPY, gbp-chf`) is read entry by entry: each pasted line or sheet cell is one entry, read in the case it was typed, so `Apple Inc` is a name and `VOD LN` a terminal's code. The row says how many it adds and which it leaves out and why (not found, already in the list, several listings), and Enter adds the rest. Entries that are one symbol (`EURUSD=X, eur/usd`) add it once, and a paste of more than 50 entries adds the first 50 and says so.
 
 When the `PF` table comes back into sight after two minutes away, LAST is tinted for six seconds on each row whose price moved since you left (green above what LAST showed then, red below). A key or a click clears the tint. **Moves Since Last Seen** in the pane's settings sets the time away (30 seconds, 2 minutes, 10 minutes) or turns it off.
 
@@ -1276,12 +1277,13 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 ### `fx`
 
-`gloom fx NGN` prints one unit of a currency in your base currency. A pair reads as markets quote it: `gloom fx USD/NGN` is how many naira one dollar buys, and `gloom fx ZAR/NGN` crosses the two through their dollar rates.
+`gloom fx NGN` prints one unit of a currency in your base currency. A pair reads as markets quote it: `gloom fx USD/NGN` is how many naira one dollar buys.
 
-- The line states both directions, such as `1 NGN = 0.000752791 USD  (USD/NGN 1328.39)`. A rate keeps six significant figures, or cents from 1000 up.
-- A pair typed without its slash (`gloom fx eurusd`) says to write it as `EUR/USD`.
+- The rate is the pair's own quote, the one `gloom quote USDSGD=X` and `FXC` show, in either direction (`fx SGD/USD` reads USD/SGD). A pair with no quote of its own crosses through the dollar quotes and names them: `via USD: USD/ZAR 16.13650, USD/NGN 1328.39` (`gloom fx ZAR/NGN`).
+- The line states both directions, such as `1 EUR = 1.12650 USD  (USD/EUR 0.887705)`. The side that is the pair as markets quote it prints the quote as it was sent, never rounded, and at least to the pair's precision: three decimals in yen from 1 up (`USD/JPY 157.848`), five from 1 up (`EUR/USD 1.12650`), three from 50 up and two from 1000 up (`USD/NGN 1328.39`), and five significant digits below 1, yen too (`IDR/JPY 0.0096120`). The other side is its inverse to six significant figures. `--json` keeps `rate` and `inverse` at full precision.
+- A pair is written as `quote` takes it: `EUR/USD`, `eurusd`, `gbp-chf` or `EURUSD=X`.
 - A currency's name stands for its code (`gloom fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
-- The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the older of the two USD rates: `Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed` (`live` with real-time access, `stale` when a rate has not updated in time).
+- The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the quote's own time (the older dollar quote's for a cross): `Source: Gloom Cloud · Thu 5 Nov 2026 04:52 UTC · 15 min delayed · markets open` (`live` with real-time access). A rate is marked stale there, with its age (`stale (2 hours old)`), and as `stale: true` in exports when the service says so, as `quote` marks the same quote, or once it is older than the feed's delay and 15 minutes, counted while the FX market trades: Friday's close stays current over the weekend.
 
 **The peso.** `gloom fx USD/ARS` (or `ARS/USD`) labels its rate the official wholesale one, then lists the market dollar rates Buenos Aires prices imply, pesos per dollar, each with its formula and the time of every price in it: CCL via the GGAL ADR (GGAL.BA × 10 / GGAL), CCL via the BYMA C line (GGAL.BA / GGALC.BA) and MEP via the D line (GGAL.BA / GGALD.BA). A price that did not come back leaves its rate out and says so. `--json` adds `spotKind` and `impliedRates` (`kind`, `rate`, `formula` and each input's `price`, `currency`, `observedAt` and `sessionOpen`). `gloom fn ADR <ticker>` compares any other receipt with its home listing the same way.
 
@@ -1296,7 +1298,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 
-**Amounts.** An amount in front converts it: `gloom fx 1234.5 EUR/USD` and `gloom fx 1234,5 EUR USD` print `1,234.50 EUR = 1,385.06 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD).
+**Amounts.** An amount in front converts it: `gloom fx 1234.5 EUR/USD` and `gloom fx 1234,5 EUR USD` print `1,234.50 EUR = 1,390.58 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD). It is converted at the quote as sent, never at a rounded rate, and the line prints that quote (1,234.50 × 1.12643), so the figures check by hand; a cross converts at both dollar quotes, which its line names. In the app, `fx 2500000 EUR/USD` or `convert 100 eur to usd` in the command bar opens `FXC` on the amount.
 
 The amount reads as cash does (below), except that a comma before exactly three digits asks which was meant in every currency, as `alerts add` does: `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 EUR/USD` and `fx 1,234 KWD/USD` name both readings and convert nothing (`type 1234 or 1.234`). `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
 

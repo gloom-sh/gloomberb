@@ -1,6 +1,7 @@
 import { currencyMinorDigits } from "../market-data/market/format";
 import { parseTypedNumber, readConvertedAmount } from "../utils/decimal-comma";
 import { currenciesNamed } from "../utils/currency-names";
+import { currencyPairSpelling, fxFigureText, fxRateDigits, quotedFxPair } from "../utils/currency-pair";
 
 /**
  * What `gloom fx` is asked for. A bare code is one unit of it in the base
@@ -47,15 +48,31 @@ function readCurrencyName(typed: string, retry: (code: string) => string): { cod
   return { error: `${typed} names several currencies: ${choices}. Write one as its code, such as fx ${retry(named[0]!.code)}.` };
 }
 
+/**
+ * A pair written as `quote` takes one, without a slash: EURUSD, eur-usd,
+ * EURUSD=X, EURUSD:CCY and JPY=X (USD/JPY). Null for anything else.
+ */
+function spelledPair(text: string): FxRequest | null {
+  if (/^[A-Z]{3}$/.test(text)) return null;
+  const spelling = currencyPairSpelling(text);
+  const match = spelling ? /^([A-Z]{3})([A-Z]{3})=X$/.exec(spelling.symbol) : null;
+  return match ? { currency: match[1]!, baseCurrency: match[2]! } : null;
+}
+
+/** Whether `fx` reads the argument as a pair spelled without its slash (`spelledPair`). */
+function isSpelledFxPair(raw: string): boolean {
+  return spelledPair(raw.trim().toUpperCase()) != null;
+}
+
 /** The request, or the sentence saying what is wrong with the argument. */
 export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | { error: string } {
   const typed = raw.trim().split("/").map((part) => part.trim());
   const text = raw.trim().toUpperCase();
   const parts = typed.map((part) => part.toUpperCase());
   if (parts.length > 2 || parts.some((part) => !part)) return { error: `"${raw}" is not a currency or a pair such as USD/NGN.` };
-  // EURUSD is the pair typed without its slash: say how to write it.
-  const joined = parts.length === 1 && /^[A-Z]{6}$/.test(text) && isKnownCurrency(text.slice(0, 3)) && isKnownCurrency(text.slice(3));
-  if (joined) return { error: `${text} is not a currency code; write the pair as ${text.slice(0, 3)}/${text.slice(3)}.` };
+  // The pair spellings `quote` takes: EURUSD, eur-usd, EURUSD=X.
+  const spelled = parts.length === 1 ? spelledPair(text) : null;
+  if (spelled) return spelled;
   // A name (peso, yen, Swiss franc) is a currency's code. Three letters that are a code stay one: only a name that is no code reads as one.
   const readAs: string[] = [];
   for (const [index, part] of parts.entries()) {
@@ -127,7 +144,7 @@ export function parseFxArgs(words: readonly string[], baseCurrency: string): FxA
     const pair = typed.length === 2 && typed.every((arg) => /^[A-Za-z]{3}$/.test(arg)) ? typed.join("/").toUpperCase() : "EUR/USD";
     return { error: `fx takes one currency or pair; got ${typed.join(" ")}. Write a pair as ${pair}, or convert an amount as fx 1234.5 ${pair}.` };
   }
-  const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/");
+  const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/") && !isSpelledFxPair(codes[0]!);
   const request = parseFxRequest(codes.join("/"), "USD");
   if ("error" in request) return request;
   // 1,234 and 1.234 could each be either reading, whatever the currency.
@@ -183,7 +200,42 @@ export function formatFxRate(rate: number): string {
   return fixed.includes(".") ? fixed.replace(/\.?0+$/, "") : fixed;
 }
 
-/** Both directions on one line: `1 NGN = 0.000752791 USD  (USD/NGN 1328.39)`. */
-export function describeFxRate(request: FxRequest, rate: number): string {
-  return `1 ${request.currency} = ${formatFxRate(rate)} ${request.baseCurrency}  (${request.baseCurrency}/${request.currency} ${formatFxRate(1 / rate)})`;
+/** The pair as markets quote it (USD/JPY for JPY/USD), its rate, and whether that is the direction asked for. */
+function marketQuote(request: FxRequest, rate: number): { pair: string; rate: number; currency: string; direct: boolean } {
+  const quoted = quotedFxPair(request.currency, request.baseCurrency, rate);
+  return { pair: quoted.pair, rate: quoted.rate, currency: quoted.pair.slice(4), direct: quoted.pair === `${request.currency}/${request.baseCurrency}` };
+}
+
+/** A quote a rate is read from: its pair as markets write it and its figure as the source sent it (USD/JPY 157.848). */
+export interface FxQuotedFigure {
+  pair: string;
+  figure: number;
+}
+
+/** The dollar pairs a cross is read from, each as sent: `via USD: USD/ZAR 16.13650, USD/NGN 1328.39`. */
+export function describeFxLegs(legs: readonly FxQuotedFigure[]): string {
+  return `via USD: ${legs.map(({ pair, figure }) => `${pair} ${fxFigureText(figure, pair.slice(4))}`).join(", ")}`;
+}
+
+/**
+ * Both directions on one line: `1 NGN = 0.000752791 USD  (USD/NGN 1328.39)`.
+ * The side that is the pair as markets quote it is that quote's figure as
+ * sent, with at least the pair's decimals (EUR/USD 1.12650, USD/JPY
+ * 157.848, IDR/JPY 0.0096120): the rate a conversion multiplies or divides
+ * by, never a rounded one. The other side is its inverse to six significant
+ * digits. A cross (no `quoted` figure of its own) shows the pair's decimals,
+ * and the dollar pairs it is read from are named beside it (`describeFxLegs`).
+ */
+export function describeFxRate(request: FxRequest, rate: number, quoted?: FxQuotedFigure): string {
+  const head = `1 ${request.currency} =`, pair = `${request.baseCurrency}/${request.currency}`;
+  if (request.currency === request.baseCurrency || !isUsableRate(rate)) {
+    return `${head} ${formatFxRate(rate)} ${request.baseCurrency}  (${pair} ${formatFxRate(1 / rate)})`;
+  }
+  const market = marketQuote(request, rate);
+  const quotedText = quoted && quoted.pair === market.pair && isUsableRate(quoted.figure)
+    ? fxFigureText(quoted.figure, market.currency)
+    : market.rate.toFixed(fxRateDigits(market.currency, market.rate));
+  const left = market.direct ? quotedText : formatFxRate(rate);
+  const right = market.direct ? formatFxRate(1 / rate) : quotedText;
+  return `${head} ${left} ${request.baseCurrency}  (${pair} ${right})`;
 }

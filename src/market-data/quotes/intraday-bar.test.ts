@@ -3,7 +3,6 @@ import type { CloudQuotePayload } from "../../api-client";
 import { mapQuote } from "../../sources/gloomberb-cloud/normalizers";
 import type { Quote } from "../../types/financials";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
-import { fxRateNotes, refreshedFxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributions";
 import { quoteBarNotes } from "./intraday-bar";
 
@@ -43,25 +42,9 @@ test("a stale pair print says why it stands, and only while it reads stale", () 
   expect(quoteBarNotes("USDBRL=X", { ...quote, stale: false, lastUpdated: now - 60_000 }, now)).toEqual([]);
 });
 
-test("an exchange rate carries its bar and its reason to the fx lines, and a failed refresh states its own", () => {
+test("an exchange rate carries its bar, and drops a field that is not one", () => {
   const rate = { fromCurrency: "BRL", toCurrency: "USD", rate: 1 / 5.05139, asOf: "2026-10-23T06:35:00.000Z",
     fetchedAt: "2026-10-23T06:52:00.000Z", stale: false, delayMinutes: 15, intradayBar: bar };
   expect(exchangeRateMetadata(rate, "BRL", now)).toMatchObject({ intradayBar: bar, delayMinutes: 15 });
   expect(exchangeRateMetadata({ ...rate, intradayBar: { start: bar.start } }, "BRL", now).intradayBar).toBeUndefined();
-  expect(fxRateNotes(new Map([["USD", {}], ["BRL", exchangeRateMetadata(rate, "BRL", now)]]), now)).toEqual([
-    "BRL/USD: 06:30–06:35 UTC bar close, quotes paused",
-  ]);
-  const stale = exchangeRateMetadata({ ...rate, intradayBar: undefined, asOf: "2026-10-23T03:20:00.000Z", stale: true, staleReason: noNewer }, "BRL", now);
-  expect(fxRateNotes(new Map([["BRL", stale]]), now)).toEqual([`BRL/USD: ${noNewer}`]);
-  expect(fxRateNotes(new Map([["BRL", { ...stale, error: new Error("offline") }]]), now)).toEqual([]);
-  expect(fxRateNotes(new Map([["BRL", { ...stale, staleAt: now + 60_000 }]]), now)).toEqual([]);
-});
-
-test("fx --refresh says when it read a stale rate again and the data service had nothing newer, unless a reason or a failure already says why", () => {
-  const old = exchangeRateMetadata({ fromCurrency: "ZAR", toCurrency: "USD", rate: 1 / 16.6175, asOf: "2026-10-22T14:00:00.000Z",
-    fetchedAt: "2026-10-23T06:52:00.000Z" }, "ZAR", now);
-  expect(refreshedFxRateNotes(new Map([["USD", {}], ["ZAR", old]]), now)).toEqual(["ZAR/USD: --refresh found no newer rate than Thu 22 Oct 14:00 UTC."]);
-  expect(refreshedFxRateNotes(new Map([["ZAR", { ...old, staleReason: noNewer }]]), now)).toEqual([]);
-  expect(refreshedFxRateNotes(new Map([["ZAR", { ...old, error: new Error("offline") }]]), now)).toEqual([]);
-  expect(refreshedFxRateNotes(new Map([["ZAR", { ...old, staleAt: now + 60_000 }]]), now)).toEqual([]);
 });

@@ -7,7 +7,10 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
+import {
+  formatMarketChangeWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions,
+  resolveAssetDisplayKind, withCurrencyMinorDigits, type MarketFormatOptions,
+} from "../../../market-data/market/format";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryWickNotice,
@@ -318,6 +321,10 @@ function quoteAmount(value: unknown, row: Record<string, unknown>, signed = fals
     priceBasis: row.priceBasis === "per-unit" || row.priceBasis === "percent-of-par" ? row.priceBasis : undefined };
   // Par quotes keep two decimals; money pads to its currency's minor unit (none for JPY).
   const options = base.priceBasis === "percent-of-par" ? { ...base, minimumFractionDigits: 2 } : withCurrencyMinorDigits(base, currency);
+  // A currency pair's move is written at the pair's precision, as its price is (-$0.00108 on EUR/USD 1.16023).
+  if (signed && currency && typeof row.price === "number" && resolveAssetDisplayKind(options) === "cash") {
+    return formatMarketChangeWithCurrency(value, currency, options, row.price);
+  }
   const amount = currency
     ? formatMarketPriceWithCurrency(value, currency, options)
     : formatMarketPrice(value, options);

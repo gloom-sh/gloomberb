@@ -4,7 +4,10 @@ import type { PluginRegistry } from "../../../registry";
 import { setSharedRegistryForTests } from "../../../registry";
 import { createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
 import { createTestTicker } from "../../../../test-support/ticker";
-import { exchangeLabelFromValidation, resolveQuickAddValidation, tickerNameFromValidation } from "./resolution";
+import {
+  createQuickAddListMemo, exchangeLabelFromValidation, isPlausibleTickerQuery, mayBeQuickAddList, normalizeQuickAddQuery, QUICK_ADD_LIST_MAX,
+  QUICK_ADD_REFUSAL, readQuickAddEntries, resolveQuickAddList, resolveQuickAddValidation, tickerNameFromValidation,
+} from "./resolution";
 
 const nyse: InstrumentSearchResult = {
   providerId: "test", symbol: "NET", name: "Cloudflare", exchange: "NYSE", currency: "USD", type: "STK",
@@ -110,5 +113,88 @@ describe("quick-add listing resolution", () => {
     // Once New York's line is saved beside it, the bare symbol is that row.
     const newYork = createTestTicker("SHEL:XNYS", "Shell PLC ADR", { exchange: "NYSE", currency: "USD", watchlists: ["watchlist"] });
     expect(await validate(new Map([["SHEL", london], ["SHEL:XNYS", newYork]]))).toMatchObject({ status: "duplicate", symbol: "SHEL:XNYS" });
+  });
+
+  // `a` then EURUSD=X said "Use a ticker symbol", and so did a pasted `usd/jpy, EUR/JPY ,gbp-chf`.
+  test("the row takes every form quote and watchlist add take, and a pasted list entry by entry", async () => {
+    for (const typed of ["EURUSD=X", "^GSPC", "CL=F", "SAN:EPA", "BRK.B", "BTC-USD", "EUR/USD", "M&M.NS"]) {
+      expect(isPlausibleTickerQuery(normalizeQuickAddQuery(typed)), typed).toBe(true);
+    }
+    // What no symbol holds is refused naming what the row takes, with no lookup.
+    expect(await resolveQuickAddValidation({ query: "!!!", collectionId: "watchlist", collectionKind: "watchlist", tickers: new Map(), financials: new Map() }))
+      .toEqual({ status: "missing", query: "!!!", message: QUICK_ADD_REFUSAL });
+
+    const searched: string[] = [];
+    const listed: Record<string, InstrumentSearchResult> = Object.fromEntries(["USDJPY=X", "EURJPY=X", "GBPCHF=X", "EURUSD=X"].map((symbol) => [symbol, {
+      providerId: "test", symbol, name: `${symbol.slice(0, 3)}/${symbol.slice(3, 6)}`, exchange: "CCY", currency: symbol.slice(3, 6), type: "CURRENCY",
+    }]));
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async (query) => {
+          searched.push(query);
+          const key = query.toUpperCase().replace(/[/-]/, "").replace(/(=X)?$/, "=X");
+          return listed[key] ? [listed[key]!] : [];
+        },
+        getQuote: async (symbol) => createTestQuote({ symbol, price: 1.1, instrumentType: "CURRENCY" }),
+      }),
+    } as PluginRegistry);
+    expect(mayBeQuickAddList("EURUSD=X")).toBe(false);
+    expect((await readQuickAddEntries("usd/jpy, EUR/JPY ,gbp-chf")).entries).toEqual(["USD/JPY", "EUR/JPY", "GBP-CHF"]);
+    // Symbols typed on one line are still a list of them.
+    expect((await readQuickAddEntries("EURUSD=X USDJPY=X")).entries).toEqual(["EURUSD=X", "USDJPY=X"]);
+    const collection = { collectionId: "watchlist", collectionKind: "watchlist" as const, tickers: new Map(), financials: new Map() };
+    const list = await resolveQuickAddList({ ...collection, query: "USD/JPY, EUR/JPY, XYZQ", entries: ["USD/JPY", "EUR/JPY", "XYZQ"] });
+    expect(list.status).toBe("list");
+    if (list.status !== "list") return;
+    expect(list.entries.map((entry) => [entry.query, entry.status])).toEqual([["USD/JPY", "ready"], ["EUR/JPY", "ready"], ["XYZQ", "missing"]]);
+    // One entry is checked as a symbol typed alone.
+    expect(await resolveQuickAddList({ ...collection, query: "EURUSD=X", entries: ["EURUSD=X"] })).toMatchObject({ status: "ready", symbol: "EURUSD=X" });
+  });
+
+  // "Apple Inc" over "Meta Platforms" was one line of four words, and `EURUSD=X, eur/usd` added EUR/USD twice.
+  test("a pasted list keeps its lines and case, is each symbol once and at most fifty, and a keystroke looks up only what it changed", async () => {
+    const names: Record<string, InstrumentSearchResult> = {
+      "APPLE INC": { providerId: "test", symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ", currency: "USD", type: "STK" },
+      "META PLATFORMS": { providerId: "test", symbol: "META", name: "Meta Platforms", exchange: "NASDAQ", currency: "USD", type: "STK" },
+      "EURUSD=X": { providerId: "test", symbol: "EURUSD=X", name: "EUR/USD", exchange: "CCY", currency: "USD", type: "CURRENCY" },
+      "EUR/USD": { providerId: "test", symbol: "EURUSD=X", name: "EUR/USD", exchange: "CCY", currency: "USD", type: "CURRENCY" },
+    };
+    const searched: string[] = [];
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async (query) => {
+          searched.push(query);
+          const found = names[query.toUpperCase()];
+          return found ? [found] : [];
+        },
+        getQuote: async (symbol) => createTestQuote({ symbol, price: 1.1 }),
+      }),
+    } as PluginRegistry);
+    // The row joins a pasted column with ", ": each line one entry, a name read as one in the case it was typed.
+    expect((await readQuickAddEntries("Apple Inc, Meta Platforms")).entries).toEqual(["APPLE INC", "META PLATFORMS"]);
+    expect((await readQuickAddEntries("VOD LN, BARC LN")).entries).toEqual(["VOD LN", "BARC LN"]);
+
+    const collection = { collectionId: "watchlist", collectionKind: "watchlist" as const, tickers: new Map(), financials: new Map() };
+    const once = await resolveQuickAddList({ ...collection, query: "EURUSD=X, EUR/USD", entries: ["EURUSD=X", "EUR/USD"] });
+    expect(once).toMatchObject({ status: "list", entries: [{ status: "ready", symbol: "EURUSD=X" }] });
+
+    // Past fifty, the first fifty are read and the list says how many it held.
+    const long = Array.from({ length: 73 }, (_, index) => `S${index}`).join(", ");
+    const read = await readQuickAddEntries(long);
+    expect(read.entries).toHaveLength(QUICK_ADD_LIST_MAX);
+    expect(read.total).toBe(73);
+    expect(await resolveQuickAddList({ ...collection, query: long, ...read })).toMatchObject({ status: "list", total: 73 });
+
+    // Typing on after a paste looks up only the entry the keystroke changed.
+    const memo = createQuickAddListMemo();
+    const check = async (value: string) => {
+      const { entries, total } = await readQuickAddEntries(value, memo);
+      return resolveQuickAddList({ ...collection, query: value, entries, total, memo });
+    };
+    await check("Apple Inc, Meta Platforms, EURUSD=X");
+    searched.length = 0;
+    await check("Apple Inc, Meta Platforms, EURUSD=X, EUR/USD");
+    expect(searched.every((query) => query.toUpperCase().includes("EUR/USD") || query.toUpperCase().includes("EURUSD"))).toBe(true);
+    expect(searched.length).toBeGreaterThan(0);
   });
 });

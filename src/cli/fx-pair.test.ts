@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { parseFxArgs, parseFxRequest } from "./fx-pair";
 
-test("a pair typed without its slash is answered with the slash form, and only when both halves are currencies", () => {
-  expect(parseFxRequest("eurusd", "USD")).toEqual({ error: "EURUSD is not a currency code; write the pair as EUR/USD." });
-  expect(parseFxRequest("EUR/USD", "USD")).toEqual({ currency: "EUR", baseCurrency: "USD" });
+test("a pair is read in every spelling quote takes, and only when both halves are currencies", () => {
+  const eurUsd = { currency: "EUR", baseCurrency: "USD" };
+  for (const typed of ["eurusd", "EUR/USD", "eur-usd", "EURUSD=X", "eurusd:ccy"]) expect(parseFxRequest(typed, "GBP"), typed).toEqual(eurUsd);
+  expect(parseFxRequest("JPY=X", "GBP")).toEqual({ currency: "USD", baseCurrency: "JPY" });
   // Six letters that are not two codes (SHE, LLS) get the plain error, not a made-up pair.
   expect(parseFxRequest("SHELLS", "USD")).toEqual({ error: "SHELLS is not a currency code; use three letters such as NGN." });
 });

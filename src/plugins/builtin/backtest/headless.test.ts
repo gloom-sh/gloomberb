@@ -4,6 +4,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import { backtestHeadless } from "./headless";
 import { backtestModule } from "./index";
 import { resolveRules } from "./presets";
+import { formatTradePrice } from "./format";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { PricePoint } from "../../../types/financials";
 
@@ -86,4 +87,13 @@ test("BT leaves a forming last bar out of CL=F, ES=F and BTC-USD alike, says so,
     expect(kept.warnings?.[0], symbol).toContain("2026-10-30");
     expect(kept.warnings?.[0], symbol).toContain("and kept");
   }
+});
+
+// `fn BT EURUSD=X` printed its trades at 1.12 and 1.18.
+test("a trade's prices print at its instrument's precision: a currency pair's five decimals, a yen pair's three, a stock's cents", () => {
+  expect(["EURUSD=X", "EUR/USD", "JPY=X", "USDJPY=X", "AAPL"].map((symbol) => formatTradePrice(symbol.includes("JPY") ? 157.8481 : 1.1234567, symbol)))
+    .toEqual(["1.12346", "1.12346", "157.848", "157.848", "1.12"]);
+  expect(formatTradePrice(1.18, "EURUSD=X")).toBe("1.18000");
+  expect(formatTradePrice(0.123456, "PENNY")).toBe("0.1235");
+  expect(formatTradePrice(null, "EURUSD=X")).toBe("--");
 });

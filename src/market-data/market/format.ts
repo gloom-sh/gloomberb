@@ -4,6 +4,7 @@ import { resolvePriceBasis } from "./price-basis";
 import { isIndexLevel } from "./index-level";
 import { currencyPriceDigits, formatCompact, formatCurrency, formatCurrencyCode } from "../../utils/format";
 import { minorUnitSign } from "../../utils/currency-units";
+import { fxRateDigits } from "../../utils/currency-pair";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
 
@@ -206,17 +207,12 @@ function getQuantityMaxFractionDigits(kind: AssetDisplayKind, value: number): nu
   }
 }
 
-function integerDigits(value: number): number {
-  const absolute = Math.abs(value);
-  return absolute >= 1 && Number.isFinite(absolute) ? Math.floor(Math.log10(absolute)) + 1 : 0;
-}
-
 function getBasePriceMaxFractionDigits(kind: AssetDisplayKind, value: number, currency?: string): number {
   switch (kind) {
     case "cash":
-      // Six decimals, but no more than seven significant digits: providers send
-      // float32 rates, so 157.8800048828125 must not print as 157.880005.
-      return Math.max(2, Math.min(6, 7 - integerDigits(value)));
+      // A currency pair's precision (EUR/USD 1.12625, USD/JPY 157.880), which
+      // also keeps a provider's float32 tail (157.8800048828125) out.
+      return fxRateDigits(currency, value);
     case "crypto":
       // Sub-cent coins need eight decimals to stay distinguishable from zero,
       // but a four-figure coin does not. Scaling the ceiling by magnitude keeps
@@ -419,7 +415,8 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
     // A live price keeps its instrument's decimals, but a trade finer than the
     // session prices showed (a half-yen print after whole-yen closes) is not
     // rounded to a price that never traded.
-    if (reference !== undefined) digits = Math.max(digits, writtenFractionDigits(Math.abs(value), maxFractionDigits));
+    // A currency pair prints to its precision whatever a print carries (1.1270145 is 1.12701).
+    if (reference !== undefined && kind !== "cash") digits = Math.max(digits, writtenFractionDigits(Math.abs(value), maxFractionDigits));
     const fitted = formatVariableNumber(value, digits, options.maxWidth, digits);
     return hasNonZeroDigit(fitted) || Number(Math.abs(value).toFixed(digits)) === 0
       ? fitted
@@ -427,10 +424,13 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
   }
   // A listing whose tick is finer than its currency's minor unit keeps the tick's decimals (an HKEX ETF's 5.325).
   const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, value) : undefined;
+  const baseFractionDigits = getBasePriceMaxFractionDigits(kind, value, options.currency);
   const minimumFractionDigits = Math.max(
     0,
-    Math.min(options.minimumFractionDigits ?? 0, getBasePriceMaxFractionDigits(kind, value, options.currency)),
+    Math.min(options.minimumFractionDigits ?? 0, baseFractionDigits),
     tick ?? 0,
+    // A currency pair keeps its precision's trailing zeros (6.66800), except on a chart's axis.
+    kind === "cash" && options.priceRange === undefined ? baseFractionDigits : 0,
   );
   const maxFractionDigits = Math.max(
     getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0, quotedUnitDigits, options.currency),
@@ -493,6 +493,13 @@ export function formatMarketChangeWithCurrency(
     return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, {
       ...options, minimumFractionDigits: Math.max(2, options.minimumFractionDigits ?? 0),
     })}`;
+  }
+  // A currency pair's move is written at the pair's precision (+$0.00345 on EUR/USD 1.12638), never its float tail.
+  if (resolveAssetDisplayKind(options) === "cash" && referencePrice != null && Number.isFinite(referencePrice) && referencePrice > 0) {
+    const digits = fxRateDigits(currency, referencePrice);
+    const rounded = Math.abs(value) < 0.5 * 10 ** -digits;
+    const body = formatMarketPriceWithCurrency(rounded ? 0 : Math.abs(value), currency, { ...options, fixedFractionDigits: digits });
+    return rounded ? body : `${value > 0 ? "+" : "-"}${body}`;
   }
   // A move on a listing whose tick is finer than cents is written to the tick's decimals (+HK$0.030 on an HKEX ETF).
   const tick = listingTickDigits(options.listingTickTable, referencePrice);
@@ -613,7 +620,8 @@ export function stablePriceFractionDigits(context: StablePriceContext): number {
     digits = listingTickDigits(context.listingTickTable, reference)
       ?? (below(1) ? 4 : currencyPriceMinDigits(context.currency) + unitDigits);
   } else if (kind === "cash") {
-    digits = below(10) ? 4 : 2;
+    // A currency pair's precision, never the digits a feed wrote its closes with.
+    return fxRateDigits(context.currency, reference);
   } else if (kind === "crypto") {
     digits = below(1) ? subUnitDigits : below(100) ? 4 : 2;
   } else if (kind === "contract") {

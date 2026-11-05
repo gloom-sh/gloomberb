@@ -18,6 +18,8 @@ import {
   tableColumnLeadGap,
   tableColumnStarts,
   tableContentWidthProps,
+  tableFarEdgePad,
+  tableScrollStep,
   useMeasuredTableContentWidth,
 } from "../../table-layout";
 import type {
@@ -382,6 +384,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
+  // A frozen board's rows run on past the last column, blank, so scrolled to its far end it starts a column
+  // whole beside the frozen one, as each step does (tableScrollStep).
+  const scrollContentWidth = contentWidth + (freezeFirstColumn && horizontalScrollbarVisible
+    ? tableFarEdgePad({ columns: displayColumns, columnGap, horizontalPadding, contentWidth, viewportWidth: measuredViewportWidth })
+    : 0);
   // Columns out of view past the right edge: the header row ends in "more →" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
   // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
@@ -480,17 +487,20 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef: headerScrollRef,
     onHorizontalScroll: syncBodyScroll,
   });
-  // "more →" steps right as Shift+Right does: half the viewport.
+  // "more →" steps right as Shift+Right does: half the viewport (beside a frozen column, to a column's edge).
   const scrollToMoreColumns = useCallback(() => {
     const body = scrollRef.current;
     const viewportWidth = body?.viewport?.width ?? 0;
     if (!body || viewportWidth <= 0) return;
     const maxLeft = Math.max(0, (body.scrollWidth ?? 0) - viewportWidth);
-    body.scrollLeft = Math.min(maxLeft, (body.scrollLeft ?? 0) + Math.max(1, Math.floor(viewportWidth / 2)));
+    body.scrollLeft = tableScrollStep({
+      columns: displayColumns, columnGap, horizontalPadding, frozenFirstColumn: freezeFirstColumn,
+      scrollLeft: body.scrollLeft ?? 0, direction: 1, viewportWidth, maxLeft,
+    });
     syncHeaderScroll();
     setScrollLeft(body.scrollLeft ?? 0);
     nativeRenderer.requestRender();
-  }, [nativeRenderer, scrollRef, syncHeaderScroll]);
+  }, [columnGap, displayColumns, freezeFirstColumn, horizontalPadding, nativeRenderer, scrollRef, syncHeaderScroll]);
   const handleBodySizeChange = useCallback(() => {
     measureContentWidth();
     setScrollVersion((current) => current + 1);
@@ -632,7 +642,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         <Box
           flexDirection="row"
           height={1}
-          {...tableContentWidthProps(contentWidth)}
+          {...tableContentWidthProps(scrollContentWidth)}
           paddingX={horizontalPadding}
           backgroundColor={colors.panel}
         >
@@ -748,7 +758,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     colors={colors}
                     columnGap={columnGap}
                     columnStarts={columnStarts}
-                    contentWidth={contentWidth}
+                    contentWidth={scrollContentWidth}
                     displayColumns={displayColumns}
                     focusPane={focusPane}
                     frozenColumnOffset={freezeFirstColumn ? frozenColumnOffset : undefined}

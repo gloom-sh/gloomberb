@@ -20,13 +20,20 @@ import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
+  createQuickAddListMemo,
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
   exchangeLabelFromValidation,
+  mayBeQuickAddList,
   normalizeQuickAddQuery,
+  QUICK_ADD_LIST_MAX,
+  QUICK_ADD_REFUSAL,
+  readQuickAddEntries,
+  resolveQuickAddList,
   resolveQuickAddValidation,
   tickerNameFromValidation,
   type QuickAddCollectionKind,
+  type QuickAddEntryValidation,
   type QuickAddValidation,
 } from "./resolution";
 
@@ -68,6 +75,26 @@ function QuickAddPreview({
     return <Text fg={colors.textMuted}>{t("Multiple listings")}</Text>;
   }
 
+  if (validation.status === "list") {
+    // What Enter adds, then what it leaves out, in the order they were pasted.
+    const { ready, left } = splitListEntries(validation.entries);
+    const cut = listCutText(validation);
+    return (
+      <Box flexDirection="row" overflow="hidden">
+        <Text fg={ready.length > 0 ? colors.textDim : colors.textMuted} flexShrink={0}>
+          {ready.length === 0
+            ? t("Nothing to add")
+            // "of 3" says some are left out even where a narrow row cuts the reasons after it.
+            : left.length > 0
+              ? tf("Add {count} of {total}: {symbols}", { count: ready.length, total: validation.entries.length, symbols: ready.map((entry) => entry.symbol).join(" ") })
+              : tf("Add {count}: {symbols}", { count: ready.length, symbols: ready.map((entry) => entry.symbol).join(" ") })}
+        </Text>
+        {cut ? <Text fg={colors.warning} flexShrink={0}>{`  ${cut}`}</Text> : null}
+        {left.length > 0 ? <Text fg={colors.warning}>{`  ${listLeftOutText(left, collectionKind)}`}</Text> : null}
+      </Box>
+    );
+  }
+
   if (validation.status === "duplicate") {
     return <Text fg={colors.textMuted}>{tf("{symbol} already in {collection}", {
       symbol: validation.symbol,
@@ -102,6 +129,39 @@ function QuickAddPreview({
       {exchange && !change ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
     </Box>
   );
+}
+
+type ReadyEntry = Extract<QuickAddEntryValidation, { status: "ready" }>;
+
+/** A list's entries Enter adds, and the others. */
+function splitListEntries(entries: readonly QuickAddEntryValidation[]): { ready: ReadyEntry[]; left: QuickAddEntryValidation[] } {
+  return {
+    ready: entries.filter((entry): entry is ReadyEntry => entry.status === "ready"),
+    left: entries.filter((entry) => entry.status !== "ready"),
+  };
+}
+
+/** What a list leaves out and why: `not found: XYZ · already in Watchlist: AAPL · several listings: NET`. */
+function listLeftOutText(left: readonly QuickAddEntryValidation[], collectionKind: QuickAddCollectionKind): string {
+  const named = (status: QuickAddEntryValidation["status"][]) => left.filter((entry) => status.includes(entry.status))
+    .map((entry) => entry.status === "duplicate" ? entry.symbol : entry.query);
+  const parts: [string, string[]][] = [
+    [t("not found"), named(["missing"])],
+    [tf("already in {collection}", { collection: t(collectionKind === "portfolio" ? "Portfolio" : "Watchlist") }), named(["duplicate"])],
+    [t("several listings"), named(["choose"])],
+    [t("not looked up"), named(["error"])],
+  ];
+  return parts.filter(([, symbols]) => symbols.length > 0).map(([label, symbols]) => `${label}: ${symbols.join(" ")}`).join(" · ");
+}
+
+/** A paste longer than the row reads: `first 50 of 73 read`. */
+function listCutText(list: Extract<QuickAddValidation, { status: "list" }>): string | null {
+  return list.total ? tf("first {count} of {total} read", { count: QUICK_ADD_LIST_MAX, total: list.total }) : null;
+}
+
+/** The preview's phrase as a sentence of the toast. */
+function asSentence(text: string): string {
+  return `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}`;
 }
 
 export function QuickAddTickerInput({
@@ -147,8 +207,12 @@ export function QuickAddTickerInput({
   // it instead of running on (OMV.VIREP.MC); the line under it still says what
   // failed until something is typed.
   const keepFailureRef = useRef(false);
+  // A list's entries as read and checked while it is edited, for this collection; a cleared row starts anew.
+  const listMemoRef = useRef(createQuickAddListMemo());
+  useEffect(() => { listMemoRef.current = createQuickAddListMemo(); }, [collectionId, collectionKind]);
   const resetInput = useCallback(() => {
     keepFailureRef.current = false;
+    listMemoRef.current = createQuickAddListMemo();
     setInputValue("");
     setValidation(IDLE_VALIDATION);
   }, []);
@@ -202,6 +266,24 @@ export function QuickAddTickerInput({
       financials: financialsRef.current,
     });
   }, [collectionId, collectionKind]);
+  // Words or a pasted list are read as `watchlist add` reads them, in the case typed; one symbol among them is
+  // checked as one typed alone. An entry already read and checked is not looked up again at the next keystroke.
+  const validateInput = useCallback(async (value: string): Promise<QuickAddValidation> => {
+    const query = normalizeQuickAddQuery(value);
+    if (!mayBeQuickAddList(value)) return validateQuery(query);
+    const memo = listMemoRef.current;
+    const { entries, total } = await readQuickAddEntries(value, memo);
+    return resolveQuickAddList({
+      query,
+      entries,
+      total,
+      memo,
+      collectionId,
+      collectionKind,
+      tickers: tickersRef.current,
+      financials: financialsRef.current,
+    });
+  }, [collectionId, collectionKind, validateQuery]);
 
   useEffect(() => {
     const query = normalizeQuickAddQuery(inputValue);
@@ -223,14 +305,16 @@ export function QuickAddTickerInput({
       return () => clearTimeout(timeoutId);
     }
 
-    if (!isPlausibleTickerQuery(query)) {
-      setValidation({ status: "missing", query, message: "Use a ticker symbol" });
+    // A pasted list's separators are no symbol's: each entry is checked on its own.
+    if (!mayBeQuickAddList(inputValue) && !isPlausibleTickerQuery(query)) {
+      setValidation({ status: "missing", query, message: QUICK_ADD_REFUSAL });
       return;
     }
 
     setValidation({ status: "checking", query });
+    const value = inputValue;
     const timeoutId = setTimeout(() => {
-      void validateQuery(query).then((result) => {
+      void validateInput(value).then((result) => {
         if (validationSeqRef.current === seq) {
           setValidation(result);
         }
@@ -238,11 +322,87 @@ export function QuickAddTickerInput({
     }, QUICK_ADD_DEBOUNCE_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [handOffListingChoice, inputValue, validateQuery]);
+  }, [handOffListingChoice, inputValue, validateInput]);
+
+  /** Adds one checked symbol; null when the collection already had it. */
+  const addReady = useCallback(async (
+    ready: Extract<QuickAddValidation, { status: "ready" | "duplicate" }>,
+    recordAttention: ReturnType<typeof captureAttentionAction>,
+  ): Promise<{ symbol: string; note: string | null } | null> => {
+    const registry = getSharedRegistry();
+    if (!registry) throw new Error("Ticker lookup unavailable.");
+    let ticker: TickerRecord;
+    let created = false;
+    if (ready.resolved.kind === "local") {
+      ticker = ready.resolved.ticker;
+    } else {
+      const result = await upsertTickerFromSearchResult(registry.tickerRepository, ready.resolved.result);
+      ticker = result.ticker;
+      created = result.created;
+    }
+
+    const result = collectionKind === "portfolio"
+      ? addTickerToPortfolio(ticker, collectionId)
+      : addTickerToWatchlist(ticker, collectionId);
+    if (!result.changed) return null;
+
+    await registry.tickerRepository.saveTicker(result.ticker);
+    dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+    if (collectionKind === "watchlist") {
+      recordAttention(publicTickerKey(result.ticker.metadata.ticker, result.ticker.metadata.exchange), "watchlist_add");
+    }
+    if (created) {
+      registry.events.emit("ticker:added", {
+        symbol: result.ticker.metadata.ticker,
+        ticker: result.ticker,
+      });
+    }
+    // As `watchlist add` prints it: FB now lists another security, Meta trades as META;
+    // GOGL was Golden Ocean, now CMB.Tech's CMBT.
+    return { symbol: result.ticker.metadata.ticker, note: tickerChangeLine(ready.change) ?? ready.formerIssuer?.note ?? null };
+  }, [collectionId, collectionKind, dispatch]);
+
+  /** A pasted list: every entry that checked is added, and one notice says what was and what was left out. */
+  const submitList = useCallback(async (
+    list: Extract<QuickAddValidation, { status: "list" }>,
+    recordAttention: ReturnType<typeof captureAttentionAction>,
+  ) => {
+    const { ready, left } = splitListEntries(list.entries);
+    const added: { symbol: string; note: string | null }[] = [];
+    const already: string[] = [];
+    for (const entry of ready) {
+      const result = await addReady(entry, recordAttention);
+      if (result) added.push(result);
+      else already.push(entry.symbol);
+    }
+    if (added.length > 0) onAdded(added[added.length - 1]!.symbol);
+    const cut = listCutText(list);
+    const skipped = [
+      ...cut ? [`${asSentence(cut)}.`] : [],
+      ...already.length > 0 ? [tf("Already in {collection}: {symbols}.", { collection: collectionName, symbols: already.join(", ") })] : [],
+      ...left.length > 0 ? [`${asSentence(listLeftOutText(left, collectionKind))}.`] : [],
+    ];
+    const notes = added.flatMap((entry) => entry.note ? [`${entry.note}.`] : []);
+    notify({
+      type: added.length === 0 ? "error" : skipped.length > 0 ? "info" : "success",
+      body: [
+        added.length > 0
+          ? tf("Added {symbols} to {collection}.", { symbols: added.map((entry) => entry.symbol).join(", "), collection: collectionName })
+          : t("Nothing added."),
+        ...notes,
+        ...skipped,
+      ].join(" "),
+    });
+    if (added.length > 0 || left.length === 0) resetInput();
+    else setValidation(list);
+    queueMicrotask(() => inputRef.current?.focus?.());
+  }, [addReady, collectionKind, collectionName, notify, onAdded, resetInput]);
 
   const submitInput = useCallback(async (submittedValue?: string) => {
+    // Before any lookup: consent to count the add cannot be given after it.
     const recordAttention = captureAttentionAction();
-    const query = normalizeQuickAddQuery(submittedValue ?? inputValue);
+    const value = submittedValue ?? inputValue;
+    const query = normalizeQuickAddQuery(value);
     if (!query || submitting) return;
     if (listingChoiceQuery(query)) {
       handOffListingChoice(query);
@@ -253,10 +413,14 @@ export function QuickAddTickerInput({
     try {
       const currentValidation = (
         validation.query === query
-        && (validation.status === "ready" || validation.status === "duplicate")
+        && (validation.status === "ready" || validation.status === "duplicate" || validation.status === "list")
       )
         ? validation
-        : await validateQuery(query);
+        : await validateInput(value);
+      if (currentValidation.status === "list") {
+        await submitList(currentValidation, recordAttention);
+        return;
+      }
       if (currentValidation.status === "choose") {
         handOffListingChoice(`${query}:`);
         return;
@@ -286,58 +450,28 @@ export function QuickAddTickerInput({
         return;
       }
 
-      const registry = getSharedRegistry();
-      if (!registry) {
+      if (!getSharedRegistry()) {
         notify({ type: "error", body: t("Ticker lookup unavailable.") });
         return;
       }
-
-      let ticker: TickerRecord;
-      let created = false;
-      if (currentValidation.resolved.kind === "local") {
-        ticker = currentValidation.resolved.ticker;
-      } else {
-        const result = await upsertTickerFromSearchResult(registry.tickerRepository, currentValidation.resolved.result);
-        ticker = result.ticker;
-        created = result.created;
-      }
-
-      const result = collectionKind === "portfolio"
-        ? addTickerToPortfolio(ticker, collectionId)
-        : addTickerToWatchlist(ticker, collectionId);
-
-      if (!result.changed) {
+      const added = await addReady(currentValidation, recordAttention);
+      if (!added) {
         notify({
           type: "info",
           body: tf("{symbol} is already in {collection}.", {
-            symbol: ticker.metadata.ticker,
+            symbol: currentValidation.symbol,
             collection: collectionName,
           }),
         });
         return;
       }
 
-      await registry.tickerRepository.saveTicker(result.ticker);
-      dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
-      if (collectionKind === "watchlist") {
-        recordAttention(publicTickerKey(result.ticker.metadata.ticker, result.ticker.metadata.exchange), "watchlist_add");
-      }
-      if (created) {
-        registry.events.emit("ticker:added", {
-          symbol: result.ticker.metadata.ticker,
-          ticker: result.ticker,
-        });
-      }
-
-      onAdded(result.ticker.metadata.ticker);
-      const added = tf("Added {symbol} to {collection}.", {
-        symbol: result.ticker.metadata.ticker,
+      onAdded(added.symbol);
+      const body = tf("Added {symbol} to {collection}.", {
+        symbol: added.symbol,
         collection: collectionName,
       });
-      // As `watchlist add` prints it: FB now lists another security, Meta trades as META;
-      // GOGL was Golden Ocean, now CMB.Tech's CMBT.
-      const change = tickerChangeLine(currentValidation.change) ?? currentValidation.formerIssuer?.note;
-      notify({ type: "success", body: change ? `${added} ${change}.` : added });
+      notify({ type: "success", body: added.note ? `${body} ${added.note}.` : body });
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
     } catch {
@@ -347,18 +481,17 @@ export function QuickAddTickerInput({
       setSubmitting(false);
     }
   }, [
+    addReady,
     clearFailedInput,
-    collectionId,
-    collectionKind,
     collectionName,
-    dispatch,
     handOffListingChoice,
     inputValue,
     notify,
     onAdded,
     resetInput,
+    submitList,
     submitting,
-    validateQuery,
+    validateInput,
     validation,
   ]);
 
@@ -398,8 +531,11 @@ export function QuickAddTickerInput({
       width={width}
       placeholder={t("ticker")}
       inputRef={inputRef}
+      // A pasted column or sheet row is one line of its entries, each line and cell one (Apple Inc, VOD LN).
+      joinPastedLines="list"
       onFocusRequest={focusInput}
-      onChange={(value) => setInputValue(value.toUpperCase())}
+      // As typed: a list is read in its case (Apple Inc is a name, AAPL MSFT symbols); a query is normalized.
+      onChange={setInputValue}
       onSubmit={(value) => { void submitInput(value); }}
       onFocus={() => setInputFocused(true)}
       onBlur={blurInput}
