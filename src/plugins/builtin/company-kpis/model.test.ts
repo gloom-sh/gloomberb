@@ -4,7 +4,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { allObservations, companyColumns, companyEmptyState, directionLabel, directionTone, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { allObservations, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
@@ -104,6 +104,15 @@ test("unknown calendar ends use fiscal categories with source dates left null", 
   expect(observationChange(rows[2]!, rows).value).toBe(0);
 });
 
+test("a half is named by its fiscal year only when its end says which half; a balance and a year to date keep their year", () => {
+  const period = (kind: "half" | "instant" | "ytd", end: string, fiscalYear: number, label: string) => ({ period: { start: null, end, kind, fiscalYear, fiscalQuarter: null, label } });
+  expect(fiscalLabel(period("half", "2025-12-31", 2026, "six months ended 31 December 2025"))).toBe("H1 FY2026");
+  expect(fiscalLabel(period("half", "2025-12-31", 2025, "six months ended 31 December 2025"))).toBe("H2 FY2025");
+  // Tencent's first half and an Australian company's second end on the same day.
+  expect(fiscalLabel(period("half", "2026-06-30", 2026, "six months ended 30 June 2026"))).toBe("6M to Jun 2026");
+  expect(fiscalLabel(period("instant", "2025-12-31", 2025, "At 31 Dec"))).toBe("31 Dec 2025");
+  expect(fiscalLabel(period("ytd", "2026-09-30", 2026, "first nine months of 2026"))).toBe("YTD to Sep 2026");
+});
 test("the desktop names a series in plain words: its parts, a basis other than reported, then its qualifiers", () => {
   expect(seriesDetail(observation())).toBe("");
   expect(seriesName(observation({ dimensions: { platform: "Data Center" } }))).toBe("Annual recurring revenue · Data Center");

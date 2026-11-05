@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { normalizeCompanyProfile, totalPowerMw } from "./model";
+import { buildoutCompanyKey, normalizeCompanyProfile, totalPowerMw } from "./model";
 
 /** CoreWeave's supply chain as the dataset gives it, trimmed to the fields the flow reads. */
 const COREWEAVE = {
@@ -40,4 +40,10 @@ test("power and hosting deals are read apart from suppliers, with the MW, money 
   ]);
   expect(byRole("competitor").map(([name]) => name)).toEqual(["Nebius"]);
   expect(totalPowerMw(profile)).toBe(990);
+});
+
+test("a listing abroad is asked for by its venue first, as TheBuildout keys it", () => {
+  expect(buildoutCompanyKey("2330:TWSE")).toBe("TWSE:2330");
+  expect(buildoutCompanyKey("0700:HKEX")).toBe("HKEX:0700");
+  expect(buildoutCompanyKey("NVDA")).toBe("NVDA");
 });

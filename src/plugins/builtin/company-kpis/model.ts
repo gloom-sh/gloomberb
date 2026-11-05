@@ -141,9 +141,40 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
   return { value: (row.value - prior.value) / Math.abs(prior.value) * 100, unit: "%" };
 }
 export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
-export const fiscalLabel = (row: Pick<CompanyRow, "period">) => row.period.fiscalYear === null ? row.period.label
-  : row.period.kind === "year" ? `FY${row.period.fiscalYear}`
-  : row.period.fiscalQuarter !== null ? `Q${row.period.fiscalQuarter} FY${row.period.fiscalYear}${row.period.kind === "ytd" ? " YTD" : ""}` : row.period.label;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const isoDate = (value: string | null) => {
+  const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  const month = Number(match?.[2]);
+  return match && month >= 1 && month <= 12 ? { year: Number(match[1]), month, day: Number(match[3]) } : null;
+};
+/**
+ * A half by its fiscal year, which is named by the year it ends in: a half
+ * ending in the calendar year before is the first, one ending in December of
+ * that year the second. Any other could be either (June 2026 is Tencent's
+ * first half and an Australian company's second), so it is named by its end.
+ */
+function halfLabel(period: CompanyRow["period"], fiscalYear: number): string {
+  const end = isoDate(period.end);
+  if (!end) return period.label;
+  if (end.year < fiscalYear) return `H1 FY${fiscalYear}`;
+  if (end.year === fiscalYear && end.month === 12) return `H2 FY${fiscalYear}`;
+  return `6M to ${MONTHS[end.month - 1]} ${end.year}`;
+}
+/** "Q2 FY2026", "FY2025", "H1 FY2026", "YTD to Sep 2026"; a balance ("At 31 Dec") by its day, the year included. */
+export const fiscalLabel = (row: Pick<CompanyRow, "period">) => {
+  const { period } = row;
+  if (period.kind === "instant") {
+    const end = isoDate(period.end);
+    return end ? `${end.day} ${MONTHS[end.month - 1]} ${end.year}` : period.label;
+  }
+  if (period.fiscalYear === null) return period.label;
+  if (period.kind === "year") return `FY${period.fiscalYear}`;
+  if (period.fiscalQuarter !== null) return `Q${period.fiscalQuarter} FY${period.fiscalYear}${period.kind === "ytd" ? " YTD" : ""}`;
+  if (period.kind === "half") return halfLabel(period, period.fiscalYear);
+  // "first nine months": the year to the day it ends, which a quarter number would only guess.
+  const end = period.kind === "ytd" ? isoDate(period.end) : null;
+  return end ? `YTD to ${MONTHS[end.month - 1]} ${end.year}` : period.label;
+};
 export const periodOrder = (row: CompanyRow) => row.period.fiscalYear !== null
   ? `${row.period.fiscalYear}:${row.period.fiscalQuarter ?? 0}:${row.period.end ?? ""}` : row.period.end ?? row.period.label;
 export function observationChart(rows: KpiObservation[], color: string) {

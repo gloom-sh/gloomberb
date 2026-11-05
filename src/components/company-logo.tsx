@@ -92,14 +92,14 @@ export function CompanyLogo({
         ...style,
       }}
     >
-      {/* Without a logo, or until it loads, the initial fills the same tile, so the header keeps its shape. */}
+      {/* Without a logo, or until it loads, the initial fills the same tile, so the header keeps its shape. It is the company's, as LogoMark's is, so a code like 0700 is not a 0. */}
       <Box width="100%" height="100%" bg={colors.border} alignItems="center" justifyContent="center">
         <Text
           fg={colors.text}
           attributes={TextAttributes.BOLD}
           style={{ fontSize: Math.round(cellHeightPx * height * 0.4) }}
         >
-          {symbol.trim().charAt(0).toUpperCase() || "?"}
+          {(name?.trim() || symbol.trim()).charAt(0).toUpperCase() || "?"}
         </Text>
       </Box>
     </ImageSurface>
