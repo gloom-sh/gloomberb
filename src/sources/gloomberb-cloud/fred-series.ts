@@ -82,6 +82,12 @@ const NOT_ON_FRED: Readonly<Record<string, SeriesNotOnFred>> = {
   TURCPIMOM: TURKISH_CPI,
   BRAIPCAMOM: brazilianCpi(433),
   BRAIPCA15MOM: brazilianCpi(7478),
+  // MAS's Singapore overnight rate average, from its domestic interest rates page.
+  SORA: {
+    publisher: "MAS",
+    via: "its domestic interest rates page",
+    url: "https://eservices.mas.gov.sg/statistics/dir/DomesticInterestRates.aspx",
+  },
   // NAHB's builder sentiment index as first released, from the economic calendar's actuals.
   NAHBHMI: {
     publisher: "NAHB",

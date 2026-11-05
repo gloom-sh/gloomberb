@@ -8,9 +8,9 @@ type FredRow = readonly [seriesId: string, name: string, unit: string, frequency
  * maturities (UST:2Y and so on, from the yield curve) and the credit spreads
  * and yields (from the credit plugin). Ids follow the server's allowlist: a
  * series added there is listed here to reach the catalog.
- * Türkiye's CPI, Brazil's IPCA and NAHB's housing market index are served
- * the same way but are not on FRED; their rows name TurkStat, IBGE and NAHB
- * (`seriesNotOnFred`).
+ * Türkiye's CPI, Brazil's IPCA, MAS's SORA and NAHB's housing market index
+ * are served the same way but are not on FRED; their rows name TurkStat,
+ * IBGE, MAS and NAHB (`seriesNotOnFred`).
  */
 const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
   {
@@ -29,6 +29,7 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["T10Y2Y", "10Y minus 2Y Treasury spread", "%", "daily", ["treasury", "curve", "2s10s"]],
       ["T10Y3M", "10Y minus 3M Treasury spread", "%", "daily", ["treasury", "curve"]],
       ["SOFR", "SOFR", "%", "daily", ["secured overnight financing rate", "money markets"]],
+      ["SORA", "SORA (Singapore overnight rate average)", "%", "daily", ["SGD", "Singapore", "MAS", "overnight", "money markets"]],
       ["OBFR", "Overnight bank funding rate", "%", "daily", ["OBFR", "money markets"]],
       ["DTB4WK", "4-week Treasury bill rate", "%", "daily", ["bill", "money markets"]],
       ["DTB3", "3-month Treasury bill rate", "%", "daily", ["bill", "money markets"]],
