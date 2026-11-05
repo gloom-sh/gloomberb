@@ -48,7 +48,7 @@ export function periodPnlNotices(period: PanePeriodPnl | null): string[] {
 }
 
 /** The pane's P&L From and To as `portfolio show --from --to` reads them, or why they do not read. */
-export function readPanePeriod(from: string, to: string, now = new Date()): { window: PriceWindow | null; error: string | null } {
+function readPanePeriod(from: string, to: string, now = new Date()): { window: PriceWindow | null; error: string | null } {
   if (!from) return { window: null, error: null };
   try {
     return { window: readPriceWindow(from, to || undefined, now, undefined, { from: "P&L From", to: "P&L To" }), error: null };
