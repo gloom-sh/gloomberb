@@ -34,10 +34,21 @@ test("back-adjusting stitches each roll by the gap between the two contracts tha
     + "so a roll before then is left as traded.");
 });
 
-test("by ratio the gaps compound as factors, and a roll neither contract prices fails naming it", () => {
+test("by ratio the gaps compound as factors, and a roll neither contract prices is left as traded, named, the later ones still stitched", () => {
   const { rows: adjusted } = backAdjustHistory(rows, "ratio", (contract) => closes[contract]);
   expect(adjusted[3]!.close).toBeCloseTo(6765, 6);
   expect(adjusted[1]!.close).toBeCloseTo(6510 * (6580 / 6520) * (6765 / 6700), 4);
-  expect(() => backAdjustHistory(rows, "difference", () => undefined))
-    .toThrow("No close of ESU26 or ESZ26 on 2026-09-11 or the bar before to stitch that roll.");
+  // The source serves no bars of ESU26: September's roll keeps its gap, December's is closed.
+  const partial = backAdjustHistory(rows, "difference", (contract) => contract === "ESU26" ? undefined : closes[contract]);
+  expect(partial.rolls.map((roll) => roll.to)).toEqual(["ESH27"]);
+  expect(partial.unstitched).toEqual([{ date: "2026-09-11", from: "ESU26", to: "ESZ26" }]);
+  expect(partial.rows.map((row) => row.close)).toEqual([6565, 6575, 6645, 6765, 6770, 6790]);
+  expect(stitchedRollsNote("ES=F", "difference", partial.rolls, null, partial.unstitched, new Set(["ESU26"]))).toBe("ES=F back-adjusted by difference "
+    + "at its roll: ESZ26 to ESH27 on 2026-12-11 (+65, read on 2026-12-10). Every price before a roll is moved by the gap between the two "
+    + "contracts that day; the newest contract's prices are as traded. ESU26 to ESZ26 on 2026-09-11 is left as traded: the source served no bars of ESU26.");
+  const none = backAdjustHistory(rows, "difference", () => undefined);
+  expect(none.rows).toEqual(rows);
+  expect(stitchedRollsNote("ES=F", "difference", none.rolls, null, none.unstitched)).toBe("ES=F is not back-adjusted. ESU26 to ESZ26 on 2026-09-11 "
+    + "is left as traded: neither contract has a close on 2026-09-11 or the bar before. ESZ26 to ESH27 on 2026-12-11 is left as traded: neither "
+    + "contract has a close on 2026-12-11 or the bar before.");
 });

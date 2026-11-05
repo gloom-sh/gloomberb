@@ -159,6 +159,7 @@ import {
   historyVolume,
   historyVolumeBasis,
   historyVolumeNote,
+  type HistoryRoll,
   type HistoryRow,
   type HistoryUnit,
   type HistoryVolume,
@@ -173,7 +174,7 @@ import {
   type HistoryListRow,
 } from "../history-export";
 import { fail, isCliFailure, NO_DATA_CODE } from "../errors";
-import { mapWithConcurrency } from "../../utils/concurrency";
+import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
@@ -1683,12 +1684,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const rangeOption = takeOption(args, "--range");
   // --from 2007 --to 2009: those years' bars, daily up to five years, in place of a range ending now.
   const window = historyWindowOption(args, rangeOption, ctx);
-  const ask: HistoryAsk = { range: parseRange(rangeOption, ctx), window };
+  const range = parseRange(rangeOption, ctx);
   const requestedExchange = takeOption(args, "--exchange");
   // One row a date and a close column a symbol, as a spreadsheet lays several series side by side.
   const wide = takeFlag(args, "--wide");
   // A continuous future stitched across its rolls, by difference unless `ratio` follows.
   const backAdjust = takeBackAdjust(args, ctx);
+  // Stitching reads daily bars: five years, which come weekly as a range, are read as the window from five years back, which comes daily.
+  const ask: HistoryAsk = { range, window: window ?? (backAdjust && range === "5Y" ? yearsBackWindow(5) : null) };
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
@@ -1741,7 +1744,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
-        ...(stitched ? { backAdjust: { method: backAdjust, rolls: stitched.rolls } } : {}),
+        ...(stitched ? { backAdjust: { method: backAdjust, rolls: stitched.rolls, ...(stitched.unstitched.length > 0 ? { unstitched: stitched.unstitched } : {}) } } : {}),
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
@@ -1762,6 +1765,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+/** The window from `years` back to today. */
+function yearsBackWindow(years: number): PriceWindow | null {
+  const from = new Date();
+  from.setUTCFullYear(from.getUTCFullYear() - years);
+  return readPriceWindow(from.toISOString().slice(0, 10), undefined);
+}
+
 /** `--back-adjust` and the method after it (`ratio` or `difference`, the default); null without it. */
 function takeBackAdjust(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): BackAdjustMethod | null {
   const methods = new Set(["difference", "ratio"]);
@@ -1779,6 +1789,8 @@ function takeBackAdjust(args: string[], ctx: Parameters<CliCommandDef["execute"]
   return method;
 }
 
+/** Contract reads a back-adjusted history makes at once. */
+const BACK_ADJUST_READ_LIMIT = 4;
 /** How far before a roll a contract's bars must reach for its close: past a long holiday weekend. */
 const ROLL_READ_DAYS = 10;
 /** The ranges a contract's bars are read over, each with the days it spans at least. */
@@ -1796,7 +1808,7 @@ async function backAdjustListingHistory(
   method: BackAdjustMethod,
   market: MarketContext,
   ctx: Parameters<CliCommandDef["execute"]>[1],
-): Promise<{ rows: HistoryRow[]; rolls: StitchedRoll[]; note: string }> {
+): Promise<{ rows: HistoryRow[]; rolls: StitchedRoll[]; unstitched: HistoryRoll[]; note: string }> {
   const symbol = history.listing.symbol;
   const board = futuresBoardContract(symbol);
   if (!/=F$/i.test(symbol) || !board || !history.data.some((row) => row.contract)) {
@@ -1815,20 +1827,20 @@ async function backAdjustListingHistory(
     }
   }
   const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
-  const loaded = await Promise.all([...oldest].map(([contract, from]) => {
+  // A few contracts at a time: five years of rolls is forty-odd contracts.
+  const read = createConcurrencyLimiter(BACK_ADJUST_READ_LIMIT);
+  const loaded = await Promise.all([...oldest].map(([contract, from]) => read(() => {
     const range = BACK_ADJUST_READ_RANGES.find(([, days]) => Date.now() - days * 86_400_000 <= from)?.[0] ?? "5Y";
     return market.dataProvider.getPriceHistory(`${contract}.${board!.venue}`, "", range, context)
       .then((points) => ({ contract, closes: contractCloses(points) }))
       .catch(logFailure("cli.commands-market", "Read a futures contract's bars to back-adjust failed", { contract, closes: new Map<string, number>() }));
-  }));
+  })));
   const closes = new Map(loaded.map(({ contract, closes: read }) => [contract, read]));
-  try {
-    const stitched = backAdjustHistory(history.data, method, (contract) => closes.get(contract));
-    const named = history.data.findIndex((row) => row.contract);
-    return { ...stitched, note: stitchedRollsNote(symbol, method, stitched.rolls, named > 0 ? history.data[named]!.date : null) };
-  } catch (error) {
-    return ctx.fail(errorMessage(error) ?? "A roll could not be stitched.", "Try again in a moment, or drop --back-adjust for the raw front month.");
-  }
+  // A contract the source has no bars of leaves its rolls as traded, named in the warning, and the rest are stitched.
+  const unserved = new Set(loaded.flatMap(({ contract, closes: read }) => read.size === 0 ? [contract] : []));
+  const stitched = backAdjustHistory(history.data, method, (contract) => closes.get(contract));
+  const named = history.data.findIndex((row) => row.contract);
+  return { ...stitched, note: stitchedRollsNote(symbol, method, stitched.rolls, named > 0 ? history.data[named]!.date : null, stitched.unstitched, unserved) };
 }
 
 /** A symbol of a list: its bars, or why it has none. */
@@ -3699,7 +3711,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },
         { flags: "--wide", description: "One row per date and one close column per symbol, its unit in the header, in place of one long table" },
-        { flags: "--back-adjust [ratio]", description: "A continuous future (ES=F) stitched into one series at the rolls its bars name: every price before a roll moved by the gap between the two contracts that day (by difference, or scaled by their ratio with ratio), the rolls listed in a warning and in --json metadata.backAdjust. Daily bars only; raw front-month prices are the default" },
+        { flags: "--back-adjust [ratio]", description: "A continuous future (ES=F) stitched into one series at the rolls its bars name: every price before a roll moved by the gap between the two contracts that day (by difference, or scaled by their ratio with ratio), the rolls listed in a warning and in --json metadata.backAdjust. Daily bars, --range 5Y included; a roll whose contracts the source serves no bars of is left as traded and named. Raw front-month prices are the default" },
         EXCHANGE_OPTION,
       ],
       sections: [{

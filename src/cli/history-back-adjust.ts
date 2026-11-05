@@ -40,30 +40,32 @@ const round = (value: number) => Math.round(value * 1e8) / 1e8;
  * by that gap (or scaled by it), the newest contract's prices left as they
  * traded. The gap is read on the roll's own bar from the outgoing contract's
  * close that day (`closes(from)`); where it has none, on the bar before from
- * the incoming contract's close. Volumes are left alone. Throws naming a roll
- * neither contract's bars can price.
+ * the incoming contract's close. Volumes are left alone. A roll neither
+ * contract's bars can price is left as traded and listed in `unstitched`;
+ * the rolls after it are still closed.
  */
 export function backAdjustHistory<Row extends Pick<HistoryRow, "date" | "open" | "high" | "low" | "close" | "contract" | "roll">>(
   rows: readonly Row[],
   method: BackAdjustMethod,
   closes: (contract: string) => ContractCloses | undefined,
-): { rows: Row[]; rolls: StitchedRoll[] } {
-  const rolls = historyRolls(rows);
+): { rows: Row[]; rolls: StitchedRoll[]; unstitched: HistoryRoll[] } {
   const day = (row: Row) => row.date.slice(0, 10);
-  const stitched = rolls.map((roll): StitchedRoll => {
+  const stitched: StitchedRoll[] = [];
+  const unstitched: HistoryRoll[] = [];
+  for (const roll of historyRolls(rows)) {
     const at = rows.findIndex((row) => row.date === roll.date);
     const own = rows[at]!;
     const before = rows[at - 1];
     const outgoing = closes(roll.from)?.get(day(own));
-    if (own.close != null && outgoing != null) {
-      return { ...roll, on: day(own), fromClose: outgoing, toClose: own.close, adjustment: gap(method, outgoing, own.close) };
-    }
     const incoming = before ? closes(roll.to)?.get(day(before)) : undefined;
-    if (before?.close != null && incoming != null) {
-      return { ...roll, on: day(before), fromClose: before.close, toClose: incoming, adjustment: gap(method, before.close, incoming) };
+    if (own.close != null && outgoing != null) {
+      stitched.push({ ...roll, on: day(own), fromClose: outgoing, toClose: own.close, adjustment: gap(method, outgoing, own.close) });
+    } else if (before?.close != null && incoming != null) {
+      stitched.push({ ...roll, on: day(before), fromClose: before.close, toClose: incoming, adjustment: gap(method, before.close, incoming) });
+    } else {
+      unstitched.push(roll);
     }
-    throw new Error(`No close of ${roll.from} or ${roll.to} on ${day(own)} or the bar before to stitch that roll.`);
-  });
+  }
   // Newest first: each roll moves every price before it, on top of the rolls after it.
   let shift = method === "ratio" ? 1 : 0;
   let next = stitched.length - 1;
@@ -78,7 +80,7 @@ export function backAdjustHistory<Row extends Pick<HistoryRow, "date" | "open" |
     adjusted[index] = (method === "ratio" ? shift === 1 : shift === 0) ? row
       : { ...row, open: move(row.open), high: move(row.high), low: move(row.low), close: move(row.close) };
   }
-  return { rows: adjusted, rolls: stitched };
+  return { rows: adjusted, rolls: stitched, unstitched };
 }
 
 function gap(method: BackAdjustMethod, outgoing: number, incoming: number): number {
@@ -90,16 +92,31 @@ function gap(method: BackAdjustMethod, outgoing: number, incoming: number): numb
  * "CLX26 to CLZ26 on 2026-10-16 (+0.62)": each roll stitched, newest last,
  * as the warning lists them, and from when the bars name their contracts
  * when the first ones do not (`namedFrom`): a roll before that is not known,
- * so it is left as traded.
+ * so it is left as traded. A roll no close could price (`unstitched`) is
+ * named with the contracts the source served no bars of (`unserved`).
  */
-export function stitchedRollsNote(symbol: string, method: BackAdjustMethod, rolls: readonly StitchedRoll[], namedFrom: string | null = null): string {
+export function stitchedRollsNote(
+  symbol: string,
+  method: BackAdjustMethod,
+  rolls: readonly StitchedRoll[],
+  namedFrom: string | null = null,
+  unstitched: readonly HistoryRoll[] = [],
+  unserved: ReadonlySet<string> = new Set(),
+): string {
   const unnamed = namedFrom ? ` Bars before ${namedFrom.slice(0, 10)} name no contract, so a roll before then is left as traded.` : "";
-  if (rolls.length === 0) return `${symbol} did not roll in the bars shown: nothing to back-adjust.${unnamed}`;
+  const left = unstitched.map((roll) => {
+    const missing = [roll.from, roll.to].filter((contract) => unserved.has(contract));
+    const why = missing.length > 0 ? `the source served no bars of ${missing.join(" or ")}` : `neither contract has a close on ${roll.date.slice(0, 10)} or the bar before`;
+    return ` ${roll.from} to ${roll.to} on ${roll.date.slice(0, 10)} is left as traded: ${why}.`;
+  }).join("");
+  if (rolls.length === 0) {
+    return unstitched.length > 0 ? `${symbol} is not back-adjusted.${left}${unnamed}` : `${symbol} did not roll in the bars shown: nothing to back-adjust.${unnamed}`;
+  }
   const listed = rolls.map((roll) => {
     const amount = method === "ratio" ? `x${roll.adjustment.toFixed(6)}` : `${roll.adjustment >= 0 ? "+" : ""}${roll.adjustment}`;
     return `${roll.from} to ${roll.to} on ${roll.date.slice(0, 10)} (${amount}${roll.on !== roll.date.slice(0, 10) ? `, read on ${roll.on}` : ""})`;
   });
   return `${symbol} back-adjusted by ${method === "ratio" ? "ratio" : "difference"} at ${rolls.length === 1 ? "its roll" : `${rolls.length} rolls`}: `
     + `${listed.join("; ")}. Every price before a roll is ${method === "ratio" ? "scaled by" : "moved by"} the gap between the two contracts that day; `
-    + `the newest contract's prices are as traded.${unnamed}`;
+    + `the newest contract's prices are as traded.${left}${unnamed}`;
 }
