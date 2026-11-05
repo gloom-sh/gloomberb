@@ -90,6 +90,8 @@ import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
+import type { PriceWindow } from "../../../../utils/price-window";
+import { showPeriodPnl } from "./period-report";
 import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, showsIncomeColumns, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
@@ -209,6 +211,8 @@ export interface ShowCollectionOptions {
   futuresSources?: PortfolioFuturesSources;
   /** Where the FX closes of the lots' purchase dates are read; Gloom Cloud by default. */
   costFxHistory?: CostFxHistoryClient;
+  /** `--from`/`--to`: P&L and contribution by position between two closes, in place of the valuation. */
+  period?: PriceWindow;
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -753,7 +757,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -773,6 +777,9 @@ async function showCollectionWithMarketData(
   }
   if (!matchedPortfolio && drip) {
     ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --drip");
+  }
+  if (!matchedPortfolio && period) {
+    ctx.fail(`--from measures a portfolio's P&L; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --from <date> [--to <date>]");
   }
   const isPortfolio = !!matchedPortfolio;
   const id = collection.id;
@@ -810,6 +817,11 @@ async function showCollectionWithMarketData(
   const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
   const source = !isPortfolio ? "Local watchlist and Gloom Cloud"
     : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud";
+  if (matchedPortfolio && period) {
+    await showPeriodPnl({ ctx, portfolio: matchedPortfolio, name: displayName, tickers: filtered, currency, window: period, provider: dataProvider,
+      fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel });
+    return;
+  }
   let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source });
   // A watchlist's stale rows, named under the closing line that counts them.
   let staleNote: string | null = null;
