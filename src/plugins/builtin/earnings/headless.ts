@@ -11,10 +11,10 @@ import type {
 import type { EarningsEvent } from "../../../types/data-provider";
 import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
-import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
+import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
-import { historyRows } from "./history-model";
+import { historyRows, periodText } from "./history-model";
 import { fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
@@ -80,6 +80,20 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "impliedFrom", header: "Implied from" },
   { key: "move", header: "Move", align: right, format: (value) => signedPercent(num(value)) },
 ];
+
+/** A Hong Kong listing's report: what its figures cover, their currency and its results announcement; no options or moves are read for it. */
+const LISTING_HISTORY_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date" },
+  { key: "dateStatus", header: "Status" },
+  { key: "timing", header: "When" },
+  { key: "period", header: "Period" },
+  { key: "currency", header: "Ccy" },
+  ...HISTORY_COLUMNS.filter((column) => ["epsEstimate", "epsAnalysts", "epsActual", "epsBasis", "epsSurprise", "revenueEstimate", "revenueActual", "revenueSurprise"].includes(column.key)),
+  { key: "filing", header: "Filing" },
+];
+
+/** What a Hong Kong listing's ERN report's period, currency and filing are, in its metadata. */
+const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a report the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate.";
 
 interface EarningsHeadlessDependencies {
   calendar(query: { from: string; to: string; perDay: number; symbols: string[] }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
@@ -214,20 +228,24 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
 
 /**
  * What ERN says for a listing abroad, whose next report is its own but whose
- * past reports, surprises and implied moves only the US board has: that, and
- * the company's US listing to read them on (Sanofi's SNY for SAN:EPA).
+ * past reports, surprises and implied moves only the US board and Hong Kong's
+ * results announcements have: that, and the company's US listing to read
+ * them on (Sanofi's SNY for SAN:EPA).
  */
 async function abroadHistoryNotice(symbol: string, company: string | null, context: HeadlessPaneContext): Promise<string> {
-  const lead = `Past reports, surprises and implied moves cover US listings only, so ${symbol} shows its next report.`;
+  const lead = `Past reports, surprises and implied moves cover US and Hong Kong listings only, so ${symbol} shows its next report.`;
   const us = await findUsListingOfCompany(context.marketData, company);
   return us ? `${lead} ${shortCompanyName(company!)}'s US listing is ${us.symbol}: ERN ${us.symbol} has them.` : lead;
 }
 
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
   // The board is US listings'; SAN:EPA's past reports are not on it, and bare SAN there is another company.
-  const abroad = listingAbroadVenue(symbol) != null;
+  // A Hong Kong listing has its own, from its results announcements.
+  const venueAbroad = listingAbroadVenue(symbol);
+  const abroad = !hasEarningsHistory(venueAbroad);
+  const ownAbroad = venueAbroad != null && !abroad;
   const [history, upcoming] = await Promise.allSettled([
-    abroad ? Promise.resolve(null) : deps.history(symbol, context),
+    abroad ? Promise.resolve(null) : ownAbroad ? deps.history(symbol, context).catch(noHistoryAbroad) : deps.history(symbol, context),
     deps.upcoming([symbol], context),
   ]);
   if (history.status === "rejected" && upcoming.status === "rejected") throw history.reason;
@@ -236,7 +254,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const notice = abroad
     ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, logFailure("earnings.headless", "Load earnings company name failed", null)), context)
     : null;
-  const rows = historyRows(payload, newYorkToday(), next).map((row) => ({
+  const rows = historyRows(payload, newYorkToday(), next, { abroad: ownAbroad }).map((row) => ({
     date: row.date,
     upcoming: row.upcoming,
     dateStatus: row.dateStatus,
@@ -244,6 +262,13 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     timingExpected: row.expectedTiming,
     fiscalPeriod: row.fiscalPeriod,
     fiscalQuarter: fiscalQuarterText(row.fiscalQuarter),
+    ...(ownAbroad ? {
+      period: periodText(row, false),
+      periodKind: row.periodKind,
+      periodMonths: row.periodMonths,
+      currency: row.currency,
+      filing: row.filingUrl,
+    } : {}),
     epsEstimate: row.epsEstimate,
     epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
@@ -262,7 +287,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   // and a history that failed for one (a coin is no US ticker) is no error.
   const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
   return {
-    columns: HISTORY_COLUMNS,
+    columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,
     ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] } : {}),
     errors: history.status === "rejected" && !noEarnings ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
@@ -271,7 +296,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
       epsBasis: EPS_BASIS_NOTE,
       provisional: PROVISIONAL_NOTE,
       fiscalQuarter: FISCAL_QUARTER_NOTE,
-      impliedMove: IMPLIED_NOTE,
+      ...(ownAbroad ? { period: LISTING_PERIOD_NOTE } : { impliedMove: IMPLIED_NOTE }),
       ...(notice ? { notices: [notice] } : {}),
     },
   };

@@ -70,6 +70,8 @@ export interface CalendarReport {
   /** The quarter the estimate is for, YYYY-MM, when the calendar names it. */
   fiscalPeriod: string | null;
   currency: string | null;
+  /** The revenue estimate's currency, when the calendar names it. */
+  revenueCurrency: string | null;
 }
 
 /**
@@ -108,6 +110,7 @@ export function calendarReport(event: EarningsEvent, today: string): CalendarRep
     revenueEstimate: ownConsensus ? coherentEarningsValue(event, "revenueEstimate") : null,
     fiscalPeriod: ownConsensus && periodEnd ? periodEnd.slice(0, 7) : null,
     currency: epsEstimate == null ? null : event.estimateBasis?.epsEstimate?.currency ?? null,
+    revenueCurrency: event.estimateBasis?.revenueEstimate?.currency ?? null,
   };
 }
 

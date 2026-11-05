@@ -17,7 +17,7 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAssetData } from "../../runtime";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
 import { newYorkToday, reportMove } from "./board-model";
-import { cachedEarningsHistory, loadEarningsHistory } from "./client";
+import { cachedEarningsHistory, hasEarningsHistory, loadEarningsHistory, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { chartAxis, chartPoints, chartRows, historyFigures, historyRows, type HistoryRow } from "./history-model";
 import { historyColumns, renderHistoryCell, type HistoryColumn, type LiveMove } from "./history-table";
@@ -39,9 +39,15 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   registrationId: string;
 }) {
   const dataProvider = useAssetData();
-  // Past reports are the US board's, where SAN is not SAN:EPA's company: a listing abroad shows its next report alone.
-  const abroad = listingAbroadVenue(symbol) != null;
-  const loader = useCallback((force: boolean) => (abroad ? Promise.resolve(null) : loadEarningsHistory(symbol, force)), [abroad, symbol]);
+  // Past reports are the US board's, where SAN is not SAN:EPA's company, and a Hong Kong listing's own (its results
+  // announcements, in their currency): any other listing abroad shows its next report alone.
+  const venueAbroad = listingAbroadVenue(symbol);
+  const abroad = !hasEarningsHistory(venueAbroad);
+  const ownAbroad = venueAbroad != null && !abroad;
+  const loader = useCallback(
+    (force: boolean) => (abroad ? Promise.resolve(null) : ownAbroad ? loadEarningsHistory(symbol, force).catch(noHistoryAbroad) : loadEarningsHistory(symbol, force)),
+    [abroad, ownAbroad, symbol],
+  );
   const resource = useAsyncResource(loader, { initialData: () => (abroad ? null : cachedEarningsHistory(symbol)) });
   // Past the stored calendar's horizon, and for listings it does not carry, the per-ticker calendar has the next date.
   const upcomingLoader = useCallback(
@@ -51,7 +57,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const upcoming = useAsyncResource(upcomingLoader);
   const payload = resource.data?.payload ?? null;
   const today = newYorkToday();
-  const rows = useMemo(() => historyRows(payload, today, upcoming.data ?? null), [payload, today, upcoming.data]);
+  const rows = useMemo(() => historyRows(payload, today, upcoming.data ?? null, { abroad: ownAbroad }), [ownAbroad, payload, today, upcoming.data]);
   const columns = useMemo(() => historyColumns(width, rows), [rows, width]);
   // A report out today shows its move so far, from the quotes EVTS reads, until its first close after settles it.
   const outToday = rows.some((row) => row.date === today && row.dateStatus === "reported" && row.move == null);
@@ -107,7 +113,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     loading: resource.loading,
     error: historyError,
     stale: !!resource.data?.stale,
-    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US listings only", tone: "muted" as const }] }]
+    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
       : payload && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
   });
 

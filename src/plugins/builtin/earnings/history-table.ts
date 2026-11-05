@@ -2,10 +2,9 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { datedYear, epsText, fiscalMonth, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
+import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
-import type { HistoryRow } from "./history-model";
-import { fiscalQuarterText } from "./fiscal-quarter";
+import { periodText, type HistoryRow } from "./history-model";
 
 type HistoryColumnId =
   | "date" | "when" | "period" | "epsEstimate" | "analysts" | "epsActual" | "basis" | "epsSurprise"
@@ -42,10 +41,33 @@ const SALES_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number
   revenueSurprise: (row) => row.revenueSurprise,
 };
 
+/** What fills the move columns: a listing abroad has no options or moves read, so it shows none of them. */
+const MOVE_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number | null>> = {
+  implied: (row) => row.implied,
+  move: (row) => row.move,
+  ratio: (row) => row.moveRatio,
+};
+
+/** Amount columns that carry a listing abroad's currency after each figure ("7.22 CNY"), and the room it takes. */
+const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "epsActual", "revenueEstimate", "revenueActual"]);
+const CURRENCY_WIDTH = 4;
+
+/** A listing abroad's figure with its currency; a US listing's dollars stay bare. */
+const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== "--" ? `${text} ${row.currency}` : text);
+
 export function historyColumns(width: number, rows: readonly HistoryRow[]): HistoryColumn[] {
+  const labelled = rows.some((row) => row.currency != null);
+  const periods = rows.some((row) => row.periodKind !== "quarter");
   let columns = ALL_COLUMNS.filter((column) => {
-    const value = SALES_COLUMNS[column.id];
+    const value = SALES_COLUMNS[column.id] ?? (labelled ? MOVE_COLUMNS[column.id] : undefined);
     return !value || rows.some((row) => value(row) != null);
+  }).map((column): HistoryColumn => {
+    if (labelled && AMOUNT_COLUMNS.has(column.id)) return { ...column, width: column.width + CURRENCY_WIDTH };
+    // A half or a year is no quarter: the column names what it holds.
+    if (periods && column.id === "period") {
+      return { ...column, label: "PERIOD", width: Math.max(column.width, ...rows.map((row) => periodText(row).length)) };
+    }
+    return column;
   });
   const used = (list: HistoryColumn[]) => list.reduce((sum, column) => sum + tableColumnWidth(column) + TABLE_COLUMN_GAP, 2);
   for (const id of DROP_ORDER) {
@@ -74,14 +96,14 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "when":
       return { text: row.timing ? TIMING_LABEL[row.timing] : "--", color: row.expectedTiming ? colors.textMuted : dim };
     case "period":
-      return { text: fiscalQuarterText(row.fiscalQuarter, true) ?? fiscalMonth(row.fiscalPeriod), color: dim };
+      return { text: periodText(row), color: dim };
     case "epsEstimate":
-      return { text: epsText(row.epsEstimate), color: dim };
+      return { text: inCurrency(epsText(row.epsEstimate), row), color: dim };
     case "analysts":
       return { text: row.epsAnalysts == null ? "--" : String(row.epsAnalysts), color: dim };
     case "epsActual":
       // The company's press release's figure reads quieter until the calendar's replaces it.
-      return { text: epsText(row.epsActual), color: row.provisional ? colors.textMuted : colors.text };
+      return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       return !showsEpsBasis(row)
         ? { text: "--", color: dim }
@@ -89,9 +111,9 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "epsSurprise":
       return signed(row.epsSurprise);
     case "revenueEstimate":
-      return { text: moneyText(row.revenueEstimate), color: dim };
+      return { text: inCurrency(moneyText(row.revenueEstimate), row), color: dim };
     case "revenueActual":
-      return { text: moneyText(row.revenueActual), color: row.revenueProvisional ? colors.textMuted : colors.text };
+      return { text: inCurrency(moneyText(row.revenueActual), row), color: row.revenueProvisional ? colors.textMuted : colors.text };
     case "revenueSurprise":
       return signed(row.revenueSurprise);
     case "implied":

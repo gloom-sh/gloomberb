@@ -5,6 +5,7 @@ import type {
   EarningsHistoryPayload,
   EarningsReport,
 } from "../../../api-client/earnings";
+import { ApiRequestError } from "../../../api-client/errors";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { PluginPersistence } from "../../../types/plugin";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -90,6 +91,21 @@ export function loadEarningsBoard(query: EarningsCalendarQuery, force = false) {
 
 export function cachedEarningsHistory(symbol: string) {
   return cachedCloudResource(historyCache, symbol, (payload) => validateEarningsHistory(payload, symbol));
+}
+
+/**
+ * Whether ERN reads a listing's own past reports: every US listing, and of
+ * the listings abroad Hong Kong's, which Gloom Cloud reads from their
+ * results announcements. Any other listing abroad shows its next report.
+ */
+export function hasEarningsHistory(venueAbroad: string | null): boolean {
+  return venueAbroad == null || venueAbroad === "HKEX";
+}
+
+/** A server that does not read a listing abroad's history yet refuses it (400): the next report stands alone, as before. */
+export function noHistoryAbroad(error: unknown): null {
+  if (error instanceof ApiRequestError && error.status === 400) return null;
+  throw error;
 }
 
 /** `limit` asks for more reports than the pane's default and is cached apart from it. */

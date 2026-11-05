@@ -190,8 +190,63 @@ test("ERN for a listing abroad shows its next report and names the company's US 
   expect(result.errors).toBeUndefined();
   expect(result.rows.map((row) => [row.date, row.epsEstimate])).toEqual([[addDays(today, 19), 2.85]]);
   expect(result.metadata?.notices).toEqual([
-    "Past reports, surprises and implied moves cover US listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
+    "Past reports, surprises and implied moves cover US and Hong Kong listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
   ]);
+});
+
+test("ERN for a Hong Kong listing reads its own reports: each in its period and currency, a half never a quarter", async () => {
+  const tencent = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "0700:HKEX", name: "Tencent", timing: null, timingSource: null, currency: "CNY", dateStatus: "reported", ...fields });
+  const next = addDays(today, 12);
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: "Tencent",
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: "adjusted",
+    reports: [
+      tencent({ date: next, fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 7.22, dateStatus: "confirmed" }),
+      tencent({ date: addDays(today, -86), timing: "amc", timingSource: "filing", fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 2,
+        epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted", revenueActual: 204.8e9, revenueActualSource: "filing",
+        filing: { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0812/2026081200296.pdf", title: "Results", publishedAt: "2026-08-12T08:31:00.000Z" } }),
+      // A half the street has no quarter for: its own row, with no estimate.
+      tencent({ date: addDays(today, -88), fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+        epsActual: 12.1, epsActualSource: "filing", epsBasis: "gaap", revenueActual: 400e9, revenueActualSource: "filing" }),
+      // A figure with no currency could be any: it is not shown.
+      tencent({ date: addDays(today, -180), fiscalPeriod: "2026-03", epsEstimate: 7.2, epsActual: 7.3, currency: null }),
+    ],
+  };
+  let served: EarningsHistoryPayload | Error = payload;
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async (symbol) => {
+      expect(symbol).toBe("0700:HKEX");
+      if (served instanceof Error) throw served;
+      return served;
+    },
+    upcoming: async () => [{
+      symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date(`${next}T08:10:00Z`), isDateEstimate: false, timing: "BMO",
+      epsEstimate: 7.22, epsActual: null, revenueEstimate: 210.36e9, revenueActual: null, surprise: null, epsAnalysts: 12,
+      estimateBasis: {
+        epsEstimate: { source: "earningsTrend", sourceValue: 7.22, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" },
+        revenueEstimate: { source: "earningsTrend", sourceValue: 210.36e9, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" },
+      },
+    }],
+  });
+  const load = () => definition.load({ rawArgument: "0700:HKEX", argument: ["0700:HKEX"], symbols: ["0700:HKEX"], options: {} }, context);
+  const result = await load();
+  expect(result.metadata?.notices).toBeUndefined();
+  expect(result.columns?.map((column) => column.key)).toContain("currency");
+  expect(result.rows.map((row) => [row.date, row.timing, row.period, row.currency, row.epsEstimate, row.epsActual, row.epsBasis, row.revenueEstimate, row.revenueActual])).toEqual([
+    // New York's "BMO" is not Hong Kong's session.
+    [next, null, "Q3 FY2026", "CNY", 7.22, null, "adjusted", 210.36e9, null],
+    [addDays(today, -86), "AMC", "Q2 FY2026", "CNY", 7.23544, 7.433, "adjusted", null, 204.8e9],
+    [addDays(today, -88), null, "H1 FY2026", "CNY", null, 12.1, "GAAP", null, 400e9],
+  ]);
+  expect(result.rows[1]!.filing).toContain("hkexnews.hk");
+  // A server that does not read Hong Kong's history yet refuses it: the next report stands alone, with no error.
+  const { ApiRequestError } = await import("../../../api-client/errors");
+  served = new ApiRequestError("A US ticker symbol is required", 400);
+  const old = await load();
+  expect(old.errors).toBeUndefined();
+  expect(old.rows.map((row) => [row.date, row.currency, row.epsEstimate])).toEqual([[next, "CNY", 7.22]]);
 });
 
 test("a press release's figures are flagged provisional on the board and in the history, and the text report says so", async () => {
