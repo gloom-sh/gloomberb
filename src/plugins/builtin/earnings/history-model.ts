@@ -7,6 +7,7 @@ import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financ
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
+import { fiscalQuarterOf, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
 import { datedYear, impliedText, moveSize, shortDate, surprise, TIMING_LABEL } from "./format";
 
 export interface HistoryRow {
@@ -15,6 +16,8 @@ export interface HistoryRow {
   timing: EarningsTiming | null;
   expectedTiming: boolean;
   fiscalPeriod: string | null;
+  /** The quarter as the company names it (Q3 FY2027), null when its calls do not say. */
+  fiscalQuarter: FiscalQuarter | null;
   upcoming: boolean;
   /** Whether the date is out, announced or projected; null when the source does not say. */
   dateStatus: EarningsDateStatus | null;
@@ -67,13 +70,15 @@ const historyAdapter = (today: string): ReportRowAdapter<HistoryRow> => ({
       timing: report.timing ?? row?.timing ?? null,
       expectedTiming: report.timing == null && !!row?.expectedTiming,
       fiscalPeriod: row?.fiscalPeriod ?? report.fiscalPeriod,
+      fiscalQuarter: row?.fiscalQuarter ?? null,
       upcoming: isUpcoming(report.date, move, today),
       dateStatus: report.dateStatus,
       epsEstimate,
       epsAnalysts: estimate ? report.epsAnalysts : row?.epsAnalysts ?? null,
       epsActual,
       provisional: row?.provisional ?? false,
-      epsBasis: estimate ? report.epsBasis : row?.epsBasis ?? null,
+      // The consensus's basis is the company's (Gloom Cloud names it from the reports it was measured against).
+      epsBasis: estimate ? report.epsBasis ?? row?.epsBasis ?? null : row?.epsBasis ?? null,
       epsSurprise: surprise(epsActual, epsEstimate),
       revenueEstimate: report.revenueEstimate ?? row?.revenueEstimate ?? null,
       revenueActual: row?.revenueActual ?? null,
@@ -104,6 +109,8 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       timing: report.timing,
       expectedTiming: report.timingSource === "history",
       fiscalPeriod: report.fiscalPeriod,
+      fiscalQuarter: report.fiscalYear != null && report.fiscalQuarter != null
+        ? { fiscalYear: report.fiscalYear, fiscalQuarter: report.fiscalQuarter } : null,
       upcoming: isUpcoming(report.date, move, today),
       dateStatus: earningsDateStatus(report.dateStatus),
       epsEstimate: report.epsEstimate,
@@ -123,10 +130,28 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       moveRatio: move != null && implied ? Math.abs(move) / implied : null,
     };
   });
+  const anchor = payload?.fiscalAnchor ?? null;
+  const basis = earningsEpsBasis(payload?.consensusBasis);
   const rows = resolveReportRows(recorded, upcoming, today, historyAdapter(today))
+    // The calendar's next report past the stored horizon is on the basis the company's reports were measured on.
+    .map((row) => (basis && row.upcoming && row.epsEstimate != null && row.epsBasis == null ? { ...row, epsBasis: basis } : row))
+    .map((row) => withFiscalQuarter(row, anchor))
     .sort((left, right) => right.date.localeCompare(left.date));
   const upcomingRows = rows.filter((row) => row.upcoming).slice(-1);
   return [...upcomingRows, ...rows.filter((row) => !row.upcoming).slice(0, HISTORY_QUARTERS)];
+}
+
+/**
+ * A row with the quarter the company names it, on the calendar its calls
+ * give: the calendar's next report, past the stored horizon, has none of its
+ * own, and one with no quarter-end month either is placed as Gloom Cloud
+ * places its own (the last on the company's cycle 5 to 100 days before it).
+ */
+function withFiscalQuarter(row: HistoryRow, anchor: EarningsHistoryPayload["fiscalAnchor"]): HistoryRow {
+  if (row.fiscalQuarter || !anchor) return row;
+  const fiscalPeriod = row.fiscalPeriod ?? (row.upcoming ? placedPeriod(row.date, anchor) : null);
+  const fiscalQuarter = fiscalQuarterOf(fiscalPeriod, anchor);
+  return fiscalQuarter ? { ...row, fiscalPeriod, fiscalQuarter } : row;
 }
 
 function mean(values: readonly number[]): number | null {

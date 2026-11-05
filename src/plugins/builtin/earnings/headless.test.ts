@@ -72,6 +72,63 @@ test("past the stored horizon the per-ticker calendar's estimate keeps its own a
   expect(next).toMatchObject({ upcoming: true, dateStatus: "confirmed", epsEstimate: -1.52697, epsAnalysts: null, epsBasis: null });
 });
 
+test("ERN names each quarter as the company does, and places the calendar's next report past the stored horizon in its quarter", async () => {
+  // Apple on 2026-11-05: the September quarter closed fiscal 2026; the January report is only on the per-ticker calendar.
+  const apple = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) => report({ symbol: "AAPL", name: "Apple Inc.", ...fields });
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => ({ asOf: `${today}T12:00:00.000Z`, symbol: "AAPL", name: "Apple Inc.",
+      fiscalAnchor: { fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 4 },
+      reports: [
+        apple({ date: addDays(today, -3), fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 4, epsEstimate: 1.98, epsActual: 2.05, dateStatus: "reported" }),
+        apple({ date: addDays(today, -98), fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 1.88, epsActual: 1.91, dateStatus: "reported" }),
+      ] }),
+    upcoming: async () => [{
+      symbol: "AAPL", name: "Apple Inc.", earningsDate: new Date("2027-01-28T00:00:00Z"), isDateEstimate: true,
+      epsEstimate: 2.9, epsAnalysts: null, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "AMC",
+      estimateBasis: { epsEstimate: { source: "calendarEvents", sourceValue: 2.90255, period: null, periodEndDate: null, currency: null } },
+    }],
+  });
+  const result = await definition.load({ ...args, rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"] }, context);
+  expect(result.rows.map((row) => [row.date, row.fiscalPeriod, row.fiscalQuarter])).toEqual([
+    ["2027-01-28", "2026-12", "Q1 FY2027"],
+    [addDays(today, -3), "2026-09", "Q4 FY2026"],
+    [addDays(today, -98), "2026-06", "Q3 FY2026"],
+  ]);
+  // Without the company's calendar the quarter stays its end month, and a report without one stays unplaced.
+  const bare = createEarningsHeadless({ calendar: async () => { throw new Error("unused"); }, history: async () => history, upcoming: async () => [] });
+  expect((await bare.load(args, context)).rows.map((row) => [row.fiscalPeriod, row.fiscalQuarter])).toEqual([
+    ["2026-09", null], ["2026-06", null], ["2026-03", null],
+  ]);
+  expect(result.metadata?.impliedMove).toContain("never estimated");
+});
+
+test("the next report keeps the basis Gloom Cloud names for its consensus when the calendar's event names none", async () => {
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => ({ ...history, reports: [{ ...history.reports[0]!, epsEstimate: -1.53, epsBasis: "adjusted" }, ...history.reports.slice(1)] }),
+    upcoming: async () => [{
+      symbol: "CRWV", name: "CoreWeave, Inc.", earningsDate: new Date(`${addDays(today, 30)}T00:00:00Z`), isDateEstimate: true,
+      epsEstimate: -1.53, epsAnalysts: 18, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "AMC",
+      estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: -1.52697, period: "0q", periodEndDate: "2026-09-30", currency: "USD" } },
+    }],
+  });
+  const [next] = (await definition.load(args, context)).rows;
+  expect(next).toMatchObject({ upcoming: true, epsEstimate: -1.53, epsBasis: "adjusted" });
+  // Past the stored horizon the history has no row for it: the company's consensus basis labels it, and only an estimate.
+  const calendarOnly = async (consensusBasis: "adjusted" | null, epsEstimate: number | null) => (await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => ({ ...history, consensusBasis, reports: history.reports.slice(1) }),
+    upcoming: async () => [{
+      symbol: "CRWV", name: "CoreWeave, Inc.", earningsDate: new Date(`${addDays(today, 30)}T00:00:00Z`), isDateEstimate: true,
+      epsEstimate, epsAnalysts: null, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "AMC",
+    }],
+  }).load(args, context)).rows[0];
+  expect(await calendarOnly("adjusted", -1.53)).toMatchObject({ upcoming: true, epsBasis: "adjusted" });
+  expect(await calendarOnly(null, -1.53)).toMatchObject({ upcoming: true, epsBasis: null });
+  expect(await calendarOnly("adjusted", null)).toMatchObject({ upcoming: true, epsBasis: null });
+});
+
 test("ERN board rows carry the status, analysts and basis ERN <ticker> shows, ranked by the served cap", async () => {
   const day = addDays(today, 1);
   const calendarReport = (fields: Partial<HistoryReport> & Pick<HistoryReport, "symbol" | "date">) =>
