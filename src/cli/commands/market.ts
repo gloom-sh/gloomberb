@@ -14,6 +14,7 @@ import type {
   CorporateActionsData,
   HolderData,
   OptionsChain,
+  PricePoint,
   Quote,
   TickerFinancials,
 } from "../../types/financials";
@@ -147,6 +148,7 @@ import {
   historyGapNote,
   historyJumpNote,
   historyUnbrokenFrom,
+  dailyRebuildSpans,
   historyAllRangeYears,
   historyIntervalsByRange,
   historyMissingVolumeNote,
@@ -1451,30 +1453,36 @@ const HISTORY_PRICE_UNIT_WAIT_MS = 1_500;
 
 /** How long `history` waits for the daily bars that rebuild contradictory monthly bars before printing them with blanks. */
 const MONTHLY_REBUILD_WAIT_MS = 8_000;
+/** Reads of daily bars in flight at once to rebuild them. */
+const MONTHLY_REBUILD_CONCURRENCY = 3;
 
 /**
  * Monthly bars whose prices contradict each other, rebuilt from the daily
- * bars of the months they span (withDailyRebuiltBars). Any other history,
- * and one the daily bars fail or do not answer for in time, comes back as it is.
+ * bars of the months they span (dailyRebuildSpans, withDailyRebuiltBars),
+ * each day the one `venue` trades it on. Any other history, and months
+ * whose daily bars fail or do not answer in time, come back as they are.
  */
 async function withMonthlyBarsRebuilt(
   rows: HistoryRow[], market: MarketContext, symbol: string, exchange: string,
-  context: MarketDataRequestContext, priceDivisor: number,
+  context: MarketDataRequestContext, priceDivisor: number, venue: string,
 ): Promise<HistoryRow[]> {
   const flagged = rows.filter((row) => row.interval === "1mo" && row.close != null && row.open == null && row.flag
     && row.flag.split(",").some((code) => /^(high<|low>)/.test(code)));
   if (flagged.length === 0) return rows;
-  // One read per month, all at once: a span of years of daily bars is more than one read serves.
-  const months = [...new Set(flagged.map((row) => row.date.slice(0, 7)))];
-  const daily = await settleWithin(Promise.all(months.map((month) => {
-    const start = new Date(`${month}-01T00:00:00Z`);
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59));
-    return fetchHistoryResult(market.dataProvider, symbol, exchange, { kind: "detail", start, end, interval: "1d" }, context)
-      .then((result) => result?.points ?? [])
-      .catch(logFailure("cli.commands-market", "Daily bars to rebuild a monthly bar failed", []));
-  })), MONTHLY_REBUILD_WAIT_MS);
-  const points = daily?.flat() ?? [];
-  return points.length ? withDailyRebuiltBars(rows, points, priceDivisor) : rows;
+  // Neighbouring months share a read, a few reads at a time; what has come by the deadline is used, and no read starts after it.
+  const spans = dailyRebuildSpans(flagged.map((row) => row.date.slice(0, 7)));
+  const points: PricePoint[] = [];
+  let reading = true;
+  await settleWithin(mapWithConcurrency(spans, MONTHLY_REBUILD_CONCURRENCY, async ({ from, to }) => {
+    if (!reading) return;
+    const start = new Date(`${from}-01T00:00:00Z`);
+    const end = new Date(Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)), 0, 23, 59, 59));
+    const result = await fetchHistoryResult(market.dataProvider, symbol, exchange, { kind: "detail", start, end, interval: "1d" }, context)
+      .catch(logFailure("cli.commands-market", "Daily bars to rebuild a monthly bar failed", null));
+    if (reading && result?.points) points.push(...result.points);
+  }), MONTHLY_REBUILD_WAIT_MS);
+  reading = false;
+  return points.length ? withDailyRebuiltBars(rows, points, priceDivisor, venue) : rows;
 }
 
 /**
@@ -1537,7 +1545,8 @@ async function loadListingHistory(
   const priceDivisor = quotedPriceDivisor(quote);
   const barRows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume, priceDivisor);
   // A monthly bar whose prices contradict each other keeps its close; its open, high and low come from the daily bars.
-  const rows = await withMonthlyBarsRebuilt(barRows, market, symbol, exchange, context, priceDivisor);
+  const rows = await withMonthlyBarsRebuilt(barRows, market, symbol, exchange, context, priceDivisor,
+    quote?.listingExchangeName || exchange || "");
   // Bars stop arriving on the listing's own trading days, not New York's.
   const venue = quote?.listingExchangeName || exchange || undefined;
   const served = range === "YTD" && !window ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;

@@ -3,7 +3,7 @@ import {
   barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
-  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote, withDailyRebuiltBars,
+  historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote, withDailyRebuiltBars, dailyRebuildSpans,
 } from "./history-rows";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
@@ -314,6 +314,22 @@ describe("history rows", () => {
     expect(withDailyRebuiltBars(monthly, daily("2000-09-01", "2000-09-29").map((point) => ({ ...point, high: 191 })))[1]!.high).toBeNull();
     // Daily bars keep blanking whole: only a monthly bar keeps its close.
     expect(historyRows([{ date: new Date("2000-09-05"), open: 182, high: 189, low: 176, close: 192 }], "1d")[0]!.close).toBeNull();
+    // A Sydney session is stamped 23:00 UTC the evening before: 1 September's bar is September's on the ASX.
+    const sydney = daily("2000-09-01", "2000-09-29").map((point) => ({ ...point, date: new Date(point.date.getTime() - DAY + 23 * 3_600_000) }));
+    expect(withDailyRebuiltBars(monthly, sydney, 1, "ASX")[1]).toMatchObject({ open: 185, rebuilt: "daily bars" });
+    expect(withDailyRebuiltBars(monthly, sydney)[1]!.open).not.toBe(185);
+  });
+  test("flagged months a few apart share one read of daily bars, a year at most", () => {
+    // ZC=F's twelve flagged months since 2000, a month listed twice and out of order: six reads.
+    const zc = ["2000-09", "2000-12", "2002-09", "2003-06", "2003-09", "2004-02", "2004-03", "2004-06", "2004-07", "2005-08", "2005-10", "2006-03"];
+    expect(dailyRebuildSpans([...zc.slice(6), ...zc, "2000-09"])).toEqual([
+      { from: "2000-09", to: "2000-12" }, { from: "2002-09", to: "2002-09" }, { from: "2003-06", to: "2003-09" },
+      { from: "2004-02", to: "2004-07" }, { from: "2005-08", to: "2005-10" }, { from: "2006-03", to: "2006-03" },
+    ]);
+    // Three months apart every time: a new read once the span would pass a year.
+    expect(dailyRebuildSpans(["2001-01", "2001-04", "2001-07", "2001-10", "2002-01"])).toEqual([
+      { from: "2001-01", to: "2001-10" }, { from: "2002-01", to: "2002-01" },
+    ]);
   });
 
   test("closures, thin trading and round-the-clock coins are no break", () => {

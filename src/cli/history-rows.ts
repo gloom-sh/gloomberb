@@ -13,7 +13,7 @@ import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
-import { getPricePointTimestamp } from "../utils/price-history";
+import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
   isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
@@ -286,24 +286,50 @@ function keptMonthlyClose(point: PricePoint): boolean {
 /** Days a month's daily bars may leave out at either end or between two of them and still say its range: a week. */
 const REBUILD_MAX_HOLE_DAYS = 7;
 
+/** Flagged months a few apart are read in one span of daily bars: the months between cost less than another read. */
+const REBUILD_SPAN_GAP_MONTHS = 3;
+/** The longest span one read of daily bars covers: a year. */
+const REBUILD_SPAN_MONTHS = 12;
+
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+
+/**
+ * The spans of daily bars that rebuild the flagged `months` (YYYY-MM), each
+ * read once: neighbouring months, up to REBUILD_SPAN_GAP_MONTHS apart, share
+ * a span of at most a year, so ZC=F's twelve flagged months since 2000 take
+ * six reads rather than twelve.
+ */
+export function dailyRebuildSpans(months: readonly string[]): Array<{ from: string; to: string }> {
+  const spans: Array<{ from: string; to: string }> = [];
+  for (const month of [...new Set(months)].filter((value) => /^\d{4}-\d{2}$/.test(value)).sort()) {
+    const span = spans.at(-1);
+    if (span && monthIndex(month) - monthIndex(span.to) <= REBUILD_SPAN_GAP_MONTHS
+      && monthIndex(month) - monthIndex(span.from) < REBUILD_SPAN_MONTHS) span.to = month;
+    else spans.push({ from: month, to: month });
+  }
+  return spans;
+}
+
 /**
  * Monthly bars whose prices contradict each other, their close kept
  * (historyRows), with open, high and low rebuilt from the month's daily bars:
  * the first open, the highest high and the lowest low. A month is rebuilt
  * only when its daily bars cover it, no week of it without one, and their
  * range holds the kept close; otherwise its open, high and low stay blank.
- * Daily bars whose own prices contradict each other are not read.
+ * Daily bars whose own prices contradict each other are not read. A daily
+ * bar's day is the one the listing's `exchange` trades it on (dailyBarDate):
+ * a Sydney session stamped 23:00 UTC the evening before is still the 1st.
  */
-export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonly PricePoint[], priceDivisor = 1): HistoryRow[] {
+export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonly PricePoint[], priceDivisor = 1, exchange = ""): HistoryRow[] {
   const byMonth = new Map<string, Array<{ day: number; open: number | null; high: number; low: number }>>();
   for (const point of daily) {
     const time = getPricePointTimestamp(point);
     const values = pricePointValues(point);
     if (!Number.isFinite(time) || values.high == null || values.low == null) continue;
-    const month = new Date(time).toISOString().slice(0, 7);
-    const days = byMonth.get(month) ?? [];
-    days.push({ day: Math.floor(time / DAY_MS), open: values.open, high: values.high, low: values.low });
-    byMonth.set(month, days);
+    const date = dailyBarDate(time, exchange);
+    const days = byMonth.get(date.slice(0, 7)) ?? [];
+    days.push({ day: Date.parse(`${date}T00:00:00Z`) / DAY_MS, open: values.open, high: values.high, low: values.low });
+    byMonth.set(date.slice(0, 7), days);
   }
   return rows.map((row) => {
     if (row.interval !== "1mo" || row.close == null || row.open != null || blankingCodes(row).length === 0) return row;
