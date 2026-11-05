@@ -282,6 +282,14 @@ export interface CompositeChartProps {
   /** False keeps the hover and keyboard cursor but removes pan, zoom, tools, and their keys. */
   navigable?: boolean;
   /**
+   * Under a pane's tab strip, a chart that does not navigate leaves Left and
+   * Right to the strip. One that is enterable takes them, as a chart that
+   * navigates does, once Down, Enter or a press moves into it, so its cursor
+   * steps bar by bar; Esc or Up hands them back. A chart with nothing to read
+   * bar by bar leaves it off.
+   */
+  enterable?: boolean;
+  /**
    * A hairline across the chart, gutters included, on the line between two
    * stacked panels (desktop and web), so each panel's axis reads as its own
    * scale instead of one column of numbers. Default: on for a chart that

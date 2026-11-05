@@ -2628,6 +2628,65 @@ describe("CompositeChart", () => {
     expect(tui.frame()).not.toContain("2025-01-01");
   });
 
+  // A read-only chart under a view strip (returns) has no viewport to pan,
+  // but its bars are read with the arrows: Down takes them from the strip,
+  // and handing them back puts the cursor on its resting bar again.
+  test("an enterable chart under a strip is read with the arrows once entered, and rests again when left", async () => {
+    let held = false;
+    function Strip() {
+      held = usePaneTabStripKeys(true, true).held;
+      return null;
+    }
+    await tui.render(
+      <PaneFooterProvider>
+        {() => (
+          <InputHostProvider host={chartInputHost}>
+            <CaptureChartSurfaceProvider>
+              <Box flexDirection="column">
+                <Strip />
+                <CompositeChart
+                  width={60}
+                  height={12}
+                  focused
+                  enterable
+                  navigable={false}
+                  showLegend={false}
+                  series={[series("price", "main", "left", "USD", [100, 200, 100, 100])]}
+                  panels={[{ id: "main" }]}
+                  cursorDate={new Date("2025-01-04T00:00:00.000Z")}
+                />
+              </Box>
+            </CaptureChartSurfaceProvider>
+          </InputHostProvider>
+        )}
+      </PaneFooterProvider>,
+      { width: 62, height: 14 },
+    );
+    const settle = () => act(async () => tui.setup().renderOnce());
+    const press = async (name: string) => {
+      const event = keyEvent(name);
+      await act(async () => chartShortcut?.(event));
+      await settle();
+      return event;
+    };
+    await settle();
+    expect(cursorDay()).toBe("2025-01-04");
+
+    // On the strip the arrows are the strip's.
+    expect((await press("left")).defaultPrevented).toBe(false);
+    expect(cursorDay()).toBe("2025-01-04");
+
+    await press("down");
+    expect(held).toBe(true);
+    await press("left");
+    await press("left");
+    expect(cursorDay()).toBe("2025-01-02");
+
+    await press("up");
+    expect(held).toBe(false);
+    expect(cursorDay()).toBe("2025-01-04");
+  });
+
   test.each([
     ["USD", "currency-total:USD", 90_007_000_000, "$90.01B"],
     ["EUR", "currency-total:EUR", -12_345_600_000, "-€12.35B"],

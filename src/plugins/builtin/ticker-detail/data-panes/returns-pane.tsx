@@ -1,14 +1,16 @@
 import { logFailure } from "../../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TextAttributes } from "../../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../../ui";
 import {
   DataTableView,
   QueryBar,
   StatGrid,
   loadingText,
+  statGridRows,
   unavailableText,
   usePaneNoticeFooter,
   usePaneStatusFooter,
+  usePaneTabs,
   useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
@@ -17,6 +19,7 @@ import {
   type StatItem,
 } from "../../../../components";
 import { usePaneRefreshKey } from "../../../../components/data-table/table-pane";
+import { FILL_REST } from "../../../../components/ui/fill";
 import { CHART_RESOLUTIONS } from "../../../../time-series/range";
 import {
   getChartResolutionLabel,
@@ -51,12 +54,21 @@ import {
   summarizeReturns,
 } from "./returns-model";
 import { loadReturnSeries, type ReturnSeries } from "./returns-history";
+import { buildReturnBars } from "./returns-chart-model";
+import { ReturnsChart } from "./returns-chart";
 import { formingHistoryBar, formingHistoryBarText, historyBarDate } from "./history-bars";
 import { periodBaseText } from "../../../../market-data/market/period-return";
 import { DAY_SO_FAR_TEXT } from "../../../../time-series/session-bar";
 
 type ReturnColumnId = "time" | "price" | "intervalChange" | "intervalPercent" | "cumulativeChange" | "cumulativePercent";
 type ReturnColumn = DataTableColumn & { id: ReturnColumnId };
+/** The window's rows as the table, or as a bar per interval. */
+export type ReturnView = "table" | "chart";
+
+const VIEW_TABS: { value: ReturnView; label: string }[] = [
+  { value: "table", label: "Table" },
+  { value: "chart", label: "Chart" },
+];
 
 const INTERVAL_OPTIONS = CHART_RESOLUTIONS.filter((value): value is ManualChartResolution => value !== "auto");
 const SEARCH_MIN_ROWS = 8;
@@ -124,6 +136,9 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
   const { symbol, exchange, ticker } = useBoundTicker();
   const [range, setRange] = usePluginPaneState<ReturnRange>("range", "5D");
   const [resolution, setResolution] = usePluginPaneState<ManualChartResolution>("interval", "1h");
+  const [view, setView] = usePluginPaneState<ReturnView>("view", "table");
+  const chartView = view === "chart";
+  const { nativePaneChrome } = useUiCapabilities();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ columnId: ReturnColumnId; direction: SortDirection }>({ columnId: "time", direction: "desc" });
   const { active: searchActive, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
@@ -175,14 +190,15 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
   const timeHeader = returnTimeHeader(barSize, venue);
   const columns = useMemo(() => COLUMNS.map((column) => column.id === "time" ? { ...column, label: timeHeader } : column), [timeHeader]);
   const table = useMemo(() => {
-    const searchable = returnRows.length >= SEARCH_MIN_ROWS;
+    // The chart draws every bar of the window; only the table narrows by a search.
+    const searchable = !chartView && returnRows.length >= SEARCH_MIN_ROWS;
     const needle = searchable ? query.trim().toLowerCase() : "";
     const rows = (needle
       ? returnRows.filter((row) => returnTimeText(row.timestamp, barSize, venue).includes(needle))
       : returnRows.slice()
     ).sort((left, right) => compareSortValues(sortValue(left, sort.columnId), sortValue(right, sort.columnId), sort.direction));
     return { rows, searchable };
-  }, [barSize, query, returnRows, sort, venue]);
+  }, [barSize, chartView, query, returnRows, sort, venue]);
   // The quote knows the instrument type even when the saved ticker does not,
   // so prices take the same decimals as Historical Prices.
   const { financials } = usePaneTicker();
@@ -211,6 +227,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
   // Today's daily bar is the session still trading, marked as Historical Prices marks it.
   const dayToDate = !!data && isTodayReturnRow(returnRows[0], data.resolution, data.venue || undefined, Date.now());
   const formingKey = forming || dayToDate ? returnRows[0]?.key : undefined;
+  const bars = useMemo(() => buildReturnBars(returnRows, barSize, venue, formingKey), [barSize, formingKey, returnRows, venue]);
   // The close every total is measured from: `from Mon 21 Sep close`.
   const baseText = useMemo(() => {
     const day = data && returnRows.length ? returnBaseCloseDay(data.points, data.visibleFrom, data.resolution, data.venue || undefined, Date.now()) : null;
@@ -229,6 +246,15 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
 
   const integrityNotice = priceHistoryIntegrityNotice(returnRows.filter((row) => row.inconsistent).length);
   const coverageNotice = data ? historyCoverageNotice(data.coverageStart, data.visibleFrom) : null;
+  const selectView = useCallback((value: string) => setView(value as ReturnView), [setView]);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
+    tabs: VIEW_TABS,
+    activeValue: view,
+    onSelect: selectView,
+    focused: focused && !searchActive,
+    dense: true,
+  });
+
   usePaneNoticeFooter({
     registrationId: "returns:notices",
     notices: [coverageNotice, integrityNotice].filter((notice): notice is string => !!notice),
@@ -287,12 +313,74 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
     }
   }, [barSize, formingKey, priceDecimals, venue]);
 
-  return (
+  const queryBar = (
+    <QueryBar
+      width={width}
+      search={table.searchable ? {
+        value: query,
+        onChange: setQuery,
+        placeholder: "date or time",
+        focused,
+        ...searchProps,
+      } : undefined}
+      filters={[{
+        id: "range",
+        label: "Range",
+        value: range,
+        options: RETURN_RANGES.map((value) => ({ value, label: value })),
+        onChange: setRange,
+      }, {
+        id: "interval",
+        label: "Interval",
+        value: shownResolution,
+        options: INTERVAL_OPTIONS.map((value) => ({
+          value,
+          label: getChartResolutionLabel(value),
+          disabled: support !== null && !availableResolutions.has(value),
+        })),
+        onChange: setResolution,
+      }]}
+    />
+  );
+  const figures = <StatGrid items={summary} width={width} />;
+  const emptyTitle = error
+    ? unavailableText("Returns")
+    : loading
+      ? loadingText("returns")
+      : query.trim()
+        ? "No matching times"
+        : "No bars in this window";
+
+  if (chartView) {
+    // Terminal rows: what the tab row, the query bar and the figures leave.
+    const chartRows = Math.max(1, height - tabRows - 1 - statGridRows(summary, width));
+    return (
+      <Box flexDirection="column" width={width} {...(nativePaneChrome ? FILL_REST : { height })}>
+        {tabStrip}
+        {queryBar}
+        {figures}
+        <Box flexDirection="column" width={width} {...(nativePaneChrome ? FILL_REST : { height: chartRows })}>
+          <ReturnsChart
+            bars={bars}
+            resolution={barSize}
+            venue={venue}
+            width={width}
+            height={chartRows}
+            focused={focused}
+            emptyMessage={emptyTitle}
+            emptyDetail={error ?? undefined}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
+  const tableView = (
     <DataTableView<ReturnRow, ReturnColumn>
       focused={focused && !searchActive}
       selection={{ kind: "none" }}
       rootWidth={width}
-      rootHeight={height}
+      rootHeight={height - tabRows}
       columns={columns}
       items={table.rows}
       sortColumnId={sort.columnId}
@@ -303,34 +391,8 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
       selectedTextOverridesCellColor
       rootBefore={(
         <>
-          <QueryBar
-            width={width}
-            search={table.searchable ? {
-              value: query,
-              onChange: setQuery,
-              placeholder: "date or time",
-              focused,
-              ...searchProps,
-            } : undefined}
-            filters={[{
-              id: "range",
-              label: "Range",
-              value: range,
-              options: RETURN_RANGES.map((value) => ({ value, label: value })),
-              onChange: setRange,
-            }, {
-              id: "interval",
-              label: "Interval",
-              value: shownResolution,
-              options: INTERVAL_OPTIONS.map((value) => ({
-                value,
-                label: getChartResolutionLabel(value),
-                disabled: support !== null && !availableResolutions.has(value),
-              })),
-              onChange: setResolution,
-            }]}
-          />
-          <StatGrid items={summary} width={width} />
+          {queryBar}
+          {figures}
         </>
       )}
       getExportMetadata={() => [
@@ -348,14 +410,15 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
         ...(integrityNotice ? [["Warning", integrityNotice]] : []),
         ...(error ? [["Error", error]] : []),
       ]}
-      emptyStateTitle={error
-        ? unavailableText("Returns")
-        : loading
-          ? loadingText("returns")
-          : query.trim()
-            ? "No matching times"
-            : "No bars in this window"}
+      emptyStateTitle={emptyTitle}
       emptyStateHint={error ?? undefined}
     />
+  );
+  if (!tabStrip) return tableView;
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      {tabStrip}
+      {tableView}
+    </Box>
   );
 }
