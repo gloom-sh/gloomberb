@@ -105,23 +105,55 @@ export function dollarPairListing(code: string): string {
 }
 
 /**
- * The decimals an FX rate is quoted to, its pair's precision: a rate in yen
- * to three (EUR/JPY 177.861, TRY/JPY 3.712), any other rate from 50 up to
- * three as well (USD/INR 88.735), from 1000 up to two (USD/IDR 16250.50),
- * from 1 up to five (EUR/USD 1.12625), and below 1 to five significant
- * digits with at least five decimals and at most eight (USD/EUR 0.88790,
- * JPY/USD 0.0063353). `currency` is the currency the rate is in; `rate` is
- * best a level that holds still (the previous close), so a rate ticking
- * across 50 keeps its decimals.
+ * The decimals an FX rate is shown to, its pair's precision: a rate in yen
+ * from 1 up to three (EUR/JPY 177.861, TRY/JPY 3.712), any other rate from 50
+ * up to three as well (USD/INR 88.735), from 1000 up to two (USD/IDR
+ * 16250.50), from 1 up to five (EUR/USD 1.12625), and any rate below 1, yen
+ * too, to five significant digits with at least five decimals and at most
+ * eight (USD/EUR 0.88790, KRW/JPY 0.10712, IDR/JPY 0.0096120). `currency` is
+ * the currency the rate is in; `rate` is best a level that holds still (the
+ * previous close), so a rate ticking across 50 keeps its decimals. It is for
+ * showing a rate: a conversion uses the rate as it came.
  */
 export function fxRateDigits(currency: string | undefined, rate: number | undefined): number {
-  if (currency?.trim().toUpperCase() === "JPY") return 3;
   const size = rate == null || !Number.isFinite(rate) ? 0 : Math.abs(rate);
+  if (currency?.trim().toUpperCase() === "JPY" && (size === 0 || size >= 1)) return 3;
   if (size === 0) return 5;
   if (size >= 1000) return 2;
   if (size >= 50) return 3;
   if (size >= 1) return 5;
   return Math.min(8, Math.max(5, 4 - Math.floor(Math.log10(size))));
+}
+
+/**
+ * A figure as its source sent it, without the tail a single-precision float
+ * picks up on the way: 1.1265100240707397 is 1.12651, 153.5540008544922 is
+ * 153.554. A figure that is no single-precision float stays as it came, so
+ * nothing it carries is rounded off.
+ */
+export function fxFigureAsSent(value: number): number {
+  if (!Number.isFinite(value) || value === 0 || Math.fround(value) !== value) return value;
+  for (let digits = 1; digits <= 9; digits += 1) {
+    const short = Number(value.toPrecision(digits));
+    if (Math.fround(short) === value) return short;
+  }
+  return value;
+}
+
+/** The decimals a figure carries: 1.12651 has five, 157.8 one, 6.5e-7 seven. */
+function decimalsCarried(value: number): number {
+  const [mantissa, exponent] = String(Math.abs(value)).split("e");
+  return Math.max(0, (mantissa!.split(".")[1] ?? "").length - Number(exponent ?? 0));
+}
+
+/**
+ * A rate as the figure it is: at least its pair's decimals (`fxRateDigits`),
+ * and every decimal it carries, so the rate printed is the rate used
+ * (EUR/USD 1.12650, 1.126507; IDR/JPY 0.0096120).
+ */
+export function fxFigureText(value: number, currency: string | undefined): string {
+  if (!Number.isFinite(value)) return String(value);
+  return value.toFixed(Math.min(15, Math.max(fxRateDigits(currency, value), decimalsCarried(value))));
 }
 
 /**

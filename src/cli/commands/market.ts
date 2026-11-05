@@ -296,7 +296,7 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxRate, formatFxRate, FX_USAGE, fxRateAtPairPrecision, parseFxArgs } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
 import {
   describeShortRate,
   formatForwardPoints,
@@ -3393,7 +3393,15 @@ async function runFxOnDate(
     }
   }
   const from = legs.get(currency), into = legs.get(baseCurrency);
-  const rate = currency === baseCurrency ? 1 : fxRateAtPairPrecision(request, crossRate(from?.rate, into?.rate));
+  // Converted at the closes as sent, never at a rounded rate; the line names each close it used.
+  const rate = currency === baseCurrency ? 1 : crossRate(from?.rate, into?.rate);
+  const closes: FxQuotedFigure[] = codes.flatMap((code) => {
+    const leg = dailyFxLeg(code), close = legs.get(code)?.close;
+    return leg && close != null ? [{ pair: leg.invert ? `USD/${code}` : `${code}/USD`, figure: close }] : [];
+  });
+  const rateLine = closes.length > 1
+    ? `${describeFxRate(request, rate)}  ·  ${describeFxLegs(closes)}`
+    : describeFxRate(request, rate, closes[0]);
   // A cross is as old as its older close; a weekend or holiday reads the trading day before it.
   const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
   const converted = amount == null ? null : amount * rate;
@@ -3414,7 +3422,7 @@ async function runFxOnDate(
     freshness: rowsFreshness([], { status: "not-a-feed", basis: "daily FX close", asOf: closeDate }),
     warnings: warnings.length > 0 ? warnings : undefined,
   }, {
-    text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
+    text: () => amount == null ? rateLine : `${describeFxConversion(request, amount, rate)}\n${rateLine}`,
     exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "1day" },
     columns: [
       { key: "currency", header: "Currency" },
@@ -3481,8 +3489,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       );
     }
     const quoted = read && !("missing" in read) ? read : null;
-    // The rate a conversion uses is the pair's quote at its precision, and the rate line prints that figure.
-    const rate = quoted ? fxRateAtPairPrecision(request, quoted.rate) : 1;
+    // A conversion uses the quote as sent (or the cross of the dollar pairs as sent), never a rounded rate,
+    // and the rate line prints each figure it used.
+    const rate = quoted ? quoted.rate : 1;
     const observation = quoted ? fxQuoteRateObservation(quoted, now) : null;
     const asOf = observation && Number.isFinite(observation.updatedAt) ? new Date(observation.updatedAt).toISOString() : null;
     // A rate older than its feed's delay is stale, as `quote` says of the same quote.
@@ -3564,8 +3573,12 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       ? await loadPesoDollarRates((targets) => market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh }))
       : null;
     if (peso && peso.missing.length > 0) warnings.push(`No price for ${peso.missing.join(", ")}, so the rates from ${peso.missing.length === 1 ? "it are" : "them are"} left out.`);
-    // A cross says so: the pair has no quote of its own.
-    const rateText = [describeFxRate(request, rate), ...quoted?.viaUsd ? ["via USD"] : [], ...peso ? [`${peso.spotKind} rate`] : []].join("  ·  ");
+    // A cross says so, naming the dollar pairs it is read from: the pair has no quote of its own.
+    const rateText = [
+      describeFxRate(request, rate, quoted && !quoted.viaUsd ? quoted.quotes[0] : undefined),
+      ...quoted?.viaUsd ? [describeFxLegs(quoted.quotes)] : [],
+      ...peso ? [`${peso.spotKind} rate`] : [],
+    ].join("  ·  ");
     ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
       text: () => [

@@ -71,6 +71,13 @@ test("fx reads the pair's own quote, the one `quote` reads, dated by it and stal
   await fx.execute(["USD/SGD"], later.context);
   expect(later.rows()[0]).toMatchObject([{ stale: true }]);
   expect(later.output("text")[0]).toEndWith("Source: Gloom Cloud · Thu 5 Nov 2026 03:47 UTC · stale (28 min old) · markets open");
+  // Unflagged, a weekday quote two hours old is stale all the same: past the feed's delay and fifteen minutes,
+  // counted while the FX market trades (Friday's close stays current over the weekend, below).
+  setSystemTime(new Date("2026-11-05T05:47:00Z"));
+  const aged = harness("USD", { "USDSGD=X": { price: 1.27626, lastUpdated: Date.parse("2026-11-05T03:47:00Z") } });
+  await fx.execute(["USD/SGD"], aged.context);
+  expect(aged.rows()[0]).toMatchObject([{ stale: true }]);
+  expect(aged.output("text")[0]).toEndWith("Source: Gloom Cloud · Thu 5 Nov 2026 03:47 UTC · stale (2 hours old) · markets open");
   // The inverse reads the same quote.
   const inverse = harness("USD", { "USDSGD=X": 1.27626 });
   await fx.execute(["SGD/USD"], inverse.context);
@@ -89,15 +96,16 @@ test("a cross reads its own quote when it has one and crosses the dollar pairs o
   expect(own.rows()[0]).toMatchObject([{ rate: 177.861, quotes: ["EURJPY=X"] }]);
   expect(own.rows()[0][0].via).toBeUndefined();
   expect(own.output("text")[0]).toStartWith("1 EUR = 177.861 JPY  (JPY/EUR 0.00562237)\n");
-  // A pair with no quote of its own is the cross of its dollar pairs, at the pair's precision, and says via USD.
+  // A pair with no quote of its own is the cross of its dollar pairs, named as sent, and says via USD.
   const crossed = harness("USD", { "EURUSD=X": 1.12625, "USDJPY=X": 157.973 });
   await fx.execute(["EUR/JPY"], crossed.context);
-  expect(crossed.rows()[0]).toMatchObject([{ rate: 177.917, via: "USD", quotes: ["EURUSD=X", "USDJPY=X"] }]);
-  expect(crossed.output("text")[0]).toStartWith("1 EUR = 177.917 JPY  (JPY/EUR 0.0056206)  ·  via USD\n");
+  expect(crossed.rows()[0]).toMatchObject([{ via: "USD", quotes: ["EURUSD=X", "USDJPY=X"] }]);
+  expect(crossed.rows()[0][0].rate).toBe(1.12625 * 157.973);
+  expect(crossed.output("text")[0]).toStartWith("1 EUR = 177.917 JPY  (JPY/EUR 0.0056206)  ·  via USD: EUR/USD 1.12625, USD/JPY 157.973\n");
   // A stale own quote gives way to current dollar pairs; the cross is as old as its older pair.
   const staleOwn = harness("USD", { ...quotes, "EURJPY=X": { price: 177.861, stale: true }, "USDJPY=X": { price: 157.973, minutesAgo: 4 } });
   await fx.execute(["EUR/JPY"], staleOwn.context);
-  expect(staleOwn.rows()[0]).toMatchObject([{ rate: 177.917, via: "USD", asOf: "2026-11-05T03:59:00.000Z" }]);
+  expect(staleOwn.rows()[0]).toMatchObject([{ rate: 1.12625 * 157.973, via: "USD", asOf: "2026-11-05T03:59:00.000Z" }]);
   // Neither is quoted: the currencies with no dollar pair are named, and the service's reason when it gave one.
   await expect(fx.execute(["GBP/EUR"], harness("USD", { "GBPUSD=X": 1.35 }).context)).rejects.toThrow("Exchange rate unavailable for EUR.");
   await expect(fx.execute(["USD/XYZ"], harness("USD", {}).context)).rejects.toThrow("Exchange rate unavailable for XYZ.");
@@ -124,17 +132,34 @@ test("an FX export names the pair and the currency the rate is in, which is the 
   ]);
 });
 
-// `fx 2500000.50 EUR/USD` printed 2,815,633.06 USD beside `1 EUR = 1.12625 USD`, which gives 2,815,625.56.
-test("an amount converts at the rate the line prints: the pair as markets quote it, at its precision", async () => {
+// `fx 2500000.50 EUR/USD` printed 2,815,633.06 USD beside `1 EUR = 1.12625 USD`, which gives 2,815,625.56; rounding
+// the rate instead converted IDR/JPY 0.009612 at 0.010, 4% off.
+test("an amount converts at the quote as sent, never a rounded rate, and the line prints each figure it used", async () => {
   setSystemTime(new Date("2026-11-05T04:03:00Z"));
   const run = harness("USD", { "EURUSD=X": 1.1262531, "USDJPY=X": 157.8481 });
   await fx.execute(["2500000.50", "EUR/USD"], run.context);
-  expect(run.output("text")[0]).toStartWith("2,500,000.50 EUR = 2,815,625.56 USD\n1 EUR = 1.12625 USD  (USD/EUR 0.887902)\n");
-  expect(run.rows()[0]).toMatchObject([{ rate: 1.12625, amount: 2500000.5, converted: 2500000.5 * 1.12625 }]);
-  // Converted against the quote's direction, the amount is divided by the pair's printed rate.
+  expect(run.output("text")[0]).toStartWith("2,500,000.50 EUR = 2,815,633.31 USD\n1 EUR = 1.1262531 USD  (USD/EUR 0.8879)\n");
+  expect(run.rows()[0]).toMatchObject([{ rate: 1.1262531, inverse: 1 / 1.1262531, amount: 2500000.5, converted: 2500000.5 * 1.1262531 }]);
+  // Converted against the quote's direction, the amount is divided by the pair's quote.
   await fx.execute(["1000000", "JPY/USD"], run.context);
-  expect(run.output("text")[1]).toStartWith("1,000,000 JPY = 6,335.21 USD\n1 JPY = 0.00633521 USD  (USD/JPY 157.848)\n");
-  expect(run.rows()[1][0].converted).toBeCloseTo(1_000_000 / 157.848, 9);
+  expect(run.output("text")[1]).toStartWith("1,000,000 JPY = 6,335.20 USD\n1 JPY = 0.0063352 USD  (USD/JPY 157.8481)\n");
+  expect(run.rows()[1][0].converted).toBeCloseTo(1_000_000 / 157.8481, 9);
+
+  // The yen below 1 keeps its significant digits, a cross converts at both dollar pairs as sent, and a figure
+  // sent as a single-precision float is the decimal it was (EUR/JPY 177.861, not 177.86099243164062).
+  const yen = harness("USD", { "USDIDR=X": 16250.5, "USDKRW=X": 1473.6, "USDJPY=X": 157.848, "EURJPY=X": Math.fround(177.861) });
+  await fx.execute(["1000000", "IDR/JPY"], yen.context);
+  expect(yen.output("text")[0]).toStartWith(
+    "1,000,000.00 IDR = 9,713 JPY\n1 IDR = 0.0097134 JPY  (JPY/IDR 102.95)  ·  via USD: USD/IDR 16250.50, USD/JPY 157.848\n");
+  expect(yen.rows()[0][0].converted).toBeCloseTo(1_000_000 * 157.848 / 16250.5, 6);
+  await fx.execute(["KRW/JPY"], yen.context);
+  expect(yen.output("text")[1]).toStartWith("1 KRW = 0.10712 JPY  (JPY/KRW 9.33556)  ·  via USD: USD/KRW 1473.60, USD/JPY 157.848\n");
+  expect(yen.rows()[1][0].rate).toBe((1 / 1473.6) / (1 / 157.848));
+  await fx.execute(["100", "USD/IDR"], yen.context);
+  expect(yen.output("text")[2]).toStartWith("100.00 USD = 1,625,050.00 IDR\n1 USD = 16250.50 IDR  (IDR/USD 0.0000615366)\n");
+  await fx.execute(["EUR/JPY"], yen.context);
+  expect(yen.output("text")[3]).toStartWith("1 EUR = 177.861 JPY  (JPY/EUR 0.00562237)\n");
+  expect(yen.rows()[3][0].rate).toBe(177.861);
 });
 
 // `fx gbp-chf` asked for three letters; `fx eurusd` said to write EUR/USD.
@@ -254,9 +279,10 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   expect(run.rows()[1]).toMatchObject([{ rate: 1.38376, asOf: "2026-09-04", date: "2026-09-05" }]);
   expect(run.printed[1]!.result.warnings).toEqual(["No daily close on 2026-09-05, a weekend or market holiday: this is the close of 2026-09-04, the trading day before it."]);
   await fx.execute(["1000", "EUR/CAD", "--date", "2026-09-02"], run.context);
-  // The cross converts at EUR/CAD as it prints, to five decimals.
-  expect(run.rows()[2][0].rate).toBe(Number((1.15884 * 1.3845).toFixed(5)));
-  expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.60441, 6);
+  // The cross converts at both closes as sent, which its line names.
+  expect(run.rows()[2][0].rate).toBeCloseTo(1.15884 * 1.3845, 12);
+  expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.15884 * 1.3845, 9);
+  expect(run.output("text")[2]).toStartWith("1,000.00 EUR = 1,604.41 CAD\n1 EUR = 1.60441 CAD  (CAD/EUR 0.623281)  ·  via USD: EUR/USD 1.15884, USD/CAD 1.38450\n");
   expect(run.asked).toEqual(["CAD=X", "CAD=X", "EURUSD=X", "CAD=X"]);
 });
 

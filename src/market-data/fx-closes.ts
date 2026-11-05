@@ -1,6 +1,6 @@
 import type { CloudHistoryParams } from "../api-client/paths";
 import type { CloudMarketResponse, CloudPricePointPayload } from "../api-client/types";
-import { isCurrencyCode } from "../utils/currency-pair";
+import { fxFigureAsSent, isCurrencyCode } from "../utils/currency-pair";
 import { fxLegForCurrency, type FxLeg } from "./coordinator/fx-legs";
 
 /** USD per unit of one currency at each completed daily FX close, by date. */
@@ -82,6 +82,8 @@ export interface FxHistoryClient {
 export interface FxCloseReading {
   /** USD per unit. */
   rate: number;
+  /** The pair's close as the service sent it (USD/JPY 157.848 for the yen), the figure `rate` is or is the inverse of. */
+  close?: number;
   /** The UTC day of the close: the day asked for, or the last trading day before it. */
   date: string;
 }
@@ -135,7 +137,8 @@ export async function readFxCloseOnDate(
     if (!Number.isFinite(at) || !Number.isFinite(row.close) || row.close <= 0) continue;
     const rowDay = isoDay(at);
     if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - FX_MAX_AGE_DAYS * DAY_MS) continue;
-    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / row.close : row.close, date: rowDay };
+    const close = fxFigureAsSent(row.close);
+    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / close : close, close, date: rowDay };
   }
   return { reading: best, served };
 }

@@ -350,6 +350,9 @@ describe("live quote precision", () => {
     // Without session prices or a currency, a print still takes its pair's decimals, and a large rate fewer.
     expect(formatMarketPrice(1.0981532, quoteFormatOptions({ instrumentType: "CURRENCY" }))).toBe("1.09815");
     expect(formatMarketPrice(16250.5, { ...quoteFormatOptions({ instrumentType: "CURRENCY" }), currency: "IDR" })).toBe("16,250.50");
+    // A yen rate below 1 keeps five significant digits: IDR/JPY 0.009612 read 0.010 at three decimals.
+    expect(live([0.009612], { instrumentType: "CURRENCY", previousClose: 0.0096 }, "JPY")).toEqual(["0.0096120"]);
+    expect(live([0.10712], { instrumentType: "CURRENCY", previousClose: 0.1071 }, "JPY")).toEqual(["0.10712"]);
     // Its move too, at the pair's precision rather than five significant figures of the move.
     const pair = quoteFormatOptions({ instrumentType: "CURRENCY" });
     expect(formatMarketChangeWithCurrency(0.0034498, "USD", pair, 1.12638)).toBe("+$0.00345");

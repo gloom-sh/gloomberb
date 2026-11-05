@@ -1,7 +1,7 @@
 import { currencyMinorDigits } from "../market-data/market/format";
 import { parseTypedNumber, readConvertedAmount } from "../utils/decimal-comma";
 import { currenciesNamed } from "../utils/currency-names";
-import { currencyPairSpelling, fxRateDigits, quotedFxPair } from "../utils/currency-pair";
+import { currencyPairSpelling, fxFigureText, fxRateDigits, quotedFxPair } from "../utils/currency-pair";
 
 /**
  * What `gloom fx` is asked for. A bare code is one unit of it in the base
@@ -201,39 +201,41 @@ export function formatFxRate(rate: number): string {
 }
 
 /** The pair as markets quote it (USD/JPY for JPY/USD), its rate, and whether that is the direction asked for. */
-function marketQuote(request: FxRequest, rate: number): { rate: number; currency: string; direct: boolean } {
+function marketQuote(request: FxRequest, rate: number): { pair: string; rate: number; currency: string; direct: boolean } {
   const quoted = quotedFxPair(request.currency, request.baseCurrency, rate);
-  return { rate: quoted.rate, currency: quoted.pair.slice(4), direct: quoted.pair === `${request.currency}/${request.baseCurrency}` };
+  return { pair: quoted.pair, rate: quoted.rate, currency: quoted.pair.slice(4), direct: quoted.pair === `${request.currency}/${request.baseCurrency}` };
 }
 
-/**
- * The rate a conversion uses: the pair as markets quote it, at its
- * precision (`fxRateDigits`), in the direction asked for. 1.1262531 USD per
- * EUR is EUR/USD 1.12625; 0.0063353 USD per JPY is 1 / 157.848, USD/JPY at
- * three decimals. A non-finite rate stays as it is.
- */
-export function fxRateAtPairPrecision(request: FxRequest, rate: number): number {
-  if (!isUsableRate(rate) || request.currency === request.baseCurrency) return rate;
-  const quoted = marketQuote(request, rate);
-  const rounded = Number(quoted.rate.toFixed(fxRateDigits(quoted.currency, quoted.rate)));
-  return quoted.direct ? rounded : 1 / rounded;
+/** A quote a rate is read from: its pair as markets write it and its figure as the source sent it (USD/JPY 157.848). */
+export interface FxQuotedFigure {
+  pair: string;
+  figure: number;
+}
+
+/** The dollar pairs a cross is read from, each as sent: `via USD: USD/ZAR 16.1365, USD/NGN 1328.39`. */
+export function describeFxLegs(legs: readonly FxQuotedFigure[]): string {
+  return `via USD: ${legs.map(({ pair, figure }) => `${pair} ${fxFigureText(figure, pair.slice(4))}`).join(", ")}`;
 }
 
 /**
  * Both directions on one line: `1 NGN = 0.000752791 USD  (USD/NGN 1328.39)`.
- * The side that is the pair as markets quote it prints at the pair's
- * precision with its trailing zeros (EUR/USD 1.12650, USD/JPY 157.848),
- * the figure a conversion at `fxRateAtPairPrecision` multiplies or divides
- * by; the other side is its inverse to six significant digits.
+ * The side that is the pair as markets quote it is that quote's figure as
+ * sent, with at least the pair's decimals (EUR/USD 1.12650, USD/JPY
+ * 157.848, IDR/JPY 0.0096120): the rate a conversion multiplies or divides
+ * by, never a rounded one. The other side is its inverse to six significant
+ * digits. A cross (no `quoted` figure of its own) shows the pair's decimals,
+ * and the dollar pairs it is read from are named beside it (`describeFxLegs`).
  */
-export function describeFxRate(request: FxRequest, rate: number): string {
+export function describeFxRate(request: FxRequest, rate: number, quoted?: FxQuotedFigure): string {
   const head = `1 ${request.currency} =`, pair = `${request.baseCurrency}/${request.currency}`;
   if (request.currency === request.baseCurrency || !isUsableRate(rate)) {
     return `${head} ${formatFxRate(rate)} ${request.baseCurrency}  (${pair} ${formatFxRate(1 / rate)})`;
   }
-  const quoted = marketQuote(request, rate);
-  const quotedText = quoted.rate.toFixed(fxRateDigits(quoted.currency, quoted.rate));
-  const left = quoted.direct ? quotedText : formatFxRate(rate);
-  const right = quoted.direct ? formatFxRate(1 / rate) : quotedText;
+  const market = marketQuote(request, rate);
+  const quotedText = quoted && quoted.pair === market.pair && isUsableRate(quoted.figure)
+    ? fxFigureText(quoted.figure, market.currency)
+    : market.rate.toFixed(fxRateDigits(market.currency, market.rate));
+  const left = market.direct ? quotedText : formatFxRate(rate);
+  const right = market.direct ? formatFxRate(1 / rate) : quotedText;
   return `${head} ${left} ${request.baseCurrency}  (${pair} ${right})`;
 }

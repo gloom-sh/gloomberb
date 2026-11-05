@@ -1,9 +1,10 @@
 import type { QuoteBatchOptions, QuoteBatchResult, QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
-import { dollarPairListing, quotedFxPair } from "../utils/currency-pair";
+import { dollarPairListing, fxFigureAsSent, quotedFxPair } from "../utils/currency-pair";
+import { fxFreshUntil } from "../utils/fx-market-hours";
 import { quoteObservation } from "../plugins/builtin/shared/report-freshness";
-import { isUsableRate } from "./fx-pair";
+import { isUsableRate, type FxQuotedFigure } from "./fx-pair";
 
 /** A listing a rate is read from, and whether its price is the rate's inverse. */
 export interface FxQuoteLeg {
@@ -28,10 +29,10 @@ function dollarLeg(code: string): FxQuoteLeg {
 
 /** The rate `fx` answers with and the quotes behind it, each as `quote` reads it. */
 export interface FxQuoteRate {
-  /** `baseCurrency` per unit of `currency`. */
+  /** `baseCurrency` per unit of `currency`, from the quotes' figures as sent: never rounded. */
   rate: number;
-  /** The pair's own quote, or the two dollar pairs it is crossed from. */
-  quotes: { symbol: string; quote: Quote }[];
+  /** The pair's own quote, or the two dollar pairs it is crossed from, each with its pair and figure as sent. */
+  quotes: ({ symbol: string; quote: Quote } & FxQuotedFigure)[];
   /** Crossed through the dollar: the pair has no quote of its own. */
   viaUsd: boolean;
 }
@@ -43,11 +44,22 @@ export interface FxQuoteMiss {
   errors: unknown[];
 }
 
-function legRate(leg: FxQuoteLeg, quote: Quote | null | undefined): number | null {
+/** The figure a leg's quote was sent as (EURJPY=X 177.811), or null for none. */
+function legFigure(quote: Quote | null | undefined): number | null {
   const price = quote?.price;
-  if (!isUsableRate(price)) return null;
-  const rate = leg.invert ? 1 / price : price;
+  return isUsableRate(price) ? fxFigureAsSent(price) : null;
+}
+
+function legRate(leg: FxQuoteLeg, quote: Quote | null | undefined): number | null {
+  const figure = legFigure(quote);
+  if (figure == null) return null;
+  const rate = leg.invert ? 1 / figure : figure;
   return isUsableRate(rate) ? rate : null;
+}
+
+/** A leg's quote with its pair as markets write it (EURJPY=X is EUR/JPY) and its figure as sent. */
+function quotedLeg(leg: FxQuoteLeg, quote: Quote): { symbol: string; quote: Quote } & FxQuotedFigure {
+  return { symbol: leg.symbol, quote, pair: `${leg.symbol.slice(0, 3)}/${leg.symbol.slice(3, 6)}`, figure: legFigure(quote)! };
 }
 
 /**
@@ -85,12 +97,12 @@ export async function readFxQuoteRate(
   const current = (entry: typeof read[number] | undefined) => entry?.rate != null && !isQuoteStaleForCurrentSession(entry.quote!, now);
   const legsCurrent = crossed && current(from) && current(into);
   if (pair.rate != null && (!legsCurrent || current(pair))) {
-    return { rate: pair.rate, quotes: [{ symbol: pair.leg.symbol, quote: pair.quote! }], viaUsd: false };
+    return { rate: pair.rate, quotes: [quotedLeg(pair.leg, pair.quote!)], viaUsd: false };
   }
   if (crossed && from?.rate != null && into?.rate != null) {
     return {
       rate: from.rate / into.rate,
-      quotes: [{ symbol: from.leg.symbol, quote: from.quote! }, { symbol: into.leg.symbol, quote: into.quote! }],
+      quotes: [quotedLeg(from.leg, from.quote!), quotedLeg(into.leg, into.quote!)],
       viaUsd: true,
     };
   }
@@ -100,10 +112,25 @@ export async function readFxQuoteRate(
   return { missing, errors: read.flatMap((entry) => entry.rate == null && entry.error != null ? [entry.error] : []) };
 }
 
+/** How long past its feed's delay a weekday FX rate stays current, counted while the FX market trades. */
+const FX_STALE_AFTER_DELAY_MS = 15 * 60_000;
+
+/**
+ * Whether an FX quote has aged past its feed's delay and fifteen minutes,
+ * counting only the hours the FX market trades (`fxFreshUntil`): Friday's
+ * close stays current over the weekend, a rate that stopped on a weekday
+ * goes stale, whatever the service said of it.
+ */
+export function fxQuoteAgedOut(observation: { updatedAt: number; delayMinutes?: number }, now = Date.now()): boolean {
+  if (!Number.isFinite(observation.updatedAt)) return false;
+  return fxFreshUntil(observation.updatedAt, (observation.delayMinutes ?? 0) * 60_000 + FX_STALE_AFTER_DELAY_MS) <= now;
+}
+
 /**
  * The one observation a rate is dated by, as `quote` dates a quote: the
  * pair's own quote, or for a cross the older of its two, stale when either
- * is and as held back as the more delayed.
+ * is (as the service says, or aged out: `fxQuoteAgedOut`) and as held back as
+ * the more delayed.
  */
 export function fxQuoteRateObservation(rate: FxQuoteRate, now = Date.now()): ReturnType<typeof quoteObservation> {
   const observations = rate.quotes.map(({ quote }) => quoteObservation(quote, now));
@@ -111,7 +138,7 @@ export function fxQuoteRateObservation(rate: FxQuoteRate, now = Date.now()): Ret
   const delays = observations.flatMap((observation) => observation.delayMinutes ?? []);
   return {
     ...oldest,
-    stale: observations.some((observation) => observation.stale === true),
+    stale: observations.some((observation) => observation.stale === true || fxQuoteAgedOut(observation, now)),
     ...(delays.length > 0 ? { delayMinutes: Math.max(...delays) } : {}),
   };
 }
