@@ -2,9 +2,14 @@ import type { HolderData, HolderRecord } from "../../../types/financials";
 import { formatCompact, MISSING_VALUE } from "../../../utils/format";
 import type { HolderRow } from "./types";
 
-export function formatMoneyCompact(value: number | undefined, currency = "USD"): string {
+/**
+ * A compact amount: dollars as "$3.31M", any other currency by its code. With
+ * `code`, dollars too read "3.31M USD": values in dollars on a line priced in
+ * another currency (Alibaba's 9988 in Hong Kong dollars) must not read as it.
+ */
+export function formatMoneyCompact(value: number | undefined, currency = "USD", { code = false }: { code?: boolean } = {}): string {
   if (value == null) return MISSING_VALUE;
-  if (currency === "USD") {
+  if (currency === "USD" && !code) {
     const sign = value < 0 ? "-" : "";
     return `${sign}$${formatCompact(Math.abs(value))}`;
   }

@@ -115,7 +115,8 @@ const STATUS_TONES: Array<[RegExp, StateTone]> = [
   [/approved|authori[sz]ed|^available$|^completed$/, "positive"],
   [/proposed|pending|re-examination|appeal|^settlement announced/, "warning"],
   [/recruiting|enrolling|^active|^ongoing$/, "accent"],
-  [/^(notice|rule|published|presidential document)$/, "muted"],
+  // A company date that passed with nothing read since about what came of it.
+  [/^(notice|rule|published|presidential document|date passed)$/, "muted"],
 ];
 export function catalystStatusTone(status: string): StateTone {
   const text = humanLabel(status).toLowerCase();

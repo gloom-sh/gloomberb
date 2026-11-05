@@ -98,6 +98,30 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
 
+test("a Hong Kong code without its leading zeros is its HKEX listing where search marks it, unless a row is saved under it", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", type: "Common Stock" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query === "700" ? [
+      { ...row, symbol: "0700", name: "Tencent Holdings Limited", exchange: "HKEX", currency: "HKD", searchAliases: ["0700", "700"] },
+      { ...row, symbol: "700", name: "Certara Inc.", exchange: "XHAM", currency: "EUR" },
+    ] : [{ ...row, symbol: query, name: "Hamburg line", exchange: "XHAM", currency: "EUR" }],
+  });
+  const deps = { store, dataProvider };
+  // Search lists the Hamburg line under the code as typed, but marks Tencent with it: Hong Kong writes 0700 as 700.
+  const tencent = await resolveCliListing("700", undefined, deps);
+  expect(tencent).toMatchObject({ key: "0700:HKEX", readAs: "Read 700 as 0700:HKEX." });
+  expect(tencent.request).toEqual({ symbol: "0700:HKEX", exchange: "HKEX" });
+  // A code search marks no HKEX listing with stays as typed.
+  expect((await resolveCliListing("701", undefined, deps)).key).toBe("701");
+  await store.createTicker({
+    ticker: "700", exchange: "XHAM", currency: "EUR", name: "Certara Inc.", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  expect((await resolveCliListing("700", undefined, deps)).key).toBe("700");
+});
+
 test("FRED:T10Y2Y is the series the catalog prints, never FRED on an exchange called T10Y2Y; FRED on a known venue is a listing", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);
