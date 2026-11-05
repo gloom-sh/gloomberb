@@ -15,7 +15,8 @@ import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
-import { mapWithConcurrency } from "../../utils/concurrency";
+import { LIST_FINANCIALS_CONCURRENCY, mapWithConcurrency } from "../../utils/concurrency";
+import { errorMessage } from "../../utils/errors";
 import { requireThemeId } from "../commands/themes";
 import type { DesktopPaneShotIntradayHistory, DesktopPaneShotPayload } from "../desktop-pane-shot";
 import { optionPaneState, SHOT_SIZE_LIMITS, type ShotSizeClamp } from "./options";
@@ -153,15 +154,12 @@ function givenOptionKeys(capability: ResolvedPaneFunction["capability"], options
   return new Set(Object.keys(options).flatMap((key) => findCapabilityOption(capability, key)?.key ?? []));
 }
 
-/** Rows read at once for a list's capture. */
-const SHOT_SYMBOL_CONCURRENCY = 6;
-
 /** What one row of a capture adds to its payload. */
 interface ShotSymbolCapture {
   ticker: TickerRecord;
   financials?: [string, TickerFinancials];
-  /** The row's read failed: it shows without figures, and the capture names it. */
-  unread?: string;
+  /** The row's read failed (refused, timed out): it shows without figures, and the capture names it with the source's reason. */
+  unread?: { symbol: string; reason: string };
   tape?: TapeCapture;
   chain?: [string, OptionsChain];
 }
@@ -250,6 +248,7 @@ export async function buildDesktopShotPayload(
   const tickers: TickerRecord[] = [];
   /** Rows of a list whose read failed (refused, timed out): shown without figures, and named under the picture. */
   const unreadRows: string[] = [];
+  const unreadReasons: Record<string, string> = {};
   const financials: Array<[string, TickerFinancials]> = [];
   const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   let instrumentFinancials: SnapshotMarketData["instrumentFinancials"];
@@ -282,7 +281,7 @@ export async function buildDesktopShotPayload(
       return {
         ticker: stored,
         financials: [symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }],
-        ...(!isNoSourceAnswer(error) ? { unread: symbol } : {}),
+        ...(!isNoSourceAnswer(error) ? { unread: { symbol, reason: errorMessage(error).replace(/\.+$/, "") } } : {}),
       };
     }
     const requestedRange = shotPriceHistoryRange(resolved);
@@ -398,7 +397,8 @@ export async function buildDesktopShotPayload(
     // the first row in that order whose read fails the capture fails it.
     const captures = await mapWithConcurrency(
       await collectShotSymbolsWithCollections(resolved, context, rawArg),
-      SHOT_SYMBOL_CONCURRENCY,
+      // As many at once as portfolio show reads them.
+      LIST_FINANCIALS_CONCURRENCY,
       (symbol) => captureShotSymbol(symbol).then((capture) => ({ capture }), (error: unknown) => ({ error })),
     );
     for (const result of captures) {
@@ -407,7 +407,10 @@ export async function buildDesktopShotPayload(
       if (!capture) continue;
       tickers.push(capture.ticker);
       if (capture.financials) financials.push(capture.financials);
-      if (capture.unread) unreadRows.push(capture.unread);
+      if (capture.unread) {
+        unreadRows.push(capture.unread.symbol);
+        unreadReasons[capture.unread.symbol] = capture.unread.reason;
+      }
       if (capture.tape) tapeSnapshots.push(capture.tape);
       if (capture.chain) optionsChains.push(capture.chain);
     }
@@ -447,7 +450,7 @@ export async function buildDesktopShotPayload(
     optionsChains,
     ...(tapeSnapshots.length ? { tapeSnapshots } : {}),
     ...(scannerSnapshots.length ? { scannerSnapshots } : {}),
-    ...(unreadRows.length ? { unreadRows } : {}),
+    ...(unreadRows.length ? { unreadRows, unreadReasons } : {}),
     valuationSeries,
     statSeries,
     paneState,

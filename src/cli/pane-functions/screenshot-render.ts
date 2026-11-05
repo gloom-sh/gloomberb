@@ -330,7 +330,7 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
-  const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows } : {};
+  const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows, ...(payload.unreadReasons ? { unreadReasons: payload.unreadReasons } : {}) } : {};
   return freshness ? { ...assessed, ...unreadRows, freshness } : { ...assessed, ...unreadRows };
 }
 

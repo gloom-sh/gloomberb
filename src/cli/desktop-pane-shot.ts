@@ -92,6 +92,8 @@ export interface DesktopPaneShotPayload {
   scannerSnapshots?: ScannerCapture[];
   /** Rows of a list whose read failed: shown without figures, and named on the capture's status line. */
   unreadRows?: string[];
+  /** Why each of `unreadRows` did not load, as the source answered. */
+  unreadReasons?: Record<string, string>;
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;
