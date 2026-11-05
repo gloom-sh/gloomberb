@@ -333,13 +333,14 @@ export function PaneLinkMarker({
         event.stopPropagation?.();
         onOpen();
       }}
+      // Inline, not inline-block: a line may break before an inline block
+      // and leave the full stop after a figure's square on a line of its own.
+      // The padding makes a one-digit square as wide as it is tall.
       style={{
-        display: "inline-block",
-        minWidth: "1.5em",
-        padding: "0 0.3em",
+        display: "inline",
+        padding: "0 0.45em",
         margin: "0 0.1em",
         borderRadius: "var(--gloom-radius-sm)",
-        textAlign: "center",
         fontSize: "var(--gloom-type-caption)",
         lineHeight: "1.3",
         cursor: "pointer",

@@ -84,6 +84,7 @@ import {
 import { AnswerSources, answerSourceLabel } from "./answer-sources";
 import { openSharedPane } from "../../../../shares/open";
 import { createShare, openLiveShareUrl } from "../../../../shares/api";
+import { ApiRequestError } from "../../../../api-client/errors";
 import { personalDataNotice } from "../../../../shares/pane-image";
 import { readyToShare } from "../../../../shares/ready";
 import type { PanePersonalData } from "../../../../types/plugin";
@@ -1210,8 +1211,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     () => state.turns.map((_turn, index) => answerSources(state.turns, index, sourceResolver)),
     [sourceResolver, state.turns],
   );
-  // The answer `o` opens the sources of: the one the keyboard is on, else the
-  // newest one that has a source to open.
+  // The answer `o` and Copy Answer with Source Links act on, as `g` and `b`
+  // rate: the one the keyboard is on, else the newest, the one being read.
+  // Its sources count once it is finished and shows them.
   const sourcesTurnIndex = useMemo(() => {
     if (selectedId) {
       const index = state.turns.findIndex((entry) => (
@@ -1221,12 +1223,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       ));
       if (index >= 0) return index;
     }
-    return turnSources.findLastIndex((sources) => sources.some((source) => source.target.kind === "pane"));
-  }, [selectedId, state.turns, turnSources]);
-  const openableSources = useMemo(
-    () => (turnSources[sourcesTurnIndex] ?? []).filter((source) => source.target.kind === "pane"),
-    [sourcesTurnIndex, turnSources],
-  );
+    return state.turns.length - 1;
+  }, [selectedId, state.turns]);
+  const openableSources = useMemo(() => {
+    const turn = state.turns[sourcesTurnIndex];
+    if (!turn || turn.status !== "complete") return [];
+    return (turnSources[sourcesTurnIndex] ?? []).filter((source) => source.target.kind === "pane");
+  }, [sourcesTurnIndex, state.turns, turnSources]);
   const chooseAnswerSource = useCallback(async () => {
     if (openableSources.length === 1) {
       openSource(openableSources[0]!);
@@ -1256,21 +1259,29 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // source in this pane, by the words it opens, so copying again makes none anew.
   const sourceLinksRef = useRef(new Map<string, string>());
   const copyAnswerRef = useRef<() => void>(() => {});
+  // One copy at a time: a second press while links are being made would make them twice.
+  const copyingAnswerRef = useRef(false);
   const copyAnswerWithSourceLinks = useCallback(async () => {
     const turn = state.turns[sourcesTurnIndex];
     const sources = turnSources[sourcesTurnIndex] ?? [];
-    if (!turn || !sources.some((source) => source.target.kind === "pane")) return;
+    if (!turn || openableSources.length === 0 || copyingAnswerRef.current) return;
     if (!readyToShare(notify, () => copyAnswerRef.current(), "share an answer's sources")) return;
+    copyingAnswerRef.current = true;
     const links = sourceLinksRef.current;
     try {
-      const pending: Array<{ key: string; share: ASKGSourceShare }> = [];
+      const pending: Array<{ key: string; share: ASKGSourceShare | null }> = [];
       let personal: PanePersonalData | null = null;
       for (const source of sources) {
         if (source.target.kind !== "pane") continue;
         const key = formatSourceCommand(source.target.command);
         if (links.has(key) || pending.some((entry) => entry.key === key)) continue;
-        const share = await buildASKGSourceShare(source.target.command, configRef.current);
-        const declared = registry?.panes.get(share.data.version === 2 ? share.data.layout.layout.instances[0]?.paneId ?? "" : "")?.personalData;
+        const share = await buildASKGSourceShare(source.target.command, configRef.current).catch((error: unknown) => {
+          logFailure("cloud.askg.pane", "An answer source could not be shared")(error);
+          return null;
+        });
+        const declared = share?.data.version === 2
+          ? registry?.panes.get(share.data.layout.layout.instances[0]?.paneId ?? "")?.personalData
+          : undefined;
         if (typeof declared === "string") personal ??= declared;
         pending.push({ key, share });
       }
@@ -1280,17 +1291,46 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         confirmLabel: "Copy links",
         defaultAction: "cancel",
       })) return;
-      for (const { key, share } of pending) links.set(key, openLiveShareUrl((await createShare(share)).id));
+      // A source that cannot be shared leaves the rest linked; once the
+      // service says the share limit is reached, the rest are not tried.
+      let limited = false;
+      let failure: string | null = null;
+      for (const { key, share } of pending) {
+        if (!share || limited) continue;
+        try {
+          links.set(key, openLiveShareUrl((await createShare(share)).id));
+        } catch (error) {
+          limited = error instanceof ApiRequestError && error.status === 429;
+          failure ??= error instanceof Error && error.message ? error.message : "Could not share a source.";
+        }
+      }
+      const linkOf = (source: ASKGAnswerSource) => (
+        source.target.kind === "pane" ? links.get(formatSourceCommand(source.target.command)) ?? null : null
+      );
       const text = answerWithSourceLinks(turn.answer, sources.map((source) => ({
         label: answerSourceLabel(source, displayContext),
-        url: source.target.kind === "pane" ? links.get(formatSourceCommand(source.target.command)) ?? null : null,
+        url: linkOf(source),
       })));
       await rendererHost.copyText(text);
-      notify({ body: "Answer copied, with a link to each source", type: "success" });
+      const unlinked = openableSources.filter((source) => linkOf(source) === null);
+      if (unlinked.length === 0) {
+        notify({ body: "Answer copied, with a link to each source", type: "success" });
+      } else {
+        const names = unlinked.map((source) => (
+          source.ref !== null ? `[${source.ref}]` : source.target.kind === "pane" ? formatSourceCommand(source.target.command) : ""
+        ));
+        const reason = limited ? "the share limit is reached for now" : failure ?? "they could not be shared";
+        notify({
+          body: `Answer copied without a link for ${names.join(", ")}: ${reason}`,
+          type: unlinked.length === openableSources.length ? "error" : "info",
+        });
+      }
     } catch (error) {
-      notify({ body: error instanceof Error && error.message ? error.message : "Could not share this answer's sources.", type: "error" });
+      notify({ body: error instanceof Error && error.message ? error.message : "Could not copy this answer.", type: "error" });
+    } finally {
+      copyingAnswerRef.current = false;
     }
-  }, [dialog, displayContext, notify, registry, rendererHost, sourcesTurnIndex, state.turns, turnSources]);
+  }, [dialog, displayContext, notify, openableSources, registry, rendererHost, sourcesTurnIndex, state.turns, turnSources]);
   copyAnswerRef.current = () => { void copyAnswerWithSourceLinks(); };
 
   // A second thumbs down on the same answer opens or closes its reasons, so
