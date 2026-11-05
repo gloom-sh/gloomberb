@@ -345,7 +345,7 @@ export function replayEpisodes(
 
 /** The basket share a replay moves by beta proxy, for a row label where its evidence does not show: "22% proxy". */
 export function episodeProxyMarker(replay: EpisodeReplay): string | null {
-  const weight = replay.proxied.reduce((sum, row) => sum + row.weight, 0);
+  const weight = replay.proxied.reduce((sum, row) => sum + Math.abs(row.weight), 0);
   return replay.proxied.length ? `${wholeShareText(weight)} proxy` : null;
 }
 

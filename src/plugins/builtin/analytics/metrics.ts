@@ -30,11 +30,18 @@ export function syntheticAccountUnsupportedReason(account?: BrokerAccount | null
 /** Normalised categories the equity basket takes besides depositary receipts; no category at all counts as an equity. */
 const EQUITY_CATEGORIES: ReadonlySet<string> = new Set(["", "STK", "STOCK", "COMMONSTOCK", "EQUITY", "ETF", "ETN", "FUND", "REIT"]);
 
-export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCurrency: string, portfolioId?: string): string | null {
+/**
+ * Why a holding cannot enter the daily equity basket, or null. `shorts`: the
+ * basket weighs a short at its signed current value, as PORT's does; a
+ * series without signed weights (the analytics pane's, the sync's) keeps
+ * leaving it out.
+ */
+export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCurrency: string, portfolioId?: string,
+  { shorts = false }: { shorts?: boolean } = {}): string | null {
   const positions = ticker.metadata.positions.filter((position) => (
     (!portfolioId || position.portfolio === portfolioId) && position.shares !== 0
   ));
-  if (positions.some((position) => position.side === "short" || position.shares < 0)) {
+  if (!shorts && positions.some((position) => position.side === "short" || position.shares < 0)) {
     return "Short positions: signed exposure history required";
   }
   const category = normalizeAssetCategory(ticker.metadata.assetCategory);
@@ -181,9 +188,15 @@ function alignSeries(series: DatedReturn[][]): AlignedSeries {
   return aligned;
 }
 
-export function computeWeightedPortfolioReturns(series: WeightedReturnSeries[]): DatedReturn[] {
-  const holdings = series.filter((entry) => Number.isFinite(entry.weight) && entry.weight > 0);
-  const totalWeight = holdings.reduce((sum, entry) => sum + entry.weight, 0);
+/**
+ * The basket's daily returns at fixed weights, over the dates every holding
+ * has. `signed`: a negative weight is a short, which gains as its holding
+ * falls, and the weights divide by their gross; otherwise only positive
+ * weights count.
+ */
+export function computeWeightedPortfolioReturns(series: WeightedReturnSeries[], { signed = false }: { signed?: boolean } = {}): DatedReturn[] {
+  const holdings = series.filter((entry) => Number.isFinite(entry.weight) && (signed ? entry.weight !== 0 : entry.weight > 0));
+  const totalWeight = holdings.reduce((sum, entry) => sum + Math.abs(entry.weight), 0);
   if (!holdings.length || !Number.isFinite(totalWeight) || totalWeight <= 0) return [];
   const { points, values } = alignSeries(holdings.map((entry) => entry.returns));
   const returns: DatedReturn[] = [];

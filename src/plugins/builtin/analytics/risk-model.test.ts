@@ -47,6 +47,15 @@ function holding(symbol: string, quantity = 1): TickerRecord {
     positions: [{ portfolio: "local", shares: quantity, broker: "manual" }],
   });
 }
+/** A holding the equity basket leaves out (a commodity), worth what a share of it would be. */
+function commodity(symbol: string): TickerRecord {
+  return createTestTicker(symbol, symbol, {
+    exchange: "ARCA",
+    assetCategory: "CMDTY",
+    portfolios: ["local"],
+    positions: [{ portfolio: "local", shares: 1, broker: "manual" }],
+  });
+}
 function market(staleQuotes: readonly string[] = []): RiskMarketSnapshot {
   return {
     histories: RISK_FACTOR_INSTRUMENTS.map((instrument) => {
@@ -302,9 +311,9 @@ test("only held positions marked at a close raise the close-mark warning", () =>
 });
 test("cash counts in the book the coverage is a share of, by currency, but never in the basket, its sufficiency or concentration", () => {
   const snapshot = { ...market(), fxRates: { TRY: 0.025 } };
-  // $330 of SPY in the basket, a $110 short left out, 4,400 lira ($110) and $220 of cash: a $770 book.
+  // $330 of SPY in the basket, a $110 commodity left out, 4,400 lira ($110) and $220 of cash: a $770 book.
   const cash = [{ currency: "TRY", amount: 4_400 }, { currency: "USD", amount: 220 }];
-  const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -1)], snapshot, null, undefined, {}, cash);
+  const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), commodity("IWM")], snapshot, null, undefined, {}, cash);
   expect(model.coverage).toMatchObject({ marketValue: 770, holdingsValue: 440, cashValue: 330, coveredValue: 330, sufficient: true });
   // The basket is 43% of the book but 75% of the holdings, so it still estimates.
   expect(model.coverage.holdingsShare).toBe(0.75);
@@ -375,22 +384,16 @@ test("currency and price shocks reprice each line of the book, cash included, an
   expect(lira.lines[1]!.shocks).toEqual(["EUR +5% vs USD", "TRY -20% vs USD"]);
   expect(lira.percent).toBeCloseTo(5_800 / 25_600 * 100, 10);
 });
-test("a short is left out of the basket with its reason and counts in the market value", () => {
-  const model = buildPortfolioRisk(
-    portfolio,
-    [holding("SPY", 3), holding("IWM", -1)],
-    market(),
-  );
-  expect(model.coverage.share).toBe(0.75);
-  expect(model.coverage.leftOut).toEqual([
-    { id: "ARCA:IWM", symbol: "IWM", reason: "Short positions: signed exposure history required", value: 110, share: 0.25 },
-  ]);
-  expect(model.holdings.map((row) => row.weight)).toEqual([1, null]);
-  expect(riskCoverageLine(model.coverage)).toBe("basket 330 USD = 75% of book; left out: IWM 25%");
-  // Concentration reads the whole priced book, the short at its gross value; the weights above are the basket's.
-  expect(model.book?.gross).toBe(440);
-  expect(model.book?.top).toBe(0.75);
-  expect(model.metrics[2]!.value).toBeCloseTo(0, 8);
+test("a short enters the basket at its signed weight, not left out", () => {
+  // $330 of SPY long and $110 of IWM short: weights of +75% and -25% of the $440 gross, every dollar covered.
+  const model = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -1)], market());
+  expect(model.coverage).toMatchObject({ coveredValue: 440, share: 1, leftOut: [], sufficient: true });
+  expect(model.holdings.map((row) => row.weight)).toEqual([0.75, -0.25]);
+  expect(model.rows.holdings.find((row) => row.label === "IWM")).toMatchObject({ value: -25 });
+  // Both proxies move alike here, so the short halves the basket: its volatility is half SPY's alone.
+  const long = buildPortfolioRisk(portfolio, [holding("SPY", 3)], market());
+  const volatility = (risk: typeof model) => risk.metrics.find((row) => row.id === "volatility")!.value!;
+  expect(volatility(model)).toBeCloseTo(volatility(long) / 2, 10);
 });
 test("a crypto holding is excluded by name with its reason, not folded into the equity basket", () => {
   const eth = createTestTicker("ETH-USD", "Ethereum USD", {
@@ -427,9 +430,9 @@ test("a depositary receipt is an equity in the basket, and what is still left ou
   // A holding the basket cannot take stays named, up to three, then "N more" with their combined share.
   const one = buildPortfolioRisk(portfolio, [...adr, crypto("ETH-USD")], market());
   expect(riskCoverageLine(one.coverage)).toBe("basket 550 USD = at most 100% of book; left out: ETH-USD value unknown");
-  const three = buildPortfolioRisk(portfolio, [...adr, holding("IEF", -1), holding("HYG", -1), holding("IWD", -1)], market());
+  const three = buildPortfolioRisk(portfolio, [...adr, commodity("IEF"), commodity("HYG"), commodity("IWD")], market());
   expect(riskCoverageLine(three.coverage)).toBe("basket 550 USD = 63% of book; left out: IEF 13%, HYG 12%, IWD 12%");
-  const four = buildPortfolioRisk(portfolio, [...adr, ...["IEF", "HYG", "IWD", "IWF"].map((symbol) => holding(symbol, -1))], market());
+  const four = buildPortfolioRisk(portfolio, [...adr, ...["IEF", "HYG", "IWD", "IWF"].map(commodity)], market());
   expect(riskCoverageLine(four.coverage)).toBe("basket 550 USD = 56% of book; left out: IEF 11%, HYG 11%, 2 more 22%");
 });
 test("imported option snapshots use signed dollar sensitivities, preserve scope and reject stale or mixed currencies", () => {

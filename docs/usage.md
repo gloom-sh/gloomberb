@@ -2560,7 +2560,7 @@ gloom shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 
 Risk, Factors, Correlation and Stress model the equity holdings with daily history, up to the 150 largest by value. A listing quoted in another currency is converted to USD at daily FX closes. In a portfolio whose currency is not USD, money returns, values and tail losses are in that currency (`Returns in TRY at daily USD/TRY closes.`).
 
-Holdings left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history) and the cash, one row per currency, are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says what the basket is worth and how much of the book it covers, cash included (`basket 48,286 USD = 72% of book; left out: TRY cash 18%, BTC-USD 10%`). VaR and expected shortfall name their method in their evidence and the Risk view's footer (`historical, 1-day, 95%, 60 daily returns`).
+Holdings left out (foreign listings without daily FX closes, futures, options, crypto, holdings without a quote or history; a short is in the basket at its signed weight) and the cash, one row per currency, are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says what the basket is worth and how much of the book it covers, cash included (`basket 48,286 USD = 72% of book; left out: TRY cash 18%, BTC-USD 10%`). VaR and expected shortfall name their method in their evidence and the Risk view's footer (`historical, 1-day, 95%, 60 daily returns`).
 
 Below half of the holdings' value, cash aside, the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
 
