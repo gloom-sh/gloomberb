@@ -479,6 +479,56 @@ describe("core sync contributors", () => {
     ]);
   });
 
+  describe("two devices linking different accounts at one broker", () => {
+    const here = { id: "ibkr-here", brokerType: "ibkr", label: "IBKR here", config: {} };
+    const elsewhere = { id: "ibkr-elsewhere", brokerType: "ibkr", label: "IBKR elsewhere", config: {} };
+    const ownAccount = { id: "broker:ibkr-here:U1", name: "U1", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-here", brokerAccountId: "U1" };
+    const otherAccount = { id: "broker:ibkr-elsewhere:U2", name: "U2", currency: "USD", brokerId: "ibkr", lastSyncedAt: 100 };
+    const ids = (portfolios: Array<{ id: string }> | undefined) => portfolios?.map((portfolio) => portfolio.id);
+
+    test("an account linked only on the other device stays through a newer sync here, and goes out again with the next push", async () => {
+      const config = createDefaultConfig("/tmp/gloomberb-sync-same-broker-test");
+      config.brokerInstances = [{ ...here, config: { token: "secret" } }, elsewhere];
+      config.portfolios = [...config.portfolios, { ...ownAccount, lastSyncedAt: 200 }];
+      const pulled = {
+        portfolios: [
+          { id: "main", name: "Main Portfolio", currency: "USD" },
+          otherAccount,
+          // What a sync here outdates: an account its own connection stopped
+          // reporting, and one of a profile no longer here (removed or relinked).
+          { id: "broker:ibkr-here:U9", name: "U9", currency: "USD", brokerId: "ibkr", lastSyncedAt: 100 },
+          { id: "broker:ibkr-old:U7", name: "U7", currency: "USD", brokerId: "ibkr", lastSyncedAt: 100 },
+        ],
+      };
+
+      const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pulled);
+      expect(ids(merged?.portfolios)).toEqual(["main", otherAccount.id, ownAccount.id]);
+
+      // This device syncs its own account again and pushes: the other account goes with it.
+      const synced = { ...merged!, portfolios: merged!.portfolios.map((portfolio) => portfolio.id === ownAccount.id ? { ...portfolio, lastSyncedAt: 300 } : portfolio) };
+      const pushed = await coreConfigSyncContributor.collect({ state: createInitialState(synced) }) as { portfolios: Array<{ id: string }> };
+      expect(ids(pushed.portfolios)).toEqual(["main", otherAccount.id, ownAccount.id]);
+      expect(ids(__syncContributorInternalsForTests.mergeConfigPayload(synced, pushed)?.portfolios)).toEqual(["main", otherAccount.id, ownAccount.id]);
+    });
+
+    test("a device keeps its own account when a pull without it carries a newer sync of another account at that broker", () => {
+      const config = createDefaultConfig("/tmp/gloomberb-sync-same-broker-test");
+      config.brokerInstances = [here, { ...elsewhere, config: { token: "secret" } }];
+      const linked = { ...otherAccount, brokerInstanceId: "ibkr-elsewhere", brokerAccountId: "U2" };
+      config.portfolios = [...config.portfolios, linked];
+      // As a build that dropped the other device's account pushes it.
+      const pulled = {
+        portfolios: [
+          { id: "main", name: "Main Portfolio", currency: "USD" },
+          { id: ownAccount.id, name: "U1", currency: "USD", brokerId: "ibkr", lastSyncedAt: 200 },
+        ],
+      };
+
+      const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, pulled);
+      expect(merged?.portfolios).toEqual([...pulled.portfolios, linked]);
+    });
+  });
+
   test("merges broker profiles one by one once this device changed its own, so a removal on either side wins", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-broker-merge-test");
     const flex = { id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", config: { token: "secret" }, lastSyncedAt: 100 };
