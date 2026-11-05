@@ -124,10 +124,10 @@ While you move or resize a floating pane, its edges stick to the edges of other 
 
 A pane you move, floating or docked, finds its place in the dock two ways:
 
-- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. Let go before the outline shows and it stays floating. A pane parked against an edge or a corner of the window stays floating too.
-- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
+- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. This works over its title bar too, so lining the top edges up joins above it. Let go before the outline shows and it stays floating, or over a title bar stacks as a tab. A pane parked against an edge or a corner of the window stays floating too.
+- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown, unless an edge held flush there has shown a join's outline. Laid squarely over a pane its size, it always stacks. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
 
-`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar.
+`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar, where it always stacks.
 
 ### Docs inside the app
 

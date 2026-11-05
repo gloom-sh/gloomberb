@@ -26,6 +26,7 @@ import {
   resolvePaneManagementShortcut,
 } from "./index";
 import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
+import { JOIN_DWELL_MS } from "./drag";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { registerPaneDocsHandler } from "../../../docs/requests";
 import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../../ask-gloom/pane-request";
@@ -760,6 +761,52 @@ describe("Shell", () => {
     const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
     expect(moved?.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
     expect(moved?.floating.map((entry) => entry.instanceId)).toEqual(["ticker-detail:main"]);
+  });
+
+  // Held by its title bar, a pane whose top edge is level with a lower pane's
+  // has the pointer on that pane's title bar.
+  test.each([
+    ["held still there, it joins above it", 0, JOIN_DWELL_MS + 150, "above"],
+    ["let go at once, it stacks there", 0, 0, "tab"],
+    ["moved along the bar for longer than the hold and let go, it stacks there", JOIN_DWELL_MS / 2, 0, "tab"],
+  ] as const)("terminal: on a lower pane's title bar, its top edge level, %s", async (_name, stepMs, holdMs, landed) => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-top-join-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "split", axis: "vertical", ratio: 0.5, first: { kind: "pane", instanceId: main.instanceId }, second: { kind: "pane", instanceId: detail.instanceId } },
+      instances: [{ ...main }, { ...detail }, { ...detail, instanceId: "ticker-detail:float" }],
+      floating: [{ instanceId: "ticker-detail:float", x: 40, y: 2, width: 30, height: 6 }],
+      detached: [],
+    };
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:float"));
+    const rows = tui.frame().split("\n");
+    // The pointer's rows count from the top bar, which the shell leaves out here.
+    const float = rows.findIndex((row) => row.includes("┌::")) + 1;
+    const lower = rows.findIndex((row, index) => index > 2 && row.startsWith("::")) + 1;
+    await act(async () => {
+      const mouse = tui.setup().mockMouse;
+      await mouse.pressDown(48, float);
+      for (let y = float + 1; y <= lower; y += 1) {
+        await mouse.moveTo(48, y);
+        await tui.setup().renderOnce();
+      }
+      for (const x of [44, 40, 36, 32]) {
+        await Bun.sleep(stepMs);
+        await mouse.moveTo(x, lower);
+        await tui.setup().renderOnce();
+      }
+      await Bun.sleep(holdMs);
+      await mouse.release(32, lower);
+      await tui.setup().renderOnce();
+    });
+    const dock = (actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined)?.dockRoot;
+    expect(dock).toMatchObject({
+      first: { instanceId: main.instanceId },
+      second: landed === "above"
+        ? { axis: "vertical", first: { instanceId: "ticker-detail:float" }, second: { instanceId: detail.instanceId } }
+        : { tabs: { active: "ticker-detail:float" } },
+    });
   });
 
   test("each tab of a stack keeps its own state as the tabs switch, never another tab's", async () => {

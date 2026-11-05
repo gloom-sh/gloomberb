@@ -9,6 +9,7 @@ import {
   simulateDrop,
   type DockGeometryOptions,
   type DockLeafLayout,
+  type DropTarget,
   type FloatingRect,
   type LayoutBounds,
   type ResolvedPane,
@@ -50,6 +51,8 @@ interface PendingJoin {
   key: string;
   armed: boolean;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Where the pointer began to hold it, when that was over a title bar. */
+  at: { x: number; y: number } | null;
 }
 
 function dropPendingJoin(memo: { join: PendingJoin | null }) {
@@ -302,8 +305,9 @@ export function useShellActiveDrag({
         drawMove(drag.paneId, freeRect, moved);
 
         // Over a title bar it would be a tab there; pushed against a docked
-        // pane's edge it would join the dock on that side.
-        const target = resolvePaneDropTarget({
+        // pane's edge it would join the dock on that side once that has held,
+        // over the title bar too.
+        const { tab, join } = resolvePaneDropTarget({
           x: hitX,
           y: hitShellY,
           rect: nextRect,
@@ -319,39 +323,43 @@ export function useShellActiveDrag({
           const snapGuide = resolveSnapGuide(hitX, hitShellY, snapGuides);
           updateDockPreview(snapGuide ? { kind: "snap", position: snapGuide.position, rect: snapGuide.previewRect } : null);
         };
-        if (target) {
+        const showDrop = (target: DropTarget) => {
           const dropKey = target.kind === "tab" ? `tab:${target.targetId}` : target.kind === "leaf" ? `${target.targetId}:${target.position}` : target.edge;
-          const showDrop = () => {
-            if (memo.dropKey !== dropKey) {
-              const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
-              memo.dropKey = dropKey;
-              memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
-            }
-            updateDockPreview(memo.drop);
-          };
-          if (target.kind === "leaf") {
-            // A join arms once the edge has held, and shows its preview then:
-            // a release before that leaves the pane floating where it is.
-            if (memo.join?.key !== dropKey) {
-              dropPendingJoin(memo);
-              const join: PendingJoin = { key: dropKey, armed: false, timer: null };
-              join.timer = setTimeout(() => {
-                if (memo.join !== join || dragRef.current !== drag) return;
-                join.armed = true;
-                join.timer = null;
-                showDrop();
-              }, JOIN_DWELL_MS);
-              memo.join = join;
-            }
-            if (memo.join?.armed) showDrop();
-            else showSnapGuide();
-          } else {
-            dropPendingJoin(memo);
-            showDrop();
+          if (memo.dropKey !== dropKey) {
+            const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
+            memo.dropKey = dropKey;
+            memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
           }
+          updateDockPreview(memo.drop);
+        };
+        // Before a join arms, a release on a title bar makes a tab there and
+        // anywhere else leaves the pane where it is drawn.
+        const showUnarmed = () => (tab ? showDrop(tab) : showSnapGuide());
+        if (join) {
+          // A join arms once the edge has held, and shows its preview then.
+          // Over a title bar the pane must hold still there too: one moved
+          // along the bar, on its way to a drop there, stays a tab.
+          const joinKey = `${join.targetId}:${join.position}`;
+          const since = memo.join?.key === joinKey ? memo.join.at : null;
+          const movedOn = !!tab && !!since && (
+            Math.abs(hitX - since.x) > magnetDistances.catchX || Math.abs(hitShellY - since.y) > magnetDistances.catchY
+          );
+          if (memo.join?.key !== joinKey || movedOn) {
+            dropPendingJoin(memo);
+            const pending: PendingJoin = { key: joinKey, armed: false, timer: null, at: tab ? { x: hitX, y: hitShellY } : null };
+            pending.timer = setTimeout(() => {
+              if (memo.join !== pending || dragRef.current !== drag) return;
+              pending.armed = true;
+              pending.timer = null;
+              showDrop(join);
+            }, JOIN_DWELL_MS);
+            memo.join = pending;
+          }
+          if (memo.join?.armed) showDrop(join);
+          else showUnarmed();
         } else {
           dropPendingJoin(memo);
-          showSnapGuide();
+          showUnarmed();
         }
       } else if (drag.type === "float-resize") {
         updateDragFloatingRect({
