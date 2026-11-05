@@ -150,6 +150,11 @@ function listLeftOutText(left: readonly QuickAddEntryValidation[], collectionKin
   return parts.filter(([, symbols]) => symbols.length > 0).map(([label, symbols]) => `${label}: ${symbols.join(" ")}`).join(" · ");
 }
 
+/** The preview's phrase as a sentence of the toast. */
+function asSentence(text: string): string {
+  return `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}`;
+}
+
 export function QuickAddTickerInput({
   collectionId,
   collectionKind,
@@ -356,7 +361,7 @@ export function QuickAddTickerInput({
     if (added.length > 0) onAdded(added[added.length - 1]!.symbol);
     const skipped = [
       ...already.length > 0 ? [tf("Already in {collection}: {symbols}.", { collection: collectionName, symbols: already.join(", ") })] : [],
-      ...left.length > 0 ? [`${listLeftOutText(left, collectionKind)}.`] : [],
+      ...left.length > 0 ? [`${asSentence(listLeftOutText(left, collectionKind))}.`] : [],
     ];
     const notes = added.flatMap((entry) => entry.note ? [`${entry.note}.`] : []);
     notify({
