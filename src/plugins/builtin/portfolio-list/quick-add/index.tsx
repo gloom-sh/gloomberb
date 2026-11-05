@@ -20,11 +20,13 @@ import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
+  createQuickAddListMemo,
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
   exchangeLabelFromValidation,
   mayBeQuickAddList,
   normalizeQuickAddQuery,
+  QUICK_ADD_LIST_MAX,
   QUICK_ADD_REFUSAL,
   readQuickAddEntries,
   resolveQuickAddList,
@@ -76,6 +78,7 @@ function QuickAddPreview({
   if (validation.status === "list") {
     // What Enter adds, then what it leaves out, in the order they were pasted.
     const { ready, left } = splitListEntries(validation.entries);
+    const cut = listCutText(validation);
     return (
       <Box flexDirection="row" overflow="hidden">
         <Text fg={ready.length > 0 ? colors.textDim : colors.textMuted} flexShrink={0}>
@@ -86,6 +89,7 @@ function QuickAddPreview({
               ? tf("Add {count} of {total}: {symbols}", { count: ready.length, total: validation.entries.length, symbols: ready.map((entry) => entry.symbol).join(" ") })
               : tf("Add {count}: {symbols}", { count: ready.length, symbols: ready.map((entry) => entry.symbol).join(" ") })}
         </Text>
+        {cut ? <Text fg={colors.warning} flexShrink={0}>{`  ${cut}`}</Text> : null}
         {left.length > 0 ? <Text fg={colors.warning}>{`  ${listLeftOutText(left, collectionKind)}`}</Text> : null}
       </Box>
     );
@@ -150,6 +154,11 @@ function listLeftOutText(left: readonly QuickAddEntryValidation[], collectionKin
   return parts.filter(([, symbols]) => symbols.length > 0).map(([label, symbols]) => `${label}: ${symbols.join(" ")}`).join(" · ");
 }
 
+/** A paste longer than the row reads: `first 50 of 73 read`. */
+function listCutText(list: Extract<QuickAddValidation, { status: "list" }>): string | null {
+  return list.total ? tf("first {count} of {total} read", { count: QUICK_ADD_LIST_MAX, total: list.total }) : null;
+}
+
 /** The preview's phrase as a sentence of the toast. */
 function asSentence(text: string): string {
   return `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}`;
@@ -198,8 +207,12 @@ export function QuickAddTickerInput({
   // it instead of running on (OMV.VIREP.MC); the line under it still says what
   // failed until something is typed.
   const keepFailureRef = useRef(false);
+  // A list's entries as read and checked while it is edited, for this collection; a cleared row starts anew.
+  const listMemoRef = useRef(createQuickAddListMemo());
+  useEffect(() => { listMemoRef.current = createQuickAddListMemo(); }, [collectionId, collectionKind]);
   const resetInput = useCallback(() => {
     keepFailureRef.current = false;
+    listMemoRef.current = createQuickAddListMemo();
     setInputValue("");
     setValidation(IDLE_VALIDATION);
   }, []);
@@ -253,14 +266,18 @@ export function QuickAddTickerInput({
       financials: financialsRef.current,
     });
   }, [collectionId, collectionKind]);
-  // Words or a pasted list are read as `watchlist add` reads them; one symbol among them is checked as one typed alone.
+  // Words or a pasted list are read as `watchlist add` reads them, in the case typed; one symbol among them is
+  // checked as one typed alone. An entry already read and checked is not looked up again at the next keystroke.
   const validateInput = useCallback(async (value: string): Promise<QuickAddValidation> => {
     const query = normalizeQuickAddQuery(value);
     if (!mayBeQuickAddList(value)) return validateQuery(query);
-    const entries = await readQuickAddEntries(value);
+    const memo = listMemoRef.current;
+    const { entries, total } = await readQuickAddEntries(value, memo);
     return resolveQuickAddList({
       query,
       entries,
+      total,
+      memo,
       collectionId,
       collectionKind,
       tickers: tickersRef.current,
@@ -359,7 +376,9 @@ export function QuickAddTickerInput({
       else already.push(entry.symbol);
     }
     if (added.length > 0) onAdded(added[added.length - 1]!.symbol);
+    const cut = listCutText(list);
     const skipped = [
+      ...cut ? [`${asSentence(cut)}.`] : [],
       ...already.length > 0 ? [tf("Already in {collection}: {symbols}.", { collection: collectionName, symbols: already.join(", ") })] : [],
       ...left.length > 0 ? [`${asSentence(listLeftOutText(left, collectionKind))}.`] : [],
     ];
@@ -512,10 +531,11 @@ export function QuickAddTickerInput({
       width={width}
       placeholder={t("ticker")}
       inputRef={inputRef}
-      // A pasted column of symbols is one line of them, read as a list.
-      joinPastedLines
+      // A pasted column or sheet row is one line of its entries, each line and cell one (Apple Inc, VOD LN).
+      joinPastedLines="list"
       onFocusRequest={focusInput}
-      onChange={(value) => setInputValue(value.toUpperCase())}
+      // As typed: a list is read in its case (Apple Inc is a name, AAPL MSFT symbols); a query is normalized.
+      onChange={setInputValue}
       onSubmit={(value) => { void submitInput(value); }}
       onFocus={() => setInputFocused(true)}
       onBlur={blurInput}

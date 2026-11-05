@@ -5,6 +5,7 @@ import { renderAsciiText } from "../../ui/ascii-font";
 import { scrollBoxScrollsVertically } from "../../ui/scroll-box-axis";
 import { OpenTuiImageSurface } from "./image/surface";
 import { OpenTuiChartSurface } from "./chart-surface";
+import { joinPastedLines } from "../../utils/pasted-lines";
 
 interface OpenTuiPrimitiveProps {
   children?: ReactNode;
@@ -150,11 +151,6 @@ const OpenTuiScrollBox = forwardRef<unknown, OpenTuiPrimitiveProps>(function Ope
 });
 const OpenTuiInputPrimitive = createOpenTuiPrimitive("input");
 
-/** Pasted lines as one line: each break is a space, so `AAPL` over `MSFT` stays two words. */
-function joinPastedLines(text: string): string {
-  return text.replace(/^[\r\n]+|[\r\n]+$/g, "").replace(/[ \t]*[\r\n]+[ \t]*/g, " ").replace(/\t+/g, " ");
-}
-
 interface PasteEventLike {
   bytes: Uint8Array;
 }
@@ -162,16 +158,17 @@ interface PasteEventLike {
 /**
  * A one-line field drops the line breaks of a paste, which fuses a pasted
  * column of symbols into one word; a browser's field turns each break into a
- * space. `joinPastedLines` does the same here, for the fields that read a list.
+ * space. `joinPastedLines` does the same here, for the fields that read a
+ * list, or with `"list"` keeps each line an entry (`PastedLines`).
  */
 const OpenTuiInput = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiInput({ joinPastedLines: join, onPaste, ...props }, ref) {
   const handlePaste = typeof onPaste === "function" ? onPaste as (event: PasteEventLike) => void : null;
   return createElement(OpenTuiInputPrimitive, {
     ...props,
     ref,
-    onPaste: join === true || handlePaste
+    onPaste: join === true || join === "list" || handlePaste
       ? (event: PasteEventLike) => {
-        if (join === true) event.bytes = new TextEncoder().encode(joinPastedLines(new TextDecoder().decode(event.bytes)));
+        if (join === true || join === "list") event.bytes = new TextEncoder().encode(joinPastedLines(new TextDecoder().decode(event.bytes), join));
         handlePaste?.(event);
       }
       : undefined,

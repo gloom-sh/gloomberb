@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
@@ -17,6 +18,7 @@ import { editableTextContextMenuItems } from "../../../ui/context-menu";
 import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../ui/host";
 import { toKeyEventLike } from "../input-host";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
+import { joinPastedLines } from "../../../utils/pasted-lines";
 
 function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSSProperties {
   const focused = props.focused === true;
@@ -346,6 +348,17 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
       callTextHandler(propsRef.current.onBlur, syncElementValue());
     },
     onKeyDown: handleKeyDown,
+    // A browser's one-line field already joins a paste's lines as words; a field that reads a list keeps each an entry.
+    ...!multiline && props.joinPastedLines === "list" ? {
+      onPaste: (event: ClipboardEvent<T>) => {
+        const element = elementRef.current;
+        const text = event.clipboardData?.getData("text/plain");
+        if (!element || !text || !/[\t\r\n]/.test(text)) return;
+        event.preventDefault();
+        element.setRangeText(joinPastedLines(text, "list"), element.selectionStart ?? element.value.length, element.selectionEnd ?? element.value.length, "end");
+        handleValueChange(element.value);
+      },
+    } : {},
     onContextMenu: (event: MouseEvent<T>) => {
       if (!nativeContextMenu || !renderer.showContextMenu) return;
       elementRef.current?.focus();

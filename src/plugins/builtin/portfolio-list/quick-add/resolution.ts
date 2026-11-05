@@ -11,7 +11,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import { isProviderBusy } from "../../../../sources/provider-errors";
 import { splitSymbolArgs } from "../../../../cli/symbol-args";
-import { readNameEntries } from "../../../../cli/name-entries";
+import { readNameEntryGroups } from "../../../../cli/name-entries";
 import { mapWithConcurrency } from "../../../../utils/concurrency";
 import {
   describeFormerIssuer,
@@ -38,6 +38,8 @@ export const QUICK_ADD_REFUSAL = "Type a ticker (AAPL, EURUSD=X, ^GSPC) or a lis
 const QUICK_ADD_LIST_SEPARATOR = /[,;\t\r\n]/;
 /** Entries of a pasted list looked up at once. */
 const QUICK_ADD_LIST_LOOKUPS = 4;
+/** The most entries one paste adds; the rest are left out, and the row says so. */
+export const QUICK_ADD_LIST_MAX = 50;
 
 export type QuickAddCollectionKind = "portfolio" | "watchlist";
 
@@ -62,8 +64,12 @@ export type QuickAddValidation =
   | { status: "choose"; query: string }
   | { status: "missing"; query: string; message: string }
   | { status: "error"; query: string; message: string }
-  /** A pasted list (`usd/jpy, EUR/JPY, gbp-chf`): each entry checked as one typed alone. */
-  | { status: "list"; query: string; entries: QuickAddEntryValidation[] };
+  /**
+   * A pasted list (`usd/jpy, EUR/JPY, gbp-chf`): each entry checked as one typed
+   * alone, one per symbol. `total` is how many the paste held when it held more
+   * than `QUICK_ADD_LIST_MAX`, the entries being its first.
+   */
+  | { status: "list"; query: string; entries: QuickAddEntryValidation[]; total?: number };
 
 /** One entry of a pasted list: what was typed and how it checked. */
 export type QuickAddEntryValidation = Exclude<QuickAddValidation, { status: "idle" | "checking" | "list" }>;
@@ -84,19 +90,44 @@ export function mayBeQuickAddList(value: string): boolean {
 }
 
 /**
- * The entries of what was typed or pasted, read as `watchlist add` reads its
- * argument (`splitSymbolArgs`, `readNameEntries`): split by commas,
- * semicolons, tabs and lines, an entry with spaces a company's name when
- * search finds one (philip morris intl) or else the symbols it holds
- * (EURUSD=X USDJPY=X, a pasted column joined into one line), and a
- * terminal's code (VOD LN) one entry. Each comes back as the row
- * normalizes a query.
+ * What a list's entries read and checked as while the row is edited, so a
+ * keystroke looks up only the entry it changed, not the whole list again.
+ * The row starts a new one when it is cleared.
  */
-export async function readQuickAddEntries(value: string): Promise<string[]> {
-  const entries = splitSymbolArgs([value], { phrases: true });
-  const marketData = getSharedRegistry()?.marketData;
-  const read = marketData ? await readNameEntries(entries, marketData) : entries;
-  return [...new Set(read.map(normalizeQuickAddQuery).filter(Boolean))];
+export interface QuickAddListMemo {
+  /** An entry as typed (`Apple Inc`) and what it reads as. */
+  read: Map<string, string[]>;
+  /** An entry as the row normalizes it and how it checked; a lookup that failed is asked again. */
+  checked: Map<string, QuickAddEntryValidation>;
+}
+
+export function createQuickAddListMemo(): QuickAddListMemo {
+  return { read: new Map(), checked: new Map() };
+}
+
+/**
+ * The entries of what was typed or pasted, read as `watchlist add` reads its
+ * argument (`splitSymbolArgs`, `readNameEntries`), in the case they were
+ * typed: split by commas, semicolons, tabs and lines, an entry with spaces a
+ * company's name when search finds one (Apple Inc, philip morris intl) or
+ * else the symbols it holds (EURUSD=X USDJPY=X), and a terminal's code (VOD
+ * LN) one entry. Each comes back as the row normalizes a query, the first
+ * `QUICK_ADD_LIST_MAX` of them; `total` counts what the paste held.
+ */
+export async function readQuickAddEntries(
+  value: string,
+  memo: QuickAddListMemo = createQuickAddListMemo(),
+): Promise<{ entries: string[]; total: number }> {
+  const split = splitSymbolArgs([value], { phrases: true });
+  const kept = split.slice(0, QUICK_ADD_LIST_MAX);
+  const unread = [...new Set(kept.filter((entry) => !memo.read.has(entry)))];
+  if (unread.length > 0) {
+    const marketData = getSharedRegistry()?.marketData;
+    const groups = marketData ? await readNameEntryGroups(unread, marketData) : unread.map((entry) => [entry]);
+    unread.forEach((entry, index) => memo.read.set(entry, groups[index] ?? [entry]));
+  }
+  const read = [...new Set(kept.flatMap((entry) => memo.read.get(entry) ?? [entry]).map(normalizeQuickAddQuery).filter(Boolean))];
+  return { entries: read.slice(0, QUICK_ADD_LIST_MAX), total: Math.max(split.length, read.length) };
 }
 
 export function isPlausibleTickerQuery(query: string): boolean {
@@ -256,14 +287,39 @@ export async function resolveQuickAddValidation({
 
 /**
  * A pasted list checked entry by entry, as each would be typed alone, a few
- * at a time. One entry is checked as a symbol typed alone.
+ * at a time, each entry the memo has checked taken from it. Entries that are
+ * one symbol (`EURUSD=X, eur/usd`) are that symbol once, as the first of
+ * them. One entry is checked as a symbol typed alone.
  */
 export async function resolveQuickAddList({
   query,
   entries,
+  total = entries.length,
+  memo = createQuickAddListMemo(),
   ...collection
-}: Omit<Parameters<typeof resolveQuickAddValidation>[0], "query"> & { query: string; entries: readonly string[] }): Promise<QuickAddValidation> {
-  if (entries.length <= 1) return resolveQuickAddValidation({ ...collection, query: entries[0] ?? query });
-  const checked = await mapWithConcurrency(entries, QUICK_ADD_LIST_LOOKUPS, (entry) => resolveQuickAddValidation({ ...collection, query: entry }));
-  return { status: "list", query, entries: checked.filter((entry): entry is QuickAddEntryValidation => entry.status !== "idle" && entry.status !== "checking" && entry.status !== "list") };
+}: Omit<Parameters<typeof resolveQuickAddValidation>[0], "query"> & {
+  query: string;
+  entries: readonly string[];
+  total?: number;
+  memo?: QuickAddListMemo;
+}): Promise<QuickAddValidation> {
+  if (entries.length <= 1 && total <= 1) return resolveQuickAddValidation({ ...collection, query: entries[0] ?? query });
+  const checked = await mapWithConcurrency(entries, QUICK_ADD_LIST_LOOKUPS, async (entry): Promise<QuickAddEntryValidation> => {
+    const known = memo.checked.get(entry);
+    if (known) return known;
+    const result = await resolveQuickAddValidation({ ...collection, query: entry });
+    const settled: QuickAddEntryValidation = result.status === "idle" || result.status === "checking" || result.status === "list"
+      ? { status: "error", query: entry, message: "Ticker lookup failed" }
+      : result;
+    if (settled.status !== "error") memo.checked.set(entry, settled);
+    return settled;
+  });
+  const symbols = new Set<string>();
+  const once = checked.filter((entry) => {
+    if (entry.status !== "ready" && entry.status !== "duplicate") return true;
+    if (symbols.has(entry.symbol)) return false;
+    symbols.add(entry.symbol);
+    return true;
+  });
+  return { status: "list", query, entries: once, ...(total > entries.length ? { total } : {}) };
 }

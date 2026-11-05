@@ -2,6 +2,7 @@ import { useMemo, type ReactNode, type RefObject } from "react";
 import { Box, Input, Text, useUiCapabilities, type InputRenderable } from "../../ui";
 import { colors } from "../../theme/colors";
 import { Icon } from "./icon";
+import type { PastedLines } from "../../utils/pasted-lines";
 
 export interface InlineQuickAddRowProps {
   value: string;
@@ -20,8 +21,8 @@ export interface InlineQuickAddRowProps {
   onFocus?: () => void;
   onBlur: () => void;
   onCancel?: () => void;
-  /** A paste of several lines is one line of them, each break a space, as a field that reads a list wants. */
-  joinPastedLines?: boolean;
+  /** A paste of several lines is one line of them, each break a space, or with `"list"` each line an entry (`PastedLines`). */
+  joinPastedLines?: PastedLines;
 }
 
 /** Shared one-row composer used by pane-native inline add flows. */

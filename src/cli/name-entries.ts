@@ -28,6 +28,14 @@ export async function readNameEntries(
   entries: readonly string[],
   source: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
 ): Promise<string[]> {
+  return (await readNameEntryGroups(entries, source)).flat();
+}
+
+/** `readNameEntries`, entry by entry: what each entry reads as, in the order given, for a reader that keeps each entry's reading. */
+export async function readNameEntryGroups(
+  entries: readonly string[],
+  source: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
+): Promise<string[][]> {
   // A pasted list's names are searched in batches and their quotes asked together, a few entries at a time: a list
   // of hundreds of names is a few requests, never hundreds at once.
   const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry));
@@ -46,7 +54,7 @@ export async function readNameEntries(
     const words = splitSymbolWords([entry]);
     return await wordsAreSymbols(words, dataProvider, { quoteEvery: busy }) ? words : [entry];
   });
-  return read.flat();
+  return read;
 }
 
 /** Entries of a list read at once: their quotes still go out together, gathered into batches. */
