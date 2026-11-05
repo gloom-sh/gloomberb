@@ -212,7 +212,7 @@ export interface FxQuotedFigure {
   figure: number;
 }
 
-/** The dollar pairs a cross is read from, each as sent: `via USD: USD/ZAR 16.1365, USD/NGN 1328.39`. */
+/** The dollar pairs a cross is read from, each as sent: `via USD: USD/ZAR 16.13650, USD/NGN 1328.39`. */
 export function describeFxLegs(legs: readonly FxQuotedFigure[]): string {
   return `via USD: ${legs.map(({ pair, figure }) => `${pair} ${fxFigureText(figure, pair.slice(4))}`).join(", ")}`;
 }
