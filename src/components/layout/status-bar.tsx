@@ -164,14 +164,17 @@ export function StatusBar() {
     () => buildStatusBarTabGroups(layouts, activeLayoutIdx, teamSnapshot.teams, teamSnapshot.focus, teamSnapshot.toggledGroups),
     [activeLayoutIdx, layouts, teamSnapshot.focus, teamSnapshot.teams, teamSnapshot.toggledGroups],
   );
-  const layoutTab = (index: number, nameWidth: number, activeNameWidth = nameWidth) => {
+  /** How the tab in front is cut on a strip too narrow for it: its name's length, and whether its key stays. */
+  type ActiveTabCut = { nameWidth: number; key: boolean };
+  const layoutTab = (index: number, nameWidth: number, activeCut?: ActiveTabCut) => {
     const layout = layouts[index]!;
+    const cut = index === activeLayoutIdx ? activeCut : undefined;
     // Linked tabs show `*` when edited locally and `↓` when the team is ahead.
     const marker = layout.origin && registry
       ? linkedLayoutMarker(linkedLayoutStatus(layout, registry.panes, remoteRevisions.get(layout.origin.layoutId)))
       : "";
     return {
-      label: `${tabKey(index)}${truncate(layout.name, index === activeLayoutIdx ? activeNameWidth : nameWidth)}${marker}`,
+      label: `${cut?.key === false ? "" : tabKey(index)}${truncate(layout.name, cut?.nameWidth ?? nameWidth)}${marker}`,
       value: String(index),
       reorderable: true,
     };
@@ -179,8 +182,8 @@ export function StatusBar() {
   // Tabs grouped by owner: personal first, then one marker per team in its
   // accent followed by that team's tabs. A collapsed group keeps its marker
   // with the tab count. The digit keys stay positional through the index labels.
-  const savedLayoutTabsAt = (nameWidth: number, activeNameWidth = nameWidth) => tabGroups.length <= 1
-    ? layouts.map((_, index) => layoutTab(index, nameWidth, activeNameWidth))
+  const savedLayoutTabsAt = (nameWidth: number, activeCut?: ActiveTabCut) => tabGroups.length <= 1
+    ? layouts.map((_, index) => layoutTab(index, nameWidth, activeCut))
     : tabGroups.flatMap((group) => {
       const marker = group.team
         ? {
@@ -194,7 +197,7 @@ export function StatusBar() {
           : null;
       return [
         ...(marker ? [marker] : []),
-        ...(group.collapsed ? [] : group.indexes.map((index) => layoutTab(index, nameWidth, activeNameWidth))),
+        ...(group.collapsed ? [] : group.indexes.map((index) => layoutTab(index, nameWidth, activeCut))),
       ];
     });
   const tidyWindowsKey = actionKey("tidy-windows");
@@ -209,16 +212,19 @@ export function StatusBar() {
   // The names are cut to fit the strip, each keeping its start, down to a
   // length that still reads; a strip that holds them at none of those
   // scrolls with the names whole, and only the one in front is cut, to the
-  // strip's width. A scrolled strip showed the end of a name (`CIO` of
-  // `FX Desk - CIO`).
+  // strip's width: its name to a few letters, then without its key. A
+  // scrolled strip showed the end of a name (`CIO` of `FX Desk - CIO`).
   const overflowsAt = (width: number) => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(width)) > tabsRoom;
   let nameWidth = LAYOUT_NAME_MAX;
   while (overflowsAt(nameWidth) && nameWidth > LAYOUT_NAME_MIN) nameWidth -= 1;
   if (overflowsAt(nameWidth)) nameWidth = LAYOUT_NAME_MAX;
-  let activeNameWidth = nameWidth;
-  const activeTabWidth = () => (layouts[activeLayoutIdx] ? layoutTab(activeLayoutIdx, nameWidth, activeNameWidth).label.length + 2 : 0);
-  while (!nativePaneChrome && activeTabWidth() > tabsRoom && activeNameWidth > 1) activeNameWidth -= 1;
-  const savedLayoutTabs = savedLayoutTabsAt(nameWidth, activeNameWidth);
+  const activeCut: ActiveTabCut = { nameWidth, key: true };
+  const activeTooWide = () => !nativePaneChrome && !!layouts[activeLayoutIdx]
+    && layoutTab(activeLayoutIdx, nameWidth, activeCut).label.length + 2 > tabsRoom;
+  while (activeTooWide() && activeCut.nameWidth > 3) activeCut.nameWidth -= 1;
+  if (activeTooWide()) Object.assign(activeCut, { key: false, nameWidth });
+  while (activeTooWide() && activeCut.nameWidth > 1) activeCut.nameWidth -= 1;
+  const savedLayoutTabs = savedLayoutTabsAt(nameWidth, activeCut);
   const layoutTabs = transientLayout
     ? [
       ...savedLayoutTabs,

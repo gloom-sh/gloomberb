@@ -198,7 +198,7 @@ describe("StatusBar", () => {
     config.layouts = ["Default", "FX Desk - CIO"].map((name) => ({ name, layout: cloneLayout(config.layout) }));
     config.activeLayoutIndex = 1;
     const lines = new Map<number, string>();
-    for (const width of [56, 44]) {
+    for (const width of [56, 44, 40]) {
       await tui.render(
         <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
           <StatusBar />
@@ -215,8 +215,9 @@ describe("StatusBar", () => {
     // Scrolled to the layout in front, the strip starts at a tab's edge: "^1 Default" is out of view whole, not
     // cut to "lt".
     expect(lines.get(56)).toStartWith("  ^2 FX Desk - CIO  ");
-    // A strip narrower than that tab shows the start of its name.
+    // A strip narrower than that tab shows the start of its name, and narrower still, without its key.
     expect(lines.get(44)).toStartWith("  ^2 FX D…  ");
+    expect(lines.get(40)).toStartWith("  FX…  ");
   });
 
   // A dead link left every cell a dash with nothing saying the app was offline.
