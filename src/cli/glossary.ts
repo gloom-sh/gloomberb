@@ -401,6 +401,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "In a book that holds a short, its signed value's share of gross exposure instead, longs plus shorts at their absolute value, so a short weighs negative and cash has no weight.",
   },
   {
+    term: "Contribution", aliases: ["contrib", "period contribution", "contribution to return"], functions: ["PF"], shown: ["Contribution", "CONTRIB"],
+    definition: "Over a period (portfolio show --from, fn PF --from), a position's P&L between the two closes as a share of the book's value at the start, in percent; "
+      + "of its gross exposure instead, longs plus shorts at their absolute value, when the book holds a short. The positions, the FX line and the total add up.",
+  },
+  {
     term: "Target", aliases: ["target weight", "target weights", "targets", "target allocation"], functions: ["PF"],
     definition: "The weight you want a holding to have, set with portfolio target set. Targets need not add up to 100%; the report says what is unallocated.",
   },

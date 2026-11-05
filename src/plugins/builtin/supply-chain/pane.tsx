@@ -32,7 +32,7 @@ import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
   cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
-  shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
+  periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
@@ -79,8 +79,8 @@ function shareLayout(width: number, bases: BasisForms): ShareLayout {
   return { bar: 0, basis: Math.max(0, width - SHARE_FIGURE_CELLS - 1) };
 }
 
-/** A period end date; its length, when the source states it, follows it in a wider column. */
-const PERIOD_DATE_CELLS = 10;
+/** A period end date ("31 Dec 2025"); its length, when the source states it, reads with it in a wider column. */
+const PERIOD_DATE_CELLS = 11;
 /**
  * Columns that fit the pane, giving up the least first: the share bar shortens
  * to keep the whole basis, the name shortens to 18 cells, the ticker folds into
@@ -94,7 +94,11 @@ const PERIOD_DATE_CELLS = 10;
 function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
-  const share: DataTableColumn = { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" };
+  // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap;
+  // a narrow pane keeps its 26 cells, so the name keeps its room and the share reads its shorter basis.
+  const whole = Math.max(0, ...bases.map((forms) => forms[0]!));
+  const shareWidth = Math.max(wide ? 34 : medium ? 30 : 26, Math.min(wide ? 64 : medium ? 52 : 26, (wide ? 8 : 5) + SHARE_FIGURE_CELLS + 2 + whole));
+  const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
     { id: "evidence", label: "Evidence", width: 12, align: "left" },
@@ -320,7 +324,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         content: <ShareCell row={row} focusId={focusId} width={column.width} layout={shareColumn} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
-      case "fy": return { text: displayWidth(cellText(row, "fy")) <= column.width ? cellText(row, "fy") : row.period, color: colors.textDim };
+      case "fy": return { text: displayWidth(cellText(row, "fy")) <= column.width ? cellText(row, "fy") : periodDate(row.period), color: colors.textDim };
       default: return { text: cellText(row, column.id) };
     }
   };
@@ -366,7 +370,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
           renderCell={renderCell} sortColumnId={sort.column} sortDirection={sort.direction}
           onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${symbol}:${view}:${options.tiers.join(",")}`}
-          emptyStateTitle="No relationships for the selected evidence tiers."
+          emptyStateTitle={supplyEmptyText(data) ?? "No relationships for the selected evidence tiers."}
           bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" /> : undefined} />}
       /> : null}
     </PaneStatusBody>

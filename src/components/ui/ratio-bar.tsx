@@ -1,8 +1,31 @@
 import { blendHex } from "../../theme/colors";
+import { perceivedLightness } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
 
 const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+
+/** A track's tint of the bar colour, where that already stands off the page. */
+const TRACK_TINT = 0.16;
+/** The lightness (L*) a track keeps from the page, so the bar's scale reads alike on every theme. */
+export const TRACK_MIN_SEPARATION = 8;
+const TRACK_MAX_TINT = 0.5;
+const TRACK_TINT_STEP = 0.02;
+
+/**
+ * The unfilled length of a bar: the page tinted by the bar's colour, tinted
+ * further where that would barely stand off the page, never past half the colour.
+ */
+export function ratioBarTrack(page: string, color: string): string {
+  let tint = TRACK_TINT;
+  let track = blendHex(page, color, tint);
+  const separation = (color: string) => Math.abs(perceivedLightness(color) - perceivedLightness(page));
+  while (separation(track) < TRACK_MIN_SEPARATION && tint < TRACK_MAX_TINT) {
+    tint = Math.min(TRACK_MAX_TINT, tint + TRACK_TINT_STEP);
+    track = blendHex(page, color, tint);
+  }
+  return track;
+}
 
 export interface RatioBarGlyphOptions {
   /** `end` grows the bar from the right, as the left half of a two-sided chart. */
@@ -65,7 +88,7 @@ export function RatioBar({ ratio, width, color, align = "start", resolution = "h
             height: `${thickness}px`,
             borderRadius: "2px",
             overflow: "hidden",
-            background: track ? blendHex(colors.bg, color, 0.16) : undefined,
+            background: track ? ratioBarTrack(colors.bg, color) : undefined,
           }}
         >
           <Box

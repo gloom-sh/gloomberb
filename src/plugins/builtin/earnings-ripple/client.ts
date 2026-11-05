@@ -46,6 +46,8 @@ export interface RippleSnapshot {
   failures: Failure[];
   /** Holdings whose disclosures the free preview cut short, so a missing link may only be hidden. */
   truncated: string[];
+  /** Disclosed customers and suppliers whose report dates were looked up, one hop away. */
+  checked: number;
   /**
    * Companies two hops away, when asked for. `locked`: the account sees one hop
    * only. `truncated`: holdings whose graph search stopped at a limit, with the
@@ -138,7 +140,8 @@ export async function loadRipple(holdings: readonly string[], sources: RippleSou
   });
   const second = !secondHop ? null : sources.graph ? await loadGraphs(symbols, sources.graph, sources.graphsAhead) : locked();
   const graphs = second?.graphs ?? new Map<string, GraphPayload>();
-  const companies = [...rippleCompanyTickers(chains), ...secondHopLinks(chains, graphs).map((link) => link.company.ticker!.toUpperCase())];
+  const direct = rippleCompanyTickers(chains);
+  const companies = [...direct, ...secondHopLinks(chains, graphs).map((link) => link.company.ticker!.toUpperCase())];
   const reports: EarningsCalendarPayload["reports"] = [];
   if (companies.length) {
     const calendarSymbols = [...new Set([...companies, ...symbols])].sort();
@@ -149,7 +152,7 @@ export async function loadRipple(holdings: readonly string[], sources: RippleSou
   }
   const truncated = [...chains].filter(([, chain]) => chain.truncated).map(([symbol]) => symbol).sort();
   return {
-    rows: projectRipple(chains, reports), failures, truncated,
+    rows: projectRipple(chains, reports), failures, truncated, checked: direct.length,
     secondHop: second ? { rows: projectSecondHop(chains, graphs, reports), failures: second.failures, locked: second.locked,
       truncated: [...graphs].filter(([, graph]) => graph.truncated || !graph.search.complete)
         .map(([symbol, graph]) => ({ symbol, reasons: graph.search.reasons })).sort((a, b) => a.symbol.localeCompare(b.symbol)) } : null,

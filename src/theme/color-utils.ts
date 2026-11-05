@@ -50,6 +50,16 @@ export function relativeLuminance(hex: string): number {
   });
 }
 
+/**
+ * CIE L*, 0 (black) to 100 (white): lightness as the eye spaces it, so the
+ * same difference reads alike on a white page and a black one, as a
+ * luminance ratio does not.
+ */
+export function perceivedLightness(hex: string): number {
+  const luminance = relativeLuminance(hex);
+  return luminance > 216 / 24_389 ? 116 * Math.cbrt(luminance) - 16 : luminance * (24_389 / 27);
+}
+
 export function contrastRatio(a: string, b: string): number {
   const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
   const darker = Math.min(relativeLuminance(a), relativeLuminance(b));

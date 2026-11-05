@@ -345,7 +345,7 @@ export function replayEpisodes(
 
 /** The basket share a replay moves by beta proxy, for a row label where its evidence does not show: "22% proxy". */
 export function episodeProxyMarker(replay: EpisodeReplay): string | null {
-  const weight = replay.proxied.reduce((sum, row) => sum + row.weight, 0);
+  const weight = replay.proxied.reduce((sum, row) => sum + Math.abs(row.weight), 0);
   return replay.proxied.length ? `${wholeShareText(weight)} proxy` : null;
 }
 
@@ -357,8 +357,10 @@ export function episodeProxyMarker(replay: EpisodeReplay): string | null {
 export function episodeEvidence(replay: EpisodeReplay, accountCurrency: string): string {
   if (replay.unavailable) return `% of basket; ${replay.unavailable}; ${episodeWindowText(replay.episode)} closes`;
   const proxies = replay.proxied;
-  const weight = proxies.reduce((sum, row) => sum + row.weight, 0);
-  const names = proxies.length > 3 ? `${proxies.slice(0, 2).map((row) => row.symbol).join(", ")} and ${proxies.length - 2} more` : proxies.map((row) => row.symbol).join(", ");
+  // The gross share, as the row's marker gives it: a short is a part of the basket too, said as a short.
+  const weight = proxies.reduce((sum, row) => sum + Math.abs(row.weight), 0);
+  const name = (row: EpisodeReplay["proxied"][number]) => row.weight < 0 ? `${row.symbol} (short)` : row.symbol;
+  const names = proxies.length > 3 ? `${proxies.slice(0, 2).map(name).join(", ")} and ${proxies.length - 2} more` : proxies.map(name).join(", ");
   return [
     "% of basket",
     ...(proxies.length ? [`${names} by beta proxy, ${shareText(weight)} of basket`] : []),
@@ -387,7 +389,8 @@ export function episodeIssues(replays: readonly EpisodeReplay[]): { notes: strin
   const notes: string[] = [];
   const warnings: string[] = [];
   for (const row of byHolding.values()) {
-    const shares = `${shareText(row.weight)} of the basket${row.bookShare == null ? "" : `, ${shareText(row.bookShare)} of the book`}`;
+    // A short's share of the gross basket, as the replay's marker counts it, with the side said: never a negative share.
+    const shares = `${row.weight < 0 ? "short, " : ""}${shareText(Math.abs(row.weight))} of the basket${row.bookShare == null ? "" : `, ${shareText(row.bookShare)} of the book`}`;
     const episodes = row.episodes.join(", ");
     const beta = row.assumed ? "an assumed beta of 1 to SPY, too few of its returns pairing with SPY's" : `its beta of ${row.beta.toFixed(2)} to SPY`;
     const moves = `${row.episodes.length === 1 ? "that replay moves" : "those replays move"} it by ${beta}`;

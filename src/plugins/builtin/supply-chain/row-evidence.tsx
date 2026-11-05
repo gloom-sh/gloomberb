@@ -23,7 +23,7 @@ export function SupplyVerification({ row }: { row: SupplyRow }) {
   return <>
     {isUnconfirmed(row) ? <KeyValueRow label="Why unconfirmed" value={row.whyUnconfirmed ?? "Awaiting independent confirmation"} labelWidth={20} /> : null}
     <KeyValueRow label="Corroboration" value={corroborationLabel(row)} labelWidth={20} />
-    {row.pctScope ? <KeyValueRow label={row.sourceKind === "xbrl" ? "Tagged context" : "Percentage scope"} value={row.pctScope} labelWidth={20} /> : null}
+    {row.pctScope ? <KeyValueRow label="Percentage scope" value={row.pctScope} labelWidth={20} /> : null}
     {row.sectionRef ? <KeyValueRow label="Section" value={row.sectionRef} labelWidth={20} /> : null}
     {row.jurisdiction ? <KeyValueRow label="Jurisdiction" value={row.jurisdiction} country={row.jurisdiction} labelWidth={20} /> : null}
     {row.firstSeenAt ? <KeyValueRow label="First seen" value={row.firstSeenAt.slice(0, 10)} detail={row.lastSeenAt ? `last seen ${row.lastSeenAt.slice(0, 10)}` : undefined} labelWidth={20} /> : null}

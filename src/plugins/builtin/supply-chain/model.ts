@@ -1,15 +1,22 @@
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
-import { SERIES_COLORS } from "../../../theme/series-colors";
+import { currentThemeColorSet, SERIES_COLORS } from "../../../theme/series-colors";
+import { companyNameCase, shortCompanyName } from "../../../tickers/company-name";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { entityTicker } from "./graph-model";
 import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, trustTier } from "./trust";
 
-/** One colour per role from the shared series palette, the same in the table, the flow and the evidence. */
-export const ROLE_COLORS: Record<SupplyRole, string> = {
+/** Each role's slot of the shared series palette; the buildout pane's flow draws its suppliers, customers and competitors in the same. */
+export const ROLE_SLOTS: Readonly<Record<SupplyRole, string>> = {
   supplier: SERIES_COLORS[0], customer: SERIES_COLORS[1], partner: SERIES_COLORS[3], competitor: SERIES_COLORS[5], investee: SERIES_COLORS[7],
 };
+/**
+ * One colour per role, the same in the table, the flow, the graph and the
+ * evidence, as the drawing theme reads it: its colour-blind palette, and a
+ * shade that reads on a light page.
+ */
+export const ROLE_COLORS: Readonly<Record<SupplyRole, string>> = currentThemeColorSet(ROLE_SLOTS);
 
 /** A company, a customer the filer does not name, or a geographic or channel cohort that is not one company. */
 export type CounterpartyKind = "company" | "undisclosed" | "group";
@@ -46,26 +53,50 @@ export interface ShareParts {
   forms: readonly string[];
 }
 
+/** A word in lower case unless it is an initialism: "Gold" reads "gold", "LNG" stays. */
+const lowerFirst = (text: string) => text.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase());
+/** A company as a sentence names it: "Apple" for "Apple Inc.", "Newmont" for "NEWMONT Corp /DE/". */
+const companyWord = (entity: SupplyRow["reportingEntity"]) =>
+  shortCompanyName(companyNameCase(entity.name.replace(/\s*\/[A-Z]{2}\/\s*$/, ""))) || (entityTicker(entity) ?? entity.name);
+
 /**
  * A disclosed share and what it is a share of, in words. The denominator is
  * always the reporting company's: a supplier saying the focus company is 91%
- * of its revenue reads "of CRUS revenue", never as the focus company's.
+ * of its revenue reads "of CRUS revenue", never as the focus company's. A
+ * share of the company's own receivables says who is owed: "of receivables
+ * (owed to Apple)".
  */
 export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): ShareParts | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
-  const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
+  const reverse = includeReporter || (!!focusId && row.reportingEntity.id !== focusId);
+  const reporter = reverse ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   const value = `${Number(row.pctOfRevenue.toFixed(1))}%`;
-  // XBRL dimensions can qualify the numerator, denominator, or both. NVDA's
-  // NonUs fact is a share of total revenue, while TW omits a Data Center qualifier.
-  // Neither supports turning its dimensional member into an "of ..." claim.
-  if (row.sourceKind === "xbrl" && scope) return shareWords(value, [`${reporter}${basis} · context: ${scope}`, `${reporter}${basis}`]);
+  // A reverse share already names whose receivables they are.
+  const owed = row.pctBasis === "receivables" && !reverse ? ` (owed to ${companyWord(row.reportingEntity)})` : "";
   // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.
-  const scoped = scope && scope.toLowerCase().includes(basis) ? scope.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase()) : `${scope ? `${scope} ` : ""}${basis}`;
+  if (scope && scope.toLowerCase().includes(basis)) {
+    const scoped = lowerFirst(scope);
+    return shareWords(value, [`of ${reporter}${scoped}${owed}`, `of ${reporter}${scoped}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
+  }
+  // XBRL dimensions can qualify the numerator, denominator, or both. NVDA's
+  // NonUs fact is a share of total revenue, while TW omits a Data Center
+  // qualifier: a dimension reads in brackets after the basis, never as its
+  // denominator, and the narrowest form drops it whole. A product the filer
+  // measures against its revenue benchmark is a share of total revenue from
+  // that product's sales: Newmont's "27% of total revenue (gold sales)".
+  if (row.sourceKind === "xbrl" && scope) {
+    if (taggedDimension(row, "ProductOrService"))
+      return shareWords(value, [`of ${reporter}total ${basis} (${lowerFirst(scope)} sales)${owed}`, `of ${reporter}total ${basis}`, `${reporter}${basis}`]);
+    return shareWords(value, [`of ${reporter}${basis} (${scope})${owed}`, `${reporter}${basis}`]);
+  }
+  const scoped = `${scope ? `${scope} ` : ""}${basis}`;
   // Form alone does not identify a metric's duration: a 10-Q includes YTD facts.
-  return shareWords(value, [`of ${reporter}${scoped}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
+  return shareWords(value, [...(owed ? [`of ${reporter}${scoped}${owed}`] : []), `of ${reporter}${scoped}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
 }
+/** Whether a tagged XBRL fact carries this dimension: "ProductOrService=Gold". */
+const taggedDimension = (row: Pick<SupplyRow, "quote">, axis: string) => new RegExp(`(?:^|;)\\s*${axis}=`).test(row.quote);
 const shareWords = (value: string, forms: readonly string[]): ShareParts => {
   const distinct = forms.filter((form, index) => forms.indexOf(form) === index);
   return { value, basis: distinct[0]!, forms: distinct };
@@ -85,16 +116,20 @@ export const isTaggedFact = (row: Pick<SupplyRow, "sourceKind" | "quote">) => ro
 
 /**
  * What a disclosure says, in words. A sentence from the filing reads as it is;
- * a tagged XBRL fact reads as the kind of concentration it tags, its tagged
- * context and what the share is of: "Customer, Gold, revenue", never the
- * dimension names.
+ * a tagged XBRL fact reads as the kind of concentration it tags and its share
+ * in the Table's words: "Customer concentration: 27% of NEM total revenue
+ * (gold sales)", never the dimension names.
  */
-export function disclosureText(row: Pick<SupplyRow, "sourceKind" | "quote" | "pctScope" | "pctBasis">): string {
+export function disclosureText(row: SupplyRow): string {
   if (!isTaggedFact(row)) return row.quote;
   const type = /(?:^|;)\s*ConcentrationRiskByType=([^;]*)/.exec(row.quote)?.[1]?.replace(/^.*:/, "").replace(/ConcentrationRisk(Member)?$/, "") ?? "";
   const kind = type.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+  const label = kind ? `${kind[0]!.toUpperCase()}${kind.slice(1).toLowerCase()} concentration` : null;
+  // Read beside other sources, the share names the company it is a share of.
+  const share = shareParts(row, undefined, { includeReporter: true });
+  if (share) return label ? `${label}: ${share.value} ${share.basis}` : `${share.value} ${share.basis}`;
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
-  return [kind ? kind[0]!.toUpperCase() + kind.slice(1).toLowerCase() : null, row.pctScope ? scopeWords(row.pctScope) : null, basis]
+  return [label, row.pctScope ? scopeWords(row.pctScope) : null, basis]
     .filter((part): part is string => !!part).join(", ") || "Tagged in the filing";
 }
 
@@ -149,6 +184,30 @@ export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names
     + Math.max(0, total(data.earlierCounts?.[view]) - earlierRows(data, view).length), 0);
 }
 
+/** Countries whose companies' own filings SPLC reads (docs/supply-chain.md, Coverage and limitations). */
+const FILING_COUNTRIES = new Set(["US", "KR"]);
+
+/**
+ * What a company with no disclosed relationship at all reads instead of an
+ * empty table. The server gives an entity's country as an ISO code (`US`,
+ * `KR`, `TW`) or none. A company in a country whose filings SPLC does not
+ * read names the markets it does; one whose country is not known is never
+ * said to be outside them. Both point to the side that can still name it: a
+ * customer's filings name their suppliers. `command` is how the reader opens
+ * another company's supply chain ("fn SPLC AAPL" in the CLI). Null when
+ * there are relationships.
+ */
+export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entity" | "says" | "names" | "earlier">, command = (symbol: string) => `SPLC ${symbol}`): string | null {
+  if (data.says.length || data.names.length || data.earlier?.says.length || data.earlier?.names.length) return null;
+  const code = data.entity?.country?.trim().toUpperCase() ?? "";
+  const country = /^[A-Z]{2}$/.test(code) ? code : null;
+  const customerSide = `A customer's filings name its suppliers: try the customer's side, such as ${command("AAPL")}.`;
+  if (country && FILING_COUNTRIES.has(country)) return `No filing, announcement or call read so far names a relationship for ${data.symbol}.`;
+  if (!country) return `No filing, announcement or call read so far names a relationship for ${data.symbol}. ${customerSide}`;
+  return `No relationship for ${data.symbol}: SPLC reads US (SEC) and Korean (DART) company filings, plus announcements and calls, `
+    + `and none read so far names one. ${customerSide}`;
+}
+
 /** The lock line of a free preview, in the same words in the pane and `fn SPLC`. */
 export function supplyPreviewNote(data: Pick<SupplyChainPayload, "previewRowsPerRole">, locked: number): string {
   return freePreviewNote({ shows: data.previewRowsPerRole ? `${countOf(data.previewRowsPerRole, "relationship")} per role` : "part of the relationships",
@@ -170,13 +229,26 @@ export const quoteLanguageLabel = (row: Pick<SupplyRow, "quoteLanguage">) => QUO
  * when the source does not say; a form or a period label never does.
  */
 function periodLength(months: number | null | undefined): string | null {
-  if (months == null) return null;
-  return months === 0 ? "instant" : months === 3 ? "quarter" : months === 6 ? "half" : months === 12 ? "year" : `${months} month${months === 1 ? "" : "s"}`;
+  if (months == null || months === 0) return null;
+  return months === 3 ? "quarter" : months === 6 ? "half" : months === 12 ? "year" : `${months} month${months === 1 ? "" : "s"}`;
 }
-/** The period end with its length when the source states it: 2026-07-31 half. */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A period end as the reports print a day, "26 Sep 2026"; a label that is no calendar day stays as the source wrote it. */
+export function periodDate(period: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(period);
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : period;
+}
+/**
+ * The period end with its length when the source states it: "year to 31 Dec
+ * 2025", "half to 31 Jul 2026", and a balance such as receivables "as of 26
+ * Sep 2026".
+ */
 export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
+  const day = periodDate(row.period);
+  if (row.periodMonths === 0) return `as of ${day}`;
   const length = periodLength(row.periodMonths);
-  return length ? `${row.period} ${length}` : row.period;
+  return length ? `${length} to ${day}` : day;
 };
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {

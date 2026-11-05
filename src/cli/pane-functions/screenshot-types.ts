@@ -141,6 +141,8 @@ export interface PaneScreenshotResult {
   unavailableSymbols: string[];
   /** Rows of a list whose read failed (refused, timed out): pictured without figures and named on the status line. */
   unreadRows?: string[];
+  /** Why each of `unreadRows` did not load, as the source answered. */
+  unreadReasons?: Record<string, string>;
   semanticMismatch: boolean;
   usable: boolean;
   unusableReason: string | null;

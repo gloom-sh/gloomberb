@@ -12,9 +12,15 @@ export const entityKey = (entity: SupplyEntity) => entity.ticker ? publicTickerK
 export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">) =>
   entity.ticker && entity.exchange && !isUsListingExchange(entity.exchange) ? getListingSymbol(entity.ticker, entity.exchange) : entity.ticker;
 export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
+/**
+ * A route in the direction goods move: a supplier's route ends at the focus
+ * company ("WPM → NEM" for a streamer buying from a miner), a customer's
+ * starts there, so a relationship reads the same way on both companies' pages.
+ */
 export function pathLabel(path: GraphPath, data: GraphPayload) {
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
-  return path.nodeIds.map(id => nodes.get(id) ? entityLabel(nodes.get(id)!) : id).join(" → ");
+  const labels = path.nodeIds.map(id => nodes.get(id) ? entityLabel(nodes.get(id)!) : id);
+  return (path.id.startsWith("upstream|") ? labels.reverse() : labels).join(" → ");
 }
 export function exposureLabel(path: GraphPath, data: GraphPayload) {
   const exposure = path.exposure;

@@ -376,18 +376,21 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
                     && model.rows.stress.every((row) => isShockRow(row) || row.value != null)
                     && !(model.episodes ?? []).some((row) => row.proxied.some((proxy) => proxy.failed))
                   : model.complete;
-    // A basket view with too little covered shows no estimate, and the report says why rather than leaving dashes.
+    // A basket view with too little covered shows no estimate. The report opens with why, and leaves out
+    // the tables it would have filled with dashes; what does not need the basket (holdings, the given shocks) stays.
     const shortfall = BASKET_VIEWS.has(view as RiskView) ? coverageLine(model.coverage).error : undefined;
+    const views = (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({ view, rows: model.rows[view] }));
+    const shown = (shortfall
+      ? views.map(({ view, rows }) => ({ view, rows: view === "holdings" ? rows : rows.filter((row) => row.value != null) }))
+        .filter(({ rows }) => rows.length > 0)
+      : views).map(({ view, rows }) => ({ view, rows: rows.map(displayRow) }));
     return {
       complete,
-      errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
+      errors: model.warnings,
       notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
-      sections: (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({
-        title: view,
-        columns: RISK_COLUMNS,
-        rows: model.rows[view].map(displayRow),
-      })),
-      metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window, notices },
+      sections: shown.map(({ view, rows }) => ({ title: view, columns: RISK_COLUMNS, rows })),
+      metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window,
+        notices: [...(shortfall ? [shortfall] : []), ...notices] },
     };
   },
   compact(result, args) {

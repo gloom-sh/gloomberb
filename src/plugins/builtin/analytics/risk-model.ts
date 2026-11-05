@@ -326,6 +326,27 @@ export function portfolioRiskTickers(
       positions(ticker, portfolioId).length > 0,
   );
 }
+/** Below this share of gross exposure, a book's net value is too small to state its basket per (a market-neutral book). */
+const NET_BASIS_MIN_SHARE = 0.1;
+const basketNetNote = (net: number, currency: string) =>
+  `Basket returns, volatility, betas, stresses and tail losses are per the book's net value, longs less shorts (${formatNumber(net, 0)} ${currency}), as a fund states them.`;
+const BASKET_GROSS_NOTE = "Basket returns, volatility, betas and stresses are per gross exposure, longs plus shorts at their absolute value: the book's net value is under 10% of it.";
+
+/**
+ * What a basket's returns, read per its gross value, are multiplied by to read
+ * per its net value: gross over net, 1 for a long-only basket; 1 and `gross`
+ * when the net is under a tenth of the gross (or short), which no fund states
+ * its risk per.
+ */
+function basketNetScale(values: readonly number[]): { factor: number; basis: "net" | "gross" } {
+  const gross = values.reduce((sum, value) => sum + Math.abs(value), 0);
+  const net = values.reduce((sum, value) => sum + value, 0);
+  if (!(gross > 0)) return { factor: 1, basis: "net" };
+  return net >= NET_BASIS_MIN_SHARE * gross ? { factor: gross / net, basis: "net" } : { factor: 1, basis: "gross" };
+}
+
+/** The basket takes a short at its signed current weight; futures, options and crypto stay out with their reason. */
+const BASKET_TAKES = { shorts: true } as const;
 const signedQuantity = (lots: TickerRecord["metadata"]["positions"]) =>
   lots.reduce(
     (sum, row) => sum + (row.side === "short" ? -Math.abs(row.shares) : row.shares),
@@ -351,7 +372,7 @@ export function portfolioRiskRequests(
       currency,
       snapshotValue: snapshot,
       unsupported:
-        syntheticPositionUnsupportedReason(ticker, "USD", portfolioId) != null ||
+        syntheticPositionUnsupportedReason(ticker, "USD", portfolioId, BASKET_TAKES) != null ||
         lots.some((row) => !Number.isFinite(row.shares)),
     };
   });
@@ -676,7 +697,7 @@ export function buildPortfolioRisk(
       quote?.currency ?? close?.currency ?? history?.listing?.currency ?? ticker.metadata.currency;
     const foreign = !convertedFrom && listingCurrency !== "USD";
     const usdError =
-      syntheticPositionUnsupportedReason(ticker, "USD", portfolio.id) ??
+      syntheticPositionUnsupportedReason(ticker, "USD", portfolio.id, BASKET_TAKES) ??
       (lots.some((row) => !Number.isFinite(row.shares))
         ? "Invalid position quantity"
         : null) ??
@@ -687,7 +708,7 @@ export function buildPortfolioRisk(
         : null) ??
       // A foreign listing that did not convert says why: no pair, stale or gapped FX.
       (foreign
-        ? (history?.error ?? syntheticPositionUnsupportedReason(ticker, listingCurrency, portfolio.id))
+        ? (history?.error ?? syntheticPositionUnsupportedReason(ticker, listingCurrency, portfolio.id, BASKET_TAKES))
         : null) ??
       history?.error ??
       (!history ? "Daily history unavailable" : null);
@@ -702,20 +723,21 @@ export function buildPortfolioRisk(
       Number.isFinite(mark.price) &&
       mark.price > 0 &&
       priceDate &&
-      (!syntheticPositionUnsupportedReason(
+      !syntheticPositionUnsupportedReason(
         ticker,
         mark.currency,
         portfolio.id,
-      ) ||
-        error?.startsWith("Short positions"))
+        BASKET_TAKES,
+      )
         ? quantity * mark.price
         : null;
     const accountValue = marked == null || !account ? marked : accountRate! > 0 ? marked / accountRate! : null;
     const value = accountValue != null && Number.isFinite(accountValue) ? accountValue : null;
     const returns = inAccount?.returns ?? history?.returns ?? [];
+    // A short's value is negative: it is marked, and enters the basket at its signed weight.
     const leftOut =
       error ??
-      (value == null || value <= 0
+      (value == null || value === 0
         ? "No current USD mark"
         : returns.length < 60
           ? "Fewer than 60 daily returns"
@@ -760,7 +782,8 @@ export function buildPortfolioRisk(
   // Cash counts in the book the coverage is a share of, at its gross value as a short does.
   const cashGross = cashHoldings.reduce((sum, row) => sum + Math.abs(row.value ?? 0), 0);
   const marketValue = holdingsValue + cashGross;
-  const coveredValue = qualifying.reduce((sum, row) => sum + row.value!, 0);
+  // A short covers its gross value, as it counts in the book.
+  const coveredValue = qualifying.reduce((sum, row) => sum + Math.abs(row.value!), 0);
   const share = marketValue > 0 ? coveredValue / marketValue : null;
   // Whether the basket is most of what is invested: cash is no holding the basket could have taken.
   const holdingsShare = holdingsValue > 0 ? coveredValue / holdingsValue : null;
@@ -799,9 +822,11 @@ export function buildPortfolioRisk(
   // Weights renormalize over the covered basket; nothing outside it is approximated into it.
   const members = sufficient ? qualifying : [];
   const basketWeights = members.length ? concentration(members) : null;
-  for (const holding of members)
-    holding.weight =
-      basketWeights?.rows.find((row) => row.id === holding.id)?.weight ?? null;
+  // Each a share of the basket's gross value, signed as its position: a short is a negative weight.
+  for (const holding of members) {
+    const weight = basketWeights?.rows.find((row) => row.id === holding.id)?.weight;
+    holding.weight = weight == null ? null : Math.sign(holding.value!) * weight;
+  }
   // Concentration needs a value, not a return history: it reads every holding that has one, left out of the basket or not.
   const book = concentration(
     valued.filter((row) => row.marketValue! > 0).map((row) => ({ id: row.id, value: row.marketValue })),
@@ -834,10 +859,18 @@ export function buildPortfolioRisk(
         : [],
     ),
   ];
+  // A hedged basket's returns are stated per its net value, longs less shorts, as a fund states them (a 130/30
+  // book's beta reads about 1.0); only a book whose net is under a tenth of its gross is read per gross exposure.
+  // A long-only basket's net is its gross: nothing changes.
+  const basketScale = basketNetScale(members.map((row) => row.value ?? 0));
+  if (basketScale.basis === "gross") notes.push(BASKET_GROSS_NOTE);
+  else if (basketScale.factor !== 1)
+    notes.push(basketNetNote(coverage.coveredValue / basketScale.factor, coverage.currency));
   const basket = members.length
     ? computeWeightedPortfolioReturns(
         members.map((row) => ({ weight: row.weight!, returns: row.returns })),
-      )
+        { signed: true },
+      ).map((point) => ({ ...point, value: point.value * basketScale.factor }))
     : [];
   const proxy = (symbol: string) => {
     const instrument = RISK_FACTOR_INSTRUMENTS.find(
@@ -981,7 +1014,8 @@ export function buildPortfolioRisk(
           returns: row.returns,
         })),
         { spyReturns: spy, accountCurrency: portfolio.currency, bookValue: marketValue },
-      )
+      // Per the net value, as the basket's returns are; its proxied shares stay shares of the gross basket.
+      ).map((replay) => replay.value == null ? replay : { ...replay, value: replay.value * basketScale.factor })
     : null;
   if (episodes) {
     const issues = episodeIssues(episodes);
@@ -1036,8 +1070,10 @@ export function buildPortfolioRisk(
   warnings.push(...(greeks?.warnings ?? []));
   const rows: Record<RiskView, RiskDisplayRow[]> = {
     risk: metrics.map((row) => {
-      // VaR and expected shortfall are a one-day loss on the covered basket's current value, in the portfolio currency.
+      // VaR and expected shortfall are a one-day loss on the covered basket's current value, in the portfolio currency:
+      // its net value when the returns are stated per net (the gross over the scale), else its gross.
       const tail = TAIL_ROW_IDS.has(row.id) && row.value != null && coverage.coveredValue > 0;
+      const tailBase = coverage.coveredValue / basketScale.factor;
       return {
         ...row,
         percentile: row.rank.percentile,
@@ -1045,9 +1081,9 @@ export function buildPortfolioRisk(
         detail: TAIL_ROW_IDS.has(row.id) ? riskTailMethod(row.samples, row.value != null) : `${row.samples} sessions`,
         ...(tail
           ? {
-              amount: (row.value! / 100) * coverage.coveredValue,
+              amount: (row.value! / 100) * tailBase,
               amountCurrency: coverage.currency,
-              amountBase: coverage.coveredValue,
+              amountBase: tailBase,
               basis: riskCoverageLine(coverage) ?? undefined,
             }
           : {}),

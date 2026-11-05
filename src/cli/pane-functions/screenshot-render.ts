@@ -5,6 +5,7 @@ import { createOutputFolder } from "../output-file";
 import type { Quote } from "../../types/financials";
 import { isRecord } from "../../utils/guards";
 import {
+  prepareDesktopPaneShotView,
   renderDesktopPaneScreenshot,
   type DesktopPaneShotBridge,
   type DesktopPaneShotPayload,
@@ -251,6 +252,7 @@ export async function renderDesktopShot({
    */
   onStalledReport?: () => void;
 }): Promise<PaneScreenshotResult> {
+  prepareDesktopPaneShotView();
   if (captureImage) await createOutputFolder(outputPath);
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
@@ -328,7 +330,7 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
-  const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows } : {};
+  const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows, ...(payload.unreadReasons ? { unreadReasons: payload.unreadReasons } : {}) } : {};
   return freshness ? { ...assessed, ...unreadRows, freshness } : { ...assessed, ...unreadRows };
 }
 

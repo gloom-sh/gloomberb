@@ -3,6 +3,8 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { createDefaultConfig } from "../../../types/config";
 import { createTestTicker } from "../../../test-support/ticker";
 import { portfolioRiskHeadless } from "./risk-headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { BROKER_PORTFOLIO, brokerFixtureHoldings, brokerFixtureTickers, brokerRiskClient, now, sessionHistory } from "./risk-test-data";
 
 test("local evidence reports keep account identity and work without market network access", async () => {
@@ -148,10 +150,11 @@ test("the report and its compact form state what the basket covers and why each 
     expect(coverage.leftOut[1]!.share).toBeCloseTo(20_020 / 488_760, 10);
     expect(coverage.leftOut.at(-1)).toMatchObject({ symbol: "UNQ3", reason: "Daily history unavailable" });
 
-    // With nothing but crypto the basket views have no estimate: a failure the report states, beside the note naming the holding.
+    // With nothing but crypto the basket views have no estimate: the report opens with why, beside the note naming the holding.
     const crypto = brokerFixtureTickers([{ symbol: "ETH-USD", exchange: "CCC", currency: "USD", quantity: 2, price: 2_500, brokerValue: 5_000 }]);
     const cryptoOnly = await portfolioRiskHeadless.load(args, { ...context, resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers: crypto }) } as unknown as HeadlessPaneContext);
-    expect(cryptoOnly.errors).toEqual([expect.stringContaining("Basket estimates unavailable: No holding qualifies")]);
+    expect((cryptoOnly.metadata?.notices as string[])[0]).toStartWith("Basket estimates unavailable: No holding qualifies");
+    expect(cryptoOnly.errors).toEqual([]);
     expect(cryptoOnly.notes).toEqual(["ETH-USD (100.0% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket."]);
   } finally {
     setSystemTime();
@@ -259,6 +262,42 @@ test("a stress report whose episode closes did not load is not complete and says
     expect(rows.find((row) => row.label === "Covid crash 2020")!.value).toBe("--");
     expect(report.errors).toContain("Historical episodes: SPY daily closes did not load: UPSTREAM_RATE_LIMIT.");
     expect(report.complete).toBe(false);
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a hedged book's short enters the basket; with a future too large to leave, PORT opens with why instead of empty tables", async () => {
+  setSystemTime(now);
+  try {
+    // 300 USD of US01 long and 100 USD of US02 short, beside two 100 oz gold futures at 4,000 USD (800,000 USD).
+    const holdings = [
+      { symbol: "US01", exchange: "NASDAQ", currency: "USD", quantity: 3, price: 100 },
+      { symbol: "US02", exchange: "NYSE", currency: "USD", quantity: -1, price: 100 },
+      { symbol: "GC=F", exchange: "COMEX", currency: "USD", quantity: 2, price: 4_000 },
+    ];
+    const gold = createTestTicker("GC=F", "Gold", { exchange: "COMEX", assetCategory: "FUT", currency: "USD", portfolios: [BROKER_PORTFOLIO.id],
+      positions: [{ portfolio: BROKER_PORTFOLIO.id, shares: 2, multiplier: 100, currency: "USD", broker: "manual" }] });
+    const equities = brokerFixtureTickers(holdings.slice(0, 2));
+    const context = (tickers: typeof equities) => ({
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [BROKER_PORTFOLIO] },
+      signal: new AbortController().signal,
+      apiClient: brokerRiskClient(now, holdings),
+      resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers }),
+    } as unknown as HeadlessPaneContext);
+    const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: {} };
+    const hedged = await portfolioRiskHeadless.load(args, context(equities));
+    const model = hedged.metadata?.model as { holdings: Array<{ symbol: string; weight: number | null }>; coverage: { share: number } };
+    expect(model.holdings.map((row) => [row.symbol, row.weight])).toEqual([["US01", 0.75], ["US02", -0.25]]);
+    expect(model.coverage.share).toBe(1);
+    // The future is left out with its reason and is nearly all the book: one line first, then only the tables that have figures.
+    const full = await portfolioRiskHeadless.load(args, context([...equities, gold]));
+    const text = renderHeadlessPaneText(portfolioRiskHeadless, full, args, "PORT", deriveHeadlessFreshness(portfolioRiskHeadless, full));
+    expect(text.split("\n")[2]).toStartWith("Basket estimates unavailable: Qualifying holdings cover 0% of the holdings' value; basket estimates need 50%. Most of what is left out: Asset type is not covered by the equity basket");
+    expect(full.sections.map((section) => section.title)).toEqual(["holdings"]);
+    expect(text).toContain("GC=F (100.0% of the book) is excluded from the risk estimate: asset type is not covered by the equity basket.");
+    expect(text).not.toContain("Short positions");
+    expect(text).not.toContain("0 sessions");
   } finally {
     setSystemTime();
   }

@@ -1,3 +1,9 @@
+/**
+ * A list's rows whose financials are read at once from a source without
+ * batches: `portfolio show` and a capture of the list (`shot PF`) alike.
+ */
+export const LIST_FINANCIALS_CONCURRENCY = 8;
+
 /** Maps every item with at most `limit` calls in flight, keeping the input order in the result. */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

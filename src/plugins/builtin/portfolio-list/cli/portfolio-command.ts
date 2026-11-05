@@ -78,6 +78,7 @@ import {
 import { addOneSymbol, addSymbols, FILE_OPTION, listAddLookups, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
+import { readPriceWindow, type PriceWindow } from "../../../../utils/price-window";
 
 const ADD_USAGE = "Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]";
 const CREATE_USAGE = "Usage: gloom portfolio create <name> [--currency <code>]";
@@ -927,6 +928,7 @@ const VALUE_HELP = {
     "--close prices the book at the regular close instead: Value is Last times the shares, P&L, weights and the total follow, and the day's move from the close before is printed under the table. A future is priced at its exchange settlement, dated by its session, as quote states it.",
     "A short is a negative position: its value, cost and P&L are negative, and the Exposure line under the table adds up the longs, the shorts, net and gross.",
     "A future is held in contracts: Qty reads 1,000 × 100 oz, and Value is the contracts times the contract size times the price. A future whose contract size is unknown is not valued.",
+    "--from <date> [--to <date>] prints the P&L between two closes instead: each holding from the close before --from to its last close on or before --to (today when left out), as RETURN measures the same dates, on the holdings held now. A short gains when the price falls; a future counts its contracts at their size, between settlements. A holding in another currency earns its move at the end's FX rate, and the FX line is the currency's move on its start value. Contribution is each P&L over the book's value at the start (gross when it holds a short).",
   ],
 };
 
@@ -971,6 +973,7 @@ export const portfolioCliCommand: CliCommandDef = {
     usage: [
       "portfolio [list]",
       "portfolio show <name> [--close] [--explain] [--drip [--years 1-5] [--withholding <pct>]]",
+      "portfolio show <name> --from <date> [--to <date>]",
       "portfolio create <name> [--currency <code>]",
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
@@ -988,6 +991,8 @@ export const portfolioCliCommand: CliCommandDef = {
       EXCHANGE_OPTION,
       FILE_OPTION,
       { flags: "--close", description: "show: value the book at the regular close (futures at the settlement), not the latest print" },
+      { flags: "--from <date>", description: "show: P&L and contribution by position from the close before this date (a year or a date)" },
+      { flags: "--to <date>", description: "show --from: to the last close on or before this date (default today)" },
       { flags: "--drip", description: "show: project the shares and income reinvested dividends add, year by year" },
       { flags: "--years <1-5>", description: `show --drip: how many years to project (default ${DRIP_DEFAULT_YEARS})` },
       { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
@@ -1000,7 +1005,7 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--currency <code>", description: "portfolio create: the currency the portfolio totals in, whatever the base currency (a name's last word in capitals, such as THB, is read as one too)" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
-      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloom catalog glossary lists every term" },
+      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade; Contribution with --from); gloom catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",
@@ -1021,6 +1026,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio show Research --csv",
       "portfolio show Research --explain",
       "portfolio show Research --drip --years 3 --withholding 15",
+      "portfolio show Research --from 2026-10-26 --to 2026-10-30",
       "portfolio import Portfolio_Positions.csv --dry-run",
       "portfolio import ~/Downloads/positions.csv --name Research --merge",
       "portfolio import --13f 0001067983 --top 10",
@@ -1049,8 +1055,21 @@ export const portfolioCliCommand: CliCommandDef = {
     const hasWithholding = args.some((arg) => arg === "--withholding" || arg.startsWith("--withholding="));
     const yearsText = hasYears ? takeOption(args, "--years") ?? "" : undefined;
     const withholdingText = hasWithholding ? takeOption(args, "--withholding") ?? "" : undefined;
+    const hasFrom = args.some((arg) => arg === "--from" || arg.startsWith("--from="));
+    const hasTo = args.some((arg) => arg === "--to" || arg.startsWith("--to="));
+    const fromText = hasFrom ? takeOption(args, "--from") ?? "" : undefined;
+    const toText = hasTo ? takeOption(args, "--to") ?? "" : undefined;
     // A bare name shows the portfolio, as `show` does.
     const shows = action === "show" || (action != null && !KNOWN_ACTIONS.has(action));
+    const periodUsage = "Usage: gloom portfolio show <name> --from <date> [--to <date>]";
+    if ((hasFrom || hasTo) && !shows) ctx.fail(`${hasFrom ? "--from" : "--to"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, periodUsage);
+    let period: PriceWindow | undefined;
+    try {
+      period = readPriceWindow(fromText, toText) ?? undefined;
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : String(error), periodUsage);
+    }
+    if (period && (close || dripFlag)) ctx.fail(`--from measures P&L between two closes; it does not take ${close ? "--close" : "--drip"}.`, periodUsage);
     if (explain && !shows) {
       ctx.fail(
         `--explain is an option of portfolio show, not portfolio ${action ?? "list"}.`,
@@ -1101,8 +1120,8 @@ export const portfolioCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip]");
-      await showCollection(name, ctx, { explain, basis, drip });
+      if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip] [--from <date> [--to <date>]]");
+      await showCollection(name, ctx, { explain, basis, drip, ...(period ? { period } : {}) });
       return;
     }
 
@@ -1170,6 +1189,6 @@ export const portfolioCliCommand: CliCommandDef = {
       ctx.fail(TARGET_USAGE);
     }
 
-    await showCollection(args.join(" "), ctx, { explain, basis, drip });
+    await showCollection(args.join(" "), ctx, { explain, basis, drip, ...(period ? { period } : {}) });
   },
 };

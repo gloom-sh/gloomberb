@@ -6,6 +6,7 @@ import type { ColumnConfig } from "../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, Quote, TickerFinancials } from "../types/financials";
 import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
+import type { PeriodPnlRow } from "./period-pnl";
 import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
@@ -116,6 +117,31 @@ export interface ColumnContext {
   futuresTerms?: ReadonlyMap<string, PortfolioFuturesTerms>;
   /** Moves whenever `futuresTerms` does. */
   futuresTermsVersion?: number;
+  /**
+   * P&L over a period instead of since cost (the pane's P&L From): P&L shows
+   * each row's P&L between the two closes and P&L% its contribution to the
+   * book. Rows are missing while the closes load (`pending`). `fx` is the
+   * currencies' move on the start values, the line under the rows that makes
+   * them add up to the header's total.
+   */
+  periodPnl?: { rows: ReadonlyMap<string, PeriodPnlRow>; pending: boolean; fx?: { currencies: string; pnl: number; contribution: number | null } | null };
+  /** Moves whenever `periodPnl` does. */
+  periodPnlVersion?: number;
+}
+
+/** A row's P&L or contribution over the pane's period: `…` while the closes load, `—` without both. */
+function periodPnlCell(period: NonNullable<ColumnContext["periodPnl"]>, symbol: string, field: "pnl" | "contribution"): { text: string; color?: string } {
+  const row = period.rows.get(symbol);
+  if (!row) return { text: period.pending ? "…" : "—" };
+  return periodPnlFigure(row[field], field);
+}
+
+/** A period's P&L (`pnl`) or contribution figure as the P&L and P&L% cells show it, the FX line's included. */
+export function periodPnlFigure(value: number | null | undefined, field: "pnl" | "contribution"): { text: string; color?: string; value?: number } {
+  if (value == null || !Number.isFinite(value)) return { text: "—" };
+  return field === "pnl"
+    ? { text: formatCompactAmount(value, { signed: true }), color: priceColor(value), value }
+    : { text: formatPercentRaw(value), color: shownPriceColor(value, 2), value };
 }
 
 /** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
@@ -665,11 +691,13 @@ export function getColumnValue(
       }
       return { text: "—" };
     case "pnl": {
+      if (ctx.periodPnl) return periodPnlCell(ctx.periodPnl, ticker.metadata.ticker, "pnl");
       const pnl = positionPnl.value;
       return pnl === null ? { text: "—", pnlBasis: positionPnl.basis }
         : { text: formatCompactAmount(pnl, { signed: true }), color: priceColor(pnl), pnlBasis: positionPnl.basis };
     }
     case "pnl_pct": {
+      if (ctx.periodPnl) return periodPnlCell(ctx.periodPnl, ticker.metadata.ticker, "contribution");
       const percent = portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
       return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
@@ -865,9 +893,10 @@ export function getSortValue(
       }
       return null;
     case "pnl":
-      return positionPnl.value;
+      return ctx.periodPnl ? ctx.periodPnl.rows.get(ticker.metadata.ticker)?.pnl ?? null : positionPnl.value;
     case "pnl_pct":
-      return portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
+      return ctx.periodPnl ? ctx.periodPnl.rows.get(ticker.metadata.ticker)?.contribution ?? null
+        : portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
     case "mark_delta":
       return liveQuote && brokerMarkPrice != null && liveQuote.price !== 0 && positionMetrics.priceBasis === (quote?.priceBasis ?? "per-unit") && positionCurrency === quoteCurrency
         ? ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100

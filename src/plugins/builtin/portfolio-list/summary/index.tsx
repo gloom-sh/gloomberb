@@ -245,8 +245,15 @@ export function buildPortfolioSummarySegments({
   manualCash = null,
   brokerPortfolio = false,
   valuationBasis,
+  period = null,
 }: {
   totals: PortfolioSummaryTotals;
+  /**
+   * P&L between two closes (the pane's P&L From) in place of P&L since cost:
+   * its label names the closes, the total takes in the FX line, and the
+   * percent is its share of the book. Null figures while the closes load.
+   */
+  period?: { label: string; total: number | null; contribution: number | null } | null;
   /** What the values are priced at, said beside the value; left out when absent. */
   valuationBasis?: PortfolioValuationBasis;
   accountState: PortfolioSummaryAccountState | null;
@@ -339,6 +346,14 @@ export function buildPortfolioSummarySegments({
     ]));
   }
 
+  // The period the pane was asked for comes before the day's move, so a narrow header keeps it.
+  if (period) {
+    candidates.push(createSummarySegment("pnl", [
+      { text: period.label, tone: "label" },
+      { text: money(period.total ?? Number.NaN, true), tone: "value", color: period.total == null ? undefined : priceColor(period.total), bold: true },
+      { text: `(${formatPercentRaw(period.contribution ?? Number.NaN)})`, tone: "muted", color: period.contribution == null ? undefined : shownPriceColor(period.contribution, 2) },
+    ]));
+  }
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
     { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
@@ -346,7 +361,7 @@ export function buildPortfolioSummarySegments({
     // The broker's own day is from its account's close, not the quotes': it names none.
     ...(accountMetrics.brokerDay || !Number.isFinite(accountMetrics.dailyPnl) ? [] : dayBasisPart(totals)),
   ]));
-  candidates.push(createSummarySegment("pnl", [
+  if (!period) candidates.push(createSummarySegment("pnl", [
     { text: !Number.isFinite(account?.unrealizedPnl)
       && totals.unrealizedPnlBasis === "broker-snapshot" ? "Broker P&L"
       : !Number.isFinite(account?.unrealizedPnl)

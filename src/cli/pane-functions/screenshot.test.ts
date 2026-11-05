@@ -1292,6 +1292,8 @@ describe("portfolio screenshot members", () => {
     expect(refused.tickers.map(({ metadata }) => metadata.ticker)).toEqual(["AAA", "BBB", option.metadata.ticker]);
     expect(refused.unreadRows).toEqual(["AAA"]);
     expect(unreadRowsNote(refused.unreadRows)).toBe("AAA did not load");
+    // With the source's reason, which `shot` prints beside the row it names.
+    expect(refused.unreadReasons).toEqual({ AAA: "No provider available for AAA" });
   });
 
   test("a named portfolio's capture reads that portfolio's rows only, never another list's", async () => {
