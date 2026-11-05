@@ -123,9 +123,13 @@ test("DOM fixed axis fits covered values with ellipses and preserves selection, 
     };
   });
   const scroll = async () => { await act(async () => { body.dispatchEvent(new testWindow.Event("scroll") as unknown as Event); }); };
+  // Ctrl+Right steps to a column's edge beside the axis (GBP at 22), not half the viewport into one.
   await act(async () => { body.dispatchEvent(new testWindow.KeyboardEvent("keydown", { key: "ArrowRight", ctrlKey: true, bubbles: true, cancelable: true }) as unknown as Event); });
   await scroll();
-  expect(bodyRef.current?.scrollLeft).toBe(24);
+  expect(bodyRef.current?.scrollLeft).toBe(22);
+  expect(headerRef.current?.scrollLeft).toBe(22);
+  // Scrolled by hand into a column, what the axis covers fits with an ellipsis.
+  body.scrollLeft = 24 * WEB_CELL_WIDTH; await scroll();
   expect(headerRef.current?.scrollLeft).toBe(24);
   for (const row of rows) {
     const cells = Array.from(row.children) as HTMLElement[];
