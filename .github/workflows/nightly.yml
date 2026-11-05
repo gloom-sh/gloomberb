@@ -51,6 +51,8 @@ jobs:
       previous_tag: ${{ steps.plan.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -74,12 +76,26 @@ jobs:
       channel: nightly
     secrets: inherit
 
+  # Every plugin the registry lists has to load in what was built, in a job
+  # with no secrets. A host that does not serve what plugins import holds the
+  # nightly back; a registry or plugin outage only warns.
+  registry-plugins:
+    needs:
+      - plan
+      - build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/load-registry-plugins.yml
+    with:
+      ref: ${{ needs.plan.outputs.sha }}
+
   publish:
     needs:
       - plan
       - build
+      - registry-plugins
     # Every build must have passed: a nightly build with a platform missing is not published.
-    if: ${{ needs.plan.outputs.publish == 'true' && needs.build.result == 'success' }}
+    if: ${{ needs.plan.outputs.publish == 'true' && needs.build.result == 'success' && needs.registry-plugins.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -92,8 +108,10 @@ jobs:
       # The commit this run started on, not the one that was built: the plan
       # may have chosen an older commit, and the release is cut with --target,
       # which needs no checkout of it. This job only runs scripts/nightly.ts,
-      # which must be the version the plan ran.
+      # which must be the version the plan ran, and check-built-files.sh.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -123,6 +141,13 @@ jobs:
             ls dist/stable-* >&2
             exit 1
           fi
+
+      # Each file is the one the build uploaded, and there is no other: the
+      # plugin check ran after the build and could reach the artifacts.
+      - name: Check the files are the ones built
+        env:
+          BUILT_SHA256: ${{ needs.registry-plugins.outputs.built-sha256 }}
+        run: bash scripts/check-built-files.sh dist
 
       - name: Write release notes
         run: bun run scripts/nightly.ts notes > "$RUNNER_TEMP/nightly-notes.md"

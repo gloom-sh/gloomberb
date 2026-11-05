@@ -1,3 +1,4 @@
+import { brokerInstanceIdOfPortfolio } from "../brokers/broker-portfolio-sync";
 import type { Portfolio, TickerPosition } from "../types/ticker";
 
 function brokerAccountIdFromPortfolioId(portfolioId: string): string | undefined {
@@ -18,12 +19,13 @@ function portfolioSyncTimestamp(portfolio: Portfolio): number {
     : 0;
 }
 
-function latestBrokerSyncByType(portfolios: Portfolio[], linkedOnly: boolean): Map<string, number> {
+/** The latest sync among the portfolios of each key; portfolios without a key are left out. */
+function latestBrokerSync(portfolios: Portfolio[], keyOf: (portfolio: Portfolio) => string | undefined): Map<string, number> {
   const latest = new Map<string, number>();
   for (const portfolio of portfolios) {
-    if (!portfolio.brokerId || (linkedOnly && !portfolio.brokerInstanceId)) continue;
-    const timestamp = portfolioSyncTimestamp(portfolio);
-    latest.set(portfolio.brokerId, Math.max(latest.get(portfolio.brokerId) ?? 0, timestamp));
+    const key = keyOf(portfolio);
+    if (!key) continue;
+    latest.set(key, Math.max(latest.get(key) ?? 0, portfolioSyncTimestamp(portfolio)));
   }
   return latest;
 }
@@ -34,10 +36,17 @@ function latestBrokerSyncByType(portfolios: Portfolio[], linkedOnly: boolean): M
  * this device. Match by the stable portfolio ID first, then by the account
  * suffix in that stable ID. A newer local broker snapshot also wins over old
  * unlinked records left in a cloud snapshot from before a reset.
+ *
+ * A broker sync speaks for its own connection only. `profiles` are the broker
+ * profiles this device keeps after the pull: an account of one linked only on
+ * another device stays whatever this device synced since, and only the
+ * accounts of a profile that is gone (removed, or replaced by a relink) give
+ * way to any newer sync of that broker here.
  */
 export function mergeLocalBrokerPortfolioIdentity(
   localPortfolios: Portfolio[],
   syncedPortfolios: Portfolio[],
+  profiles: ReadonlyArray<{ id: string }>,
 ): Portfolio[] {
   const localById = new Map(localPortfolios.map((portfolio) => [portfolio.id, portfolio] as const));
   const localByBrokerAccount = new Map<string, Portfolio[]>();
@@ -55,8 +64,27 @@ export function mergeLocalBrokerPortfolioIdentity(
       .map((portfolio) => portfolio.id)
       .filter((portfolioId) => localById.has(portfolioId)),
   );
-  const localLatestByBroker = latestBrokerSyncByType(localPortfolios, true);
-  const syncedLatestByBroker = latestBrokerSyncByType(syncedPortfolios, false);
+  // The profile a portfolio was made for: the one its copy here is linked to, else the one its stable id names.
+  const connectionOf = (portfolio: Portfolio) => (
+    localById.get(portfolio.id)?.brokerInstanceId ?? brokerInstanceIdOfPortfolio(portfolio.id)
+  );
+  const profileIds = new Set(profiles.map((profile) => profile.id));
+  const localLatestByBroker = latestBrokerSync(localPortfolios, (portfolio) => (portfolio.brokerInstanceId ? portfolio.brokerId : undefined));
+  const localLatestByConnection = latestBrokerSync(localPortfolios, (portfolio) => portfolio.brokerInstanceId);
+  const syncedLatestByConnection = latestBrokerSync(syncedPortfolios, connectionOf);
+  /** Whether a sync here is newer than a pulled broker account this device holds no linked copy of. */
+  const outdatedHere = (portfolio: Portfolio): boolean => {
+    const syncedAt = portfolioSyncTimestamp(portfolio);
+    const connection = connectionOf(portfolio);
+    // A connection linked here: its own latest sync left this account out.
+    const connectionLatest = connection ? localLatestByConnection.get(connection) : undefined;
+    if (connectionLatest !== undefined) return connectionLatest > syncedAt;
+    // Linked only on another device: nothing here knows more about it.
+    if (connection && profileIds.has(connection)) return false;
+    // Its profile is gone: a leftover from before a removal or relink.
+    const brokerLatest = portfolio.brokerId ? localLatestByBroker.get(portfolio.brokerId) : undefined;
+    return brokerLatest !== undefined && brokerLatest > syncedAt;
+  };
   const merged: Portfolio[] = [];
   const seenIds = new Set<string>();
 
@@ -89,18 +117,18 @@ export function mergeLocalBrokerPortfolioIdentity(
       continue;
     }
 
-    const localLatest = portfolio.brokerId ? localLatestByBroker.get(portfolio.brokerId) : undefined;
-    if (localLatest !== undefined && localLatest > portfolioSyncTimestamp(portfolio)) continue;
+    if (outdatedHere(portfolio)) continue;
     merged.push(portfolio);
     seenIds.add(portfolio.id);
   }
 
-  // If the newer local broker snapshot is absent from the cloud array
+  // If the newer local snapshot of a connection is absent from the cloud array
   // altogether, keep it instead of treating the older array as authoritative.
+  // A newer sync of another connection at the same broker says nothing of it.
   for (const portfolio of localPortfolios) {
     if (!portfolio.brokerInstanceId || seenIds.has(portfolio.id)) continue;
-    const localLatest = portfolio.brokerId ? localLatestByBroker.get(portfolio.brokerId) : undefined;
-    const syncedLatest = portfolio.brokerId ? syncedLatestByBroker.get(portfolio.brokerId) ?? 0 : 0;
+    const localLatest = localLatestByConnection.get(portfolio.brokerInstanceId);
+    const syncedLatest = syncedLatestByConnection.get(portfolio.brokerInstanceId) ?? 0;
     if (localLatest !== undefined && localLatest > syncedLatest) {
       merged.push(portfolio);
       seenIds.add(portfolio.id);

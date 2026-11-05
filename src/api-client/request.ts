@@ -434,6 +434,7 @@ export class CloudApiRequestTransport {
             response.status,
             parseRetryAfterMs(response.headers.get("Retry-After")),
             parseApiErrorCode(text),
+            parseApiErrorDetails(text),
           );
         }
         return response;

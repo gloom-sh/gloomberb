@@ -19,9 +19,9 @@ on:
         required: true
         type: string
 
+# Write access only where something is published.
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   # The terminal binaries, the signed macOS desktop app and the Windows
@@ -31,13 +31,32 @@ jobs:
     uses: ./.github/workflows/build-release-assets.yml
     secrets: inherit
 
-  release:
+  # Every plugin the registry lists has to load in what was built, in a job
+  # with no secrets. A host that does not serve what plugins import holds the
+  # release back; a registry or plugin outage only warns.
+  registry-plugins:
     needs:
       - build
     if: ${{ github.event_name == 'push' && always() && !cancelled() }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/load-registry-plugins.yml
+    with:
+      all-built: ${{ needs.build.result == 'success' }}
+
+  release:
+    needs:
+      - build
+      - registry-plugins
+    if: ${{ github.event_name == 'push' && always() && !cancelled() && needs.registry-plugins.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -63,6 +82,13 @@ jobs:
             [ "$platform" = macos-arm64 ] && legacy="dist/stable-$platform-Gloomberb.app.tar.zst"
             test -f "$legacy" || { echo "Missing $legacy for installs from before the rename." >&2; exit 1; }
           done
+
+      # Each file is the one the build uploaded, and there is no other: the
+      # plugin check ran after the build and could reach the artifacts.
+      - name: Check the files are the ones built
+        env:
+          BUILT_SHA256: ${{ needs.registry-plugins.outputs.built-sha256 }}
+        run: bash scripts/check-built-files.sh dist
 
       # install.sh and install.ps1 read each asset's SHA-256 from
       # `<asset>.sha256` beside it, by its download URL (the API's digests are
@@ -222,6 +248,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Check package.json matches the tag
         env:

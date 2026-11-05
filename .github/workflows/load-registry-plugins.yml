@@ -1,0 +1,148 @@
+name: Load Registry Plugins
+
+# Loads every plugin the registry lists in the terminal binaries and the macOS
+# app that build-release-assets.yml just built, after that workflow and before
+# anything is published. Release and Nightly call it, with no secrets.
+#
+# The load runs code from other repositories, so it has a job of its own: a
+# read-only token that is not left on disk, no signing, no Actions cache to
+# restore, and nothing it uploads. It reads the builds from the run's artifacts, which code
+# running there could also replace, so the checksums job sums every built file
+# first, before any plugin runs, and the jobs that publish check what they
+# download against those sums (scripts/check-built-files.sh).
+#
+# The same outcome as the check that used to run in each build: a registry
+# or plugin outage only warns, and a host that does not serve what plugins
+# import fails, which holds the release back.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit that was built. Empty checks out the commit that started the run.
+        type: string
+        default: ""
+      all-built:
+        description: >-
+          Every build passed, so every platform's files have to be there. False
+          passes over a platform whose build uploaded nothing.
+        type: boolean
+        default: true
+    outputs:
+      built-sha256:
+        description: "`sha256sum` lines for every file the builds uploaded, by its name in the merged download."
+        value: ${{ jobs.checksums.outputs.sha256 }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Before any plugin runs. A release ships what was built when one platform
+  # failed, so this sums whatever is there.
+  checksums:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      sha256: ${{ steps.sum.outputs.sha256 }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: built
+          merge-multiple: true
+
+      - id: sum
+        name: Sum the built files
+        run: |
+          set -euo pipefail
+          mkdir -p built
+          cd built
+          find . -type f -printf '%P\0' | LC_ALL=C sort -z | xargs -0 -r sha256sum -- > "$RUNNER_TEMP/built.sha256"
+          cat "$RUNNER_TEMP/built.sha256"
+          {
+            echo "sha256<<CHECKSUMS"
+            cat "$RUNNER_TEMP/built.sha256"
+            echo "CHECKSUMS"
+          } >> "$GITHUB_OUTPUT"
+
+  load:
+    name: load (${{ matrix.terminal }})
+    needs: checksums
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The musl builds only run in the Alpine container build.ts starts,
+          # and this check has not been run with Windows paths.
+          - os: macos-latest
+            terminal: gloomberb-darwin-arm64
+            desktop: gloomberb-desktop-macos-arm64
+          - os: macos-15-intel
+            terminal: gloomberb-darwin-x64
+          - os: ubuntu-latest
+            terminal: gloomberb-linux-x64
+          - os: ubuntu-24.04-arm
+            terminal: gloomberb-linux-arm64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      # By pattern, which matches nothing when the build uploaded nothing.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ matrix.terminal }}
+          path: ${{ runner.temp }}/terminal
+          merge-multiple: true
+
+      - if: ${{ matrix.desktop }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ matrix.desktop }}
+          path: ${{ runner.temp }}/desktop
+          merge-multiple: true
+
+      # The terminal binary, and on Apple Silicon the `gloom` command of the
+      # app as it ships, with the Bun it ships.
+      - name: Load registry plugins in the built terminals
+        env:
+          ALL_BUILT: ${{ inputs.all-built }}
+          TERMINAL_ARTIFACT: ${{ matrix.terminal }}
+          DESKTOP_ARTIFACT: ${{ matrix.desktop }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          args=()
+          missing=()
+
+          terminals=("$RUNNER_TEMP"/terminal/gloomberb-*.gz)
+          if [ ${#terminals[@]} -eq 1 ]; then
+            args+=(--terminal "${terminals[0]}")
+          else
+            missing+=("$TERMINAL_ARTIFACT")
+          fi
+
+          if [ -n "$DESKTOP_ARTIFACT" ]; then
+            archives=("$RUNNER_TEMP"/desktop/*-macos-arm64-Gloom.app.zip)
+            if [ ${#archives[@]} -eq 1 ]; then
+              ditto -x -k "${archives[0]}" "$RUNNER_TEMP/app"
+              args+=(--terminal "$RUNNER_TEMP/app/Gloom.app/Contents/Resources/gloom")
+            else
+              missing+=("$DESKTOP_ARTIFACT")
+            fi
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            if [ "$ALL_BUILT" = true ]; then
+              echo "::error::No build to load the plugins in: ${missing[*]}"
+              exit 1
+            fi
+            echo "::notice::Not built, so not loaded: ${missing[*]}"
+          fi
+          if [ ${#args[@]} -gt 0 ]; then
+            bun run plugins:registry:packaged "${args[@]}"
+          fi

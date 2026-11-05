@@ -151,10 +151,22 @@ export function mergeConfigPayload(
   // A device on an older version may still send a name or sign (Canadian dollar, CA$): it applies as its code, as a saved one loads.
   if (typeof next.baseCurrency === "string" && next.baseCurrency.trim()) next.baseCurrency = normalizeStoredBaseCurrency(next.baseCurrency);
   assign("refreshIntervalMinutes");
+  // Profiles before portfolios: the profiles that stay tell an account linked
+  // on another device from what a removed profile left behind.
+  const syncedIds = Array.isArray(lastSynced?.brokerInstances) ? idsOf(lastSynced.brokerInstances) : null;
+  if (Array.isArray(payload.brokerInstances)) {
+    next.brokerInstances = mergeBrokerInstances(
+      config.brokerInstances,
+      payload.brokerInstances as Array<Partial<BrokerInstanceConfig>>,
+      canApply("brokerInstances"),
+      syncedIds,
+      payload.brokerInstancesMergedById === true,
+    );
+  }
   if ("portfolios" in payload && canApply("portfolios")) {
     const syncedPortfolios = payload.portfolios;
     next.portfolios = Array.isArray(syncedPortfolios)
-      ? mergeLocalBrokerPortfolioIdentity(config.portfolios, syncedPortfolios as Portfolio[])
+      ? mergeLocalBrokerPortfolioIdentity(config.portfolios, syncedPortfolios as Portfolio[], next.brokerInstances)
       : syncedPortfolios as AppConfig["portfolios"];
   }
   assign("watchlists");
@@ -210,16 +222,8 @@ export function mergeConfigPayload(
     next.activeLayoutIndex = payload.activeLayoutIndex as number;
   }
 
-  if (Array.isArray(payload.brokerInstances)) {
-    const syncedIds = Array.isArray(lastSynced?.brokerInstances) ? idsOf(lastSynced.brokerInstances) : null;
-    next.brokerInstances = mergeBrokerInstances(
-      config.brokerInstances,
-      payload.brokerInstances as Array<Partial<BrokerInstanceConfig>>,
-      canApply("brokerInstances"),
-      syncedIds,
-      payload.brokerInstancesMergedById === true,
-    );
-    if (syncedIds) next.portfolios = withoutRemovedBrokerPortfolios(config, next, syncedIds, payload.portfolios);
+  if (Array.isArray(payload.brokerInstances) && syncedIds) {
+    next.portfolios = withoutRemovedBrokerPortfolios(config, next, syncedIds, payload.portfolios);
   }
   return next;
 }

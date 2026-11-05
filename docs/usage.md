@@ -2284,6 +2284,8 @@ Under each question, every source Gloom used is one line: what it read, for whic
 
 The sources stay in the app until you share them. **Copy Answer with Source Links** in the pane menu copies the answer with a share link for each source, made then, so whoever you send it to opens the same panes; pasted into chat, the links become the same chips. A source whose link could not be made (the share limit reached, say) is copied without one, and a message names it.
 
+**What to ask next.** Under the newest answer, up to three questions to ask next, each the same chip with its key in the square (`1`, `2`, `3`). A click on one, or its key once Esc has left the question field, asks it. They are questions Gloom's tools can answer, and a reopened conversation shows its answers without them.
+
 **Watchlist changes.** Ask Gloom can add a ticker to one of your own watchlists (the one you name, else your first) or take one off. Team watchlists and portfolios it leaves alone. It asks first, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves it. Unanswered for about a minute, it closes and nothing changes.
 
 **Keys.** Esc leaves the question field for the answer, Enter goes back to the field.
@@ -2291,13 +2293,14 @@ The sources stay in the app until you share them. **Copy Answer with Source Link
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Walk the sources |
+| `1` to `3` | Ask a suggested next question |
 | `t` | List the tickers in the answer |
 | `c` | Stop an answer that is still coming |
 | `r` | Ask a failed or stopped question again |
 | `n` | Start a new conversation |
 | Left (or Left in an empty field) | List earlier conversations |
 
-Closing the pane keeps the conversation (opening it with a question starts a new one). The remaining daily questions show in the footer once 20 or fewer are left.
+Closing the pane keeps the conversation (opening it with a question starts a new one). The remaining daily questions show in the footer once 20 or fewer are left. At the limit the answer says how many questions you used and when the count resets, and on the free plan **Upgrade to Pro** (`$`) is beside it, for Pro's higher daily limit.
 
 ### Asking about a pane
 

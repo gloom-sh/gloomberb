@@ -97,6 +97,7 @@ let officialIds: ReadonlySet<string> | null = null;
 let officialLookup: Promise<void> | null = null;
 let automationDepth = 0;
 const builtinPlugins = new WeakSet<object>();
+const openListeners = new Set<() => void>();
 
 /** Reads the config switch and the environment. Absent means on. */
 export function usageCountsEnabled(
@@ -196,10 +197,25 @@ export function automationActive(): boolean {
   return automationDepth > 0;
 }
 
+/**
+ * Calls `listener` each time the user opens a function, with nothing about
+ * which one, whether or not usage counts are on. The web terminal's One Tap
+ * prompt waits for one; automation never reaches it.
+ */
+export function subscribeFunctionOpens(listener: () => void): () => void {
+  openListeners.add(listener);
+  return () => {
+    openListeners.delete(listener);
+  };
+}
+
 /** Counts one open of a function by the user. Never throws. */
 export function recordFunctionOpen(fn: UsageFunction): void {
   try {
     if (automationDepth > 0) return;
+    for (const listener of openListeners) {
+      try { listener(); } catch { /* Intentional ignore: a listener never stops the open. */ }
+    }
     if (host && !host.isEnabled()) return;
     count(fn, "opened");
     scheduleFlush();

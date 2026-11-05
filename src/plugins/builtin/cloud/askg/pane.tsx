@@ -82,6 +82,7 @@ import {
   type ASKGSourceTarget,
 } from "./sources";
 import { AnswerSources, answerSourceLabel } from "./answer-sources";
+import { AnswerFollowUps, followUpKey } from "./answer-follow-ups";
 import { openSharedPane } from "../../../../shares/open";
 import { createShare, openLiveShareUrl } from "../../../../shares/api";
 import { ApiRequestError } from "../../../../api-client/errors";
@@ -122,6 +123,7 @@ import {
   pendingConfirmation,
   toolResultTables,
   type ASKGConversationState,
+  type ASKGErrorState,
   type ASKGToolRow,
   type ASKGTurn,
   type ASKGTurnFeedback,
@@ -173,6 +175,11 @@ function previewLines(preview: JsonValue | undefined): string[] {
 /** Upgrade from a Pro-only answer, on the key every Pro prompt uses. */
 const UPGRADE_KEY = CLOUD_PLAN_KEY;
 
+/** A daily cap on the standard tier, which Pro's higher limit lifts. */
+function upgradeLiftsCap(error: ASKGErrorState): boolean {
+  return error.code === "daily_turn_cap" && error.tier === "standard";
+}
+
 /**
  * Three questions a first look can send with one click, worded for what the
  * profile holds: a portfolio, a ticker on screen, a watchlist.
@@ -207,6 +214,7 @@ function askgExampleQuestions({
 
 const NO_EXAMPLES: string[] = [];
 const NO_SOURCES: readonly ASKGAnswerSource[] = [];
+const NO_FOLLOW_UPS: readonly string[] = [];
 
 /** Rate the answer the keyboard is on: the selected one, else the latest. */
 const GOOD_ANSWER_KEY = "g";
@@ -439,8 +447,10 @@ function TurnView({
   openTicker,
   tools,
   sources,
+  followUps,
   displayContext,
   onOpenSource,
+  onAskFollowUp,
   onRetry,
   onUpgrade,
   onRate,
@@ -464,8 +474,11 @@ function TurnView({
   tools: ReactNode;
   /** What the answer cites, or the reads behind it when it cites none. */
   sources: readonly ASKGAnswerSource[];
+  /** Questions to ask next: only the newest answer offers them. */
+  followUps: readonly string[];
   displayContext: ToolDisplayContext;
   onOpenSource: (source: ASKGAnswerSource) => void;
+  onAskFollowUp: (question: string) => void;
   onRetry: () => void;
   onUpgrade: () => void;
   onRate: (rating: ASKGFeedbackRating) => void;
@@ -518,6 +531,7 @@ function TurnView({
           onOpen={onOpenSource}
         />
       ) : null}
+      {finished ? <AnswerFollowUps questions={followUps} width={width} onAsk={onAskFollowUp} /> : null}
       {rateable ? (
         <AnswerFeedback
           feedback={turn.feedback}
@@ -549,7 +563,7 @@ function TurnView({
             figures={false}
           />
           {/* A row of its own, so the desktop draws a button rather than a bar. */}
-          {turn.error.code === "tier_required" ? (
+          {turn.error.code === "tier_required" || upgradeLiftsCap(turn.error) ? (
             <Box flexDirection="row" paddingTop={1}>
               <Button label="Upgrade to Pro" variant="primary" shortcut={latest ? UPGRADE_KEY : undefined} onPress={onUpgrade} />
             </Box>
@@ -745,7 +759,12 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [state]);
   const needsUpgrade = useMemo(() => {
     const turn = activeTurn(state);
-    return turn?.status === "error" && turn.error?.code === "tier_required";
+    return turn?.status === "error" && !!turn.error && (turn.error.code === "tier_required" || upgradeLiftsCap(turn.error));
+  }, [state]);
+  // What to ask next: the newest answer's suggestions, once it is finished.
+  const followUps = useMemo(() => {
+    const turn = activeTurn(state);
+    return turn?.status === "complete" && turn.followUps ? turn.followUps : NO_FOLLOW_UPS;
   }, [state]);
 
   const profileExamples = useMemo(() => {
@@ -1523,6 +1542,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         return;
       }
     }
+    // Each suggested question asks on its key, unless a thumbs down's reasons have them.
+    const followUp = followUps.find((_question, index) => isPlainKey(event, followUpKey(index)));
+    if (followUp && !feedbackFollowUp && !running) {
+      consume();
+      askAndCompose(followUp);
+      return;
+    }
     if (isPlainKey(event, GOOD_ANSWER_KEY, BAD_ANSWER_KEY) && feedbackTarget) {
       consume();
       rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down");
@@ -1707,6 +1733,18 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           { id: "feedback-bad", key: BAD_ANSWER_KEY, label: "ad", title: "Bad Answer", onPress: () => rateAnswer(feedbackTarget, "down") },
         );
       }
+      // `[1] [2] [3] ask next`: the keys read as one action, each its own question.
+      if (!feedbackFollowUp && !running) {
+        followUps.forEach((question, index) => {
+          list.push({
+            id: `follow-up-${index}`,
+            key: followUpKey(index),
+            label: index === followUps.length - 1 ? " ask next" : "",
+            title: `Ask: ${question}`,
+            onPress: () => askAndCompose(question),
+          });
+        });
+      }
       if (answerTickers.length > 0) list.push({ id: "tickers", key: "t", label: "ickers", onPress: () => void chooseAnswerTicker() });
     }
     if (state.turns.length > 0 && !confirmation) list.push({ id: "new", key: "n", label: "ew", title: "New Conversation", onPress: newConversation });
@@ -1715,6 +1753,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [
     planAccess.emailVerified,
     answerPaneConsent,
+    askAndCompose,
     answerTickers.length,
     canOpenPane,
     chooseAnswerSource,
@@ -1728,6 +1767,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     feedbackFollowUp,
     feedbackTarget,
     focusSidebar,
+    followUps,
     inputFocused,
     leaveSidebar,
     listRoom,
@@ -1896,8 +1936,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
               />
             )}
             sources={turnSources[index] ?? NO_SOURCES}
+            followUps={turn.id === lastTurnId ? followUps : NO_FOLLOW_UPS}
             displayContext={displayContext}
             onOpenSource={openSource}
+            onAskFollowUp={(question) => {
+              leaveSidebar();
+              askAndCompose(question);
+            }}
             onRetry={() => retryAndCompose(turn.id)}
             onUpgrade={upgrade}
             // The controls keep their press from the column behind them, so

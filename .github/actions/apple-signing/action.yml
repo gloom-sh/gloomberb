@@ -2,12 +2,20 @@ name: Configure Apple signing
 description: >-
   Import the Developer ID certificate into a temporary keychain and write the
   notary API key where electrobun expects it. The calling step passes the
-  signing secrets in its env.
+  signing secrets in its env. With `cleanup: "true"` it removes the keychain
+  and the key instead: run that with `if: always()` once notarization is done.
+
+inputs:
+  cleanup:
+    description: Delete the keychain and the notary key this action set up.
+    required: false
+    default: "false"
 
 runs:
   using: composite
   steps:
-    - shell: bash
+    - if: ${{ inputs.cleanup != 'true' }}
+      shell: bash
       run: |
         set -euo pipefail
 
@@ -31,6 +39,8 @@ runs:
         KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
         NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${ELECTROBUN_APPLEAPIKEY}.p8"
 
+        # The certificate is only needed until it is in the keychain.
+        trap 'rm -f "$CERTIFICATE_PATH"' EXIT
         printf "%s" "$APPLE_CERTIFICATE_BASE64" | decode_base64 > "$CERTIFICATE_PATH"
         printf "%s" "$ELECTROBUN_APPLEAPIKEY_BASE64" | decode_base64 > "$NOTARY_KEY_PATH"
 
@@ -38,8 +48,21 @@ runs:
         security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
         security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
         security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        rm -f "$CERTIFICATE_PATH"
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
         security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
         security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
         echo "ELECTROBUN_APPLEAPIKEYPATH=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
+    # By the paths above rather than by what the setup recorded, so a setup
+    # that stopped half way is cleaned up too.
+    - if: ${{ inputs.cleanup == 'true' }}
+      shell: bash
+      run: |
+        set -uo pipefail
+        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+        if [ -e "$KEYCHAIN_PATH" ]; then
+          security delete-keychain "$KEYCHAIN_PATH" || rm -f "$KEYCHAIN_PATH"
+        fi
+        rm -f "$RUNNER_TEMP/apple-signing-certificate.p12" "$RUNNER_TEMP"/AuthKey_*.p8

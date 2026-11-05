@@ -16,7 +16,8 @@ refreshes only the rows it lists: `FUT gold` asks for gold alone, and a row is
 asked for when a search or an opened section first lists it. The listed rows go
 out in up to four batches at once, and a batch with no answer after five
 seconds is given up, so one slow contract cannot hold the rest; its rows keep
-the cached quote, marked stale. The 1W, 1M and YTD returns load history only
+the cached quote, marked stale, until the answer arrives, and a late answer
+paints its rows then, unless a newer load has started. The 1W, 1M and YTD returns load history only
 for the listed rows. The footer, the empty state and the source line of
 `fn FUT` and `shot FUT` count the listed rows alone, so `fn FUT gold` is dated
 by gold's quote.

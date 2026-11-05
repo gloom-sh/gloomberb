@@ -109,6 +109,33 @@ export class CloudAuthApi {
     return result.user;
   }
 
+  /**
+   * Signs in, or up, with the ID token Google One Tap handed the web
+   * terminal. The server checks it against its Google client and answers the
+   * way an email login does: the user, and the session in a cookie.
+   */
+  async signInWithGoogle(idToken: string, isCurrent: () => boolean = () => true): Promise<AuthUser> {
+    const result = await this.options.request<{ user: AuthUser }>(
+      "/auth/one-tap/callback",
+      {
+        method: "POST",
+        body: JSON.stringify({ idToken }),
+      },
+      isCurrent,
+    );
+    if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+    this.options.requireCapturedSession(
+      "Signed in with Google, but Gloom could not save the login session. Please try again.",
+    );
+    this.options.setCurrentUser(result.user);
+    return result.user;
+  }
+
+  /** The Google client One Tap runs on; fails while the server has One Tap off. */
+  async getOneTapConfig(): Promise<{ clientId: string }> {
+    return this.options.request<{ clientId: string }>("/cloud/one-tap", { method: "GET" });
+  }
+
   /** Starts a QR / device sign-in; the mobile app approves the returned user code. */
   async startDeviceSignIn(body: {
     clientName?: string;
