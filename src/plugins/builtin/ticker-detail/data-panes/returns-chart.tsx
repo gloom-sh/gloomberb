@@ -7,6 +7,7 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "../../../../time-series/resolution";
 import type { ChartPanelSpec, ResolvedSeries } from "../../../../time-series/types";
 import { formatPercentRaw } from "../../../../utils/format";
+import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { returnClockZone } from "./returns-model";
 import type { ReturnBar, ReturnBars } from "./returns-chart-model";
 
@@ -88,6 +89,9 @@ export function ReturnsChart({ bars, resolution, venue, width, height, focused, 
   }, [bars, colors.negative, colors.positive, colors.textDim, resolution]);
 
   const latestDate = useMemo(() => bars.latest ? new Date(bars.latest.time) : null, [bars.latest]);
+  // A capture counts the bars drawn, as a chart pane's does, not the figures above them.
+  const plottedValueCount = useMemo(() => bars.bars.filter((bar) => bar.move !== null).length, [bars.bars]);
+  useRemoteUiNode({ role: "chart-data", label: "Rendered returns chart", metadata: { kind: "returns", version: 1, plottedValueCount } });
 
   return (
     <CompositeChart

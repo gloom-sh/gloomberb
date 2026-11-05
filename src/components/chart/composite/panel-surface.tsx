@@ -1246,7 +1246,7 @@ export function CompositePanelSurface({
       {projectedLevels.length > 0 ? (
         // A level's label leaves its value to the axis, unless the cursor's covers it there.
         <PanelLevelLabels view={cursorView}>
-          {(activeCursorYRatio) => (isDesktopWeb
+          {(activeCursorYRatio, cursorValues) => (isDesktopWeb
             ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
             : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1))
           ).map((entry) => {
@@ -1255,7 +1255,11 @@ export function CompositePanelSurface({
             const axisMarkers = levelDomain?.side === "left" ? leftAxisMarkers : rightAxisMarkers;
             const cursorCovers = activeCursorYRatio !== null && Math.abs(activeCursorYRatio - yRatio) * panel.height < 1;
             const axisVisible = !cursorCovers && (level.axisLabel?.length ?? 0) <= axisWidth && !!axisMarkers?.some((marker) => marker.id === level.id);
-            const label = levelLabelText(level, axisVisible);
+            // A cursor on a bar at the level's own value (RETURN's on its best
+            // day) reads that value on the axis already: the label does not repeat it.
+            const cursorReadsLevel = cursorCovers && !!levels
+              && cursorValues.some((entry) => entry.seriesId === levels.seriesId && entry.value === level.value);
+            const label = levelLabelText(level, axisVisible || cursorReadsLevel);
             const labelStyle = isDesktopWeb ? {
               ...levelLabelStyle(entry, colors.background), left: "auto", right: (rightAxisWidth + (rightAxisWidth ? axisGap : 0) + 1) * cellWidthPx,
               maxWidth: Math.max(1, plotWidth - 2) * cellWidthPx,
@@ -1455,7 +1459,8 @@ function PanelValueAxis({
 /** A panel's level labels, which step aside where the cursor's label covers theirs on the axis. */
 function PanelLevelLabels({ view, children }: {
   view: PanelCursorView;
-  children: (activeCursorYRatio: number | null) => ReactNode;
+  children: (activeCursorYRatio: number | null, cursorValues: CompositeChartScene["cursorValues"]) => ReactNode;
 }) {
-  return <>{children(usePanelCursor(view).activeCursorYRatio)}</>;
+  const { activeCursorYRatio, scene } = usePanelCursor(view);
+  return <>{children(activeCursorYRatio, scene.cursorValues)}</>;
 }

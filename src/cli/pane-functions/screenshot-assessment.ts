@@ -82,10 +82,8 @@ export function assessPaneScreenshot(
     ?? (resolved.pane.id === "kelly-sizer" || resolved.pane.id === "earnings-calendar" ? collectShotSymbols(resolved, rawArg)
       : payload.financials.map(([symbol]) => symbol));
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom" && !evidenceHook;
-  // A live pane without a table, such as a ticker overview, shows its data
-  // as labeled values.
   const rowCount = usesLiveDomEvidence
-    ? render.rows.length || filledKeyValueCount(render.visibleKeyValues)
+    ? liveDomRowCount(render)
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
   const unavailableSymbols = usesLiveDomEvidence
     ? []
@@ -198,6 +196,20 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 }
 
 const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
+
+/**
+ * What a live pane shows, counted: its table's rows; else the values its
+ * chart plotted, as a chart pane counts them (RETURN's chart view, whose
+ * figures above the bars are not its rows); else, for a pane without a table
+ * such as a ticker overview, its labeled values.
+ */
+export function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows" | "visibleKeyValues" | "semanticUi">): number {
+  const plotted = (render.semanticUi ?? []).reduce((count, node) => (
+    node.role === "chart-data" && isRecord(node.metadata) && typeof node.metadata.plottedValueCount === "number"
+      ? count + Math.max(0, node.metadata.plottedValueCount) : count
+  ), 0);
+  return render.rows.length || plotted || filledKeyValueCount(render.visibleKeyValues);
+}
 
 /** Labeled values that hold data. A grid of labels over "-" placeholders,
  * as for a ticker without fundamentals, is an empty pane. */

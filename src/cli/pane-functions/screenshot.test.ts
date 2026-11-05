@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, missingActiveTabSelections, shotLoadedNothing, shotTableRows } from "./screenshot-assessment";
+import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotLoadedNothing, shotTableRows } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
 import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
@@ -120,6 +120,17 @@ test("counts only labeled values that hold data", () => {
   const row = (label: string, value: string) => ({ label, text: `${label} ${value}` });
   expect(filledKeyValueCount([row("P/E", "-"), row("Beta", "—"), row("Yield", "N/A"), row("EPS", "")])).toBe(0);
   expect(filledKeyValueCount([row("P/E", "-12.5"), row("Sector", "Technology"), row("Beta", "-")])).toBe(2);
+});
+
+// Regression: RETURN's chart view reported its three figures (Total, Best, Worst) as its rows.
+test("a live pane counts its table's rows, else the values its chart plotted, else its labeled values", () => {
+  const figures = ["Total", "Best", "Worst"].map((label) => ({ label, text: `${label} +1.00%` }));
+  const chart = (plottedValueCount: number) => [{ role: "chart-data", metadata: { kind: "returns", version: 1, plottedValueCount } } as RemoteUiNodeSnapshot];
+  const tableRow = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "Date", text: "2026-11-04" }] };
+  expect(liveDomRowCount({ rows: [], visibleKeyValues: figures, semanticUi: chart(251) })).toBe(251);
+  expect(liveDomRowCount({ rows: [tableRow], visibleKeyValues: figures, semanticUi: [] })).toBe(1);
+  // A chart with no bars (the window failed to load) leaves the figures to count.
+  expect(liveDomRowCount({ rows: [], visibleKeyValues: figures, semanticUi: chart(0) })).toBe(3);
 });
 
 test("typed option scenario screenshot freezes report inputs without an unrelated market request", async () => {
