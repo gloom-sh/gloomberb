@@ -326,6 +326,24 @@ export function portfolioRiskTickers(
       positions(ticker, portfolioId).length > 0,
   );
 }
+/** Below this share of gross exposure, a book's net value is too small to state its basket per (a market-neutral book). */
+const NET_BASIS_MIN_SHARE = 0.1;
+const BASKET_NET_NOTE = "Basket returns, volatility, betas and stresses are per the book's net value, longs less shorts, as a fund states them.";
+const BASKET_GROSS_NOTE = "Basket returns, volatility, betas and stresses are per gross exposure, longs plus shorts at their absolute value: the book's net value is under 10% of it.";
+
+/**
+ * What a basket's returns, read per its gross value, are multiplied by to read
+ * per its net value: gross over net, 1 for a long-only basket; 1 and `gross`
+ * when the net is under a tenth of the gross (or short), which no fund states
+ * its risk per.
+ */
+function basketNetScale(values: readonly number[]): { factor: number; basis: "net" | "gross" } {
+  const gross = values.reduce((sum, value) => sum + Math.abs(value), 0);
+  const net = values.reduce((sum, value) => sum + value, 0);
+  if (!(gross > 0)) return { factor: 1, basis: "net" };
+  return net >= NET_BASIS_MIN_SHARE * gross ? { factor: gross / net, basis: "net" } : { factor: 1, basis: "gross" };
+}
+
 /** The basket takes a short at its signed current weight; futures, options and crypto stay out with their reason. */
 const BASKET_TAKES = { shorts: true } as const;
 const signedQuantity = (lots: TickerRecord["metadata"]["positions"]) =>
@@ -840,11 +858,17 @@ export function buildPortfolioRisk(
         : [],
     ),
   ];
+  // A hedged basket's returns are stated per its net value, longs less shorts, as a fund states them (a 130/30
+  // book's beta reads about 1.0); only a book whose net is under a tenth of its gross is read per gross exposure.
+  // A long-only basket's net is its gross: nothing changes.
+  const basketScale = basketNetScale(members.map((row) => row.value ?? 0));
+  if (basketScale.basis === "gross") notes.push(BASKET_GROSS_NOTE);
+  else if (basketScale.factor !== 1) notes.push(BASKET_NET_NOTE);
   const basket = members.length
     ? computeWeightedPortfolioReturns(
         members.map((row) => ({ weight: row.weight!, returns: row.returns })),
         { signed: true },
-      )
+      ).map((point) => ({ ...point, value: point.value * basketScale.factor }))
     : [];
   const proxy = (symbol: string) => {
     const instrument = RISK_FACTOR_INSTRUMENTS.find(
@@ -988,7 +1012,8 @@ export function buildPortfolioRisk(
           returns: row.returns,
         })),
         { spyReturns: spy, accountCurrency: portfolio.currency, bookValue: marketValue },
-      )
+      // Per the net value, as the basket's returns are; its proxied shares stay shares of the gross basket.
+      ).map((replay) => replay.value == null ? replay : { ...replay, value: replay.value * basketScale.factor })
     : null;
   if (episodes) {
     const issues = episodeIssues(episodes);

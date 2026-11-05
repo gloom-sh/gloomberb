@@ -390,10 +390,17 @@ test("a short enters the basket at its signed weight, not left out", () => {
   expect(model.coverage).toMatchObject({ coveredValue: 440, share: 1, leftOut: [], sufficient: true });
   expect(model.holdings.map((row) => row.weight)).toEqual([0.75, -0.25]);
   expect(model.rows.holdings.find((row) => row.label === "IWM")).toMatchObject({ value: -25 });
-  // Both proxies move alike here, so the short halves the basket: its volatility is half SPY's alone.
+  // Both proxies move alike here, so per the gross $440 the short halves the basket's move; per the net $220, as a
+  // fund states it, the basket moves as SPY does: a 150/50 book of one market reads its volatility and beta as SPY's.
   const long = buildPortfolioRisk(portfolio, [holding("SPY", 3)], market());
   const volatility = (risk: typeof model) => risk.metrics.find((row) => row.id === "volatility")!.value!;
-  expect(volatility(model)).toBeCloseTo(volatility(long) / 2, 10);
+  expect(volatility(model)).toBeCloseTo(volatility(long), 10);
+  expect(model.notes.filter((note) => note.includes("per the book's net value"))).toHaveLength(1);
+  // A long-only book is read as before, with nothing said; a market-neutral one per gross exposure, said once.
+  expect(long.notes.some((note) => /per (the book's net value|gross exposure)/.test(note))).toBe(false);
+  const neutral = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -3)], market());
+  expect(neutral.notes.filter((note) => note.includes("per gross exposure"))).toHaveLength(1);
+  expect(volatility(neutral)).toBeCloseTo(0, 10);
 });
 test("a crypto holding is excluded by name with its reason, not folded into the equity basket", () => {
   const eth = createTestTicker("ETH-USD", "Ethereum USD", {

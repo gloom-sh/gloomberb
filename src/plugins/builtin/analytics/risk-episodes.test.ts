@@ -97,3 +97,28 @@ test("closes that fail to load are warnings: a holding's is replayed by proxy, S
   expect(spy.every((replay) => replay.value == null)).toBe(true);
   expect(episodeIssues(spy).warnings).toEqual(["Historical episodes: SPY daily closes did not load: UPSTREAM_RATE_LIMIT."]);
 });
+
+test("a short replayed by proxy reads as a short at its share of the gross basket, never as a negative share", async () => {
+  const spy = returns();
+  const window = { [covid.id]: { start: { date: covid.start, close: 100 }, end: { date: covid.end, close: 66 } } };
+  const reader: EpisodeReader = {
+    async instrument(instrument) {
+      return instrument.symbol === "GDX" ? {} : window;
+    },
+    async currency() {
+      return {};
+    },
+  };
+  const history = await fetchRiskEpisodeHistory([
+    { instrument: { symbol: "NEM", exchange: "NYSE" }, currency: null },
+    { instrument: { symbol: "GDX", exchange: "ARCA" }, currency: null },
+  ], "USD", reader);
+  const [replay] = replayEpisodes(history, [
+    { id: "NYSE:NEM", symbol: "NEM", weight: 0.75, value: 750, convertedFrom: null, returns: spy },
+    { id: "ARCA:GDX", symbol: "GDX", weight: -0.25, value: -250, convertedFrom: null, returns: spy },
+  ], { spyReturns: spy, accountCurrency: "USD", bookValue: 1000 });
+  expect(episodeEvidence(replay!, "USD")).toBe("% of basket; GDX (short) by beta proxy, 25% of basket; 19 Feb to 23 Mar 2020 closes; SPY -34.0%; price return");
+  expect(episodeIssues([replay!]).notes).toEqual([
+    "GDX (short, 25% of the basket, 25% of the book) has no daily closes across Covid crash 2020; that replay moves it by its beta of 1.00 to SPY.",
+  ]);
+});
