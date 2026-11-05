@@ -9,13 +9,16 @@
  * summary takes its widest form ("PRE-MKT · 5h 30m"). The checks put the
  * header in each update state and window mode from the page
  * (`__paneChrome.header`) and count what Help and Restart were pressed for.
- * Nothing is fetched: SPY comes from an invented source.
+ * Opening the command bar drops its sheet under the prompt, listing the
+ * built-in commands. Nothing is fetched: SPY comes from an invented source.
  */
 import { useLayoutEffect } from "react";
+import { CommandBar } from "../../src/components/command-bar/surface";
 import { Header } from "../../src/components/layout/header";
 import { setWindowFullscreen } from "../../src/components/layout/window-fullscreen";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../src/market-data/coordinator";
-import { useAppDispatch } from "../../src/state/app/context";
+import type { PluginRegistry } from "../../src/plugins/registry";
+import { useAppDispatch, useAppSelector, useAppStateRef } from "../../src/state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../src/test-support/data-provider";
 import { Box } from "../../src/ui";
 import type { ReleaseInfo, UpdateProgress } from "../../src/updater";
@@ -68,8 +71,10 @@ export interface HeaderFixtureHandle {
   /** Puts the update slot in one of HEADER_UPDATE_STATES. */
   show(state: string): void;
   fullscreen(on: boolean): void;
-  /** Opens or closes the command bar, whose input the prompt then hosts. */
-  commandBar(open: boolean): void;
+  /** Opens or closes the command bar, whose input the prompt then hosts, with `query` typed. */
+  commandBar(open: boolean, query?: string): void;
+  /** Sets the app's font size, as FONT+ and FONT- do. */
+  fontSize(size: number): void;
   helpOpens: number;
   restarts: number;
 }
@@ -120,6 +125,8 @@ export function installHeaderMarketData(): void {
 /** The top bar over an empty workspace; `handle` is where the checks drive it from. */
 export function HeaderFixture({ handle }: { handle: HeaderFixtureHandle }) {
   const dispatch = useAppDispatch();
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  const stateRef = useAppStateRef();
   useLayoutEffect(() => {
     handle.show = (name) => {
       const state = HEADER_UPDATE_STATES[name];
@@ -131,8 +138,9 @@ export function HeaderFixture({ handle }: { handle: HeaderFixtureHandle }) {
       dispatch({ type: "SET_UPDATE_NOTICE", notice: state.updateNotice ?? null });
     };
     handle.fullscreen = setWindowFullscreen;
-    handle.commandBar = (open) => dispatch({ type: "SET_COMMAND_BAR", open, query: "" });
-  }, [dispatch, handle]);
+    handle.commandBar = (open, query = "") => dispatch({ type: "SET_COMMAND_BAR", open, query });
+    handle.fontSize = (fontSize) => dispatch({ type: "SET_CONFIG", config: { ...stateRef.current.config, fontSize } });
+  }, [dispatch, handle, stateRef]);
   return (
     <Box flexDirection="column" width="100%" height="100%">
       <Header
@@ -140,6 +148,42 @@ export function HeaderFixture({ handle }: { handle: HeaderFixtureHandle }) {
         onRestartForUpdate={() => { handle.restarts += 1; }}
       />
       <Box flexGrow={1} />
+      {commandBarOpen && (
+        <CommandBar
+          dataProvider={FIXTURE_DATA_PROVIDER}
+          tickerRepository={FIXTURE_TICKER_REPOSITORY}
+          pluginRegistry={FIXTURE_REGISTRY}
+          quitApp={() => {}}
+        />
+      )}
     </Box>
   );
 }
+
+const FIXTURE_DATA_PROVIDER = createTestDataProvider({ id: "header-fixture-search", name: "Header fixture" });
+/** What the sheet lists from besides the built-in commands: nothing, no plugins. */
+const FIXTURE_REGISTRY = {
+  panes: new Map(),
+  paneTemplates: new Map(),
+  commands: new Map(),
+  commandBarSearchProviders: new Map(),
+  tickerActions: new Map(),
+  brokers: new Map(),
+  allPlugins: new Map(),
+  events: { emit: () => {} },
+  getCommandBarSearchProviderPluginId: () => undefined,
+  getEnabledTickerActions: () => [],
+  getCommandPluginId: () => undefined,
+  getPaneTemplatePluginId: () => undefined,
+  getPluginPaneIds: () => [],
+  getPluginPaneTemplateIds: () => [],
+  getTermSize: () => ({ width: 160, height: 40 }),
+  hasPaneSettings: () => false,
+  resolvePaneSettings: () => null,
+  notify: () => {},
+} as unknown as PluginRegistry;
+const FIXTURE_TICKER_REPOSITORY = {
+  loadTicker: async () => null,
+  createTicker: async (metadata: unknown) => ({ metadata }),
+  saveTicker: async () => {},
+} as unknown as Parameters<typeof CommandBar>[0]["tickerRepository"];

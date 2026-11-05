@@ -171,7 +171,15 @@ function HeaderPromptInput({
 
   const ghostLeft = Math.max(0, Math.min(query.length, width - 1));
   return (
-    <Box width={width} height={1} position="relative" style={nativePaneChrome ? undefined : { overflow: "hidden" }}>
+    // The desktop field takes what the prompt has left after its caret: a window
+    // too narrow for Help and the market summary beside the open prompt squeezes
+    // it, and a field wider than that scrolled the caret out of view on focus.
+    <Box
+      {...(nativePaneChrome ? { flexGrow: 1, flexShrink: 1, minWidth: 0 } : { width })}
+      height={1}
+      position="relative"
+      style={nativePaneChrome ? undefined : { overflow: "hidden" }}
+    >
       <Input
         key={screenKey}
         ref={inputRef}

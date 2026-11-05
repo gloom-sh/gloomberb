@@ -1466,7 +1466,7 @@ window.__paneChrome = {
   clipboardImages: [],
   externalOpens: [],
   detachedCloses: 0,
-  header: { show: ignore, fullscreen: ignore, commandBar: ignore, helpOpens: 0, restarts: 0 },
+  header: { show: ignore, fullscreen: ignore, commandBar: ignore, fontSize: ignore, helpOpens: 0, restarts: 0 },
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
     try {

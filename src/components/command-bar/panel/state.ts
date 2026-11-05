@@ -10,6 +10,7 @@ import {
   resolveCommandBarPanelLayout,
 } from "./layout";
 import { useWindowFullscreen } from "../../layout/window-fullscreen";
+import { useLaidOutPromptWidth } from "./prompt-width";
 import { matchThemeOptions } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 
@@ -54,6 +55,7 @@ export function useCommandBarPanelState({
   // The sheet drops out of the header prompt, so it has to follow the prompt
   // off the traffic lights when the window goes fullscreen.
   const windowFullscreen = useWindowFullscreen();
+  const laidOutPromptWidth = useLaidOutPromptWidth(nativePaneChrome, cellWidthPx);
 
   useEffect(() => {
     const listState = routeListState;
@@ -104,6 +106,7 @@ export function useCommandBarPanelState({
     currentRoute,
     hasRootFeedback,
     hasVisibleListState,
+    laidOutPromptWidth,
     nativeListRowCount: getListRowsHeight(nativeListRows),
     nativePaneChrome,
     nativeWindowChrome,
@@ -119,6 +122,7 @@ export function useCommandBarPanelState({
     currentRoute,
     hasRootFeedback,
     hasVisibleListState,
+    laidOutPromptWidth,
     nativeListRows,
     nativePaneChrome,
     nativeWindowChrome,
