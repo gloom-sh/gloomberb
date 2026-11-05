@@ -55,8 +55,11 @@ export function upgradeDialogCopy(
   interval: CloudBillingInterval,
   now: Date,
 ): UpgradeDialogCopy {
+  // What Pro gets them, not the plan's name: the same title while it loads, with
+  // or without a trial, so only the terms under it change.
+  const title = t("Stop trading on stale prices");
   if (!offer) {
-    return { title: t("Upgrade to Pro"), subtitle: t("Loading…"), confirmLabel: t("Start free trial"), showPlan: true };
+    return { title, subtitle: t("Loading…"), confirmLabel: t("Start free trial"), showPlan: true };
   }
   if (offer.paymentFailed) {
     return {
@@ -71,8 +74,9 @@ export function upgradeDialogCopy(
     const days = trialDaysOf(offer.pricing);
     const firstCharge = formatTrialEnd(new Date(now.getTime() + days * MS_PER_DAY));
     return {
-      title: tf("Try Pro free for {days} days", { days }),
-      subtitle: tf("$0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.", {
+      title,
+      subtitle: tf("Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.", {
+        days,
         price,
         date: firstCharge ?? "",
       }),
@@ -81,7 +85,7 @@ export function upgradeDialogCopy(
     };
   }
   return {
-    title: t("Upgrade to Pro"),
+    title,
     subtitle: offer.trialAvailable === false
       ? tf("{price}, billed today. Cancel anytime.", { price })
       : tf("{price}. Cancel anytime.", { price }),
