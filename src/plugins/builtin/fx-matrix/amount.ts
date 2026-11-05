@@ -20,7 +20,7 @@ const FILLER_WORDS = new Set(["convert", "converter", "conversion", "fx", "to", 
 
 /** The board is asked for codes it carries, which are three letters; anything else is no currency for it. */
 function boardCurrency(code: string, typed: string): FxCurrency | { error: string } {
-  return isFxCurrency(code) ? code : { error: `${typed.trim()} is not a currency the board carries; type a code such as EUR or JPY.` };
+  return isFxCurrency(code) ? code : { error: `${typed.trim()} is not on the board; type a code such as EUR.` };
 }
 
 /**

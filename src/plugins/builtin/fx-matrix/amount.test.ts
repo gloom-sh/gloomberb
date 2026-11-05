@@ -3,15 +3,22 @@ import { parseRootShortcutIntent } from "../../../components/command-bar/routes/
 import { createTestPaneConfig } from "../../../test-support/pane";
 import type { PaneTemplateContext } from "../../../types/plugin";
 import { parseFxBoardAmount } from "./amount";
-import { fxMatrixModule } from "./index";
+import type { PaneTemplateCreateOptions } from "../../../types/plugin";
+import { fxConvertRows, fxMatrixModule } from "./index";
 
 // The command bar found nothing for `convert eur to usd` or `currency converter`; only the CLI converted an amount.
-test("fx 2500000 EUR/USD, convert and converter open the board on the amount, and an open board takes it", async () => {
+test("fx 2500000 EUR/USD and convert open the board on the amount, as FXC does, and an open board takes it", async () => {
   const template = fxMatrixModule.paneTemplates![0]!;
-  for (const [query, argText] of [["fx 2500000 EUR/USD", "2500000 EUR/USD"], ["convert 100 eur to usd", "100 eur to usd"], ["converter", ""]]) {
-    expect(parseRootShortcutIntent({ query: query!, commands: [], paneTemplates: [template], activeTicker: null }))
-      .toMatchObject({ source: "pane-template", template: { id: template.id }, argText });
-  }
+  expect(parseRootShortcutIntent({ query: "FXC 2,500,000 EUR", commands: [], paneTemplates: [template], activeTicker: null }))
+    .toMatchObject({ source: "pane-template", argText: "2,500,000 EUR" });
+  const opened: PaneTemplateCreateOptions[] = [];
+  const rows = (query: string) => fxConvertRows(query, (options) => opened.push(options));
+  expect(rows("fx 2500000 EUR/USD").map((row) => row.label)).toEqual(["Convert 2,500,000 EUR to USD"]);
+  expect(rows("convert 100 eur to usd").map((row) => row.label)).toEqual(["Convert 100 EUR to USD"]);
+  await rows("fx 2500000 EUR/USD")[0]!.execute();
+  expect(opened).toEqual([{ arg: "2500000 EUR/USD" }]);
+  // What is no amount is left to the bar's own search.
+  expect([...rows("fx forwards"), ...rows("fx"), ...rows("convert")]).toEqual([]);
   // The forms `fx` takes, the currency first, and a pair alone as one unit.
   expect(parseFxBoardAmount("2,500,000 EUR")).toEqual({ amount: 2_500_000, currency: "EUR", to: null });
   expect(parseFxBoardAmount("2500000.50 eur/usd")).toEqual({ amount: 2_500_000.5, currency: "EUR", to: "USD" });
@@ -30,6 +37,6 @@ test("fx 2500000 EUR/USD, convert and converter open the board on the amount, an
   // Nothing to convert opens the board as it is; what is no amount opens nothing and says why.
   expect(await template.createInstance!(context, {})).toEqual({});
   expect(template.shortcut!.argError!("100 XAU", context)).toEqual({
-    message: "100 XAU is no amount to convert", detail: "XAU is not a currency the board carries; type a code such as EUR or JPY",
+    message: "100 XAU is no amount to convert", detail: "XAU is not on the board; type a code such as EUR",
   });
 });

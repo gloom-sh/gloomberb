@@ -19,7 +19,10 @@ import { resolveEntryData } from "../../../market-data/selectors";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import type { PaneProps, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import type {
+  CommandBarResultDef, CommandBarSearchProvider, GloomPluginContext, PaneProps, PaneTemplateContext, PaneTemplateCreateOptions,
+  PaneTemplateInstanceConfig,
+} from "../../../types/plugin";
 import { TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { isPaneInLayout } from "../../../layout/pane-manager";
 import { useAssetData } from "../../runtime";
@@ -38,6 +41,7 @@ import { fxMatrixHeadless } from "./headless";
 import { formatAmountFigure, formatFxBoardAmount, parseFxBoardAmount, withAmountCurrencies, type FxBoardAmount } from "./amount";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
+const FX_MATRIX_TEMPLATE_ID = "fx-matrix-pane";
 /** Stable identity: a fresh literal here would reload the board every render. */
 const NO_SAVED_CURRENCIES: string[] = [];
 const BASE_COLUMN_WIDTH = 5;
@@ -319,14 +323,13 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         // Read as an example, not a value, even where a narrow pane cuts it.
         id: "amount", kind: "text", label: "Amount", value: amountField.draft, placeholder: "e.g. 2,500,000 EUR",
         width: AMOUNT_FIELD_WIDTH, debounceMs: 0, focused, active: amountField.active, inputRef: amountField.inputRef,
-        onActiveChange: (active: boolean) => {
-          amountField.setActive(active);
-          if (!active) setAmountError(null);
-        },
+        // An amount the board could not read stays in the footer, the field back on the board's, until the next edit.
+        onActiveChange: amountField.setActive,
         // Typing edits the draft and Enter applies it; clearing the chip (outside the field) clears the amount.
         onChange: (value: string) => {
           amountField.setDraft(value);
-          if (!amountField.active && !value.trim() && savedAmount) applyAmount("");
+          if (amountField.active) setAmountError(null);
+          else if (!value.trim() && savedAmount) applyAmount("");
         },
         onSubmit: applyAmount,
       }]}
@@ -400,7 +403,41 @@ function createFxBoardInstance(context: PaneTemplateContext, options?: PaneTempl
   };
 }
 
+/** The words a conversion is asked with in the command bar: `fx 2500000 EUR/USD`, `convert 100 eur to usd`. */
+const CONVERT_WORDS = /^(?:fx|convert|converter|conversion)\s+(.+)$/i;
+
+/**
+ * The command bar's conversions: `fx 2500000 EUR/USD`, `convert 100 eur to
+ * usd` and `converter 2,500,000 EUR` open the board on the amount (FXC takes
+ * it as its argument too). Text after those words that is no amount
+ * (`fx forwards`) is left to the bar's own search, and `convert` or
+ * `converter` alone finds the board by its keywords.
+ */
+export function fxConvertRows(query: string, open: (options: PaneTemplateCreateOptions) => void): CommandBarResultDef[] {
+  const arg = CONVERT_WORDS.exec(query.trim())?.[1];
+  const request = arg ? parseFxBoardAmount(arg) : null;
+  if (!arg || !request || "error" in request) return [];
+  const amount = formatFxBoardAmount(request);
+  return [{
+    id: `convert:${amount}`,
+    label: request.to ? `Convert ${amount} to ${request.to}` : `Convert ${amount}`,
+    detail: "In every currency on FX Cross Rates",
+    right: "FXC",
+    keywords: ["fx", "convert", "converter"],
+    execute: () => open({ arg }),
+  }];
+}
+
+function createFxConvertSearchProvider(ctx: Pick<GloomPluginContext, "createPaneFromTemplate">): CommandBarSearchProvider {
+  const match = (query: string) => fxConvertRows(query, (options) => ctx.createPaneFromTemplate(FX_MATRIX_TEMPLATE_ID, options));
+  return { id: "fx-convert", category: "Convert", minQueryLength: 0, match, provide: async (query) => match(query) };
+}
+
 export const fxMatrixModule: PluginModule = {
+  setup(ctx) {
+    ctx.registerCommandBarSearchProvider(createFxConvertSearchProvider(ctx));
+  },
+
   panes: [
     {
       id: FX_MATRIX_PANE_ID,
@@ -417,15 +454,14 @@ export const fxMatrixModule: PluginModule = {
 
   paneTemplates: [
     {
-      id: "fx-matrix-pane",
+      id: FX_MATRIX_TEMPLATE_ID,
       paneId: FX_MATRIX_PANE_ID,
       label: "FX Cross Rates",
       description: "Currency cross-rate matrix for major FX pairs, and an amount converted into each currency.",
       keywords: ["fx", "forex", "currency", "exchange", "rates", "cross", "matrix", "convert", "converter", "conversion", "calculator"],
-      // `fx 2500000 EUR/USD` and `convert 100 eur to usd` open the board on the amount, as the `fx` command converts it.
+      // `FXC 2,500,000 EUR` opens the board on the amount, as `fx 2500000 EUR/USD` converts it (fxConvertRows).
       shortcut: {
         prefix: "FXC",
-        aliases: ["FX", "CONVERT", "CONVERTER"],
         argKind: "text",
         argPlaceholder: "amount",
         argOptional: true,
