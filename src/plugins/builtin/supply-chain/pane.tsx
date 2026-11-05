@@ -94,9 +94,10 @@ const PERIOD_DATE_CELLS = 11;
 function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
-  // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap.
+  // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap;
+  // a narrow pane keeps its 26 cells, so the name keeps its room and the share reads its shorter basis.
   const whole = Math.max(0, ...bases.map((forms) => forms[0]!));
-  const shareWidth = Math.max(wide ? 34 : medium ? 30 : 26, Math.min(wide ? 64 : medium ? 52 : 40, (wide ? 8 : 5) + SHARE_FIGURE_CELLS + 2 + whole));
+  const shareWidth = Math.max(wide ? 34 : medium ? 30 : 26, Math.min(wide ? 64 : medium ? 52 : 26, (wide ? 8 : 5) + SHARE_FIGURE_CELLS + 2 + whole));
   const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
