@@ -355,7 +355,7 @@ describe("One Tap reasons", () => {
     apiClient.restoreCachedUser(null);
   });
 
-  test("carry Google's reason on One Tap events only, count each reason once, and drop one the server would refuse", async () => {
+  test("carry a known reason on One Tap events only, count each reason once, and drop any other", async () => {
     const sent: Array<{ event: string; reason?: string }> = [];
     apiClient.recordResearchActivity = (async (payload) => {
       sent.push({ event: payload.event, reason: payload.reason });
@@ -368,6 +368,8 @@ describe("One Tap reasons", () => {
     recordResearchActivity("one_tap_dismissed", undefined, undefined, { reason: "credential_returned" });
     recordResearchActivity("one_tap_dismissed", undefined, undefined, { reason: "cancel_called" });
     recordResearchActivity("one_tap_skipped", undefined, undefined, { reason: "Jane Doe" });
+    // Well-formed but not one the server accepts.
+    recordResearchActivity("one_tap_not_shown", undefined, undefined, { reason: "some_new_reason" });
     recordResearchActivity("research_viewed", "news", undefined, { reason: "tap_outside" });
     await Promise.resolve();
 
@@ -375,6 +377,7 @@ describe("One Tap reasons", () => {
       { event: "one_tap_dismissed", reason: "cancel_called" },
       { event: "one_tap_dismissed", reason: "credential_returned" },
       { event: "one_tap_skipped", reason: undefined },
+      { event: "one_tap_not_shown", reason: undefined },
       { event: "research_viewed", reason: undefined },
     ]);
   });

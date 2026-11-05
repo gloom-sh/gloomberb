@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ApiRequestError } from "../../../../api-client/errors";
+import { ApiRequestError, parseApiErrorCode, parseApiErrorMessage } from "../../../../api-client/errors";
 import {
   ONE_TAP_EXPERIMENT,
   ONE_TAP_ON_SCREEN_MS,
@@ -255,12 +255,28 @@ describe("One Tap prompt", () => {
     expect(run.snoozedAt()).toBeNull();
   });
 
-  test("a sign-in the server refuses is recorded with why", async () => {
-    const run = setup({ signIn: async () => { throw new ApiRequestError("account not linked", 401); } });
+  test("a sign-in the server refuses for that Google account is recorded with why, and rests like a dismissal", async () => {
+    for (const [error, reason] of [
+      [refusal(401, { message: "account not linked" }), "account_not_linked"],
+      [refusal(403, { code: "email_not_verified", message: "Verify this email with the provider first." }), "email_not_verified"],
+    ] as const) {
+      const run = setup({ signIn: async () => { throw error; } });
+      await eligible(run);
+      run.google.pick("id-token");
+      await settle();
+      expect(run.recorded.at(-1)).toEqual(["one_tap_failed", reason]);
+      expect(run.snoozedAt()).toBe(run.clock.now());
+      expect(run.controller.phase).toBe("done");
+    }
+  });
+
+  test("a sign-in that fails on the way is recorded, and the prompt may come back on a later visit", async () => {
+    const run = setup({ signIn: async () => { throw new TypeError("Failed to fetch"); } });
     await eligible(run);
     run.google.pick("id-token");
     await settle();
-    expect(run.recorded.at(-1)).toEqual(["one_tap_failed", "account_not_linked"]);
+    expect(run.recorded.at(-1)).toEqual(["one_tap_failed", "error"]);
+    expect(run.snoozedAt()).toBeNull();
   });
 
   test("a dialog opening over the prompt cancels it, and it comes back when the dialog closes", async () => {
@@ -300,16 +316,32 @@ describe("describeMoment", () => {
       .toEqual({ event: "one_tap_skipped", reason: "unknown_reason" });
     expect(describeMoment({ getMomentType: () => "skipped", getSkippedReason: () => "Jane Doe" }))
       .toEqual({ event: "one_tap_skipped", reason: "unknown_reason" });
+    // Only the reasons the server knows: a new one from Google is unknown_reason.
+    expect(describeMoment({ getMomentType: () => "skipped", getSkippedReason: () => "some_new_reason" }))
+      .toEqual({ event: "one_tap_skipped", reason: "unknown_reason" });
     expect(describeMoment({ getMomentType: () => "dismissed", getDismissedReason: () => "credential_returned" }))
       .toEqual({ event: "one_tap_dismissed", reason: "credential_returned" });
     expect(describeMoment({})).toBeNull();
   });
 });
 
-test("tells the server's refusals apart", () => {
-  expect(oneTapFailureReason(new ApiRequestError("account not linked", 401))).toBe("account_not_linked");
-  expect(oneTapFailureReason(new ApiRequestError("Verify this email with the provider first.", 403))).toBe("email_not_verified");
-  expect(oneTapFailureReason(new ApiRequestError("invalid id token", 400))).toBe("error");
+/** The error the API client throws for this answer. */
+function refusal(status: number, body: unknown): ApiRequestError {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return new ApiRequestError(parseApiErrorMessage(text), status, undefined, parseApiErrorCode(text));
+}
+
+test("tells the server's refusals apart by its words, never by the status alone", () => {
+  expect(oneTapFailureReason(refusal(401, { message: "account not linked" }))).toBe("account_not_linked");
+  expect(oneTapFailureReason(refusal(403, { code: "email_not_verified", message: "Verify this email with the provider first." })))
+    .toBe("email_not_verified");
+  expect(oneTapFailureReason(refusal(403, { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" }))).toBe("email_not_verified");
+  // A 403 from something else on the way (a proxy, the origin check) is not about the email.
+  expect(oneTapFailureReason(refusal(403, { message: "Invalid origin" }))).toBe("error");
+  expect(oneTapFailureReason(refusal(403, "<html><title>api.gloom.sh | 403: Forbidden</title></html>"))).toBe("error");
+  expect(oneTapFailureReason(refusal(400, { message: "Email verification is required" }))).toBe("error");
+  expect(oneTapFailureReason(refusal(400, { message: "invalid id token" }))).toBe("error");
+  expect(oneTapFailureReason(refusal(429, { message: "Too many requests. Please try again later." }))).toBe("error");
   expect(oneTapFailureReason(new TypeError("Failed to fetch"))).toBe("error");
 });
 

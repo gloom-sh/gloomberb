@@ -12,13 +12,15 @@
  * keeps it from someone who only glanced at the starter screen. Nothing is
  * asked while a dialog or the command bar is open: it waits until they close.
  *
- * After a prompt that ends without a sign-in (closed, skipped, or Google not
- * showing it) the prompt stays away for 7 days; Google lengthens its own
+ * After a prompt that ends without a sign-in (closed, skipped, Google not
+ * showing it, or the server refusing that Google account) the prompt stays
+ * away for 7 days; Google lengthens its own
  * cooldown on top of that each time someone closes it. A dialog or the
  * command bar opening over the prompt cancels it, and it is asked again once
  * they close; that is not a dismissal.
  */
 import { ApiRequestError } from "../../../../api-client/errors";
+import type { OneTapReason } from "../../../../api-client/one-tap-reasons";
 import { logFailure } from "../../../../utils/log-failure";
 import { describeMoment, type GoogleCredentialResponse, type GoogleIdApi, type GooglePromptNotification } from "./google-identity";
 
@@ -42,12 +44,18 @@ type OneTapEvent =
 
 export type OneTapFailure = "account_not_linked" | "email_not_verified" | "error";
 
-/** Why a One Tap sign-in the server refused did not go through. */
+/**
+ * Why a One Tap sign-in the server refused did not go through, by the
+ * server's words only, never the status alone: "account not linked" (a
+ * Google address that matches an unverified account here) and the
+ * `email_not_verified` code (Google has not verified the address). Any other
+ * refusal, a 403 from a proxy included, is an `error`.
+ */
 export function oneTapFailureReason(error: unknown): OneTapFailure {
-  if (error instanceof ApiRequestError) {
-    if (/not linked/i.test(error.message)) return "account_not_linked";
-    if (error.status === 403 || /verif/i.test(error.message)) return "email_not_verified";
-  }
+  if (!(error instanceof ApiRequestError)) return "error";
+  const said = `${error.code ?? ""} ${error.message}`;
+  if (/\baccount[ _]not[ _]linked\b/i.test(said)) return "account_not_linked";
+  if (/\bemail[ _]not[ _]verified\b/i.test(said)) return "email_not_verified";
   return "error";
 }
 
@@ -64,7 +72,7 @@ export interface OneTapDeps {
   google(): Promise<GoogleIdApi>;
   /** Signs in with the ID token; rejects with the server's refusal. */
   signIn(credential: string): Promise<void>;
-  record(event: OneTapEvent, reason?: string): void;
+  record(event: OneTapEvent, reason?: OneTapReason): void;
   snoozedAt(): number | null;
   snooze(at: number): void;
   onScreenMs?: number;
@@ -268,12 +276,17 @@ export class OneTapController {
       await this.deps.signIn(response.credential);
       this.deps.record("one_tap_signed_in");
     } catch (error) {
-      this.deps.record("one_tap_failed", oneTapFailureReason(error));
+      const reason = oneTapFailureReason(error);
+      this.deps.record("one_tap_failed", reason);
+      // The same Google account would be refused again on every visit (and
+      // the login dialog would follow it), so it rests like a dismissal. A
+      // passing failure (offline, a timeout) does not.
+      if (reason !== "error") this.deps.snooze(this.now());
     }
     this.finish();
   }
 
-  private notShown(reason: string): void {
+  private notShown(reason: OneTapReason): void {
     this.deps.record("one_tap_not_shown", reason);
     this.finish();
   }

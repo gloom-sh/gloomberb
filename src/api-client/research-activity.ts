@@ -3,6 +3,7 @@ import { apiClient } from "./index";
 import { getCurrentPluginTarget } from "../plugins/current-target";
 import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
 import { exposeExperiment, storedExperimentAssignments } from "./web-experiments";
+import { isOneTapReason } from "./one-tap-reasons";
 import { createWallExperimentSession, type WallExperiment, type WallExperimentContext, type WallTeaserVariant } from "./wall-experiments";
 import { hasProAccess } from "./plan-rules";
 import { withDeadline } from "../utils/async-deadline";
@@ -62,8 +63,6 @@ const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const ANONYMOUS_ID = /^[a-f0-9-]{36}$/;
 /** The server accepts a tab id or an upgrade placement only in this shape. */
 const ACTIVITY_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
-/** A One Tap reason, such as Google's `opt_out_or_no_session`; the server's shape. */
-const ACTIVITY_REASON = /^[a-z][a-z0-9_]{0,39}$/;
 const CAMPAIGN_KEYS = [
   "utm_source",
   "utm_medium",
@@ -369,7 +368,7 @@ export interface ResearchActivityDetails {
   teaser_kind?: "summary" | "sample" | "none";
   /** The sign-in wall action, never the button copy. */
   cta?: "login" | "signup";
-  /** A One Tap event's reason: Google's notification reason or the terminal's own id. */
+  /** A One Tap event's reason, from the fixed list in one-tap-reasons.ts; any other is dropped. */
   reason?: string;
 }
 
@@ -393,7 +392,7 @@ export function recordResearchActivity(
   if (!user && target !== "web" && target !== "desktop") return;
   // The server refuses the whole event over a malformed id, so one is dropped instead.
   const placement = rawPlacement && ACTIVITY_ID.test(rawPlacement) ? rawPlacement : undefined;
-  const reason = event.startsWith("one_tap_") && rawReason && ACTIVITY_REASON.test(rawReason) ? rawReason : undefined;
+  const reason = event.startsWith("one_tap_") && isOneTapReason(rawReason) ? rawReason : undefined;
   if (wallEvent && !placement) return;
   if (event === "wall_cta_clicked" && cta !== "login" && cta !== "signup") return;
   const identity = user?.id ?? (wallEvent ? anonymousId : "guest");

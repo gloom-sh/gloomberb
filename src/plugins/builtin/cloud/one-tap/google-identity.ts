@@ -10,6 +10,8 @@
  * that.
  */
 
+import { isOneTapReason, type OneTapReason } from "../../../../api-client/one-tap-reasons";
+
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
 
 /** What Google passes the callback once someone picked an account. */
@@ -47,14 +49,13 @@ export interface GoogleIdApi {
 
 export type OneTapMoment =
   | { event: "one_tap_shown" }
-  | { event: "one_tap_not_shown" | "one_tap_skipped" | "one_tap_dismissed"; reason: string };
+  | { event: "one_tap_not_shown" | "one_tap_skipped" | "one_tap_dismissed"; reason: OneTapReason };
 
-const REASON = /^[a-z][a-z0-9_]{0,39}$/;
-
-function reasonOf(read: (() => string) | undefined): string {
+/** Google's reason when it is one of the known ones, else `unknown_reason`. */
+function reasonOf(read: (() => string) | undefined): OneTapReason {
   try {
     const reason = read?.();
-    return typeof reason === "string" && REASON.test(reason) ? reason : "unknown_reason";
+    return isOneTapReason(reason) ? reason : "unknown_reason";
   } catch {
     // Intentional ignore: a method FedCM retired may throw; the moment still counts.
     return "unknown_reason";
