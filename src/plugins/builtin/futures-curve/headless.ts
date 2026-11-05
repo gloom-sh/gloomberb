@@ -76,9 +76,11 @@ function contractColumns(root: string, settlementDate: string | null, options: {
       { key: "vsSpotPct", header: "Vs Spot", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 2) },
       { key: "daysToExpiry", header: "Days to Expiry", textHeader: "Days", align: "right" as const, format: (value: unknown) => typeof value === "number" ? value.toFixed(1) : "--" },
       { key: "annualisedBasisPct", header: "Ann Basis", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 1) }] : [],
-    // A month with no trade since the settlement it shows is dated by that settlement, never read as an old print.
-    { key: "asOf", header: "As Of UTC", shrink: false, format: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}`
-      : typeof value === "string" ? curveTimestamp(value) : "--" },
+    // A month with no trade since the settlement it shows is dated by that settlement, never read as an old print:
+    // the text says so, an export leaves the cell empty (settle_date dates it).
+    { key: "asOf", header: "As Of UTC", shrink: false,
+      format: (value, row) => typeof row.settleShown === "string" ? "--" : typeof value === "string" ? curveTimestamp(value) : "--",
+      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : "--" },
     { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
     { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
     { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },

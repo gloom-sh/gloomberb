@@ -370,6 +370,11 @@ describe("CTM exports and the session that has just opened", () => {
       expect(text).toMatch(/GCU27 .* 4088\.10 +4088\.10 +-- +settle 2026-11-03 /);
       expect(text).toMatch(/GCZ26 .* 4072\.10 +\+131\.70 +2026-11-04 23:17 /);
       expect(result.sections[0]!.rows!.find((row) => row.symbol === "GCU27.CMX")).toMatchObject({ change: null, noTradeSince: "2026-11-03", settleShown: "2026-11-03" });
+      // The CSV has no print to date it by: As Of UTC is empty, settle_date dates the settlement it shows.
+      const csv = csvOf(result);
+      const asOf = csv.find((line) => line.startsWith("Contract,"))!.split(",").indexOf("As Of UTC");
+      expect(csv.find((line) => line.startsWith("GCU27,"))!.split(",")[asOf]).toBe("");
+      expect(csv.find((line) => line.startsWith("GCZ26,"))!.split(",")[asOf]).toBe("2026-11-04T23:17:00Z");
     } finally {
       setSystemTime();
     }
