@@ -147,7 +147,7 @@ describe("CTM report basis", () => {
     const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);
     const csv = renderReportCsv(headlessReportTables(futuresCurveHeadless, result, args, "CTM", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
     const header = csv.findIndex((line) => line.startsWith("Contract,"));
-    expect(csv[header]).toMatch(/^Contract,Last Trade,Settle,settle_date,Last,Change,Spot,Spot Time UTC,Vs Spot \(%\),Days to Expiry,Ann Basis \(%\),As Of UTC,/);
+    expect(csv[header]).toMatch(/^Contract,Last Trade,1st Notice,Settle,settle_date,Last,Change,Spot,Spot Time UTC,Vs Spot \(%\),Days to Expiry,Ann Basis \(%\),As Of UTC,/);
     expect(csv[header + 1]).toContain(`,,80740,,80600,2026-10-24T01:33:00Z,${rows[0]!.vsSpotPct},${rows[0]!.daysToExpiry},${rows[0]!.annualisedBasisPct},2026-10-24T01:33:11Z,`);
     expect(csv[header + 6]).toContain(",,83035,,,,,,,2026-10-24T03:52:00Z,");
   });
@@ -325,7 +325,8 @@ describe("CTM exports and the session that has just opened", () => {
   // GC at the CME reopen: Z26 and G27 printed in the new session, U27 has not traded since its 11-03 settlement
   // (stamped at the 16:00 Chicago close, 22:00 UTC in winter), and F27 holds too little to roll into.
   const gc = (code: string, expiration: string, price: number | null, asOf: string | null, settlement: number, openInterest: number): FuturesContract =>
-    ({ ...contract("GC", code, 30, price, false, asOf ?? at), symbol: `GC${code}.CMX`, expiration, asOf, settlement, openInterest, currency: "USD", quoteUnit: "USD" });
+    ({ ...contract("GC", code, 30, price, false, asOf ?? at), symbol: `GC${code}.CMX`, expiration, asOf, settlement, openInterest, currency: "USD", quoteUnit: "USD",
+      firstNotice: `${expiration.slice(0, 8)}01` });
   const gold = (): FuturesCurvePayload => ({ ...curve("GC", [gc("Z26", "2026-12-29", 4072.1, "2026-11-04T23:17:00.000Z", 3940.4, 268_217),
     gc("F27", "2027-01-27", 4090.4, "2026-11-04T21:35:00.000Z", 3957.8, 799), gc("G27", "2027-02-24", 4106, "2026-11-04T23:16:30.000Z", 3972.5, 77_624),
     gc("U27", "2027-09-28", 4088.1, "2026-11-03T22:00:00.000Z", 4088.1, 10)]), settlementDate: "2026-11-03", currency: "USD", quoteUnit: "USD",
@@ -341,11 +342,11 @@ describe("CTM exports and the session that has just opened", () => {
         spec: { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" as const } };
       const [cl, gcCsv] = [csvOf(await load(crude)), csvOf(await load(gold()))];
       const headers = (csv: string[]) => csv.filter((line, index) => csv[index - 1]?.startsWith("# section:"));
-      // Settled on different sessions, the two roots still share every header.
+      // Settled on different sessions, and only gold with a first notice day, the two roots still share every header.
       expect(headers(cl)).toEqual(headers(gcCsv));
-      expect(headers(cl)[0]).toStartWith("Contract,Last Trade,Settle,settle_date,Last,");
+      expect(headers(cl)[0]).toStartWith("Contract,Last Trade,1st Notice,Settle,settle_date,Last,");
       const clz26 = cl.find((line) => line.startsWith("CLZ26,2026"));
-      expect(clz26).toContain(",88.12,2026-11-04,88.15,");
+      expect(clz26).toContain(",,88.12,2026-11-04,88.15,");
       expect(clz26).toContain(",USD / barrel,");
       // The history rows and the spread name contracts as the Contracts table does.
       expect(gcCsv.join("\n")).not.toContain(".CMX");

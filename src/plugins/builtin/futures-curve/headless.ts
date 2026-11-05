@@ -57,19 +57,21 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
 function contractColumns(root: string, settlementDate: string | null, options: { basis: boolean; last: boolean; notice: boolean; text?: boolean }): HeadlessPaneColumn[] {
   const price = (value: unknown) => typeof value === "number" ? curvePrice(value, root) : "--";
   const date = (value: unknown) => typeof value === "string" ? value : "--";
+  // An export has every column whatever the root, so CL's and GC's headers are the same; the text drops the ones a root leaves blank.
+  const exported = !options.text;
   return [
     { key: "symbol", header: "Contract", shrink: false, format: (value) => curveContractCode(String(value)) },
     { key: "lastTrade", header: "Last Trade", shrink: false, format: date },
     // Cash-settled roots have no first notice day.
-    ...options.notice ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
+    ...options.notice || exported ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : "--" }] : [],
     // One header whatever the session: an export dates each settlement in its own column, the text in the header.
     { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${settlementDate}` } : {}, align: "right", format: price },
     ...options.text ? [] : [{ key: "settlementDate", header: "settle_date", literalHeader: true, shrink: false, format: date }],
-    // A Cboe price is the settlement itself, with no separate last trade.
-    ...options.last ? [{ key: "price", header: "Last", align: "right" as const, format: price }] : [],
+    // A Cboe price is the settlement itself, with no separate last trade: an export leaves its Last blank.
+    ...options.last || exported ? [{ key: "price", header: "Last", align: "right" as const, format: options.last ? price : () => "--" }] : [],
     { key: "change", header: "Change", align: "right", format: (value) => typeof value === "number" ? curveChangeText(value, root) : "--" },
-    ...options.basis ? [{ key: "spot", header: "Spot", align: "right" as const, format: price },
+    ...options.basis || exported ? [{ key: "spot", header: "Spot", align: "right" as const, format: price },
       ...options.text ? [] : [{ key: "spotTime", header: "Spot Time UTC", shrink: false, format: (value: unknown) => typeof value === "string" ? curveTimestamp(value) : "--" }],
       { key: "vsSpotPct", header: "Vs Spot", align: "right" as const, format: (value: unknown) => curveBasisPercent(typeof value === "number" ? value : null, 2) },
       { key: "daysToExpiry", header: "Days to Expiry", textHeader: "Days", align: "right" as const, format: (value: unknown) => typeof value === "number" ? value.toFixed(1) : "--" },
