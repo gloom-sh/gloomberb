@@ -6,9 +6,14 @@ import { DEFAULT_GRAPH_OPTIONS, type GraphOptions, type GraphPayload } from "../
 import type { PaneTemplateContext } from "../../../types/plugin";
 import { graphOptions } from "../supply-chain/graph-client";
 import { supplyChainModule } from "../supply-chain/index";
-import { supplyPayload } from "../supply-chain/test-fixture";
+import { supplyPayload, supplyRow } from "../supply-chain/test-fixture";
 import { graphPayload } from "../supply-chain/test-fixture-graph";
 import { cachedRippleSources, loadRipple, rippleRouteSettings } from "./client";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { supplyChainHeadless } from "../supply-chain/headless";
+import { earningsRippleHeadless } from "./headless";
 
 const link = (role: "customer" | "supplier") => (ticker: string) => ({
   role, counterparty: { ticker, name: ticker, exchange: "NASDAQ", aggregate: false },
@@ -210,4 +215,33 @@ test("a refresh reads every holding's disclosures and graphs ahead in one reques
   } finally {
     for (const spy of spies) spy.mockRestore();
   }
+});
+
+test("an empty answer says what it searched and over which window, then where else to look", async () => {
+  // RIPL: three linked companies were looked up, none reports in the window; the Pro line follows the answer.
+  const text = async (symbols: string[], chains: Record<string, SupplyChainPayload>) => {
+    const context = createTestHeadlessContext();
+    context.apiClient = { ...context.apiClient, getCloudSupplyChain: async (symbol: string) => chains[symbol]!,
+      getCloudEarningsCalendar: async (query: EarningsCalendarQuery) => ({ asOf: query.from, from: query.from, to: query.to, reports: [] }) } as typeof context.apiClient;
+    const args = createTestHeadlessArgs({ symbols });
+    const result = await earningsRippleHeadless.load(args, context);
+    return renderHeadlessPaneText(earningsRippleHeadless, result, args, "RIPL", deriveHeadlessFreshness(earningsRippleHeadless, result));
+  };
+  const disclosed = (symbol: string, customers: string[], suppliers: string[] = [], truncated = false) => supplyPayload({ symbol, truncated, ...(truncated ? { access: "preview" as const, lockedRows: 1, previewRowsPerRole: 3 } : {}),
+    says: customers.map((id) => supplyRow(id)), names: suppliers.map((id) => supplyRow(id, { role: "supplier", direction: "in" })), totalRows: customers.length + suppliers.length,
+    counts: { says: { customer: customers.length, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: suppliers.length, partner: 0, competitor: 0, investee: 0 } } });
+  const answer = await text(["AAPL", "NEM"], { AAPL: disclosed("AAPL", ["DELL"], ["CRUS"], true), NEM: disclosed("NEM", ["JPM"]) });
+  expect(answer).toMatch(/None of the 3 disclosed customers and suppliers of AAPL, NEM in the free preview reports from (\d{4}-\d{2}-\d{2}) to \d{4}-\d{2}-\d{2} \(the next 30 days\)\.\n[\s\S]*Pro: Additional relationships need Gloom Pro/);
+  expect(await text(["NVDA"], { NVDA: disclosed("NVDA", []) })).toContain("No US-listed customer or supplier with a share of revenue is disclosed for NVDA, so no report date was looked up from ");
+  // SPLC on a listing whose own filings it does not read: the markets it reads, and the customer's side.
+  const context = createTestHeadlessContext();
+  const hk = supplyPayload({ symbol: "2382:HKEX", entity: { ...supplyPayload().entity!, id: "2382", name: "SUNNY OPTICAL", ticker: "2382", exchange: "HKEX", country: "HK" },
+    status: "unavailable", says: [], names: [], totalRows: 0, counts: { says: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } });
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => hk } as typeof context.apiClient;
+  const args = createTestHeadlessArgs({ symbols: ["2382:HKEX"] });
+  const result = await supplyChainHeadless.load(args, context);
+  const splc = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
+  expect(splc).toContain("SPLC reads US (SEC) and Korean (DART) company filings");
+  expect(splc).toContain("try the customer's side, such as fn SPLC AAPL.");
+  expect(splc).not.toContain("not covered");
 });

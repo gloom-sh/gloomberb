@@ -31,6 +31,27 @@ export interface RippleRow {
   holdingDate: string | null;
 }
 
+/** Holdings as a sentence names them: "AAPL, NEM", or the first four and how many more. */
+const holdingList = (holdings: readonly string[]) =>
+  holdings.length > 4 ? `${holdings.slice(0, 4).join(", ")} and ${holdings.length - 4} more` : holdings.join(", ");
+
+/**
+ * An empty answer says what it searched and over which window, so "nothing
+ * reports" never reads as "nothing was checked": how many of the holdings'
+ * disclosed customers and suppliers were looked up, and between which days.
+ * `preview`: the free preview cut some holdings' disclosures short.
+ */
+export function rippleEmptyText({ holdings, checked, from, to, preview, secondHop = false }: {
+  holdings: readonly string[]; checked: number; from: string; to: string; preview: boolean; secondHop?: boolean;
+}): string {
+  const window = `from ${from} to ${to} (the next ${RIPPLE_DAYS} days)`;
+  const list = holdingList(holdings);
+  if (secondHop) return `No company two disclosed hops from ${list} reports ${window}.`;
+  const scope = preview ? " in the free preview" : "";
+  if (!checked) return `No US-listed customer or supplier with a share of revenue is disclosed for ${list}${scope}, so no report date was looked up ${window}.`;
+  return `None of the ${checked === 1 ? "1 disclosed customer or supplier" : `${checked} disclosed customers and suppliers`} of ${list}${scope} reports ${window}.`;
+}
+
 /** Whose revenue the share is of. */
 export const revenueOwner = (row: RippleRow) => row.link === "customer" ? row.holding : row.company;
 

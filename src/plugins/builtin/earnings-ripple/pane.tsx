@@ -13,7 +13,7 @@ import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedRippleSources, loadRipple, rippleRouteSettings } from "./client";
-import { hopLabel, revenueOwner, RIPPLE_DAYS, type RippleRow, type SecondHopRow } from "./model";
+import { hopLabel, revenueOwner, rippleEmptyText, type RippleRow, type SecondHopRow } from "./model";
 
 /** Calls per refresh stay bounded: one disclosure request per holding, plus one graph request per holding on the second hop. */
 const RIPPLE_HOLDINGS_LIMIT = 60;
@@ -213,8 +213,7 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
       : <PaneStatusBody subject={secondHop ? "two-hop supply chains" : "earnings ripple"} loading={ripple.loading && (!ripple.data || (secondHop && !second))}
         error={!ripple.data ? ripple.error : null}
         empty={secondHop ? !!second && !secondRows.length : !!ripple.data && !rows.length}
-        emptyTitle={secondHop ? `No company two disclosed hops from these holdings reports in the next ${RIPPLE_DAYS} days.`
-          : `No disclosed customer or supplier of these holdings reports in the next ${RIPPLE_DAYS} days.`}>
+        emptyTitle={ripple.data ? rippleEmptyText({ holdings, checked: ripple.data.checked, from: ripple.data.from, to: ripple.data.to, preview: truncated.length > 0, secondHop }) : undefined}>
         {secondHop
           ? <DataTableView<SecondHopRow> focused={focused} columns={secondLayout.columns} items={secondRows} rootWidth={width} rootHeight={bodyHeight}
             getItemKey={(row) => row.id} emptyStateTitle="No reports." sortColumnId={null} sortDirection="asc"

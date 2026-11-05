@@ -7,7 +7,7 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, suppl
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { entityTicker, exposureLabel, pathLabel } from "./graph-model";
 import { graphEvidenceRow } from "./graph-evidence";
-import { counterpartyName, disclosedValue, disclosureText, earlierRows, isTaggedFact, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
+import { counterpartyName, disclosedValue, disclosureText, earlierRows, isTaggedFact, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyEmptyText, supplyPreviewNote, supplyRoleCounts } from "./model";
 
 /**
  * The Table tab's columns, printed as the pane prints them: the share with
@@ -185,8 +185,10 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A requested view is complete when the preview leaves none of its own rows out.
     const locked = lockedDisclosures(data, views);
     const truncated = data.truncated && (!requested || locked > 0);
+    // A company with no relationship at all says what SPLC reads and where else to look, not that it is "not covered".
+    const none = sections.every((section) => !section.rows?.length) ? supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`) : null;
     return { complete: !truncated, errors: truncated ? [data.access === "preview" ? supplyPreviewNote(data, locked) : "Additional relationships need Gloom Pro"] : [],
-      sections,
+      sections, ...(none && !requested ? { empty: none } : {}),
       metadata: { symbol: data.symbol, asOf: data.asOf, view: requested ?? "both", counterparties: figures("counterparties"), locked: figures("locked"),
         counts: data.counts, earlierCounts: data.earlierCounts ?? null, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
   },

@@ -184,6 +184,25 @@ export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names
     + Math.max(0, total(data.earlierCounts?.[view]) - earlierRows(data, view).length), 0);
 }
 
+/** Countries whose companies' own filings SPLC reads (docs/supply-chain.md, Coverage and limitations). */
+const FILING_COUNTRIES = new Set(["US", "KR"]);
+
+/**
+ * What a company with no disclosed relationship at all reads instead of an
+ * empty table. A listing whose own filings SPLC does not read names the
+ * markets it does, and the side that can still name it: a customer's filings
+ * name their suppliers. `command` is how the reader opens another company's
+ * supply chain ("fn SPLC AAPL" in the CLI). Null when there are relationships.
+ */
+export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entity" | "says" | "names" | "earlier">, command = (symbol: string) => `SPLC ${symbol}`): string | null {
+  if (data.says.length || data.names.length || data.earlier?.says.length || data.earlier?.names.length) return null;
+  const country = data.entity?.country ?? null;
+  const read = !!country && FILING_COUNTRIES.has(country.toUpperCase());
+  if (read) return `No filing, announcement or call read so far names a relationship for ${data.symbol}.`;
+  return `No relationship for ${data.symbol}: SPLC reads US (SEC) and Korean (DART) company filings, plus announcements and calls, `
+    + `and none read so far names one. A customer's filings name its suppliers: try the customer's side, such as ${command("AAPL")}.`;
+}
+
 /** The lock line of a free preview, in the same words in the pane and `fn SPLC`. */
 export function supplyPreviewNote(data: Pick<SupplyChainPayload, "previewRowsPerRole">, locked: number): string {
   return freePreviewNote({ shows: data.previewRowsPerRole ? `${countOf(data.previewRowsPerRole, "relationship")} per role` : "part of the relationships",

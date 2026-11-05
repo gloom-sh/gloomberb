@@ -32,7 +32,7 @@ import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
   cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
-  periodDate, shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
+  periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
@@ -369,7 +369,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
           renderCell={renderCell} sortColumnId={sort.column} sortDirection={sort.direction}
           onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${symbol}:${view}:${options.tiers.join(",")}`}
-          emptyStateTitle="No relationships for the selected evidence tiers."
+          emptyStateTitle={supplyEmptyText(data) ?? "No relationships for the selected evidence tiers."}
           bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" /> : undefined} />}
       /> : null}
     </PaneStatusBody>
