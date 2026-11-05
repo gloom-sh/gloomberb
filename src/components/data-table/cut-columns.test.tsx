@@ -129,3 +129,37 @@ test("columns sliding under a frozen first column blank only what they cut", asy
   expect(lines()[1]).toMatch(/^\s*Brent\s*$/);
   expect(lines()[2]).toMatch(/^\s*WTI\s+62\.10\s*$/);
 });
+
+// At 52 columns FXC's Ctrl+Right stopped two cells into a column, under the frozen one: a rate too wide for the
+// eight cells that showed went blank, and so did a column at the far end.
+test("beside a frozen first column every sideways step and the far end start a column whole", async () => {
+  const codes = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD"];
+  const board = [{ id: "base", label: "", width: 5 }, ...codes.map((code) => ({ id: code, label: code, width: 10, align: "right" as const }))];
+  const row = { base: "JPY", ...Object.fromEntries(codes.map((code) => [code, "0.0051574"])) } as Record<string, string>;
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  await act(async () => {
+    await tui.render(<AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="frozen-board">
+        <DataTableView
+          focused showHorizontalScrollbar freezeFirstColumn columns={board} items={[row]}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={() => "JPY"}
+          renderCell={(item, column) => ({ text: item[column.id]! })}
+          emptyStateTitle="No rows" headerScrollId="board-header" bodyScrollId="board-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>, { width: 40, height: 6 });
+  });
+  await settle();
+  const shown = () => (lines()[1]!.match(/0\.0051574/g) ?? []).length;
+  const headers = () => lines()[0]!.trim().split(/\s+/);
+  expect(shown()).toBe(3);
+  for (let step = 0; step < 3; step++) {
+    await act(async () => { await tui.emitKeypress({ name: "right", shift: true }); });
+    await settle();
+    // Every column in view shows its rate whole, the first beside the frozen one too.
+    expect(shown(), headers().join(" ")).toBe(3);
+  }
+  // At the far end, the last columns, run on past by blank cells to start one whole.
+  expect(headers().slice(0, 3)).toEqual(["JPY", "CHF", "CAD"]);
+});
