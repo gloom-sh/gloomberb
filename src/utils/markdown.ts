@@ -23,8 +23,8 @@ export interface InlineMarkdownOptions {
 }
 
 // A backslash escapes the punctuation markdown would read ("\\*" is a star),
-// a link's label included ("[\\[3\\]](href)" reads "[3]"). A bracket inside a
-// label is escaped: "[a [b](href)" links "b" only.
+// a link's label included. A bracket inside a label is escaped: "[a [b](href)"
+// links "b" only.
 // A bracket after a bang is a picture, which stays as written. A bare address
 // is read whole, so the underscores and stars in it are not marks. A mark
 // opens before a character and closes after one, so "2 * 3 * 4" is

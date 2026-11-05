@@ -247,8 +247,13 @@ function checkCommand(found: CatalogFunction | undefined, source: ASKGSourceComm
 
 /** What a read opens, and what it is called, or why it opens nothing. */
 export type ASKGSourceTarget =
-  | { kind: "pane"; command: ASKGSourceCommand; label: string }
+  | { kind: "pane"; command: ASKGSourceCommand; label: string; icon: string }
   | { kind: "none" };
+
+/** Named as a chip in chat names the pane a share of it holds, so the two read the same. */
+function paneTarget(found: CatalogFunction, command: ASKGSourceCommand): ASKGSourceTarget {
+  return { kind: "pane", command, label: found.pane.name, icon: found.pane.icon ?? "" };
+}
 
 export interface ASKGSourceResolver {
   target(row: ASKGToolRow): ASKGSourceTarget;
@@ -273,14 +278,14 @@ export function createSourceResolver(catalog: PaneFunctionCatalog | null): ASKGS
       const source = serverToolCommand(row.name, args);
       const found = source ? byCode.get(source.code) : undefined;
       if (!source || !found || !checkCommand(found, source)) return none;
-      return { kind: "pane", command: source, label: found.template?.label ?? found.pane.name };
+      return paneTarget(found, source);
     }
     // An app action or app state (`app.get_resource`) is no function.
     if (resolveRemoteToolBinding(row.name)) return none;
     const found = byToolName.get(row.name);
     const source = found ? clientToolCommand(found, args) : null;
     if (!found || !source || !checkCommand(found, source)) return none;
-    return { kind: "pane", command: source, label: found.template?.label ?? found.pane.name };
+    return paneTarget(found, source);
   };
   return {
     target(row) {
@@ -330,8 +335,9 @@ export function sourceRefFromHref(href: string): number | null {
 
 /**
  * The answer with each citation that opens a pane written as a link
- * (`[\[3\]](gloom-source:3)`, drawn `[3]`), so a click opens it. A citation of a
- * source that opens nothing, or of no source at all, stays the text it was.
+ * (`[ 3 ](gloom-source:3)`), which the pane draws as the square of the source
+ * chip it opens, as wide as the `[3]` it stands for. A citation of a source
+ * that opens nothing, or of no source at all, stays the text it was.
  */
 export function linkCitations(answer: string, openable: ReadonlySet<number>): string {
   if (openable.size === 0) return answer;
@@ -344,7 +350,7 @@ export function linkCitations(answer: string, openable: ReadonlySet<number>): st
     const index = match.index!;
     result += answer.slice(cursor, index);
     result += refs.map((ref) => (
-      openable.has(ref) ? `[\\[${ref}\\]](${SOURCE_LINK_SCHEME}${ref})` : `\\[${ref}\\]`
+      openable.has(ref) ? `[ ${ref} ](${SOURCE_LINK_SCHEME}${ref})` : `\\[${ref}\\]`
     )).join("");
     cursor = index + match[0].length;
   }
@@ -400,4 +406,18 @@ export function answerReadNothing(turn: ASKGTurn): boolean {
   return /\d/.test(turn.answer)
     && citedRefs(turn.answer).length === 0
     && !turn.tools.some((row) => row.writeTier === "read" && row.status !== "denied" && row.status !== "cancelled");
+}
+
+/**
+ * An answer as it is shared: its text, then each source on a line of its own
+ * with the link that opens it for whoever reads it (`[2] HP NVDA --range 6M
+ * <link>`), or what it read when no pane shows it. Chat draws the links as
+ * the chips they open.
+ */
+export function answerWithSourceLinks(
+  answer: string,
+  sources: ReadonlyArray<{ label: string; url: string | null }>,
+): string {
+  const lines = sources.map((source) => (source.url ? `${source.label} ${source.url}` : source.label));
+  return lines.length > 0 ? `${answer.trim()}\n\n${lines.join("\n")}` : answer.trim();
 }

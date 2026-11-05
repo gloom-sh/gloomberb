@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
 import type { PaneDef, PaneTemplateDef } from "../../../../types/plugin";
+import type { MarketContext } from "../../../../cli/types";
+import { createDefaultConfig } from "../../../../types/config";
 import { getLoadablePlugins } from "../../../catalog";
+import { sourceShare } from "./host";
 import type { ASKGToolRow, ASKGTurn } from "./model";
 import type { JsonValue } from "./protocol";
 import {
@@ -149,7 +152,7 @@ describe("citations", () => {
 
   test("a citation that opens a pane becomes a link; one that opens nothing stays text", () => {
     const linked = linkCitations("Up 2% [3][5]. Revenue rose [6, 7]. See `[3]`.", new Set([3, 6]));
-    expect(linked).toBe("Up 2% [\\[3\\]](gloom-source:3)[5]. Revenue rose [\\[6\\]](gloom-source:6)\\[7\\]. See `[3]`.");
+    expect(linked).toBe("Up 2% [ 3 ](gloom-source:3)[5]. Revenue rose [ 6 ](gloom-source:6)\\[7\\]. See `[3]`.");
     expect(linkCitations("Up 2% [3].", new Set())).toBe("Up 2% [3].");
     expect(sourceRefFromHref("gloom-source:6")).toBe(6);
     expect(sourceRefFromHref("https://example.com")).toBeNull();
@@ -190,5 +193,28 @@ describe("the sources an answer lists", () => {
     expect(answerReadNothing(turn("a", "Hello! Ask me about a ticker.", []))).toBe(false);
     expect(answerReadNothing(turn("a", "NVDA is at $182 [1].", []))).toBe(false);
     expect(answerReadNothing(turn("a", "NVDA is at $182.", [quotes]))).toBe(false);
+  });
+});
+
+describe("the pane share a source opens", () => {
+  // The share is what opens the pane, so the view the figure was read from
+  // has to survive the share's privacy filter and its validation.
+  const context = { config: createDefaultConfig("/tmp/gloomberb-askg-sources-test") } as MarketContext;
+
+  test("carries the pane on the read's ticker and options, titled with the words that open it", async () => {
+    const source = serverToolCommand("market.history", { symbol: "nvda", interval: "1day", limit: 126 })!;
+    const share = await sourceShare(builtInCatalog(), context, source);
+    expect(share.data.title).toBe("HP NVDA --range 6M");
+    if (share.data.version !== 2) throw new Error("expected a portable pane share");
+    const [instance] = share.data.layout.layout.instances;
+    expect(instance).toMatchObject({ binding: { kind: "fixed", symbol: "NVDA" } });
+    expect(JSON.stringify(instance?.settings)).toContain("6M");
+  });
+
+  test("keeps an option a pane holds in its view state", async () => {
+    const source = serverToolCommand("company.statements", { symbol: "AAPL", period: "quarterly" })!;
+    const share = await sourceShare(builtInCatalog(), context, source);
+    if (share.data.version !== 2) throw new Error("expected a portable pane share");
+    expect(JSON.stringify(share.data.layout.paneState)).toContain("quarterly");
   });
 });

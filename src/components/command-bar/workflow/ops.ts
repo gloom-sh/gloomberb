@@ -251,12 +251,6 @@ export async function createPaneTemplateOrThrow(
     return;
   }
   let spec = createInstanceResult ?? {};
-  // Options the caller ran the function with (a source's `--range 6M`) win over the template's view.
-  if (resolvedOptions?.settings) spec = { ...spec, settings: { ...spec.settings, ...resolvedOptions.settings } };
-  // The options a pane keeps in its view state (FA's period) go there, on whichever pane opens.
-  const applyPaneState = (instanceId: string) => {
-    if (resolvedOptions?.paneState) deps.dispatch({ type: "UPDATE_PANE_STATE", paneId: instanceId, patch: resolvedOptions.paneState });
-  };
   if (spec.binding?.kind === "fixed" && spec.binding.symbol === context.activeTicker && context.activeInstrument !== undefined) {
     const instrument = spec.binding.instrument !== undefined ? spec.binding.instrument : context.activeInstrument;
     const listing = spec.binding.listing ?? context.activeListing;
@@ -305,7 +299,6 @@ export async function createPaneTemplateOrThrow(
     if (nextLayout) deps.pluginRegistry.updateLayout(nextLayout);
     // React can batch the layout update and focus. Bringing a floating pane to
     // the front must use its retargeted settings, not the preceding render.
-    applyPaneState(existing.instanceId);
     deps.pluginRegistry.focusPane(existing.instanceId, nextLayout);
     if (openedByUser) countTemplateOpen(template, pluginId, deps);
     countAttention();
@@ -324,7 +317,6 @@ export async function createPaneTemplateOrThrow(
     throw new Error("Open a matching ticker or collection context first.");
   }
 
-  applyPaneState(instance.instanceId);
   deps.placePaneInstance(instance, paneDef, spec);
   if (openedByUser) countTemplateOpen(template, pluginId, deps);
   countAttention();

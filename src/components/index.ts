@@ -137,7 +137,7 @@ export {
   COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, DataTable,
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
-  IconButton, InlineQuickAddRow, KeyValueRow, LinkText, ListView, loadingText, Menu, MenuPopover,
+  IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
