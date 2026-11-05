@@ -396,6 +396,10 @@ test("a short enters the basket at its signed weight, not left out", () => {
   const volatility = (risk: typeof model) => risk.metrics.find((row) => row.id === "volatility")!.value!;
   expect(volatility(model)).toBeCloseTo(volatility(long), 10);
   expect(model.notes.filter((note) => note.includes("per the book's net value"))).toHaveLength(1);
+  // VaR in money is on the same net $220 its percent is stated per, not on the $440 gross.
+  const tail = model.rows.risk.find((row) => row.id === "var")!;
+  expect(tail.amountBase).toBeCloseTo(220, 8);
+  expect(tail.amount).toBeCloseTo((tail.value! / 100) * 220, 8);
   // A long-only book is read as before, with nothing said; a market-neutral one per gross exposure, said once.
   expect(long.notes.some((note) => /per (the book's net value|gross exposure)/.test(note))).toBe(false);
   const neutral = buildPortfolioRisk(portfolio, [holding("SPY", 3), holding("IWM", -3)], market());

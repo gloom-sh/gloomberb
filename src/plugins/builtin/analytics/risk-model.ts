@@ -328,7 +328,8 @@ export function portfolioRiskTickers(
 }
 /** Below this share of gross exposure, a book's net value is too small to state its basket per (a market-neutral book). */
 const NET_BASIS_MIN_SHARE = 0.1;
-const BASKET_NET_NOTE = "Basket returns, volatility, betas and stresses are per the book's net value, longs less shorts, as a fund states them.";
+const basketNetNote = (net: number, currency: string) =>
+  `Basket returns, volatility, betas, stresses and tail losses are per the book's net value, longs less shorts (${formatNumber(net, 0)} ${currency}), as a fund states them.`;
 const BASKET_GROSS_NOTE = "Basket returns, volatility, betas and stresses are per gross exposure, longs plus shorts at their absolute value: the book's net value is under 10% of it.";
 
 /**
@@ -863,7 +864,8 @@ export function buildPortfolioRisk(
   // A long-only basket's net is its gross: nothing changes.
   const basketScale = basketNetScale(members.map((row) => row.value ?? 0));
   if (basketScale.basis === "gross") notes.push(BASKET_GROSS_NOTE);
-  else if (basketScale.factor !== 1) notes.push(BASKET_NET_NOTE);
+  else if (basketScale.factor !== 1)
+    notes.push(basketNetNote(coverage.coveredValue / basketScale.factor, coverage.currency));
   const basket = members.length
     ? computeWeightedPortfolioReturns(
         members.map((row) => ({ weight: row.weight!, returns: row.returns })),
@@ -1068,8 +1070,10 @@ export function buildPortfolioRisk(
   warnings.push(...(greeks?.warnings ?? []));
   const rows: Record<RiskView, RiskDisplayRow[]> = {
     risk: metrics.map((row) => {
-      // VaR and expected shortfall are a one-day loss on the covered basket's current value, in the portfolio currency.
+      // VaR and expected shortfall are a one-day loss on the covered basket's current value, in the portfolio currency:
+      // its net value when the returns are stated per net (the gross over the scale), else its gross.
       const tail = TAIL_ROW_IDS.has(row.id) && row.value != null && coverage.coveredValue > 0;
+      const tailBase = coverage.coveredValue / basketScale.factor;
       return {
         ...row,
         percentile: row.rank.percentile,
@@ -1077,9 +1081,9 @@ export function buildPortfolioRisk(
         detail: TAIL_ROW_IDS.has(row.id) ? riskTailMethod(row.samples, row.value != null) : `${row.samples} sessions`,
         ...(tail
           ? {
-              amount: (row.value! / 100) * coverage.coveredValue,
+              amount: (row.value! / 100) * tailBase,
               amountCurrency: coverage.currency,
-              amountBase: coverage.coveredValue,
+              amountBase: tailBase,
               basis: riskCoverageLine(coverage) ?? undefined,
             }
           : {}),
