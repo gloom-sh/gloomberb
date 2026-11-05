@@ -3,6 +3,7 @@ import type { EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
 import { calendarWeekDates } from "./calendar-model";
+import { sameHistoryListing } from "./client";
 import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless";
 
 const today = newYorkToday();
@@ -247,6 +248,9 @@ test("ERN for a Hong Kong listing reads its own reports: each in its period and 
   const old = await load();
   expect(old.errors).toBeUndefined();
   expect(old.rows.map((row) => [row.date, row.currency, row.epsEstimate])).toEqual([[next, "CNY", 7.22]]);
+  // Gloom Cloud names the listing by its four-digit code.
+  expect([sameHistoryListing("0700:HKEX", "700:HKEX"), sameHistoryListing("0700:HKEX", "0700:HKEX"), sameHistoryListing("0700:HKEX", "7000:HKEX"), sameHistoryListing("SAN", "SAN:EPA")])
+    .toEqual([true, true, false, false]);
 });
 
 test("a press release's figures are flagged provisional on the board and in the history, and the text report says so", async () => {

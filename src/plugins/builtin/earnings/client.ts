@@ -49,8 +49,15 @@ function validateEarningsCalendar(payload: EarningsCalendarPayload): EarningsCal
   return payload;
 }
 
+/** The listing asked for: a Hong Kong code reads the same with or without its leading zeros (700:HKEX is 0700:HKEX). */
+export function sameHistoryListing(served: unknown, asked: string): boolean {
+  if (served === asked) return true;
+  const code = (value: string) => /^(\d+):HKEX$/i.exec(value)?.[1]?.replace(/^0+(?=\d)/, "") ?? null;
+  return typeof served === "string" && code(asked) != null && code(served) === code(asked);
+}
+
 function validateEarningsHistory(payload: EarningsHistoryPayload, symbol: string): EarningsHistoryPayload {
-  if (!payload || payload.symbol !== symbol || !Array.isArray(payload.reports)
+  if (!payload || !sameHistoryListing(payload.symbol, symbol) || !Array.isArray(payload.reports)
     || payload.reports.some((report) => !validReport(report) || !numberOrNull(report.revenueActual))) {
     throw new Error("The server returned an invalid earnings history");
   }
